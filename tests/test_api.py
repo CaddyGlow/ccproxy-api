@@ -27,7 +27,7 @@ class TestChatCompletionsEndpoint:
         mock_claude_client_class,
         test_client: TestClient,
         sample_chat_request: dict,
-        sample_claude_response: dict
+        sample_claude_response: dict,
     ):
         """Test successful chat completion."""
         # Setup mock
@@ -49,7 +49,7 @@ class TestChatCompletionsEndpoint:
         request_data = {
             "model": "invalid-model",
             "messages": [{"role": "user", "content": "Hello"}],
-            "max_tokens": 100
+            "max_tokens": 100,
         }
 
         response = test_client.post("/v1/chat/completions", json=request_data)
@@ -65,7 +65,7 @@ class TestChatCompletionsEndpoint:
         request_data = {
             "model": "claude-3-5-sonnet-20241022",
             "messages": [],  # Empty messages
-            "max_tokens": 100
+            "max_tokens": 100,
         }
 
         response = test_client.post("/v1/chat/completions", json=request_data)
@@ -88,22 +88,23 @@ class TestChatCompletionsEndpoint:
         self,
         mock_claude_client_class,
         test_client: TestClient,
-        sample_streaming_request: dict
+        sample_streaming_request: dict,
     ):
         """Test streaming chat completion."""
+
         # Setup mock streaming response
         async def mock_streaming_response():
             chunks = [
                 {
                     "type": "content_block_delta",
                     "index": 0,
-                    "delta": {"type": "text_delta", "text": "Hello"}
+                    "delta": {"type": "text_delta", "text": "Hello"},
                 },
                 {
                     "type": "message_delta",
                     "delta": {"stop_reason": "end_turn"},
-                    "usage": {"output_tokens": 5}
-                }
+                    "usage": {"output_tokens": 5},
+                },
             ]
             for chunk in chunks:
                 yield chunk
@@ -112,7 +113,9 @@ class TestChatCompletionsEndpoint:
         mock_client.create_completion.return_value = mock_streaming_response()
         mock_claude_client_class.return_value = mock_client
 
-        response = test_client.post("/v1/chat/completions", json=sample_streaming_request)
+        response = test_client.post(
+            "/v1/chat/completions", json=sample_streaming_request
+        )
 
         assert response.status_code == 200
         assert response.headers["content-type"] == "text/event-stream; charset=utf-8"
@@ -127,7 +130,7 @@ class TestChatCompletionsEndpoint:
         self,
         mock_claude_client_class,
         test_client: TestClient,
-        sample_chat_request: dict
+        sample_chat_request: dict,
     ):
         """Test handling of Claude client errors."""
         mock_client = AsyncMock()
@@ -152,7 +155,7 @@ class TestModelsEndpoint:
         self,
         mock_claude_client_class,
         test_client: TestClient,
-        sample_models_response: list
+        sample_models_response: list,
     ):
         """Test successful models listing."""
         mock_client = AsyncMock()
@@ -170,11 +173,7 @@ class TestModelsEndpoint:
         assert data["data"][1]["id"] == "claude-3-5-sonnet-20241022"
 
     @patch("claude_proxy.api.v1.chat.ClaudeClient")
-    def test_list_models_error(
-        self,
-        mock_claude_client_class,
-        test_client: TestClient
-    ):
+    def test_list_models_error(self, mock_claude_client_class, test_client: TestClient):
         """Test models listing with error."""
         mock_client = AsyncMock()
         mock_client.list_models.side_effect = ServiceUnavailableError(
@@ -210,7 +209,7 @@ class TestErrorHandling:
         response = test_client.post(
             "/v1/chat/completions",
             data="invalid json",
-            headers={"Content-Type": "application/json"}
+            headers={"Content-Type": "application/json"},
         )
 
         assert response.status_code == 422
@@ -231,14 +230,16 @@ class TestCORSHeaders:
         self,
         mock_claude_client_class,
         test_client: TestClient,
-        sample_streaming_request: dict
+        sample_streaming_request: dict,
     ):
         """Test CORS headers in streaming response."""
         mock_client = AsyncMock()
         mock_client.create_completion.return_value = iter([])
         mock_claude_client_class.return_value = mock_client
 
-        response = test_client.post("/v1/chat/completions", json=sample_streaming_request)
+        response = test_client.post(
+            "/v1/chat/completions", json=sample_streaming_request
+        )
 
         assert response.status_code == 200
         assert "access-control-allow-origin" in response.headers

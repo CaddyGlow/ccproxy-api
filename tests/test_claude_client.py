@@ -18,7 +18,7 @@ class TestClaudeClient:
             claude_cli_path="/test/path/claude",
             default_model="claude-3-5-sonnet-20241022",
             max_tokens=1000,
-            temperature=0.5
+            temperature=0.5,
         )
 
         assert client.api_key == "test-key"
@@ -44,7 +44,7 @@ class TestClaudeClient:
         messages = [
             {"role": "user", "content": "Hello"},
             {"role": "assistant", "content": "Hi there!"},
-            {"role": "user", "content": "How are you?"}
+            {"role": "user", "content": "How are you?"},
         ]
 
         prompt = client._format_messages_to_prompt(messages)
@@ -61,8 +61,8 @@ class TestClaudeClient:
                 "role": "user",
                 "content": [
                     {"type": "text", "text": "What's in this image?"},
-                    {"type": "text", "text": "Please describe it."}
-                ]
+                    {"type": "text", "text": "Please describe it."},
+                ],
             }
         ]
 
@@ -77,7 +77,7 @@ class TestClaudeClient:
 
         messages = [
             {"role": "system", "content": "You are helpful"},
-            {"role": "user", "content": "Hello"}
+            {"role": "user", "content": "Hello"},
         ]
 
         prompt = client._format_messages_to_prompt(messages)
@@ -93,7 +93,7 @@ class TestClaudeClient:
             model="claude-3-5-sonnet-20241022",
             max_tokens=500,
             temperature=0.8,
-            system="You are helpful"
+            system="You are helpful",
         )
 
         assert options.model == "claude-3-5-sonnet-20241022"
@@ -103,8 +103,7 @@ class TestClaudeClient:
     def test_create_options_with_defaults(self):
         """Test _create_options with default values."""
         client = ClaudeClient(
-            default_model="claude-3-opus-20240229",
-            system_prompt="Default system"
+            default_model="claude-3-opus-20240229", system_prompt="Default system"
         )
 
         options = client._create_options()
@@ -158,9 +157,7 @@ class TestClaudeClient:
         messages = [{"role": "user", "content": "Hello"}]
 
         result = await client.create_completion(
-            messages,
-            model="claude-3-5-sonnet-20241022",
-            stream=False
+            messages, model="claude-3-5-sonnet-20241022", stream=False
         )
 
         assert isinstance(result, dict)
@@ -203,9 +200,7 @@ class TestClaudeClient:
         messages = [{"role": "user", "content": "Hello"}]
 
         result = await client.create_completion(
-            messages,
-            model="claude-3-5-sonnet-20241022",
-            stream=True
+            messages, model="claude-3-5-sonnet-20241022", stream=True
         )
 
         # Should return an async iterator

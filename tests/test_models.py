@@ -24,10 +24,8 @@ class TestChatCompletionRequest:
         """Test valid chat completion request."""
         request_data = {
             "model": "claude-3-5-sonnet-20241022",
-            "messages": [
-                {"role": "user", "content": "Hello"}
-            ],
-            "max_tokens": 100
+            "messages": [{"role": "user", "content": "Hello"}],
+            "max_tokens": 100,
         }
 
         request = ChatCompletionRequest(**request_data)
@@ -45,7 +43,7 @@ class TestChatCompletionRequest:
         request_data = {
             "model": "invalid-model",
             "messages": [{"role": "user", "content": "Hello"}],
-            "max_tokens": 100
+            "max_tokens": 100,
         }
 
         with pytest.raises(ValidationError) as exc_info:
@@ -60,7 +58,7 @@ class TestChatCompletionRequest:
             "model": "claude-3-5-sonnet-20241022",
             "messages": [{"role": "user", "content": "Hello"}],
             "max_tokens": 100,
-            "temperature": 0.5
+            "temperature": 0.5,
         }
         request = ChatCompletionRequest(**request_data)
         assert request.temperature == 0.5
@@ -80,7 +78,7 @@ class TestChatCompletionRequest:
         request_data = {
             "model": "claude-3-5-sonnet-20241022",
             "messages": [{"role": "user", "content": "Hello"}],
-            "max_tokens": 0  # Invalid
+            "max_tokens": 0,  # Invalid
         }
 
         with pytest.raises(ValidationError):
@@ -92,7 +90,7 @@ class TestChatCompletionRequest:
             "model": "claude-3-5-sonnet-20241022",
             "messages": [{"role": "user", "content": "Hello"}],
             "max_tokens": 100,
-            "stop_sequences": ["\\n", "END", "STOP", "DONE", "FINISH"]  # Too many
+            "stop_sequences": ["\\n", "END", "STOP", "DONE", "FINISH"],  # Too many
         }
 
         with pytest.raises(ValidationError) as exc_info:
@@ -106,10 +104,7 @@ class TestMessage:
 
     def test_user_message_with_text(self):
         """Test user message with text content."""
-        message_data = {
-            "role": "user",
-            "content": "Hello, how are you?"
-        }
+        message_data = {"role": "user", "content": "Hello, how are you?"}
 
         message = Message(**message_data)
 
@@ -127,10 +122,10 @@ class TestMessage:
                     "source": {
                         "type": "base64",
                         "media_type": "image/jpeg",
-                        "data": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg=="
-                    }
-                }
-            ]
+                        "data": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==",
+                    },
+                },
+            ],
         }
 
         message = Message(**message_data)
@@ -143,10 +138,7 @@ class TestMessage:
 
     def test_assistant_message(self):
         """Test assistant message."""
-        message_data = {
-            "role": "assistant",
-            "content": "I'm doing well, thank you!"
-        }
+        message_data = {"role": "assistant", "content": "I'm doing well, thank you!"}
 
         message = Message(**message_data)
 
@@ -155,10 +147,7 @@ class TestMessage:
 
     def test_invalid_role(self):
         """Test invalid role validation."""
-        message_data = {
-            "role": "invalid",
-            "content": "Hello"
-        }
+        message_data = {"role": "invalid", "content": "Hello"}
 
         with pytest.raises(ValidationError):
             Message(**message_data)
@@ -170,10 +159,7 @@ class TestErrorModels:
     def test_anthropic_error(self):
         """Test AnthropicError model."""
         error = AnthropicError(
-            error={
-                "type": "invalid_request_error",
-                "message": "Invalid request"
-            }
+            error={"type": "invalid_request_error", "message": "Invalid request"}
         )
 
         assert error.type == "error"
@@ -191,9 +177,7 @@ class TestErrorModels:
     def test_create_error_response(self):
         """Test create_error_response function."""
         error_dict, status_code = create_error_response(
-            "invalid_request_error",
-            "Test error message",
-            400
+            "invalid_request_error", "Test error message", 400
         )
 
         assert status_code == 400

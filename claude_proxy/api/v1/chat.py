@@ -100,7 +100,7 @@ async def create_chat_completion(
                     async for chunk in stream_claude_response(
                         response_iter,  # type: ignore
                         message_id,
-                        request.model
+                        request.model,
                     ):
                         yield chunk
 
@@ -111,8 +111,7 @@ async def create_chat_completion(
                 except Exception as e:
                     logger.error(f"Unexpected error in streaming: {e}", exc_info=True)
                     error_response, _ = create_error_response(
-                        "internal_server_error",
-                        "An unexpected error occurred"
+                        "internal_server_error", "An unexpected error occurred"
                     )
                     yield f"data: {error_response}\n\n"
 
@@ -159,8 +158,7 @@ async def create_chat_completion(
     except Exception as e:
         logger.error(f"Unexpected error in chat completion: {e}", exc_info=True)
         error_response, status_code = create_error_response(
-            "internal_server_error",
-            "An unexpected error occurred"
+            "internal_server_error", "An unexpected error occurred"
         )
         raise HTTPException(status_code=500, detail=error_response) from e
 
@@ -188,7 +186,6 @@ async def list_models() -> dict[str, Any]:
     except Exception as e:
         logger.error(f"Unexpected error in list_models: {e}", exc_info=True)
         error_response, status_code = create_error_response(
-            "internal_server_error",
-            "Failed to retrieve models"
+            "internal_server_error", "Failed to retrieve models"
         )
         raise HTTPException(status_code=500, detail=error_response) from e

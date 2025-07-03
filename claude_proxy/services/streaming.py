@@ -26,7 +26,7 @@ class StreamingFormatter:
         Returns:
             Formatted SSE string
         """
-        json_data = json.dumps(data, separators=(',', ':'))
+        json_data = json.dumps(data, separators=(",", ":"))
         return f"event: {event_type}\ndata: {json_data}\n\n"
 
     @staticmethod
@@ -40,14 +40,12 @@ class StreamingFormatter:
         Returns:
             Formatted SSE string
         """
-        json_data = json.dumps(data, separators=(',', ':'))
+        json_data = json.dumps(data, separators=(",", ":"))
         return f"data: {json_data}\n\n"
 
     @staticmethod
     def format_message_start(
-        message_id: str,
-        model: str,
-        role: str = "assistant"
+        message_id: str, model: str, role: str = "assistant"
     ) -> str:
         """Format message start event."""
         data = {
@@ -60,11 +58,8 @@ class StreamingFormatter:
                 "model": model,
                 "stop_reason": None,
                 "stop_sequence": None,
-                "usage": {
-                    "input_tokens": 0,
-                    "output_tokens": 0
-                }
-            }
+                "usage": {"input_tokens": 0, "output_tokens": 0},
+            },
         }
         return StreamingFormatter.format_data_only(data)
 
@@ -74,10 +69,7 @@ class StreamingFormatter:
         data = {
             "type": "content_block_start",
             "index": index,
-            "content_block": {
-                "type": "text",
-                "text": ""
-            }
+            "content_block": {"type": "text", "text": ""},
         }
         return StreamingFormatter.format_data_only(data)
 
@@ -87,54 +79,38 @@ class StreamingFormatter:
         data = {
             "type": "content_block_delta",
             "index": index,
-            "delta": {
-                "type": "text_delta",
-                "text": text
-            }
+            "delta": {"type": "text_delta", "text": text},
         }
         return StreamingFormatter.format_data_only(data)
 
     @staticmethod
     def format_content_block_stop(index: int = 0) -> str:
         """Format content block stop event."""
-        data = {
-            "type": "content_block_stop",
-            "index": index
-        }
+        data = {"type": "content_block_stop", "index": index}
         return StreamingFormatter.format_data_only(data)
 
     @staticmethod
     def format_message_delta(
-        stop_reason: str = "end_turn",
-        stop_sequence: str | None = None
+        stop_reason: str = "end_turn", stop_sequence: str | None = None
     ) -> str:
         """Format message delta event."""
         data = {
             "type": "message_delta",
-            "delta": {
-                "stop_reason": stop_reason,
-                "stop_sequence": stop_sequence
-            },
-            "usage": {
-                "output_tokens": 0
-            }
+            "delta": {"stop_reason": stop_reason, "stop_sequence": stop_sequence},
+            "usage": {"output_tokens": 0},
         }
         return StreamingFormatter.format_data_only(data)
 
     @staticmethod
     def format_message_stop() -> str:
         """Format message stop event."""
-        data = {
-            "type": "message_stop"
-        }
+        data = {"type": "message_stop"}
         return StreamingFormatter.format_data_only(data)
 
     @staticmethod
     def format_error(error_type: str, message: str) -> str:
         """Format streaming error event."""
-        error = StreamingError(
-            error=ErrorDetail(type=error_type, message=message)
-        )
+        error = StreamingError(error=ErrorDetail(type=error_type, message=message))
         return StreamingFormatter.format_data_only(error.model_dump())
 
     @staticmethod
@@ -146,7 +122,7 @@ class StreamingFormatter:
 async def stream_claude_response(
     claude_response_iterator: AsyncGenerator[dict[str, Any], None],
     message_id: str,
-    model: str
+    model: str,
 ) -> AsyncGenerator[str, None]:
     """
     Convert Claude SDK response to Anthropic-compatible streaming format.

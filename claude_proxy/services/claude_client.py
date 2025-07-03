@@ -131,14 +131,14 @@ class ClaudeClient:
             raise ClaudeProxyError(
                 message=f"Claude process error: {str(e)}",
                 error_type="service_unavailable_error",
-                status_code=503
+                status_code=503,
             ) from e
         except Exception as e:
             logger.error(f"Unexpected error in create_completion: {e}")
             raise ClaudeProxyError(
                 message=f"Unexpected error: {str(e)}",
                 error_type="internal_server_error",
-                status_code=500
+                status_code=500,
             ) from e
 
     async def _get_query_iterator(

@@ -53,12 +53,10 @@ def sample_chat_request() -> dict[str, Any]:
     """Sample chat completion request."""
     return {
         "model": "claude-3-5-sonnet-20241022",
-        "messages": [
-            {"role": "user", "content": "Hello, how are you?"}
-        ],
+        "messages": [{"role": "user", "content": "Hello, how are you?"}],
         "max_tokens": 100,
         "temperature": 0.7,
-        "stream": False
+        "stream": False,
     }
 
 
@@ -67,12 +65,10 @@ def sample_streaming_request() -> dict[str, Any]:
     """Sample streaming chat completion request."""
     return {
         "model": "claude-3-5-sonnet-20241022",
-        "messages": [
-            {"role": "user", "content": "Tell me a story"}
-        ],
+        "messages": [{"role": "user", "content": "Tell me a story"}],
         "max_tokens": 200,
         "temperature": 0.8,
-        "stream": True
+        "stream": True,
     }
 
 
@@ -84,19 +80,12 @@ def sample_claude_response() -> dict[str, Any]:
         "type": "message",
         "role": "assistant",
         "content": [
-            {
-                "type": "text",
-                "text": "Hello! I'm doing well, thank you for asking."
-            }
+            {"type": "text", "text": "Hello! I'm doing well, thank you for asking."}
         ],
         "model": "claude-3-5-sonnet-20241022",
         "stop_reason": "end_turn",
         "stop_sequence": None,
-        "usage": {
-            "input_tokens": 10,
-            "output_tokens": 15,
-            "total_tokens": 25
-        }
+        "usage": {"input_tokens": 10, "output_tokens": 15, "total_tokens": 25},
     }
 
 
@@ -114,29 +103,29 @@ async def sample_streaming_response() -> AsyncGenerator[dict[str, Any], None]:
                 "model": "claude-3-5-sonnet-20241022",
                 "stop_reason": None,
                 "stop_sequence": None,
-                "usage": {"input_tokens": 10, "output_tokens": 0}
-            }
+                "usage": {"input_tokens": 10, "output_tokens": 0},
+            },
         },
         {
             "type": "content_block_delta",
             "index": 0,
-            "delta": {"type": "text_delta", "text": "Once"}
+            "delta": {"type": "text_delta", "text": "Once"},
         },
         {
             "type": "content_block_delta",
             "index": 0,
-            "delta": {"type": "text_delta", "text": " upon"}
+            "delta": {"type": "text_delta", "text": " upon"},
         },
         {
             "type": "content_block_delta",
             "index": 0,
-            "delta": {"type": "text_delta", "text": " a time..."}
+            "delta": {"type": "text_delta", "text": " a time..."},
         },
         {
             "type": "message_delta",
             "delta": {"stop_reason": "end_turn"},
-            "usage": {"output_tokens": 15}
-        }
+            "usage": {"output_tokens": 15},
+        },
     ]
 
     for chunk in chunks:
@@ -151,14 +140,14 @@ def sample_models_response() -> list[dict[str, Any]]:
             "id": "claude-3-opus-20240229",
             "object": "model",
             "created": 1677610602,
-            "owned_by": "anthropic"
+            "owned_by": "anthropic",
         },
         {
             "id": "claude-3-5-sonnet-20241022",
             "object": "model",
             "created": 1677610602,
-            "owned_by": "anthropic"
-        }
+            "owned_by": "anthropic",
+        },
     ]
 
 

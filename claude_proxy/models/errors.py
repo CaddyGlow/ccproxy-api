@@ -24,8 +24,7 @@ class InvalidRequestError(AnthropicError):
 
     error: ErrorDetail = Field(
         default_factory=lambda: ErrorDetail(
-            type="invalid_request_error",
-            message="Invalid request"
+            type="invalid_request_error", message="Invalid request"
         )
     )
 
@@ -35,8 +34,7 @@ class AuthenticationError(AnthropicError):
 
     error: ErrorDetail = Field(
         default_factory=lambda: ErrorDetail(
-            type="authentication_error",
-            message="Authentication failed"
+            type="authentication_error", message="Authentication failed"
         )
     )
 
@@ -46,8 +44,7 @@ class PermissionError(AnthropicError):
 
     error: ErrorDetail = Field(
         default_factory=lambda: ErrorDetail(
-            type="permission_error",
-            message="Permission denied"
+            type="permission_error", message="Permission denied"
         )
     )
 
@@ -57,8 +54,7 @@ class NotFoundError(AnthropicError):
 
     error: ErrorDetail = Field(
         default_factory=lambda: ErrorDetail(
-            type="not_found_error",
-            message="Resource not found"
+            type="not_found_error", message="Resource not found"
         )
     )
 
@@ -68,8 +64,7 @@ class RateLimitError(AnthropicError):
 
     error: ErrorDetail = Field(
         default_factory=lambda: ErrorDetail(
-            type="rate_limit_error",
-            message="Rate limit exceeded"
+            type="rate_limit_error", message="Rate limit exceeded"
         )
     )
 
@@ -79,8 +74,7 @@ class InternalServerError(AnthropicError):
 
     error: ErrorDetail = Field(
         default_factory=lambda: ErrorDetail(
-            type="internal_server_error",
-            message="Internal server error"
+            type="internal_server_error", message="Internal server error"
         )
     )
 
@@ -90,8 +84,7 @@ class ServiceUnavailableError(AnthropicError):
 
     error: ErrorDetail = Field(
         default_factory=lambda: ErrorDetail(
-            type="service_unavailable_error",
-            message="Service temporarily unavailable"
+            type="service_unavailable_error", message="Service temporarily unavailable"
         )
     )
 
@@ -105,9 +98,7 @@ class StreamingError(BaseModel):
 
 
 def create_error_response(
-    error_type: str,
-    message: str,
-    status_code: int = 500
+    error_type: str, message: str, status_code: int = 500
 ) -> tuple[dict[str, Any], int]:
     """
     Create a standardized error response.
@@ -120,7 +111,5 @@ def create_error_response(
     Returns:
         Tuple of (error_dict, status_code)
     """
-    error_response = AnthropicError(
-        error=ErrorDetail(type=error_type, message=message)
-    )
+    error_response = AnthropicError(error=ErrorDetail(type=error_type, message=message))
     return error_response.model_dump(), status_code

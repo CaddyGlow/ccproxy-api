@@ -21,8 +21,7 @@ class TestStreamingFormatter:
     def test_format_message_start(self):
         """Test format_message_start method."""
         result = StreamingFormatter.format_message_start(
-            "msg_123",
-            "claude-3-5-sonnet-20241022"
+            "msg_123", "claude-3-5-sonnet-20241022"
         )
 
         assert "data: " in result
@@ -61,8 +60,7 @@ class TestStreamingFormatter:
     def test_format_message_delta(self):
         """Test format_message_delta method."""
         result = StreamingFormatter.format_message_delta(
-            stop_reason="end_turn",
-            stop_sequence=None
+            stop_reason="end_turn", stop_sequence=None
         )
 
         assert "data: " in result
@@ -81,13 +79,15 @@ class TestStreamingFormatter:
     def test_format_error(self):
         """Test format_error method."""
         result = StreamingFormatter.format_error(
-            "internal_server_error",
-            "Something went wrong"
+            "internal_server_error", "Something went wrong"
         )
 
         assert "data: " in result
         assert '"type":"error"' in result
-        assert '"error":{"type":"internal_server_error","message":"Something went wrong"}' in result
+        assert (
+            '"error":{"type":"internal_server_error","message":"Something went wrong"}'
+            in result
+        )
 
     def test_format_done(self):
         """Test format_done method."""
@@ -104,9 +104,7 @@ class TestStreamClaudeResponse:
         """Test successful streaming response."""
         chunks = []
         async for chunk in stream_claude_response(
-            sample_streaming_response,
-            "msg_test123",
-            "claude-3-5-sonnet-20241022"
+            sample_streaming_response, "msg_test123", "claude-3-5-sonnet-20241022"
         ):
             chunks.append(chunk)
 
@@ -147,15 +145,14 @@ class TestStreamClaudeResponse:
     @pytest.mark.asyncio
     async def test_streaming_with_error(self):
         """Test streaming response with error."""
+
         async def error_generator():
             yield {"type": "content_block_delta", "delta": {"text": "Hello"}}
             raise Exception("Test error")
 
         chunks = []
         async for chunk in stream_claude_response(
-            error_generator(),
-            "msg_test123",
-            "claude-3-5-sonnet-20241022"
+            error_generator(), "msg_test123", "claude-3-5-sonnet-20241022"
         ):
             chunks.append(chunk)
 
@@ -169,6 +166,7 @@ class TestStreamClaudeResponse:
     @pytest.mark.asyncio
     async def test_empty_streaming_response(self):
         """Test streaming with no content."""
+
         async def empty_generator():
             # Generator that yields nothing and ends
             return
@@ -176,9 +174,7 @@ class TestStreamClaudeResponse:
 
         chunks = []
         async for chunk in stream_claude_response(
-            empty_generator(),
-            "msg_test123",
-            "claude-3-5-sonnet-20241022"
+            empty_generator(), "msg_test123", "claude-3-5-sonnet-20241022"
         ):
             chunks.append(chunk)
 
