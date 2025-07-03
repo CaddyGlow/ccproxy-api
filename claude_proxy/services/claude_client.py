@@ -209,7 +209,9 @@ class ClaudeClient:
             message_count = 0
             async for message in query_iterator:
                 message_count += 1
-                logger.debug(f"Claude SDK message {message_count}: {type(message).__name__} - {message}")
+                logger.debug(
+                    f"Claude SDK message {message_count}: {type(message).__name__} - {message}"
+                )
                 if isinstance(message, AssistantMessage):
                     if first_chunk:
                         # Send initial chunk

@@ -10,6 +10,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from starlette.status import HTTP_500_INTERNAL_SERVER_ERROR
 
+from claude_proxy.config.settings import get_settings
 from claude_proxy.exceptions import ClaudeProxyError
 from claude_proxy.models.openai_models import (
     OpenAIChatCompletionRequest,
@@ -41,6 +42,26 @@ async def create_chat_completion(
         OpenAI-compatible chat completion response or streaming response
     """
     try:
+        # Get settings and check tools handling configuration
+        settings = get_settings()
+
+        # Check if tools are defined in the request
+        if request.tools and settings.tools_handling != "ignore":
+            tools_message = f"Tools definition detected with {len(request.tools)} tools"
+
+            if settings.tools_handling == "error":
+                logger.error(f"Tools not supported: {tools_message}")
+                error_response = OpenAIErrorResponse.create(
+                    message="Tools definitions are not supported by this proxy",
+                    error_type="unsupported_parameter",
+                )
+                raise HTTPException(
+                    status_code=400,
+                    detail=error_response.model_dump(),
+                )
+            elif settings.tools_handling == "warning":
+                logger.warning(f"Tools ignored: {tools_message}")
+
         # Initialize services
         claude_client = ClaudeClient()
         translator = OpenAITranslator()
@@ -56,8 +77,10 @@ async def create_chat_completion(
             # Handle streaming response
             async def generate_stream():
                 try:
-                    logger.debug(f"Starting OpenAI streaming for request_id: {request_id}")
-                    
+                    logger.debug(
+                        f"Starting OpenAI streaming for request_id: {request_id}"
+                    )
+
                     # Get Claude streaming response
                     claude_stream = await claude_client.create_completion(
                         messages=anthropic_request["messages"],
@@ -67,8 +90,10 @@ async def create_chat_completion(
                         system=anthropic_request.get("system"),
                         stream=True,
                     )
-                    
-                    logger.debug("Claude stream created, starting conversion to OpenAI format")
+
+                    logger.debug(
+                        "Claude stream created, starting conversion to OpenAI format"
+                    )
 
                     # Convert to OpenAI format
                     chunk_count = 0
@@ -79,10 +104,14 @@ async def create_chat_completion(
                         created,
                     ):
                         chunk_count += 1
-                        logger.debug(f"Yielding OpenAI chunk {chunk_count}: {chunk[:200]}...")
+                        logger.debug(
+                            f"Yielding OpenAI chunk {chunk_count}: {chunk[:200]}..."
+                        )
                         yield chunk
 
-                    logger.debug(f"OpenAI streaming completed with {chunk_count} chunks")
+                    logger.debug(
+                        f"OpenAI streaming completed with {chunk_count} chunks"
+                    )
 
                 except Exception as e:
                     logger.error(f"Error in OpenAI streaming: {e}", exc_info=True)
@@ -126,6 +155,9 @@ async def create_chat_completion(
 
             return OpenAIChatCompletionResponse(**openai_response)
 
+    except HTTPException:
+        # Re-raise HTTPExceptions (like the tools validation error)
+        raise
     except ClaudeProxyError as e:
         logger.error(f"Claude client error: {e}")
         error_response = OpenAIErrorResponse.create(

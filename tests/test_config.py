@@ -27,6 +27,7 @@ class TestSettings:
         assert settings.request_timeout == 300
         assert settings.cors_origins == ["*"]
         assert settings.config_file is None
+        assert settings.tools_handling == "error"
 
     def test_settings_from_env_vars(self):
         """Test loading settings from environment variables."""
@@ -131,6 +132,34 @@ class TestSettings:
         origins_list = ["https://example.com", "https://test.com"]
         settings = Settings(anthropic_api_key="test-key", cors_origins=origins_list)
         assert settings.cors_origins == origins_list
+
+    def test_tools_handling_validation(self):
+        """Test tools_handling setting validation."""
+        # Test default value
+        settings = Settings(anthropic_api_key="test-key")
+        assert settings.tools_handling == "error"
+
+        # Test valid values
+        for value in ["error", "warning", "ignore"]:
+            settings = Settings(anthropic_api_key="test-key", tools_handling=value)
+            assert settings.tools_handling == value
+
+    def test_tools_handling_from_env(self):
+        """Test tools_handling setting from environment variable."""
+        original_env = os.environ.get("TOOLS_HANDLING")
+
+        try:
+            # Test each valid value
+            for value in ["error", "warning", "ignore"]:
+                os.environ["TOOLS_HANDLING"] = value
+                settings = Settings(anthropic_api_key="test-key")
+                assert settings.tools_handling == value
+        finally:
+            # Restore original environment
+            if original_env is not None:
+                os.environ["TOOLS_HANDLING"] = original_env
+            elif "TOOLS_HANDLING" in os.environ:
+                del os.environ["TOOLS_HANDLING"]
 
     def test_field_validation(self):
         """Test field validation."""

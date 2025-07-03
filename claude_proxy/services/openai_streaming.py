@@ -16,25 +16,25 @@ logger = logging.getLogger(__name__)
 def _split_text_for_streaming(text: str, chunk_size: int = 3) -> list[str]:
     """
     Split text into smaller chunks for better streaming experience.
-    
+
     This simulates OpenAI's token-by-token streaming by breaking large
     text chunks into smaller pieces based on word boundaries.
-    
+
     Args:
         text: Text to split
         chunk_size: Approximate number of words per chunk
-        
+
     Returns:
         List of text chunks
     """
     if not text or len(text) <= 10:
         # Return small text as-is
         return [text]
-    
+
     # Split by words but keep whitespace
     words = []
     current_word = ""
-    
+
     for char in text:
         if char.isspace():
             if current_word:
@@ -43,32 +43,32 @@ def _split_text_for_streaming(text: str, chunk_size: int = 3) -> list[str]:
             words.append(char)
         else:
             current_word += char
-    
+
     if current_word:
         words.append(current_word)
-    
+
     # Group words into chunks
     chunks = []
     current_chunk = ""
     word_count = 0
-    
+
     for word in words:
         current_chunk += word
-        
+
         if not word.isspace():
             word_count += 1
-            
+
         # Create chunk when we hit word limit or encounter newlines
-        if word_count >= chunk_size or '\n' in word:
+        if word_count >= chunk_size or "\n" in word:
             if current_chunk.strip():
                 chunks.append(current_chunk)
             current_chunk = ""
             word_count = 0
-    
+
     # Add remaining text
     if current_chunk.strip():
         chunks.append(current_chunk)
-    
+
     return chunks if chunks else [text]
 
 
@@ -313,8 +313,10 @@ async def stream_claude_response_openai(
     formatter = OpenAIStreamingFormatter()
 
     try:
-        logger.debug(f"Starting OpenAI streaming conversion for message_id: {message_id}, model: {model}")
-        
+        logger.debug(
+            f"Starting OpenAI streaming conversion for message_id: {message_id}, model: {model}"
+        )
+
         # Send first chunk with role
         first_chunk = formatter.format_first_chunk(message_id, model, created)
         logger.debug(f"Sending first chunk: {first_chunk[:100]}...")
@@ -329,25 +331,29 @@ async def stream_claude_response_openai(
             async for chunk in claude_response_iterator:
                 chunk_counter += 1
                 chunk_type = chunk.get("type")
-                logger.debug(f"Processing Claude chunk {chunk_counter} (type: {chunk_type}): {chunk}")
+                logger.debug(
+                    f"Processing Claude chunk {chunk_counter} (type: {chunk_type}): {chunk}"
+                )
 
                 if chunk_type == "content_block_delta":
                     # Handle text content
                     text = chunk.get("delta", {}).get("text", "")
                     if text:
                         has_content = True
-                        
+
                         # Split large text chunks for better streaming experience
                         # This makes the streaming feel more like OpenAI's token-by-token streaming
                         text_parts = _split_text_for_streaming(text)
-                        
+
                         for i, part in enumerate(text_parts):
                             content_chunk = formatter.format_content_chunk(
                                 message_id, model, created, part
                             )
-                            logger.debug(f"Sending content chunk: {repr(part)} -> {content_chunk[:100]}...")
+                            logger.debug(
+                                f"Sending content chunk: {repr(part)} -> {content_chunk[:100]}..."
+                            )
                             yield content_chunk
-                            
+
                             # Add small delay between chunks for more natural streaming
                             if i < len(text_parts) - 1:  # Don't delay after last chunk
                                 await asyncio.sleep(0.01)  # 10ms delay

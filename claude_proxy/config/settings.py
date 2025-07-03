@@ -102,6 +102,12 @@ class Settings(BaseSettings):
         description="Path to JSON configuration file",
     )
 
+    # Tools handling behavior
+    tools_handling: Literal["error", "warning", "ignore"] = Field(
+        default="error",
+        description="How to handle tools definitions in requests: error, warning, or ignore",
+    )
+
     @field_validator("log_level")
     @classmethod
     def validate_log_level(cls, v: str) -> str:
