@@ -107,45 +107,6 @@ class OpenAIStreamResponse(BaseModel):
 class OpenAITranslator:
     """Translator for converting between OpenAI and Anthropic formats."""
 
-    # Model mapping from OpenAI to Claude
-    MODEL_MAPPING = {
-        "gpt-4": "claude-3-opus-20240229",
-        "gpt-4-turbo": "claude-3-5-sonnet-20241022",
-        "gpt-4-turbo-preview": "claude-3-5-sonnet-20241022",
-        "gpt-4-1106-preview": "claude-3-5-sonnet-20241022",
-        "gpt-4-0125-preview": "claude-3-5-sonnet-20241022",
-        "gpt-3.5-turbo": "claude-3-haiku-20240307",
-        "gpt-3.5-turbo-1106": "claude-3-haiku-20240307",
-        "gpt-3.5-turbo-0125": "claude-3-haiku-20240307",
-        "gpt-3.5-turbo-16k": "claude-3-sonnet-20240229",
-        "gpt-4-32k": "claude-3-opus-20240229",
-        # Allow Claude models to pass through
-        "claude-3-opus-20240229": "claude-3-opus-20240229",
-        "claude-3-sonnet-20240229": "claude-3-sonnet-20240229",
-        "claude-3-haiku-20240307": "claude-3-haiku-20240307",
-        "claude-3-5-sonnet-20241022": "claude-3-5-sonnet-20241022",
-        "claude-3-5-haiku-20241022": "claude-3-5-haiku-20241022",
-        "claude-3-opus": "claude-3-opus-20240229",
-        "claude-3-sonnet": "claude-3-sonnet-20240229",
-        "claude-3-haiku": "claude-3-haiku-20240307",
-        "claude-3-5-sonnet": "claude-3-5-sonnet-20241022",
-        "claude-3-5-haiku": "claude-3-5-haiku-20241022",
-    }
-
-    # Reverse mapping from Claude to OpenAI
-    REVERSE_MODEL_MAPPING = {
-        "claude-3-opus-20240229": "gpt-4",
-        "claude-3-sonnet-20240229": "claude-3-sonnet",
-        "claude-3-haiku-20240307": "gpt-3.5-turbo",
-        "claude-3-5-sonnet-20241022": "gpt-4-turbo",
-        "claude-3-5-haiku-20241022": "gpt-3.5-turbo",
-        "claude-3-opus": "gpt-4",
-        "claude-3-sonnet": "claude-3-sonnet",
-        "claude-3-haiku": "gpt-3.5-turbo",
-        "claude-3-5-sonnet": "gpt-4-turbo",
-        "claude-3-5-haiku": "gpt-3.5-turbo",
-    }
-
     def __init__(self) -> None:
         """Initialize the translator."""
         pass
@@ -165,8 +126,8 @@ class OpenAITranslator:
         # Parse OpenAI request
         openai_req = OpenAIRequest(**openai_request)
 
-        # Convert model
-        model = self.MODEL_MAPPING.get(openai_req.model, openai_req.model)
+        # Use model as-is (no mapping)
+        model = openai_req.model
 
         # Convert messages
         messages, system_prompt = self._convert_messages_to_anthropic(
@@ -247,8 +208,8 @@ class OpenAITranslator:
         if request_id is None:
             request_id = f"chatcmpl-{uuid.uuid4().hex[:29]}"
 
-        # Get the model name to return (prefer original OpenAI model name)
-        response_model = self.REVERSE_MODEL_MAPPING.get(original_model, original_model)
+        # Return the original model name as-is
+        response_model = original_model
 
         # Convert content
         content = ""
@@ -327,8 +288,8 @@ class OpenAITranslator:
         if request_id is None:
             request_id = f"chatcmpl-{uuid.uuid4().hex[:29]}"
 
-        # Get the model name to return
-        response_model = self.REVERSE_MODEL_MAPPING.get(original_model, original_model)
+        # Return the original model name as-is
+        response_model = original_model
 
         created = int(time.time())
         tool_calls = []

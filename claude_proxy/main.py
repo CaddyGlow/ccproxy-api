@@ -61,9 +61,15 @@ def create_app() -> FastAPI:
         return {"status": "healthy", "service": "claude-proxy"}
 
     # Include API routes
+    from claude_proxy.api.openai import chat_router, models_router
     from claude_proxy.api.v1 import chat
 
+    # Anthropic-compatible endpoints
     app.include_router(chat.router, prefix="/v1")
+
+    # OpenAI-compatible endpoints
+    app.include_router(chat_router, prefix="/v1")
+    app.include_router(models_router, prefix="/v1")
 
     # Global exception handler
     @app.exception_handler(Exception)

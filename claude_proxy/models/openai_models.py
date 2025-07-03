@@ -182,46 +182,8 @@ class OpenAIChatCompletionRequest(BaseModel):
     @field_validator("model")
     @classmethod
     def validate_model(cls, v: str) -> str:
-        """Validate and map OpenAI model names to Claude models."""
-        # OpenAI to Claude model mapping
-        openai_to_claude = {
-            # GPT-4 models map to Claude-3 Opus
-            "gpt-4": "claude-3-opus-20240229",
-            "gpt-4-0613": "claude-3-opus-20240229",
-            "gpt-4-32k": "claude-3-opus-20240229",
-            "gpt-4-32k-0613": "claude-3-opus-20240229",
-            "gpt-4-turbo": "claude-3-5-sonnet-20241022",
-            "gpt-4-turbo-2024-04-09": "claude-3-5-sonnet-20241022",
-            "gpt-4-turbo-preview": "claude-3-5-sonnet-20241022",
-            "gpt-4-0125-preview": "claude-3-5-sonnet-20241022",
-            "gpt-4-1106-preview": "claude-3-5-sonnet-20241022",
-            # GPT-4o models map to Claude-3.5 Sonnet
-            "gpt-4o": "claude-3-5-sonnet-20241022",
-            "gpt-4o-2024-05-13": "claude-3-5-sonnet-20241022",
-            "gpt-4o-2024-08-06": "claude-3-5-sonnet-20241022",
-            "gpt-4o-mini": "claude-3-5-haiku-20241022",
-            "gpt-4o-mini-2024-07-18": "claude-3-5-haiku-20241022",
-            # GPT-3.5 models map to Claude-3 Haiku
-            "gpt-3.5-turbo": "claude-3-haiku-20240307",
-            "gpt-3.5-turbo-0125": "claude-3-haiku-20240307",
-            "gpt-3.5-turbo-1106": "claude-3-haiku-20240307",
-            "gpt-3.5-turbo-0613": "claude-3-haiku-20240307",
-            "gpt-3.5-turbo-16k": "claude-3-haiku-20240307",
-            "gpt-3.5-turbo-16k-0613": "claude-3-haiku-20240307",
-            # Legacy models
-            "gpt-3.5-turbo-instruct": "claude-3-haiku-20240307",
-        }
-
-        # If it's already a Claude model, return as-is
-        if v.startswith("claude-"):
-            return v
-
-        # Map OpenAI model to Claude model
-        if v in openai_to_claude:
-            return openai_to_claude[v]
-
-        # Default to Claude-3.5 Sonnet for unknown models
-        return "claude-3-5-sonnet-20241022"
+        """Validate model name - just return as-is like Anthropic endpoint."""
+        return v
 
     @field_validator("messages")
     @classmethod
@@ -450,37 +412,37 @@ class OpenAIModelsResponse(BaseModel):
 
     @classmethod
     def create_default(cls) -> "OpenAIModelsResponse":
-        """Create a default models response with OpenAI-compatible model names."""
+        """Create a default models response with Claude model names."""
         models = [
             OpenAIModelInfo(
-                id="gpt-4",
+                id="claude-3-opus-20240229",
                 object="model",
                 created=1687882411,
-                owned_by="openai",
+                owned_by="anthropic",
             ),
             OpenAIModelInfo(
-                id="gpt-4-turbo",
+                id="claude-3-sonnet-20240229",
+                object="model",
+                created=1687882411,
+                owned_by="anthropic",
+            ),
+            OpenAIModelInfo(
+                id="claude-3-haiku-20240307",
+                object="model",
+                created=1687882411,
+                owned_by="anthropic",
+            ),
+            OpenAIModelInfo(
+                id="claude-3-5-sonnet-20241022",
                 object="model",
                 created=1712361441,
-                owned_by="openai",
+                owned_by="anthropic",
             ),
             OpenAIModelInfo(
-                id="gpt-4o",
-                object="model",
-                created=1715367049,
-                owned_by="openai",
-            ),
-            OpenAIModelInfo(
-                id="gpt-4o-mini",
+                id="claude-3-5-haiku-20241022",
                 object="model",
                 created=1721172741,
-                owned_by="openai",
-            ),
-            OpenAIModelInfo(
-                id="gpt-3.5-turbo",
-                object="model",
-                created=1677610602,
-                owned_by="openai",
+                owned_by="anthropic",
             ),
         ]
         return cls(object="list", data=models)
