@@ -10,7 +10,6 @@ from claude_code_sdk import (
     CLIConnectionError,
     CLIJSONDecodeError,
     CLINotFoundError,
-    InternalClient,
     ProcessError,
     ResultMessage,
     SystemMessage,
@@ -20,7 +19,6 @@ from claude_code_sdk import (
     UserMessage,
     query,
 )
-from claude_code_sdk._internal.transport.subprocess_cli import SubprocessCLITransport
 
 from claude_proxy.exceptions import (
     ClaudeProxyError,
@@ -144,19 +142,11 @@ class ClaudeClient:
     async def _get_query_iterator(
         self, prompt: str, options: ClaudeCodeOptions
     ) -> AsyncIterator[UserMessage | AssistantMessage | SystemMessage | ResultMessage]:
-        """Get query iterator with custom CLI path if specified."""
-        if self.claude_cli_path:
-            # Use custom transport with specified CLI path
-            transport = SubprocessCLITransport(
-                prompt=prompt, options=options, cli_path=self.claude_cli_path
-            )
-            client = InternalClient()
-            async for message in client.process_query(prompt=prompt, options=options):
-                yield message
-        else:
-            # Use default query method
-            async for message in query(prompt=prompt, options=options):
-                yield message
+        """Get query iterator using Claude Code SDK."""
+        # The Claude CLI path is already set up in PATH by the settings configuration
+        # The anyio task scope issue should be fixed in the GitHub version of the SDK
+        async for message in query(prompt=prompt, options=options):
+            yield message
 
     async def _complete_non_streaming(
         self, prompt: str, options: ClaudeCodeOptions
@@ -216,7 +206,10 @@ class ClaudeClient:
 
         try:
             query_iterator = self._get_query_iterator(prompt, options)
+            message_count = 0
             async for message in query_iterator:
+                message_count += 1
+                logger.debug(f"Claude SDK message {message_count}: {type(message).__name__} - {message}")
                 if isinstance(message, AssistantMessage):
                     if first_chunk:
                         # Send initial chunk

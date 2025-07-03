@@ -56,6 +56,8 @@ async def create_chat_completion(
             # Handle streaming response
             async def generate_stream():
                 try:
+                    logger.debug(f"Starting OpenAI streaming for request_id: {request_id}")
+                    
                     # Get Claude streaming response
                     claude_stream = await claude_client.create_completion(
                         messages=anthropic_request["messages"],
@@ -65,18 +67,25 @@ async def create_chat_completion(
                         system=anthropic_request.get("system"),
                         stream=True,
                     )
+                    
+                    logger.debug("Claude stream created, starting conversion to OpenAI format")
 
                     # Convert to OpenAI format
+                    chunk_count = 0
                     async for chunk in stream_claude_response_openai(
                         claude_stream,
                         request_id,
                         request.model,
                         created,
                     ):
+                        chunk_count += 1
+                        logger.debug(f"Yielding OpenAI chunk {chunk_count}: {chunk[:200]}...")
                         yield chunk
 
+                    logger.debug(f"OpenAI streaming completed with {chunk_count} chunks")
+
                 except Exception as e:
-                    logger.error(f"Error in OpenAI streaming: {e}")
+                    logger.error(f"Error in OpenAI streaming: {e}", exc_info=True)
                     error_chunk = {
                         "id": request_id,
                         "object": "chat.completion.chunk",
