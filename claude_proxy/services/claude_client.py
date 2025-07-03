@@ -127,24 +127,16 @@ class ClaudeClient:
             logger.error(f"Unexpected error in create_completion: {e}")
             raise ClaudeClientError(f"Unexpected error: {e}") from e
 
-    async def _query_with_cli_path(
+    async def _get_query_iterator(
         self, prompt: str, options: ClaudeCodeOptions
     ) -> AsyncIterator[UserMessage | AssistantMessage | SystemMessage | ResultMessage]:
-        """Query Claude with custom CLI path if specified."""
+        """Get query iterator with custom CLI path if specified."""
         if self.claude_cli_path:
             # Use custom transport with specified CLI path
             transport = SubprocessCLITransport(
                 prompt=prompt, options=options, cli_path=self.claude_cli_path
             )
             client = InternalClient()
-            # Monkey patch the transport creation to use our custom one
-            original_transport_method = getattr(client, "_create_transport", None)
-
-            def custom_transport_factory(*args, **kwargs):
-                return transport
-
-            client._create_transport = custom_transport_factory
-
             async for message in client.process_query(prompt=prompt, options=options):
                 yield message
         else:
@@ -159,7 +151,7 @@ class ClaudeClient:
         messages = []
         result_message = None
 
-        async for message in self._query_with_cli_path(prompt, options):
+        async for message in self._get_query_iterator(prompt, options):
             messages.append(message)
             if isinstance(message, ResultMessage):
                 result_message = message
@@ -205,7 +197,7 @@ class ClaudeClient:
         """Stream completion responses."""
         first_chunk = True
 
-        async for message in self._query_with_cli_path(prompt, options):
+        async for message in self._get_query_iterator(prompt, options):
             if isinstance(message, AssistantMessage):
                 if first_chunk:
                     # Send initial chunk
