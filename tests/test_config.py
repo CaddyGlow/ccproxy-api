@@ -39,11 +39,17 @@ class TestSettings:
             "WORKERS": "2",
             "RELOAD": "true",
             "RATE_LIMIT_REQUESTS": "50",
-            "CORS_ORIGINS": "https://example.com,https://test.com",
+            "CORS_ORIGINS": '["https://example.com", "https://test.com"]',
         }
 
         # Temporarily set environment variables
         original_env = {}
+
+        # First clear any existing CORS_ORIGINS to avoid JSON parsing conflict
+        original_cors = os.environ.get("CORS_ORIGINS")
+        if "CORS_ORIGINS" in os.environ:
+            del os.environ["CORS_ORIGINS"]
+
         for key, value in env_vars.items():
             original_env[key] = os.environ.get(key)
             os.environ[key] = value
@@ -67,6 +73,10 @@ class TestSettings:
                     os.environ.pop(key, None)
                 else:
                     os.environ[key] = value
+
+            # Restore original CORS_ORIGINS
+            if original_cors is not None:
+                os.environ["CORS_ORIGINS"] = original_cors
 
     def test_settings_properties(self):
         """Test Settings properties."""

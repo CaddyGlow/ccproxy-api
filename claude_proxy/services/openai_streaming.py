@@ -1,5 +1,6 @@
 """OpenAI-compatible streaming response utilities."""
 
+import asyncio
 import json
 import logging
 import uuid

@@ -209,49 +209,75 @@ class ClaudeClient:
         self, prompt: str, options: ClaudeCodeOptions
     ) -> AsyncIterator[dict[str, Any]]:
         """Stream completion responses."""
+        import asyncio
+
         first_chunk = True
+        query_iterator = None
 
-        async for message in self._get_query_iterator(prompt, options):
-            if isinstance(message, AssistantMessage):
-                if first_chunk:
-                    # Send initial chunk
-                    yield {
-                        "id": f"msg_{id(message)}",
-                        "type": "message_start",
-                        "message": {
+        try:
+            query_iterator = self._get_query_iterator(prompt, options)
+            async for message in query_iterator:
+                if isinstance(message, AssistantMessage):
+                    if first_chunk:
+                        # Send initial chunk
+                        yield {
                             "id": f"msg_{id(message)}",
-                            "type": "message",
-                            "role": "assistant",
-                            "content": [],
-                            "model": options.model or self.default_model,
-                            "stop_reason": None,
-                            "stop_sequence": None,
-                            "usage": {
-                                "input_tokens": 0,
-                                "output_tokens": 0,
-                                "total_tokens": 0,
+                            "type": "message_start",
+                            "message": {
+                                "id": f"msg_{id(message)}",
+                                "type": "message",
+                                "role": "assistant",
+                                "content": [],
+                                "model": options.model or self.default_model,
+                                "stop_reason": None,
+                                "stop_sequence": None,
+                                "usage": {
+                                    "input_tokens": 0,
+                                    "output_tokens": 0,
+                                    "total_tokens": 0,
+                                },
                             },
-                        },
-                    }
-                    first_chunk = False
+                        }
+                        first_chunk = False
 
-                # Send content delta
-                text_content = self._extract_text_from_content(message.content)
-                if text_content:
+                    # Send content delta
+                    text_content = self._extract_text_from_content(message.content)
+                    if text_content:
+                        yield {
+                            "type": "content_block_delta",
+                            "index": 0,
+                            "delta": {"type": "text_delta", "text": text_content},
+                        }
+
+                elif isinstance(message, ResultMessage):
+                    # Send final chunk
                     yield {
-                        "type": "content_block_delta",
-                        "index": 0,
-                        "delta": {"type": "text_delta", "text": text_content},
+                        "type": "message_delta",
+                        "delta": {"stop_reason": "end_turn"},
+                        "usage": {"output_tokens": 0},
                     }
+                    break
 
-            elif isinstance(message, ResultMessage):
-                # Send final chunk
-                yield {
-                    "type": "message_delta",
-                    "delta": {"stop_reason": "end_turn"},
-                    "usage": {"output_tokens": 0},
-                }
-                break
+        except asyncio.CancelledError:
+            # Handle cancellation gracefully
+            logger.info("Stream completion cancelled")
+            raise
+        except Exception as e:
+            logger.error(f"Error in stream completion: {e}")
+            # Send error chunk
+            yield {
+                "type": "message_delta",
+                "delta": {"stop_reason": "error"},
+                "usage": {"output_tokens": 0},
+            }
+            raise
+        finally:
+            # Clean up resources if needed
+            if query_iterator and hasattr(query_iterator, "aclose"):
+                try:
+                    await query_iterator.aclose()
+                except Exception as e:
+                    logger.debug(f"Error closing query iterator: {e}")
 
     def _format_messages_to_prompt(self, messages: list[dict[str, Any]]) -> str:
         """Convert Anthropic messages format to a single prompt string."""

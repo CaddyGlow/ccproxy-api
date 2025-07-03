@@ -1,5 +1,6 @@
 """Streaming response utilities for Anthropic API compatibility."""
 
+import asyncio
 import json
 import logging
 from collections.abc import AsyncGenerator
@@ -146,27 +147,49 @@ async def stream_claude_response(
 
         # Process Claude response chunks
         has_content = False
-        async for chunk in claude_response_iterator:
-            if chunk.get("type") == "content_block_delta":
-                text = chunk.get("delta", {}).get("text", "")
-                if text:
-                    has_content = True
-                    yield formatter.format_content_block_delta(text)
-            elif chunk.get("type") == "message_delta":
-                # Message is ending
+        try:
+            async for chunk in claude_response_iterator:
+                if chunk.get("type") == "content_block_delta":
+                    text = chunk.get("delta", {}).get("text", "")
+                    if text:
+                        has_content = True
+                        yield formatter.format_content_block_delta(text)
+                elif chunk.get("type") == "message_delta":
+                    # Message is ending
+                    yield formatter.format_content_block_stop()
+                    stop_reason = chunk.get("delta", {}).get("stop_reason", "end_turn")
+                    stop_sequence = chunk.get("delta", {}).get("stop_sequence")
+                    yield formatter.format_message_delta(stop_reason, stop_sequence)
+                    yield formatter.format_message_stop()
+                    break
+
+            # If we never got content, still need to close properly
+            if not has_content:
                 yield formatter.format_content_block_stop()
-                stop_reason = chunk.get("delta", {}).get("stop_reason", "end_turn")
-                stop_sequence = chunk.get("delta", {}).get("stop_sequence")
-                yield formatter.format_message_delta(stop_reason, stop_sequence)
+                yield formatter.format_message_delta()
                 yield formatter.format_message_stop()
-                break
 
-        # If we never got content, still need to close properly
-        if not has_content:
-            yield formatter.format_content_block_stop()
-            yield formatter.format_message_delta()
+        except asyncio.CancelledError:
+            # Handle stream cancellation gracefully
+            logger.info("Claude response stream cancelled")
+            if not has_content:
+                yield formatter.format_content_block_stop()
+            yield formatter.format_message_delta(stop_reason="cancelled")
             yield formatter.format_message_stop()
+            raise
+        except Exception as e:
+            logger.error(f"Error processing Claude response chunks: {e}")
+            # Close content block if it was started
+            if not has_content:
+                yield formatter.format_content_block_stop()
+            yield formatter.format_message_delta(stop_reason="error")
+            yield formatter.format_message_stop()
+            raise
 
+    except asyncio.CancelledError:
+        # Handle outer cancellation
+        logger.info("Streaming response cancelled")
+        raise
     except Exception as e:
         logger.error(f"Error in streaming response: {e}")
         yield formatter.format_error("internal_server_error", str(e))

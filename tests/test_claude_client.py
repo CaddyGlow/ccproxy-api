@@ -150,7 +150,11 @@ class TestClaudeClient:
         result_msg = MagicMock(spec=ResultMessage)
         result_msg.session_id = "test_session_123"
 
-        mock_query.return_value = iter([assistant_msg, result_msg])
+        async def mock_async_iter():
+            yield assistant_msg
+            yield result_msg
+
+        mock_query.return_value = mock_async_iter()
 
         client = ClaudeClient()
 

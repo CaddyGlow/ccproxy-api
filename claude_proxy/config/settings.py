@@ -51,7 +51,7 @@ class Settings(BaseSettings):
     )
 
     # Logging settings
-    log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = Field(
+    log_level: str = Field(
         default="INFO",
         description="Logging level",
     )
@@ -106,7 +106,11 @@ class Settings(BaseSettings):
     @classmethod
     def validate_log_level(cls, v: str) -> str:
         """Validate and normalize log level."""
-        return v.upper()
+        upper_v = v.upper()
+        valid_levels = ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
+        if upper_v not in valid_levels:
+            raise ValueError(f"Invalid log level: {v}. Must be one of {valid_levels}")
+        return upper_v
 
     @field_validator("cors_origins", mode="before")
     @classmethod
@@ -153,23 +157,39 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def setup_claude_cli_path(self) -> "Settings":
-        """Set up Claude CLI path in environment if provided."""
-        if self.claude_cli_path:
+        """Set up Claude CLI path in environment if provided or found."""
+        # If not explicitly set, try to find it
+        if not self.claude_cli_path:
+            found_path, found_in_path = self.find_claude_cli()
+            if found_path:
+                self.claude_cli_path = found_path
+                # Only add to PATH if it wasn't found via which()
+                if not found_in_path:
+                    cli_dir = str(Path(self.claude_cli_path).parent)
+                    current_path = os.environ.get("PATH", "")
+                    if cli_dir not in current_path:
+                        os.environ["PATH"] = f"{cli_dir}:{current_path}"
+        elif self.claude_cli_path:
+            # If explicitly set, always add to PATH
             cli_dir = str(Path(self.claude_cli_path).parent)
             current_path = os.environ.get("PATH", "")
             if cli_dir not in current_path:
                 os.environ["PATH"] = f"{cli_dir}:{current_path}"
         return self
 
-    def find_claude_cli(self) -> str | None:
-        """Find Claude CLI executable in PATH or specified location."""
+    def find_claude_cli(self) -> tuple[str | None, bool]:
+        """Find Claude CLI executable in PATH or specified location.
+
+        Returns:
+            tuple: (path_to_claude, found_in_path)
+        """
         if self.claude_cli_path:
-            return self.claude_cli_path
+            return self.claude_cli_path, False
 
         # Try to find claude in PATH
         claude_path = shutil.which("claude")
         if claude_path:
-            return claude_path
+            return claude_path, True
 
         # Common installation paths
         common_paths = [
@@ -181,9 +201,9 @@ class Settings(BaseSettings):
 
         for path in common_paths:
             if path.exists() and path.is_file() and os.access(path, os.X_OK):
-                return str(path)
+                return str(path), False
 
-        return None
+        return None, False
 
     def model_dump_safe(self) -> dict[str, Any]:
         """
