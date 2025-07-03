@@ -22,6 +22,12 @@ from claude_code_sdk import (
 )
 from claude_code_sdk._internal.transport.subprocess_cli import SubprocessCLITransport
 
+from claude_proxy.exceptions import (
+    ClaudeProxyError,
+    ServiceUnavailableError,
+    TimeoutError,
+)
+
 
 logger = logging.getLogger(__name__)
 
@@ -120,12 +126,20 @@ class ClaudeClient:
                 return await self._complete_non_streaming(prompt, options)
 
         except (CLINotFoundError, CLIConnectionError) as e:
-            raise ClaudeClientConnectionError(str(e)) from e
+            raise ServiceUnavailableError(f"Claude CLI not available: {str(e)}") from e
         except (ProcessError, CLIJSONDecodeError) as e:
-            raise ClaudeClientProcessError(str(e)) from e
+            raise ClaudeProxyError(
+                message=f"Claude process error: {str(e)}",
+                error_type="service_unavailable_error",
+                status_code=503
+            ) from e
         except Exception as e:
             logger.error(f"Unexpected error in create_completion: {e}")
-            raise ClaudeClientError(f"Unexpected error: {e}") from e
+            raise ClaudeProxyError(
+                message=f"Unexpected error: {str(e)}",
+                error_type="internal_server_error",
+                status_code=500
+            ) from e
 
     async def _get_query_iterator(
         self, prompt: str, options: ClaudeCodeOptions

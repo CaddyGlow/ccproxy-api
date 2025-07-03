@@ -19,6 +19,7 @@ dev = [
     "mypy>=1.16.1",
     "ruff>=0.12.2",
     "pytest>=7.0.0",
+    "pytest-asyncio>=0.23.0",
     "pytest-cov>=4.0.0",
     "pytest-env>=0.8.0",
 ]
@@ -140,6 +141,7 @@ markers = [
   "network: Tests that require network access",
   "regression: Regression tests for specific bug fixes",
   "smoke: Basic smoke tests for critical functionality",
+  "asyncio: Tests that use asyncio",
 ]
 
 [tool.pytest_timeout]
