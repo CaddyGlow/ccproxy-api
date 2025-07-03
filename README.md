@@ -1,10 +1,11 @@
 # Claude Proxy API Server
 
-A high-performance API server that provides an Anthropic-compatible interface for Claude AI models, forwarding requests to Claude using the official Python SDK.
+A high-performance API server that provides an Anthropic-compatible interface for Claude AI models, forwarding requests to Claude using the official Python SDK. Also supports OpenAI API format for seamless integration with existing OpenAI-based applications.
 
 ## Features
 
 - **Anthropic API Compatible**: Drop-in replacement for Anthropic's API endpoints
+- **OpenAI API Compatible**: Supports OpenAI chat completion format for easy migration
 - **Request Forwarding**: Seamlessly forwards requests to Claude using the official Python SDK
 - **Type Safety**: Built with strict TypeScript-like typing using mypy
 - **High Performance**: Optimized for low latency and high throughput

@@ -68,8 +68,8 @@ def create_app() -> FastAPI:
     app.include_router(chat.router, prefix="/v1")
 
     # OpenAI-compatible endpoints
-    app.include_router(chat_router, prefix="/v1")
-    app.include_router(models_router, prefix="/v1")
+    app.include_router(chat_router, prefix="/openai/v1")
+    app.include_router(models_router, prefix="/openai/v1")
 
     # Global exception handler
     @app.exception_handler(Exception)

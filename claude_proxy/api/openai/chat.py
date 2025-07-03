@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-@router.post("/chat/completions")
+@router.post("/chat/completions", response_model=None)
 async def create_chat_completion(
     request: OpenAIChatCompletionRequest,
     http_request: Request,
@@ -57,8 +57,13 @@ async def create_chat_completion(
             async def generate_stream():
                 try:
                     # Get Claude streaming response
-                    claude_stream = await claude_client.stream_completion(
-                        **anthropic_request
+                    claude_stream = await claude_client.create_completion(
+                        messages=anthropic_request["messages"],
+                        model=anthropic_request["model"],
+                        max_tokens=anthropic_request["max_tokens"],
+                        temperature=anthropic_request.get("temperature"),
+                        system=anthropic_request.get("system"),
+                        stream=True,
                     )
 
                     # Convert to OpenAI format
@@ -96,7 +101,14 @@ async def create_chat_completion(
             )
         else:
             # Handle non-streaming response
-            anthropic_response = await claude_client.complete(**anthropic_request)
+            anthropic_response = await claude_client.create_completion(
+                messages=anthropic_request["messages"],
+                model=anthropic_request["model"],
+                max_tokens=anthropic_request["max_tokens"],
+                temperature=anthropic_request.get("temperature"),
+                system=anthropic_request.get("system"),
+                stream=False,
+            )
 
             # Convert to OpenAI format
             openai_response = translator.anthropic_to_openai_response(

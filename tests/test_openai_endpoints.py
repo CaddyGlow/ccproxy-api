@@ -25,7 +25,7 @@ class TestOpenAIModelsEndpoint:
 
     def test_list_models(self, client):
         """Test listing available models."""
-        response = client.get("/v1/models")
+        response = client.get("/openai/v1/models")
         assert response.status_code == 200
 
         data = response.json()
@@ -57,7 +57,7 @@ class TestOpenAIChatCompletionsEndpoint:
     def sample_request(self):
         """Sample OpenAI chat completion request."""
         return {
-            "model": "gpt-4",
+            "model": "claude-3-opus-20240229",
             "messages": [{"role": "user", "content": "Hello, how are you?"}],
             "max_tokens": 100,
             "temperature": 0.7,
@@ -83,9 +83,11 @@ class TestOpenAIChatCompletionsEndpoint:
         self, client, mock_claude_client, sample_request, sample_claude_response
     ):
         """Test non-streaming chat completion."""
-        mock_claude_client.complete = AsyncMock(return_value=sample_claude_response)
+        mock_claude_client.create_completion = AsyncMock(
+            return_value=sample_claude_response
+        )
 
-        response = client.post("/v1/chat/completions", json=sample_request)
+        response = client.post("/openai/v1/chat/completions", json=sample_request)
         assert response.status_code == 200
 
         data = response.json()
@@ -134,10 +136,10 @@ class TestOpenAIChatCompletionsEndpoint:
                 "usage": {"input_tokens": 10, "output_tokens": 15},
             }
 
-        mock_claude_client.stream_completion = AsyncMock(return_value=mock_stream())
+        mock_claude_client.create_completion = AsyncMock(return_value=mock_stream())
 
         request_data = {**sample_request, "stream": True}
-        response = client.post("/v1/chat/completions", json=request_data)
+        response = client.post("/openai/v1/chat/completions", json=request_data)
         assert response.status_code == 200
         assert response.headers["content-type"] == "text/event-stream; charset=utf-8"
 
@@ -146,7 +148,7 @@ class TestOpenAIChatCompletionsEndpoint:
     ):
         """Test chat completion with tool calls."""
         request_data = {
-            "model": "gpt-4",
+            "model": "claude-3-opus-20240229",
             "messages": [{"role": "user", "content": "What's the weather like?"}],
             "tools": [
                 {
@@ -178,9 +180,9 @@ class TestOpenAIChatCompletionsEndpoint:
             "stop_reason": "tool_use",
         }
 
-        mock_claude_client.complete = AsyncMock(return_value=tool_response)
+        mock_claude_client.create_completion = AsyncMock(return_value=tool_response)
 
-        response = client.post("/v1/chat/completions", json=request_data)
+        response = client.post("/openai/v1/chat/completions", json=request_data)
         assert response.status_code == 200
 
         data = response.json()
@@ -196,11 +198,11 @@ class TestOpenAIChatCompletionsEndpoint:
     def test_chat_completion_invalid_request(self, client):
         """Test chat completion with invalid request."""
         invalid_request = {
-            "model": "gpt-4",
+            "model": "claude-3-opus-20240229",
             "messages": [],  # Empty messages should fail validation
         }
 
-        response = client.post("/v1/chat/completions", json=invalid_request)
+        response = client.post("/openai/v1/chat/completions", json=invalid_request)
         assert response.status_code == 422  # Validation error
 
     def test_chat_completion_client_error(
@@ -209,11 +211,11 @@ class TestOpenAIChatCompletionsEndpoint:
         """Test chat completion with Claude client error."""
         from claude_proxy.exceptions import ClaudeProxyError
 
-        mock_claude_client.complete = AsyncMock(
+        mock_claude_client.create_completion = AsyncMock(
             side_effect=ClaudeProxyError("API rate limit exceeded")
         )
 
-        response = client.post("/v1/chat/completions", json=sample_request)
+        response = client.post("/openai/v1/chat/completions", json=sample_request)
         assert response.status_code == 500
 
         data = response.json()
@@ -224,18 +226,20 @@ class TestOpenAIChatCompletionsEndpoint:
         self, client, mock_claude_client, sample_claude_response
     ):
         """Test that model names are passed through as-is."""
-        mock_claude_client.complete = AsyncMock(return_value=sample_claude_response)
+        mock_claude_client.create_completion = AsyncMock(
+            return_value=sample_claude_response
+        )
 
         request_data = {
             "model": "claude-3-opus-20240229",
             "messages": [{"role": "user", "content": "Hello"}],
         }
 
-        response = client.post("/v1/chat/completions", json=request_data)
+        response = client.post("/openai/v1/chat/completions", json=request_data)
         assert response.status_code == 200
 
         # Verify the call was made with the same model name
-        args, kwargs = mock_claude_client.complete.call_args
+        args, kwargs = mock_claude_client.create_completion.call_args
         assert kwargs["model"] == "claude-3-opus-20240229"
 
         # Verify response contains the same model name
@@ -275,14 +279,15 @@ class TestOpenAIRequestValidation:
         """Test OpenAI request validation."""
         # Valid request
         valid_request = OpenAIChatCompletionRequest(
-            model="gpt-4", messages=[OpenAIMessage(role="user", content="Hello")]
+            model="claude-3-opus-20240229",
+            messages=[OpenAIMessage(role="user", content="Hello")],
         )
-        assert valid_request.model == "gpt-4"
+        assert valid_request.model == "claude-3-opus-20240229"
         assert len(valid_request.messages) == 1
 
         # Request with parameters
         param_request = OpenAIChatCompletionRequest(
-            model="gpt-3.5-turbo",
+            model="claude-3-haiku-20240307",
             messages=[OpenAIMessage(role="user", content="Hello")],
             max_tokens=150,
             temperature=0.8,
