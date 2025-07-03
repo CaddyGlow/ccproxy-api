@@ -261,71 +261,87 @@ async def stream_claude_response_openai(
         has_content = False
         tool_calls: dict[str, dict[str, Any]] = {}
 
-        async for chunk in claude_response_iterator:
-            chunk_type = chunk.get("type")
+        try:
+            async for chunk in claude_response_iterator:
+                chunk_type = chunk.get("type")
 
-            if chunk_type == "content_block_delta":
-                # Handle text content
-                text = chunk.get("delta", {}).get("text", "")
-                if text:
-                    has_content = True
-                    yield formatter.format_content_chunk(
-                        message_id, model, created, text
-                    )
-
-            elif chunk_type == "content_block_start":
-                # Handle tool use start
-                content_block = chunk.get("content_block", {})
-                if content_block.get("type") == "tool_use":
-                    tool_call_id = content_block.get("id", str(uuid.uuid4()))
-                    function_name = content_block.get("name", "")
-                    tool_calls[tool_call_id] = {
-                        "id": tool_call_id,
-                        "name": function_name,
-                        "arguments": "",
-                    }
-                    yield formatter.format_tool_call_chunk(
-                        message_id, model, created, tool_call_id, function_name, ""
-                    )
-
-            elif chunk_type == "content_block_delta":
-                # Handle tool use input delta
-                delta = chunk.get("delta", {})
-                if delta.get("type") == "input_json_delta":
-                    # This is tool arguments
-                    partial_json = delta.get("partial_json", "")
-                    if partial_json and tool_calls:
-                        # Find the tool call this belongs to (typically the last one)
-                        tool_call_id = list(tool_calls.keys())[-1]
-                        tool_call_data = tool_calls[tool_call_id]
-                        tool_call_data["arguments"] += partial_json
-                        yield formatter.format_tool_call_chunk(
-                            message_id, model, created, tool_call_id, None, partial_json
+                if chunk_type == "content_block_delta":
+                    # Handle text content
+                    text = chunk.get("delta", {}).get("text", "")
+                    if text:
+                        has_content = True
+                        yield formatter.format_content_chunk(
+                            message_id, model, created, text
                         )
 
-            elif chunk_type == "message_delta":
-                # Message is ending
-                delta = chunk.get("delta", {})
-                stop_reason = delta.get("stop_reason", "stop")
+                elif chunk_type == "content_block_start":
+                    # Handle tool use start
+                    content_block = chunk.get("content_block", {})
+                    if content_block.get("type") == "tool_use":
+                        tool_call_id = content_block.get("id", str(uuid.uuid4()))
+                        function_name = content_block.get("name", "")
+                        tool_calls[tool_call_id] = {
+                            "id": tool_call_id,
+                            "name": function_name,
+                            "arguments": "",
+                        }
+                        yield formatter.format_tool_call_chunk(
+                            message_id, model, created, tool_call_id, function_name, ""
+                        )
 
-                # Map Claude stop reasons to OpenAI finish reasons
-                finish_reason_map = {
-                    "end_turn": "stop",
-                    "max_tokens": "length",
-                    "tool_use": "tool_calls",
-                    "stop_sequence": "stop",
-                }
-                finish_reason = finish_reason_map.get(stop_reason, "stop")
+                elif chunk_type == "content_block_delta":
+                    # Handle tool use input delta
+                    delta = chunk.get("delta", {})
+                    if delta.get("type") == "input_json_delta":
+                        # This is tool arguments
+                        partial_json = delta.get("partial_json", "")
+                        if partial_json and tool_calls:
+                            # Find the tool call this belongs to (typically the last one)
+                            tool_call_id = list(tool_calls.keys())[-1]
+                            tool_call_data = tool_calls[tool_call_id]
+                            tool_call_data["arguments"] += partial_json
+                            yield formatter.format_tool_call_chunk(
+                                message_id,
+                                model,
+                                created,
+                                tool_call_id,
+                                None,
+                                partial_json,
+                            )
 
-                yield formatter.format_final_chunk(
-                    message_id, model, created, finish_reason
-                )
-                break
+                elif chunk_type == "message_delta":
+                    # Message is ending
+                    delta = chunk.get("delta", {})
+                    stop_reason = delta.get("stop_reason", "stop")
 
-        # If we never got content or tool calls, still need to send final chunk
-        if not has_content and not tool_calls:
-            yield formatter.format_final_chunk(message_id, model, created)
+                    # Map Claude stop reasons to OpenAI finish reasons
+                    finish_reason_map = {
+                        "end_turn": "stop",
+                        "max_tokens": "length",
+                        "tool_use": "tool_calls",
+                        "stop_sequence": "stop",
+                    }
+                    finish_reason = finish_reason_map.get(stop_reason, "stop")
 
+                    yield formatter.format_final_chunk(
+                        message_id, model, created, finish_reason
+                    )
+                    break
+
+            # If we never got content or tool calls, still need to send final chunk
+            if not has_content and not tool_calls:
+                yield formatter.format_final_chunk(message_id, model, created)
+
+        except asyncio.CancelledError:
+            # Handle stream cancellation gracefully
+            logger.info("OpenAI streaming response cancelled")
+            yield formatter.format_final_chunk(message_id, model, created, "cancelled")
+            raise
+
+    except asyncio.CancelledError:
+        # Handle outer cancellation
+        logger.info("OpenAI streaming response cancelled")
+        raise
     except Exception as e:
         logger.error(f"Error in OpenAI streaming response: {e}")
         yield formatter.format_error_chunk(
@@ -372,41 +388,52 @@ async def stream_claude_response_openai_simple(
         # Process Claude response chunks
         has_content = False
 
-        async for chunk in claude_response_iterator:
-            chunk_type = chunk.get("type")
+        try:
+            async for chunk in claude_response_iterator:
+                chunk_type = chunk.get("type")
 
-            if chunk_type == "content_block_delta":
-                # Handle text content
-                text = chunk.get("delta", {}).get("text", "")
-                if text:
-                    has_content = True
-                    yield formatter.format_content_chunk(
-                        message_id, model, created, text
+                if chunk_type == "content_block_delta":
+                    # Handle text content
+                    text = chunk.get("delta", {}).get("text", "")
+                    if text:
+                        has_content = True
+                        yield formatter.format_content_chunk(
+                            message_id, model, created, text
+                        )
+
+                elif chunk_type == "message_delta":
+                    # Message is ending
+                    delta = chunk.get("delta", {})
+                    stop_reason = delta.get("stop_reason", "stop")
+
+                    # Map Claude stop reasons to OpenAI finish reasons
+                    finish_reason_map = {
+                        "end_turn": "stop",
+                        "max_tokens": "length",
+                        "tool_use": "tool_calls",
+                        "stop_sequence": "stop",
+                    }
+                    finish_reason = finish_reason_map.get(stop_reason, "stop")
+
+                    yield formatter.format_final_chunk(
+                        message_id, model, created, finish_reason
                     )
+                    break
 
-            elif chunk_type == "message_delta":
-                # Message is ending
-                delta = chunk.get("delta", {})
-                stop_reason = delta.get("stop_reason", "stop")
+            # If we never got content, still need to send final chunk
+            if not has_content:
+                yield formatter.format_final_chunk(message_id, model, created)
 
-                # Map Claude stop reasons to OpenAI finish reasons
-                finish_reason_map = {
-                    "end_turn": "stop",
-                    "max_tokens": "length",
-                    "tool_use": "tool_calls",
-                    "stop_sequence": "stop",
-                }
-                finish_reason = finish_reason_map.get(stop_reason, "stop")
+        except asyncio.CancelledError:
+            # Handle stream cancellation gracefully
+            logger.info("OpenAI simple streaming response cancelled")
+            yield formatter.format_final_chunk(message_id, model, created, "cancelled")
+            raise
 
-                yield formatter.format_final_chunk(
-                    message_id, model, created, finish_reason
-                )
-                break
-
-        # If we never got content, still need to send final chunk
-        if not has_content:
-            yield formatter.format_final_chunk(message_id, model, created)
-
+    except asyncio.CancelledError:
+        # Handle outer cancellation
+        logger.info("OpenAI simple streaming response cancelled")
+        raise
     except Exception as e:
         logger.error(f"Error in OpenAI streaming response: {e}")
         yield formatter.format_error_chunk(
