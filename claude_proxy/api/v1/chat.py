@@ -17,11 +17,11 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-@router.post("/chat/completions")
+@router.post("/chat/completions", response_model=None)
 async def create_chat_completion(
     request: ChatCompletionRequest,
     http_request: Request,
-) -> ChatCompletionResponse | StreamingResponse:
+):
     """
     Create a chat completion using Claude AI models.
 
@@ -42,7 +42,10 @@ async def create_chat_completion(
         settings = get_settings()
 
         # Initialize Claude client
-        claude_client = ClaudeClient(api_key=settings.anthropic_api_key)
+        claude_client = ClaudeClient(
+            api_key=settings.anthropic_api_key,
+            claude_cli_path=settings.claude_cli_path,
+        )
 
         # Convert request to messages format
         messages = [msg.model_dump() for msg in request.messages]
@@ -119,6 +122,9 @@ async def list_models() -> dict[str, Any]:
 
     Returns a list of available Claude models in Anthropic API format.
     """
-    claude_client = ClaudeClient()
+    settings = get_settings()
+    claude_client = ClaudeClient(
+        claude_cli_path=settings.claude_cli_path,
+    )
     models = await claude_client.list_models()
     return {"object": "list", "data": models}

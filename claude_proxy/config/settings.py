@@ -1,9 +1,11 @@
 """Settings configuration for Claude Proxy API Server."""
 
+import os
+import shutil
 from pathlib import Path
 from typing import Any, Literal
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -27,6 +29,12 @@ class Settings(BaseSettings):
         default="",
         description="Anthropic API key for Claude access",
         min_length=1,
+    )
+
+    # Claude Code CLI settings
+    claude_cli_path: str | None = Field(
+        default=None,
+        description="Path to Claude Code CLI executable (e.g., /usr/local/bin/claude)",
     )
 
     # Server settings
@@ -128,6 +136,54 @@ class Settings(BaseSettings):
     def is_development(self) -> bool:
         """Check if running in development mode."""
         return self.reload or self.log_level == "DEBUG"
+
+    @field_validator("claude_cli_path")
+    @classmethod
+    def validate_claude_cli_path(cls, v: str | None) -> str | None:
+        """Validate Claude CLI path if provided."""
+        if v is not None:
+            path = Path(v)
+            if not path.exists():
+                raise ValueError(f"Claude CLI path does not exist: {v}")
+            if not path.is_file():
+                raise ValueError(f"Claude CLI path is not a file: {v}")
+            if not os.access(path, os.X_OK):
+                raise ValueError(f"Claude CLI path is not executable: {v}")
+        return v
+
+    @model_validator(mode="after")
+    def setup_claude_cli_path(self) -> "Settings":
+        """Set up Claude CLI path in environment if provided."""
+        if self.claude_cli_path:
+            cli_dir = str(Path(self.claude_cli_path).parent)
+            current_path = os.environ.get("PATH", "")
+            if cli_dir not in current_path:
+                os.environ["PATH"] = f"{cli_dir}:{current_path}"
+        return self
+
+    def find_claude_cli(self) -> str | None:
+        """Find Claude CLI executable in PATH or specified location."""
+        if self.claude_cli_path:
+            return self.claude_cli_path
+
+        # Try to find claude in PATH
+        claude_path = shutil.which("claude")
+        if claude_path:
+            return claude_path
+
+        # Common installation paths
+        common_paths = [
+            Path.home() / ".claude" / "local" / "claude",
+            Path.home() / "node_modules" / ".bin" / "claude",
+            Path("/usr/local/bin/claude"),
+            Path("/opt/homebrew/bin/claude"),
+        ]
+
+        for path in common_paths:
+            if path.exists() and path.is_file() and os.access(path, os.X_OK):
+                return str(path)
+
+        return None
 
     def model_dump_safe(self) -> dict[str, Any]:
         """

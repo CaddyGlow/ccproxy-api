@@ -99,6 +99,7 @@ def config() -> None:
         typer.echo(f"  Port: {settings.port}")
         typer.echo(f"  Log Level: {settings.log_level}")
         typer.echo(f"  API Key: {'***' if settings.anthropic_api_key else 'NOT SET'}")
+        typer.echo(f"  Claude CLI Path: {settings.claude_cli_path or 'Auto-detect'}")
         typer.echo(f"  Workers: {settings.workers}")
         typer.echo(f"  Reload: {settings.reload}")
 

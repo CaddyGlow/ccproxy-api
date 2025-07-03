@@ -10,6 +10,7 @@ from claude_code_sdk import (
     CLIConnectionError,
     CLIJSONDecodeError,
     CLINotFoundError,
+    InternalClient,
     ProcessError,
     ResultMessage,
     SystemMessage,
@@ -19,6 +20,7 @@ from claude_code_sdk import (
     UserMessage,
     query,
 )
+from claude_code_sdk._internal.transport.subprocess_cli import SubprocessCLITransport
 
 
 logger = logging.getLogger(__name__)
@@ -50,6 +52,7 @@ class ClaudeClient:
         max_tokens: int = 8192,
         temperature: float = 0.7,
         system_prompt: str | None = None,
+        claude_cli_path: str | None = None,
     ) -> None:
         """
         Initialize Claude client.
@@ -60,12 +63,14 @@ class ClaudeClient:
             max_tokens: Maximum tokens for responses
             temperature: Temperature for response generation
             system_prompt: Default system prompt
+            claude_cli_path: Path to Claude CLI executable
         """
         self.api_key = api_key
         self.default_model = default_model
         self.max_tokens = max_tokens
         self.temperature = temperature
         self.system_prompt = system_prompt
+        self.claude_cli_path = claude_cli_path
 
     async def create_completion(
         self,
@@ -122,6 +127,31 @@ class ClaudeClient:
             logger.error(f"Unexpected error in create_completion: {e}")
             raise ClaudeClientError(f"Unexpected error: {e}") from e
 
+    async def _query_with_cli_path(
+        self, prompt: str, options: ClaudeCodeOptions
+    ) -> AsyncIterator[UserMessage | AssistantMessage | SystemMessage | ResultMessage]:
+        """Query Claude with custom CLI path if specified."""
+        if self.claude_cli_path:
+            # Use custom transport with specified CLI path
+            transport = SubprocessCLITransport(
+                prompt=prompt, options=options, cli_path=self.claude_cli_path
+            )
+            client = InternalClient()
+            # Monkey patch the transport creation to use our custom one
+            original_transport_method = getattr(client, "_create_transport", None)
+
+            def custom_transport_factory(*args, **kwargs):
+                return transport
+
+            client._create_transport = custom_transport_factory
+
+            async for message in client.process_query(prompt=prompt, options=options):
+                yield message
+        else:
+            # Use default query method
+            async for message in query(prompt=prompt, options=options):
+                yield message
+
     async def _complete_non_streaming(
         self, prompt: str, options: ClaudeCodeOptions
     ) -> dict[str, Any]:
@@ -129,7 +159,7 @@ class ClaudeClient:
         messages = []
         result_message = None
 
-        async for message in query(prompt=prompt, options=options):
+        async for message in self._query_with_cli_path(prompt, options):
             messages.append(message)
             if isinstance(message, ResultMessage):
                 result_message = message
@@ -175,7 +205,7 @@ class ClaudeClient:
         """Stream completion responses."""
         first_chunk = True
 
-        async for message in query(prompt=prompt, options=options):
+        async for message in self._query_with_cli_path(prompt, options):
             if isinstance(message, AssistantMessage):
                 if first_chunk:
                     # Send initial chunk
