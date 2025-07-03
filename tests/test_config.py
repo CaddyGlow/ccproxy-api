@@ -15,7 +15,7 @@ class TestSettings:
     def test_settings_default_values(self):
         """Test that Settings has correct default values."""
         settings = Settings(anthropic_api_key="test-key")
-        
+
         assert settings.anthropic_api_key == "test-key"
         assert settings.host == "0.0.0.0"
         assert settings.port == 8000
@@ -41,16 +41,16 @@ class TestSettings:
             "RATE_LIMIT_REQUESTS": "50",
             "CORS_ORIGINS": "https://example.com,https://test.com",
         }
-        
+
         # Temporarily set environment variables
         original_env = {}
         for key, value in env_vars.items():
             original_env[key] = os.environ.get(key)
             os.environ[key] = value
-        
+
         try:
             settings = Settings()
-            
+
             assert settings.anthropic_api_key == "env-test-key"
             assert settings.host == "127.0.0.1"
             assert settings.port == 9000
@@ -59,7 +59,7 @@ class TestSettings:
             assert settings.reload is True
             assert settings.rate_limit_requests == 50
             assert settings.cors_origins == ["https://example.com", "https://test.com"]
-            
+
         finally:
             # Restore original environment variables
             for key, value in original_env.items():
@@ -71,23 +71,23 @@ class TestSettings:
     def test_settings_properties(self):
         """Test Settings properties."""
         settings = Settings(anthropic_api_key="test-key", host="localhost", port=8080)
-        
+
         assert settings.server_url == "http://localhost:8080"
         assert settings.is_development is False
-        
+
         # Test development mode detection
         debug_settings = Settings(anthropic_api_key="test-key", log_level="DEBUG")
         assert debug_settings.is_development is True
-        
+
         reload_settings = Settings(anthropic_api_key="test-key", reload=True)
         assert reload_settings.is_development is True
 
     def test_model_dump_safe(self):
         """Test that model_dump_safe masks sensitive information."""
         settings = Settings(anthropic_api_key="secret-key")
-        
+
         safe_data = settings.model_dump_safe()
-        
+
         assert safe_data["anthropic_api_key"] == "***MASKED***"
         assert safe_data["host"] == "0.0.0.0"
         assert safe_data["port"] == 8000
@@ -98,12 +98,12 @@ class TestSettings:
         settings = Settings(anthropic_api_key="test-key", config_file="config.json")
         assert isinstance(settings.config_file, Path)
         assert settings.config_file == Path("config.json")
-        
+
         # Test Path object
         path_obj = Path("test.json")
         settings = Settings(anthropic_api_key="test-key", config_file=path_obj)
         assert settings.config_file == path_obj
-        
+
         # Test None
         settings = Settings(anthropic_api_key="test-key", config_file=None)
         assert settings.config_file is None
@@ -113,10 +113,10 @@ class TestSettings:
         # Test string input
         settings = Settings(
             anthropic_api_key="test-key",
-            cors_origins="https://example.com,https://test.com"
+            cors_origins="https://example.com,https://test.com",
         )
         assert settings.cors_origins == ["https://example.com", "https://test.com"]
-        
+
         # Test list input
         origins_list = ["https://example.com", "https://test.com"]
         settings = Settings(anthropic_api_key="test-key", cors_origins=origins_list)
@@ -127,14 +127,14 @@ class TestSettings:
         # Test port validation
         with pytest.raises(ValueError):
             Settings(anthropic_api_key="test-key", port=0)
-            
+
         with pytest.raises(ValueError):
             Settings(anthropic_api_key="test-key", port=70000)
-        
+
         # Test workers validation
         with pytest.raises(ValueError):
             Settings(anthropic_api_key="test-key", workers=0)
-            
+
         with pytest.raises(ValueError):
             Settings(anthropic_api_key="test-key", workers=50)
 
@@ -142,7 +142,7 @@ class TestSettings:
         """Test get_settings function."""
         # Set a valid API key in environment
         os.environ["ANTHROPIC_API_KEY"] = "test-key"
-        
+
         try:
             settings = get_settings()
             assert isinstance(settings, Settings)
@@ -154,7 +154,7 @@ class TestSettings:
         """Test get_settings with missing API key."""
         # Ensure API key is not in environment
         os.environ.pop("ANTHROPIC_API_KEY", None)
-        
+
         with pytest.raises(ValueError, match="Configuration error"):
             get_settings()
 
@@ -163,11 +163,11 @@ class TestSettings:
         with tempfile.TemporaryDirectory() as temp_dir:
             env_file = Path(temp_dir) / ".env"
             env_file.write_text("ANTHROPIC_API_KEY=dotenv-test-key\nPORT=7000\n")
-            
+
             # Change to temp directory to test .env loading
-            original_cwd = os.getcwd()
+            original_cwd = Path.cwd()
             os.chdir(temp_dir)
-            
+
             try:
                 settings = Settings()
                 assert settings.anthropic_api_key == "dotenv-test-key"

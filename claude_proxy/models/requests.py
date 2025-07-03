@@ -133,11 +133,10 @@ class ChatCompletionRequest(BaseModel):
             "claude-3-5-haiku",
         }
 
-        if v not in supported_models:
+        if v not in supported_models and not v.startswith("claude-"):
             # Allow the model if it matches the claude pattern
             # This provides forward compatibility for new models
-            if not v.startswith("claude-"):
-                raise ValueError(f"Model {v} is not supported")
+            raise ValueError(f"Model {v} is not supported")
 
         return v
 
