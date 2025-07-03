@@ -5,17 +5,25 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    "claude-code-sdk>=0.0.14",
-    "fastapi>=0.115.14",
-    "httpx>=0.28.1",
-    "typer>=0.16.0",
+  "claude-code-sdk>=0.0.14",
+  "fastapi>=0.115.14",
+  "httpx>=0.28.1",
+  "pydantic>=2.8.0",
+  "pydantic-settings>=2.4.0",
+  "typer>=0.16.0",
 ]
 
 [dependency-groups]
-dev = ["mypy>=1.16.1", "ruff>=0.12.2"]
+dev = [
+    "mypy>=1.16.1",
+    "ruff>=0.12.2",
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "pytest-env>=0.8.0",
+]
 
 [tool.coverage.run]
-include = ["claude-proxy", "tests"]
+include = ["claude_proxy", "tests"]
 
 [tool.ruff]
 target-version = "py311"
