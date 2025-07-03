@@ -1,0 +1,150 @@
+[project]
+name = "claude-proxy"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "claude-code-sdk>=0.0.14",
+    "httpx>=0.28.1",
+    "typer>=0.16.0",
+]
+
+[dependency-groups]
+dev = ["mypy>=1.16.1", "ruff>=0.12.2"]
+
+[tool.coverage.run]
+include = ["claude-proxy", "tests"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 88
+
+[tool.ruff.lint]
+select = [
+  "E",   # pycodestyle errors
+  "W",   # pycodestyle warnings
+  "F",   # Pyflakes
+  "I",   # isort
+  "N",   # pep8-naming
+  "UP",  # pyupgrade
+  "B",   # flake8-bugbear
+  "C4",  # flake8-comprehensions
+  "SIM", # flake8-simplify
+  "PTH", # flake8-use-pathlib
+]
+
+ignore = [
+  "E501",   # Line too long (handled by formatter)
+  "B008",   # Do not perform function calls in argument defaults
+  "N806",   # Variable in function should be lowercase (for pandas df, etc)
+  "SIM108", # Use ternary operator (sometimes less readable)
+  "F401",   # Imported but unused
+  "F841",   # Local variable assigned but never used
+]
+
+exclude = [
+  ".git",
+  ".venv",
+  "venv",
+  "__pycache__",
+  "build",
+  "dist",
+  "*.egg-info",
+]
+
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.ruff.lint.isort]
+known-first-party = ["glovebox"]
+force-single-line = false
+lines-after-imports = 2
+
+[tool.ruff.lint.per-file-ignores]
+# relax on scripts and tests
+"scripts/*" = ["T201"]       # check for print statements
+"tests/*" = ["N802", "N803"] # arg/function name should be lowercase
+
+[tool.mypy]
+python_version = "3.12"
+show_column_numbers = true
+follow_imports = "normal"
+exclude = ["docs/"]
+
+# Enable all strict mode flags
+strict = true
+# The following settings are enabled by --strict:
+disallow_untyped_calls = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+disallow_untyped_decorators = true
+no_implicit_optional = true
+strict_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_no_return = true
+warn_return_any = true
+disallow_any_generics = true
+disallow_subclassing_any = true
+disallow_any_unimported = true
+warn_unreachable = true
+
+# if we need to disable certain strict checks
+# disallow_incomplete_defs = false
+# disallow_untyped_decorators = false
+
+
+[[tool.mypy.overrides]]
+module = "tests.*"
+# ignore_errors = true
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+disallow_untyped_calls = false
+
+[tool.pytest.ini_options]
+minversion = "6.0"
+addopts = [
+  "-ra",
+  "--strict-markers",
+  "--strict-config",
+  "--disable-warnings",
+  "--tb=short",
+  "-v",
+]
+testpaths = ["tests"]
+python_files = ["test_*.py", "*_test.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+
+
+# Test markers for different test tiers
+markers = [
+  "unit: Fast unit tests that don't require external dependencies (< 1s each)",
+  "integration: Integration tests that may use Docker or external services (< 30s each)",
+  "slow: Slow tests that take significant time or resources (> 30s each)",
+  "docker: Tests that require Docker to be available",
+  "network: Tests that require network access",
+  "regression: Regression tests for specific bug fixes",
+  "smoke: Basic smoke tests for critical functionality",
+]
+
+[tool.pytest_timeout]
+timeout = 300
+timeout_method = "thread"
+
+[tool.tox]
+legacy_tox_ini = """
+  [tox]
+  envlist = py311,py312,py313
+
+  [testenv]
+  deps =
+      pytest
+      pytest-cov
+      pytest-timeout
+  commands = pytest {posargs}
+  """
