@@ -4,13 +4,13 @@ A high-performance API server that provides an Anthropic-compatible interface fo
 
 ## Features
 
-- 🚀 **Anthropic API Compatible**: Drop-in replacement for Anthropic's API endpoints
-- 🔄 **Request Forwarding**: Seamlessly forwards requests to Claude using the official Python SDK
-- 🛡️ **Type Safety**: Built with strict TypeScript-like typing using mypy
-- ⚡ **High Performance**: Optimized for low latency and high throughput
-- 🔧 **Easy Setup**: Simple configuration and deployment
-- 📊 **Monitoring**: Built-in request/response logging and metrics
-- 🔐 **Secure**: Proper API key management and request validation
+- **Anthropic API Compatible**: Drop-in replacement for Anthropic's API endpoints
+- **Request Forwarding**: Seamlessly forwards requests to Claude using the official Python SDK
+- **Type Safety**: Built with strict TypeScript-like typing using mypy
+- **High Performance**: Optimized for low latency and high throughput
+- **Easy Setup**: Simple configuration and deployment
+- **Monitoring**: Built-in request/response logging and metrics
+- **Secure**: Proper API key management and request validation
 
 ## Quick Start
 
@@ -376,9 +376,9 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## Support
 
-- 📧 Email: support@example.com
-- 🐛 Issues: [GitHub Issues](https://github.com/your-username/claude-proxy/issues)
-- 📖 Documentation: [Wiki](https://github.com/your-username/claude-proxy/wiki)
+- Email: support@example.com
+- Issues: [GitHub Issues](https://github.com/your-username/claude-proxy/issues)
+- Documentation: [Wiki](https://github.com/your-username/claude-proxy/wiki)
 
 ## Acknowledgments
 
