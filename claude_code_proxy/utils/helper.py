@@ -4,7 +4,7 @@ from typing import Any
 from claude_code_sdk import ClaudeCodeOptions
 
 
-def get_package_dir():
+def get_package_dir() -> Path:
     try:
         import importlib.util
 

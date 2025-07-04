@@ -31,10 +31,10 @@ class ClaudeProxyClient:
         # self.api_key = api_key
         self.client = httpx.AsyncClient(timeout=300.0)
 
-    async def __aenter__(self):
+    async def __aenter__(self) -> "ClaudeProxyClient":
         return self
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
+    async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
         await self.client.aclose()
 
     async def health_check(self) -> bool:
@@ -47,10 +47,10 @@ class ClaudeProxyClient:
 
     async def chat_completion_stream(
         self,
-        messages: list[dict],
+        messages: list[dict[str, Any]],
         model: str = "claude-3-5-sonnet-20241022",
         max_tokens: int = 4096,
-    ):
+    ) -> AsyncGenerator[dict[str, Any], None]:
         """Send a streaming chat completion request."""
         payload = {
             "model": model,
@@ -83,10 +83,10 @@ class ClaudeProxyClient:
 
     async def chat_completion(
         self,
-        messages: list[dict],
+        messages: list[dict[str, Any]],
         model: str = "claude-3-5-sonnet-20241022",
         max_tokens: int = 4096,
-    ):
+    ) -> dict[str, Any]:
         """Send a non-streaming chat completion request."""
         payload = {
             "model": model,
@@ -108,7 +108,7 @@ class ClaudeProxyClient:
         return response.json()
 
 
-async def stream_response(client: ClaudeProxyClient, messages: list[dict]):
+async def stream_response(client: ClaudeProxyClient, messages: list[dict[str, Any]]) -> str | None:
     """Stream and display the response from Claude."""
     content = ""
 

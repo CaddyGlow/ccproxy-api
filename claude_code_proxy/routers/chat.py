@@ -31,11 +31,7 @@ router = APIRouter(prefix="/v1", tags=["chat"])
 
 def get_claude_client(settings: Settings = Depends(get_settings)) -> ClaudeClient:
     """Get Claude client instance."""
-    return ClaudeClient(
-        default_model="claude-3-5-sonnet-20241022",
-        max_tokens=8192,
-        temperature=0.7,
-    )
+    return ClaudeClient()
 
 
 @router.post("/chat/completions")
@@ -71,38 +67,47 @@ async def create_chat_completion(
         # Convert request to the format expected by Claude client
         messages = []
         for message in request.messages:
-            msg_dict = {"role": message.role, "content": []}
+            msg_dict: dict[str, Any] = {"role": message.role, "content": []}
 
             # Convert message content to proper format
             if isinstance(message.content, str):
                 msg_dict["content"] = [{"type": "text", "text": message.content}]
-            else:
+            elif isinstance(message.content, list):
+                content_list = msg_dict["content"]
+                assert isinstance(content_list, list)  # Type narrowing for mypy
                 for content in message.content:
                     if hasattr(content, "type") and content.type == "text":
-                        msg_dict["content"].append(
-                            {"type": "text", "text": content.text}
-                        )
+                        if hasattr(content, "text"):
+                            content_list.append({"type": "text", "text": content.text})
                     elif hasattr(content, "type") and content.type == "image":
-                        msg_dict["content"].append(
-                            {
-                                "type": "image",
-                                "source": {
-                                    "type": "base64",
-                                    "media_type": content.source.media_type,
-                                    "data": content.source.data,
-                                },
-                            }
-                        )
+                        if hasattr(content, "source"):
+                            content_list.append(
+                                {
+                                    "type": "image",
+                                    "source": {
+                                        "type": "base64",
+                                        "media_type": content.source.media_type,
+                                        "data": content.source.data,
+                                    },
+                                }
+                            )
 
             messages.append(msg_dict)
 
         # Create completion
+        options = settings.claude_code_options
+        if request.model:
+            options.model = request.model
+        if request.max_tokens:
+            options.max_tokens = request.max_tokens
+        if request.temperature is not None:
+            options.temperature = request.temperature
+        if request.system:
+            options.system = request.system
+        
         response = await claude_client.create_completion(
             messages=messages,
-            model=request.model,
-            max_tokens=request.max_tokens,
-            temperature=request.temperature,
-            system=request.system,
+            options=options,
             stream=request.stream or False,
         )
 
@@ -132,10 +137,8 @@ async def create_chat_completion(
         raise HTTPException(
             status_code=HTTP_500_INTERNAL_SERVER_ERROR,
             detail=InternalServerError(
-                error=APIError(
-                    type="internal_server_error",
-                    message=str(e),
-                )
+                type="internal_server_error",
+                message=str(e),
             ).model_dump(),
         ) from e
 
@@ -144,10 +147,8 @@ async def create_chat_completion(
         raise HTTPException(
             status_code=HTTP_422_UNPROCESSABLE_ENTITY,
             detail=InvalidRequestError(
-                error=APIError(
-                    type="invalid_request_error",
-                    message=str(e),
-                )
+                type="invalid_request_error",
+                message=str(e),
             ).model_dump(),
         ) from e
 

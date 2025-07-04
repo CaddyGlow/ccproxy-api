@@ -21,7 +21,8 @@ from claude_code_proxy.utils.helper import get_package_dir
 
 app = typer.Typer(rich_markup_mode="rich")
 logger = logging.getLogger(__name__)
-fastapi_app.callback()(None)  # remove the fastapi_callback to avoid the warning
+# Remove the fastapi callback to avoid the warning
+fastapi_app.callback()(lambda: None)
 app.add_typer(fastapi_app)
 
 

@@ -139,7 +139,7 @@ class TestChatCompletionRequest:
         assert request.tools is not None
         assert len(request.tools) == 1
         assert request.tools[0].type == "function"
-        assert request.tools[0].function["name"] == "get_weather"
+        assert request.tools[0].function.name == "get_weather"
 
     def test_tool_choice_validation(self):
         """Test tool_choice validation."""
@@ -375,9 +375,9 @@ class TestToolDefinition:
         tool = ToolDefinition(**tool_data)
 
         assert tool.type == "function"
-        assert tool.function["name"] == "get_weather"
-        assert tool.function["description"] == "Get current weather"
-        assert "parameters" in tool.function
+        assert tool.function.name == "get_weather"
+        assert tool.function.description == "Get current weather"
+        assert hasattr(tool.function, "parameters")
 
     def test_tool_definition_minimal(self):
         """Test minimal tool definition."""
@@ -391,7 +391,7 @@ class TestToolDefinition:
         tool = ToolDefinition(**tool_data)
 
         assert tool.type == "function"  # default value
-        assert tool.function["name"] == "simple_function"
+        assert tool.function.name == "simple_function"
 
 
 class TestToolUse:
