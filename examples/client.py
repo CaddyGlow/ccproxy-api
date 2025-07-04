@@ -49,7 +49,7 @@ class ClaudeProxyClient:
     async def chat_completion_stream(
         self,
         messages: list[dict[str, Any]],
-        model: str = "claude-3-5-sonnet-20241022",
+        model: str = "claude-sonnet-4-20250514",
         max_tokens: int = 4096,
     ) -> AsyncGenerator[dict[str, Any], None]:
         """Send a streaming chat completion request."""
@@ -85,7 +85,7 @@ class ClaudeProxyClient:
     async def chat_completion(
         self,
         messages: list[dict[str, Any]],
-        model: str = "claude-3-5-sonnet-20241022",
+        model: str = "claude-sonnet-4-20250514",
         max_tokens: int = 4096,
     ) -> dict[str, Any]:
         """Send a non-streaming chat completion request."""
@@ -156,7 +156,7 @@ def chat(
         help="API key for authentication",
     ),
     model: str = typer.Option(
-        "claude-3-5-sonnet-20241022",
+        "claude-sonnet-4-20250514",
         "--model",
         "-m",
         help="Claude model to use",

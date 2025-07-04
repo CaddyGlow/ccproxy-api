@@ -3,6 +3,7 @@
 import json
 import logging
 import os
+import secrets
 import subprocess
 from datetime import datetime
 from pathlib import Path
@@ -90,6 +91,20 @@ def config() -> None:
     except Exception as e:
         typer.echo(f"Error loading configuration: {e}", err=True)
         raise typer.Exit(1) from e
+
+
+@app.command()
+def generate_token() -> None:
+    """Generate a secure random token for API authentication."""
+    token = secrets.token_urlsafe(32)
+    typer.echo("Generated authentication token:")
+    typer.echo(f"AUTH_TOKEN={token}")
+    typer.echo("")
+    typer.echo("Add this to your environment variables:")
+    typer.echo(f"export AUTH_TOKEN={token}")
+    typer.echo("")
+    typer.echo("Or add to your .env file:")
+    typer.echo(f"AUTH_TOKEN={token}")
 
 
 @app.command()

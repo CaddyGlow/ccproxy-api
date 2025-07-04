@@ -4,6 +4,7 @@ from pathlib import Path
 
 import mkdocs_gen_files
 
+
 nav = mkdocs_gen_files.Nav()
 
 src = Path(__file__).parent.parent

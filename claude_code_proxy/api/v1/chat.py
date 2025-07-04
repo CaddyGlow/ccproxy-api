@@ -5,7 +5,7 @@ import uuid
 from collections.abc import AsyncGenerator
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
 from claude_code_proxy.config.settings import get_settings
@@ -16,6 +16,7 @@ from claude_code_proxy.exceptions import (
     TimeoutError,
     ValidationError,
 )
+from claude_code_proxy.middleware.auth import get_auth_dependency
 from claude_code_proxy.models.errors import create_error_response
 from claude_code_proxy.models.requests import ChatCompletionRequest
 from claude_code_proxy.models.responses import ChatCompletionResponse
@@ -31,6 +32,7 @@ router = APIRouter()
 async def create_chat_completion(
     request: ChatCompletionRequest,
     http_request: Request,
+    _: None = Depends(get_auth_dependency()),
 ) -> ChatCompletionResponse | StreamingResponse:
     """
     Create a chat completion using Claude AI models.
@@ -149,7 +151,7 @@ async def create_chat_completion(
 
 
 @router.get("/models")
-async def list_models() -> dict[str, Any]:
+async def list_models(_: None = Depends(get_auth_dependency())) -> dict[str, Any]:
     """
     List available Claude models.
 

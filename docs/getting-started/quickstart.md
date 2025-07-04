@@ -1,14 +1,15 @@
 # Quick Start Guide
 
-Get up and running with Claude Code Proxy API in minutes.
+Get up and running with Claude Code Proxy API on your local machine in minutes.
 
 ## Prerequisites
 
 Before starting, ensure you have:
 
 - **Python 3.11 or higher**
-- **Claude Code SDK** (authentication handled automatically)
+- **Claude subscription** (personal or professional account)
 - **Git** for cloning the repository
+- **Docker** (optional, recommended for isolation)
 
 ## Installation
 
@@ -40,7 +41,9 @@ pip install -e .
 pip install -e ".[dev]"
 ```
 
-### Option 3: Docker
+### Option 3: Docker (Recommended for Security)
+
+Docker provides isolation and security for Claude Code execution on your local machine:
 
 ```bash
 # Pull the Docker image
@@ -65,25 +68,29 @@ python main.py
 PORT=8080 LOG_LEVEL=DEBUG uv run python main.py
 ```
 
-### Docker
+### Docker (Isolated Execution)
+
+Run Claude Code Proxy in a secure, isolated container:
 
 ```bash
-# Run with Docker
+# Run with Docker (for secure local execution)
 docker run -d \
   --name claude-proxy \
   -p 8000:8000 \
+  -v ~/.config/claude:/root/.config/claude:ro \
   claude-code-proxy
 
-# With environment variables
+# With custom settings
 docker run -d \
   --name claude-proxy \
   -p 8080:8000 \
   -e PORT=8000 \
   -e LOG_LEVEL=INFO \
+  -v ~/.config/claude:/root/.config/claude:ro \
   claude-code-proxy
 ```
 
-### Docker Compose
+### Docker Compose (Personal Setup)
 
 ```yaml
 version: '3.8'
@@ -95,6 +102,8 @@ services:
     environment:
       - LOG_LEVEL=INFO
       - PORT=8000
+    volumes:
+      - ~/.config/claude:/root/.config/claude:ro
     restart: unless-stopped
 ```
 
@@ -186,12 +195,12 @@ curl http://localhost:8000/v1/models
 
 ## Next Steps
 
-Now that you have the server running:
+Now that you have the server running locally:
 
-1. **[Configure the server](configuration.md)** with your preferred settings
+1. **[Configure the server](configuration.md)** with your personal preferences
 2. **[Explore the API](../api-reference/overview.md)** to understand all available endpoints
 3. **[Try examples](../examples/python-client.md)** in different programming languages
-4. **[Set up for production](../deployment/docker.md)** when ready to deploy
+4. **[Set up Docker isolation](../deployment.md)** for enhanced security
 
 ## Troubleshooting
 

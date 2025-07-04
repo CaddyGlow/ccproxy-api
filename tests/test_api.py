@@ -242,7 +242,7 @@ class TestModelsEndpoint:
         assert data["object"] == "list"
         assert "data" in data
         assert len(data["data"]) == 2
-        assert data["data"][0]["id"] == "claude-3-opus-20240229"
+        assert data["data"][0]["id"] == "claude-opus-4-20250514"
         assert data["data"][1]["id"] == "claude-3-5-sonnet-20241022"
 
     @patch("claude_code_proxy.api.v1.chat.ClaudeClient")
@@ -312,7 +312,7 @@ class TestCORSHeaders:
             "id": "msg_test123",
             "type": "message",
             "role": "assistant",
-            "model": "claude-3-opus-20240229",
+            "model": "claude-opus-4-20250514",
             "content": [{"type": "text", "text": "Hello!"}],
             "usage": {"input_tokens": 10, "output_tokens": 5},
         }

@@ -92,7 +92,7 @@ def sample_claude_response() -> dict[str, Any]:
 @pytest.fixture
 def sample_streaming_response() -> AsyncGenerator[dict[str, Any], None]:
     """Sample streaming Claude response."""
-    
+
     async def _generator() -> AsyncGenerator[dict[str, Any], None]:
         chunks = [
             {
@@ -141,7 +141,7 @@ def sample_models_response() -> list[dict[str, Any]]:
     """Sample models list response."""
     return [
         {
-            "id": "claude-3-opus-20240229",
+            "id": "claude-opus-4-20250514",
             "object": "model",
             "created": 1677610602,
             "owned_by": "anthropic",

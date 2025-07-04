@@ -417,7 +417,7 @@ class TestListModels:
         """Sample models response."""
         return [
             {
-                "id": "claude-3-opus-20240229",
+                "id": "claude-opus-4-20250514",
                 "object": "model",
                 "created": 1677610602,
                 "owned_by": "anthropic",

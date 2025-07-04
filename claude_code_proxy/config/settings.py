@@ -225,6 +225,11 @@ class Settings(BaseSettings):
         description="CORS allowed origins",
     )
 
+    auth_token: str | None = Field(
+        default=None,
+        description="Bearer token for API authentication (optional)",
+    )
+
     # Configuration file path
     config_file: Path | None = Field(
         default=None,

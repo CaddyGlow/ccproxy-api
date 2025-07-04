@@ -1,16 +1,17 @@
 # Claude Code Proxy API
 
-A high-performance API server that provides both Anthropic and OpenAI-compatible interfaces for Claude AI models. This proxy enables you to use your Claude OAuth account or API access through familiar API endpoints, making it easy to integrate Claude into existing applications.
+A personal API server that provides both Anthropic and OpenAI-compatible interfaces for Claude AI models. This proxy enables you to use your existing Claude subscription locally through familiar API endpoints, making it easy to integrate Claude into your personal projects and tools.
 
 ## Overview
 
-The Claude Code Proxy API Server acts as a bridge between your applications and Claude AI models, providing:
+The Claude Code Proxy API Server acts as a local bridge between your applications and Claude AI models, providing:
 
 - **Dual API Compatibility**: Full support for both Anthropic and OpenAI API formats
 - **Streaming Support**: Real-time response streaming for both API formats  
 - **Request Translation**: Seamless format conversion between OpenAI and Anthropic formats
-- **Claude CLI Integration**: Uses the official Claude Code Python SDK for authentication
-- **Production Ready**: Docker support, health monitoring, error handling, and rate limiting
+- **OAuth2 Authentication**: Uses your existing Claude subscription through secure OAuth2 authentication
+- **Local Execution**: Runs entirely on your computer with no external data sharing
+- **Docker Isolation**: Secure containerized execution for Claude Code operations
 
 ## Quick Start
 
@@ -56,20 +57,21 @@ curl -X POST http://localhost:8000/openai/v1/chat/completions \
 
 ## Key Features
 
-### Core Capabilities
+### Personal Use Benefits
+- **Your Claude Subscription**: Use your existing Claude subscription without additional API costs
+- **Local Privacy**: All processing happens on your computer - no data leaves your machine
 - **Dual API Compatibility**: Full support for both Anthropic and OpenAI API formats
 - **Streaming Support**: Real-time response streaming for both API formats
 - **Request Translation**: Seamless format conversion between OpenAI and Anthropic formats
-- **Claude CLI Integration**: Uses the official Claude Code Python SDK for authentication
-- **Auto-detection**: Smart Claude CLI path resolution and configuration
+- **OAuth2 Authentication**: Secure authentication using your Claude account credentials
 
-### Production Features
-- **Docker Support**: Production-ready containerization with multi-stage builds
-- **Health Monitoring**: Built-in health checks and metrics endpoints
+### Security & Isolation Features
+- **Docker Isolation**: Secure containerized execution for Claude Code operations
+- **Local Execution**: No external data sharing or third-party services
+- **Auto-detection**: Smart Claude CLI path resolution and configuration
+- **Health Monitoring**: Built-in health checks and status endpoints
 - **Error Handling**: Comprehensive error handling with detailed error responses
-- **Rate Limiting**: Built-in protection against API abuse
-- **CORS Support**: Cross-origin request handling for web applications
-- **Structured Logging**: JSON-formatted logs for monitoring and debugging
+- **CORS Support**: Cross-origin request handling for local web applications
 
 ## Architecture
 
@@ -112,12 +114,11 @@ graph TB
 This documentation is organized into several sections:
 
 - **[Getting Started](getting-started/quickstart.md)**: Installation, configuration, and first steps
-- **[User Guide](user-guide/api-usage.md)**: Detailed usage instructions and examples
+- **[Configuration](getting-started/configuration.md)**: Personal setup and customization options
 - **[API Reference](api-reference/overview.md)**: Complete API endpoint documentation
-- **[Developer Guide](developer-guide/architecture.md)**: Architecture, development setup, and contribution guidelines
-- **[Deployment](deployment/docker.md)**: Production deployment guides and best practices
-- **[Code Reference](reference/)**: Auto-generated API documentation from source code
 - **[Examples](examples/python-client.md)**: Practical usage examples in different languages
+- **[Architecture](architecture.md)**: System design and component overview
+- **[Docker Setup](deployment.md)**: Containerized deployment for security and isolation
 
 ## Community and Support
 

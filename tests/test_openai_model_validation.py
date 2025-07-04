@@ -19,7 +19,7 @@ class TestOpenAIRequestValidation:
         with pytest.raises(ValidationError) as exc_info:
             OpenAIChatCompletionRequest.model_validate(
                 {
-                    "model": "claude-3-opus-20240229",
+                    "model": "claude-opus-4-20250514",
                     "messages": [],  # Empty messages should fail - covers line 193
                 }
             )
@@ -41,7 +41,7 @@ class TestOpenAIRequestValidation:
         # Test valid string stop parameter - covers line 201-202
         request = OpenAIChatCompletionRequest.model_validate(
             {
-                "model": "claude-3-opus-20240229",
+                "model": "claude-opus-4-20250514",
                 "messages": [{"role": "user", "content": "Hello"}],
                 "stop": "STOP",  # Single string
             }
@@ -53,7 +53,7 @@ class TestOpenAIRequestValidation:
         # Test valid list stop parameter - covers line 203-206
         request = OpenAIChatCompletionRequest.model_validate(
             {
-                "model": "claude-3-opus-20240229",
+                "model": "claude-opus-4-20250514",
                 "messages": [{"role": "user", "content": "Hello"}],
                 "stop": ["STOP", "END", "QUIT"],  # List of strings
             }
@@ -65,7 +65,7 @@ class TestOpenAIRequestValidation:
         with pytest.raises(ValidationError) as exc_info:
             OpenAIChatCompletionRequest.model_validate(
                 {
-                    "model": "claude-3-opus-20240229",
+                    "model": "claude-opus-4-20250514",
                     "messages": [{"role": "user", "content": "Hello"}],
                     "stop": [
                         "STOP",
@@ -100,7 +100,7 @@ class TestOpenAIRequestValidation:
         with pytest.raises(ValidationError) as exc_info:
             OpenAIChatCompletionRequest.model_validate(
                 {
-                    "model": "claude-3-opus-20240229",
+                    "model": "claude-opus-4-20250514",
                     "messages": [{"role": "user", "content": "Hello"}],
                     "tools": [
                         tool.model_dump() for tool in tools
@@ -131,7 +131,7 @@ class TestOpenAIRequestValidation:
         # This should not raise an error
         request = OpenAIChatCompletionRequest.model_validate(
             {
-                "model": "claude-3-opus-20240229",
+                "model": "claude-opus-4-20250514",
                 "messages": [{"role": "user", "content": "Hello"}],
                 "tools": [tool.model_dump() for tool in tools],  # Exactly 128 tools
             }
@@ -142,7 +142,7 @@ class TestOpenAIRequestValidation:
         """Test that None stop parameter is allowed."""
         request = OpenAIChatCompletionRequest.model_validate(
             {
-                "model": "claude-3-opus-20240229",
+                "model": "claude-opus-4-20250514",
                 "messages": [{"role": "user", "content": "Hello"}],
                 "stop": None,  # None should be allowed - covers line 207
             }
@@ -153,7 +153,7 @@ class TestOpenAIRequestValidation:
         """Test that None tools parameter is allowed."""
         request = OpenAIChatCompletionRequest.model_validate(
             {
-                "model": "claude-3-opus-20240229",
+                "model": "claude-opus-4-20250514",
                 "messages": [{"role": "user", "content": "Hello"}],
                 "tools": None,  # None should be allowed
             }
@@ -171,14 +171,14 @@ class TestOpenAIResponseGeneration:
 
         # Test the factory method - covers line 337
         response = OpenAIChatCompletionResponse.create(
-            model="claude-3-opus-20240229",
+            model="claude-opus-4-20250514",
             content="Hello, world!",
             prompt_tokens=10,
             completion_tokens=5,
             finish_reason="stop",
         )
 
-        assert response.model == "claude-3-opus-20240229"
+        assert response.model == "claude-opus-4-20250514"
         assert len(response.choices) == 1
         assert response.choices[0].message.content == "Hello, world!"
         assert response.choices[0].finish_reason == "stop"
@@ -208,7 +208,7 @@ class TestOpenAIResponseGeneration:
         ]
 
         response = OpenAIChatCompletionResponse.create(
-            model="claude-3-opus-20240229",
+            model="claude-opus-4-20250514",
             content="I'll check the weather for you.",
             prompt_tokens=15,
             completion_tokens=8,

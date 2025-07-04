@@ -156,3 +156,4 @@ logs
 # pnpm
 .pnpm-debug.log*
 .pnpm-store/
+data/home

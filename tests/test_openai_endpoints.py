@@ -59,7 +59,7 @@ class TestOpenAIChatCompletionsEndpoint:
     def sample_request(self):
         """Sample OpenAI chat completion request."""
         return {
-            "model": "claude-3-opus-20240229",
+            "model": "claude-opus-4-20250514",
             "messages": [{"role": "user", "content": "Hello, how are you?"}],
             "max_tokens": 100,
             "temperature": 0.7,
@@ -75,7 +75,7 @@ class TestOpenAIChatCompletionsEndpoint:
             "content": [
                 {"type": "text", "text": "Hello! I'm doing well, thank you for asking."}
             ],
-            "model": "claude-3-opus-20240229",
+            "model": "claude-opus-4-20250514",
             "stop_reason": "end_turn",
             "stop_sequence": None,
             "usage": {"input_tokens": 10, "output_tokens": 15},
@@ -150,7 +150,7 @@ class TestOpenAIChatCompletionsEndpoint:
     ):
         """Test chat completion with tool calls."""
         request_data = {
-            "model": "claude-3-opus-20240229",
+            "model": "claude-opus-4-20250514",
             "messages": [{"role": "user", "content": "What's the weather like?"}],
             "tools": [
                 {
@@ -200,7 +200,7 @@ class TestOpenAIChatCompletionsEndpoint:
     def test_chat_completion_invalid_request(self, client):
         """Test chat completion with invalid request."""
         invalid_request = {
-            "model": "claude-3-opus-20240229",
+            "model": "claude-opus-4-20250514",
             "messages": [],  # Empty messages should fail validation
         }
 
@@ -233,7 +233,7 @@ class TestOpenAIChatCompletionsEndpoint:
         )
 
         request_data = {
-            "model": "claude-3-opus-20240229",
+            "model": "claude-opus-4-20250514",
             "messages": [{"role": "user", "content": "Hello"}],
         }
 
@@ -242,11 +242,11 @@ class TestOpenAIChatCompletionsEndpoint:
 
         # Verify the call was made with the same model name
         args, kwargs = mock_claude_client.create_completion.call_args
-        assert args[1].model == "claude-3-opus-20240229"
+        assert args[1].model == "claude-opus-4-20250514"
 
         # Verify response contains the same model name
         data = response.json()
-        assert data["model"] == "claude-3-opus-20240229"
+        assert data["model"] == "claude-opus-4-20250514"
 
 
 @pytest.mark.unit
@@ -290,7 +290,7 @@ class TestOpenAIRequestValidation:
         """Test OpenAI request validation."""
         # Valid request
         valid_request = OpenAIChatCompletionRequest(
-            model="claude-3-opus-20240229",
+            model="claude-opus-4-20250514",
             messages=[
                 OpenAIMessage(
                     role="user",
@@ -319,12 +319,12 @@ class TestOpenAIRequestValidation:
             logprobs=None,
             top_logprobs=None,
         )
-        assert valid_request.model == "claude-3-opus-20240229"
+        assert valid_request.model == "claude-opus-4-20250514"
         assert len(valid_request.messages) == 1
 
         # Request with parameters
         param_request = OpenAIChatCompletionRequest(
-            model="claude-3-haiku-20240307",
+            model="claude-3-7-sonnet-20250219",
             messages=[
                 OpenAIMessage(
                     role="user",
@@ -361,7 +361,7 @@ class TestOpenAIRequestValidation:
         """Test model validation - should pass through as-is."""
         # Test Claude model passes through unchanged
         claude_request = OpenAIChatCompletionRequest(
-            model="claude-3-sonnet-20240229",
+            model="claude-sonnet-4-20250514",
             messages=[
                 OpenAIMessage(
                     role="user",
@@ -390,7 +390,7 @@ class TestOpenAIRequestValidation:
             logprobs=None,
             top_logprobs=None,
         )
-        assert claude_request.model == "claude-3-sonnet-20240229"
+        assert claude_request.model == "claude-sonnet-4-20250514"
 
         # Test any model name passes through as-is
         any_request = OpenAIChatCompletionRequest(
@@ -442,7 +442,7 @@ class TestOpenAIToolsValidation:
     def sample_request_with_tools(self):
         """Sample OpenAI request with tools."""
         return {
-            "model": "claude-3-opus-20240229",
+            "model": "claude-opus-4-20250514",
             "messages": [{"role": "user", "content": "What's the weather like?"}],
             "max_tokens": 100,
             "tools": [
@@ -501,7 +501,7 @@ class TestOpenAIToolsValidation:
                 "type": "message",
                 "role": "assistant",
                 "content": [{"type": "text", "text": "I can help you with that!"}],
-                "model": "claude-3-opus-20240229",
+                "model": "claude-opus-4-20250514",
                 "stop_reason": "end_turn",
                 "usage": {"input_tokens": 10, "output_tokens": 8},
             }
@@ -535,7 +535,7 @@ class TestOpenAIToolsValidation:
                 "type": "message",
                 "role": "assistant",
                 "content": [{"type": "text", "text": "I can help you with that!"}],
-                "model": "claude-3-opus-20240229",
+                "model": "claude-opus-4-20250514",
                 "stop_reason": "end_turn",
                 "usage": {"input_tokens": 10, "output_tokens": 8},
             }
@@ -562,7 +562,7 @@ class TestOpenAIToolsValidation:
         mock_get_settings.return_value = mock_settings
 
         sample_request = {
-            "model": "claude-3-opus-20240229",
+            "model": "claude-opus-4-20250514",
             "messages": [{"role": "user", "content": "Hello"}],
             "max_tokens": 100,
         }
@@ -574,7 +574,7 @@ class TestOpenAIToolsValidation:
                 "type": "message",
                 "role": "assistant",
                 "content": [{"type": "text", "text": "Hello! How can I help you?"}],
-                "model": "claude-3-opus-20240229",
+                "model": "claude-opus-4-20250514",
                 "stop_reason": "end_turn",
                 "usage": {"input_tokens": 5, "output_tokens": 8},
             }

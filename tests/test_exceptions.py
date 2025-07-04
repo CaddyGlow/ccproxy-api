@@ -151,9 +151,9 @@ class TestModelNotFoundError:
 
     def test_init_with_model_name(self) -> None:
         """Test initialization with model name."""
-        error = ModelNotFoundError("claude-3-opus-20240229")
-        assert str(error) == "Model 'claude-3-opus-20240229' not found"
-        assert error.message == "Model 'claude-3-opus-20240229' not found"
+        error = ModelNotFoundError("claude-opus-4-20250514")
+        assert str(error) == "Model 'claude-opus-4-20250514' not found"
+        assert error.message == "Model 'claude-opus-4-20250514' not found"
         assert error.error_type == "not_found_error"
         assert error.status_code == 404
 

@@ -442,21 +442,21 @@ class OpenAIModelsResponse(BaseModel):
         """Create a default models response with Claude model names."""
         models = [
             OpenAIModelInfo(
-                id="claude-3-opus-20240229",
+                id="claude-opus-4-20250514",
                 object="model",
-                created=1687882411,
+                created=1715702400,
                 owned_by="anthropic",
             ),
             OpenAIModelInfo(
-                id="claude-3-sonnet-20240229",
+                id="claude-sonnet-4-20250514",
                 object="model",
-                created=1687882411,
+                created=1715702400,
                 owned_by="anthropic",
             ),
             OpenAIModelInfo(
-                id="claude-3-haiku-20240307",
+                id="claude-3-7-sonnet-20250219",
                 object="model",
-                created=1687882411,
+                created=1708300800,
                 owned_by="anthropic",
             ),
             OpenAIModelInfo(
@@ -466,9 +466,9 @@ class OpenAIModelsResponse(BaseModel):
                 owned_by="anthropic",
             ),
             OpenAIModelInfo(
-                id="claude-3-5-haiku-20241022",
+                id="claude-3-5-sonnet-20240620",
                 object="model",
-                created=1721172741,
+                created=1718841600,
                 owned_by="anthropic",
             ),
         ]

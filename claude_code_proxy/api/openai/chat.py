@@ -7,12 +7,13 @@ import uuid
 from collections.abc import AsyncGenerator, AsyncIterator
 from typing import Any, cast
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from starlette.status import HTTP_500_INTERNAL_SERVER_ERROR
 
 from claude_code_proxy.config.settings import get_settings
 from claude_code_proxy.exceptions import ClaudeProxyError
+from claude_code_proxy.middleware.auth import get_auth_dependency
 from claude_code_proxy.models.openai_models import (
     OpenAIChatCompletionRequest,
     OpenAIChatCompletionResponse,
@@ -31,6 +32,7 @@ router = APIRouter()
 async def create_chat_completion(
     request: OpenAIChatCompletionRequest,
     http_request: Request,
+    _: None = Depends(get_auth_dependency()),
 ) -> OpenAIChatCompletionResponse | StreamingResponse:
     """
     Create a chat completion using OpenAI-compatible format.

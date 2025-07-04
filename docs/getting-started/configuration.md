@@ -1,6 +1,6 @@
 # Configuration
 
-Configure Claude Code Proxy API Server to meet your specific needs.
+Configure Claude Code Proxy API Server for your personal local setup and preferences.
 
 ## Configuration Methods
 
@@ -20,6 +20,12 @@ The server supports multiple configuration methods with the following priority o
 | `HOST` | Server host | `0.0.0.0` | `HOST=127.0.0.1` |
 | `LOG_LEVEL` | Logging level | `INFO` | `LOG_LEVEL=DEBUG` |
 
+### Security Configuration
+
+| Variable | Description | Default | Example |
+|----------|-------------|---------|---------|
+| `AUTH_TOKEN` | Bearer token for API authentication | None | `AUTH_TOKEN=abc123xyz789...` |
+
 ### Claude CLI Configuration
 
 | Variable | Description | Default | Example |
@@ -33,6 +39,7 @@ The server supports multiple configuration methods with the following priority o
 PORT=8080
 HOST=0.0.0.0
 LOG_LEVEL=INFO
+AUTH_TOKEN=abc123xyz789abcdef...  # Optional authentication
 CLAUDE_CLI_PATH=/opt/claude/bin/claude
 ```
 
@@ -47,6 +54,9 @@ Create a `config.json` file in the project root for advanced configuration:
     "port": 8000,
     "workers": 4,
     "reload": false
+  },
+  "security": {
+    "auth_token": "your-secure-token-here"
   },
   "claude": {
     "cli_path": "/path/to/claude",
@@ -168,6 +178,23 @@ Configure Cross-Origin Resource Sharing:
 }
 ```
 
+### Security Configuration
+
+Configure API authentication and security features:
+
+```json
+{
+  "security": {
+    "auth_token": "your-secure-token-here",    // Bearer token for API auth
+    "enabled": true,                           // Enable/disable auth
+    "token_header": "Authorization",           // Header name for token
+    "token_prefix": "Bearer"                   // Token prefix
+  }
+}
+```
+
+**Note:** When `auth_token` is not set or is null, authentication is disabled.
+
 ### Health Check Configuration
 
 Configure health monitoring:
@@ -213,7 +240,7 @@ export CLAUDE_CLI_PATH=/custom/path/to/claude
 }
 ```
 
-## Docker Configuration
+## Docker Configuration for Personal Use
 
 ### Environment Variables
 
@@ -229,11 +256,13 @@ services:
       - HOST=0.0.0.0
       - LOG_LEVEL=INFO
       - CLAUDE_CLI_PATH=/usr/local/bin/claude
+    volumes:
+      - ~/.config/claude:/root/.config/claude:ro
 ```
 
-### Volume Mounting
+### Volume Mounting for Personal Setup
 
-Mount configuration file:
+Mount your Claude configuration and local settings:
 
 ```yaml
 version: '3.8'
@@ -245,44 +274,44 @@ services:
     volumes:
       - ./config.json:/app/config.json:ro
       - ./logs:/app/logs
+      - ~/.config/claude:/root/.config/claude:ro
 ```
 
-## Production Configuration
+## Personal Use Configuration
 
-### Recommended Settings
+### Recommended Settings for Local Development
 
 ```json
 {
   "server": {
-    "host": "0.0.0.0",
+    "host": "127.0.0.1",
     "port": 8000,
-    "workers": 4,
-    "reload": false,
-    "access_log": false,
-    "proxy_headers": true
+    "workers": 2,
+    "reload": true,
+    "access_log": true,
+    "proxy_headers": false
   },
   "logging": {
-    "level": "WARNING",
-    "format": "json",
-    "file": "/var/log/claude-proxy/app.log",
+    "level": "INFO",
+    "format": "text",
+    "file": "./logs/app.log",
     "rotation": "1 day",
-    "retention": "30 days"
+    "retention": "7 days"
   },
   "rate_limiting": {
-    "enabled": true,
-    "requests_per_minute": 100,
-    "burst_size": 20,
-    "storage": "redis",
-    "redis_url": "redis://redis:6379"
+    "enabled": false,
+    "requests_per_minute": 60,
+    "burst_size": 10,
+    "storage": "memory"
   },
   "cors": {
     "enabled": true,
-    "allow_origins": ["https://yourdomain.com"],
+    "allow_origins": ["http://localhost:*", "http://127.0.0.1:*"],
     "allow_credentials": false
   },
   "health": {
     "check_claude_cli": true,
-    "detailed_response": false
+    "detailed_response": true
   }
 }
 ```
@@ -304,13 +333,14 @@ The server validates configuration on startup and will report errors for:
 uv run python -m claude_code_proxy.config.validate config.json
 ```
 
-## Environment-Specific Configurations
+## Personal Use Scenarios
 
-### Development
+### Development & Testing
 
 ```json
 {
   "server": {
+    "host": "127.0.0.1",
     "reload": true,
     "workers": 1
   },
@@ -324,55 +354,54 @@ uv run python -m claude_code_proxy.config.validate config.json
 }
 ```
 
-### Staging
+### Daily Personal Use
 
 ```json
 {
   "server": {
+    "host": "127.0.0.1",
     "reload": false,
     "workers": 2
   },
   "logging": {
     "level": "INFO",
-    "format": "json"
+    "format": "text"
   },
   "rate_limiting": {
-    "enabled": true,
-    "requests_per_minute": 30
+    "enabled": false
   }
 }
 ```
 
-### Production
+### Isolated Docker Setup
 
 ```json
 {
   "server": {
+    "host": "0.0.0.0",
     "reload": false,
-    "workers": 4
+    "workers": 2
   },
   "logging": {
-    "level": "WARNING",
+    "level": "INFO",
     "format": "json",
-    "file": "/var/log/claude-proxy/app.log"
+    "file": "/app/logs/app.log"
   },
   "rate_limiting": {
-    "enabled": true,
-    "requests_per_minute": 100,
-    "storage": "redis"
+    "enabled": false
   }
 }
 ```
 
-## Configuration Best Practices
+## Configuration Best Practices for Personal Use
 
-1. **Use environment variables** for secrets and deployment-specific settings
-2. **Use configuration files** for complex, structured settings
-3. **Validate configuration** before deployment
-4. **Log configuration changes** for audit purposes
-5. **Use different configurations** for different environments
-6. **Monitor configuration** for runtime changes
-7. **Backup configuration files** as part of your deployment process
+1. **Use environment variables** for local customization and preferences
+2. **Use configuration files** for structured settings you want to persist
+3. **Validate configuration** before starting the server
+4. **Keep backups** of your working configuration files
+5. **Use different configurations** for development vs. daily use
+6. **Start simple** - use defaults first, then customize as needed
+7. **Secure your setup** - bind to localhost (127.0.0.1) for local-only access
 
 ## Troubleshooting Configuration
 
@@ -397,3 +426,197 @@ uv run python -m claude_code_proxy.config.validate config.json
    - Check Redis connection (if using Redis storage)
    - Verify rate limiting is enabled in configuration
    - Check logs for rate limiting messages
+
+## Advanced Configuration Reference
+
+### Complete Configuration Options
+
+#### .env File Reference
+
+```bash
+# Basic server configuration
+HOST=0.0.0.0
+PORT=8000
+LOG_LEVEL=INFO
+WORKERS=4
+RELOAD=false
+
+# Claude configuration
+CLAUDE_CLI_PATH=/usr/local/bin/claude
+
+# Security settings
+AUTH_TOKEN=your-secure-token-here
+CORS_ORIGINS=https://yourdomain.com,https://app.yourdomain.com
+
+# Tools handling
+TOOLS_HANDLING=warning
+
+# Security settings for subprocess execution
+CLAUDE_USER=claude
+CLAUDE_GROUP=claude
+```
+
+#### Complete JSON Configuration Schema
+
+```json
+{
+  "host": "0.0.0.0",
+  "port": 8000,
+  "log_level": "INFO",
+  "workers": 4,
+  "reload": false,
+  "cors_origins": ["https://yourdomain.com"],
+  "claude_cli_path": "/usr/local/bin/claude",
+  "tools_handling": "warning",
+  "docker_settings": {
+    "docker_image": "claude-code-proxy:latest",
+    "docker_volumes": [
+      "$HOME/.config/claude:/data/home",
+      "$PWD:/data/workspace"
+    ],
+    "docker_environment": {
+      "CLAUDE_HOME": "/data/home",
+      "CLAUDE_WORKSPACE": "/data/workspace"
+    },
+    "docker_additional_args": ["--network=host"],
+    "docker_home_directory": "/home/user/.config/claude",
+    "docker_workspace_directory": "/home/user/projects"
+  },
+  "claude_code_options": {
+    "cwd": "/path/to/working/directory",
+    "model": "claude-3-5-sonnet-20241022",
+    "max_thinking_tokens": 30000
+  }
+}
+```
+
+### Configuration Validation
+
+All configuration values are automatically validated:
+
+- **Port**: Must be between 1-65535
+- **Log Level**: Must be DEBUG, INFO, WARNING, ERROR, or CRITICAL
+- **CORS Origins**: Must be valid URLs or "*"
+- **Claude CLI Path**: Must exist and be executable
+- **Tools Handling**: Must be "error", "warning", or "ignore"
+
+### Environment-Specific Configuration Files
+
+#### Development Environment (`.env.development`)
+```bash
+HOST=127.0.0.1
+PORT=8000
+LOG_LEVEL=DEBUG
+RELOAD=true
+WORKERS=1
+CORS_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
+```
+
+#### Production Environment (`.env.production`)
+```bash
+HOST=0.0.0.0
+PORT=8000
+LOG_LEVEL=INFO
+RELOAD=false
+WORKERS=4
+CORS_ORIGINS=https://yourdomain.com,https://app.yourdomain.com
+CLAUDE_CLI_PATH=/usr/local/bin/claude
+TOOLS_HANDLING=error
+CLAUDE_USER=claude
+CLAUDE_GROUP=claude
+```
+
+### Advanced Configuration Patterns
+
+#### Configuration with Environment Variable Substitution
+
+```json
+{
+  "host": "${HOST:-0.0.0.0}",
+  "port": "${PORT:-8000}",
+  "claude_cli_path": "${CLAUDE_CLI_PATH}",
+  "cors_origins": ["${CORS_ORIGIN:-*}"]
+}
+```
+
+#### Multi-Environment Loading Script
+
+```bash
+#!/bin/bash
+# scripts/load-env.sh
+
+ENV=${1:-development}
+
+case $ENV in
+  "development")
+    export $(cat .env.development | xargs)
+    ;;
+  "production")
+    export $(cat .env.production | xargs)
+    ;;
+  *)
+    echo "Unknown environment: $ENV"
+    exit 1
+    ;;
+esac
+
+echo "Loaded configuration for: $ENV"
+```
+
+### CLI Configuration Commands
+
+```bash
+# Display current configuration
+ccproxy config
+
+# Test Claude CLI integration
+ccproxy claude -- --version
+
+# Test with Docker
+ccproxy claude --docker -- --version
+
+# Specify custom configuration file
+CONFIG_FILE=/path/to/custom/config.json ccproxy run
+```
+
+### Advanced Troubleshooting
+
+#### Configuration Debugging
+
+```bash
+# Enable debug logging to see configuration loading
+LOG_LEVEL=DEBUG ccproxy run
+
+# Validate configuration without starting server
+python -c "from claude_code_proxy.config.settings import get_settings; print('Config valid')"
+
+# Check Claude CLI path resolution
+ccproxy claude -- --version
+```
+
+#### Common Advanced Issues
+
+1. **Docker Volume Mount Issues**
+   ```bash
+   # Check volume permissions
+   ls -la ~/.config/claude/
+   
+   # Fix permissions if needed
+   chmod -R 755 ~/.config/claude/
+   ```
+
+2. **Environment Variable Substitution**
+   ```bash
+   # Test variable expansion
+   echo "Host: ${HOST:-0.0.0.0}"
+   echo "Port: ${PORT:-8000}"
+   ```
+
+3. **Complex CORS Configuration**
+   ```bash
+   # Multiple origins
+   CORS_ORIGINS="https://app1.example.com,https://app2.example.com"
+   
+   # Development with multiple ports
+   CORS_ORIGINS="http://localhost:3000,http://localhost:3001,http://127.0.0.1:3000"
+   ```

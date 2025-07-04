@@ -30,6 +30,7 @@ A personal API proxy server that enables you to use your existing Claude subscri
 - **Local Execution**: All processing happens on your computer
 - **No API Keys Required**: Uses your existing Claude subscription via OAuth2
 - **Secure Authentication**: Leverages Claude's official authentication system
+- **Optional API Authentication**: Bearer token protection for API endpoints
 - **Optional Isolation**: Docker support for sandboxed Claude Code execution
 
 ## Quick Start
@@ -165,6 +166,7 @@ Your proxy supports all Claude models available to your subscription:
 | `PORT` | Local server port | `8000` |
 | `HOST` | Server host (keep as localhost for security) | `127.0.0.1` |
 | `LOG_LEVEL` | Logging level | `INFO` |
+| `AUTH_TOKEN` | Bearer token for API authentication (optional) | None |
 
 ### Claude Authentication
 
@@ -172,6 +174,42 @@ The proxy automatically detects and uses Claude Code CLI for authentication:
 - First run will prompt for Claude login
 - Authentication is cached for subsequent uses
 - Works with all Claude subscription types
+
+### API Authentication (Optional)
+
+For added security, you can enable bearer token authentication for API access:
+
+#### Generate Authentication Token
+
+```bash
+# Generate a secure token
+ccproxy generate-token
+# Output: AUTH_TOKEN=abc123xyz789...
+```
+
+#### Configure Authentication
+
+```bash
+# Set environment variable
+export AUTH_TOKEN=abc123xyz789...
+
+# Or add to .env file
+echo "AUTH_TOKEN=abc123xyz789..." >> .env
+```
+
+#### Using Authentication
+
+When authentication is enabled, all API requests must include the bearer token:
+
+```bash
+# Example with curl
+curl -H "Authorization: Bearer abc123xyz789..." \
+     -H "Content-Type: application/json" \
+     -d '{"model":"claude-sonnet-4-20250514","messages":[{"role":"user","content":"Hello"}]}' \
+     http://localhost:8000/v1/chat/completions
+```
+
+**Note:** The `/health` endpoint remains unprotected for monitoring purposes.
 
 ### Optional Docker Isolation
 
@@ -198,6 +236,10 @@ client = OpenAI(
     api_key="dummy-key"  # Required but not used
 )
 
+# If authentication is enabled, add the token header
+if auth_token := "your-auth-token-here":
+    client.default_headers = {"Authorization": f"Bearer {auth_token}"}
+
 response = client.chat.completions.create(
     model="claude-sonnet-4-20250514",
     messages=[{"role": "user", "content": "Hello!"}]
@@ -215,6 +257,10 @@ client = Anthropic(
     base_url="http://localhost:8000",
     api_key="dummy-key"  # Required but not used
 )
+
+# If authentication is enabled, add the token header
+if auth_token := "your-auth-token-here":
+    client.default_headers = {"Authorization": f"Bearer {auth_token}"}
 
 response = client.messages.create(
     model="claude-sonnet-4-20250514",
@@ -248,7 +294,18 @@ for chunk in stream:
 ### curl Example
 
 ```bash
+# Without authentication
 curl -X POST http://localhost:8000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "claude-sonnet-4-20250514",
+    "messages": [{"role": "user", "content": "Hello!"}],
+    "max_tokens": 100
+  }'
+
+# With authentication (if enabled)
+curl -X POST http://localhost:8000/v1/chat/completions \
+  -H "Authorization: Bearer your-auth-token-here" \
   -H "Content-Type: application/json" \
   -d '{
     "model": "claude-sonnet-4-20250514",
@@ -295,13 +352,19 @@ pytest
    Solution: Run `claude auth login` or restart the proxy to trigger auth flow
    ```
 
-2. **Port Already in Use**
+2. **API Authentication**
+   ```
+   Error: 401 Unauthorized - Missing authentication token
+   Solution: Include Bearer token: curl -H "Authorization: Bearer your-token" ...
+   ```
+
+3. **Port Already in Use**
    ```
    Error: Port 8000 already in use
    Solution: Use a different port: PORT=8001 python main.py
    ```
 
-3. **Subscription Access**
+4. **Subscription Access**
    ```
    Error: Model not available
    Solution: Check that your Claude subscription includes the requested model
@@ -320,6 +383,7 @@ python main.py
 - **Local Only**: The proxy runs entirely on your computer
 - **No External APIs**: Uses your existing Claude subscription, no additional API costs
 - **Secure Authentication**: Uses Claude's official OAuth2 flow
+- **Optional API Authentication**: Bearer token authentication for API access
 - **Optional Isolation**: Docker support for sandboxed execution
 - **No Data Logging**: Conversations are not stored or logged by the proxy
 
