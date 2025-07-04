@@ -90,7 +90,7 @@ def sample_claude_response() -> dict[str, Any]:
 
 
 @pytest.fixture
-def sample_streaming_response() -> Generator[dict[str, Any], None, None]:
+async def sample_streaming_response() -> AsyncGenerator[dict[str, Any], None]:
     """Sample streaming Claude response."""
     chunks = [
         {
@@ -128,7 +128,8 @@ def sample_streaming_response() -> Generator[dict[str, Any], None, None]:
         },
     ]
 
-    yield from chunks  # type: ignore[misc]
+    for chunk in chunks:
+        yield chunk  # type: ignore[misc]
 
 
 @pytest.fixture

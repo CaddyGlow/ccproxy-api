@@ -240,7 +240,7 @@ class TestOpenAIChatCompletionsEndpoint:
 
         # Verify the call was made with the same model name
         args, kwargs = mock_claude_client.create_completion.call_args
-        assert kwargs["model"] == "claude-3-opus-20240229"
+        assert args[1].model == "claude-3-opus-20240229"
 
         # Verify response contains the same model name
         data = response.json()

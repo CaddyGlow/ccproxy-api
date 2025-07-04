@@ -3,7 +3,7 @@
 import asyncio
 import json
 import logging
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, AsyncIterable
 from typing import Any
 
 from claude_code_proxy.models.errors import ErrorDetail, StreamingError
@@ -121,7 +121,7 @@ class StreamingFormatter:
 
 
 async def stream_claude_response(
-    claude_response_iterator: AsyncGenerator[dict[str, Any], None],
+    claude_response_iterator: AsyncIterable[dict[str, Any]],
     message_id: str,
     model: str,
 ) -> AsyncGenerator[str, None]:
@@ -135,8 +135,20 @@ async def stream_claude_response(
 
     Yields:
         Formatted SSE strings
+
+    Raises:
+        TypeError: If claude_response_iterator is not an async iterable
     """
     formatter = StreamingFormatter()
+
+    # Validate that we have an async iterable
+    if not hasattr(claude_response_iterator, "__aiter__"):
+        logger.error(f"Expected async iterable, got {type(claude_response_iterator)}")
+        yield formatter.format_error(
+            "internal_server_error", "Invalid response type from Claude client"
+        )
+        yield formatter.format_done()
+        return
 
     try:
         # Send message start event
@@ -149,7 +161,10 @@ async def stream_claude_response(
         has_content = False
         try:
             async for chunk in claude_response_iterator:
-                if chunk.get("type") == "content_block_delta":
+                # Process chunk if it's a dict
+                if not isinstance(chunk, dict):
+                    logger.warning(f"Expected dict chunk, got {type(chunk)}: {chunk}")  # type: ignore[unreachable]
+                elif chunk.get("type") == "content_block_delta":
                     text = chunk.get("delta", {}).get("text", "")
                     if text:
                         has_content = True

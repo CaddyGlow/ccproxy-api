@@ -4,7 +4,8 @@
 import asyncio
 import json
 import sys
-from typing import Optional
+from collections.abc import AsyncGenerator
+from typing import Any, Optional, cast
 
 import httpx
 import typer
@@ -34,7 +35,7 @@ class ClaudeProxyClient:
     async def __aenter__(self) -> "ClaudeProxyClient":
         return self
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
+    async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
         await self.client.aclose()
 
     async def health_check(self) -> bool:
@@ -105,10 +106,12 @@ class ClaudeProxyClient:
             headers=headers,
         )
         response.raise_for_status()
-        return response.json()
+        return cast(dict[str, Any], response.json())
 
 
-async def stream_response(client: ClaudeProxyClient, messages: list[dict[str, Any]]) -> str | None:
+async def stream_response(
+    client: ClaudeProxyClient, messages: list[dict[str, Any]]
+) -> str | None:
     """Stream and display the response from Claude."""
     content = ""
 
@@ -163,12 +166,14 @@ def chat(
         "--stream/--no-stream",
         help="Enable streaming responses",
     ),
-):
+) -> None:
     """Start an interactive chat session with Claude via the proxy server."""
     asyncio.run(chat_session(server_url, api_key, model, stream))
 
 
-async def chat_session(server_url: str, api_key: str | None, model: str, stream: bool):
+async def chat_session(
+    server_url: str, api_key: str | None, model: str, stream: bool
+) -> None:
     """Run the interactive chat session."""
     console.print(
         Panel.fit(
@@ -252,12 +257,12 @@ def test(
         "-k",
         help="API key for authentication",
     ),
-):
+) -> None:
     """Test the connection to the Claude proxy server."""
     asyncio.run(test_connection(server_url, api_key))
 
 
-async def test_connection(server_url: str, api_key: str | None):
+async def test_connection(server_url: str, api_key: str | None) -> None:
     """Test the connection to the server."""
     console.print(f"Testing connection to {server_url}...")
 

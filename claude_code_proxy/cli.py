@@ -14,15 +14,45 @@ import uvicorn
 from fastapi_cli.cli import app as fastapi_app
 from fastapi_cli.exceptions import FastAPICLIException
 
+from claude_code_proxy._version import __version__
 from claude_code_proxy.config.settings import get_settings
 from claude_code_proxy.utils.docker_builder import DockerCommandBuilder
 from claude_code_proxy.utils.helper import get_package_dir
 
 
-app = typer.Typer(rich_markup_mode="rich")
+def version_callback(value: bool) -> None:
+    """Print version and exit."""
+    if value:
+        typer.echo(f"claude-code-proxy-api {__version__}")
+        raise typer.Exit()
+
+
+app = typer.Typer(
+    rich_markup_mode="rich",
+    add_completion=False,
+    no_args_is_help=True,
+    pretty_exceptions_enable=False,
+)
 logger = logging.getLogger(__name__)
+
+# Add global --version option
+@app.callback()
+def main(
+    version: bool = typer.Option(
+        False,
+        "--version",
+        "-V",
+        callback=version_callback,
+        is_eager=True,
+        help="Show version and exit.",
+    ),
+) -> None:
+    """Claude Code Proxy API Server - Anthropic and OpenAI compatible interface for Claude."""
+    pass
+
 # Remove the fastapi callback to avoid the warning
-fastapi_app.callback()(lambda: None)
+# fastapi_app.callback()(lambda: None)
+fastapi_app.callback()(None)  # type: ignore[type-var]
 app.add_typer(fastapi_app)
 
 

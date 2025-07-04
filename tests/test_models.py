@@ -153,6 +153,16 @@ class TestChatCompletionRequest:
                     "function": {
                         "name": "get_weather",
                         "description": "Get current weather",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "location": {
+                                    "type": "string",
+                                    "description": "The city and state, e.g. San Francisco, CA",
+                                }
+                            },
+                            "required": ["location"],
+                        },
                     },
                 }
             ],
@@ -385,6 +395,7 @@ class TestToolDefinition:
             "function": {
                 "name": "simple_function",
                 "description": "A simple function",
+                "parameters": {"type": "object", "properties": {}, "required": []},
             }
         }
 

@@ -48,7 +48,8 @@ class TestChatCompletionsEndpoint:
         # Verify ClaudeClient was called with correct interface
         mock_client.create_completion.assert_called_once()
         call_args = mock_client.create_completion.call_args
-        messages, options = call_args[0]  # positional args
+        messages = call_args.kwargs["messages"]
+        options = call_args.kwargs["options"]
 
         # Check messages format
         assert len(messages) == 1
@@ -209,7 +210,8 @@ class TestChatCompletionsEndpoint:
         # Verify ClaudeClient was called with max_thinking_tokens in options
         mock_client.create_completion.assert_called_once()
         call_args = mock_client.create_completion.call_args
-        messages, options = call_args[0]  # positional args
+        messages = call_args.kwargs["messages"]
+        options = call_args.kwargs["options"]
 
         # Check that max_thinking_tokens was set in options
         assert hasattr(options, "max_thinking_tokens")

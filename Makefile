@@ -47,7 +47,7 @@ test-integration:
 lint:
 	uv run ruff check .
 
-lint-fix:
+lint-fix: format
 	uv run ruff check --fix .
 	uv run ruff check --select I --fix .
 

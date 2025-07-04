@@ -31,7 +31,7 @@ router = APIRouter()
 async def create_chat_completion(
     request: ChatCompletionRequest,
     http_request: Request,
-):
+) -> ChatCompletionResponse | StreamingResponse:
     """
     Create a chat completion using Claude AI models.
 
@@ -75,9 +75,18 @@ async def create_chat_completion(
                         messages, options=options, stream=True
                     )
 
+                    # Ensure we have an async iterator for streaming
+                    if not hasattr(response_iter, "__aiter__"):
+                        logger.error(
+                            f"Expected async iterator from Claude client, got {type(response_iter)}"
+                        )
+                        yield "data: {'error': {'type': 'internal_server_error', 'message': 'Invalid response type from Claude client'}}\n\n"
+                        yield "data: [DONE]\n\n"
+                        return
+
                     # Use enhanced streaming formatter
                     async for chunk in stream_claude_response(
-                        response_iter,  # type: ignore
+                        response_iter,
                         message_id,
                         request.model,
                     ):
@@ -108,8 +117,8 @@ async def create_chat_completion(
         else:
             # Return regular response
             response = await claude_client.create_completion(
-                messages,
-                options,
+                messages=messages,
+                options=options,
                 stream=False,
             )
 

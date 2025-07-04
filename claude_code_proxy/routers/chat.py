@@ -2,6 +2,7 @@
 
 import logging
 from collections.abc import AsyncIterator
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
@@ -79,18 +80,21 @@ async def create_chat_completion(
                     if hasattr(content, "type") and content.type == "text":
                         if hasattr(content, "text"):
                             content_list.append({"type": "text", "text": content.text})
-                    elif hasattr(content, "type") and content.type == "image":
-                        if hasattr(content, "source"):
-                            content_list.append(
-                                {
-                                    "type": "image",
-                                    "source": {
-                                        "type": "base64",
-                                        "media_type": content.source.media_type,
-                                        "data": content.source.data,
-                                    },
-                                }
-                            )
+                    elif (
+                        hasattr(content, "type")
+                        and content.type == "image"
+                        and hasattr(content, "source")
+                    ):
+                        content_list.append(
+                            {
+                                "type": "image",
+                                "source": {
+                                    "type": "base64",
+                                    "media_type": content.source.media_type,
+                                    "data": content.source.data,
+                                },
+                            }
+                        )
 
             messages.append(msg_dict)
 
@@ -98,13 +102,9 @@ async def create_chat_completion(
         options = settings.claude_code_options
         if request.model:
             options.model = request.model
-        if request.max_tokens:
-            options.max_tokens = request.max_tokens
-        if request.temperature is not None:
-            options.temperature = request.temperature
         if request.system:
-            options.system = request.system
-        
+            options.system_prompt = request.system
+
         response = await claude_client.create_completion(
             messages=messages,
             options=options,
@@ -157,10 +157,8 @@ async def create_chat_completion(
         raise HTTPException(
             status_code=HTTP_500_INTERNAL_SERVER_ERROR,
             detail=InternalServerError(
-                error=APIError(
-                    type="internal_server_error",
-                    message="An unexpected error occurred",
-                )
+                type="internal_server_error",
+                message="An unexpected error occurred",
             ).model_dump(),
         ) from e
 
@@ -187,10 +185,8 @@ async def list_models(
         raise HTTPException(
             status_code=HTTP_500_INTERNAL_SERVER_ERROR,
             detail=InternalServerError(
-                error=APIError(
-                    type="internal_server_error",
-                    message=str(e),
-                )
+                type="internal_server_error",
+                message=str(e),
             ).model_dump(),
         ) from e
 
@@ -199,9 +195,7 @@ async def list_models(
         raise HTTPException(
             status_code=HTTP_500_INTERNAL_SERVER_ERROR,
             detail=InternalServerError(
-                error=APIError(
-                    type="internal_server_error",
-                    message="An unexpected error occurred",
-                )
+                type="internal_server_error",
+                message="An unexpected error occurred",
             ).model_dump(),
         ) from e
