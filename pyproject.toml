@@ -42,6 +42,7 @@ dev = [
   "pytest-asyncio>=0.23.0",
   "pytest-cov>=4.0.0",
   "pytest-env>=0.8.0",
+  "tox>=4.27.0",
 ]
 
 [tool.coverage.run]

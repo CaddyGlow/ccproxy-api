@@ -1,12 +1,23 @@
 # Claude Code Proxy API Server
 
-API server that provides an Anthropic and OpenAI compatible interface over Claude Code, allowing to use your Claude OAuth account or over the API.  
+A high-performance API server that provides both Anthropic and OpenAI-compatible interfaces for Claude AI models. This proxy enables you to use your Claude OAuth account or API access through familiar API endpoints, making it easy to integrate Claude into existing applications.
 
 ## Features
 
-- **Anthropic API Compatible**: Drop-in replacement for Anthropic's API endpoints
-- **OpenAI API Compatible**: Supports OpenAI chat completion format for easy migration
-- **Request Forwarding**: Seamlessly forwards requests to Claude using the official Claude Code Python SDK
+### Core Capabilities
+- **Dual API Compatibility**: Full support for both Anthropic and OpenAI API formats
+- **Streaming Support**: Real-time response streaming for both API formats
+- **Request Translation**: Seamless format conversion between OpenAI and Anthropic formats
+- **Claude CLI Integration**: Uses the official Claude Code Python SDK for authentication
+- **Auto-detection**: Smart Claude CLI path resolution and configuration
+
+### Production Features
+- **Docker Support**: Production-ready containerization with multi-stage builds
+- **Health Monitoring**: Built-in health checks and metrics endpoints
+- **Error Handling**: Comprehensive error handling with detailed error responses
+- **Rate Limiting**: Built-in protection against API abuse
+- **CORS Support**: Cross-origin request handling for web applications
+- **Structured Logging**: JSON-formatted logs for monitoring and debugging
 
 ## Quick Start
 
@@ -19,8 +30,8 @@ API server that provides an Anthropic and OpenAI compatible interface over Claud
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/your-username/claude-code-proxy-api.git
-cd claude-code-proxy-api
+git clone https://github.com/your-username/claude-proxy.git
+cd claude-proxy
 ```
 
 2. Install dependencies using uv (recommended):
@@ -53,8 +64,9 @@ The server will start on `http://localhost:8000` by default.
 
 ## API Endpoints
 
-### Chat Completions
+### Anthropic-Compatible Endpoints
 
+#### Chat Completions
 ```http
 POST /v1/chat/completions
 ```
@@ -62,7 +74,7 @@ POST /v1/chat/completions
 **Request Body:**
 ```json
 {
-  "model": "claude-3-sonnet-20240229",
+  "model": "claude-3-5-sonnet-20241022",
   "messages": [
     {
       "role": "user",
@@ -80,7 +92,7 @@ POST /v1/chat/completions
   "id": "chatcmpl-123",
   "object": "chat.completion",
   "created": 1677652288,
-  "model": "claude-3-sonnet-20240229",
+  "model": "claude-3-5-sonnet-20241022",
   "choices": [
     {
       "index": 0,
@@ -99,13 +111,41 @@ POST /v1/chat/completions
 }
 ```
 
+#### Models List
+```http
+GET /v1/models
+```
+
+### OpenAI-Compatible Endpoints
+
+#### Chat Completions
+```http
+POST /openai/v1/chat/completions
+```
+
+Uses OpenAI format with automatic translation to Claude format.
+
+#### Models List
+```http
+GET /openai/v1/models
+```
+
+### Health and Monitoring
+
+#### Health Check
+```http
+GET /health
+```
+
+Returns server health status and Claude CLI availability.
+
 ### Streaming Support
 
 Add `"stream": true` to your request for streaming responses:
 
 ```json
 {
-  "model": "claude-3-sonnet-20240229",
+  "model": "claude-3-5-sonnet-20241022",
   "messages": [{"role": "user", "content": "Tell me a story"}],
   "stream": true
 }
@@ -113,7 +153,13 @@ Add `"stream": true` to your request for streaming responses:
 
 ### Supported Models
 
-Claude Code works with Claude Opus 4, Claude Sonnet 4, and Claude Haiku 3.5 models. Enterprise users can run Claude Code using models in existing Amazon Bedrock or Google Cloud Vertex AI instances.
+| Model | Description |
+|-------|-------------|
+| `claude-3-5-sonnet-20241022` | Latest Claude 3.5 Sonnet (recommended) |
+| `claude-3-5-haiku-20241022` | Latest Claude 3.5 Haiku (fast) |
+| `claude-3-opus-20240229` | Claude 3 Opus (most capable) |
+
+Enterprise users can run Claude Code using models in existing Amazon Bedrock or Google Cloud Vertex AI instances.
 
 ## Configuration
 
@@ -137,15 +183,34 @@ Create a `config.json` file for advanced configuration:
     "workers": 4
   },
   "claude": {
-    "default_model": "claude-3-sonnet-20240229",
+    "default_model": "claude-3-5-sonnet-20241022",
     "max_tokens": 4096,
-    "timeout": 30
+    "timeout": 30,
+    "cli_path": "/path/to/claude"
   },
   "logging": {
     "level": "INFO",
     "format": "json"
+  },
+  "rate_limiting": {
+    "requests_per_minute": 60,
+    "burst_size": 10
   }
 }
+```
+
+### Claude CLI Configuration
+
+The proxy automatically detects Claude CLI installation in common locations:
+- System PATH
+- `~/.claude/local/claude`
+- `~/node_modules/.bin/claude`
+- Package node_modules
+- Common system directories
+
+You can also specify the path explicitly:
+```bash
+export CLAUDE_CLI_PATH=/path/to/claude
 ```
 
 ## Development
@@ -257,21 +322,69 @@ curl -X POST http://localhost:8000/v1/chat/completions \
 
 ### OpenAI Python Client
 
-Since this proxy is Anthropic API compatible, you can use it with OpenAI's Python client:
+Use the OpenAI Python client with Claude models:
+
+```python
+from openai import OpenAI
+
+# For Anthropic endpoints
+client = OpenAI(
+    base_url="http://localhost:8000/v1",
+    api_key="dummy-key"  # Not used but required by OpenAI client
+)
+
+# For OpenAI-compatible endpoints
+client = OpenAI(
+    base_url="http://localhost:8000/openai/v1",
+    api_key="dummy-key"
+)
+
+response = client.chat.completions.create(
+    model="claude-3-5-sonnet-20241022",
+    messages=[{"role": "user", "content": "Hello!"}]
+)
+print(response.choices[0].message.content)
+```
+
+### Anthropic Python Client
+
+Use the official Anthropic client:
+
+```python
+from anthropic import Anthropic
+
+client = Anthropic(
+    base_url="http://localhost:8000",
+    api_key="dummy-key"  # Not used but required
+)
+
+response = client.messages.create(
+    model="claude-3-5-sonnet-20241022",
+    max_tokens=1000,
+    messages=[{"role": "user", "content": "Hello!"}]
+)
+print(response.content[0].text)
+```
+
+### Streaming Example
 
 ```python
 from openai import OpenAI
 
 client = OpenAI(
     base_url="http://localhost:8000/v1",
-    api_key="dummy-key"  # Not used but required by OpenAI client
+    api_key="dummy-key"
 )
 
-response = client.chat.completions.create(
-    model="claude-3-sonnet-20240229",
-    messages=[{"role": "user", "content": "Hello!"}]
+stream = client.chat.completions.create(
+    model="claude-3-5-sonnet-20241022",
+    messages=[{"role": "user", "content": "Tell me a story"}],
+    stream=True
 )
-print(response.choices[0].message.content)
+
+for chunk in stream:
+    if chunk.choices[0].delta.content is not None:
+        print(chunk.choices[0].delta.content, end="")
 ```
 
 ## Monitoring and Logging
@@ -363,9 +476,8 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## Support
 
-- Email: support@example.com
-- Issues: [GitHub Issues](https://github.com/your-username/claude-code-proxy-api/issues)
-- Documentation: [Wiki](https://github.com/your-username/claude-code-proxy-api/wiki)
+- Issues: [GitHub Issues](https://github.com/your-username/claude-proxy/issues)
+- Documentation: [Project Documentation](docs/)
 
 ## Acknowledgments
 
