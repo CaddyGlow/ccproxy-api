@@ -24,12 +24,7 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    # Required settings
-    anthropic_api_key: str | None = Field(
-        default=None,
-        description="Anthropic API key for Claude access",
-        # min_length=1,
-    )
+    # Claude Code SDK handles authentication directly
 
     # Claude Code CLI settings
     claude_cli_path: str | None = Field(
@@ -67,27 +62,6 @@ class Settings(BaseSettings):
     reload: bool = Field(
         default=False,
         description="Enable auto-reload for development",
-    )
-
-    # Rate limiting settings
-    rate_limit_requests: int = Field(
-        default=100,
-        description="Rate limit: maximum requests per minute",
-        ge=1,
-    )
-
-    rate_limit_window: int = Field(
-        default=60,
-        description="Rate limit window in seconds",
-        ge=1,
-    )
-
-    # Request timeout settings
-    request_timeout: int = Field(
-        default=300,
-        description="Request timeout in seconds",
-        ge=1,
-        le=3600,
     )
 
     # Security settings
@@ -234,10 +208,7 @@ class Settings(BaseSettings):
         Returns:
             dict: Configuration with sensitive data masked
         """
-        data = self.model_dump()
-        if "anthropic_api_key" in data:
-            data["anthropic_api_key"] = "***MASKED***"
-        return data
+        return self.model_dump()
 
 
 def get_settings() -> Settings:

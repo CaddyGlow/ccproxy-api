@@ -6,8 +6,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
-from claude_proxy.main import app
-from claude_proxy.models.openai_models import (
+from claude_code_proxy.main import app
+from claude_code_proxy.models.openai_models import (
     OpenAIChatCompletionRequest,
     OpenAIMessage,
     OpenAIModelsResponse,
@@ -48,7 +48,7 @@ class TestOpenAIChatCompletionsEndpoint:
     @pytest.fixture
     def mock_claude_client(self):
         """Mock Claude client."""
-        with patch("claude_proxy.api.openai.chat.ClaudeClient") as mock_class:
+        with patch("claude_code_proxy.api.openai.chat.ClaudeClient") as mock_class:
             mock_instance = MagicMock()
             mock_class.return_value = mock_instance
             yield mock_instance
@@ -209,7 +209,7 @@ class TestOpenAIChatCompletionsEndpoint:
         self, client, mock_claude_client, sample_request
     ):
         """Test chat completion with Claude client error."""
-        from claude_proxy.exceptions import ClaudeProxyError
+        from claude_code_proxy.exceptions import ClaudeProxyError
 
         mock_claude_client.create_completion = AsyncMock(
             side_effect=ClaudeProxyError("API rate limit exceeded")
@@ -320,7 +320,7 @@ class TestOpenAIToolsValidation:
     @pytest.fixture
     def mock_claude_client(self):
         """Mock Claude client."""
-        with patch("claude_proxy.api.openai.chat.ClaudeClient") as mock_class:
+        with patch("claude_code_proxy.api.openai.chat.ClaudeClient") as mock_class:
             mock_instance = MagicMock()
             mock_class.return_value = mock_instance
             yield mock_instance
@@ -348,7 +348,7 @@ class TestOpenAIToolsValidation:
             ],
         }
 
-    @patch("claude_proxy.api.openai.chat.get_settings")
+    @patch("claude_code_proxy.api.openai.chat.get_settings")
     def test_tools_validation_error_mode(
         self, mock_get_settings, client, sample_request_with_tools
     ):
@@ -371,7 +371,7 @@ class TestOpenAIToolsValidation:
         )
         assert data["detail"]["error"]["type"] == "unsupported_parameter"
 
-    @patch("claude_proxy.api.openai.chat.get_settings")
+    @patch("claude_code_proxy.api.openai.chat.get_settings")
     def test_tools_validation_warning_mode(
         self, mock_get_settings, client, mock_claude_client, sample_request_with_tools
     ):
@@ -394,7 +394,7 @@ class TestOpenAIToolsValidation:
             }
         )
 
-        with patch("claude_proxy.api.openai.chat.logger") as mock_logger:
+        with patch("claude_code_proxy.api.openai.chat.logger") as mock_logger:
             response = client.post(
                 "/openai/v1/chat/completions", json=sample_request_with_tools
             )
@@ -405,7 +405,7 @@ class TestOpenAIToolsValidation:
             assert "Tools ignored" in warning_call
             assert "1 tools" in warning_call
 
-    @patch("claude_proxy.api.openai.chat.get_settings")
+    @patch("claude_code_proxy.api.openai.chat.get_settings")
     def test_tools_validation_ignore_mode(
         self, mock_get_settings, client, mock_claude_client, sample_request_with_tools
     ):
@@ -428,7 +428,7 @@ class TestOpenAIToolsValidation:
             }
         )
 
-        with patch("claude_proxy.api.openai.chat.logger") as mock_logger:
+        with patch("claude_code_proxy.api.openai.chat.logger") as mock_logger:
             response = client.post(
                 "/openai/v1/chat/completions", json=sample_request_with_tools
             )
@@ -438,7 +438,7 @@ class TestOpenAIToolsValidation:
             mock_logger.warning.assert_not_called()
             mock_logger.error.assert_not_called()
 
-    @patch("claude_proxy.api.openai.chat.get_settings")
+    @patch("claude_code_proxy.api.openai.chat.get_settings")
     def test_request_without_tools_continues_normally(
         self, mock_get_settings, client, mock_claude_client
     ):

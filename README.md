@@ -1,31 +1,26 @@
-# Claude Proxy API Server
+# Claude Code Proxy API Server
 
-A high-performance API server that provides an Anthropic-compatible interface for Claude AI models, forwarding requests to Claude using the official Python SDK. Also supports OpenAI API format for seamless integration with existing OpenAI-based applications.
+API server that provides an Anthropic and OpenAI compatible interface over Claude Code, allowing to use your Claude OAuth account or over the API.  
 
 ## Features
 
 - **Anthropic API Compatible**: Drop-in replacement for Anthropic's API endpoints
 - **OpenAI API Compatible**: Supports OpenAI chat completion format for easy migration
-- **Request Forwarding**: Seamlessly forwards requests to Claude using the official Python SDK
-- **Type Safety**: Built with strict TypeScript-like typing using mypy
-- **High Performance**: Optimized for low latency and high throughput
-- **Easy Setup**: Simple configuration and deployment
-- **Monitoring**: Built-in request/response logging and metrics
-- **Secure**: Proper API key management and request validation
+- **Request Forwarding**: Seamlessly forwards requests to Claude using the official Claude Code Python SDK
 
 ## Quick Start
 
 ### Prerequisites
 
 - Python 3.11 or higher
-- An Anthropic API key
+- Claude Code SDK (authentication handled automatically)
 
 ### Installation
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/your-username/claude-proxy.git
-cd claude-proxy
+git clone https://github.com/your-username/claude-code-proxy-api.git
+cd claude-code-proxy-api
 ```
 
 2. Install dependencies using uv (recommended):
@@ -38,10 +33,10 @@ Or using pip:
 pip install -e .
 ```
 
-3. Set up your environment variables:
+3. Optional environment variables:
 ```bash
-export ANTHROPIC_API_KEY="your-api-key-here"
 export PORT=8000  # Optional, defaults to 8000
+export LOG_LEVEL=INFO  # Optional, defaults to INFO
 ```
 
 ### Running the Server
@@ -118,11 +113,7 @@ Add `"stream": true` to your request for streaming responses:
 
 ### Supported Models
 
-- `claude-3-opus-20240229`
-- `claude-3-sonnet-20240229`
-- `claude-3-haiku-20240307`
-- `claude-3-5-sonnet-20241022`
-- `claude-3-5-haiku-20241022`
+Claude Code works with Claude Opus 4, Claude Sonnet 4, and Claude Haiku 3.5 models. Enterprise users can run Claude Code using models in existing Amazon Bedrock or Google Cloud Vertex AI instances.
 
 ## Configuration
 
@@ -130,12 +121,9 @@ Add `"stream": true` to your request for streaming responses:
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `ANTHROPIC_API_KEY` | Your Anthropic API key | Required |
 | `PORT` | Server port | `8000` |
 | `HOST` | Server host | `0.0.0.0` |
 | `LOG_LEVEL` | Logging level | `INFO` |
-| `MAX_TOKENS_LIMIT` | Maximum tokens per request | `4096` |
-| `RATE_LIMIT_REQUESTS` | Requests per minute limit | `60` |
 
 ### Configuration File
 
@@ -211,17 +199,16 @@ pre-commit install
 ### Build Docker Image
 
 ```bash
-docker build -t claude-proxy .
+docker build -t claude-code-proxy-api .
 ```
 
 ### Run Container
 
 ```bash
 docker run -d \
-  --name claude-proxy \
+  --name claude-code-proxy-api \
   -p 8000:8000 \
-  -e ANTHROPIC_API_KEY=your-api-key \
-  claude-proxy
+  claude-code-proxy-api
 ```
 
 ### Docker Compose
@@ -229,12 +216,11 @@ docker run -d \
 ```yaml
 version: '3.8'
 services:
-  claude-proxy:
+  claude-code-proxy-api:
     build: .
     ports:
       - "8000:8000"
     environment:
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - LOG_LEVEL=INFO
     restart: unless-stopped
 ```
@@ -378,8 +364,8 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ## Support
 
 - Email: support@example.com
-- Issues: [GitHub Issues](https://github.com/your-username/claude-proxy/issues)
-- Documentation: [Wiki](https://github.com/your-username/claude-proxy/wiki)
+- Issues: [GitHub Issues](https://github.com/your-username/claude-code-proxy-api/issues)
+- Documentation: [Wiki](https://github.com/your-username/claude-code-proxy-api/wiki)
 
 ## Acknowledgments
 

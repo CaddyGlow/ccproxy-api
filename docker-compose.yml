@@ -1,5 +1,5 @@
 services:
-  claude-proxy:
+  claude-code-proxy-api:
     build:
       context: .
       dockerfile: Dockerfile
@@ -9,7 +9,6 @@ services:
       - HOST=0.0.0.0
       - PORT=8000
       - LOG_LEVEL=INFO
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - CLAUDE_USER=claude
       - CLAUDE_GROUP=claude
       - CLAUDE_WORKING_DIRECTORY=/tmp/claude-workspace
@@ -25,9 +24,9 @@ services:
       retries: 3
       start_period: 5s
     networks:
-      - claude-proxy-network
+      - claude-code-proxy-network
 
 networks:
-  claude-proxy-network:
+  claude-code-proxy-network:
     driver: bridge
 

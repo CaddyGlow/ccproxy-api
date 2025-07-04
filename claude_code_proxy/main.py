@@ -9,7 +9,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from claude_proxy.config.settings import get_settings
+from claude_code_proxy.config.settings import get_settings
 
 
 # Configure logging
@@ -24,18 +24,30 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Application lifespan manager."""
     # Startup
-    logger.info("Starting Claude Proxy API Server...")
+    logger.info("Starting Claude Code Proxy API Server...")
     settings = get_settings()
     logger.info(f"Server configured for host: {settings.host}, port: {settings.port}")
 
+    # Log Claude CLI configuration
+    if settings.claude_cli_path:
+        logger.info(f"Claude CLI configured at: {settings.claude_cli_path}")
+    else:
+        logger.info("Claude CLI path: Auto-detect at runtime")
+        logger.info("Auto-detection will search the following locations:")
+        for path in settings.get_searched_paths():
+            logger.info(f"  - {path}")
+
     # Configure secure Claude SDK with privilege dropping
-    from claude_proxy.utils.secure_claude_sdk import configure_secure_claude_sdk
+    from claude_code_proxy.utils.secure_claude_sdk import configure_secure_claude_sdk
+
     configure_secure_claude_sdk(
         user=settings.claude_user,
         group=settings.claude_group,
         working_directory=settings.claude_working_directory,
     )
-    logger.info(f"Configured secure Claude SDK with user: {settings.claude_user}, group: {settings.claude_group}, cwd: {settings.claude_working_directory}")
+    logger.info(
+        f"Configured secure Claude SDK with user: {settings.claude_user}, group: {settings.claude_group}, cwd: {settings.claude_working_directory}"
+    )
 
     yield
 
@@ -70,8 +82,8 @@ def create_app() -> FastAPI:
         return {"status": "healthy", "service": "claude-proxy"}
 
     # Include API routes
-    from claude_proxy.api.openai import chat_router, models_router
-    from claude_proxy.api.v1 import chat
+    from claude_code_proxy.api.openai import chat_router, models_router
+    from claude_code_proxy.api.v1 import chat
 
     # Anthropic-compatible endpoints
     app.include_router(chat.router, prefix="/v1")

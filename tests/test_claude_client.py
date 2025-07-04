@@ -3,9 +3,10 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from claude_code_sdk import ClaudeCodeOptions
 
-from claude_proxy.exceptions import ClaudeProxyError, ServiceUnavailableError
-from claude_proxy.services.claude_client import ClaudeClient
+from claude_code_proxy.exceptions import ClaudeProxyError, ServiceUnavailableError
+from claude_code_proxy.services.claude_client import ClaudeClient
 
 
 class TestClaudeClient:
@@ -14,28 +15,26 @@ class TestClaudeClient:
     def test_init(self):
         """Test client initialization."""
         client = ClaudeClient(
-            api_key="test-key",
             claude_cli_path="/test/path/claude",
             default_model="claude-3-5-sonnet-20241022",
             max_tokens=1000,
             temperature=0.5,
+            claude_code_options=ClaudeCodeOptions(permission_mode=\"strict\"),
         )
-
-        assert client.api_key == "test-key"
-        assert client.claude_cli_path == "/test/path/claude"
-        assert client.default_model == "claude-3-5-sonnet-20241022"
+        assert client.claude_cli_path == \"/test/path/claude\"
+        assert client.default_model == \"claude-3-5-sonnet-20241022\"
         assert client.max_tokens == 1000
         assert client.temperature == 0.5
+        assert client.claude_code_options.permission_mode == \"strict\"
 
     def test_init_defaults(self):
         """Test client initialization with defaults."""
         client = ClaudeClient()
-
-        assert client.api_key is None
         assert client.claude_cli_path is None
         assert client.default_model == "claude-3-5-sonnet-20241022"
         assert client.max_tokens == 8192
         assert client.temperature == 0.7
+        assert isinstance(client.claude_code_options, ClaudeCodeOptions)
 
     def test_format_messages_to_prompt(self):
         """Test _format_messages_to_prompt method."""
@@ -135,7 +134,7 @@ class TestClaudeClient:
         assert result == expected
 
     @pytest.mark.asyncio
-    @patch("claude_proxy.services.claude_client.query")
+    @patch("claude_code_proxy.utils.secure_claude_sdk.secure_query")
     async def test_create_completion_non_streaming(self, mock_query):
         """Test create_completion for non-streaming."""
         from claude_code_sdk import AssistantMessage, ResultMessage, TextBlock
@@ -172,7 +171,7 @@ class TestClaudeClient:
         assert result["content"][0]["text"] == "Hello there!"
 
     @pytest.mark.asyncio
-    @patch("claude_proxy.services.claude_client.query")
+    @patch("claude_code_proxy.utils.secure_claude_sdk.secure_query")
     async def test_create_completion_streaming(self, mock_query):
         """Test create_completion for streaming."""
         from claude_code_sdk import AssistantMessage, ResultMessage, TextBlock
@@ -241,7 +240,7 @@ class TestClaudeClient:
         # Should not raise any errors
 
     @pytest.mark.asyncio
-    @patch("claude_proxy.services.claude_client.query")
+    @patch("claude_code_proxy.utils.secure_claude_sdk.secure_query")
     async def test_cli_not_found_error(self, mock_query):
         """Test handling of CLI not found error."""
         from claude_code_sdk import CLINotFoundError
@@ -256,7 +255,7 @@ class TestClaudeClient:
         assert "Claude CLI not available" in str(exc_info.value)
 
     @pytest.mark.asyncio
-    @patch("claude_proxy.services.claude_client.query")
+    @patch("claude_code_proxy.utils.secure_claude_sdk.secure_query")
     async def test_process_error(self, mock_query):
         """Test handling of process error."""
         from claude_code_sdk import ProcessError
@@ -272,7 +271,7 @@ class TestClaudeClient:
         assert exc_info.value.status_code == 503
 
     @pytest.mark.asyncio
-    @patch("claude_proxy.services.claude_client.query")
+    @patch("claude_code_proxy.utils.secure_claude_sdk.secure_query")
     async def test_unexpected_error(self, mock_query):
         """Test handling of unexpected error."""
         mock_query.side_effect = RuntimeError("Unexpected error")

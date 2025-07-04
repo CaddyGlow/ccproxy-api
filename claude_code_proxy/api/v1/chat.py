@@ -8,19 +8,19 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
-from claude_proxy.config.settings import get_settings
-from claude_proxy.exceptions import (
+from claude_code_proxy.config.settings import get_settings
+from claude_code_proxy.exceptions import (
     ClaudeProxyError,
     ModelNotFoundError,
     ServiceUnavailableError,
     TimeoutError,
     ValidationError,
 )
-from claude_proxy.models.errors import create_error_response
-from claude_proxy.models.requests import ChatCompletionRequest
-from claude_proxy.models.responses import ChatCompletionResponse
-from claude_proxy.services.claude_client import ClaudeClient
-from claude_proxy.services.streaming import stream_claude_response
+from claude_code_proxy.models.errors import create_error_response
+from claude_code_proxy.models.requests import ChatCompletionRequest
+from claude_code_proxy.models.responses import ChatCompletionResponse
+from claude_code_proxy.services.claude_client import ClaudeClient
+from claude_code_proxy.services.streaming import stream_claude_response
 
 
 logger = logging.getLogger(__name__)
@@ -72,7 +72,6 @@ async def create_chat_completion(
 
         # Initialize Claude client
         claude_client = ClaudeClient(
-            api_key=settings.anthropic_api_key,
             claude_cli_path=settings.claude_cli_path,
         )
 

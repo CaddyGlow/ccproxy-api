@@ -10,16 +10,16 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from starlette.status import HTTP_500_INTERNAL_SERVER_ERROR
 
-from claude_proxy.config.settings import get_settings
-from claude_proxy.exceptions import ClaudeProxyError
-from claude_proxy.models.openai_models import (
+from claude_code_proxy.config.settings import get_settings
+from claude_code_proxy.exceptions import ClaudeProxyError
+from claude_code_proxy.models.openai_models import (
     OpenAIChatCompletionRequest,
     OpenAIChatCompletionResponse,
     OpenAIErrorResponse,
 )
-from claude_proxy.services.claude_client import ClaudeClient
-from claude_proxy.services.openai_streaming import stream_claude_response_openai
-from claude_proxy.services.translator import OpenAITranslator
+from claude_code_proxy.services.claude_client import ClaudeClient
+from claude_code_proxy.services.openai_streaming import stream_claude_response_openai
+from claude_code_proxy.services.translator import OpenAITranslator
 
 
 logger = logging.getLogger(__name__)

@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter
 
-from claude_proxy.models.openai_models import OpenAIModelsResponse
+from claude_code_proxy.models.openai_models import OpenAIModelsResponse
 
 
 router = APIRouter()

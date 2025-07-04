@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
-from claude_proxy.exceptions import ModelNotFoundError, ServiceUnavailableError
+from claude_code_proxy.exceptions import ModelNotFoundError, ServiceUnavailableError
 
 
 class TestChatCompletionsEndpoint:
@@ -21,7 +21,7 @@ class TestChatCompletionsEndpoint:
         assert data["status"] == "healthy"
         assert data["service"] == "claude-proxy"
 
-    @patch("claude_proxy.api.v1.chat.ClaudeClient")
+    @patch("claude_code_proxy.api.v1.chat.ClaudeClient")
     def test_successful_chat_completion(
         self,
         mock_claude_client_class,
@@ -82,7 +82,7 @@ class TestChatCompletionsEndpoint:
 
         assert response.status_code == 422  # Validation error
 
-    @patch("claude_proxy.api.v1.chat.ClaudeClient")
+    @patch("claude_code_proxy.api.v1.chat.ClaudeClient")
     def test_streaming_chat_completion(
         self,
         mock_claude_client_class,
@@ -124,7 +124,7 @@ class TestChatCompletionsEndpoint:
         assert "data: " in content
         assert "[DONE]" in content
 
-    @patch("claude_proxy.api.v1.chat.ClaudeClient")
+    @patch("claude_code_proxy.api.v1.chat.ClaudeClient")
     def test_claude_client_error(
         self,
         mock_claude_client_class,
@@ -150,7 +150,7 @@ class TestChatCompletionsEndpoint:
 class TestModelsEndpoint:
     """Test /v1/models endpoint."""
 
-    @patch("claude_proxy.api.v1.chat.ClaudeClient")
+    @patch("claude_code_proxy.api.v1.chat.ClaudeClient")
     def test_list_models_success(
         self,
         mock_claude_client_class,
@@ -172,7 +172,7 @@ class TestModelsEndpoint:
         assert data["data"][0]["id"] == "claude-3-opus-20240229"
         assert data["data"][1]["id"] == "claude-3-5-sonnet-20241022"
 
-    @patch("claude_proxy.api.v1.chat.ClaudeClient")
+    @patch("claude_code_proxy.api.v1.chat.ClaudeClient")
     def test_list_models_error(self, mock_claude_client_class, test_client: TestClient):
         """Test models listing with error."""
         mock_client = AsyncMock()
@@ -219,7 +219,7 @@ class TestErrorHandling:
 class TestCORSHeaders:
     """Test CORS headers."""
 
-    @patch("claude_proxy.api.v1.chat.ClaudeClient")
+    @patch("claude_code_proxy.api.v1.chat.ClaudeClient")
     def test_cors_functionality(
         self,
         mock_claude_client_class,
@@ -249,7 +249,7 @@ class TestCORSHeaders:
         assert "content" in data
         assert data["type"] == "message"
 
-    @patch("claude_proxy.api.v1.chat.ClaudeClient")
+    @patch("claude_code_proxy.api.v1.chat.ClaudeClient")
     def test_streaming_cors_headers(
         self,
         mock_claude_client_class,

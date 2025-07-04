@@ -1,5 +1,5 @@
 [project]
-name = "claude-proxy"
+name = "claude-code-proxy-api"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
@@ -7,7 +7,7 @@ requires-python = ">=3.11"
 dependencies = [
   "anthropic>=0.57.1",
   "claude-code-sdk>=0.0.14", # Using GitHub version with PR #60 fix
-  "fastapi>=0.115.14",
+  "fastapi[standard]>=0.115.14",
   "httpx>=0.28.1",
   "openai>=1.93.0",
   "pydantic>=2.8.0",
@@ -28,7 +28,7 @@ dev = [
 ]
 
 [tool.coverage.run]
-include = ["claude_proxy", "tests"]
+include = ["claude_code_proxy", "tests"]
 
 [tool.ruff]
 target-version = "py311"
@@ -73,7 +73,7 @@ quote-style = "double"
 indent-style = "space"
 
 [tool.ruff.lint.isort]
-known-first-party = ["glovebox"]
+known-first-party = ["claude_code_proxy"]
 force-single-line = false
 lines-after-imports = 2
 

@@ -2,7 +2,7 @@
 
 import pytest
 
-from claude_proxy.services.streaming import (
+from claude_code_proxy.services.streaming import (
     StreamingFormatter,
     stream_claude_response,
 )

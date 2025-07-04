@@ -9,9 +9,9 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from fastapi.testclient import TestClient
 
-from claude_proxy.config.settings import Settings
-from claude_proxy.main import create_app
-from claude_proxy.services.claude_client import ClaudeClient
+from claude_code_proxy.config.settings import Settings
+from claude_code_proxy.main import create_app
+from claude_code_proxy.services.claude_client import ClaudeClient
 
 
 @pytest.fixture(scope="session")

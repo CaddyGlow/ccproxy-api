@@ -19,12 +19,12 @@ from claude_code_sdk import (
     UserMessage,
 )
 
-from claude_proxy.exceptions import (
+from claude_code_proxy.exceptions import (
     ClaudeProxyError,
     ServiceUnavailableError,
     TimeoutError,
 )
-from claude_proxy.utils.secure_claude_sdk import secure_query
+from claude_code_proxy.utils.secure_claude_sdk import secure_query
 
 
 logger = logging.getLogger(__name__)
@@ -51,7 +51,6 @@ class ClaudeClient:
     def __init__(
         self,
         *,
-        api_key: str | None = None,
         default_model: str = "claude-3-5-sonnet-20241022",
         max_tokens: int = 8192,
         temperature: float = 0.7,
@@ -62,14 +61,12 @@ class ClaudeClient:
         Initialize Claude client.
 
         Args:
-            api_key: Anthropic API key (optional, can be set via environment)
             default_model: Default Claude model to use
             max_tokens: Maximum tokens for responses
             temperature: Temperature for response generation
             system_prompt: Default system prompt
             claude_cli_path: Path to Claude CLI executable
         """
-        self.api_key = api_key
         self.default_model = default_model
         self.max_tokens = max_tokens
         self.temperature = temperature

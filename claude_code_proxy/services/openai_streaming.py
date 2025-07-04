@@ -7,7 +7,7 @@ import uuid
 from collections.abc import AsyncGenerator
 from typing import Any
 
-from claude_proxy.models.errors import ErrorDetail, StreamingError
+from claude_code_proxy.models.errors import ErrorDetail, StreamingError
 
 
 logger = logging.getLogger(__name__)

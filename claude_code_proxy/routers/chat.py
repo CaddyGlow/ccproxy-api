@@ -10,9 +10,9 @@ from starlette.status import (
     HTTP_500_INTERNAL_SERVER_ERROR,
 )
 
-from claude_proxy.config.settings import Settings, get_settings
-from claude_proxy.models.requests import ChatCompletionRequest
-from claude_proxy.models.responses import (
+from claude_code_proxy.config.settings import Settings, get_settings
+from claude_code_proxy.models.requests import ChatCompletionRequest
+from claude_code_proxy.models.responses import (
     APIError,
     ChatCompletionResponse,
     ErrorResponse,
@@ -21,7 +21,7 @@ from claude_proxy.models.responses import (
     RateLimitError,
     StreamingChatCompletionResponse,
 )
-from claude_proxy.services.claude_client import ClaudeClient, ClaudeClientError
+from claude_code_proxy.services.claude_client import ClaudeClient, ClaudeClientError
 
 
 logger = logging.getLogger(__name__)
@@ -32,7 +32,6 @@ router = APIRouter(prefix="/v1", tags=["chat"])
 def get_claude_client(settings: Settings = Depends(get_settings)) -> ClaudeClient:
     """Get Claude client instance."""
     return ClaudeClient(
-        api_key=settings.anthropic_api_key,
         default_model="claude-3-5-sonnet-20241022",
         max_tokens=8192,
         temperature=0.7,

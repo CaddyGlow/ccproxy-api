@@ -3,18 +3,18 @@
 import pytest
 from pydantic import ValidationError
 
-from claude_proxy.models.errors import (
+from claude_code_proxy.models.errors import (
     AnthropicError,
     InvalidRequestError,
     create_error_response,
 )
-from claude_proxy.models.requests import (
+from claude_code_proxy.models.requests import (
     ChatCompletionRequest,
     ImageContent,
     Message,
     TextContent,
 )
-from claude_proxy.models.responses import ChatCompletionResponse
+from claude_code_proxy.models.responses import ChatCompletionResponse
 
 
 class TestChatCompletionRequest:
