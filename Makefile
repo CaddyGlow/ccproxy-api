@@ -1,4 +1,4 @@
-.PHONY: help install dev-install clean test lint typecheck format check ci build docker-build docker-run
+.PHONY: help install dev-install clean test lint typecheck format check ci build docker-build docker-run docs-install docs-build docs-serve docs-clean
 
 # Default target
 help:
@@ -15,6 +15,10 @@ help:
 	@echo "  build        - Build Python package"
 	@echo "  docker-build - Build Docker image"
 	@echo "  docker-run   - Run Docker container"
+	@echo "  docs-install - Install documentation dependencies"
+	@echo "  docs-build   - Build documentation"
+	@echo "  docs-serve   - Serve documentation locally"
+	@echo "  docs-clean   - Clean documentation build files"
 
 # Installation targets
 install:
@@ -86,6 +90,24 @@ docker-compose-down:
 # Development server
 dev:
 	uv run fastapi dev claude_code_proxy/main.py
+
+# Documentation targets
+docs-install:
+	uv sync --group docs
+
+docs-build: docs-install
+	./scripts/build-docs.sh
+
+docs-serve: docs-install
+	./scripts/serve-docs.sh
+
+docs-clean:
+	rm -rf site/
+	rm -rf docs/.cache/
+
+docs-deploy: docs-build
+	@echo "Documentation built and ready for deployment"
+	@echo "Upload the 'site/' directory to your web server"
 
 # Quick development setup
 setup: dev-install

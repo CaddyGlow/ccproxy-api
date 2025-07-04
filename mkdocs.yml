@@ -1,0 +1,271 @@
+site_name: Claude Code Proxy API
+site_description: High-performance API server that provides Anthropic and OpenAI-compatible interfaces for Claude AI models
+site_url: https://your-username.github.io/claude-proxy
+repo_url: https://github.com/your-username/claude-proxy
+repo_name: your-username/claude-proxy
+edit_uri: edit/main/docs/
+
+# Theme configuration
+theme:
+  name: material
+  palette:
+    # Palette toggle for light mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: deep purple
+      accent: purple
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    # Palette toggle for dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: deep purple
+      accent: purple
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - navigation.path
+    - navigation.top
+    - search.highlight
+    - search.share
+    - search.suggest
+    - toc.follow
+    - content.code.copy
+    - content.code.select
+    - content.code.annotate
+    - content.action.edit
+    - content.action.view
+    - navigation.footer
+
+  icon:
+    repo: fontawesome/brands/github
+    edit: material/pencil
+    view: material/eye
+    
+  logo: assets/logo.png
+  favicon: assets/favicon.ico
+
+# Navigation structure
+nav:
+  - Home: index.md
+  - Getting Started:
+    - Quick Start: getting-started/quickstart.md
+    - Installation: getting-started/installation.md
+    - Configuration: getting-started/configuration.md
+  - User Guide:
+    - API Usage: user-guide/api-usage.md
+    - Authentication: user-guide/authentication.md
+    - Streaming: user-guide/streaming.md
+    - Error Handling: user-guide/error-handling.md
+  - API Reference:
+    - Overview: api-reference/overview.md
+    - Anthropic Endpoints: api-reference/anthropic.md
+    - OpenAI Endpoints: api-reference/openai.md
+    - Models: api-reference/models.md
+    - Health Check: api-reference/health.md
+  - Developer Guide:
+    - Architecture: developer-guide/architecture.md
+    - Development Setup: developer-guide/development.md
+    - Testing: developer-guide/testing.md
+    - Contributing: developer-guide/contributing.md
+  - Deployment:
+    - Docker: deployment/docker.md
+    - Production: deployment/production.md
+    - Kubernetes: deployment/kubernetes.md
+    - Monitoring: deployment/monitoring.md
+  - Code Reference:
+    - API Modules: reference/api/
+    - Services: reference/services/
+    - Models: reference/models/
+    - Configuration: reference/config/
+    - CLI: reference/cli/
+  - Examples:
+    - Python Client: examples/python-client.md
+    - curl Examples: examples/curl.md
+    - JavaScript: examples/javascript.md
+    - OpenAI SDK: examples/openai-sdk.md
+
+# Plugins
+plugins:
+  - search:
+      separator: '[\s\-,:!=\[\]()"`/]+|\.(?!\d)|&[lg]t;|(?!\b)(?=[A-Z][a-z])'
+  - section-index
+  - gen-files:
+      scripts:
+        - docs/gen_ref_pages.py
+  - literate-nav:
+      nav_file: SUMMARY.md
+  - mkdocstrings:
+      enabled: !ENV [ENABLE_MKDOCSTRINGS, true]
+      default_handler: python
+      handlers:
+        python:
+          import:
+            - https://docs.python.org/3/objects.inv
+            - https://docs.pydantic.dev/latest/objects.inv
+            - https://fastapi.tiangolo.com/objects.inv
+          options:
+            docstring_style: google
+            docstring_options:
+              ignore_init_summary: true
+            merge_init_into_class: true
+            show_submodules: true
+            show_source: true
+            show_root_heading: true
+            show_root_toc_entry: true
+            show_symbol_type_heading: true
+            show_symbol_type_toc: true
+            signature_crossrefs: true
+            separate_signature: true
+            heading_level: 2
+            members_order: source
+            filters:
+              - "!^_"
+              - "!__init__"
+  - swagger-ui-tag:
+      background: White
+      docExpansion: none
+      filter: true
+      supportedSubmitMethods:
+        - get
+        - post
+        - put
+        - delete
+        - patch
+  - include-markdown:
+      preserve_includer_indent: false
+      dedent: false
+      trailing_newlines: true
+      comments: true
+  - mermaid2:
+      arguments:
+        theme: |
+          ^(light|dark|auto)$
+  - glightbox:
+      touchNavigation: true
+      loop: false
+      effect: zoom
+      slide_effect: slide
+      width: 100%
+      height: auto
+      zoomable: true
+      draggable: true
+      skip_classes:
+        - custom-skip-class-name
+      auto_caption: false
+      caption_position: bottom
+  - minify:
+      minify_html: !ENV [MKDOCS_MINIFY_HTML, false]
+      minify_js: !ENV [MKDOCS_MINIFY_JS, false]
+      minify_css: !ENV [MKDOCS_MINIFY_CSS, false]
+      htmlmin_opts:
+        remove_comments: true
+      cache_safe: true
+  - redirects:
+      redirect_maps:
+        'old-page.md': 'new-page.md'
+
+# Markdown extensions
+markdown_extensions:
+  - abbr
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - toc:
+      permalink: true
+      permalink_title: Anchor link to this section for reference
+  - tables
+  - pymdownx.arithmatex:
+      generic: true
+  - pymdownx.betterem:
+      smart_enable: all
+  - pymdownx.caret
+  - pymdownx.details
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.keys
+  - pymdownx.magiclink:
+      normalize_issue_symbols: true
+      repo_url_shorthand: true
+      user: your-username
+      repo: claude-proxy
+  - pymdownx.mark
+  - pymdownx.smartsymbols
+  - pymdownx.snippets:
+      auto_append:
+        - includes/abbreviations.md
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+      combine_header_slug: true
+      slugify: !!python/object/apply:pymdownx.slugs.slugify
+        kwds:
+          case: lower
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - pymdownx.tilde
+
+# Extra configuration
+extra:
+  version:
+    provider: mike
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/your-username/claude-proxy
+    - icon: fontawesome/brands/python
+      link: https://pypi.org/project/claude-code-proxy-api/
+  analytics:
+    provider: google
+    property: !ENV GOOGLE_ANALYTICS_KEY
+  consent:
+    title: Cookie consent
+    description: >- 
+      We use cookies to recognize your repeated visits and preferences, as well
+      as to measure the effectiveness of our documentation and whether users
+      find what they're searching for. With your consent, you're helping us to
+      make our documentation better.
+
+# Development server
+dev_addr: '127.0.0.1:8080'
+
+# Watch additional files
+watch:
+  - claude_code_proxy/
+  - README.md
+  - CHANGELOG.md
+
+# Extra CSS and JavaScript
+extra_css:
+  - assets/extra.css
+
+extra_javascript:
+  - assets/extra.js
+  - https://polyfill.io/v3/polyfill.min.js?features=es6
+  - https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js
+
+# Validation
+validation:
+  omitted_files: warn
+  absolute_links: warn
+  unrecognized_links: warn
+
+# Copyright
+copyright: Copyright &copy; 2024 Claude Code Proxy Contributors

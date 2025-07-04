@@ -417,10 +417,10 @@ Client Request
 
 ```dockerfile
 # Multi-stage build for optimization
-FROM python:3.11-slim as builder
+FROM python:3.12-slim as builder
 # Build dependencies and application
 
-FROM python:3.11-slim as runtime
+FROM python:3.12-slim as runtime
 # Runtime environment and application
 ```
 

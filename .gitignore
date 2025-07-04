@@ -64,7 +64,11 @@ build
 .serena
 
 workspace/
+
+# MkDocs
 site/
+docs/.cache/
+.mkdocs_cache/
 
 # Node.js / JavaScript
 node_modules/

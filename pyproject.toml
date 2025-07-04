@@ -44,6 +44,20 @@ dev = [
   "pytest-env>=0.8.0",
   "tox>=4.27.0",
 ]
+docs = [
+  "mkdocs>=1.5.3",
+  "mkdocs-material>=9.5.0",
+  "mkdocstrings[python]>=0.24.0",
+  "mkdocs-gen-files>=0.5.0",
+  "mkdocs-literate-nav>=0.6.0",
+  "mkdocs-section-index>=0.3.0",
+  "mkdocs-swagger-ui-tag>=0.6.0",
+  "mkdocs-include-markdown-plugin>=6.0.0",
+  "mkdocs-mermaid2-plugin>=1.1.0",
+  "mkdocs-glightbox>=0.3.0",
+  "mkdocs-minify-plugin>=0.7.0",
+  "mkdocs-redirects>=1.2.0",
+]
 
 [tool.coverage.run]
 include = ["claude_code_proxy", "tests"]

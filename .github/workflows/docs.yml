@@ -1,0 +1,116 @@
+name: Documentation
+
+on:
+  push:
+    branches: [main, dev]
+    paths:
+      - "docs/**"
+      - "claude_code_proxy/**"
+      - "mkdocs.yml"
+      - "pyproject.toml"
+      - ".github/workflows/docs.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "docs/**"
+      - "claude_code_proxy/**"
+      - "mkdocs.yml"
+      - "pyproject.toml"
+      - ".github/workflows/docs.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.13"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --group docs
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+
+      - name: Build documentation
+        run: |
+          uv run mkdocs build --clean --verbose
+        env:
+          ENABLE_MKDOCSTRINGS: true
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./site
+
+  deploy:
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --group docs
+
+      - name: Check documentation links
+        run: |
+          uv run mkdocs build --clean --verbose --strict
+        env:
+          ENABLE_MKDOCSTRINGS: true
+
+      - name: Check for broken links
+        run: |
+          # Install linkchecker if needed
+          pip install linkchecker
+          # Start a local server
+          uv run mkdocs serve --dev-addr 127.0.0.1:8000 &
+          SERVER_PID=$!
+          sleep 5
+          # Check for broken links
+          linkchecker http://127.0.0.1:8000 --check-extern --ignore-url=".*localhost.*" --ignore-url=".*127\.0\.0\.1.*" || true
+          # Kill the server
+          kill $SERVER_PID
+

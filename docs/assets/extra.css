@@ -1,0 +1,72 @@
+/* Custom CSS for Claude Code Proxy documentation */
+
+:root {
+  --md-primary-fg-color: #663399;
+  --md-primary-fg-color--light: #8855bb;
+  --md-primary-fg-color--dark: #442266;
+}
+
+/* Custom styling for code blocks */
+.highlight .hll { background-color: #ffffcc }
+.highlight .c { color: #999999; font-style: italic }
+.highlight .k { color: #663399; font-weight: bold }
+.highlight .s { color: #d14 }
+
+/* API endpoint styling */
+.api-endpoint {
+  background: var(--md-code-bg-color);
+  border-left: 4px solid var(--md-primary-fg-color);
+  padding: 1rem;
+  margin: 1rem 0;
+  border-radius: 4px;
+}
+
+.api-method {
+  font-weight: bold;
+  color: var(--md-primary-fg-color);
+}
+
+/* Status code styling */
+.status-code {
+  display: inline-block;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-size: 0.8em;
+  font-weight: bold;
+}
+
+.status-code.success { background-color: #d4edda; color: #155724; }
+.status-code.error { background-color: #f8d7da; color: #721c24; }
+.status-code.warning { background-color: #fff3cd; color: #856404; }
+
+/* Model support table styling */
+.model-table {
+  width: 100%;
+  margin: 1rem 0;
+}
+
+.model-table th {
+  background-color: var(--md-primary-fg-color);
+  color: white;
+}
+
+/* Custom admonition types */
+.md-typeset .admonition.endpoint {
+  border-color: var(--md-primary-fg-color);
+}
+
+.md-typeset .admonition.endpoint > .admonition-title::before {
+  background-color: var(--md-primary-fg-color);
+  -webkit-mask-image: var(--md-admonition-icon--endpoint);
+  mask-image: var(--md-admonition-icon--endpoint);
+}
+
+/* Code highlighting for specific languages */
+.language-http .highlight .nf { color: #663399; font-weight: bold; }
+.language-json .highlight .nt { color: #663399; font-weight: bold; }
+
+/* Responsive images */
+.md-typeset img {
+  max-width: 100%;
+  height: auto;
+}

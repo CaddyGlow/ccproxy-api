@@ -1,30 +1,44 @@
 # Claude Code Proxy API Server
 
-A high-performance API server that provides both Anthropic and OpenAI-compatible interfaces for Claude AI models. This proxy enables you to use your Claude OAuth account or API access through familiar API endpoints, making it easy to integrate Claude into existing applications.
+A personal API proxy server that enables you to use your existing Claude subscription through familiar API interfaces. This tool runs locally on your computer and leverages Claude OAuth2 authentication, allowing you to use your Claude subscription without paying for separate API access.
+
+## Why Use This Tool?
+
+### Personal Access to Your Claude Subscription
+- **Use Your Existing Subscription**: Leverage your Claude Pro or Team subscription instead of paying for API access
+- **OAuth2 Authentication**: Uses your existing Claude account authentication
+- **Local Execution**: Runs securely on your personal computer
+- **Docker Isolation**: Optional Docker support for isolated Claude Code execution
+
+### Developer-Friendly API Access
+- **Dual API Compatibility**: Full support for both Anthropic and OpenAI API formats
+- **Existing Tool Integration**: Drop-in replacement for applications expecting OpenAI or Anthropic APIs
+- **Streaming Support**: Real-time response streaming for both API formats
+- **Local Development**: Perfect for personal projects and local development
 
 ## Features
 
 ### Core Capabilities
-- **Dual API Compatibility**: Full support for both Anthropic and OpenAI API formats
-- **Streaming Support**: Real-time response streaming for both API formats
-- **Request Translation**: Seamless format conversion between OpenAI and Anthropic formats
-- **Claude CLI Integration**: Uses the official Claude Code Python SDK for authentication
-- **Auto-detection**: Smart Claude CLI path resolution and configuration
+- **Claude OAuth2 Integration**: Uses your Claude account authentication through Claude Code SDK
+- **Personal API Server**: Runs locally on your computer (localhost)
+- **Dual API Compatibility**: Supports both Anthropic and OpenAI API formats
+- **Request Translation**: Seamless format conversion between API types
+- **Streaming Support**: Real-time response streaming
+- **Docker Support**: Optional containerized execution for better isolation
 
-### Production Features
-- **Docker Support**: Production-ready containerization with multi-stage builds
-- **Health Monitoring**: Built-in health checks and metrics endpoints
-- **Error Handling**: Comprehensive error handling with detailed error responses
-- **Rate Limiting**: Built-in protection against API abuse
-- **CORS Support**: Cross-origin request handling for web applications
-- **Structured Logging**: JSON-formatted logs for monitoring and debugging
+### Security & Privacy
+- **Local Execution**: All processing happens on your computer
+- **No API Keys Required**: Uses your existing Claude subscription via OAuth2
+- **Secure Authentication**: Leverages Claude's official authentication system
+- **Optional Isolation**: Docker support for sandboxed Claude Code execution
 
 ## Quick Start
 
 ### Prerequisites
 
 - Python 3.11 or higher
-- Claude Code SDK (authentication handled automatically)
+- Claude account with an active subscription (Pro, Team, or Enterprise)
+- Claude Code CLI (will be set up automatically)
 
 ### Installation
 
@@ -44,13 +58,13 @@ Or using pip:
 pip install -e .
 ```
 
-3. Optional environment variables:
+3. Optional: Configure environment variables:
 ```bash
 export PORT=8000  # Optional, defaults to 8000
 export LOG_LEVEL=INFO  # Optional, defaults to INFO
 ```
 
-### Running the Server
+### Running Your Personal Proxy
 
 ```bash
 # Using uv
@@ -60,21 +74,41 @@ uv run python main.py
 python main.py
 ```
 
-The server will start on `http://localhost:8000` by default.
+The proxy will start on `http://localhost:8000` and automatically handle Claude authentication.
 
-## API Endpoints
+## Using Your Personal Proxy
 
-### Anthropic-Compatible Endpoints
+### With Your Existing Applications
 
-#### Chat Completions
+Once running, you can point any application that uses OpenAI or Anthropic APIs to your local proxy:
+
+**For OpenAI-compatible applications:**
+```bash
+# Set base URL to your local proxy
+export OPENAI_BASE_URL="http://localhost:8000/openai/v1"
+export OPENAI_API_KEY="dummy-key"  # Required by client libraries but not used
+```
+
+**For Anthropic-compatible applications:**
+```bash
+# Set base URL to your local proxy
+export ANTHROPIC_BASE_URL="http://localhost:8000"
+export ANTHROPIC_API_KEY="dummy-key"  # Required by client libraries but not used
+```
+
+### API Endpoints
+
+#### Anthropic-Compatible Endpoints
+
+**Chat Completions:**
 ```http
 POST /v1/chat/completions
 ```
 
-**Request Body:**
+**Example request:**
 ```json
 {
-  "model": "claude-3-5-sonnet-20241022",
+  "model": "claude-sonnet-4-20250514",
   "messages": [
     {
       "role": "user",
@@ -86,80 +120,41 @@ POST /v1/chat/completions
 }
 ```
 
-**Response:**
-```json
-{
-  "id": "chatcmpl-123",
-  "object": "chat.completion",
-  "created": 1677652288,
-  "model": "claude-3-5-sonnet-20241022",
-  "choices": [
-    {
-      "index": 0,
-      "message": {
-        "role": "assistant",
-        "content": "Hello! I'm doing well, thank you for asking. How can I help you today?"
-      },
-      "finish_reason": "stop"
-    }
-  ],
-  "usage": {
-    "prompt_tokens": 12,
-    "completion_tokens": 20,
-    "total_tokens": 32
-  }
-}
-```
+#### OpenAI-Compatible Endpoints
 
-#### Models List
-```http
-GET /v1/models
-```
-
-### OpenAI-Compatible Endpoints
-
-#### Chat Completions
+**Chat Completions:**
 ```http
 POST /openai/v1/chat/completions
 ```
 
 Uses OpenAI format with automatic translation to Claude format.
 
-#### Models List
-```http
-GET /openai/v1/models
-```
+#### Utility Endpoints
 
-### Health and Monitoring
-
-#### Health Check
+**Health Check:**
 ```http
 GET /health
 ```
 
-Returns server health status and Claude CLI availability.
-
-### Streaming Support
-
-Add `"stream": true` to your request for streaming responses:
-
-```json
-{
-  "model": "claude-3-5-sonnet-20241022",
-  "messages": [{"role": "user", "content": "Tell me a story"}],
-  "stream": true
-}
+**Available Models:**
+```http
+GET /v1/models
+GET /openai/v1/models
 ```
 
 ### Supported Models
 
+Your proxy supports all Claude models available to your subscription:
+
 | Model | Description |
 |-------|-------------|
-| `claude-3-5-sonnet-20241022` | Latest Claude 3.5 Sonnet (recommended) |
-| `claude-3-5-haiku-20241022` | Latest Claude 3.5 Haiku (fast) |
-| `claude-3-opus-20240229` | Claude 3 Opus (most capable) |
+| `claude-opus-4-20250514` | Claude 4 Opus (most capable) |
+| `claude-sonnet-4-20250514` | Claude 4 Sonnet (latest, recommended) |
+| `claude-3-7-sonnet-20250219` | Claude 3.7 Sonnet (enhanced) |
+| `claude-3-5-sonnet-20241022` | Claude 3.5 Sonnet (stable) |
+| `claude-3-5-sonnet-20240620` | Claude 3.5 Sonnet (legacy) |
 
-Enterprise users can run Claude Code using models in existing Amazon Bedrock or Google Cloud Vertex AI instances.
+*Available models depend on your Claude subscription level.*
 
 ## Configuration
 
@@ -167,75 +162,114 @@ Enterprise users can run Claude Code using models in existing Amazon Bedrock or 
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `PORT` | Server port | `8000` |
-| `HOST` | Server host | `0.0.0.0` |
+| `PORT` | Local server port | `8000` |
+| `HOST` | Server host (keep as localhost for security) | `127.0.0.1` |
 | `LOG_LEVEL` | Logging level | `INFO` |
 
-### Configuration File
+### Claude Authentication
 
-Create a `config.json` file for advanced configuration:
+The proxy automatically detects and uses Claude Code CLI for authentication:
+- First run will prompt for Claude login
+- Authentication is cached for subsequent uses
+- Works with all Claude subscription types
 
-```json
-{
-  "server": {
-    "host": "0.0.0.0",
-    "port": 8000,
-    "workers": 4
-  },
-  "claude": {
-    "default_model": "claude-3-5-sonnet-20241022",
-    "max_tokens": 4096,
-    "timeout": 30,
-    "cli_path": "/path/to/claude"
-  },
-  "logging": {
-    "level": "INFO",
-    "format": "json"
-  },
-  "rate_limiting": {
-    "requests_per_minute": 60,
-    "burst_size": 10
-  }
-}
+### Optional Docker Isolation
+
+For enhanced security and isolation when running Claude Code:
+
+```bash
+# Build with Docker support
+docker build -t claude-proxy .
+
+# Run with Docker isolation
+docker run -p 8000:8000 -v ~/.claude:/root/.claude claude-proxy
 ```
 
-### Claude CLI Configuration
+## Usage Examples
 
-The proxy automatically detects Claude CLI installation in common locations:
-- System PATH
-- `~/.claude/local/claude`
-- `~/node_modules/.bin/claude`
-- Package node_modules
-- Common system directories
+### Python with OpenAI Client
 
-You can also specify the path explicitly:
+```python
+from openai import OpenAI
+
+# Point to your local proxy
+client = OpenAI(
+    base_url="http://localhost:8000/openai/v1",
+    api_key="dummy-key"  # Required but not used
+)
+
+response = client.chat.completions.create(
+    model="claude-sonnet-4-20250514",
+    messages=[{"role": "user", "content": "Hello!"}]
+)
+print(response.choices[0].message.content)
+```
+
+### Python with Anthropic Client
+
+```python
+from anthropic import Anthropic
+
+# Point to your local proxy
+client = Anthropic(
+    base_url="http://localhost:8000",
+    api_key="dummy-key"  # Required but not used
+)
+
+response = client.messages.create(
+    model="claude-sonnet-4-20250514",
+    max_tokens=1000,
+    messages=[{"role": "user", "content": "Hello!"}]
+)
+print(response.content[0].text)
+```
+
+### Streaming Example
+
+```python
+from openai import OpenAI
+
+client = OpenAI(
+    base_url="http://localhost:8000/openai/v1",
+    api_key="dummy-key"
+)
+
+stream = client.chat.completions.create(
+    model="claude-sonnet-4-20250514",
+    messages=[{"role": "user", "content": "Tell me a story"}],
+    stream=True
+)
+
+for chunk in stream:
+    if chunk.choices[0].delta.content is not None:
+        print(chunk.choices[0].delta.content, end="")
+```
+
+### curl Example
+
 ```bash
-export CLAUDE_CLI_PATH=/path/to/claude
+curl -X POST http://localhost:8000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "claude-sonnet-4-20250514",
+    "messages": [{"role": "user", "content": "Hello!"}],
+    "max_tokens": 100
+  }'
 ```
 
 ## Development
 
 ### Setup Development Environment
 
-This project uses [devenv](https://devenv.sh/) for development environment management:
-
 ```bash
-# Install devenv (if not already installed)
-nix profile install --accept-flake-config github:cachix/devenv
-
-# Enter development environment
+# Using devenv (recommended)
 devenv shell
+
+# Or using uv
+uv sync --group dev
 ```
 
 ### Code Quality
-
-The project uses several tools for code quality:
-
-- **Ruff**: Fast Python linter and formatter
-- **mypy**: Static type checking
-- **pytest**: Testing framework
-
-Run quality checks:
 
 ```bash
 # Format code
@@ -251,213 +285,50 @@ mypy .
 pytest
 ```
 
-### Pre-commit Hooks
-
-Install pre-commit hooks to ensure code quality:
-
-```bash
-pre-commit install
-```
-
-## Docker Deployment
-
-### Build Docker Image
-
-```bash
-docker build -t claude-code-proxy-api .
-```
-
-### Run Container
-
-```bash
-docker run -d \
-  --name claude-code-proxy-api \
-  -p 8000:8000 \
-  claude-code-proxy-api
-```
-
-### Docker Compose
-
-```yaml
-version: '3.8'
-services:
-  claude-code-proxy-api:
-    build: .
-    ports:
-      - "8000:8000"
-    environment:
-      - LOG_LEVEL=INFO
-    restart: unless-stopped
-```
-
-## Usage Examples
-
-### Python Client
-
-```python
-import requests
-
-response = requests.post(
-    "http://localhost:8000/v1/chat/completions",
-    json={
-        "model": "claude-3-sonnet-20240229",
-        "messages": [{"role": "user", "content": "Hello!"}],
-        "max_tokens": 100
-    }
-)
-print(response.json())
-```
-
-### curl
-
-```bash
-curl -X POST http://localhost:8000/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -d '{
-    "model": "claude-3-sonnet-20240229",
-    "messages": [{"role": "user", "content": "Hello!"}],
-    "max_tokens": 100
-  }'
-```
-
-### OpenAI Python Client
-
-Use the OpenAI Python client with Claude models:
-
-```python
-from openai import OpenAI
-
-# For Anthropic endpoints
-client = OpenAI(
-    base_url="http://localhost:8000/v1",
-    api_key="dummy-key"  # Not used but required by OpenAI client
-)
-
-# For OpenAI-compatible endpoints
-client = OpenAI(
-    base_url="http://localhost:8000/openai/v1",
-    api_key="dummy-key"
-)
-
-response = client.chat.completions.create(
-    model="claude-3-5-sonnet-20241022",
-    messages=[{"role": "user", "content": "Hello!"}]
-)
-print(response.choices[0].message.content)
-```
-
-### Anthropic Python Client
-
-Use the official Anthropic client:
-
-```python
-from anthropic import Anthropic
-
-client = Anthropic(
-    base_url="http://localhost:8000",
-    api_key="dummy-key"  # Not used but required
-)
-
-response = client.messages.create(
-    model="claude-3-5-sonnet-20241022",
-    max_tokens=1000,
-    messages=[{"role": "user", "content": "Hello!"}]
-)
-print(response.content[0].text)
-```
-
-### Streaming Example
-
-```python
-from openai import OpenAI
-
-client = OpenAI(
-    base_url="http://localhost:8000/v1",
-    api_key="dummy-key"
-)
-
-stream = client.chat.completions.create(
-    model="claude-3-5-sonnet-20241022",
-    messages=[{"role": "user", "content": "Tell me a story"}],
-    stream=True
-)
-
-for chunk in stream:
-    if chunk.choices[0].delta.content is not None:
-        print(chunk.choices[0].delta.content, end="")
-```
-
-## Monitoring and Logging
-
-### Health Check
-
-```bash
-curl http://localhost:8000/health
-```
-
-### Metrics
-
-Access metrics at:
-```
-http://localhost:8000/metrics
-```
-
-### Logs
-
-Logs are output in JSON format by default. Configure log level with `LOG_LEVEL` environment variable.
-
-## Performance Tuning
-
-### Concurrent Requests
-
-The server handles concurrent requests efficiently. For high-traffic scenarios, consider:
-
-1. **Horizontal Scaling**: Run multiple instances behind a load balancer
-2. **Connection Pooling**: The SDK automatically manages connection pooling
-3. **Caching**: Implement response caching for repeated requests
-
-### Rate Limiting
-
-Built-in rate limiting prevents API abuse:
-
-```python
-# Configure in config.json
-{
-  "rate_limiting": {
-    "requests_per_minute": 60,
-    "burst_size": 10
-  }
-}
-```
-
 ## Troubleshooting
 
 ### Common Issues
 
-1. **API Key Issues**
+1. **Claude Authentication**
    ```
-   Error: Invalid API key
-   Solution: Ensure ANTHROPIC_API_KEY is set correctly
-   ```
-
-2. **Connection Timeout**
-   ```
-   Error: Request timeout
-   Solution: Increase timeout in configuration or check network connectivity
+   Error: Claude not authenticated
+   Solution: Run `claude auth login` or restart the proxy to trigger auth flow
    ```
 
-3. **Rate Limiting**
+2. **Port Already in Use**
    ```
-   Error: Rate limit exceeded
-   Solution: Implement exponential backoff in your client
+   Error: Port 8000 already in use
+   Solution: Use a different port: PORT=8001 python main.py
+   ```
+
+3. **Subscription Access**
+   ```
+   Error: Model not available
+   Solution: Check that your Claude subscription includes the requested model
    ```
 
 ### Debug Mode
 
-Enable debug logging:
+Enable debug logging for troubleshooting:
 ```bash
 export LOG_LEVEL=DEBUG
+python main.py
 ```
+
+## Privacy & Security
+
+- **Local Only**: The proxy runs entirely on your computer
+- **No External APIs**: Uses your existing Claude subscription, no additional API costs
+- **Secure Authentication**: Uses Claude's official OAuth2 flow
+- **Optional Isolation**: Docker support for sandboxed execution
+- **No Data Logging**: Conversations are not stored or logged by the proxy
+
+## Limitations
+
+- **Personal Use Only**: Designed for individual use, not multi-user scenarios
+- **Subscription Required**: Requires an active Claude subscription
+- **Local Access**: Accessible only from your computer (for security)
+- **Model Availability**: Limited to models available in your subscription
 
 ## Contributing
 
@@ -474,14 +345,34 @@ export LOG_LEVEL=DEBUG
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
+## Documentation
+
+Comprehensive documentation is available:
+
+- **[Online Documentation](https://your-username.github.io/claude-proxy)** - Full documentation site
+- **[API Reference](https://your-username.github.io/claude-proxy/api-reference/overview/)** - Complete API documentation
+- **[Developer Guide](https://your-username.github.io/claude-proxy/developer-guide/architecture/)** - Architecture and development
+
+### Building Documentation Locally
+
+```bash
+# Install documentation dependencies
+make docs-install
+
+# Serve documentation locally with live reload
+make docs-serve
+
+# Build static documentation
+make docs-build
+```
+
 ## Support
 
 - Issues: [GitHub Issues](https://github.com/your-username/claude-proxy/issues)
-- Documentation: [Project Documentation](docs/)
+- Documentation: [Project Documentation](https://your-username.github.io/claude-proxy)
 
 ## Acknowledgments
 
-- [Anthropic](https://anthropic.com) for the Claude API
+- [Anthropic](https://anthropic.com) for Claude and the Claude Code SDK
 - [claude-code-sdk](https://github.com/anthropics/claude-code-sdk) for the Python SDK
 - The open-source community for inspiration and contributions
-

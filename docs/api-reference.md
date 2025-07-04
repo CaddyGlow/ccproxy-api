@@ -186,7 +186,7 @@ List available Claude models.
       "owned_by": "anthropic"
     },
     {
-      "id": "claude-3-5-haiku-20241022",
+      "id": "claude-3-7-sonnet-20250219",
       "object": "model",
       "created": 1677649963,
       "owned_by": "anthropic"
@@ -309,10 +309,10 @@ List available models in OpenAI format.
 | Model ID | Description | Context Length |
 |----------|-------------|----------------|
 | `claude-3-5-sonnet-20241022` | Latest Sonnet model | 200K tokens |
-| `claude-3-5-haiku-20241022` | Latest Haiku model | 200K tokens |
-| `claude-3-opus-20240229` | Opus model | 200K tokens |
-| `claude-3-sonnet-20240229` | Sonnet model | 200K tokens |
-| `claude-3-haiku-20240307` | Haiku model | 200K tokens |
+| `claude-3-7-sonnet-20250219` | Latest Haiku model | 200K tokens |
+| `claude-opus-4-20250514` | Opus model | 200K tokens |
+| `claude-sonnet-4-20250514` | Sonnet model | 200K tokens |
+| `claude-3-7-sonnet-20250219` | Haiku model | 200K tokens |
 
 ## Error Responses
 
