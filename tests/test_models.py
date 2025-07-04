@@ -26,6 +26,7 @@ from claude_code_proxy.models.responses import (
 )
 
 
+@pytest.mark.unit
 class TestChatCompletionRequest:
     """Test ChatCompletionRequest model."""
 
@@ -202,6 +203,116 @@ class TestChatCompletionRequest:
         assert request.system == "You are a helpful assistant."
 
 
+@pytest.mark.unit
+class TestChatCompletionRequestValidationEdgeCases:
+    """Test ChatCompletionRequest validation edge cases for coverage."""
+
+    def test_message_alternation_validation_first_not_user(self) -> None:
+        """Test that first message must be from user."""
+        request_data: dict[str, Any] = {
+            "model": "claude-3-5-sonnet-20241022",
+            "messages": [
+                {
+                    "role": "assistant",
+                    "content": "Hello!",
+                }  # First message not from user
+            ],
+            "max_tokens": 100,
+        }
+
+        with pytest.raises(ValidationError) as exc_info:
+            ChatCompletionRequest(**request_data)
+
+        assert "First message must be from user" in str(exc_info.value)
+
+    def test_message_alternation_validation_consecutive_same_role(self) -> None:
+        """Test that messages must alternate between user and assistant."""
+        request_data: dict[str, Any] = {
+            "model": "claude-3-5-sonnet-20241022",
+            "messages": [
+                {"role": "user", "content": "Hello"},
+                {
+                    "role": "user",
+                    "content": "Hello again",
+                },  # Two consecutive user messages
+            ],
+            "max_tokens": 100,
+        }
+
+        with pytest.raises(ValidationError) as exc_info:
+            ChatCompletionRequest(**request_data)
+
+        assert "Messages must alternate between user and assistant" in str(
+            exc_info.value
+        )
+
+    def test_unsupported_model_validation(self) -> None:
+        """Test that unsupported model names raise validation error."""
+        request_data: dict[str, Any] = {
+            "model": "gpt-4",  # Not a Claude model
+            "messages": [{"role": "user", "content": "Hello"}],
+            "max_tokens": 100,
+        }
+
+        with pytest.raises(ValidationError) as exc_info:
+            ChatCompletionRequest(**request_data)
+
+        assert "String should match pattern" in str(exc_info.value)
+
+    def test_stop_sequences_max_length_validation(self) -> None:
+        """Test that stop sequences over 4 items raise validation error."""
+        request_data: dict[str, Any] = {
+            "model": "claude-3-5-sonnet-20241022",
+            "messages": [{"role": "user", "content": "Hello"}],
+            "max_tokens": 100,
+            "stop_sequences": ["STOP", "END", "QUIT", "DONE", "FINISH"],  # 5 items
+        }
+
+        with pytest.raises(ValidationError) as exc_info:
+            ChatCompletionRequest(**request_data)
+
+        assert "List should have at most 4 items" in str(exc_info.value)
+
+    def test_stop_sequences_length_validation(self) -> None:
+        """Test that stop sequences over 100 characters raise validation error."""
+        long_sequence = "x" * 101  # 101 characters
+        request_data: dict[str, Any] = {
+            "model": "claude-3-5-sonnet-20241022",
+            "messages": [{"role": "user", "content": "Hello"}],
+            "max_tokens": 100,
+            "stop_sequences": [long_sequence],
+        }
+
+        with pytest.raises(ValidationError) as exc_info:
+            ChatCompletionRequest(**request_data)
+
+        assert "Stop sequences must be 100 characters or less" in str(exc_info.value)
+
+    def test_stop_sequences_none_validation(self) -> None:
+        """Test that None stop_sequences is allowed."""
+        request_data: dict[str, Any] = {
+            "model": "claude-3-5-sonnet-20241022",
+            "messages": [{"role": "user", "content": "Hello"}],
+            "max_tokens": 100,
+            "stop_sequences": None,
+        }
+
+        request = ChatCompletionRequest(**request_data)
+        assert request.stop_sequences is None
+
+    def test_claude_model_pattern_forward_compatibility(self) -> None:
+        """Test that any model starting with 'claude-' is accepted."""
+        request_data: dict[str, Any] = {
+            "model": "claude-4-future-model",  # Future model that starts with claude-
+            "messages": [{"role": "user", "content": "Hello"}],
+            "max_tokens": 100,
+        }
+
+        request = ChatCompletionRequest(**request_data)
+        assert request.model == "claude-4-future-model"
+
+
+@pytest.mark.unit
 class TestMessage:
     """Test Message model."""
 
@@ -262,6 +373,7 @@ class TestMessage:
             Message(**message_data)
 
 
+@pytest.mark.unit
 class TestErrorModels:
     """Test error models."""
 
@@ -296,6 +408,7 @@ class TestErrorModels:
         assert error_dict["error"]["message"] == "Test error message"
 
 
+@pytest.mark.unit
 class TestChatCompletionResponse:
     """Test ChatCompletionResponse model."""
 
@@ -314,6 +427,7 @@ class TestChatCompletionResponse:
         assert response.usage.output_tokens == 15
 
 
+@pytest.mark.unit
 class TestUsage:
     """Test Usage model."""
 
@@ -362,6 +476,7 @@ class TestUsage:
         assert usage.cache_read_input_tokens is None
 
 
+@pytest.mark.unit
 class TestToolDefinition:
     """Test ToolDefinition model."""
 
@@ -405,6 +520,7 @@ class TestToolDefinition:
         assert tool.function.name == "simple_function"
 
 
+@pytest.mark.unit
 class TestToolUse:
     """Test ToolUse model."""
 
@@ -440,6 +556,7 @@ class TestToolUse:
         assert tool_use.input == {"x": 5, "y": 10}
 
 
+@pytest.mark.unit
 class TestStreamingChatCompletionResponse:
     """Test StreamingChatCompletionResponse model."""
 

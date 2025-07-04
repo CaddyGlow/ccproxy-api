@@ -204,9 +204,6 @@ class ChatCompletionRequest(BaseModel):
                     raise ValueError("Stop sequences must be 100 characters or less")
         return v
 
-    class Config:
-        """Pydantic configuration."""
-
-        extra = "forbid"
-        validate_assignment = True
-        use_enum_values = True
+    model_config = ConfigDict(
+        extra="forbid", validate_assignment=True, use_enum_values=True
+    )

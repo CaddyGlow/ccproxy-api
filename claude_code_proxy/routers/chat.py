@@ -35,7 +35,7 @@ def get_claude_client(settings: Settings = Depends(get_settings)) -> ClaudeClien
     return ClaudeClient()
 
 
-@router.post("/chat/completions")
+@router.post("/chat/completions", response_model=None)
 async def create_chat_completion(
     request: ChatCompletionRequest,
     http_request: Request,
@@ -163,10 +163,10 @@ async def create_chat_completion(
         ) from e
 
 
-@router.get("/models")
+@router.get("/models", response_model=None)
 async def list_models(
     claude_client: ClaudeClient = Depends(get_claude_client),
-) -> dict[str, list[dict[str, str]]]:
+) -> dict[str, list[dict[str, Any]]]:
     """
     List available Claude models.
 

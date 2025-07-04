@@ -35,6 +35,7 @@ app = typer.Typer(
 )
 logger = logging.getLogger(__name__)
 
+
 # Add global --version option
 @app.callback()
 def main(
@@ -49,6 +50,7 @@ def main(
 ) -> None:
     """Claude Code Proxy API Server - Anthropic and OpenAI compatible interface for Claude."""
     pass
+
 
 # Remove the fastapi callback to avoid the warning
 # fastapi_app.callback()(lambda: None)

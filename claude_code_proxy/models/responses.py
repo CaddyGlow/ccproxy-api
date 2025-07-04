@@ -2,7 +2,7 @@
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from .requests import MessageContent, Usage
 
@@ -46,10 +46,7 @@ class Choice(BaseModel):
         description="Reason why the model stopped generating",
     )
 
-    class Config:
-        """Pydantic configuration."""
-
-        extra = "forbid"
+    model_config = ConfigDict(extra="forbid")
 
 
 class StreamingChoice(BaseModel):
@@ -62,10 +59,7 @@ class StreamingChoice(BaseModel):
         description="Reason why the model stopped generating",
     )
 
-    class Config:
-        """Pydantic configuration."""
-
-        extra = "forbid"
+    model_config = ConfigDict(extra="forbid")
 
 
 class ChatCompletionResponse(BaseModel):
@@ -88,11 +82,7 @@ class ChatCompletionResponse(BaseModel):
     )
     usage: Usage = Field(..., description="Token usage information")
 
-    class Config:
-        """Pydantic configuration."""
-
-        extra = "forbid"
-        validate_assignment = True
+    model_config = ConfigDict(extra="forbid", validate_assignment=True)
 
 
 class StreamingChatCompletionResponse(BaseModel):
@@ -118,11 +108,7 @@ class StreamingChatCompletionResponse(BaseModel):
     )
     usage: Usage | None = Field(None, description="Token usage information")
 
-    class Config:
-        """Pydantic configuration."""
-
-        extra = "forbid"
-        validate_assignment = True
+    model_config = ConfigDict(extra="forbid", validate_assignment=True)
 
 
 class ErrorResponse(BaseModel):
@@ -134,10 +120,7 @@ class ErrorResponse(BaseModel):
         description="Error details including type and message",
     )
 
-    class Config:
-        """Pydantic configuration."""
-
-        extra = "forbid"
+    model_config = ConfigDict(extra="forbid")
 
 
 class APIError(BaseModel):
@@ -146,10 +129,7 @@ class APIError(BaseModel):
     type: str = Field(..., description="Error type")
     message: str = Field(..., description="Error message")
 
-    class Config:
-        """Pydantic configuration."""
-
-        extra = "forbid"
+    model_config = ConfigDict(extra="forbid")
 
 
 class RateLimitError(APIError):

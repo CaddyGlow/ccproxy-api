@@ -8,6 +8,7 @@ from claude_code_proxy.services.streaming import (
 )
 
 
+@pytest.mark.integration
 class TestStreamingFormatter:
     """Test StreamingFormatter class."""
 
@@ -96,6 +97,7 @@ class TestStreamingFormatter:
         assert result == "data: [DONE]\n\n"
 
 
+@pytest.mark.integration
 class TestStreamClaudeResponse:
     """Test stream_claude_response function."""
 

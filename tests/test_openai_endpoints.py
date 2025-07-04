@@ -20,6 +20,7 @@ def client():
     return TestClient(app)
 
 
+@pytest.mark.integration
 class TestOpenAIModelsEndpoint:
     """Test OpenAI models endpoint."""
 
@@ -42,6 +43,7 @@ class TestOpenAIModelsEndpoint:
         assert model["object"] == "model"
 
 
+@pytest.mark.integration
 class TestOpenAIChatCompletionsEndpoint:
     """Test OpenAI chat completions endpoint."""
 
@@ -247,6 +249,7 @@ class TestOpenAIChatCompletionsEndpoint:
         assert data["model"] == "claude-3-opus-20240229"
 
 
+@pytest.mark.unit
 class TestOpenAIRequestValidation:
     """Test OpenAI request validation."""
 
@@ -423,6 +426,7 @@ class TestOpenAIRequestValidation:
         assert any_request.model == "any-model-name"
 
 
+@pytest.mark.integration
 class TestOpenAIToolsValidation:
     """Test OpenAI tools validation functionality."""
 
@@ -582,6 +586,7 @@ class TestOpenAIToolsValidation:
         assert data["object"] == "chat.completion"
 
 
+@pytest.mark.unit
 class TestOpenAIResponseGeneration:
     """Test OpenAI response generation."""
 

@@ -12,11 +12,13 @@ from claude_code_proxy.services.claude_client import ClaudeClient
 class TestClaudeClient:
     """Test ClaudeClient class."""
 
+    @pytest.mark.unit
     def test_init(self):
         """Test client initialization."""
         client = ClaudeClient()
         assert isinstance(client, ClaudeClient)
 
+    @pytest.mark.unit
     def test_format_messages_to_prompt(self):
         """Test _format_messages_to_prompt method."""
         client = ClaudeClient()
@@ -32,6 +34,7 @@ class TestClaudeClient:
         expected = "Human: Hello\n\nAssistant: Hi there!\n\nHuman: How are you?"
         assert prompt == expected
 
+    @pytest.mark.unit
     def test_format_messages_with_content_blocks(self):
         """Test _format_messages_to_prompt with content blocks."""
         client = ClaudeClient()
@@ -51,6 +54,7 @@ class TestClaudeClient:
         expected = "Human: What's in this image? Please describe it."
         assert prompt == expected
 
+    @pytest.mark.unit
     def test_format_messages_with_system(self):
         """Test _format_messages_to_prompt skips system messages."""
         client = ClaudeClient()
@@ -65,6 +69,7 @@ class TestClaudeClient:
         expected = "Human: Hello"
         assert prompt == expected
 
+    @pytest.mark.unit
     def test_extract_text_from_content(self):
         """Test _extract_text_from_content method."""
         from claude_code_sdk import TextBlock, ToolResultBlock, ToolUseBlock
@@ -88,6 +93,7 @@ class TestClaudeClient:
         expected = "Hello world [Tool: calculator] Result: 42"
         assert result == expected
 
+    @pytest.mark.integration
     @pytest.mark.asyncio
     @patch("claude_code_proxy.services.claude_client.query")
     async def test_create_completion_non_streaming(self, mock_query):
@@ -126,6 +132,7 @@ class TestClaudeClient:
         assert result["id"] == "msg_test_session_123"
         assert result["content"][0]["text"] == "Hello there!"
 
+    @pytest.mark.integration
     @pytest.mark.asyncio
     @patch("claude_code_proxy.services.claude_client.query")
     async def test_create_completion_streaming(self, mock_query):
@@ -170,6 +177,7 @@ class TestClaudeClient:
 
         assert len(chunks) >= 2  # Should have multiple chunks
 
+    @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_list_models(self):
         """Test list_models method."""
@@ -181,6 +189,7 @@ class TestClaudeClient:
         # Current implementation returns empty list
         assert len(models) == 0
 
+    @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_context_manager(self):
         """Test async context manager."""
@@ -189,6 +198,7 @@ class TestClaudeClient:
 
         # Should not raise any errors
 
+    @pytest.mark.integration
     @pytest.mark.asyncio
     @patch("claude_code_proxy.services.claude_client.query")
     async def test_cli_not_found_error(self, mock_query):
@@ -209,6 +219,7 @@ class TestClaudeClient:
 
         assert "Claude CLI not available" in str(exc_info.value)
 
+    @pytest.mark.integration
     @pytest.mark.asyncio
     @patch("claude_code_proxy.services.claude_client.query")
     async def test_process_error(self, mock_query):
@@ -230,6 +241,7 @@ class TestClaudeClient:
         assert "Claude process error" in str(exc_info.value)
         assert exc_info.value.status_code == 503
 
+    @pytest.mark.integration
     @pytest.mark.asyncio
     @patch("claude_code_proxy.services.claude_client.query")
     async def test_unexpected_error(self, mock_query):
@@ -249,6 +261,7 @@ class TestClaudeClient:
         assert "Unexpected error" in str(exc_info.value)
         assert exc_info.value.status_code == 500
 
+    @pytest.mark.integration
     @pytest.mark.asyncio
     @patch("claude_code_proxy.services.claude_client.query")
     async def test_no_result_message_error(self, mock_query):
@@ -281,6 +294,7 @@ class TestClaudeClient:
 
         assert "No result message received" in str(exc_info.value)
 
+    @pytest.mark.integration
     @pytest.mark.asyncio
     @patch("claude_code_proxy.services.claude_client.query")
     async def test_no_assistant_message_error(self, mock_query):

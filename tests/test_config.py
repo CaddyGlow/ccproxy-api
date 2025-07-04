@@ -9,6 +9,7 @@ import pytest
 from claude_code_proxy.config import Settings, get_settings
 
 
+@pytest.mark.unit
 class TestSettings:
     """Test Settings class."""
 
@@ -178,6 +179,7 @@ class TestSettings:
         settings = get_settings()
         assert isinstance(settings, Settings)
 
+    @pytest.mark.integration
     def test_dotenv_file_loading(self):
         """Test loading from .env file."""
         with tempfile.TemporaryDirectory() as temp_dir:

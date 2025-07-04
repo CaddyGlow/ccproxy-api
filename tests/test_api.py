@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 from claude_code_proxy.exceptions import ModelNotFoundError, ServiceUnavailableError
 
 
+@pytest.mark.integration
 class TestChatCompletionsEndpoint:
     """Test /v1/chat/completions endpoint."""
 
@@ -218,6 +219,7 @@ class TestChatCompletionsEndpoint:
         assert options.max_thinking_tokens == 50000
 
 
+@pytest.mark.integration
 class TestModelsEndpoint:
     """Test /v1/models endpoint."""
 
@@ -265,6 +267,7 @@ class TestModelsEndpoint:
         assert data["detail"]["error"]["type"] == "service_unavailable_error"
 
 
+@pytest.mark.integration
 class TestErrorHandling:
     """Test error handling across endpoints."""
 
@@ -291,6 +294,7 @@ class TestErrorHandling:
         assert response.status_code == 422
 
 
+@pytest.mark.integration
 class TestCORSHeaders:
     """Test CORS headers."""
 
