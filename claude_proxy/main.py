@@ -28,6 +28,15 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     settings = get_settings()
     logger.info(f"Server configured for host: {settings.host}, port: {settings.port}")
 
+    # Configure secure Claude SDK with privilege dropping
+    from claude_proxy.utils.secure_claude_sdk import configure_secure_claude_sdk
+    configure_secure_claude_sdk(
+        user=settings.claude_user,
+        group=settings.claude_group,
+        working_directory=settings.claude_working_directory,
+    )
+    logger.info(f"Configured secure Claude SDK with user: {settings.claude_user}, group: {settings.claude_group}, cwd: {settings.claude_working_directory}")
+
     yield
 
     # Shutdown

@@ -72,6 +72,7 @@ dependencies = [
     { name = "openai" },
     { name = "pydantic" },
     { name = "pydantic-settings" },
+    { name = "rich" },
     { name = "typer" },
     { name = "uvicorn" },
 ]
@@ -95,6 +96,7 @@ requires-dist = [
     { name = "openai", specifier = ">=1.93.0" },
     { name = "pydantic", specifier = ">=2.8.0" },
     { name = "pydantic-settings", specifier = ">=2.4.0" },
+    { name = "rich", specifier = ">=13.0.0" },
     { name = "typer", specifier = ">=0.16.0" },
     { name = "uvicorn", specifier = ">=0.34.0" },
 ]

@@ -1,0 +1,33 @@
+services:
+  claude-proxy:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - HOST=0.0.0.0
+      - PORT=8000
+      - LOG_LEVEL=INFO
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - CLAUDE_USER=claude
+      - CLAUDE_GROUP=claude
+      - CLAUDE_WORKING_DIRECTORY=/tmp/claude-workspace
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
+    # env_file:
+    #   - .env
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
+    networks:
+      - claude-proxy-network
+
+networks:
+  claude-proxy-network:
+    driver: bridge
+

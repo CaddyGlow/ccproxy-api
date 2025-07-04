@@ -25,10 +25,10 @@ class Settings(BaseSettings):
     )
 
     # Required settings
-    anthropic_api_key: str = Field(
-        default="",
+    anthropic_api_key: str | None = Field(
+        default=None,
         description="Anthropic API key for Claude access",
-        min_length=1,
+        # min_length=1,
     )
 
     # Claude Code CLI settings
@@ -106,6 +106,22 @@ class Settings(BaseSettings):
     tools_handling: Literal["error", "warning", "ignore"] = Field(
         default="error",
         description="How to handle tools definitions in requests: error, warning, or ignore",
+    )
+
+    # Security settings for subprocess execution
+    claude_user: str | None = Field(
+        default="claude",
+        description="Username to drop privileges to when executing Claude subprocess",
+    )
+
+    claude_group: str | None = Field(
+        default="claude",
+        description="Group name to drop privileges to when executing Claude subprocess",
+    )
+
+    claude_working_directory: str = Field(
+        default="/tmp/claude-workspace",
+        description="Working directory for Claude subprocess execution",
     )
 
     @field_validator("log_level")

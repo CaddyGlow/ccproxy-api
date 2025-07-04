@@ -12,6 +12,7 @@ dependencies = [
   "openai>=1.93.0",
   "pydantic>=2.8.0",
   "pydantic-settings>=2.4.0",
+  "rich>=13.0.0",
   "typer>=0.16.0",
   "uvicorn>=0.34.0",
 ]

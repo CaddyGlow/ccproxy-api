@@ -17,7 +17,6 @@ from claude_code_sdk import (
     ToolResultBlock,
     ToolUseBlock,
     UserMessage,
-    query,
 )
 
 from claude_proxy.exceptions import (
@@ -25,6 +24,7 @@ from claude_proxy.exceptions import (
     ServiceUnavailableError,
     TimeoutError,
 )
+from claude_proxy.utils.secure_claude_sdk import secure_query
 
 
 logger = logging.getLogger(__name__)
@@ -142,10 +142,11 @@ class ClaudeClient:
     async def _get_query_iterator(
         self, prompt: str, options: ClaudeCodeOptions
     ) -> AsyncIterator[UserMessage | AssistantMessage | SystemMessage | ResultMessage]:
-        """Get query iterator using Claude Code SDK."""
+        """Get query iterator using secure Claude Code SDK."""
         # The Claude CLI path is already set up in PATH by the settings configuration
         # The anyio task scope issue should be fixed in the GitHub version of the SDK
-        async for message in query(prompt=prompt, options=options):
+        # Use secure_query instead of query for privilege dropping and CWD control
+        async for message in secure_query(prompt=prompt, options=options):
             yield message
 
     async def _complete_non_streaming(

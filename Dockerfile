@@ -46,14 +46,25 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
   --mount=type=cache,target=/var/lib/apt,sharing=locked \
   apt-get update && apt-get install -y \
   curl \
+  git \
+  procps \
   && rm -rf /var/lib/apt/lists/*
 
 # Copy Node.js binaries from node-deps stage
-COPY --from=node-deps /usr/local/bin/node /usr/local/bin/node
-COPY --from=node-deps /usr/local/bin/npm /usr/local/bin/npm
-COPY --from=node-deps /usr/local/bin/npx /usr/local/bin/npx
-COPY --from=node-deps /usr/local/bin/pnpm /usr/local/bin/pnpm
-COPY --from=node-deps /usr/local/lib/node_modules /usr/local/lib/node_modules
+# COPY --from=node-deps /usr/local/bin/node /usr/local/bin/node
+# COPY --from=node-deps /usr/local/bin/npm /usr/local/bin/npm
+# COPY --from=node-deps /usr/local/bin/npx /usr/local/bin/npx
+# COPY --from=node-deps /usr/local/bin/pnpm /usr/local/bin/pnpm
+# COPY --from=node-deps /usr/local/lib/node_modules /usr/local/lib/node_modules
+COPY --from=node-deps /usr/local /usr/local
+
+# Create workspace directory (user will be created at runtime)
+RUN mkdir -p /tmp/claude-workspace && \
+  chmod 755 /tmp/claude-workspace
+
+# Copy entrypoint script
+COPY entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh
 
 # Copy Python application from builder
 COPY --from=builder /app /app
@@ -77,6 +88,9 @@ EXPOSE 8000
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
   CMD curl -f http://localhost:8000/health || exit 1
+
+# Set entrypoint
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 
 # Run the application
 CMD ["python", "main.py", "serve"]
