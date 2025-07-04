@@ -2,14 +2,25 @@
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, field_validator, validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, validator
+
+
+class ImageSource(BaseModel):
+    """Image source data."""
+
+    type: Literal["base64", "url"] = Field(..., description="Source type")
+    media_type: str = Field(..., description="Media type (e.g., image/jpeg, image/png)")
+    data: str | None = Field(None, description="Base64 encoded image data")
+    url: str | None = Field(None, description="Image URL")
+
+    model_config = ConfigDict(extra="forbid")
 
 
 class ImageContent(BaseModel):
     """Image content block for multimodal messages."""
 
     type: Literal["image"] = "image"
-    source: dict[str, Any] = Field(
+    source: ImageSource = Field(
         ..., description="Image source data with type (base64 or url) and media_type"
     )
 
@@ -35,11 +46,23 @@ class Message(BaseModel):
     )
 
 
+class FunctionDefinition(BaseModel):
+    """Function definition for tool calling."""
+
+    name: str = Field(..., description="Function name")
+    description: str = Field(..., description="Function description")
+    parameters: dict[str, Any] = Field(
+        ..., description="JSON Schema for function parameters"
+    )
+
+    model_config = ConfigDict(extra="forbid")
+
+
 class ToolDefinition(BaseModel):
     """Tool definition for function calling."""
 
     type: Literal["function"] = "function"
-    function: dict[str, Any] = Field(
+    function: FunctionDefinition = Field(
         ..., description="Function definition with name, description, and parameters"
     )
 
@@ -55,6 +78,15 @@ class Usage(BaseModel):
     cache_read_input_tokens: int | None = Field(
         None, description="Number of tokens read from cache"
     )
+
+
+class ToolChoice(BaseModel):
+    """Tool choice specification."""
+
+    type: Literal["auto", "any", "tool"] = Field(..., description="How to use tools")
+    name: str | None = Field(None, description="Specific tool name to use")
+
+    model_config = ConfigDict(extra="forbid")
 
 
 class ChatCompletionRequest(BaseModel):

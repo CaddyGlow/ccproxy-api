@@ -49,7 +49,7 @@ lint:
 
 lint-fix:
 	uv run ruff check --fix .
-	uv run ruff check --select -I --fix .
+	uv run ruff check --select I --fix .
 
 typecheck:
 	uv run mypy .

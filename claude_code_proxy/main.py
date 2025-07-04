@@ -37,18 +37,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         for path in settings.get_searched_paths():
             logger.info(f"  - {path}")
 
-    # Configure secure Claude SDK with privilege dropping
-    from claude_code_proxy.utils.secure_claude_sdk import configure_secure_claude_sdk
-
-    configure_secure_claude_sdk(
-        user=settings.claude_user,
-        group=settings.claude_group,
-        working_directory=settings.claude_code_options.cwd,
-    )
-    logger.info(
-        f"Configured secure Claude SDK with user: {settings.claude_user}, group: {settings.claude_group}, cwd: {settings.claude_code_options.cwd}"
-    )
-
     yield
 
     # Shutdown

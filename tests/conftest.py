@@ -128,8 +128,7 @@ def sample_streaming_response() -> Generator[dict[str, Any], None, None]:
         },
     ]
 
-    for chunk in chunks:
-        yield chunk  # type: ignore[misc]
+    yield from chunks  # type: ignore[misc]
 
 
 @pytest.fixture

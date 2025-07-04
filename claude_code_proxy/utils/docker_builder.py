@@ -49,7 +49,7 @@ class DockerCommandBuilder:
 
         # Only create volumes if custom directories are specified
         volumes = []
-        
+
         # Determine effective home and workspace directories
         home_dir = docker_home or self.settings.docker_home_directory
         workspace_dir = docker_workspace or self.settings.docker_workspace_directory
@@ -129,7 +129,7 @@ class DockerCommandBuilder:
 
     def _validate_volume_format(self, volume: str) -> str:
         """Validate and normalize volume mount format.
-        
+
         Returns:
             Normalized volume string with absolute host path
         """
@@ -142,55 +142,55 @@ class DockerCommandBuilder:
             raise ValueError(
                 f"Invalid volume format: '{volume}'. Expected 'host:container[:options]'"
             )
-        
+
         # Convert relative paths to absolute
         host_path = parts[0]
         path_obj = Path(host_path)
-        
+
         # If it's a relative path, convert to absolute
         if not path_obj.is_absolute():
             host_path = str(path_obj.resolve())
-            
+
         # Check if the absolute path exists
         if not Path(host_path).exists():
             raise ValueError(f"Host path does not exist: '{host_path}'")
-            
+
         # Return normalized volume string
         parts[0] = host_path
         return ":".join(parts)
 
     def _validate_working_directory(self, workdir: str) -> str:
         """Validate and normalize Docker working directory format.
-        
+
         Returns:
             Normalized working directory as absolute path
         """
         path_obj = Path(workdir)
-        
+
         # If it's a relative path, convert to absolute
         if not path_obj.is_absolute():
             workdir = str(path_obj.resolve())
-            
+
         return workdir
 
     def _validate_host_path(self, path: str) -> str:
         """Validate and normalize host path format.
-        
+
         Returns:
             Normalized host path as absolute path
         """
         import os
-        
+
         # Expand environment variables
         expanded_path = os.path.expandvars(path)
         path_obj = Path(expanded_path)
-        
+
         # If it's a relative path, convert to absolute
         if not path_obj.is_absolute():
             path = str(path_obj.resolve())
         else:
             path = expanded_path
-            
+
         return path
 
     def _get_merged_environment(
@@ -221,7 +221,7 @@ class DockerCommandBuilder:
         self, home_dir: str | None, workspace_dir: str | None
     ) -> list[str]:
         """Create volume mounts for home and workspace directories.
-        
+
         Args:
             home_dir: Host path for home directory (can be None)
             workspace_dir: Host path for workspace directory (can be None)
@@ -237,7 +237,7 @@ class DockerCommandBuilder:
         self, home_dir: str | None, workspace_dir: str | None
     ) -> dict[str, str]:
         """Create environment variables for home and workspace directories.
-        
+
         Args:
             home_dir: Host path for home directory (not used for env vars)
             workspace_dir: Host path for workspace directory (not used for env vars)

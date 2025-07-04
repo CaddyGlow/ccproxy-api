@@ -2,20 +2,19 @@
 
 import json
 import logging
+import os
 import subprocess
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
+import fastapi_cli.discover
 import typer
 import uvicorn
-
-import fastapi_cli.discover
 from fastapi_cli.cli import app as fastapi_app
 from fastapi_cli.exceptions import FastAPICLIException
 
 from claude_code_proxy.config.settings import get_settings
-from claude_code_proxy.utils.claude_wrapper import create_claude_wrapper
 from claude_code_proxy.utils.docker_builder import DockerCommandBuilder
 from claude_code_proxy.utils.helper import get_package_dir
 
@@ -65,12 +64,6 @@ def claude(
     args: list[str] = typer.Argument(
         help="Arguments to pass to claude CLI (e.g. --version, doctor, config)"
     ),
-    timeout: int = typer.Option(
-        30,
-        "--timeout",
-        "-t",
-        help="Command timeout in seconds",
-    ),
     docker: bool = typer.Option(
         False,
         "--docker",
@@ -115,12 +108,12 @@ def claude(
     found by the settings system or run from docker image.
 
     Examples:
-        python main.py claude -- --version
-        python main.py claude -- doctor
-        python main.py claude -- config
-        python main.py claude --docker -- --version
-        python main.py claude --docker --docker-image custom:latest -- --version
-        python main.py claude --docker --docker-env API_KEY=sk-... --docker-volume ./data:/data -- chat
+        ccproxy claude -- --version
+        ccproxy claude -- doctor
+        ccproxy claude -- config
+        ccproxy claude --docker -- --version
+        ccproxy claude --docker --docker-image custom:latest -- --version
+        ccproxy claude --docker --docker-env API_KEY=sk-... --docker-volume ./data:/data -- chat
     """
     try:
         if docker:
@@ -167,23 +160,12 @@ def claude(
             full_cmd = [claude_path] + args
 
         try:
-            # result = subprocess.run(
-            #     full_cmd,
-            #     timeout=timeout,
-            #     cwd=Path.cwd(),
-            #     env=None,  # Use current environment
-            # )
-
-            # Exit with same code as claude
-            # if result.returncode != 0:
-            #     raise typer.Exit(result.returncode)
-            pass
-        except subprocess.TimeoutExpired as e:
-            typer.echo(f"Command timed out after {timeout} seconds", err=True)
+            # Use os.execvp to replace current process with claude
+            # This hands over full control to claude, including signal handling
+            os.execvp(full_cmd[0], full_cmd)
+        except OSError as e:
+            typer.echo(f"Failed to execute command: {e}", err=True)
             raise typer.Exit(1) from e
-        except KeyboardInterrupt as e:
-            typer.echo("Command interrupted by user", err=True)
-            raise typer.Exit(130) from e
 
     except Exception as e:
         typer.echo(f"Error executing claude command: {e}", err=True)

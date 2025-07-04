@@ -244,12 +244,25 @@ class OpenAILogprobs(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class OpenAIFunctionCall(BaseModel):
+    """OpenAI function call details."""
+
+    name: str = Field(..., description="The name of the function")
+    arguments: str = Field(
+        ..., description="The arguments passed to the function as JSON string"
+    )
+
+    model_config = ConfigDict(extra="forbid")
+
+
 class OpenAIToolCall(BaseModel):
     """OpenAI tool call in response."""
 
     id: str = Field(..., description="The ID of the tool call")
     type: Literal["function"] = Field("function", description="The type of tool call")
-    function: dict[str, Any] = Field(..., description="The function that was called")
+    function: OpenAIFunctionCall = Field(
+        ..., description="The function that was called"
+    )
 
     model_config = ConfigDict(extra="forbid")
 
@@ -348,11 +361,25 @@ class OpenAIChatCompletionResponse(BaseModel):
 
 
 # OpenAI Streaming Response Models
+class OpenAIStreamingDelta(BaseModel):
+    """OpenAI streaming delta message."""
+
+    role: Literal["assistant"] | None = Field(
+        None, description="The role of the message sender"
+    )
+    content: str | None = Field(None, description="The content delta")
+    tool_calls: list[dict[str, str]] | None = Field(
+        None, description="Tool calls delta"
+    )
+
+    model_config = ConfigDict(extra="forbid")
+
+
 class OpenAIStreamingChoice(BaseModel):
     """OpenAI streaming choice."""
 
     index: int = Field(..., description="The index of the choice")
-    delta: dict[str, Any] = Field(..., description="The delta content")
+    delta: OpenAIStreamingDelta = Field(..., description="The delta content")
     logprobs: OpenAILogprobs | None = Field(
         None, description="Log probability information for the choice"
     )

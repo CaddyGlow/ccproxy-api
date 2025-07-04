@@ -61,11 +61,12 @@ class TestSettings:
 
         finally:
             # Restore original environment variables
-            for key, value in original_env.items():
-                if value is None:
+            for key in original_env:
+                old_value: str | None = original_env[key]
+                if old_value is None:
                     os.environ.pop(key, None)
                 else:
-                    os.environ[key] = value
+                    os.environ[key] = old_value
 
             # Restore original CORS_ORIGINS
             if original_cors is not None:
@@ -223,11 +224,12 @@ class TestSettings:
             pass
         finally:
             # Restore original environment variables
-            for key, value in original_env.items():
-                if value is None:
+            for key in original_env:
+                old_value: str | None = original_env[key]
+                if old_value is None:
                     os.environ.pop(key, None)
                 else:
-                    os.environ[key] = value
+                    os.environ[key] = old_value
 
     def test_claude_cli_path_validation(self):
         """Test Claude CLI path validation."""

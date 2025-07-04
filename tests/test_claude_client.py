@@ -89,7 +89,7 @@ class TestClaudeClient:
         assert result == expected
 
     @pytest.mark.asyncio
-    @patch("claude_code_proxy.services.claude_client.secure_query")
+    @patch("claude_code_proxy.services.claude_client.query")
     async def test_create_completion_non_streaming(self, mock_query):
         """Test create_completion for non-streaming."""
         from claude_code_sdk import AssistantMessage, ResultMessage, TextBlock
@@ -127,7 +127,7 @@ class TestClaudeClient:
         assert result["content"][0]["text"] == "Hello there!"
 
     @pytest.mark.asyncio
-    @patch("claude_code_proxy.services.claude_client.secure_query")
+    @patch("claude_code_proxy.services.claude_client.query")
     async def test_create_completion_streaming(self, mock_query):
         """Test create_completion for streaming."""
         from claude_code_sdk import AssistantMessage, ResultMessage, TextBlock
@@ -190,7 +190,7 @@ class TestClaudeClient:
         # Should not raise any errors
 
     @pytest.mark.asyncio
-    @patch("claude_code_proxy.services.claude_client.secure_query")
+    @patch("claude_code_proxy.services.claude_client.query")
     async def test_cli_not_found_error(self, mock_query):
         """Test handling of CLI not found error."""
         from claude_code_sdk import CLINotFoundError
@@ -210,7 +210,7 @@ class TestClaudeClient:
         assert "Claude CLI not available" in str(exc_info.value)
 
     @pytest.mark.asyncio
-    @patch("claude_code_proxy.services.claude_client.secure_query")
+    @patch("claude_code_proxy.services.claude_client.query")
     async def test_process_error(self, mock_query):
         """Test handling of process error."""
         from claude_code_sdk import ProcessError
@@ -231,7 +231,7 @@ class TestClaudeClient:
         assert exc_info.value.status_code == 503
 
     @pytest.mark.asyncio
-    @patch("claude_code_proxy.services.claude_client.secure_query")
+    @patch("claude_code_proxy.services.claude_client.query")
     async def test_unexpected_error(self, mock_query):
         """Test handling of unexpected error."""
         mock_query.side_effect = RuntimeError("Unexpected error")
@@ -250,7 +250,7 @@ class TestClaudeClient:
         assert exc_info.value.status_code == 500
 
     @pytest.mark.asyncio
-    @patch("claude_code_proxy.services.claude_client.secure_query")
+    @patch("claude_code_proxy.services.claude_client.query")
     async def test_no_result_message_error(self, mock_query):
         """Test handling when no result message is received."""
         from claude_code_sdk import AssistantMessage, TextBlock
@@ -282,7 +282,7 @@ class TestClaudeClient:
         assert "No result message received" in str(exc_info.value)
 
     @pytest.mark.asyncio
-    @patch("claude_code_proxy.services.claude_client.secure_query")
+    @patch("claude_code_proxy.services.claude_client.query")
     async def test_no_assistant_message_error(self, mock_query):
         """Test handling when no assistant message is received."""
         from claude_code_sdk import ResultMessage

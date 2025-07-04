@@ -254,11 +254,11 @@ class TestOpenAIRequestValidation:
         """Test OpenAI message validation."""
         # Valid message
         valid_message = OpenAIMessage(
-            role="user", 
+            role="user",
             content="Hello, world!",
             name=None,
             tool_calls=None,
-            tool_call_id=None
+            tool_call_id=None,
         )
         assert valid_message.role == "user"
         assert valid_message.content == "Hello, world!"
@@ -288,7 +288,15 @@ class TestOpenAIRequestValidation:
         # Valid request
         valid_request = OpenAIChatCompletionRequest(
             model="claude-3-opus-20240229",
-            messages=[OpenAIMessage(role="user", content="Hello", name=None, tool_calls=None, tool_call_id=None)],
+            messages=[
+                OpenAIMessage(
+                    role="user",
+                    content="Hello",
+                    name=None,
+                    tool_calls=None,
+                    tool_call_id=None,
+                )
+            ],
             max_tokens=None,
             temperature=None,
             top_p=None,
@@ -314,7 +322,15 @@ class TestOpenAIRequestValidation:
         # Request with parameters
         param_request = OpenAIChatCompletionRequest(
             model="claude-3-haiku-20240307",
-            messages=[OpenAIMessage(role="user", content="Hello", name=None, tool_calls=None, tool_call_id=None)],
+            messages=[
+                OpenAIMessage(
+                    role="user",
+                    content="Hello",
+                    name=None,
+                    tool_calls=None,
+                    tool_call_id=None,
+                )
+            ],
             max_tokens=150,
             temperature=0.8,
             top_p=None,
@@ -343,7 +359,15 @@ class TestOpenAIRequestValidation:
         # Test Claude model passes through unchanged
         claude_request = OpenAIChatCompletionRequest(
             model="claude-3-sonnet-20240229",
-            messages=[OpenAIMessage(role="user", content="Hello", name=None, tool_calls=None, tool_call_id=None)],
+            messages=[
+                OpenAIMessage(
+                    role="user",
+                    content="Hello",
+                    name=None,
+                    tool_calls=None,
+                    tool_call_id=None,
+                )
+            ],
             max_tokens=None,
             temperature=None,
             top_p=None,
@@ -368,7 +392,15 @@ class TestOpenAIRequestValidation:
         # Test any model name passes through as-is
         any_request = OpenAIChatCompletionRequest(
             model="any-model-name",
-            messages=[OpenAIMessage(role="user", content="Hello", name=None, tool_calls=None, tool_call_id=None)],
+            messages=[
+                OpenAIMessage(
+                    role="user",
+                    content="Hello",
+                    name=None,
+                    tool_calls=None,
+                    tool_call_id=None,
+                )
+            ],
             max_tokens=None,
             temperature=None,
             top_p=None,
