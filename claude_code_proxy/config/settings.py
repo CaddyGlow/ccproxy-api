@@ -5,11 +5,15 @@ import shutil
 from pathlib import Path
 from typing import Any, Literal
 
-from claude_code_sdk import ClaudeCodeOptions
 from pydantic import BaseModel, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from claude_code_proxy.utils.helper import get_package_dir
+from claude_code_proxy.utils.helper import get_package_dir, patched_typing
+
+
+# For further information visit https://errors.pydantic.dev/2.11/u/typed-dict-version
+with patched_typing():
+    from claude_code_sdk import ClaudeCodeOptions  # noqa: E402
 
 
 class DockerSettings(BaseModel):

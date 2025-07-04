@@ -90,46 +90,50 @@ def sample_claude_response() -> dict[str, Any]:
 
 
 @pytest.fixture
-async def sample_streaming_response() -> AsyncGenerator[dict[str, Any], None]:
+def sample_streaming_response() -> AsyncGenerator[dict[str, Any], None]:
     """Sample streaming Claude response."""
-    chunks = [
-        {
-            "type": "message_start",
-            "message": {
-                "id": "msg_test123",
-                "type": "message",
-                "role": "assistant",
-                "content": [],
-                "model": "claude-3-5-sonnet-20241022",
-                "stop_reason": None,
-                "stop_sequence": None,
-                "usage": {"input_tokens": 10, "output_tokens": 0},
+    
+    async def _generator() -> AsyncGenerator[dict[str, Any], None]:
+        chunks = [
+            {
+                "type": "message_start",
+                "message": {
+                    "id": "msg_test123",
+                    "type": "message",
+                    "role": "assistant",
+                    "content": [],
+                    "model": "claude-3-5-sonnet-20241022",
+                    "stop_reason": None,
+                    "stop_sequence": None,
+                    "usage": {"input_tokens": 10, "output_tokens": 0},
+                },
             },
-        },
-        {
-            "type": "content_block_delta",
-            "index": 0,
-            "delta": {"type": "text_delta", "text": "Once"},
-        },
-        {
-            "type": "content_block_delta",
-            "index": 0,
-            "delta": {"type": "text_delta", "text": " upon"},
-        },
-        {
-            "type": "content_block_delta",
-            "index": 0,
-            "delta": {"type": "text_delta", "text": " a time..."},
-        },
-        {
-            "type": "message_delta",
-            "delta": {"stop_reason": "end_turn"},
-            "usage": {"output_tokens": 15},
-        },
-    ]
+            {
+                "type": "content_block_delta",
+                "index": 0,
+                "delta": {"type": "text_delta", "text": "Once"},
+            },
+            {
+                "type": "content_block_delta",
+                "index": 0,
+                "delta": {"type": "text_delta", "text": " upon"},
+            },
+            {
+                "type": "content_block_delta",
+                "index": 0,
+                "delta": {"type": "text_delta", "text": " a time..."},
+            },
+            {
+                "type": "message_delta",
+                "delta": {"stop_reason": "end_turn"},
+                "usage": {"output_tokens": 15},
+            },
+        ]
 
-    for chunk in chunks:
-        yield chunk  # type: ignore[misc]
+        for chunk in chunks:
+            yield chunk
+
+    return _generator()
 
 
 @pytest.fixture

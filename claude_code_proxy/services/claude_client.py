@@ -4,27 +4,30 @@ import logging
 from collections.abc import AsyncIterator
 from typing import Any
 
-from claude_code_sdk import (
-    AssistantMessage,
-    ClaudeCodeOptions,
-    CLIConnectionError,
-    CLIJSONDecodeError,
-    CLINotFoundError,
-    ProcessError,
-    ResultMessage,
-    SystemMessage,
-    TextBlock,
-    ToolResultBlock,
-    ToolUseBlock,
-    UserMessage,
-    query,
-)
-
 from claude_code_proxy.exceptions import (
     ClaudeProxyError,
     ServiceUnavailableError,
     TimeoutError,
 )
+from claude_code_proxy.utils.helper import patched_typing
+
+
+with patched_typing():
+    from claude_code_sdk import (
+        AssistantMessage,
+        ClaudeCodeOptions,
+        CLIConnectionError,
+        CLIJSONDecodeError,
+        CLINotFoundError,
+        ProcessError,
+        ResultMessage,
+        SystemMessage,
+        TextBlock,
+        ToolResultBlock,
+        ToolUseBlock,
+        UserMessage,
+        query,
+    )
 
 
 logger = logging.getLogger(__name__)

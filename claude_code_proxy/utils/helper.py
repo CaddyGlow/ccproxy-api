@@ -1,7 +1,23 @@
+from contextlib import contextmanager
 from pathlib import Path
-from typing import Any
 
-from claude_code_sdk import ClaudeCodeOptions
+
+# Fix for typing.TypedDict not supported
+# pydantic.errors.PydanticUserError:
+# Please use `typing_extensions.TypedDict` instead of `typing.TypedDict` on Python < 3.12.
+# For further information visit https://errors.pydantic.dev/2.11/u/typed-dict-version
+@contextmanager
+def patched_typing():
+    import typing
+
+    import typing_extensions
+
+    original = typing.TypedDict
+    typing.TypedDict = typing_extensions.TypedDict
+    try:
+        yield
+    finally:
+        typing.TypedDict = original
 
 
 def get_package_dir() -> Path:

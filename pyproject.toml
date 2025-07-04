@@ -16,7 +16,7 @@ name = "claude-code-proxy-api"
 version = "0.1.0"
 description = "API server that provides an Anthropic and OpenAI compatible interface over Claude Code, allowing to use your Claude OAuth account or over the API."
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.10"
 dependencies = [
   "anthropic>=0.57.1",
   "claude-code-sdk>=0.0.14",     # Using GitHub version with PR #60 fix
@@ -50,10 +50,10 @@ include = ["claude_code_proxy", "tests"]
 
 [tool.coverage.report]
 exclude_lines = [
-    "pragma: no cover",
-    "if TYPE_CHECKING:",
-    "from typing import",
-    "VERSION_TUPLE = Tuple",
+  "pragma: no cover",
+  "if TYPE_CHECKING:",
+  "from typing import",
+  "VERSION_TUPLE = Tuple",
 ]
 
 [tool.ruff]
@@ -159,6 +159,8 @@ testpaths = ["tests"]
 python_files = ["test_*.py", "*_test.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
 
 
 # Test markers for different test tiers
@@ -180,13 +182,15 @@ timeout_method = "thread"
 [tool.tox]
 legacy_tox_ini = """
   [tox]
-  envlist = py311,py312,py313
+  envlist = py310,py311,py312,py313
 
   [testenv]
   deps =
       pytest
+      pytest-asyncio
       pytest-cov
       pytest-timeout
+      pytest-env
   commands = pytest {posargs}
   """
 
