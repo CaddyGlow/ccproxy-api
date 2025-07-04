@@ -97,6 +97,9 @@ class ClaudeClient:
                 error_type="service_unavailable_error",
                 status_code=503,
             ) from e
+        except ClaudeClientError as e:
+            # Re-raise ClaudeClientError as-is for proper testing
+            raise
         except Exception as e:
             logger.error(f"Unexpected error in create_completion: {e}")
             raise ClaudeProxyError(
@@ -292,7 +295,7 @@ class ClaudeClient:
             List of available models in Anthropic format
         """
         # These are the models supported by Claude Code SDK
-        models = []
+        models: list[dict[str, Any]] = []
 
         return models
 

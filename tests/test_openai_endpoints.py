@@ -253,7 +253,13 @@ class TestOpenAIRequestValidation:
     def test_openai_message_validation(self):
         """Test OpenAI message validation."""
         # Valid message
-        valid_message = OpenAIMessage(role="user", content="Hello, world!")
+        valid_message = OpenAIMessage(
+            role="user", 
+            content="Hello, world!",
+            name=None,
+            tool_calls=None,
+            tool_call_id=None
+        )
         assert valid_message.role == "user"
         assert valid_message.content == "Hello, world!"
 
@@ -261,6 +267,7 @@ class TestOpenAIRequestValidation:
         tool_message = OpenAIMessage(
             role="assistant",
             content="I'll help you with that.",
+            name=None,
             tool_calls=[
                 {
                     "id": "call_123",
@@ -271,6 +278,7 @@ class TestOpenAIRequestValidation:
                     },
                 }
             ],
+            tool_call_id=None,
         )
         assert tool_message.tool_calls is not None
         assert len(tool_message.tool_calls) == 1
@@ -280,7 +288,25 @@ class TestOpenAIRequestValidation:
         # Valid request
         valid_request = OpenAIChatCompletionRequest(
             model="claude-3-opus-20240229",
-            messages=[OpenAIMessage(role="user", content="Hello")],
+            messages=[OpenAIMessage(role="user", content="Hello", name=None, tool_calls=None, tool_call_id=None)],
+            max_tokens=None,
+            temperature=None,
+            top_p=None,
+            n=1,
+            stream=False,
+            stream_options=None,
+            stop=None,
+            presence_penalty=None,
+            frequency_penalty=None,
+            logit_bias=None,
+            user=None,
+            tools=None,
+            tool_choice=None,
+            parallel_tool_calls=True,
+            response_format=None,
+            seed=None,
+            logprobs=None,
+            top_logprobs=None,
         )
         assert valid_request.model == "claude-3-opus-20240229"
         assert len(valid_request.messages) == 1
@@ -288,10 +314,25 @@ class TestOpenAIRequestValidation:
         # Request with parameters
         param_request = OpenAIChatCompletionRequest(
             model="claude-3-haiku-20240307",
-            messages=[OpenAIMessage(role="user", content="Hello")],
+            messages=[OpenAIMessage(role="user", content="Hello", name=None, tool_calls=None, tool_call_id=None)],
             max_tokens=150,
             temperature=0.8,
+            top_p=None,
+            n=1,
             stream=True,
+            stream_options=None,
+            stop=None,
+            presence_penalty=None,
+            frequency_penalty=None,
+            logit_bias=None,
+            user=None,
+            tools=None,
+            tool_choice=None,
+            parallel_tool_calls=True,
+            response_format=None,
+            seed=None,
+            logprobs=None,
+            top_logprobs=None,
         )
         assert param_request.max_tokens == 150
         assert param_request.temperature == 0.8
@@ -302,14 +343,50 @@ class TestOpenAIRequestValidation:
         # Test Claude model passes through unchanged
         claude_request = OpenAIChatCompletionRequest(
             model="claude-3-sonnet-20240229",
-            messages=[OpenAIMessage(role="user", content="Hello")],
+            messages=[OpenAIMessage(role="user", content="Hello", name=None, tool_calls=None, tool_call_id=None)],
+            max_tokens=None,
+            temperature=None,
+            top_p=None,
+            n=1,
+            stream=False,
+            stream_options=None,
+            stop=None,
+            presence_penalty=None,
+            frequency_penalty=None,
+            logit_bias=None,
+            user=None,
+            tools=None,
+            tool_choice=None,
+            parallel_tool_calls=True,
+            response_format=None,
+            seed=None,
+            logprobs=None,
+            top_logprobs=None,
         )
         assert claude_request.model == "claude-3-sonnet-20240229"
 
         # Test any model name passes through as-is
         any_request = OpenAIChatCompletionRequest(
             model="any-model-name",
-            messages=[OpenAIMessage(role="user", content="Hello")],
+            messages=[OpenAIMessage(role="user", content="Hello", name=None, tool_calls=None, tool_call_id=None)],
+            max_tokens=None,
+            temperature=None,
+            top_p=None,
+            n=1,
+            stream=False,
+            stream_options=None,
+            stop=None,
+            presence_penalty=None,
+            frequency_penalty=None,
+            logit_bias=None,
+            user=None,
+            tools=None,
+            tool_choice=None,
+            parallel_tool_calls=True,
+            response_format=None,
+            seed=None,
+            logprobs=None,
+            top_logprobs=None,
         )
         assert any_request.model == "any-model-name"
 

@@ -1,3 +1,16 @@
+[build-system]
+requires = ["hatchling", "hatch-vcs"]
+build-backend = "hatchling.build"
+
+[tool.hatch.version]
+source = "vcs"
+
+[tool.hatch.build.hooks.vcs]
+version-file = "claude_code_proxy/_version.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["claude_code_proxy"]
+
 [project]
 name = "claude-code-proxy-api"
 version = "0.1.0"
@@ -6,7 +19,7 @@ readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
   "anthropic>=0.57.1",
-  "claude-code-sdk>=0.0.14", # Using GitHub version with PR #60 fix
+  "claude-code-sdk>=0.0.14",     # Using GitHub version with PR #60 fix
   "fastapi[standard]>=0.115.14",
   "httpx>=0.28.1",
   "openai>=1.93.0",
@@ -17,14 +30,17 @@ dependencies = [
   "uvicorn>=0.34.0",
 ]
 
+[project.scripts]
+ccproxy = "claude_code_proxy.cli:app"
+
 [dependency-groups]
 dev = [
-    "mypy>=1.16.1",
-    "ruff>=0.12.2",
-    "pytest>=7.0.0",
-    "pytest-asyncio>=0.23.0",
-    "pytest-cov>=4.0.0",
-    "pytest-env>=0.8.0",
+  "mypy>=1.16.1",
+  "ruff>=0.12.2",
+  "pytest>=7.0.0",
+  "pytest-asyncio>=0.23.0",
+  "pytest-cov>=4.0.0",
+  "pytest-env>=0.8.0",
 ]
 
 [tool.coverage.run]
@@ -163,6 +179,12 @@ legacy_tox_ini = """
       pytest-timeout
   commands = pytest {posargs}
   """
+
+[tool.setuptools.packages.find]
+include = ["claude_code_proxy*"]
+
+[tool.uv]
+package = true
 
 [tool.uv.sources]
 claude-code-sdk = { git = "https://github.com/anthropics/claude-code-sdk-python.git" }

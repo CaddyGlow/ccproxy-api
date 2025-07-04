@@ -1,5 +1,5 @@
 services:
-  claude-code-proxy-api:
+  claude-code-proxy:
     build:
       context: .
       dockerfile: Dockerfile
@@ -9,9 +9,6 @@ services:
       - HOST=0.0.0.0
       - PORT=8000
       - LOG_LEVEL=INFO
-      - CLAUDE_USER=claude
-      - CLAUDE_GROUP=claude
-      - CLAUDE_WORKING_DIRECTORY=/tmp/claude-workspace
       - PUID=${PUID:-1000}
       - PGID=${PGID:-1000}
     # env_file:
@@ -29,4 +26,3 @@ services:
 networks:
   claude-code-proxy-network:
     driver: bridge
-

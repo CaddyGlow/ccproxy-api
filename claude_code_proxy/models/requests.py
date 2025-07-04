@@ -1,6 +1,6 @@
 """Request models for Claude Proxy API Server compatible with Anthropic's API format."""
 
-from typing import Any, Literal, Optional, Union
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator, validator
 

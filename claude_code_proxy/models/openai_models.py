@@ -8,7 +8,7 @@ API specification exactly while internally mapping to Claude models.
 import time
 import uuid
 from datetime import datetime
-from typing import Any, Literal, Optional, Union
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -19,7 +19,7 @@ class OpenAIMessageContent(BaseModel):
 
     type: Literal["text", "image_url"]
     text: str | None = None
-    image_url: dict[str, Any] | None = None
+    image_url: dict[str, str] | None = None
 
     model_config = ConfigDict(extra="forbid")
 

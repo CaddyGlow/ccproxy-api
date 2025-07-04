@@ -6,7 +6,7 @@ import signal
 import subprocess
 import sys
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
 
 from .subprocess_security import SubprocessSecurity, get_default_claude_security
 
@@ -19,9 +19,9 @@ class ClaudeWrapper:
 
     def __init__(
         self,
-        security: Optional[SubprocessSecurity] = None,
-        working_directory: Optional[str] = None,
-        claude_path: Optional[str] = None,
+        security: SubprocessSecurity | None = None,
+        working_directory: str | Path | None = None,
+        claude_path: str | None = None,
     ):
         """
         Initialize the Claude wrapper.
@@ -33,7 +33,7 @@ class ClaudeWrapper:
         """
         self.security = security or get_default_claude_security(working_directory)
         self.claude_path = claude_path or self._find_claude_executable()
-        self._process = None
+        self._process: subprocess.Popen[str] | None = None
 
     def _find_claude_executable(self) -> str:
         """Find the claude executable in the system PATH."""
@@ -55,8 +55,8 @@ class ClaudeWrapper:
         ]
 
         for path in common_paths:
-            if Path(path).exists():
-                return str(Path(path).resolve())  # Convert to absolute path
+            if Path(str(path)).exists():
+                return str(Path(str(path)).resolve())  # Convert to absolute path
 
         # Default to 'claude' and let the system handle the error
         return "claude"
@@ -64,7 +64,7 @@ class ClaudeWrapper:
     def _setup_signal_handlers(self) -> None:
         """Set up signal handlers for graceful process termination."""
 
-        def signal_handler(signum, frame):
+        def signal_handler(signum: int, frame: Any) -> None:
             if self._process and self._process.poll() is None:
                 logger.info("Received signal, terminating claude process...")
                 self._process.terminate()
@@ -78,7 +78,7 @@ class ClaudeWrapper:
         signal.signal(signal.SIGINT, signal_handler)
         signal.signal(signal.SIGTERM, signal_handler)
 
-    def execute_status(self) -> Dict[str, Any]:
+    def execute_status(self) -> dict[str, Any]:
         """
         Execute 'claude /status' command and parse the response.
 
@@ -110,7 +110,7 @@ class ClaudeWrapper:
             logger.error(f"Error executing claude /status: {e}")
             raise
 
-    def execute_interactive_status(self) -> Dict[str, Any]:
+    def execute_interactive_status(self) -> dict[str, Any]:
         """
         Execute 'claude /status' command with interactive "Press Enter to continue" handling.
 
@@ -156,7 +156,7 @@ class ClaudeWrapper:
                 import sys
 
                 # Use select to check if there's data to read (non-blocking)
-                if hasattr(select, "select"):
+                if hasattr(select, "select") and self._process.stdout:
                     ready, _, _ = select.select([self._process.stdout], [], [], 1.0)
                     if not ready:
                         continue
@@ -166,7 +166,10 @@ class ClaudeWrapper:
 
                     time.sleep(0.1)
 
-                line = self._process.stdout.readline()
+                if self._process.stdout:
+                    line = self._process.stdout.readline()
+                else:
+                    continue
                 if not line:
                     continue
 
@@ -185,8 +188,9 @@ class ClaudeWrapper:
                         "→ Detected 'Press Enter to continue' prompt. Sending Enter...",
                         flush=True,
                     )
-                    self._process.stdin.write("\n")
-                    self._process.stdin.flush()
+                    if self._process.stdin:
+                        self._process.stdin.write("\n")
+                        self._process.stdin.flush()
                     continue
 
             # Wait for process to complete
@@ -214,7 +218,7 @@ class ClaudeWrapper:
         finally:
             self._process = None
 
-    def _parse_status_response(self, output: str) -> Dict[str, Any]:
+    def _parse_status_response(self, output: str) -> dict[str, Any]:
         """
         Parse the claude /status response.
 
@@ -227,13 +231,14 @@ class ClaudeWrapper:
         try:
             # Try to parse as JSON first
             if output.strip().startswith("{"):
-                return json.loads(output)
+                result: dict[str, Any] = json.loads(output)
+                return result
 
             # If not JSON, parse as structured text
-            parsed = {}
+            parsed: dict[str, Any] = {}
             lines = output.strip().split("\n")
 
-            current_section = None
+            current_section: str | None = None
 
             for line in lines:
                 line = line.strip()
@@ -282,7 +287,7 @@ class ClaudeWrapper:
 
     def execute_command(
         self, command: str, interactive: bool = False
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Execute a general claude command.
 
@@ -321,7 +326,10 @@ class ClaudeWrapper:
                     if self._process.poll() is not None:
                         break
 
-                    line = self._process.stdout.readline()
+                    if self._process.stdout:
+                        line = self._process.stdout.readline()
+                    else:
+                        break
                     if not line:
                         break
 
@@ -334,8 +342,9 @@ class ClaudeWrapper:
                         print(
                             "Detected 'Press Enter to continue' prompt. Sending Enter..."
                         )
-                        self._process.stdin.write("\n")
-                        self._process.stdin.flush()
+                        if self._process.stdin:
+                            self._process.stdin.write("\n")
+                            self._process.stdin.flush()
                         continue
 
                     print(line.rstrip())
@@ -381,10 +390,10 @@ class ClaudeWrapper:
 
 # Convenience function for quick usage
 def create_claude_wrapper(
-    claude_path: Optional[str] = None,
-    working_directory: Optional[str] = None,
-    user: Optional[str] = None,
-    group: Optional[str] = None,
+    claude_path: str | None = None,
+    working_directory: str | Path | None = None,
+    user: str | None = None,
+    group: str | None = None,
 ) -> ClaudeWrapper:
     """
     Create a ClaudeWrapper instance with optional custom settings.

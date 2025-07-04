@@ -55,7 +55,7 @@ wheels = [
 [[package]]
 name = "claude-code-proxy-api"
 version = "0.1.0"
-source = { virtual = "." }
+source = { editable = "." }
 dependencies = [
     { name = "anthropic" },
     { name = "claude-code-sdk" },

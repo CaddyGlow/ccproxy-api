@@ -54,7 +54,7 @@ Status:
   Connection: Connected
   Last Request: 2024-01-15T10:30:00Z
   Requests Today: 42
-  
+
 Memory Usage:
   Current: 128MB
   Peak: 256MB
@@ -97,20 +97,24 @@ Memory Usage:
 
     def test_find_claude_executable_common_paths(self, mock_subprocess_security):
         """Test finding claude executable in common paths."""
-        with patch("shutil.which", return_value=None):
-            with patch("pathlib.Path.exists") as mock_exists:
-                # First path doesn't exist, second one does
-                mock_exists.side_effect = [False, True]
+        with (
+            patch("shutil.which", return_value=None),
+            patch("pathlib.Path.exists") as mock_exists,
+        ):
+            # First path doesn't exist, second one does
+            mock_exists.side_effect = [False, True]
 
-                wrapper = ClaudeWrapper(security=mock_subprocess_security)
-                assert wrapper.claude_path == "/usr/bin/claude"
+            wrapper = ClaudeWrapper(security=mock_subprocess_security)
+            assert wrapper.claude_path == "/usr/bin/claude"
 
     def test_find_claude_executable_fallback(self, mock_subprocess_security):
         """Test fallback when claude executable not found."""
-        with patch("shutil.which", return_value=None):
-            with patch("pathlib.Path.exists", return_value=False):
-                wrapper = ClaudeWrapper(security=mock_subprocess_security)
-                assert wrapper.claude_path == "claude"
+        with (
+            patch("shutil.which", return_value=None),
+            patch("pathlib.Path.exists", return_value=False),
+        ):
+            wrapper = ClaudeWrapper(security=mock_subprocess_security)
+            assert wrapper.claude_path == "claude"
 
     def test_execute_status_success(self, claude_wrapper, sample_status_json):
         """Test successful status execution."""

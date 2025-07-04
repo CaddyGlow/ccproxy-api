@@ -1,6 +1,7 @@
 """Tests for API endpoints."""
 
 import json
+from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -26,8 +27,8 @@ class TestChatCompletionsEndpoint:
         self,
         mock_claude_client_class,
         test_client: TestClient,
-        sample_chat_request: dict,
-        sample_claude_response: dict,
+        sample_chat_request: dict[str, Any],
+        sample_claude_response: dict[str, Any],
     ):
         """Test successful chat completion."""
         # Setup mock
@@ -43,6 +44,20 @@ class TestChatCompletionsEndpoint:
         assert data["role"] == "assistant"
         assert data["model"] == "claude-3-5-sonnet-20241022"
         assert "id" in data  # Should have message ID
+
+        # Verify ClaudeClient was called with correct interface
+        mock_client.create_completion.assert_called_once()
+        call_args = mock_client.create_completion.call_args
+        messages, options = call_args[0]  # positional args
+
+        # Check messages format
+        assert len(messages) == 1
+        assert messages[0]["role"] == "user"
+        assert messages[0]["content"] == "Hello, how are you?"
+
+        # Check options
+        assert hasattr(options, "model")
+        assert options.model == "claude-3-5-sonnet-20241022"  # Should have message ID
 
     def test_invalid_model(self, test_client: TestClient):
         """Test chat completion with invalid model."""
@@ -87,7 +102,7 @@ class TestChatCompletionsEndpoint:
         self,
         mock_claude_client_class,
         test_client: TestClient,
-        sample_streaming_request: dict,
+        sample_streaming_request: dict[str, Any],
     ):
         """Test streaming chat completion."""
 
@@ -124,17 +139,38 @@ class TestChatCompletionsEndpoint:
         assert "data: " in content
         assert "[DONE]" in content
 
+        # Verify ClaudeClient was called with streaming=True
+        mock_client.create_completion.assert_called_once()
+        call_args = mock_client.create_completion.call_args
+
+        # For streaming, API calls with keyword arguments: (messages, options=options, stream=True)
+        assert len(call_args[0]) == 1  # Only messages as positional arg
+        messages = call_args[0][0]
+        kwargs = call_args[1]  # keyword args
+
+        # Check that streaming was enabled
+        assert kwargs.get("stream") is True
+        assert "options" in kwargs
+
+        # Check messages format
+        assert len(messages) == 1
+        assert messages[0]["role"] == "user"
+
     @patch("claude_code_proxy.api.v1.chat.ClaudeClient")
     def test_claude_client_error(
         self,
         mock_claude_client_class,
         test_client: TestClient,
-        sample_chat_request: dict,
+        sample_chat_request: dict[str, Any],
     ):
         """Test handling of Claude client errors."""
+        from claude_code_proxy.exceptions import ClaudeProxyError
+
         mock_client = AsyncMock()
-        mock_client.create_completion.side_effect = ServiceUnavailableError(
-            "Claude CLI not available"
+        mock_client.create_completion.side_effect = ClaudeProxyError(
+            message="Claude CLI not available",
+            error_type="service_unavailable_error",
+            status_code=503,
         )
         mock_claude_client_class.return_value = mock_client
 
@@ -146,6 +182,39 @@ class TestChatCompletionsEndpoint:
         assert data["detail"]["type"] == "error"
         assert data["detail"]["error"]["type"] == "service_unavailable_error"
 
+    @patch("claude_code_proxy.api.v1.chat.ClaudeClient")
+    def test_max_thinking_tokens_parameter(
+        self,
+        mock_claude_client_class,
+        test_client: TestClient,
+        sample_claude_response: dict[str, Any],
+    ):
+        """Test max_thinking_tokens parameter is properly passed to ClaudeClient."""
+        # Setup mock
+        mock_client = AsyncMock()
+        mock_client.create_completion.return_value = sample_claude_response
+        mock_claude_client_class.return_value = mock_client
+
+        request_data = {
+            "model": "claude-3-5-sonnet-20241022",
+            "messages": [{"role": "user", "content": "Think about this carefully"}],
+            "max_tokens": 100,
+            "max_thinking_tokens": 50000,
+        }
+
+        response = test_client.post("/v1/chat/completions", json=request_data)
+
+        assert response.status_code == 200
+
+        # Verify ClaudeClient was called with max_thinking_tokens in options
+        mock_client.create_completion.assert_called_once()
+        call_args = mock_client.create_completion.call_args
+        messages, options = call_args[0]  # positional args
+
+        # Check that max_thinking_tokens was set in options
+        assert hasattr(options, "max_thinking_tokens")
+        assert options.max_thinking_tokens == 50000
+
 
 class TestModelsEndpoint:
     """Test /v1/models endpoint."""
@@ -155,7 +224,7 @@ class TestModelsEndpoint:
         self,
         mock_claude_client_class,
         test_client: TestClient,
-        sample_models_response: list,
+        sample_models_response: list[dict[str, Any]],
     ):
         """Test successful models listing."""
         mock_client = AsyncMock()
@@ -175,9 +244,13 @@ class TestModelsEndpoint:
     @patch("claude_code_proxy.api.v1.chat.ClaudeClient")
     def test_list_models_error(self, mock_claude_client_class, test_client: TestClient):
         """Test models listing with error."""
+        from claude_code_proxy.exceptions import ClaudeProxyError
+
         mock_client = AsyncMock()
-        mock_client.list_models.side_effect = ServiceUnavailableError(
-            "Claude CLI not available"
+        mock_client.list_models.side_effect = ClaudeProxyError(
+            message="Claude CLI not available",
+            error_type="service_unavailable_error",
+            status_code=503,
         )
         mock_claude_client_class.return_value = mock_client
 
@@ -209,7 +282,7 @@ class TestErrorHandling:
         """Test malformed JSON request."""
         response = test_client.post(
             "/v1/chat/completions",
-            data="invalid json",
+            content="invalid json",
             headers={"Content-Type": "application/json"},
         )
 
@@ -224,7 +297,7 @@ class TestCORSHeaders:
         self,
         mock_claude_client_class,
         test_client: TestClient,
-        sample_chat_request: dict,
+        sample_chat_request: dict[str, Any],
     ):
         """Test that CORS middleware is configured (endpoint responds successfully)."""
         # Mock the Claude client to avoid CLI dependency
@@ -254,7 +327,7 @@ class TestCORSHeaders:
         self,
         mock_claude_client_class,
         test_client: TestClient,
-        sample_streaming_request: dict,
+        sample_streaming_request: dict[str, Any],
     ):
         """Test CORS headers in streaming response."""
         mock_client = AsyncMock()

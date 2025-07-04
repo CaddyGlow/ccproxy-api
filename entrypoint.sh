@@ -120,7 +120,10 @@ chown -R claude:"$CLAUDE_GROUP_NAME" "$CLAUDE_WORKSPACE"
 # Update environment variables for the application
 export CLAUDE_USER="claude"
 export CLAUDE_GROUP="$CLAUDE_GROUP_NAME"
-export CLAUDE_WORKING_DIRECTORY="$CLAUDE_WORKSPACE"
+export CLAUDE_WORKSPACE="$CLAUDE_WORKSPACE"
+export HOME="$CLAUDE_HOME"
+
+cd $CLAUDE_WORKSPACE
 
 # Get final UID/GID values
 FINAL_PUID=$(id -u claude)
@@ -139,4 +142,5 @@ echo "  Environment: CLAUDE_USER=$CLAUDE_USER, CLAUDE_GROUP=$CLAUDE_GROUP_NAME"
 
 # Execute the main command
 echo "Starting application: $*"
-exec "$@"
+setpriv --reuid=claude --regid=claude --init-groups "$@"
+# exec "$@"

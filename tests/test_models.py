@@ -1,10 +1,13 @@
 """Tests for Pydantic models."""
 
+from typing import Any
+
 import pytest
 from pydantic import ValidationError
 
 from claude_code_proxy.models.errors import (
     AnthropicError,
+    ErrorDetail,
     InvalidRequestError,
     create_error_response,
 )
@@ -13,8 +16,14 @@ from claude_code_proxy.models.requests import (
     ImageContent,
     Message,
     TextContent,
+    ToolDefinition,
+    Usage,
 )
-from claude_code_proxy.models.responses import ChatCompletionResponse
+from claude_code_proxy.models.responses import (
+    ChatCompletionResponse,
+    StreamingChatCompletionResponse,
+    ToolUse,
+)
 
 
 class TestChatCompletionRequest:
@@ -22,7 +31,7 @@ class TestChatCompletionRequest:
 
     def test_valid_request(self):
         """Test valid chat completion request."""
-        request_data = {
+        request_data: dict[str, Any] = {
             "model": "claude-3-5-sonnet-20241022",
             "messages": [{"role": "user", "content": "Hello"}],
             "max_tokens": 100,
@@ -40,7 +49,7 @@ class TestChatCompletionRequest:
 
     def test_invalid_model(self):
         """Test invalid model validation."""
-        request_data = {
+        request_data: dict[str, Any] = {
             "model": "invalid-model",
             "messages": [{"role": "user", "content": "Hello"}],
             "max_tokens": 100,
@@ -54,7 +63,7 @@ class TestChatCompletionRequest:
     def test_temperature_validation(self):
         """Test temperature validation."""
         # Valid temperature
-        request_data = {
+        request_data: dict[str, Any] = {
             "model": "claude-3-5-sonnet-20241022",
             "messages": [{"role": "user", "content": "Hello"}],
             "max_tokens": 100,
@@ -75,7 +84,7 @@ class TestChatCompletionRequest:
 
     def test_max_tokens_validation(self):
         """Test max_tokens validation."""
-        request_data = {
+        request_data: dict[str, Any] = {
             "model": "claude-3-5-sonnet-20241022",
             "messages": [{"role": "user", "content": "Hello"}],
             "max_tokens": 0,  # Invalid
@@ -86,7 +95,7 @@ class TestChatCompletionRequest:
 
     def test_stop_sequences_validation(self):
         """Test stop_sequences validation."""
-        request_data = {
+        request_data: dict[str, Any] = {
             "model": "claude-3-5-sonnet-20241022",
             "messages": [{"role": "user", "content": "Hello"}],
             "max_tokens": 100,
@@ -98,13 +107,100 @@ class TestChatCompletionRequest:
 
         assert "at most 4" in str(exc_info.value)
 
+    def test_tools_validation(self):
+        """Test tools validation."""
+        request_data: dict[str, Any] = {
+            "model": "claude-3-5-sonnet-20241022",
+            "messages": [{"role": "user", "content": "Hello"}],
+            "max_tokens": 100,
+            "tools": [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "get_weather",
+                        "description": "Get current weather",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "location": {
+                                    "type": "string",
+                                    "description": "City name",
+                                }
+                            },
+                            "required": ["location"],
+                        },
+                    },
+                }
+            ],
+        }
+
+        request = ChatCompletionRequest(**request_data)
+
+        assert request.tools is not None
+        assert len(request.tools) == 1
+        assert request.tools[0].type == "function"
+        assert request.tools[0].function["name"] == "get_weather"
+
+    def test_tool_choice_validation(self):
+        """Test tool_choice validation."""
+        request_data: dict[str, Any] = {
+            "model": "claude-3-5-sonnet-20241022",
+            "messages": [{"role": "user", "content": "Hello"}],
+            "max_tokens": 100,
+            "tools": [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "get_weather",
+                        "description": "Get current weather",
+                    },
+                }
+            ],
+            "tool_choice": {"type": "function", "function": {"name": "get_weather"}},
+        }
+
+        request = ChatCompletionRequest(**request_data)
+
+        assert request.tool_choice is not None
+        assert request.tool_choice["type"] == "function"
+        assert request.tool_choice["function"]["name"] == "get_weather"
+
+    def test_max_thinking_tokens_validation(self):
+        """Test max_thinking_tokens validation."""
+        request_data: dict[str, Any] = {
+            "model": "claude-3-5-sonnet-20241022",
+            "messages": [{"role": "user", "content": "Hello"}],
+            "max_tokens": 100,
+            "max_thinking_tokens": 1000,
+        }
+
+        request = ChatCompletionRequest(**request_data)
+
+        assert request.max_thinking_tokens == 1000
+
+    def test_system_prompt_validation(self):
+        """Test system prompt validation."""
+        request_data: dict[str, Any] = {
+            "model": "claude-3-5-sonnet-20241022",
+            "messages": [{"role": "user", "content": "Hello"}],
+            "max_tokens": 100,
+            "system": "You are a helpful assistant.",
+        }
+
+        request = ChatCompletionRequest(**request_data)
+
+        assert request.system == "You are a helpful assistant."
+
 
 class TestMessage:
     """Test Message model."""
 
     def test_user_message_with_text(self):
         """Test user message with text content."""
-        message_data = {"role": "user", "content": "Hello, how are you?"}
+        message_data: dict[str, Any] = {
+            "role": "user",
+            "content": "Hello, how are you?",
+        }
 
         message = Message(**message_data)
 
@@ -113,7 +209,7 @@ class TestMessage:
 
     def test_user_message_with_content_blocks(self):
         """Test user message with content blocks."""
-        message_data = {
+        message_data: dict[str, Any] = {
             "role": "user",
             "content": [
                 {"type": "text", "text": "What's in this image?"},
@@ -138,7 +234,10 @@ class TestMessage:
 
     def test_assistant_message(self):
         """Test assistant message."""
-        message_data = {"role": "assistant", "content": "I'm doing well, thank you!"}
+        message_data: dict[str, Any] = {
+            "role": "assistant",
+            "content": "I'm doing well, thank you!",
+        }
 
         message = Message(**message_data)
 
@@ -147,7 +246,7 @@ class TestMessage:
 
     def test_invalid_role(self):
         """Test invalid role validation."""
-        message_data = {"role": "invalid", "content": "Hello"}
+        message_data: dict[str, Any] = {"role": "invalid", "content": "Hello"}
 
         with pytest.raises(ValidationError):
             Message(**message_data)
@@ -158,9 +257,10 @@ class TestErrorModels:
 
     def test_anthropic_error(self):
         """Test AnthropicError model."""
-        error = AnthropicError(
-            error={"type": "invalid_request_error", "message": "Invalid request"}
+        error_detail = ErrorDetail(
+            type="invalid_request_error", message="Invalid request"
         )
+        error = AnthropicError(error=error_detail)
 
         assert error.type == "error"
         assert error.error.type == "invalid_request_error"
@@ -202,3 +302,211 @@ class TestChatCompletionResponse:
         assert response.usage.output_tokens == 15
         assert response.usage.input_tokens == 10
         assert response.usage.output_tokens == 15
+
+
+class TestUsage:
+    """Test Usage model."""
+
+    def test_basic_usage(self):
+        """Test basic usage with input and output tokens."""
+        usage_data: dict[str, Any] = {
+            "input_tokens": 10,
+            "output_tokens": 15,
+        }
+
+        usage = Usage(**usage_data)
+
+        assert usage.input_tokens == 10
+        assert usage.output_tokens == 15
+        assert usage.cache_creation_input_tokens is None
+        assert usage.cache_read_input_tokens is None
+
+    def test_usage_with_cache_tokens(self):
+        """Test usage with cache-related tokens."""
+        usage_data: dict[str, Any] = {
+            "input_tokens": 10,
+            "output_tokens": 15,
+            "cache_creation_input_tokens": 5,
+            "cache_read_input_tokens": 3,
+        }
+
+        usage = Usage(**usage_data)
+
+        assert usage.input_tokens == 10
+        assert usage.output_tokens == 15
+        assert usage.cache_creation_input_tokens == 5
+        assert usage.cache_read_input_tokens == 3
+
+    def test_usage_defaults(self):
+        """Test usage with default values."""
+        usage = Usage(
+            input_tokens=0,
+            output_tokens=0,
+            cache_creation_input_tokens=None,
+            cache_read_input_tokens=None,
+        )
+
+        assert usage.input_tokens == 0
+        assert usage.output_tokens == 0
+        assert usage.cache_creation_input_tokens is None
+        assert usage.cache_read_input_tokens is None
+
+
+class TestToolDefinition:
+    """Test ToolDefinition model."""
+
+    def test_valid_tool_definition(self):
+        """Test valid tool definition."""
+        tool_data: dict[str, Any] = {
+            "type": "function",
+            "function": {
+                "name": "get_weather",
+                "description": "Get current weather",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "location": {"type": "string", "description": "City name"}
+                    },
+                    "required": ["location"],
+                },
+            },
+        }
+
+        tool = ToolDefinition(**tool_data)
+
+        assert tool.type == "function"
+        assert tool.function["name"] == "get_weather"
+        assert tool.function["description"] == "Get current weather"
+        assert "parameters" in tool.function
+
+    def test_tool_definition_minimal(self):
+        """Test minimal tool definition."""
+        tool_data: dict[str, Any] = {
+            "function": {
+                "name": "simple_function",
+                "description": "A simple function",
+            }
+        }
+
+        tool = ToolDefinition(**tool_data)
+
+        assert tool.type == "function"  # default value
+        assert tool.function["name"] == "simple_function"
+
+
+class TestToolUse:
+    """Test ToolUse model."""
+
+    def test_valid_tool_use(self):
+        """Test valid tool use."""
+        tool_use_data: dict[str, Any] = {
+            "type": "tool_use",
+            "id": "tool_123",
+            "name": "get_weather",
+            "input": {"location": "New York"},
+        }
+
+        tool_use = ToolUse(**tool_use_data)
+
+        assert tool_use.type == "tool_use"
+        assert tool_use.id == "tool_123"
+        assert tool_use.name == "get_weather"
+        assert tool_use.input["location"] == "New York"
+
+    def test_tool_use_default_type(self):
+        """Test tool use with default type."""
+        tool_use_data: dict[str, Any] = {
+            "id": "tool_456",
+            "name": "calculate",
+            "input": {"x": 5, "y": 10},
+        }
+
+        tool_use = ToolUse(**tool_use_data)
+
+        assert tool_use.type == "tool_use"  # default value
+        assert tool_use.id == "tool_456"
+        assert tool_use.name == "calculate"
+        assert tool_use.input == {"x": 5, "y": 10}
+
+
+class TestStreamingChatCompletionResponse:
+    """Test StreamingChatCompletionResponse model."""
+
+    def test_message_start_event(self):
+        """Test message start event."""
+        event_data: dict[str, Any] = {
+            "id": "msg_123",
+            "type": "message_start",
+            "message": {
+                "id": "msg_123",
+                "type": "message",
+                "role": "assistant",
+                "content": [],
+                "model": "claude-3-5-sonnet-20241022",
+                "stop_reason": None,
+                "stop_sequence": None,
+                "usage": {"input_tokens": 10, "output_tokens": 0},
+            },
+        }
+
+        event = StreamingChatCompletionResponse(**event_data)
+
+        assert event.id == "msg_123"
+        assert event.type == "message_start"
+        assert event.message is not None
+        assert event.message["role"] == "assistant"
+        assert event.index is None
+        assert event.delta is None
+
+    def test_content_block_delta_event(self):
+        """Test content block delta event."""
+        event_data: dict[str, Any] = {
+            "id": "msg_123",
+            "type": "content_block_delta",
+            "index": 0,
+            "delta": {"type": "text_delta", "text": "Hello"},
+        }
+
+        event = StreamingChatCompletionResponse(**event_data)
+
+        assert event.id == "msg_123"
+        assert event.type == "content_block_delta"
+        assert event.index == 0
+        assert event.delta is not None
+        assert event.delta["type"] == "text_delta"
+        assert event.delta["text"] == "Hello"
+        assert event.message is None
+
+    def test_message_delta_event(self):
+        """Test message delta event."""
+        event_data: dict[str, Any] = {
+            "id": "msg_123",
+            "type": "message_delta",
+            "delta": {"stop_reason": "end_turn"},
+            "usage": {"output_tokens": 15},
+        }
+
+        event = StreamingChatCompletionResponse(**event_data)
+
+        assert event.id == "msg_123"
+        assert event.type == "message_delta"
+        assert event.delta is not None
+        assert event.delta["stop_reason"] == "end_turn"
+        assert event.usage is not None
+        assert event.usage.output_tokens == 15
+
+    def test_ping_event(self):
+        """Test ping event."""
+        event_data: dict[str, Any] = {
+            "id": "msg_123",
+            "type": "ping",
+        }
+
+        event = StreamingChatCompletionResponse(**event_data)
+
+        assert event.id == "msg_123"
+        assert event.type == "ping"
+        assert event.message is None
+        assert event.delta is None
+        assert event.index is None
+        assert event.usage is None

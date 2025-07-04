@@ -43,10 +43,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     configure_secure_claude_sdk(
         user=settings.claude_user,
         group=settings.claude_group,
-        working_directory=settings.claude_working_directory,
+        working_directory=settings.claude_code_options.cwd,
     )
     logger.info(
-        f"Configured secure Claude SDK with user: {settings.claude_user}, group: {settings.claude_group}, cwd: {settings.claude_working_directory}"
+        f"Configured secure Claude SDK with user: {settings.claude_user}, group: {settings.claude_group}, cwd: {settings.claude_code_options.cwd}"
     )
 
     yield

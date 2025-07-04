@@ -5,8 +5,9 @@ import logging
 import os
 import pwd
 import subprocess
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
 
 
 logger = logging.getLogger(__name__)
@@ -19,7 +20,7 @@ class SubprocessSecurity:
         self,
         user: str | None = None,
         group: str | None = None,
-        working_directory: str | None = None,
+        working_directory: str | Path | None = None,
         environment: dict[str, str] | None = None,
     ):
         """
@@ -47,14 +48,14 @@ class SubprocessSecurity:
         if self.user:
             try:
                 pwd.getpwnam(self.user)
-            except KeyError:
-                raise ValueError(f"User '{self.user}' does not exist")
+            except KeyError as err:
+                raise ValueError(f"User '{self.user}' does not exist") from err
 
         if self.group:
             try:
                 grp.getgrnam(self.group)
-            except KeyError:
-                raise ValueError(f"Group '{self.group}' does not exist")
+            except KeyError as err:
+                raise ValueError(f"Group '{self.group}' does not exist") from err
 
     def _validate_working_directory(self) -> None:
         """Validate that the working directory exists and is accessible."""
@@ -89,10 +90,10 @@ class SubprocessSecurity:
                 f"Dropped user privileges to {self.user} (uid: {user_info.pw_uid})"
             )
 
-    def get_preexec_fn(self):
+    def get_preexec_fn(self) -> Callable[[], None]:
         """Get the preexec_fn for subprocess calls."""
 
-        def preexec_fn():
+        def preexec_fn() -> None:
             """Function to run before exec in the child process."""
             try:
                 # Change working directory first
@@ -128,7 +129,9 @@ class SubprocessSecurity:
 
         return kwargs
 
-    def secure_run(self, cmd: list[str], **kwargs) -> subprocess.CompletedProcess:
+    def secure_run(
+        self, cmd: list[str], **kwargs: Any
+    ) -> subprocess.CompletedProcess[str]:
         """
         Run a command with security settings applied.
 
@@ -150,7 +153,7 @@ class SubprocessSecurity:
 
         return subprocess.run(cmd, **secure_kwargs)
 
-    def secure_popen(self, cmd: list[str], **kwargs) -> subprocess.Popen:
+    def secure_popen(self, cmd: list[str], **kwargs: Any) -> subprocess.Popen[str]:
         """
         Create a Popen object with security settings applied.
 
@@ -189,7 +192,7 @@ def create_claude_user_if_not_exists() -> None:
 
 
 def get_default_claude_security(
-    working_directory: str | None = None,
+    working_directory: str | Path | None = None,
 ) -> SubprocessSecurity:
     """
     Get default security settings for Claude subprocess execution.
@@ -214,8 +217,8 @@ def get_default_claude_security(
             group="claude",
             working_directory=default_cwd,
             environment={
-                "HOME": default_cwd,
-                "TMPDIR": default_cwd,
+                # "HOME": str(default_cwd),
+                "TMPDIR": str(default_cwd),
             },
         )
     else:
@@ -223,7 +226,7 @@ def get_default_claude_security(
         return SubprocessSecurity(
             working_directory=default_cwd,
             environment={
-                "HOME": default_cwd,
-                "TMPDIR": default_cwd,
+                # "HOME": default_cwd,
+                "TMPDIR": str(default_cwd),
             },
         )

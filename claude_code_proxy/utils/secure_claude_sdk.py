@@ -2,8 +2,9 @@
 
 import logging
 import os
-from collections.abc import AsyncIterator
-from typing import Any, Optional
+from collections.abc import AsyncIterator, Callable
+from pathlib import Path
+from typing import Any
 
 from claude_code_sdk import (
     AssistantMessage,
@@ -29,7 +30,7 @@ class SecureClaudeSDK:
         self,
         user: str | None = None,
         group: str | None = None,
-        working_directory: str | None = None,
+        working_directory: str | Path | None = None,
         environment: dict[str, str] | None = None,
     ):
         """
@@ -77,20 +78,20 @@ class SecureClaudeSDK:
             original_run = subprocess.run
 
             # Create secure wrappers
-            def secure_popen(*args, **kwargs):
+            def secure_popen(*args: Any, **kwargs: Any) -> Any:
                 # Apply security settings
                 security_kwargs = self.security.get_subprocess_kwargs()
                 kwargs.update(security_kwargs)
                 return original_popen(*args, **kwargs)
 
-            def secure_run(*args, **kwargs):
+            def secure_run(*args: Any, **kwargs: Any) -> Any:
                 # Apply security settings
                 security_kwargs = self.security.get_subprocess_kwargs()
                 kwargs.update(security_kwargs)
                 return original_run(*args, **kwargs)
 
             # Monkey patch subprocess functions
-            subprocess.Popen = secure_popen
+            subprocess.Popen = secure_popen  # type: ignore[misc,assignment]
             subprocess.run = secure_run
 
             logger.info("Starting secure Claude query with privilege dropping")
@@ -110,7 +111,7 @@ class SecureClaudeSDK:
             if original_popen is not None:
                 import subprocess
 
-                subprocess.Popen = original_popen
+                subprocess.Popen = original_popen  # type: ignore[misc]
             if original_run is not None:
                 import subprocess
 
@@ -134,7 +135,7 @@ def get_secure_claude_sdk() -> SecureClaudeSDK:
 def configure_secure_claude_sdk(
     user: str | None = None,
     group: str | None = None,
-    working_directory: str | None = None,
+    working_directory: str | Path | None = None,
     environment: dict[str, str] | None = None,
 ) -> None:
     """

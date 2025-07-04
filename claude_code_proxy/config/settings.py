@@ -6,21 +6,166 @@ from pathlib import Path
 from typing import Any, Literal
 
 from claude_code_sdk import ClaudeCodeOptions
-from pydantic import Field, field_validator, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from claude_code_proxy.utils.helper import get_package_dir
 
-try:
-    import importlib.util
 
-    # Get the path to the claude_code_proxy package and resolve it
-    spec = importlib.util.find_spec("claude_code_proxy")
-    if spec and spec.origin:
-        PACKAGE_DIR = Path(spec.origin).parent.parent.resolve()
-    else:
-        PACKAGE_DIR = Path(__file__).parent.parent.parent.resolve()
-except Exception:
-    PACKAGE_DIR = Path(__file__).parent.parent.parent.resolve()
+class DockerSettings(BaseModel):
+    """Docker configuration settings for running Claude commands in containers."""
+
+    docker_image: str = Field(
+        default="claude-code-proxy",
+        description="Docker image to use for Claude commands",
+    )
+
+    docker_volumes: list[str] = Field(
+        default_factory=list,
+        description="List of volume mounts in 'host:container[:options]' format",
+    )
+
+    docker_environment: dict[str, str] = Field(
+        default_factory=dict,
+        description="Environment variables to pass to Docker container",
+    )
+
+    docker_additional_args: list[str] = Field(
+        default_factory=list,
+        description="Additional arguments to pass to docker run command",
+    )
+
+    docker_home_directory: str | None = Field(
+        default=None,
+        description="Local host directory to mount as the home directory in container",
+    )
+
+    docker_workspace_directory: str | None = Field(
+        default=None,
+        description="Local host directory to mount as the workspace directory in container",
+    )
+
+    @field_validator("docker_volumes")
+    @classmethod
+    def validate_docker_volumes(cls, v: list[str]) -> list[str]:
+        """Validate Docker volume mount format."""
+        for volume in v:
+            if ":" not in volume:
+                raise ValueError(
+                    f"Invalid volume format: '{volume}'. Expected 'host:container[:options]'"
+                )
+            parts = volume.split(":")
+            if len(parts) < 2:
+                raise ValueError(
+                    f"Invalid volume format: '{volume}'. Expected 'host:container[:options]'"
+                )
+            # Convert relative paths to absolute and validate
+            host_path = os.path.expandvars(parts[0])
+            path_obj = Path(host_path)
+
+            # If it's a relative path, convert to absolute
+            if not path_obj.is_absolute():
+                host_path = str(path_obj.resolve())
+
+            # Check if the absolute path exists
+            if not Path(host_path).exists():
+                raise ValueError(f"Host path does not exist: '{host_path}'")
+        return v
+
+    @field_validator("docker_home_directory")
+    @classmethod
+    def validate_docker_home_directory(cls, v: str | None) -> str | None:
+        """Validate and normalize Docker home directory (host path)."""
+        if v is None:
+            return None
+
+        # Expand environment variables
+        expanded_path = os.path.expandvars(v)
+        path_obj = Path(expanded_path)
+
+        # If it's a relative path, convert to absolute
+        if not path_obj.is_absolute():
+            v = str(path_obj.resolve())
+        else:
+            v = expanded_path
+
+        return v
+
+    @field_validator("docker_workspace_directory")
+    @classmethod
+    def validate_docker_workspace_directory(cls, v: str | None) -> str | None:
+        """Validate and normalize Docker workspace directory (host path)."""
+        if v is None:
+            return None
+
+        # Expand environment variables
+        expanded_path = os.path.expandvars(v)
+        path_obj = Path(expanded_path)
+
+        # If it's a relative path, convert to absolute
+        if not path_obj.is_absolute():
+            v = str(path_obj.resolve())
+        else:
+            v = expanded_path
+
+        return v
+
+    @model_validator(mode="after")
+    def setup_docker_volumes(self) -> "DockerSettings":
+        """Set up Docker volumes based on home and workspace directories."""
+        # Expand environment variables in paths
+        # home_host_path = os.path.expandvars("$HOME/.config/cc-proxy/home")
+        # workspace_host_path = os.path.expandvars("$PWD")
+        #
+        # # Create default volumes if none are explicitly set
+        # if not self.docker_volumes:
+        #     self.docker_volumes = [
+        #         f"{home_host_path}:{self.docker_home_directory}",
+        #         f"{workspace_host_path}:{self.docker_workspace_directory}",
+        #     ]
+
+        # Create default volumes if none are explicitly set and no custom directories
+        if (
+            not self.docker_volumes
+            and not self.docker_home_directory
+            and not self.docker_workspace_directory
+        ):
+            # Set default directories
+            home_host_path = os.path.expandvars("$HOME/.config/cc-proxy/home")
+            workspace_host_path = os.path.expandvars("$PWD")
+
+            self.docker_volumes = [
+                f"{home_host_path}:/data/home",
+                f"{workspace_host_path}:/data/workspace",
+            ]
+
+        # Update environment variables to point to container paths
+        if "CLAUDE_HOME" not in self.docker_environment:
+            self.docker_environment["CLAUDE_HOME"] = "/data/home"
+        if "CLAUDE_WORKSPACE" not in self.docker_environment:
+            self.docker_environment["CLAUDE_WORKSPACE"] = "/data/workspace"
+
+        return self
+
+    def get_docker_command_args(self) -> list[str]:
+        """Generate Docker command arguments from settings."""
+        args = ["docker", "run", "--rm", "-it"]
+
+        # Add volumes
+        for volume in self.docker_volumes:
+            args.extend(["--volume", volume])
+
+        # Add environment variables
+        for key, value in self.docker_environment.items():
+            args.extend(["--env", f"{key}={value}"])
+
+        # Add additional arguments
+        args.extend(self.docker_additional_args)
+
+        # Add image
+        args.append(self.docker_image)
+
+        return args
 
 
 class Settings(BaseSettings):
@@ -99,10 +244,22 @@ class Settings(BaseSettings):
         description="Group name to drop privileges to when executing Claude subprocess",
     )
 
+    # Claude CLI path
+    claude_cli_path: str | None = Field(
+        default=None,
+        description="Path to Claude CLI executable",
+    )
+
     # Claude Code SDK Options
     claude_code_options: ClaudeCodeOptions = Field(
         default_factory=lambda: ClaudeCodeOptions(),
         description="Claude Code SDK options configuration",
+    )
+
+    # Docker settings
+    docker_settings: DockerSettings = Field(
+        default_factory=DockerSettings,
+        description="Docker configuration for running Claude commands in containers",
     )
 
     @field_validator("claude_code_options", mode="before")
@@ -110,13 +267,10 @@ class Settings(BaseSettings):
     def validate_claude_code_options(cls, v: Any) -> Any:
         """Validate and convert Claude Code options."""
         if v is None:
-            return {}
+            return ClaudeCodeOptions()
 
-            # If it's already a ClaudeCodeOptions instance or dict, return as-is
-            return v
-
-        # If ClaudeCodeOptions is available and it's an instance, return as-is
-        if ClaudeCodeOptions and isinstance(v, ClaudeCodeOptions):
+        # If it's already a ClaudeCodeOptions instance, return as-is
+        if isinstance(v, ClaudeCodeOptions):
             return v
 
         # Try to convert to dict if possible
@@ -124,6 +278,29 @@ class Settings(BaseSettings):
             return v.model_dump()
         elif hasattr(v, "__dict__"):
             return v.__dict__
+
+        return v
+
+    @field_validator("docker_settings", mode="before")
+    @classmethod
+    def validate_docker_settings(cls, v: Any) -> Any:
+        """Validate and convert Docker settings."""
+        if v is None:
+            return DockerSettings()
+
+        # If it's already a DockerSettings instance, return as-is
+        if isinstance(v, DockerSettings):
+            return v
+
+        # If it's a dict, create DockerSettings from it
+        if isinstance(v, dict):
+            return DockerSettings(**v)
+
+        # Try to convert to dict if possible
+        if hasattr(v, "model_dump"):
+            return DockerSettings(**v.model_dump())
+        elif hasattr(v, "__dict__"):
+            return DockerSettings(**v.__dict__)
 
         return v
 
@@ -180,6 +357,13 @@ class Settings(BaseSettings):
                 raise ValueError(f"Claude CLI path is not executable: {v}")
         return v
 
+    @field_validator("claude_code_options", mode="before")
+    @classmethod
+    def validate_claude_cwd(cls, v: ClaudeCodeOptions) -> ClaudeCodeOptions:
+        if v.cwd is None:
+            v.cwd = Path.cwd()
+        return v
+
     @model_validator(mode="after")
     def setup_claude_cli_path(self) -> "Settings":
         """Set up Claude CLI path in environment if provided or found."""
@@ -223,7 +407,7 @@ class Settings(BaseSettings):
             # User's global node_modules (npm install -g)
             Path.home() / "node_modules" / ".bin" / "claude",
             # Package installation directory node_modules
-            PACKAGE_DIR / "node_modules" / ".bin" / "claude",
+            get_package_dir() / "node_modules" / ".bin" / "claude",
             # Current working directory node_modules
             Path.cwd() / "node_modules" / ".bin" / "claude",
             # System-wide installations
@@ -251,7 +435,7 @@ class Settings(BaseSettings):
             # User's global node_modules (npm install -g)
             Path.home() / "node_modules" / ".bin" / "claude",
             # Package installation directory node_modules
-            PACKAGE_DIR / "node_modules" / ".bin" / "claude",
+            get_package_dir() / "node_modules" / ".bin" / "claude",
             # Current working directory node_modules
             Path.cwd() / "node_modules" / ".bin" / "claude",
             # System-wide installations
