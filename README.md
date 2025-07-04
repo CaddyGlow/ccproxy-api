@@ -38,7 +38,7 @@ A personal API proxy server that enables you to use your existing Claude subscri
 ### Prerequisites
 
 - Python 3.11 or higher
-- Claude account with an active subscription (Pro, Team, or Enterprise)
+- Claude account with an active subscription (Pro, Team, or Enterprise) or Anthropic API key
 - Claude Code CLI (will be set up automatically)
 
 ### Installation

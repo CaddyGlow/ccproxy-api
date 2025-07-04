@@ -69,11 +69,7 @@ Create a `config.json` file in the project root for advanced configuration:
     "format": "json",
     "file": "logs/app.log"
   },
-  "rate_limiting": {
-    "requests_per_minute": 60,
-    "burst_size": 10,
-    "enabled": true
-  },
+
   "cors": {
     "enabled": true,
     "allow_origins": ["*"],
@@ -144,22 +140,6 @@ Controls application logging:
 }
 ```
 
-### Rate Limiting
-
-Configure API rate limiting:
-
-```json
-{
-  "rate_limiting": {
-    "enabled": true,                   // Enable rate limiting
-    "requests_per_minute": 60,         // Requests per minute per IP
-    "burst_size": 10,                  // Burst allowance
-    "storage": "memory",               // Storage backend (memory, redis)
-    "redis_url": "redis://localhost:6379", // Redis URL (if using Redis)
-    "exempt_ips": ["127.0.0.1"]       // IPs exempt from rate limiting
-  }
-}
-```
 
 ### CORS Configuration
 
@@ -298,12 +278,7 @@ services:
     "rotation": "1 day",
     "retention": "7 days"
   },
-  "rate_limiting": {
-    "enabled": false,
-    "requests_per_minute": 60,
-    "burst_size": 10,
-    "storage": "memory"
-  },
+
   "cors": {
     "enabled": true,
     "allow_origins": ["http://localhost:*", "http://127.0.0.1:*"],
@@ -348,9 +323,7 @@ uv run python -m claude_code_proxy.config.validate config.json
     "level": "DEBUG",
     "format": "text"
   },
-  "rate_limiting": {
-    "enabled": false
-  }
+
 }
 ```
 
@@ -367,9 +340,7 @@ uv run python -m claude_code_proxy.config.validate config.json
     "level": "INFO",
     "format": "text"
   },
-  "rate_limiting": {
-    "enabled": false
-  }
+
 }
 ```
 
@@ -387,9 +358,7 @@ uv run python -m claude_code_proxy.config.validate config.json
     "format": "json",
     "file": "/app/logs/app.log"
   },
-  "rate_limiting": {
-    "enabled": false
-  }
+
 }
 ```
 
@@ -422,10 +391,7 @@ uv run python -m claude_code_proxy.config.validate config.json
    - Validate JSON syntax: `python -m json.tool config.json`
    - Check file permissions: `chmod 644 config.json`
 
-4. **Rate limiting not working**
-   - Check Redis connection (if using Redis storage)
-   - Verify rate limiting is enabled in configuration
-   - Check logs for rate limiting messages
+
 
 ## Advanced Configuration Reference
 
