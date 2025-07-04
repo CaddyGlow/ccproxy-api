@@ -19,13 +19,13 @@ class TestClaudeClient:
             default_model="claude-3-5-sonnet-20241022",
             max_tokens=1000,
             temperature=0.5,
-            claude_code_options=ClaudeCodeOptions(permission_mode=\"strict\"),
+            claude_code_options=ClaudeCodeOptions(permission_mode="strict"),
         )
-        assert client.claude_cli_path == \"/test/path/claude\"
-        assert client.default_model == \"claude-3-5-sonnet-20241022\"
+        assert client.claude_cli_path == "/test/path/claude"
+        assert client.default_model == "claude-3-5-sonnet-20241022"
         assert client.max_tokens == 1000
         assert client.temperature == 0.5
-        assert client.claude_code_options.permission_mode == \"strict\"
+        assert client.claude_code_options.permission_mode == "strict"
 
     def test_init_defaults(self):
         """Test client initialization with defaults."""

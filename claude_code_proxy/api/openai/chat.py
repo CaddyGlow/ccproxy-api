@@ -4,7 +4,8 @@ import json
 import logging
 import time
 import uuid
-from typing import Any
+from collections.abc import AsyncGenerator, AsyncIterator
+from typing import Any, cast
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
@@ -66,6 +67,14 @@ async def create_chat_completion(
         claude_client = ClaudeClient()
         translator = OpenAITranslator()
 
+        # Get Claude Code options from settings
+        options = settings.claude_code_options
+        options.model = request.model
+
+        # Handle max_thinking_tokens if provided
+        if hasattr(request, "max_thinking_tokens") and request.max_thinking_tokens:
+            options.max_thinking_tokens = request.max_thinking_tokens
+
         # Convert OpenAI request to Anthropic format
         anthropic_request = translator.openai_to_anthropic_request(request.model_dump())
 
@@ -75,7 +84,7 @@ async def create_chat_completion(
 
         if request.stream:
             # Handle streaming response
-            async def generate_stream():
+            async def generate_stream() -> AsyncGenerator[str, None]:
                 try:
                     logger.debug(
                         f"Starting OpenAI streaming for request_id: {request_id}"
@@ -83,11 +92,8 @@ async def create_chat_completion(
 
                     # Get Claude streaming response
                     claude_stream = await claude_client.create_completion(
-                        messages=anthropic_request["messages"],
-                        model=anthropic_request["model"],
-                        max_tokens=anthropic_request["max_tokens"],
-                        temperature=anthropic_request.get("temperature"),
-                        system=anthropic_request.get("system"),
+                        anthropic_request["messages"],
+                        options,
                         stream=True,
                     )
 
@@ -97,8 +103,13 @@ async def create_chat_completion(
 
                     # Convert to OpenAI format
                     chunk_count = 0
+                    # Type assertion: when stream=True, create_completion returns AsyncIterator
+                    claude_stream_iter = cast(
+                        AsyncIterator[dict[str, Any]], claude_stream
+                    )
+
                     async for chunk in stream_claude_response_openai(
-                        claude_stream,
+                        claude_stream_iter,  # type: ignore[arg-type]
                         request_id,
                         request.model,
                         created,
@@ -140,17 +151,16 @@ async def create_chat_completion(
         else:
             # Handle non-streaming response
             anthropic_response = await claude_client.create_completion(
-                messages=anthropic_request["messages"],
-                model=anthropic_request["model"],
-                max_tokens=anthropic_request["max_tokens"],
-                temperature=anthropic_request.get("temperature"),
-                system=anthropic_request.get("system"),
+                anthropic_request["messages"],
+                options,
                 stream=False,
             )
 
             # Convert to OpenAI format
+            # Type assertion: when stream=False, create_completion returns dict[str, Any]
+            response_dict = cast(dict[str, Any], anthropic_response)
             openai_response = translator.anthropic_to_openai_response(
-                anthropic_response, request.model, request_id
+                response_dict, request.model, request_id
             )
 
             return OpenAIChatCompletionResponse(**openai_response)

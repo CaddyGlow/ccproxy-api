@@ -115,6 +115,8 @@ class ChatCompletionRequest(BaseModel):
         description="How the model should use the provided tools",
     )
 
+    max_thinking_tokens: int | None = Field(None, description="Claude code settings")
+
     @field_validator("model")
     @classmethod
     def validate_model(cls, v: str) -> str:

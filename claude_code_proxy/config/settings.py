@@ -113,8 +113,8 @@ class Settings(BaseSettings):
     )
 
     # Claude Code SDK Options
-    claude_code_options: ClaudeCodeOptions | dict[str, Any] = Field(
-        default_factory=dict,
+    claude_code_options: ClaudeCodeOptions = Field(
+        default_factory=lambda: ClaudeCodeOptions(),
         description="Claude Code SDK options configuration",
     )
 
@@ -286,46 +286,6 @@ class Settings(BaseSettings):
             dict: Configuration with sensitive data masked
         """
         return self.model_dump()
-
-    def get_claude_code_options(self) -> ClaudeCodeOptions | None:
-        """
-        Get ClaudeCodeOptions instance from settings.
-
-        Returns:
-            ClaudeCodeOptions instance if SDK is available, None otherwise
-        """
-        if not ClaudeCodeOptions:
-            return None
-
-        # If it's already a ClaudeCodeOptions instance, return it
-        if isinstance(self.claude_code_options, ClaudeCodeOptions):
-            return self.claude_code_options
-
-        # If it's a dict, create ClaudeCodeOptions from it
-        if isinstance(self.claude_code_options, dict):
-            return ClaudeCodeOptions(**self.claude_code_options)
-
-        return None
-
-    def get_claude_code_options_dict(self) -> dict[str, Any]:
-        """
-        Get Claude Code options as a dictionary.
-
-        Returns:
-            dict: Configuration for ClaudeCodeOptions
-        """
-        if isinstance(self.claude_code_options, dict):
-            return self.claude_code_options
-        elif ClaudeCodeOptions and isinstance(
-            self.claude_code_options, ClaudeCodeOptions
-        ):
-            # Convert ClaudeCodeOptions to dict if it has model_dump method
-            if hasattr(self.claude_code_options, "model_dump"):
-                return self.claude_code_options.model_dump()
-            elif hasattr(self.claude_code_options, "__dict__"):
-                return self.claude_code_options.__dict__
-
-        return {}
 
 
 def get_settings() -> Settings:

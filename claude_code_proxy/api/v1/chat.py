@@ -27,22 +27,6 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-# Supported Claude models
-SUPPORTED_MODELS = {
-    "claude-3-opus-20240229",
-    "claude-3-sonnet-20240229",
-    "claude-3-haiku-20240307",
-    "claude-3-5-sonnet-20241022",
-    "claude-3-5-haiku-20241022",
-}
-
-
-async def _validate_model(model: str) -> None:
-    """Validate that the requested model is supported."""
-    if model not in SUPPORTED_MODELS and not model.startswith("claude-"):
-        raise ModelNotFoundError(model)
-
-
 @router.post("/chat/completions", response_model=None)
 async def create_chat_completion(
     request: ChatCompletionRequest,
@@ -67,13 +51,14 @@ async def create_chat_completion(
     try:
         settings = get_settings()
 
-        # Validate model
-        await _validate_model(request.model)
-
         # Initialize Claude client
-        claude_client = ClaudeClient(
-            claude_cli_path=settings.claude_cli_path,
-        )
+        claude_client = ClaudeClient()
+
+        options = settings.claude_code_options
+        options.model = request.model
+
+        if request.max_thinking_tokens:
+            options.max_thinking_tokens = request.max_thinking_tokens
 
         # Convert request to messages format
         messages = [msg.model_dump() for msg in request.messages]
@@ -87,12 +72,7 @@ async def create_chat_completion(
             async def generate_stream() -> AsyncGenerator[str, None]:
                 try:
                     response_iter = await claude_client.create_completion(
-                        messages,
-                        model=request.model,
-                        max_tokens=request.max_tokens,
-                        temperature=request.temperature,
-                        system=request.system,
-                        stream=True,
+                        messages, options=options, stream=True
                     )
 
                     # Use enhanced streaming formatter
@@ -129,10 +109,7 @@ async def create_chat_completion(
             # Return regular response
             response = await claude_client.create_completion(
                 messages,
-                model=request.model,
-                max_tokens=request.max_tokens,
-                temperature=request.temperature,
-                system=request.system,
+                options,
                 stream=False,
             )
 
@@ -170,10 +147,7 @@ async def list_models() -> dict[str, Any]:
     Returns a list of available Claude models in Anthropic API format.
     """
     try:
-        settings = get_settings()
-        claude_client = ClaudeClient(
-            claude_cli_path=settings.claude_cli_path,
-        )
+        claude_client = ClaudeClient()
         models = await claude_client.list_models()
         return {"object": "list", "data": models}
 

@@ -50,37 +50,15 @@ class ClaudeClient:
 
     def __init__(
         self,
-        *,
-        default_model: str = "claude-3-5-sonnet-20241022",
-        max_tokens: int = 8192,
-        temperature: float = 0.7,
-        system_prompt: str | None = None,
-        claude_cli_path: str | None = None,
     ) -> None:
         """
         Initialize Claude client.
-
-        Args:
-            default_model: Default Claude model to use
-            max_tokens: Maximum tokens for responses
-            temperature: Temperature for response generation
-            system_prompt: Default system prompt
-            claude_cli_path: Path to Claude CLI executable
         """
-        self.default_model = default_model
-        self.max_tokens = max_tokens
-        self.temperature = temperature
-        self.system_prompt = system_prompt
-        self.claude_cli_path = claude_cli_path
 
     async def create_completion(
         self,
         messages: list[dict[str, Any]],
-        *,
-        model: str | None = None,
-        max_tokens: int | None = None,
-        temperature: float | None = None,
-        system: str | None = None,
+        options: ClaudeCodeOptions,
         stream: bool = False,
         **kwargs: Any,
     ) -> dict[str, Any] | AsyncIterator[dict[str, Any]]:
@@ -105,15 +83,6 @@ class ClaudeClient:
         try:
             # Convert Anthropic messages to Claude SDK format
             prompt = self._format_messages_to_prompt(messages)
-
-            # Create options
-            options = self._create_options(
-                model=model,
-                max_tokens=max_tokens,
-                temperature=temperature,
-                system=system,
-                **kwargs,
-            )
 
             if stream:
                 return self._stream_completion(prompt, options)
@@ -183,7 +152,7 @@ class ClaudeClient:
                     ),
                 }
             ],
-            "model": options.model or self.default_model,
+            "model": options.model,
             "stop_reason": "end_turn",
             "stop_sequence": None,
             "usage": {
@@ -221,7 +190,7 @@ class ClaudeClient:
                                 "type": "message",
                                 "role": "assistant",
                                 "content": [],
-                                "model": options.model or self.default_model,
+                                "model": options.model,
                                 "stop_reason": None,
                                 "stop_sequence": None,
                                 "usage": {
@@ -298,27 +267,6 @@ class ClaudeClient:
 
         return "\n\n".join(prompt_parts)
 
-    def _create_options(
-        self,
-        *,
-        model: str | None = None,
-        max_tokens: int | None = None,
-        temperature: float | None = None,
-        system: str | None = None,
-        **kwargs: Any,
-    ) -> ClaudeCodeOptions:
-        """Create Claude Code SDK options from parameters."""
-        effective_system = system or self.system_prompt
-
-        return ClaudeCodeOptions(
-            model=model or self.default_model,
-            system_prompt=effective_system,
-            max_turns=kwargs.get("max_turns", 1),
-            permission_mode=kwargs.get("permission_mode", "default"),
-            allowed_tools=kwargs.get("allowed_tools", []),
-            disallowed_tools=kwargs.get("disallowed_tools", []),
-        )
-
     def _extract_text_from_content(
         self, content: list[TextBlock | ToolUseBlock | ToolResultBlock]
     ) -> str:
@@ -344,38 +292,7 @@ class ClaudeClient:
             List of available models in Anthropic format
         """
         # These are the models supported by Claude Code SDK
-        models = [
-            {
-                "id": "claude-3-opus-20240229",
-                "object": "model",
-                "created": 1677610602,
-                "owned_by": "anthropic",
-            },
-            {
-                "id": "claude-3-sonnet-20240229",
-                "object": "model",
-                "created": 1677610602,
-                "owned_by": "anthropic",
-            },
-            {
-                "id": "claude-3-haiku-20240307",
-                "object": "model",
-                "created": 1677610602,
-                "owned_by": "anthropic",
-            },
-            {
-                "id": "claude-3-5-sonnet-20241022",
-                "object": "model",
-                "created": 1677610602,
-                "owned_by": "anthropic",
-            },
-            {
-                "id": "claude-3-5-haiku-20241022",
-                "object": "model",
-                "created": 1677610602,
-                "owned_by": "anthropic",
-            },
-        ]
+        models = []
 
         return models
 
