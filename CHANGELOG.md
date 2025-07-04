@@ -109,4 +109,4 @@ This is the initial release of Claude Code Proxy API Server, a personal tool for
 
 The proxy enables you to use Claude AI models through familiar API interfaces while leveraging your Claude subscription and the official Claude Code SDK for secure authentication.
 
-[0.1.0]: https://github.com/your-username/claude-proxy/releases/tag/v0.1.0
+[0.1.0]: https://github.com/CaddyGlow/claude-code-proxy-api/releases/tag/v0.1.0

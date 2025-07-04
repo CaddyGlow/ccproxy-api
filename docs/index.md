@@ -19,8 +19,8 @@ The Claude Code Proxy API Server acts as a local bridge between your application
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-username/claude-proxy.git
-cd claude-proxy
+git clone https://github.com/CaddyGlow/claude-code-proxy-api.git
+cd claude-code-proxy-api
 
 # Install dependencies
 uv sync
@@ -122,10 +122,10 @@ This documentation is organized into several sections:
 
 ## Community and Support
 
-- **Issues**: [GitHub Issues](https://github.com/your-username/claude-proxy/issues)
-- **Source Code**: [GitHub Repository](https://github.com/your-username/claude-proxy)
-- **Documentation**: [Project Documentation](https://your-username.github.io/claude-proxy)
+- **Issues**: [GitHub Issues](https://github.com/CaddyGlow/claude-code-proxy-api/issues)
+- **Source Code**: [GitHub Repository](https://github.com/CaddyGlow/claude-code-proxy-api)
+- **Documentation**: [Project Documentation](https://CaddyGlow.github.io/claude-code-proxy-api)
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](https://github.com/your-username/claude-proxy/blob/main/LICENSE) file for details.
+This project is licensed under the MIT License - see the [LICENSE](https://github.com/CaddyGlow/claude-code-proxy-api/blob/main/LICENSE) file for details.

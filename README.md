@@ -45,8 +45,8 @@ A personal API proxy server that enables you to use your existing Claude subscri
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/your-username/claude-proxy.git
-cd claude-proxy
+git clone https://github.com/CaddyGlow/claude-code-proxy-api.git
+cd claude-code-proxy-api
 ```
 
 2. Install dependencies using uv (recommended):
@@ -217,10 +217,10 @@ For enhanced security and isolation when running Claude Code:
 
 ```bash
 # Build with Docker support
-docker build -t claude-proxy .
+docker build -t claude-code-proxy-api .
 
 # Run with Docker isolation
-docker run -p 8000:8000 -v ~/.claude:/root/.claude claude-proxy
+docker run -p 8000:8000 -v ~/.claude:/root/.claude claude-code-proxy-api
 ```
 
 ## Usage Examples
@@ -413,9 +413,9 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 Comprehensive documentation is available:
 
-- **[Online Documentation](https://your-username.github.io/claude-proxy)** - Full documentation site
-- **[API Reference](https://your-username.github.io/claude-proxy/api-reference/overview/)** - Complete API documentation
-- **[Developer Guide](https://your-username.github.io/claude-proxy/developer-guide/architecture/)** - Architecture and development
+- **[Online Documentation](https://CaddyGlow.github.io/claude-code-proxy-api)** - Full documentation site
+- **[API Reference](https://CaddyGlow.github.io/claude-code-proxy-api/api-reference/overview/)** - Complete API documentation
+- **[Developer Guide](https://CaddyGlow.github.io/claude-code-proxy-api/developer-guide/architecture/)** - Architecture and development
 
 ### Building Documentation Locally
 
@@ -432,8 +432,8 @@ make docs-build
 
 ## Support
 
-- Issues: [GitHub Issues](https://github.com/your-username/claude-proxy/issues)
-- Documentation: [Project Documentation](https://your-username.github.io/claude-proxy)
+- Issues: [GitHub Issues](https://github.com/CaddyGlow/claude-code-proxy-api/issues)
+- Documentation: [Project Documentation](https://CaddyGlow.github.io/claude-code-proxy-api)
 
 ## Acknowledgments
 

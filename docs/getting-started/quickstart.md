@@ -17,8 +17,8 @@ Before starting, ensure you have:
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-username/claude-proxy.git
-cd claude-proxy
+git clone https://github.com/CaddyGlow/claude-code-proxy-api.git
+cd claude-code-proxy-api
 
 # Install dependencies using uv
 uv sync
@@ -31,8 +31,8 @@ uv sync --group docs
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-username/claude-proxy.git
-cd claude-proxy
+git clone https://github.com/CaddyGlow/claude-code-proxy-api.git
+cd claude-code-proxy-api
 
 # Install dependencies
 pip install -e .
@@ -47,10 +47,10 @@ Docker provides isolation and security for Claude Code execution on your local m
 
 ```bash
 # Pull the Docker image
-docker pull claude-code-proxy
+docker pull claude-code-proxy-api
 
 # Or build locally
-docker build -t claude-code-proxy .
+docker build -t claude-code-proxy-api .
 ```
 
 ## Running the Server
@@ -75,19 +75,19 @@ Run Claude Code Proxy in a secure, isolated container:
 ```bash
 # Run with Docker (for secure local execution)
 docker run -d \
-  --name claude-proxy \
+  --name claude-code-proxy-api \
   -p 8000:8000 \
   -v ~/.config/claude:/root/.config/claude:ro \
-  claude-code-proxy
+  claude-code-proxy-api
 
 # With custom settings
 docker run -d \
-  --name claude-proxy \
+  --name claude-code-proxy-api \
   -p 8080:8000 \
   -e PORT=8000 \
   -e LOG_LEVEL=INFO \
   -v ~/.config/claude:/root/.config/claude:ro \
-  claude-code-proxy
+  claude-code-proxy-api
 ```
 
 ### Docker Compose (Personal Setup)
@@ -95,7 +95,7 @@ docker run -d \
 ```yaml
 version: '3.8'
 services:
-  claude-proxy:
+  claude-code-proxy-api-api:
     build: .
     ports:
       - "8000:8000"

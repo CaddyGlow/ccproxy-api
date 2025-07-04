@@ -16,8 +16,8 @@ If you have Nix and devenv installed:
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-org/claude-proxy.git
-cd claude-proxy
+git clone https://github.com/CaddyGlow/claude-code-proxy-api.git
+cd claude-code-proxy-api
 
 # Enter development environment
 devenv shell
@@ -29,8 +29,8 @@ devenv shell
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-org/claude-proxy.git
-cd claude-proxy
+git clone https://github.com/CaddyGlow/claude-code-proxy-api.git
+cd claude-code-proxy-api
 
 # Install uv if not already installed
 curl -LsSf https://astral.sh/uv/install.sh | sh
@@ -46,8 +46,8 @@ source .venv/bin/activate
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-org/claude-proxy.git
-cd claude-proxy
+git clone https://github.com/CaddyGlow/claude-code-proxy-api.git
+cd claude-code-proxy-api
 
 # Create virtual environment
 python -m venv venv
@@ -61,7 +61,7 @@ pip install -e .[dev]
 ## Project Structure
 
 ```
-claude-proxy/
+claude-code-proxy-api/
 ├── claude_code_proxy/          # Main application package
 │   ├── __init__.py
 │   ├── main.py                 # FastAPI application
@@ -703,13 +703,13 @@ async def test_async_function():
 
 ```bash
 # Build with no cache
-docker build --no-cache -t claude-proxy .
+docker build --no-cache -t claude-code-proxy-api .
 
 # Check build logs
-docker build -t claude-proxy . 2>&1 | tee build.log
+docker build -t claude-code-proxy-api . 2>&1 | tee build.log
 
 # Inspect layers
-docker history claude-proxy
+docker history claude-code-proxy-api
 ```
 
 #### Volume Mount Issues

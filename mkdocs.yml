@@ -1,8 +1,8 @@
 site_name: Claude Code Proxy API
 site_description: High-performance API server that provides Anthropic and OpenAI-compatible interfaces for Claude AI models
-site_url: https://your-username.github.io/claude-proxy
-repo_url: https://github.com/your-username/claude-proxy
-repo_name: your-username/claude-proxy
+site_url: https://CaddyGlow.github.io/claude-code-proxy-api
+repo_url: https://github.com/CaddyGlow/claude-code-proxy-api
+repo_name: CaddyGlow/claude-code-proxy-api
 edit_uri: edit/main/docs/
 
 # Theme configuration
@@ -74,11 +74,6 @@ nav:
     - Development Setup: developer-guide/development.md
     - Testing: developer-guide/testing.md
     - Contributing: developer-guide/contributing.md
-  - Deployment:
-    - Docker: deployment/docker.md
-    - Production: deployment/production.md
-    - Kubernetes: deployment/kubernetes.md
-    - Monitoring: deployment/monitoring.md
   - Code Reference:
     - API Modules: reference/api/
     - Services: reference/services/
@@ -128,38 +123,10 @@ plugins:
             filters:
               - "!^_"
               - "!__init__"
-  - swagger-ui-tag:
-      background: White
-      docExpansion: none
-      filter: true
-      supportedSubmitMethods:
-        - get
-        - post
-        - put
-        - delete
-        - patch
-  - include-markdown:
-      preserve_includer_indent: false
-      dedent: false
-      trailing_newlines: true
-      comments: true
   - mermaid2:
       arguments:
         theme: |
           ^(light|dark|auto)$
-  - glightbox:
-      touchNavigation: true
-      loop: false
-      effect: zoom
-      slide_effect: slide
-      width: 100%
-      height: auto
-      zoomable: true
-      draggable: true
-      skip_classes:
-        - custom-skip-class-name
-      auto_caption: false
-      caption_position: bottom
   - minify:
       minify_html: !ENV [MKDOCS_MINIFY_HTML, false]
       minify_js: !ENV [MKDOCS_MINIFY_JS, false]
@@ -167,9 +134,6 @@ plugins:
       htmlmin_opts:
         remove_comments: true
       cache_safe: true
-  - redirects:
-      redirect_maps:
-        'old-page.md': 'new-page.md'
 
 # Markdown extensions
 markdown_extensions:
@@ -201,8 +165,8 @@ markdown_extensions:
   - pymdownx.magiclink:
       normalize_issue_symbols: true
       repo_url_shorthand: true
-      user: your-username
-      repo: claude-proxy
+      user: CaddyGlow
+      repo: claude-code-proxy-api
   - pymdownx.mark
   - pymdownx.smartsymbols
   - pymdownx.snippets:
@@ -229,19 +193,9 @@ extra:
     provider: mike
   social:
     - icon: fontawesome/brands/github
-      link: https://github.com/your-username/claude-proxy
+      link: https://github.com/CaddyGlow/claude-code-proxy-api
     - icon: fontawesome/brands/python
       link: https://pypi.org/project/claude-code-proxy-api/
-  analytics:
-    provider: google
-    property: !ENV GOOGLE_ANALYTICS_KEY
-  consent:
-    title: Cookie consent
-    description: >- 
-      We use cookies to recognize your repeated visits and preferences, as well
-      as to measure the effectiveness of our documentation and whether users
-      find what they're searching for. With your consent, you're helping us to
-      make our documentation better.
 
 # Development server
 dev_addr: '127.0.0.1:8080'

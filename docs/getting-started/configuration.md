@@ -227,7 +227,7 @@ export CLAUDE_CLI_PATH=/custom/path/to/claude
 ```yaml
 version: '3.8'
 services:
-  claude-proxy:
+  claude-code-proxy-api:
     image: claude-code-proxy
     ports:
       - "8000:8000"
@@ -247,7 +247,7 @@ Mount your Claude configuration and local settings:
 ```yaml
 version: '3.8'
 services:
-  claude-proxy:
+  claude-code-proxy-api:
     image: claude-code-proxy
     ports:
       - "8000:8000"

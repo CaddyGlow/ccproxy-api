@@ -11,6 +11,7 @@ env:
 jobs:
   build-package:
     runs-on: ubuntu-latest
+    environment: publish
 
     steps:
       - uses: actions/checkout@v4

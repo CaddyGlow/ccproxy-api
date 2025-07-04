@@ -33,7 +33,7 @@ docker pull claude-code-proxy:latest
 
 # Run the container with your Claude configuration
 docker run -d \
-  --name claude-proxy \
+  --name claude-code-proxy-api \
   -p 127.0.0.1:8000:8000 \
   -e LOG_LEVEL=INFO \
   -v ~/.config/claude:/root/.config/claude:ro \
@@ -48,9 +48,9 @@ Create `docker-compose.yml` for local personal use:
 version: '3.8'
 
 services:
-  claude-proxy:
+  claude-code-proxy-api:
     image: claude-code-proxy:latest
-    container_name: claude-proxy-personal
+    container_name: claude-code-proxy-api-personal
     restart: unless-stopped
     ports:
       - "127.0.0.1:8000:8000"  # Bind to localhost only
@@ -324,13 +324,13 @@ fi
 
 ```bash
 # Monitor container resource usage
-docker stats claude-proxy-personal
+docker stats claude-code-proxy-api-personal
 
 # View container logs
-docker logs claude-proxy-personal
+docker logs claude-code-proxy-api-personal
 
 # Follow logs in real-time
-docker logs -f claude-proxy-personal
+docker logs -f claude-code-proxy-api-personal
 ```
 
 ## Backup and Maintenance for Personal Use
@@ -405,7 +405,7 @@ RELOAD=false                # Disable auto-reload for stability
    netstat -an | grep :8000
    
    # Check container logs
-   docker logs claude-proxy-personal
+   docker logs claude-code-proxy-api-personal
    ```
 
 2. **Claude authentication issues**
@@ -423,7 +423,7 @@ RELOAD=false                # Disable auto-reload for stability
 3. **Performance issues**
    ```bash
    # Monitor resource usage
-   docker stats claude-proxy-personal
+   docker stats claude-code-proxy-api-personal
    
    # Adjust resource limits in docker-compose.yml
    # Reduce workers if needed
@@ -433,13 +433,13 @@ RELOAD=false                # Disable auto-reload for stability
 
 ```bash
 # View recent logs
-docker logs --tail 50 claude-proxy-personal
+docker logs --tail 50 claude-code-proxy-api-personal
 
 # Search for specific errors
-docker logs claude-proxy-personal 2>&1 | grep -i error
+docker logs claude-code-proxy-api-personal 2>&1 | grep -i error
 
 # Monitor logs in real-time
-docker logs -f claude-proxy-personal
+docker logs -f claude-code-proxy-api-personal
 ```
 
 ## Getting Help
