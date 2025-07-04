@@ -56,13 +56,11 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 # COPY --from=node-deps /usr/local/bin/npx /usr/local/bin/npx
 # COPY --from=node-deps /usr/local/bin/pnpm /usr/local/bin/pnpm
 # COPY --from=node-deps /usr/local/lib/node_modules /usr/local/lib/node_modules
+
+# We have to copy the entire /usr/local that seem to be 
+# more realiable  
 COPY --from=node-deps /usr/local /usr/local
 
-# Create workspace directory (user will be created at runtime)
-RUN mkdir -p /tmp/claude-workspace && \
-  chmod 755 /tmp/claude-workspace
-
-# Copy entrypoint script
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 
@@ -73,24 +71,20 @@ COPY --from=builder /app /app
 COPY --from=node-deps /app/node_modules /app/node_modules
 COPY --from=node-deps /app/package.json /app/package.json
 
-# Set working directory
 WORKDIR /app
 
-# Set environment variables
 ENV PATH="/app/.venv/bin:/app/node_modules/.bin:$PATH"
 ENV PYTHONPATH=/app
 ENV HOST=0.0.0.0
 ENV PORT=8000
 
-# Expose port
 EXPOSE 8000
 
-# Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
   CMD curl -f http://localhost:8000/health || exit 1
 
-# Set entrypoint
+# Entrypoint used to create user and set 
+# user home folder
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 
-# Run the application
-CMD ["python", "main.py", "serve"]
+CMD ["fastapi", "run", "claude_code_proxy/main.py"]

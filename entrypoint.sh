@@ -1,16 +1,16 @@
 #!/bin/bash
 set -e
 
-# Default values
-DEFAULT_PUID=1000
-DEFAULT_PGID=1000
-CLAUDE_HOME="/tmp/claude-workspace"
+CLAUDE_HOME=${CLAUDE_HOME:-"/data/home"}
+CLAUDE_WORKSPACE=${CLAUDE_WORKSPACE:$CLAUDE_HOME}
 
 # Get PUID and PGID from environment or use defaults
-PUID=${PUID:-$DEFAULT_PUID}
-PGID=${PGID:-$DEFAULT_PGID}
+PUID=${PUID:-1000}
+PGID=${PGID:-1000}
 
 echo "Starting Claude Proxy with PUID=$PUID, PGID=$PGID"
+echo "CLAUDE_HOME=$CLAUDE_HOME"
+echo "CLAUDE_WORKSPACE=$CLAUDE_WORKSPACE"
 
 # Function to check if user/group exists
 user_exists() {
@@ -63,7 +63,7 @@ if user_exists claude; then
 
   if [[ "$current_uid" != "$PUID" ]]; then
     # Check if target UID is already in use
-    if getent passwd "$PUID" &>/dev/null; then
+    if getent passwd "$PUIdoD" &>/dev/null; then
       existing_user=$(getent passwd "$PUID" | cut -d: -f1)
       if [[ "$existing_user" != "claude" ]]; then
         echo "Warning: UID $PUID is already used by user '$existing_user'"
@@ -100,8 +100,6 @@ fi
 # Ensure claude home directory exists and has correct ownership
 echo "Setting up Claude home directory: $CLAUDE_HOME"
 mkdir -p "$CLAUDE_HOME"
-chown -R claude:"$CLAUDE_GROUP_NAME" "$CLAUDE_HOME"
-chmod 755 "$CLAUDE_HOME"
 
 # Also ensure the user's actual home directory exists with proper ownership
 CLAUDE_USER_HOME=$(getent passwd claude | cut -d: -f6)
@@ -109,20 +107,20 @@ if [[ "$CLAUDE_USER_HOME" != "$CLAUDE_HOME" ]]; then
   echo "Setting up Claude user home directory: $CLAUDE_USER_HOME"
   mkdir -p "$CLAUDE_USER_HOME"
   chown -R claude:"$CLAUDE_GROUP_NAME" "$CLAUDE_USER_HOME"
-  chmod 755 "$CLAUDE_USER_HOME"
 fi
 
 # Create additional directories that Claude might need
-mkdir -p "$CLAUDE_HOME"/.cache
-mkdir -p "$CLAUDE_HOME"/.config
-mkdir -p "$CLAUDE_HOME"/.local
+mkdir -p "$CLAUDE_HOME"/{.cache,.config,.local}
 chown -R claude:"$CLAUDE_GROUP_NAME" "$CLAUDE_HOME"
-chmod 755 "$CLAUDE_HOME"/.cache "$CLAUDE_HOME"/.config "$CLAUDE_HOME"/.local
+
+# Ensure workspace directory exists
+mkdir -p "$CLAUDE_WORKSPACE"
+chown -R claude:"$CLAUDE_GROUP_NAME" "$CLAUDE_WORKSPACE"
 
 # Update environment variables for the application
 export CLAUDE_USER="claude"
 export CLAUDE_GROUP="$CLAUDE_GROUP_NAME"
-export CLAUDE_WORKING_DIRECTORY="$CLAUDE_HOME"
+export CLAUDE_WORKING_DIRECTORY="$CLAUDE_WORKSPACE"
 
 # Get final UID/GID values
 FINAL_PUID=$(id -u claude)
@@ -134,15 +132,6 @@ echo "  Final: UID=$FINAL_PUID, GID=$FINAL_PGID"
 echo "  User: claude, Group: $CLAUDE_GROUP_NAME"
 echo "Enabling privilege dropping to claude user"
 
-# # Fix ownership of application files that might need to be accessible
-# if [[ -d "/app" ]]; then
-#   # Ensure claude user can read application files
-#   chmod -R o+r /app 2>/dev/null || true
-#   # Ensure claude user can execute binaries
-#   find /app -type f -executable -exec chmod o+x {} \; 2>/dev/null || true
-# fi
-
-# Log the final user/group configuration
 echo "Final configuration:"
 echo "  Claude user: $(id claude)"
 echo "  Claude home: $CLAUDE_HOME ($(ls -ld "$CLAUDE_HOME"))"

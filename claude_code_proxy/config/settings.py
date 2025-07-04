@@ -38,14 +38,6 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    # Claude Code SDK handles authentication directly
-
-    # Claude Code CLI settings
-    claude_cli_path: str | None = Field(
-        default=None,
-        description="Path to Claude Code CLI executable (e.g., /usr/local/bin/claude)",
-    )
-
     # Server settings
     host: str = Field(
         default="0.0.0.0",
@@ -92,11 +84,11 @@ class Settings(BaseSettings):
 
     # Tools handling behavior
     tools_handling: Literal["error", "warning", "ignore"] = Field(
-        default="error",
+        default="warning",
         description="How to handle tools definitions in requests: error, warning, or ignore",
     )
 
-    # Security settings for subprocess execution
+    # Security settings for subprocess execution (mostly used for docker)
     claude_user: str | None = Field(
         default="claude",
         description="Username to drop privileges to when executing Claude subprocess",
@@ -105,11 +97,6 @@ class Settings(BaseSettings):
     claude_group: str | None = Field(
         default="claude",
         description="Group name to drop privileges to when executing Claude subprocess",
-    )
-
-    claude_working_directory: str = Field(
-        default="/tmp/claude-workspace",
-        description="Working directory for Claude subprocess execution",
     )
 
     # Claude Code SDK Options
@@ -125,8 +112,7 @@ class Settings(BaseSettings):
         if v is None:
             return {}
 
-        # If it's already a ClaudeCodeOptions instance or dict, return as-is
-        if isinstance(v, dict | type(None)):
+            # If it's already a ClaudeCodeOptions instance or dict, return as-is
             return v
 
         # If ClaudeCodeOptions is available and it's an instance, return as-is
