@@ -132,7 +132,7 @@ async def create_chat_completion(
 
     except ClaudeProxyError as e:
         logger.error(f"Claude proxy error: {e}")
-        error_response, _ = create_error_response(e.error_type, e.message)
+        error_response, _status_code = create_error_response(e.error_type, e.message)
         raise HTTPException(status_code=e.status_code, detail=error_response) from e
 
     except ValueError as e:
@@ -164,7 +164,7 @@ async def list_models(_: None = Depends(get_auth_dependency())) -> dict[str, Any
 
     except ClaudeProxyError as e:
         logger.error(f"Claude proxy error in list_models: {e}")
-        error_response, _ = create_error_response(e.error_type, e.message)
+        error_response, _status_code = create_error_response(e.error_type, e.message)
         raise HTTPException(status_code=e.status_code, detail=error_response) from e
 
     except Exception as e:

@@ -19,7 +19,7 @@ class TestCliRunner:
 
     def setup_method(self):
         """Setup test environment."""
-        self.runner = CliRunner()
+        self.runner = CliRunner(env={"NO_COLOR": "1", "TERM": "dumb"})
 
     def test_version_flag_short(self):
         """Test -V flag prints version and exits."""
@@ -53,7 +53,7 @@ class TestConfigCommand:
 
     def setup_method(self):
         """Setup test environment."""
-        self.runner = CliRunner()
+        self.runner = CliRunner(env={"NO_COLOR": "1", "TERM": "dumb"})
 
     @patch("claude_code_proxy.cli.get_settings")
     def test_config_command_success(self, mock_get_settings):
@@ -123,7 +123,7 @@ class TestClaudeCommand:
 
     def setup_method(self):
         """Setup test environment."""
-        self.runner = CliRunner()
+        self.runner = CliRunner(env={"NO_COLOR": "1", "TERM": "dumb"})
 
     @patch("claude_code_proxy.cli.get_settings")
     @patch("claude_code_proxy.cli.os.execvp")
@@ -248,7 +248,7 @@ class TestClaudeCommand:
 
         # Check that Docker builder was called with correct parameters
         call_args = mock_docker_builder.from_settings_and_overrides.call_args
-        assert call_args[0][1] == ["--version"]  # args parameter
+        # Note: claude_args is no longer passed to DockerCommandBuilder
         assert call_args[1]["docker_image"] == "custom:latest"
         assert call_args[1]["docker_env"] == ["API_KEY=test"]
 
@@ -289,7 +289,7 @@ class TestCommandIntegration:
 
     def setup_method(self):
         """Setup test environment."""
-        self.runner = CliRunner()
+        self.runner = CliRunner(env={"NO_COLOR": "1", "TERM": "dumb"})
 
     def test_invalid_command(self):
         """Test invalid command shows error."""
@@ -331,7 +331,7 @@ class TestDockerIntegration:
 
     def setup_method(self):
         """Setup test environment."""
-        self.runner = CliRunner()
+        self.runner = CliRunner(env={"NO_COLOR": "1", "TERM": "dumb"})
 
     @patch("claude_code_proxy.cli.get_settings")
     @patch("claude_code_proxy.cli.DockerCommandBuilder")
@@ -367,7 +367,7 @@ class TestDockerIntegration:
         assert call_args[1]["docker_volume"] == ["/home/user:/home/user"]
         assert call_args[1]["docker_env"] == ["HOME=/home/user"]
         assert call_args[1]["docker_arg"] == ["--rm"]
-        assert call_args[0][1] == ["doctor"]  # args parameter
+        # Note: claude_args is no longer passed to DockerCommandBuilder
 
     @patch("claude_code_proxy.cli.get_settings")
     @patch("claude_code_proxy.cli.DockerCommandBuilder")
@@ -411,7 +411,7 @@ class TestErrorScenarios:
 
     def setup_method(self):
         """Setup test environment."""
-        self.runner = CliRunner()
+        self.runner = CliRunner(env={"NO_COLOR": "1", "TERM": "dumb"})
 
     @patch("claude_code_proxy.cli.get_settings")
     def test_config_command_exception_handling(self, mock_get_settings):
@@ -456,7 +456,7 @@ class TestFastAPICliIntegration:
 
     def setup_method(self):
         """Setup test environment."""
-        self.runner = CliRunner()
+        self.runner = CliRunner(env={"NO_COLOR": "1", "TERM": "dumb"})
 
     def test_run_command_help(self):
         """Test run command help."""
@@ -558,7 +558,7 @@ class TestCliEnvironmentIsolation:
 
     def setup_method(self):
         """Setup test environment."""
-        self.runner = CliRunner()
+        self.runner = CliRunner(env={"NO_COLOR": "1", "TERM": "dumb"})
 
     @patch.dict(os.environ, {"CLAUDE_CODE_PROXY_HOST": "test-host"})
     def test_environment_variable_isolation(self):
@@ -647,7 +647,7 @@ class TestCliRobustness:
 
     def setup_method(self):
         """Setup test environment."""
-        self.runner = CliRunner()
+        self.runner = CliRunner(env={"NO_COLOR": "1", "TERM": "dumb"})
 
     def test_cli_with_invalid_arguments(self):
         """Test CLI behavior with invalid arguments."""

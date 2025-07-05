@@ -19,7 +19,6 @@ class DockerCommandBuilder:
 
     def build_command(
         self,
-        claude_args: list[str],
         *,
         docker_image: str | None = None,
         docker_env: list[str] | None = None,
@@ -32,7 +31,6 @@ class DockerCommandBuilder:
         """Build complete Docker command with overrides.
 
         Args:
-            claude_args: Arguments to pass to claude command
             docker_image: Override Docker image
             docker_env: Additional environment variables (KEY=VALUE format)
             docker_volume: Additional volume mounts (host:container[:options] format)
@@ -248,18 +246,16 @@ class DockerCommandBuilder:
     def from_settings_and_overrides(
         cls,
         docker_settings: DockerSettings,
-        claude_args: list[str],
         **overrides: Any,
     ) -> list[str]:
         """Convenience method to build command directly.
 
         Args:
             docker_settings: Docker configuration from settings
-            claude_args: Arguments to pass to claude command
             **overrides: CLI override arguments
 
         Returns:
             Complete Docker command as list of strings
         """
         builder = cls(docker_settings)
-        return builder.build_command(claude_args, **overrides)
+        return builder.build_command(**overrides)

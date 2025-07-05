@@ -1,3 +1,4 @@
+from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -7,7 +8,7 @@ from pathlib import Path
 # Please use `typing_extensions.TypedDict` instead of `typing.TypedDict` on Python < 3.12.
 # For further information visit https://errors.pydantic.dev/2.11/u/typed-dict-version
 @contextmanager
-def patched_typing():
+def patched_typing() -> Iterator[None]:
     import typing
 
     import typing_extensions

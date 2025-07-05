@@ -37,9 +37,10 @@ class TestGetPackageDir:
             result = get_package_dir()
 
             # Should fall back to helper.py path calculation
-            expected = Path(
-                "/home/rick/projects/claude-proxy/claude_code_proxy/utils/helper.py"
-            ).parent.parent.parent.resolve()
+            # Use actual file path instead of hardcoded path
+            from claude_code_proxy.utils.helper import __file__ as helper_file
+
+            expected = Path(helper_file).parent.parent.parent.resolve()
             assert result == expected
 
     def test_get_package_dir_with_no_spec(self) -> None:
@@ -50,9 +51,10 @@ class TestGetPackageDir:
             result = get_package_dir()
 
             # Should fall back to helper.py path calculation
-            expected = Path(
-                "/home/rick/projects/claude-proxy/claude_code_proxy/utils/helper.py"
-            ).parent.parent.parent.resolve()
+            # Use actual file path instead of hardcoded path
+            from claude_code_proxy.utils.helper import __file__ as helper_file
+
+            expected = Path(helper_file).parent.parent.parent.resolve()
             assert result == expected
 
     def test_get_package_dir_with_exception(self) -> None:
@@ -63,9 +65,10 @@ class TestGetPackageDir:
             result = get_package_dir()
 
             # Should fall back to helper.py path calculation in exception handler
-            expected = Path(
-                "/home/rick/projects/claude-proxy/claude_code_proxy/utils/helper.py"
-            ).parent.parent.parent.resolve()
+            # Use actual file path instead of hardcoded path
+            from claude_code_proxy.utils.helper import __file__ as helper_file
+
+            expected = Path(helper_file).parent.parent.parent.resolve()
             assert result == expected
 
     def test_get_package_dir_returns_path(self) -> None:

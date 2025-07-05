@@ -54,15 +54,13 @@ class TestDockerCommandBuilder:
     def test_build_command_basic(self, basic_docker_settings: DockerSettings) -> None:
         """Test basic Docker command building."""
         builder = DockerCommandBuilder(basic_docker_settings)
-        claude_args = ["--help"]
 
-        cmd = builder.build_command(claude_args)
+        cmd = builder.build_command()
 
         # Check basic command structure
         assert cmd[:4] == ["docker", "run", "--rm", "-it"]
         assert "test-image:latest" in cmd
-        assert "claude" in cmd
-        assert "--help" in cmd
+        # Note: claude and args are added separately by the CLI, not by DockerCommandBuilder
 
         # Check environment variables are set
         env_indices = [i for i, arg in enumerate(cmd) if arg == "--env"]
@@ -73,9 +71,7 @@ class TestDockerCommandBuilder:
     ) -> None:
         """Test Docker command building with image override."""
         builder = DockerCommandBuilder(basic_docker_settings)
-        claude_args = ["--version"]
-
-        cmd = builder.build_command(claude_args, docker_image="override-image:latest")
+        cmd = builder.build_command(docker_image="override-image:latest")
 
         assert "override-image:latest" in cmd
         assert "test-image:latest" not in cmd
@@ -85,16 +81,12 @@ class TestDockerCommandBuilder:
     ) -> None:
         """Test Docker command building with configured settings."""
         builder = DockerCommandBuilder(configured_docker_settings)
-        claude_args = ["chat", "Hello"]
-
-        cmd = builder.build_command(claude_args)
+        cmd = builder.build_command()
 
         # Check basic command structure
         assert cmd[:4] == ["docker", "run", "--rm", "-it"]
         assert "configured-image:v1.0" in cmd
-        assert "claude" in cmd
-        assert "chat" in cmd
-        assert "Hello" in cmd
+        # Note: claude and args are added separately by the CLI, not by DockerCommandBuilder
 
         # Check volumes are included
         volume_indices = [i for i, arg in enumerate(cmd) if arg == "--volume"]
@@ -113,10 +105,9 @@ class TestDockerCommandBuilder:
     ) -> None:
         """Test Docker command building with environment variable overrides."""
         builder = DockerCommandBuilder(basic_docker_settings)
-        claude_args = ["--help"]
         docker_env = ["CUSTOM_VAR=custom_value", "ANOTHER_VAR=another_value"]
 
-        cmd = builder.build_command(claude_args, docker_env=docker_env)
+        cmd = builder.build_command(docker_env=docker_env)
 
         assert "--env" in cmd
         assert "CUSTOM_VAR=custom_value" in cmd
@@ -127,18 +118,16 @@ class TestDockerCommandBuilder:
     ) -> None:
         """Test Docker command building with invalid environment variable format."""
         builder = DockerCommandBuilder(basic_docker_settings)
-        claude_args = ["--help"]
         docker_env = ["INVALID_FORMAT"]
 
         with pytest.raises(ValueError, match="Invalid environment variable format"):
-            builder.build_command(claude_args, docker_env=docker_env)
+            builder.build_command(docker_env=docker_env)
 
     def test_build_command_with_docker_volume_override(
         self, basic_docker_settings: DockerSettings, tmp_path: Path
     ) -> None:
         """Test Docker command building with volume overrides."""
         builder = DockerCommandBuilder(basic_docker_settings)
-        claude_args = ["--help"]
 
         # Create a temporary directory for the volume test
         test_dir = tmp_path / "test_volume"
@@ -146,7 +135,7 @@ class TestDockerCommandBuilder:
 
         docker_volume = [f"{test_dir}:/app/test"]
 
-        cmd = builder.build_command(claude_args, docker_volume=docker_volume)
+        cmd = builder.build_command(docker_volume=docker_volume)
 
         assert "--volume" in cmd
         volume_mount = f"{test_dir}:/app/test"
@@ -157,10 +146,9 @@ class TestDockerCommandBuilder:
     ) -> None:
         """Test Docker command building with additional Docker arguments."""
         builder = DockerCommandBuilder(basic_docker_settings)
-        claude_args = ["--help"]
         docker_arg = ["--user", "1000:1000", "--memory", "2g"]
 
-        cmd = builder.build_command(claude_args, docker_arg=docker_arg)
+        cmd = builder.build_command(docker_arg=docker_arg)
 
         assert "--user" in cmd
         assert "1000:1000" in cmd
@@ -172,7 +160,6 @@ class TestDockerCommandBuilder:
     ) -> None:
         """Test Docker command building with custom home and workspace directories."""
         builder = DockerCommandBuilder(basic_docker_settings)
-        claude_args = ["--help"]
 
         home_dir = tmp_path / "custom_home"
         workspace_dir = tmp_path / "custom_workspace"
@@ -180,7 +167,6 @@ class TestDockerCommandBuilder:
         workspace_dir.mkdir()
 
         cmd = builder.build_command(
-            claude_args,
             docker_home=str(home_dir),
             docker_workspace=str(workspace_dir),
         )
@@ -428,19 +414,17 @@ class TestDockerCommandBuilder:
         self, basic_docker_settings: DockerSettings
     ) -> None:
         """Test convenience class method for building commands."""
-        claude_args = ["--help"]
         overrides = {"docker_image": "override-image:latest"}
 
         cmd = DockerCommandBuilder.from_settings_and_overrides(
-            basic_docker_settings, claude_args, **overrides
+            basic_docker_settings, **overrides
         )
 
         assert isinstance(cmd, list)
         assert "docker" in cmd
         assert "run" in cmd
         assert "override-image:latest" in cmd
-        assert "claude" in cmd
-        assert "--help" in cmd
+        # Note: claude and args are added separately by the CLI, not by DockerCommandBuilder
 
     def test_complex_scenario(self, tmp_path: Path) -> None:
         """Test a complex scenario with multiple overrides and configurations."""
@@ -461,14 +445,12 @@ class TestDockerCommandBuilder:
         )
 
         builder = DockerCommandBuilder(settings)
-        claude_args = ["chat", "--model", "claude-3-sonnet", "Hello world"]
 
         # Create extra directory for volume test
         extra_dir = tmp_path / "extra"
         extra_dir.mkdir()
 
         cmd = builder.build_command(
-            claude_args,
             docker_image="custom-image:v2.0",
             docker_env=["CUSTOM_ENV=custom_value"],
             docker_volume=[f"{extra_dir}:/app/extra"],
@@ -483,11 +465,7 @@ class TestDockerCommandBuilder:
         assert "--rm" in cmd
         assert "-it" in cmd
         assert "custom-image:v2.0" in cmd
-        assert "claude" in cmd
-        assert "chat" in cmd
-        assert "--model" in cmd
-        assert "claude-3-sonnet" in cmd
-        assert "Hello world" in cmd
+        # Note: claude and args are added separately by the CLI, not by DockerCommandBuilder
 
         # Verify volumes
         assert "--volume" in cmd
@@ -507,10 +485,9 @@ class TestDockerCommandBuilder:
     ) -> None:
         """Test environment variable with equals sign in the value."""
         builder = DockerCommandBuilder(basic_docker_settings)
-        claude_args = ["--help"]
         docker_env = ["CONNECTION_STRING=host=localhost;port=5432;db=test"]
 
-        cmd = builder.build_command(claude_args, docker_env=docker_env)
+        cmd = builder.build_command(docker_env=docker_env)
 
         assert "--env" in cmd
         assert "CONNECTION_STRING=host=localhost;port=5432;db=test" in cmd

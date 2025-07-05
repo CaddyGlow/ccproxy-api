@@ -90,11 +90,11 @@ def sample_claude_response() -> dict[str, Any]:
 
 
 @pytest.fixture
-def sample_streaming_response() -> AsyncGenerator[dict[str, Any], None]:
-    """Sample streaming Claude response."""
+def sample_streaming_response():
+    """Sample streaming Claude response chunks."""
 
-    async def _generator() -> AsyncGenerator[dict[str, Any], None]:
-        chunks = [
+    async def _create_stream() -> AsyncGenerator[dict[str, Any], None]:
+        chunks: list[dict[str, Any]] = [
             {
                 "type": "message_start",
                 "message": {
@@ -133,7 +133,7 @@ def sample_streaming_response() -> AsyncGenerator[dict[str, Any], None]:
         for chunk in chunks:
             yield chunk
 
-    return _generator()
+    return _create_stream()
 
 
 @pytest.fixture

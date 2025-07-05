@@ -126,7 +126,7 @@ lines-after-imports = 2
 python_version = "3.12"
 show_column_numbers = true
 follow_imports = "normal"
-exclude = ["docs/"]
+exclude = ["docs/", "site/"]
 
 # Enable all strict mode flags
 strict = true

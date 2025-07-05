@@ -1,6 +1,7 @@
 """Authentication middleware for Claude Proxy API."""
 
 import logging
+from collections.abc import Callable
 from typing import Annotated
 
 from fastapi import Depends, HTTPException, Request
@@ -66,7 +67,10 @@ def verify_token(
     logger.debug(f"Authentication successful for {request.url.path}")
 
 
-def get_auth_dependency():
+def get_auth_dependency() -> Callable[
+    [Annotated[HTTPAuthorizationCredentials | None, Depends(bearer_scheme)], Request],
+    None,
+]:
     """
     Get authentication dependency function.
 

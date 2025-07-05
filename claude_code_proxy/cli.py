@@ -12,7 +12,8 @@ from typing import Optional
 import fastapi_cli.discover
 import typer
 import uvicorn
-from fastapi_cli.cli import app as fastapi_app, _run
+from fastapi_cli.cli import _run
+from fastapi_cli.cli import app as fastapi_app
 from fastapi_cli.exceptions import FastAPICLIException
 
 from claude_code_proxy._version import __version__
@@ -53,20 +54,22 @@ def main(
     pass
 
 
-# Remove the fastapi callback to avoid the warning
-# fastapi_app.callback()(lambda: None)
-fastapi_app.callback()(None)  # type: ignore[type-var]
+# Clear the fastapi callback to avoid conflicts
+try:
+    # Remove any existing callback
+    if hasattr(fastapi_app, "_callback"):
+        fastapi_app._callback = None
+except Exception:
+    pass
 
 # Register fastapi app with typer
 app.add_typer(fastapi_app)
 
-app_entry_path = get_package_dir() / "claude_code_proxy" / "main.py"
-
 
 def get_default_path_hook() -> Path:
-    path = app_entry_path
-    if path.is_file():
-        return path
+    app_entry_path = get_package_dir() / "claude_code_proxy" / "main.py"
+    if app_entry_path.is_file():
+        return app_entry_path
 
     raise FastAPICLIException(
         "Could not find a default file to run, please provide an explicit path"
@@ -196,7 +199,6 @@ def api(
             # Build Docker command with settings and CLI overrides
             docker_cmd = DockerCommandBuilder.from_settings_and_overrides(
                 settings.docker_settings,
-                server_args,
                 docker_image=docker_image,
                 docker_env=docker_env + [f"PORT={port}"],
                 docker_volume=docker_volume,
@@ -206,7 +208,7 @@ def api(
             )
 
             docker_cmd.extend(server_args)
-            typer.echo(f"Starting Claude Code Proxy API server with Docker...")
+            typer.echo("Starting Claude Code Proxy API server with Docker...")
             typer.echo(f"Server will be available at: http://{host}:{port}")
             typer.echo(f"Executing: {' '.join(docker_cmd)}")
             typer.echo("")
@@ -215,14 +217,14 @@ def api(
             os.execvp(docker_cmd[0], docker_cmd)
         else:
             # Run server locally using fastapi-cli's _run function
-            typer.echo(f"Starting Claude Code Proxy API server locally...")
+            typer.echo("Starting Claude Code Proxy API server locally...")
             typer.echo(f"Server will be available at: http://{host}:{port}")
             typer.echo("")
 
             # Use fastapi-cli's internal _run function
             _run(
                 command="production",
-                path=app_entry_path,
+                path=get_default_path_hook(),
                 host=host,
                 port=port,
                 reload=reload,
@@ -237,7 +239,7 @@ def api(
 def claude(
     args: list[str] | None = typer.Argument(
         default=None,
-        help="Arguments to pass to claude CLI (e.g. --version, doctor, config)"
+        help="Arguments to pass to claude CLI (e.g. --version, doctor, config)",
     ),
     docker: bool = typer.Option(
         False,
@@ -293,7 +295,7 @@ def claude(
     # Handle None args case
     if args is None:
         args = []
-        
+
     try:
         if docker:
             # Load settings to get Docker configuration
@@ -302,7 +304,6 @@ def claude(
             # Build Docker command with settings and CLI overrides
             docker_cmd = DockerCommandBuilder.from_settings_and_overrides(
                 settings.docker_settings,
-                args,
                 docker_image=docker_image,
                 docker_env=docker_env,
                 docker_volume=docker_volume,
@@ -312,10 +313,10 @@ def claude(
             )
 
             # Add claude command
-            cmd.append("claude")
+            docker_cmd.append("claude")
 
             # Add claude arguments
-            cmd.extend(claude_args)
+            docker_cmd.extend(args)
 
             typer.echo(f"Executing: {' '.join(docker_cmd)}")
             typer.echo("")

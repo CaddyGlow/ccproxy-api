@@ -408,7 +408,7 @@ class TestClaudeCommand:
         mock_get_settings.return_value = mock_settings
 
         # Mock Docker command builder
-        mock_docker_cmd = ["docker", "run", "claude:latest", "--version"]
+        mock_docker_cmd = ["docker", "run", "claude:latest"]
         mock_docker_builder.from_settings_and_overrides.return_value = mock_docker_cmd
 
         # Call claude command with Docker
@@ -426,7 +426,6 @@ class TestClaudeCommand:
         # Verify Docker command builder was called with correct arguments
         mock_docker_builder.from_settings_and_overrides.assert_called_once_with(
             mock_settings.docker_settings,
-            ["--version"],
             docker_image="custom:latest",
             docker_env=["API_KEY=test"],
             docker_volume=["./data:/data"],
@@ -436,11 +435,14 @@ class TestClaudeCommand:
         )
 
         # Verify echo was called with Docker command
-        mock_echo.assert_any_call("Executing: docker run claude:latest --version")
+        mock_echo.assert_any_call(
+            "Executing: docker run claude:latest claude --version"
+        )
         mock_echo.assert_any_call("")
 
-        # Verify execvp was called with Docker command
-        mock_execvp.assert_called_once_with("docker", mock_docker_cmd)
+        # Verify execvp was called with Docker command (with claude and args appended)
+        expected_cmd = ["docker", "run", "claude:latest", "claude", "--version"]
+        mock_execvp.assert_called_once_with("docker", expected_cmd)
 
     @patch("claude_code_proxy.cli.get_settings")
     @patch("typer.echo")
@@ -510,7 +512,7 @@ class TestClaudeCommand:
 
         # Check args parameter
         args_param = sig.parameters["args"]
-        assert args_param.annotation == list[str]
+        assert args_param.annotation == list[str] | None
 
         # Check docker parameter
         docker_param = sig.parameters["docker"]
