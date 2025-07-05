@@ -102,10 +102,15 @@ max_size = 10     # Maximum connections
 idle_timeout = 300  # Seconds before cleanup
 ```
 
-Or via environment variables:
+Or via environment variables (note the double underscore):
 ```bash
+export POOL_SETTINGS__ENABLED=true
 export POOL_SETTINGS__MIN_SIZE=5
 export POOL_SETTINGS__MAX_SIZE=20
+export POOL_SETTINGS__IDLE_TIMEOUT=300
+
+# Or disable pooling entirely:
+export POOL_SETTINGS__ENABLED=false
 ```
 
 ## Troubleshooting

@@ -469,7 +469,7 @@ def api(
         if docker:
             # Load settings to get Docker configuration
             settings = get_settings()
-
+            port = port if port is None else settings.port
             # Prepare server command using fastapi
             server_args = [
                 "run",

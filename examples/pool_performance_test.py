@@ -5,7 +5,7 @@ import asyncio
 import json
 import statistics
 import time
-from typing import Any, List
+from typing import Any
 
 import httpx
 
@@ -105,7 +105,7 @@ async def main() -> None:
     async with httpx.AsyncClient() as client:
         # Warmup requests
         print("Warming up...")
-        for i in range(NUM_WARMUP):
+        for _ in range(NUM_WARMUP):
             await make_request(client, 0)
 
         # Actual test requests

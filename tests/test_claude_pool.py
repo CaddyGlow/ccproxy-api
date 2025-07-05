@@ -276,13 +276,14 @@ class TestHealthCheckLoop:
         # Run one iteration of health check
         pool._shutdown = False
         health_task = asyncio.create_task(pool._health_check_loop())
-        await asyncio.sleep(0.2)  # Let it run one iteration
+        # Wait for health check to complete one cycle
+        await asyncio.sleep(0.3)  # Slightly longer than the 0.1s interval
         pool._shutdown = True
         health_task.cancel()
         with contextlib.suppress(asyncio.CancelledError):
             await health_task
 
-        # Check results
+        # Check results - the unhealthy connection should be removed
         assert pool._available.qsize() == 1
         assert pool._stats["health_check_failures"] == 1
         assert pool._total_created == 1  # One destroyed

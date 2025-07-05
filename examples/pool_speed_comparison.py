@@ -5,7 +5,7 @@ import asyncio
 import json
 import statistics
 import time
-from typing import Any, Dict, List
+from typing import Any
 
 import httpx
 
@@ -152,14 +152,14 @@ async def main() -> None:
         try:
             await client.get(f"{POOL_ENABLED_URL}/health")
             print("✓ Pool-enabled server is running on port 8000")
-        except:
+        except Exception:
             print("✗ Pool-enabled server is not running on port 8000")
             return
 
         try:
             await client.get(f"{POOL_DISABLED_URL}/health")
             print("✓ Pool-disabled server is running on port 8001")
-        except:
+        except Exception:
             print("✗ Pool-disabled server is not running on port 8001")
             print("\nPlease start a second instance with pooling disabled:")
             print("POOL_SETTINGS__ENABLED=false PORT=8001 uv run python main.py")
