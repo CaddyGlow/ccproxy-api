@@ -60,6 +60,7 @@ nav:
     - Configuration: getting-started/configuration.md
   - User Guide:
     - API Usage: user-guide/api-usage.md
+    - MCP Integration: user-guide/mcp-integration.md
     - Authentication: user-guide/authentication.md
     - Streaming: user-guide/streaming.md
     - Error Handling: user-guide/error-handling.md

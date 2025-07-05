@@ -49,3 +49,9 @@ curl -X POST http://localhost:8000/openai/v1/chat/completions \
 - claude-3-opus-20240229
 - claude-3-sonnet-20240229
 - claude-3-haiku-20240307
+
+## Function Calling
+
+The Claude Code Proxy API does not directly support function calling or tool use through the API endpoints. However, you can extend Claude's capabilities using MCP (Model Context Protocol) servers.
+
+For detailed information on setting up and using MCP servers with Claude Code, see the [MCP Server Integration guide](mcp-integration.md).
