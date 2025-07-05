@@ -65,18 +65,33 @@ class TestConfigCommand:
         mock_settings.claude_cli_path = "/usr/bin/claude"
         mock_settings.workers = 1
         mock_settings.reload = False
+        mock_settings.server_url = "http://localhost:8000"
+        mock_settings.auth_token = None
+        mock_settings.tools_handling = "warning"
+        mock_settings.cors_origins = ["*"]
+        # Add mock docker settings
+        mock_docker_settings = Mock()
+        mock_docker_settings.docker_image = "claude-code-proxy"
+        mock_docker_settings.docker_home_directory = None
+        mock_docker_settings.docker_workspace_directory = None
+        mock_docker_settings.docker_volumes = []
+        mock_docker_settings.docker_environment = {}
+        mock_docker_settings.docker_additional_args = []
+        mock_docker_settings.user_mapping_enabled = True
+        mock_docker_settings.user_uid = None
+        mock_docker_settings.user_gid = None
+        mock_settings.docker_settings = mock_docker_settings
         mock_get_settings.return_value = mock_settings
 
         result = self.runner.invoke(app, ["config"])
 
         assert result.exit_code == 0
-        assert "Current Configuration:" in result.stdout
-        assert "Host: localhost" in result.stdout
-        assert "Port: 8000" in result.stdout
-        assert "Log Level: INFO" in result.stdout
-        assert "Claude CLI Path: /usr/bin/claude" in result.stdout
-        assert "Workers: 1" in result.stdout
-        assert "Reload: False" in result.stdout
+        assert "Claude Code Proxy API Configuration" in result.stdout
+        assert "localhost" in result.stdout
+        assert "8000" in result.stdout
+        assert "INFO" in result.stdout
+        assert "/usr/bin/claude" in result.stdout
+        assert "Server Configuration" in result.stdout
 
     @patch("claude_code_proxy.cli.get_settings")
     def test_config_command_auto_detect_claude_path(self, mock_get_settings):
@@ -88,14 +103,30 @@ class TestConfigCommand:
         mock_settings.claude_cli_path = None
         mock_settings.workers = 4
         mock_settings.reload = True
+        mock_settings.server_url = "http://0.0.0.0:3000"
+        mock_settings.auth_token = None
+        mock_settings.tools_handling = "warning"
+        mock_settings.cors_origins = ["*"]
+        # Add mock docker settings
+        mock_docker_settings = Mock()
+        mock_docker_settings.docker_image = "claude-code-proxy"
+        mock_docker_settings.docker_home_directory = None
+        mock_docker_settings.docker_workspace_directory = None
+        mock_docker_settings.docker_volumes = []
+        mock_docker_settings.docker_environment = {}
+        mock_docker_settings.docker_additional_args = []
+        mock_docker_settings.user_mapping_enabled = True
+        mock_docker_settings.user_uid = None
+        mock_docker_settings.user_gid = None
+        mock_settings.docker_settings = mock_docker_settings
         mock_get_settings.return_value = mock_settings
 
         result = self.runner.invoke(app, ["config"])
 
         assert result.exit_code == 0
-        assert "Claude CLI Path: Auto-detect" in result.stdout
-        assert "Workers: 4" in result.stdout
-        assert "Reload: True" in result.stdout
+        assert "Auto-detect" in result.stdout
+        assert "4" in result.stdout
+        assert "True" in result.stdout
 
     @patch("claude_code_proxy.cli.get_settings")
     def test_config_command_error(self, mock_get_settings):
@@ -203,13 +234,14 @@ class TestClaudeCommand:
         mock_settings.docker_settings = Mock()
         mock_get_settings.return_value = mock_settings
 
-        mock_docker_cmd = ["docker", "run", "claude", "--version"]
+        mock_docker_cmd = ["docker", "run", "claude", "claude", "--version"]
         mock_docker_builder.from_settings_and_overrides.return_value = mock_docker_cmd
+        mock_docker_builder.execute_from_settings.return_value = None
 
         result = self.runner.invoke(app, ["claude", "--docker", "--", "--version"])
 
         mock_docker_builder.from_settings_and_overrides.assert_called_once()
-        mock_execvp.assert_called_once_with("docker", mock_docker_cmd)
+        mock_docker_builder.execute_from_settings.assert_called_once()
 
     @patch("claude_code_proxy.cli.get_settings")
     @patch("claude_code_proxy.cli.DockerCommandBuilder")
@@ -280,7 +312,10 @@ class TestClaudeCommand:
         assert "--docker-volume" in result.stdout
         assert "--docker-arg" in result.stdout
         assert "--docker-home" in result.stdout
-        assert "--docker-workspace" in result.stdout
+        assert "--docker-worksp" in result.stdout  # Truncated in help display
+        assert "--user-mapping" in result.stdout
+        assert "--user-uid" in result.stdout
+        assert "--user-gid" in result.stdout
 
 
 @pytest.mark.integration
@@ -421,7 +456,9 @@ class TestErrorScenarios:
         result = self.runner.invoke(app, ["config"])
 
         assert result.exit_code == 1
-        assert "Error loading configuration: Config file not found" in result.stderr
+        assert "Error loading configuration: Config file not found" in (
+            result.stdout + result.stderr
+        )
 
     @patch("claude_code_proxy.cli.get_settings")
     def test_claude_command_exception_handling(self, mock_get_settings):
@@ -610,12 +647,28 @@ class TestCliEnvironmentIsolation:
         mock_settings.claude_cli_path = "/usr/bin/claude"
         mock_settings.workers = 1
         mock_settings.reload = False
+        mock_settings.server_url = "http://localhost:8000"
+        mock_settings.auth_token = None
+        mock_settings.tools_handling = "warning"
+        mock_settings.cors_origins = ["*"]
+        # Add mock docker settings
+        mock_docker_settings = Mock()
+        mock_docker_settings.docker_image = "claude-code-proxy"
+        mock_docker_settings.docker_home_directory = None
+        mock_docker_settings.docker_workspace_directory = None
+        mock_docker_settings.docker_volumes = []
+        mock_docker_settings.docker_environment = {}
+        mock_docker_settings.docker_additional_args = []
+        mock_docker_settings.user_mapping_enabled = True
+        mock_docker_settings.user_uid = None
+        mock_docker_settings.user_gid = None
+        mock_settings.docker_settings = mock_docker_settings
         mock_get_settings.return_value = mock_settings
 
         # Run config command
         result1 = self.runner.invoke(app, ["config"])
         assert result1.exit_code == 0
-        assert "Current Configuration:" in result1.stdout
+        assert "Claude Code Proxy API Configuration" in result1.stdout
 
         # Run version command - should not be affected by previous command
         result2 = self.runner.invoke(app, ["--version"])

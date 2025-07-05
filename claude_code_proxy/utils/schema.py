@@ -114,43 +114,28 @@ def generate_taplo_config(output_dir: Path | None = None) -> Path:
     if output_dir is None:
         output_dir = Path.cwd()
 
-    taplo_config = {
-        "schema": {
-            "associations": {
-                "ccproxy-schema.json": [
-                    "ccproxy.toml",
-                    ".ccproxy.toml",
-                    "**/ccproxy/*.toml",
-                ]
-            }
-        },
-        "formatting": {
-            "indent_string": "  ",
-            "indent_entries": True,
-            "indent_tables": True,
-            "trailing_newline": True,
-            "reorder_keys": False,
-            "allowed_blank_lines": 1,
-            "column_width": 88,
-            "compact_arrays": False,
-            "compact_inline_tables": False,
-            "compact_entries": False,
-        },
-        "rule": {"keys": {"case": "snake_case"}},
-    }
-
     config_file = output_dir / ".taplo.toml"
 
-    # Convert to TOML format manually for simplicity
+    # Use the correct taplo configuration format
     toml_content = """# Taplo configuration for TOML formatting and validation
-[schema.associations]
-"ccproxy-schema.json" = [
-  "ccproxy.toml",
-  ".ccproxy.toml",
-  "**/ccproxy/*.toml"
-]
 
+# Include ccproxy TOML files
+include = ["ccproxy.toml", ".ccproxy.toml", "**/ccproxy/*.toml"]
+
+# Schema configuration for ccproxy files
+[schema]
+path = "ccproxy-schema.json"
+enabled = true
+
+# Formatting options
 [formatting]
+align_entries = false
+array_trailing_comma = true
+array_auto_expand = true
+array_auto_collapse = true
+compact_arrays = false
+compact_inline_tables = false
+compact_entries = false
 indent_string = "  "
 indent_entries = true
 indent_tables = true
@@ -158,12 +143,14 @@ trailing_newline = true
 reorder_keys = false
 allowed_blank_lines = 1
 column_width = 88
-compact_arrays = false
-compact_inline_tables = false
-compact_entries = false
 
-[rule.keys]
-case = "snake_case"
+# Rule for key formatting
+[[rule]]
+include = ["**/*.toml"]
+keys = ["*"]
+
+[rule.formatting]
+reorder_keys = false
 """
 
     config_file.write_text(toml_content)

@@ -182,8 +182,6 @@ class TestDockerCommandBuilder:
         self, basic_docker_settings: DockerSettings, tmp_path: Path
     ) -> None:
         """Test volume format validation with valid formats."""
-        builder = DockerCommandBuilder(basic_docker_settings)
-
         test_dir = tmp_path / "test"
         test_dir.mkdir()
 
@@ -195,7 +193,7 @@ class TestDockerCommandBuilder:
         ]
 
         for volume in valid_volumes:
-            result = builder._validate_volume_format(volume)
+            result = DockerSettings.validate_volume_format(volume)
             assert result.startswith(str(test_dir))
             assert ":/app/data" in result
 
@@ -203,8 +201,6 @@ class TestDockerCommandBuilder:
         self, basic_docker_settings: DockerSettings
     ) -> None:
         """Test volume format validation with invalid formats."""
-        builder = DockerCommandBuilder(basic_docker_settings)
-
         invalid_volumes = [
             "invalid_format",  # No colon
             "",  # Empty string
@@ -212,30 +208,26 @@ class TestDockerCommandBuilder:
 
         for volume in invalid_volumes:
             with pytest.raises(ValueError, match="Invalid volume format"):
-                builder._validate_volume_format(volume)
+                DockerSettings.validate_volume_format(volume)
 
         # Test case where container path is missing
         with pytest.raises(ValueError):  # Could be either format or path error
-            builder._validate_volume_format("/nonexistent/path:")
+            DockerSettings.validate_volume_format("/nonexistent/path:")
 
     def test_validate_volume_format_nonexistent_path(
         self, basic_docker_settings: DockerSettings
     ) -> None:
         """Test volume format validation with nonexistent host path."""
-        builder = DockerCommandBuilder(basic_docker_settings)
-
         nonexistent_path = "/definitely/does/not/exist"
         volume = f"{nonexistent_path}:/app/data"
 
         with pytest.raises(ValueError, match="Host path does not exist"):
-            builder._validate_volume_format(volume)
+            DockerSettings.validate_volume_format(volume)
 
     def test_validate_volume_format_relative_path(
         self, basic_docker_settings: DockerSettings, tmp_path: Path
     ) -> None:
         """Test volume format validation with relative paths."""
-        builder = DockerCommandBuilder(basic_docker_settings)
-
         # Create a test directory
         test_dir = tmp_path / "test"
         test_dir.mkdir()
@@ -248,7 +240,7 @@ class TestDockerCommandBuilder:
         try:
             os.chdir(tmp_path)
             volume = "test:/app/data"
-            result = builder._validate_volume_format(volume)
+            result = DockerSettings.validate_volume_format(volume)
 
             # Should convert to absolute path
             assert result.startswith(str(test_dir))
@@ -258,42 +250,36 @@ class TestDockerCommandBuilder:
 
     def test_validate_host_path(self, basic_docker_settings: DockerSettings) -> None:
         """Test host path validation and normalization."""
-        builder = DockerCommandBuilder(basic_docker_settings)
-
         # Test absolute path
         abs_path = "/home/user"
-        result = builder._validate_host_path(abs_path)
+        result = DockerSettings.validate_host_path(abs_path)
         assert result == abs_path
 
         # Test path with environment variables
         with patch.dict(os.environ, {"HOME": "/home/user"}):
             env_path = "$HOME/documents"
-            result = builder._validate_host_path(env_path)
+            result = DockerSettings.validate_host_path(env_path)
             assert result == "/home/user/documents"
 
-    def test_validate_working_directory(
+    def test_validate_environment_variable(
         self, basic_docker_settings: DockerSettings
     ) -> None:
-        """Test working directory validation and normalization."""
-        builder = DockerCommandBuilder(basic_docker_settings)
+        """Test environment variable validation and parsing."""
+        # Test valid environment variable
+        env_var = "KEY=VALUE"
+        key, value = DockerSettings.validate_environment_variable(env_var)
+        assert key == "KEY"
+        assert value == "VALUE"
 
-        # Test absolute path
-        abs_path = "/app/workspace"
-        result = builder._validate_working_directory(abs_path)
-        assert result == abs_path
+        # Test environment variable with equals in value
+        env_var = "DATABASE_URL=mysql://user:pass@host:3306/db"
+        key, value = DockerSettings.validate_environment_variable(env_var)
+        assert key == "DATABASE_URL"
+        assert value == "mysql://user:pass@host:3306/db"
 
-        # Test relative path conversion
-        import os
-        from pathlib import Path
-
-        original_cwd = Path.cwd()
-        try:
-            os.chdir("/tmp")
-            rel_path = "workspace"
-            result = builder._validate_working_directory(rel_path)
-            assert "/tmp/workspace" in result
-        finally:
-            os.chdir(original_cwd)
+        # Test invalid environment variable
+        with pytest.raises(ValueError, match="Invalid environment variable format"):
+            DockerSettings.validate_environment_variable("INVALID_NO_EQUALS")
 
     def test_get_merged_volumes(
         self, basic_docker_settings: DockerSettings, tmp_path: Path
@@ -491,3 +477,241 @@ class TestDockerCommandBuilder:
 
         assert "--env" in cmd
         assert "CONNECTION_STRING=host=localhost;port=5432;db=test" in cmd
+
+    def test_user_mapping_enabled_with_uid_gid(
+        self, basic_docker_settings: DockerSettings
+    ) -> None:
+        """Test Docker command building with user mapping enabled and UID/GID set."""
+        # Configure settings with user mapping
+        basic_docker_settings.user_mapping_enabled = True
+        basic_docker_settings.user_uid = 1001
+        basic_docker_settings.user_gid = 1001
+
+        builder = DockerCommandBuilder(basic_docker_settings)
+        cmd = builder.build_command()
+
+        # Should include --user flag with UID:GID
+        assert "--user" in cmd
+        user_index = cmd.index("--user")
+        assert cmd[user_index + 1] == "1001:1001"
+
+    def test_user_mapping_disabled(self, basic_docker_settings: DockerSettings) -> None:
+        """Test Docker command building with user mapping disabled."""
+        # Configure settings with user mapping disabled
+        basic_docker_settings.user_mapping_enabled = False
+        basic_docker_settings.user_uid = 1001
+        basic_docker_settings.user_gid = 1001
+
+        builder = DockerCommandBuilder(basic_docker_settings)
+        cmd = builder.build_command()
+
+        # Should not include --user flag
+        assert "--user" not in cmd
+
+    def test_user_mapping_enabled_missing_uid_gid(
+        self, basic_docker_settings: DockerSettings
+    ) -> None:
+        """Test Docker command building with user mapping enabled but missing UID/GID."""
+        # Configure settings with user mapping enabled but no UID/GID
+        basic_docker_settings.user_mapping_enabled = True
+        basic_docker_settings.user_uid = None
+        basic_docker_settings.user_gid = None
+
+        builder = DockerCommandBuilder(basic_docker_settings)
+        cmd = builder.build_command()
+
+        # Should not include --user flag if UID/GID are None
+        assert "--user" not in cmd
+
+    def test_user_mapping_enabled_partial_uid_gid(
+        self, basic_docker_settings: DockerSettings
+    ) -> None:
+        """Test Docker command building with user mapping enabled but only partial UID/GID."""
+        # Configure settings with user mapping enabled but only UID set
+        basic_docker_settings.user_mapping_enabled = True
+        basic_docker_settings.user_uid = 1001
+        basic_docker_settings.user_gid = None
+
+        builder = DockerCommandBuilder(basic_docker_settings)
+        cmd = builder.build_command()
+
+        # Should not include --user flag if either UID or GID is None
+        assert "--user" not in cmd
+
+    def test_user_mapping_cli_override_enabled(
+        self, basic_docker_settings: DockerSettings
+    ) -> None:
+        """Test Docker command building with CLI override for user mapping."""
+        # Configure settings with user mapping disabled
+        basic_docker_settings.user_mapping_enabled = False
+        basic_docker_settings.user_uid = 1001
+        basic_docker_settings.user_gid = 1001
+
+        builder = DockerCommandBuilder(basic_docker_settings)
+        cmd = builder.build_command(
+            user_mapping_enabled=True,  # CLI override to enable
+            user_uid=2002,  # CLI override UID
+            user_gid=2002,  # CLI override GID
+        )
+
+        # Should include --user flag with CLI override values
+        assert "--user" in cmd
+        user_index = cmd.index("--user")
+        assert cmd[user_index + 1] == "2002:2002"
+
+    def test_user_mapping_cli_override_disabled(
+        self, basic_docker_settings: DockerSettings
+    ) -> None:
+        """Test Docker command building with CLI override disabling user mapping."""
+        # Configure settings with user mapping enabled
+        basic_docker_settings.user_mapping_enabled = True
+        basic_docker_settings.user_uid = 1001
+        basic_docker_settings.user_gid = 1001
+
+        builder = DockerCommandBuilder(basic_docker_settings)
+        cmd = builder.build_command(
+            user_mapping_enabled=False  # CLI override to disable
+        )
+
+        # Should not include --user flag due to CLI override
+        assert "--user" not in cmd
+
+    def test_user_mapping_cli_partial_override(
+        self, basic_docker_settings: DockerSettings
+    ) -> None:
+        """Test Docker command building with CLI override for only UID or GID."""
+        # Configure settings with user mapping enabled
+        basic_docker_settings.user_mapping_enabled = True
+        basic_docker_settings.user_uid = 1001
+        basic_docker_settings.user_gid = 1001
+
+        builder = DockerCommandBuilder(basic_docker_settings)
+        cmd = builder.build_command(
+            user_uid=3003  # Override only UID, keep GID from settings
+        )
+
+        # Should include --user flag with mixed values
+        assert "--user" in cmd
+        user_index = cmd.index("--user")
+        assert cmd[user_index + 1] == "3003:1001"  # CLI UID, settings GID
+
+    def test_build_command_with_entrypoint(
+        self, basic_docker_settings: DockerSettings
+    ) -> None:
+        """Test Docker command building with custom entrypoint."""
+        builder = DockerCommandBuilder(basic_docker_settings)
+        cmd = builder.build_command(entrypoint="/bin/bash")
+
+        assert "--entrypoint" in cmd
+        entrypoint_index = cmd.index("--entrypoint")
+        assert cmd[entrypoint_index + 1] == "/bin/bash"
+
+    def test_build_command_with_command_and_args(
+        self, basic_docker_settings: DockerSettings
+    ) -> None:
+        """Test Docker command building with command and arguments."""
+        builder = DockerCommandBuilder(basic_docker_settings)
+        cmd = builder.build_command(
+            command=["python", "-m", "myapp"],
+            cmd_args=["--verbose", "--config", "prod.yaml"],
+        )
+
+        # Command and args should be at the end after the image
+        assert "test-image:latest" in cmd
+        image_index = cmd.index("test-image:latest")
+
+        # Check that command and args appear after the image
+        assert cmd[image_index + 1 : image_index + 4] == ["python", "-m", "myapp"]
+        assert cmd[image_index + 4 :] == ["--verbose", "--config", "prod.yaml"]
+
+    def test_build_command_with_args_only(
+        self, basic_docker_settings: DockerSettings
+    ) -> None:
+        """Test Docker command building with arguments only (no command)."""
+        builder = DockerCommandBuilder(basic_docker_settings)
+        cmd = builder.build_command(cmd_args=["--help"])
+
+        # Args should be at the end after the image
+        assert "test-image:latest" in cmd
+        image_index = cmd.index("test-image:latest")
+        assert cmd[image_index + 1 :] == ["--help"]
+
+    def test_build_command_with_workdir(
+        self, basic_docker_settings: DockerSettings
+    ) -> None:
+        """Test Docker command building with working directory."""
+        builder = DockerCommandBuilder(basic_docker_settings)
+        cmd = builder.build_command(docker_workdir="/app/workspace")
+
+        assert "--workdir" in cmd
+        workdir_index = cmd.index("--workdir")
+        assert cmd[workdir_index + 1] == "/app/workspace"
+
+    def test_build_command_complex_with_entrypoint_command_args(
+        self, basic_docker_settings: DockerSettings
+    ) -> None:
+        """Test complex Docker command with entrypoint, command, and args."""
+        builder = DockerCommandBuilder(basic_docker_settings)
+        cmd = builder.build_command(
+            entrypoint="/usr/bin/env",
+            command=["python"],
+            cmd_args=["-c", "print('Hello World')"],
+            docker_workdir="/workspace",
+        )
+
+        # Check entrypoint
+        assert "--entrypoint" in cmd
+        entrypoint_index = cmd.index("--entrypoint")
+        assert cmd[entrypoint_index + 1] == "/usr/bin/env"
+
+        # Check workdir
+        assert "--workdir" in cmd
+        workdir_index = cmd.index("--workdir")
+        assert cmd[workdir_index + 1] == "/workspace"
+
+        # Check that command and args appear after image
+        assert "test-image:latest" in cmd
+        image_index = cmd.index("test-image:latest")
+        assert cmd[image_index + 1] == "python"
+        assert cmd[image_index + 2 :] == ["-c", "print('Hello World')"]
+
+    def test_execute_method_with_mock(
+        self, basic_docker_settings: DockerSettings
+    ) -> None:
+        """Test execute method calls os.execvp correctly."""
+        import contextlib
+        from unittest.mock import patch
+
+        builder = DockerCommandBuilder(basic_docker_settings)
+
+        with patch("os.execvp") as mock_execvp:
+            with contextlib.suppress(SystemExit):
+                builder.execute(command=["echo"], cmd_args=["hello"])
+
+            # Verify execvp was called
+            mock_execvp.assert_called_once()
+            call_args = mock_execvp.call_args[0]
+            assert call_args[0] == "docker"  # First argument to execvp
+            assert "docker" in call_args[1]  # Command list starts with docker
+            assert "echo" in call_args[1]  # Our command is included
+            assert "hello" in call_args[1]  # Our args are included
+
+    def test_execute_from_settings_classmethod(
+        self, basic_docker_settings: DockerSettings
+    ) -> None:
+        """Test execute_from_settings class method."""
+        import contextlib
+        from unittest.mock import patch
+
+        with patch("os.execvp") as mock_execvp:
+            with contextlib.suppress(SystemExit):
+                DockerCommandBuilder.execute_from_settings(
+                    basic_docker_settings, command=["ls"], cmd_args=["-la"]
+                )
+
+            # Verify execvp was called
+            mock_execvp.assert_called_once()
+            call_args = mock_execvp.call_args[0]
+            assert call_args[0] == "docker"
+            assert "ls" in call_args[1]
+            assert "-la" in call_args[1]

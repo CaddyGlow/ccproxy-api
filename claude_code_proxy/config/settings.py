@@ -51,6 +51,23 @@ class DockerSettings(BaseModel):
         description="Local host directory to mount as the workspace directory in container",
     )
 
+    user_mapping_enabled: bool = Field(
+        default=True,
+        description="Enable/disable UID/GID mapping for container user",
+    )
+
+    user_uid: int | None = Field(
+        default=None,
+        description="User ID to run container as (auto-detect current user if None)",
+        ge=0,
+    )
+
+    user_gid: int | None = Field(
+        default=None,
+        description="Group ID to run container as (auto-detect current user if None)",
+        ge=0,
+    )
+
     @field_validator("docker_volumes")
     @classmethod
     def validate_docker_volumes(cls, v: list[str]) -> list[str]:
@@ -143,25 +160,105 @@ class DockerSettings(BaseModel):
 
         return self
 
-    def get_docker_command_args(self) -> list[str]:
-        """Generate Docker command arguments from settings."""
-        args = ["docker", "run", "--rm", "-it"]
+    @model_validator(mode="after")
+    def setup_user_mapping(self) -> "DockerSettings":
+        """Set up user mapping with auto-detection if enabled but not configured."""
+        # Only auto-detect on Unix-like systems (Linux/macOS)
+        if self.user_mapping_enabled and os.name == "posix":
+            # Auto-detect current user UID/GID if not explicitly set
+            if self.user_uid is None:
+                self.user_uid = os.getuid()
+            if self.user_gid is None:
+                self.user_gid = os.getgid()
+        elif self.user_mapping_enabled and os.name != "posix":
+            # Disable user mapping on non-Unix systems (Windows)
+            self.user_mapping_enabled = False
 
-        # Add volumes
-        for volume in self.docker_volumes:
-            args.extend(["--volume", volume])
+        return self
 
-        # Add environment variables
-        for key, value in self.docker_environment.items():
-            args.extend(["--env", f"{key}={value}"])
+    @staticmethod
+    def validate_volume_format(volume: str) -> str:
+        """Validate and normalize volume mount format.
 
-        # Add additional arguments
-        args.extend(self.docker_additional_args)
+        Args:
+            volume: Volume string in 'host:container[:options]' format
 
-        # Add image
-        args.append(self.docker_image)
+        Returns:
+            Normalized volume string with absolute host path
 
-        return args
+        Raises:
+            ValueError: If volume format is invalid or host path doesn't exist
+        """
+        if ":" not in volume:
+            raise ValueError(
+                f"Invalid volume format: '{volume}'. Expected 'host:container[:options]'"
+            )
+        parts = volume.split(":")
+        if len(parts) < 2:
+            raise ValueError(
+                f"Invalid volume format: '{volume}'. Expected 'host:container[:options]'"
+            )
+
+        # Convert relative paths to absolute
+        host_path = parts[0]
+        path_obj = Path(host_path)
+
+        # If it's a relative path, convert to absolute
+        if not path_obj.is_absolute():
+            host_path = str(path_obj.resolve())
+
+        # Check if the absolute path exists
+        if not Path(host_path).exists():
+            raise ValueError(f"Host path does not exist: '{host_path}'")
+
+        # Return normalized volume string
+        parts[0] = host_path
+        return ":".join(parts)
+
+    @staticmethod
+    def validate_host_path(path: str) -> str:
+        """Validate and normalize host path format.
+
+        Args:
+            path: Host path string
+
+        Returns:
+            Normalized host path as absolute path
+
+        Raises:
+            ValueError: If path is invalid
+        """
+        # Expand environment variables
+        expanded_path = os.path.expandvars(path)
+        path_obj = Path(expanded_path)
+
+        # If it's a relative path, convert to absolute
+        if not path_obj.is_absolute():
+            path = str(path_obj.resolve())
+        else:
+            path = expanded_path
+
+        return path
+
+    @staticmethod
+    def validate_environment_variable(env_var: str) -> tuple[str, str]:
+        """Validate and parse environment variable format.
+
+        Args:
+            env_var: Environment variable in 'KEY=VALUE' format
+
+        Returns:
+            Tuple of (key, value)
+
+        Raises:
+            ValueError: If environment variable format is invalid
+        """
+        if "=" not in env_var:
+            raise ValueError(
+                f"Invalid environment variable format: '{env_var}'. Expected KEY=VALUE"
+            )
+        key, value = env_var.split("=", 1)
+        return key, value
 
 
 class Settings(BaseSettings):
@@ -185,7 +282,7 @@ class Settings(BaseSettings):
 
     # Server settings
     host: str = Field(
-        default="0.0.0.0",
+        default="127.0.0.1",
         description="Server host address",
     )
 
@@ -224,12 +321,6 @@ class Settings(BaseSettings):
     auth_token: str | None = Field(
         default=None,
         description="Bearer token for API authentication (optional)",
-    )
-
-    # Configuration file path
-    config_file: Path | None = Field(
-        default=None,
-        description="Path to JSON configuration file",
     )
 
     # Tools handling behavior
@@ -317,16 +408,6 @@ class Settings(BaseSettings):
             return [origin.strip() for origin in v.split(",") if origin.strip()]
         return v
 
-    @field_validator("config_file", mode="before")
-    @classmethod
-    def validate_config_file(cls, v: str | Path | None) -> Path | None:
-        """Convert string path to Path object."""
-        if v is None:
-            return None
-        if isinstance(v, str):
-            return Path(v)
-        return v
-
     @property
     def server_url(self) -> str:
         """Get the complete server URL."""
@@ -349,13 +430,6 @@ class Settings(BaseSettings):
                 raise ValueError(f"Claude CLI path is not a file: {v}")
             if not os.access(path, os.X_OK):
                 raise ValueError(f"Claude CLI path is not executable: {v}")
-        return v
-
-    @field_validator("claude_code_options", mode="before")
-    @classmethod
-    def validate_claude_cwd(cls, v: ClaudeCodeOptions) -> ClaudeCodeOptions:
-        if v.cwd is None:
-            v.cwd = Path.cwd()
         return v
 
     @model_validator(mode="after")

@@ -1,5 +1,6 @@
 """Docker command builder utility for Claude Proxy."""
 
+import os
 from pathlib import Path
 from typing import Any
 
@@ -27,6 +28,12 @@ class DockerCommandBuilder:
         docker_arg: list[str] | None = None,
         docker_home: str | None = None,
         docker_workspace: str | None = None,
+        user_mapping_enabled: bool | None = None,
+        user_uid: int | None = None,
+        user_gid: int | None = None,
+        entrypoint: str | None = None,
+        command: list[str] | None = None,
+        cmd_args: list[str] | None = None,
     ) -> list[str]:
         """Build complete Docker command with overrides.
 
@@ -38,6 +45,12 @@ class DockerCommandBuilder:
             docker_arg: Additional Docker run arguments
             docker_home: Override home directory inside container
             docker_workspace: Override workspace directory inside container
+            user_mapping_enabled: Override user mapping enable/disable
+            user_uid: Override user ID for container
+            user_gid: Override group ID for container
+            entrypoint: Override Docker entrypoint
+            command: Command to run in container (list of strings)
+            cmd_args: Arguments to pass to the command
 
         Returns:
             Complete Docker command as list of strings
@@ -54,9 +67,9 @@ class DockerCommandBuilder:
 
         # Validate and normalize overrides if provided
         if docker_home:
-            home_dir = self._validate_host_path(docker_home)
+            home_dir = self.settings.validate_host_path(docker_home)
         if docker_workspace:
-            workspace_dir = self._validate_host_path(docker_workspace)
+            workspace_dir = self.settings.validate_host_path(docker_workspace)
 
         # Create volumes based on directories only if they are specified
         if home_dir or workspace_dir:
@@ -66,7 +79,7 @@ class DockerCommandBuilder:
         if docker_volume:
             normalized_volumes = []
             for volume in docker_volume:
-                normalized_volume = self._validate_volume_format(volume)
+                normalized_volume = self.settings.validate_volume_format(volume)
                 normalized_volumes.append(normalized_volume)
             volumes.extend(normalized_volumes)
 
@@ -84,16 +97,34 @@ class DockerCommandBuilder:
         # Add CLI environment overrides
         if docker_env:
             for env_var in docker_env:
-                if "=" not in env_var:
-                    raise ValueError(
-                        f"Invalid environment variable format: '{env_var}'. Expected KEY=VALUE"
-                    )
-                key, value = env_var.split("=", 1)
+                key, value = self.settings.validate_environment_variable(env_var)
                 env_vars[key] = value
 
         # Add environment variables to command
         for key, value in env_vars.items():
             cmd.extend(["--env", f"{key}={value}"])
+
+        # Add user mapping if enabled
+        effective_mapping_enabled = (
+            user_mapping_enabled
+            if user_mapping_enabled is not None
+            else self.settings.user_mapping_enabled
+        )
+
+        if effective_mapping_enabled:
+            effective_uid = user_uid if user_uid is not None else self.settings.user_uid
+            effective_gid = user_gid if user_gid is not None else self.settings.user_gid
+
+            if effective_uid is not None and effective_gid is not None:
+                cmd.extend(["--user", f"{effective_uid}:{effective_gid}"])
+
+        # Add working directory if specified
+        if docker_workdir:
+            cmd.extend(["--workdir", docker_workdir])
+
+        # Add entrypoint if specified
+        if entrypoint:
+            cmd.extend(["--entrypoint", entrypoint])
 
         # Add additional Docker arguments
         additional_args = self._get_merged_additional_args(docker_arg)
@@ -102,6 +133,15 @@ class DockerCommandBuilder:
         # Add Docker image
         image = docker_image or self.settings.docker_image
         cmd.append(image)
+
+        # Add command and arguments if specified
+        if command:
+            cmd.extend(command)
+            if cmd_args:
+                cmd.extend(cmd_args)
+        elif cmd_args:
+            # If only arguments are provided, add them directly
+            cmd.extend(cmd_args)
 
         return cmd
 
@@ -114,76 +154,10 @@ class DockerCommandBuilder:
             # Validate and normalize CLI volumes
             normalized_volumes = []
             for volume in cli_volumes:
-                normalized_volume = self._validate_volume_format(volume)
+                normalized_volume = self.settings.validate_volume_format(volume)
                 normalized_volumes.append(normalized_volume)
             volumes.extend(normalized_volumes)
         return volumes
-
-    def _validate_volume_format(self, volume: str) -> str:
-        """Validate and normalize volume mount format.
-
-        Returns:
-            Normalized volume string with absolute host path
-        """
-        if ":" not in volume:
-            raise ValueError(
-                f"Invalid volume format: '{volume}'. Expected 'host:container[:options]'"
-            )
-        parts = volume.split(":")
-        if len(parts) < 2:
-            raise ValueError(
-                f"Invalid volume format: '{volume}'. Expected 'host:container[:options]'"
-            )
-
-        # Convert relative paths to absolute
-        host_path = parts[0]
-        path_obj = Path(host_path)
-
-        # If it's a relative path, convert to absolute
-        if not path_obj.is_absolute():
-            host_path = str(path_obj.resolve())
-
-        # Check if the absolute path exists
-        if not Path(host_path).exists():
-            raise ValueError(f"Host path does not exist: '{host_path}'")
-
-        # Return normalized volume string
-        parts[0] = host_path
-        return ":".join(parts)
-
-    def _validate_working_directory(self, workdir: str) -> str:
-        """Validate and normalize Docker working directory format.
-
-        Returns:
-            Normalized working directory as absolute path
-        """
-        path_obj = Path(workdir)
-
-        # If it's a relative path, convert to absolute
-        if not path_obj.is_absolute():
-            workdir = str(path_obj.resolve())
-
-        return workdir
-
-    def _validate_host_path(self, path: str) -> str:
-        """Validate and normalize host path format.
-
-        Returns:
-            Normalized host path as absolute path
-        """
-        import os
-
-        # Expand environment variables
-        expanded_path = os.path.expandvars(path)
-        path_obj = Path(expanded_path)
-
-        # If it's a relative path, convert to absolute
-        if not path_obj.is_absolute():
-            path = str(path_obj.resolve())
-        else:
-            path = expanded_path
-
-        return path
 
     def _get_merged_environment(
         self, cli_env: list[str] | None, base_env: dict[str, str] | None = None
@@ -193,11 +167,7 @@ class DockerCommandBuilder:
 
         if cli_env:
             for env_var in cli_env:
-                if "=" not in env_var:
-                    raise ValueError(
-                        f"Invalid environment variable format: '{env_var}'. Expected KEY=VALUE"
-                    )
-                key, value = env_var.split("=", 1)
+                key, value = self.settings.validate_environment_variable(env_var)
                 env[key] = value
 
         return env
@@ -242,6 +212,25 @@ class DockerCommandBuilder:
 
         return env
 
+    def execute(self, **kwargs: Any) -> None:
+        """Build and execute Docker command using os.execvp.
+
+        This method builds the Docker command and replaces the current process
+        with the Docker command, effectively handing over control to Docker.
+
+        Args:
+            **kwargs: All arguments supported by build_command()
+
+        Raises:
+            OSError: If the command cannot be executed
+        """
+        cmd = self.build_command(**kwargs)
+        os.execvp(cmd[0], cmd)
+
+    def build_and_execute(self, **kwargs: Any) -> None:
+        """Alias for execute method for backward compatibility."""
+        self.execute(**kwargs)
+
     @classmethod
     def from_settings_and_overrides(
         cls,
@@ -259,3 +248,21 @@ class DockerCommandBuilder:
         """
         builder = cls(docker_settings)
         return builder.build_command(**overrides)
+
+    @classmethod
+    def execute_from_settings(
+        cls,
+        docker_settings: DockerSettings,
+        **overrides: Any,
+    ) -> None:
+        """Convenience method to build and execute command directly.
+
+        Args:
+            docker_settings: Docker configuration from settings
+            **overrides: CLI override arguments
+
+        Raises:
+            OSError: If the command cannot be executed
+        """
+        builder = cls(docker_settings)
+        builder.execute(**overrides)

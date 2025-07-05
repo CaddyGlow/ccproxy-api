@@ -56,3 +56,12 @@ def get_claude_cli_config_dir() -> Path:
         Path to the Claude CLI configuration directory within XDG_CONFIG_HOME.
     """
     return get_xdg_config_home() / "claude"
+
+
+def get_claude_docker_home_dir() -> Path:
+    """Get the Claude Docker home directory.
+
+    Returns:
+        Path to the Claude Docker home directory within XDG_DATA_HOME.
+    """
+    return get_ccproxy_config_dir() / "home"

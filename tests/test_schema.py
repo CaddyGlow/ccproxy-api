@@ -95,7 +95,8 @@ class TestSchemaGeneration:
             assert "ccproxy-schema.json" in content
             assert "ccproxy.toml" in content
             assert ".ccproxy.toml" in content
-            assert "snake_case" in content
+            assert "[schema]" in content
+            assert "enabled = true" in content
 
     def test_generate_schema_files_default_directory(self):
         """Test generating schema files in default directory."""

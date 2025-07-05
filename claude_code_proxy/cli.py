@@ -222,6 +222,27 @@ def config() -> None:
                 "Extra Docker run arguments",
             )
 
+        # User mapping settings
+        docker_table.add_row(
+            "user_mapping_enabled",
+            str(settings.docker_settings.user_mapping_enabled),
+            "Enable/disable UID/GID mapping",
+        )
+
+        uid_display = (
+            str(settings.docker_settings.user_uid)
+            if settings.docker_settings.user_uid is not None
+            else "[dim]Auto-detect[/dim]"
+        )
+        docker_table.add_row("user_uid", uid_display, "User ID for container")
+
+        gid_display = (
+            str(settings.docker_settings.user_gid)
+            if settings.docker_settings.user_gid is not None
+            else "[dim]Auto-detect[/dim]"
+        )
+        docker_table.add_row("user_gid", gid_display, "Group ID for container")
+
         # Display all tables
         console.print(
             Panel.fit(
@@ -417,6 +438,23 @@ def api(
         "--docker-workspace",
         help="Workspace directory inside Docker container (overrides config)",
     ),
+    user_mapping_enabled: bool | None = typer.Option(
+        None,
+        "--user-mapping/--no-user-mapping",
+        help="Enable/disable UID/GID mapping (overrides config)",
+    ),
+    user_uid: int | None = typer.Option(
+        None,
+        "--user-uid",
+        help="User ID to run container as (overrides config)",
+        min=0,
+    ),
+    user_gid: int | None = typer.Option(
+        None,
+        "--user-gid",
+        help="Group ID to run container as (overrides config)",
+        min=0,
+    ),
 ) -> None:
     """
     Start the Claude Code Proxy API server.
@@ -447,7 +485,11 @@ def api(
             if reload:
                 server_args.append("--reload")
 
-            # Build Docker command with settings and CLI overrides
+            # Build and execute Docker command with settings and CLI overrides
+            typer.echo("Starting Claude Code Proxy API server with Docker...")
+            typer.echo(f"Server will be available at: http://{host}:{port}")
+
+            # Show the command before executing
             docker_cmd = DockerCommandBuilder.from_settings_and_overrides(
                 settings.docker_settings,
                 docker_image=docker_image,
@@ -456,16 +498,28 @@ def api(
                 docker_arg=docker_arg + ["-p", f"{port}:{port}"],
                 docker_home=docker_home,
                 docker_workspace=docker_workspace,
+                user_mapping_enabled=user_mapping_enabled,
+                user_uid=user_uid,
+                user_gid=user_gid,
+                cmd_args=server_args,
             )
-
-            docker_cmd.extend(server_args)
-            typer.echo("Starting Claude Code Proxy API server with Docker...")
-            typer.echo(f"Server will be available at: http://{host}:{port}")
             typer.echo(f"Executing: {' '.join(docker_cmd)}")
             typer.echo("")
 
-            # Use os.execvp to replace current process with docker command
-            os.execvp(docker_cmd[0], docker_cmd)
+            # Execute using the new Docker builder method
+            DockerCommandBuilder.execute_from_settings(
+                settings.docker_settings,
+                docker_image=docker_image,
+                docker_env=docker_env + [f"PORT={port}"],
+                docker_volume=docker_volume,
+                docker_arg=docker_arg + ["-p", f"{port}:{port}"],
+                docker_home=docker_home,
+                docker_workspace=docker_workspace,
+                user_mapping_enabled=user_mapping_enabled,
+                user_uid=user_uid,
+                user_gid=user_gid,
+                cmd_args=server_args,
+            )
         else:
             # Run server locally using fastapi-cli's _run function
             typer.echo("Starting Claude Code Proxy API server locally...")
@@ -528,6 +582,23 @@ def claude(
         "--docker-workspace",
         help="Workspace directory inside Docker container (overrides config)",
     ),
+    user_mapping_enabled: bool | None = typer.Option(
+        None,
+        "--user-mapping/--no-user-mapping",
+        help="Enable/disable UID/GID mapping (overrides config)",
+    ),
+    user_uid: int | None = typer.Option(
+        None,
+        "--user-uid",
+        help="User ID to run container as (overrides config)",
+        min=0,
+    ),
+    user_gid: int | None = typer.Option(
+        None,
+        "--user-gid",
+        help="Group ID to run container as (overrides config)",
+        min=0,
+    ),
 ) -> None:
     """
     Execute claude CLI commands directly.
@@ -552,7 +623,7 @@ def claude(
             # Load settings to get Docker configuration
             settings = get_settings()
 
-            # Build Docker command with settings and CLI overrides
+            # Show the command before executing
             docker_cmd = DockerCommandBuilder.from_settings_and_overrides(
                 settings.docker_settings,
                 docker_image=docker_image,
@@ -561,18 +632,31 @@ def claude(
                 docker_arg=docker_arg,
                 docker_home=docker_home,
                 docker_workspace=docker_workspace,
+                user_mapping_enabled=user_mapping_enabled,
+                user_uid=user_uid,
+                user_gid=user_gid,
+                command=["claude"],
+                cmd_args=args,
             )
-
-            # Add claude command
-            docker_cmd.append("claude")
-
-            # Add claude arguments
-            docker_cmd.extend(args)
 
             typer.echo(f"Executing: {' '.join(docker_cmd)}")
             typer.echo("")
 
-            full_cmd = docker_cmd
+            # Execute using the new Docker builder method
+            DockerCommandBuilder.execute_from_settings(
+                settings.docker_settings,
+                docker_image=docker_image,
+                docker_env=docker_env,
+                docker_volume=docker_volume,
+                docker_arg=docker_arg,
+                docker_home=docker_home,
+                docker_workspace=docker_workspace,
+                user_mapping_enabled=user_mapping_enabled,
+                user_uid=user_uid,
+                user_gid=user_gid,
+                command=["claude"],
+                cmd_args=args,
+            )
         else:
             # Load settings to find claude path
             settings = get_settings()
@@ -594,15 +678,13 @@ def claude(
             typer.echo("")
 
             # Execute command directly
-            full_cmd = [claude_path] + args
-
-        try:
-            # Use os.execvp to replace current process with claude
-            # This hands over full control to claude, including signal handling
-            os.execvp(full_cmd[0], full_cmd)
-        except OSError as e:
-            typer.echo(f"Failed to execute command: {e}", err=True)
-            raise typer.Exit(1) from e
+            try:
+                # Use os.execvp to replace current process with claude
+                # This hands over full control to claude, including signal handling
+                os.execvp(claude_path, [claude_path] + args)
+            except OSError as e:
+                typer.echo(f"Failed to execute command: {e}", err=True)
+                raise typer.Exit(1) from e
 
     except Exception as e:
         typer.echo(f"Error executing claude command: {e}", err=True)
