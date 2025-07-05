@@ -7,8 +7,9 @@ Configure Claude Code Proxy API Server for your personal local setup and prefere
 The server supports multiple configuration methods with the following priority order:
 
 1. **Environment Variables** (highest priority)
-2. **Configuration File** (`config.json`)
-3. **Default Values** (lowest priority)
+2. **TOML Configuration Files** (`.ccproxy.toml`, `ccproxy.toml`, or `~/.config/ccproxy/config.toml`)
+3. **JSON Configuration File** (`config.json`)
+4. **Default Values** (lowest priority)
 
 ## Environment Variables
 
@@ -43,7 +44,50 @@ AUTH_TOKEN=abc123xyz789abcdef...  # Optional authentication
 CLAUDE_CLI_PATH=/opt/claude/bin/claude
 ```
 
-## Configuration File
+## TOML Configuration (Recommended)
+
+TOML configuration files provide a more readable and structured format. Files are searched in this order:
+
+1. `.ccproxy.toml` in the current directory
+2. `ccproxy.toml` in the git repository root
+3. `config.toml` in `~/.config/ccproxy/`
+
+### Example TOML Configuration
+
+```toml
+# Server settings
+host = "127.0.0.1"
+port = 8080
+log_level = "DEBUG"
+workers = 2
+
+# Security settings
+cors_origins = ["https://example.com", "https://app.com"]
+auth_token = "your-auth-token"
+
+# Docker settings
+[docker_settings]
+docker_image = "custom-claude-image"
+docker_volumes = ["/host/data:/container/data"]
+docker_environment = {CLAUDE_ENV = "production"}
+
+# Connection pool settings
+[pool_settings]
+enabled = true               # Enable/disable connection pooling
+min_size = 2                # Minimum number of instances to maintain
+max_size = 10               # Maximum number of instances allowed
+idle_timeout = 300          # Seconds before idle connections are closed
+warmup_on_startup = true    # Pre-create minimum instances on startup
+health_check_interval = 60  # Seconds between connection health checks
+acquire_timeout = 5.0       # Maximum seconds to wait for an available instance
+
+# Claude Code options
+[claude_code_options]
+model = "claude-3-5-sonnet-20241022"
+max_thinking_tokens = 30000
+```
+
+## JSON Configuration File
 
 Create a `config.json` file in the project root for advanced configuration:
 
@@ -101,6 +145,10 @@ Controls the FastAPI server behavior:
   }
 }
 ```
+
+### Connection Pool Configuration
+
+For improved performance, see the [Connection Pool Configuration Guide](/user-guide/pool-configuration/) for detailed settings.
 
 ### Claude Configuration
 
@@ -452,6 +500,15 @@ CLAUDE_GROUP=claude
     "cwd": "/path/to/working/directory",
     "model": "claude-3-5-sonnet-20241022",
     "max_thinking_tokens": 30000
+  },
+  "pool_settings": {
+    "enabled": true,
+    "min_size": 2,
+    "max_size": 10,
+    "idle_timeout": 300,
+    "warmup_on_startup": true,
+    "health_check_interval": 60,
+    "acquire_timeout": 5.0
   }
 }
 ```

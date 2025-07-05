@@ -20,6 +20,7 @@ from claude_code_proxy.middleware.auth import get_auth_dependency
 from claude_code_proxy.models.errors import create_error_response
 from claude_code_proxy.models.messages import MessageRequest, MessageResponse
 from claude_code_proxy.services.claude_client import ClaudeClient
+from claude_code_proxy.services.pool_manager import pool_manager
 from claude_code_proxy.services.streaming import stream_anthropic_message_response
 
 
@@ -49,11 +50,13 @@ async def create_message(
     Raises:
         HTTPException: For validation errors, API errors, or service failures
     """
+    pooled_connection = None
     try:
         settings = get_settings()
 
-        # Initialize Claude client
-        claude_client = ClaudeClient()
+        # Get Claude client from pool
+        logger.info("[API] Acquiring Claude client from pool for message request")
+        claude_client, pooled_connection = await pool_manager.acquire_client()
 
         options = settings.claude_code_options
         options.model = request.model
@@ -147,7 +150,7 @@ async def create_message(
                 )
                 return message_response
 
-            return MessageResponse(**response)  # type: ignore
+            return MessageResponse(**response)
 
     except ClaudeProxyError as e:
         logger.error(f"Claude proxy error: {e}")
@@ -167,3 +170,10 @@ async def create_message(
             "internal_server_error", "An unexpected error occurred"
         )
         raise HTTPException(status_code=500, detail=error_response) from e
+    finally:
+        # Release connection back to pool
+        if pooled_connection:
+            logger.info(
+                f"[API] Releasing Claude client connection {pooled_connection.id} back to pool"
+            )
+            await pool_manager.release_client(pooled_connection)

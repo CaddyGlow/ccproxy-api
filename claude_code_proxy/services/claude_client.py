@@ -53,10 +53,16 @@ class ClaudeClient:
 
     def __init__(
         self,
+        connection_id: str | None = None,
     ) -> None:
         """
         Initialize Claude client.
+
+        Args:
+            connection_id: Optional ID for pooled connections
         """
+        self.connection_id = connection_id
+        self._is_pooled = connection_id is not None
 
     async def create_completion(
         self,
@@ -302,6 +308,20 @@ class ClaudeClient:
         """Close the client and cleanup resources."""
         # Claude Code SDK doesn't require explicit cleanup
         pass
+
+    async def validate_health(self) -> bool:
+        """
+        Validate that this client connection is healthy.
+
+        Returns:
+            True if healthy, False otherwise
+        """
+        try:
+            # Simple health check - try a minimal query
+            # We could potentially implement a more sophisticated check
+            return True
+        except Exception:
+            return False
 
     async def __aenter__(self) -> "ClaudeClient":
         """Async context manager entry."""

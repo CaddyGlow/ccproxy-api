@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from claude_code_proxy.config.settings import get_settings
+from claude_code_proxy.services.pool_manager import pool_manager
 
 
 # Configure logging
@@ -37,10 +38,29 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         for path in settings.get_searched_paths():
             logger.info(f"  - {path}")
 
+    # Initialize connection pool if enabled
+    logger.info("[STARTUP] Configuring connection pool manager...")
+    pool_manager.configure(settings)
+    if settings.pool_settings.enabled:
+        logger.info(
+            f"[STARTUP] Initializing Claude connection pool (min={settings.pool_settings.min_size}, "
+            f"max={settings.pool_settings.max_size})"
+        )
+        await pool_manager.initialize()
+        logger.info("[STARTUP] Claude connection pool initialized successfully")
+    else:
+        logger.info("[STARTUP] Claude connection pooling is disabled")
+
     yield
 
     # Shutdown
     logger.info("Shutting down Claude Proxy API Server...")
+
+    # Shutdown connection pool
+    if pool_manager.is_enabled:
+        logger.info("[SHUTDOWN] Shutting down Claude connection pool...")
+        await pool_manager.shutdown()
+        logger.info("[SHUTDOWN] Claude connection pool shut down successfully")
 
 
 def create_app() -> FastAPI:
@@ -68,6 +88,15 @@ def create_app() -> FastAPI:
     async def health_check() -> dict[str, str]:
         """Health check endpoint."""
         return {"status": "healthy", "service": "claude-proxy"}
+
+    # Pool statistics endpoint
+    @app.get("/pool/stats")
+    async def pool_stats() -> dict[str, Any]:
+        """Get connection pool statistics."""
+        return {
+            "pool_enabled": pool_manager.is_enabled,
+            "stats": pool_manager.get_stats() if pool_manager.is_enabled else None,
+        }
 
     # Include API routes
     from claude_code_proxy.api.openai import chat_router, models_router
