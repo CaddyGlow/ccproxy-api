@@ -11,6 +11,42 @@ from pydantic import BaseModel, Field
 logger = logging.getLogger(__name__)
 
 
+# OpenAI to Claude model mapping (startswith matching)
+OPENAI_TO_CLAUDE_MODEL_MAPPING = {
+    "gpt-4o-mini": "claude-3-5-haiku-latest",
+    "o3-mini": "claude-opus-4-20250514",
+    "o1-mini": "claude-sonnet-4-20250514",
+    "gpt-4o": "claude-3-7-sonnet-20250219",
+}
+
+
+def map_openai_model_to_claude(model: str) -> str:
+    """
+    Map OpenAI model names to Claude models using startswith matching.
+
+    Args:
+        model: OpenAI model name
+
+    Returns:
+        Mapped Claude model name or original if no mapping found
+    """
+    # Pass through Claude models without mapping
+    if model.startswith("claude-"):
+        return model
+
+    # Check for exact matches first
+    if model in OPENAI_TO_CLAUDE_MODEL_MAPPING:
+        return OPENAI_TO_CLAUDE_MODEL_MAPPING[model]
+
+    # Check for startswith matches
+    for openai_prefix, claude_model in OPENAI_TO_CLAUDE_MODEL_MAPPING.items():
+        if model.startswith(openai_prefix):
+            return claude_model
+
+    # Return original model if no mapping found
+    return model
+
+
 class OpenAIMessage(BaseModel):
     """OpenAI message format."""
 
@@ -126,8 +162,8 @@ class OpenAITranslator:
         # Parse OpenAI request
         openai_req = OpenAIRequest(**openai_request)
 
-        # Use model as-is (no mapping)
-        model = openai_req.model
+        # Map OpenAI model to Claude model
+        model = map_openai_model_to_claude(openai_req.model)
 
         # Convert messages
         messages, system_prompt = self._convert_messages_to_anthropic(

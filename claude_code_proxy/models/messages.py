@@ -26,7 +26,7 @@ class MessageRequest(BaseModel):
         ...,
         description="Maximum number of tokens to generate",
         ge=1,
-        le=8192,
+        le=200000,
     )
     messages: list[Message] = Field(
         ...,

@@ -8,6 +8,7 @@ from claude_code_proxy.models.openai_models import (
     OpenAIMessage,
     OpenAITool,
 )
+from claude_code_proxy.services.translator import map_openai_model_to_claude
 
 
 @pytest.mark.unit
@@ -220,3 +221,88 @@ class TestOpenAIResponseGeneration:
         assert response.choices[0].message.tool_calls is not None
         assert len(response.choices[0].message.tool_calls) == 1
         assert response.choices[0].message.tool_calls[0].function.name == "get_weather"
+
+
+@pytest.mark.unit
+class TestOpenAIModelMapping:
+    """Test OpenAI to Claude model mapping functionality."""
+
+    def test_map_gpt4o_mini_to_haiku(self) -> None:
+        """Test mapping gpt-4o-mini to claude-3-5-haiku-latest."""
+        result = map_openai_model_to_claude("gpt-4o-mini")
+        assert result == "claude-3-5-haiku-latest"
+
+    def test_map_o3_mini_to_opus(self) -> None:
+        """Test mapping o3-mini to claude-opus-4-20250514."""
+        result = map_openai_model_to_claude("o3-mini")
+        assert result == "claude-opus-4-20250514"
+
+    def test_map_o1_mini_to_sonnet(self) -> None:
+        """Test mapping o1-mini to claude-sonnet-4-20250514."""
+        result = map_openai_model_to_claude("o1-mini")
+        assert result == "claude-sonnet-4-20250514"
+
+    def test_map_gpt4o_to_sonnet_37(self) -> None:
+        """Test mapping gpt-4o to claude-3-7-sonnet-20250219."""
+        result = map_openai_model_to_claude("gpt-4o")
+        assert result == "claude-3-7-sonnet-20250219"
+
+    def test_startswith_matching_gpt4o_variants(self) -> None:
+        """Test startswith matching for gpt-4o variants."""
+        result = map_openai_model_to_claude("gpt-4o-2024-05-13")
+        assert result == "claude-3-7-sonnet-20250219"
+
+        result = map_openai_model_to_claude("gpt-4o-preview")
+        assert result == "claude-3-7-sonnet-20250219"
+
+    def test_startswith_matching_gpt4o_mini_variants(self) -> None:
+        """Test startswith matching for gpt-4o-mini variants."""
+        result = map_openai_model_to_claude("gpt-4o-mini-2024-07-18")
+        assert result == "claude-3-5-haiku-latest"
+
+    def test_claude_models_pass_through(self) -> None:
+        """Test that Claude models pass through without mapping."""
+        claude_models = [
+            "claude-opus-4-20250514",
+            "claude-sonnet-4-20250514",
+            "claude-3-7-sonnet-20250219",
+            "claude-3-5-sonnet-20241022",
+            "claude-3-5-haiku-20241022",
+        ]
+
+        for model in claude_models:
+            result = map_openai_model_to_claude(model)
+            assert result == model
+
+    def test_unknown_model_pass_through(self) -> None:
+        """Test that unknown models pass through unchanged."""
+        unknown_models = [
+            "unknown-model",
+            "custom-model-v1",
+            "my-fine-tuned-model",
+        ]
+
+        for model in unknown_models:
+            result = map_openai_model_to_claude(model)
+            assert result == model
+
+    def test_exact_match_takes_precedence(self) -> None:
+        """Test that exact matches take precedence over startswith matches."""
+        # gpt-4o should map to claude-3-7-sonnet-20250219 even though
+        # gpt-4o-mini would also match the startswith for gpt-4o
+        result = map_openai_model_to_claude("gpt-4o")
+        assert result == "claude-3-7-sonnet-20250219"
+
+    def test_mapping_in_translator_request(self) -> None:
+        """Test model mapping integration in translator."""
+        from claude_code_proxy.services.translator import OpenAITranslator
+
+        translator = OpenAITranslator()
+        openai_request = {
+            "model": "gpt-4o-mini",
+            "messages": [{"role": "user", "content": "Hello"}],
+            "max_tokens": 100,
+        }
+
+        anthropic_request = translator.openai_to_anthropic_request(openai_request)
+        assert anthropic_request["model"] == "claude-3-5-haiku-latest"

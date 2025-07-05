@@ -94,6 +94,21 @@ class TestChatCompletionRequest:
         with pytest.raises(ValidationError):
             ChatCompletionRequest(**request_data)
 
+        # Test that large values like 64000 are accepted
+        request_data["max_tokens"] = 64000
+        request = ChatCompletionRequest(**request_data)
+        assert request.max_tokens == 64000
+
+        # Test maximum allowed value
+        request_data["max_tokens"] = 200000
+        request = ChatCompletionRequest(**request_data)
+        assert request.max_tokens == 200000
+
+        # Test exceeding maximum should fail
+        request_data["max_tokens"] = 200001
+        with pytest.raises(ValidationError):
+            ChatCompletionRequest(**request_data)
+
     def test_stop_sequences_validation(self):
         """Test stop_sequences validation."""
         request_data: dict[str, Any] = {
