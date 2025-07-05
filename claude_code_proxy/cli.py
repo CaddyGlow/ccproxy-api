@@ -63,14 +63,9 @@ def main(
     pass
 
 
-# Clear the fastapi callback to avoid conflicts
-try:
-    # Remove any existing callback
-    if hasattr(fastapi_app, "_callback"):
-        fastapi_app._callback = None
-except Exception:
-    pass
-
+# Remove the fastapi callback to avoid the warning
+# fastapi_app.callback()(lambda: None)
+fastapi_app.callback()(None)  # type: ignore[type-var]
 # Register fastapi app with typer
 app.add_typer(fastapi_app)
 
