@@ -11,6 +11,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from claude_code_proxy.utils import find_toml_config_file, get_claude_cli_config_dir
 from claude_code_proxy.utils.helper import get_package_dir, patched_typing
+from claude_code_proxy.utils.xdg import get_claude_docker_home_dir
 
 
 # For further information visit https://errors.pydantic.dev/2.11/u/typed-dict-version
@@ -143,7 +144,7 @@ class DockerSettings(BaseModel):
             and not self.docker_workspace_directory
         ):
             # Use XDG config directory for Claude CLI data
-            claude_config_dir = get_claude_cli_config_dir()
+            claude_config_dir = get_claude_docker_home_dir()
             home_host_path = str(claude_config_dir)
             workspace_host_path = os.path.expandvars("$PWD")
 

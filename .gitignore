@@ -157,3 +157,4 @@ logs
 .pnpm-debug.log*
 .pnpm-store/
 data/home
+coverage.xml

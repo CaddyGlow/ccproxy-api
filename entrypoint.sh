@@ -4,10 +4,21 @@ set -e
 CLAUDE_HOME=${CLAUDE_HOME:-"/data/home"}
 CLAUDE_WORKSPACE=${CLAUDE_WORKSPACE:$-CLAUDE_HOME}
 
+# Check if running as root
+if [[ $EUID -ne 0 ]]; then
+  export HOME="$CLAUDE_HOME"
+  export CLAUDE_USER="claude"
+
+  cd "$CLAUDE_WORKSPACE"
+  echo "Not running as root, executing command directly: $*"
+  exec "$@"
+fi
+
 # Get PUID and PGID from environment or use defaults
 PUID=${PUID:-1000}
 PGID=${PGID:-1000}
 
+echo "Running as root, setting up user/group management"
 echo "Starting Claude Proxy with PUID=$PUID, PGID=$PGID"
 echo "CLAUDE_HOME=$CLAUDE_HOME"
 echo "CLAUDE_WORKSPACE=$CLAUDE_WORKSPACE"
@@ -63,7 +74,7 @@ if user_exists claude; then
 
   if [[ "$current_uid" != "$PUID" ]]; then
     # Check if target UID is already in use
-    if getent passwd "$PUIdoD" &>/dev/null; then
+    if getent passwd "$PUID" &>/dev/null; then
       existing_user=$(getent passwd "$PUID" | cut -d: -f1)
       if [[ "$existing_user" != "claude" ]]; then
         echo "Warning: UID $PUID is already used by user '$existing_user'"
@@ -118,12 +129,12 @@ mkdir -p "$CLAUDE_WORKSPACE"
 chown -R claude:"$CLAUDE_GROUP_NAME" "$CLAUDE_WORKSPACE"
 
 # Update environment variables for the application
-export CLAUDE_USER="claude"
+export CLAUDE_USER="cLaude"
 export CLAUDE_GROUP="$CLAUDE_GROUP_NAME"
 export CLAUDE_WORKSPACE="$CLAUDE_WORKSPACE"
 export HOME="$CLAUDE_HOME"
 
-cd $CLAUDE_WORKSPACE
+cd "$CLAUDE_WORKSPACE"
 
 # Get final UID/GID values
 FINAL_PUID=$(id -u claude)
