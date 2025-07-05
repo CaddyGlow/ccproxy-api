@@ -99,15 +99,17 @@ class TestSchemaGeneration:
 
     def test_generate_schema_files_default_directory(self):
         """Test generating schema files in default directory."""
-        with patch("claude_code_proxy.utils.schema.Path.cwd") as mock_cwd:
-            with tempfile.TemporaryDirectory() as temp_dir:
-                mock_cwd.return_value = Path(temp_dir)
+        with (
+            patch("claude_code_proxy.utils.schema.Path.cwd") as mock_cwd,
+            tempfile.TemporaryDirectory() as temp_dir,
+        ):
+            mock_cwd.return_value = Path(temp_dir)
 
-                generated_files = generate_schema_files()
+            generated_files = generate_schema_files()
 
-                # Should use current directory
-                assert len(generated_files) == 2
-                assert all(f.parent == Path(temp_dir) for f in generated_files)
+            # Should use current directory
+            assert len(generated_files) == 2
+            assert all(f.parent == Path(temp_dir) for f in generated_files)
 
 
 @pytest.mark.unit

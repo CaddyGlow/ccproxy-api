@@ -238,17 +238,6 @@ class Settings(BaseSettings):
         description="How to handle tools definitions in requests: error, warning, or ignore",
     )
 
-    # Security settings for subprocess execution (mostly used for docker)
-    claude_user: str | None = Field(
-        default="claude",
-        description="Username to drop privileges to when executing Claude subprocess",
-    )
-
-    claude_group: str | None = Field(
-        default="claude",
-        description="Group name to drop privileges to when executing Claude subprocess",
-    )
-
     # Claude CLI path
     claude_cli_path: str | None = Field(
         default=None,

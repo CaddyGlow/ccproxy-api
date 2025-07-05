@@ -199,12 +199,10 @@ class TestSettings:
             finally:
                 os.chdir(original_cwd)
 
-    def test_new_security_fields_defaults(self):
+    def test_default_value_claude_cli_path(self):
         """Test that new security fields have correct default values."""
         settings = Settings()
 
-        assert settings.claude_user == "claude"
-        assert settings.claude_group == "claude"
         # claude_cli_path may be auto-detected, so just check it exists
         assert hasattr(settings, "claude_cli_path")
         assert settings.claude_code_options is not None
@@ -212,8 +210,6 @@ class TestSettings:
     def test_security_fields_from_env_vars(self):
         """Test loading security fields from environment variables."""
         env_vars = {
-            "CLAUDE_USER": "testuser",
-            "CLAUDE_GROUP": "testgroup",
             "CLAUDE_CLI_PATH": "/usr/local/bin/claude",
         }
 

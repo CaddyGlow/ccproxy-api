@@ -103,16 +103,18 @@ def config() -> None:
         server_table.add_column("Value", style="green")
         server_table.add_column("Description", style="dim")
 
-        server_table.add_row("Host", settings.host, "Server host address")
-        server_table.add_row("Port", str(settings.port), "Server port number")
-        server_table.add_row("Log Level", settings.log_level, "Logging verbosity level")
+        server_table.add_row("host", settings.host, "Server host address")
+        server_table.add_row("port", str(settings.port), "Server port number")
+        server_table.add_row("log_level", settings.log_level, "Logging verbosity level")
         server_table.add_row(
-            "Workers", str(settings.workers), "Number of worker processes"
+            "workers", str(settings.workers), "Number of worker processes"
         )
         server_table.add_row(
-            "Reload", str(settings.reload), "Auto-reload for development"
+            "reload", str(settings.reload), "Auto-reload for development"
         )
-        server_table.add_row("Server URL", settings.server_url, "Complete server URL")
+        server_table.add_row(
+            "server_url", settings.server_url, "Complete server URL (computed)"
+        )
 
         # Claude CLI configuration table
         claude_table = Table(
@@ -126,10 +128,7 @@ def config() -> None:
 
         claude_path_display = settings.claude_cli_path or "[dim]Auto-detect[/dim]"
         claude_table.add_row(
-            "CLI Path", claude_path_display, "Path to Claude CLI executable"
-        )
-        claude_table.add_row(
-            "Tools Handling", settings.tools_handling, "How to handle tools in requests"
+            "claude_cli_path", claude_path_display, "Path to Claude CLI executable"
         )
 
         # Security configuration table
@@ -150,22 +149,14 @@ def config() -> None:
             if settings.cors_origins
             else "[dim]None[/dim]"
         )
-
         security_table.add_row(
-            "Auth Token", auth_token_display, "Bearer token for authentication"
+            "tools_handling", settings.tools_handling, "How to handle tools in requests"
         )
         security_table.add_row(
-            "CORS Origins", cors_origins_display, "Allowed CORS origins"
+            "auth_token", auth_token_display, "Bearer token for authentication"
         )
         security_table.add_row(
-            "Claude User",
-            settings.claude_user or "[dim]Not set[/dim]",
-            "User for Claude subprocess",
-        )
-        security_table.add_row(
-            "Claude Group",
-            settings.claude_group or "[dim]Not set[/dim]",
-            "Group for Claude subprocess",
+            "cors_origins", cors_origins_display, "Allowed CORS origins"
         )
 
         # Docker configuration table
@@ -177,17 +168,17 @@ def config() -> None:
         docker_table.add_column("Description", style="dim")
 
         docker_table.add_row(
-            "Docker Image",
+            "docker_image",
             settings.docker_settings.docker_image,
             "Docker image for Claude commands",
         )
         docker_table.add_row(
-            "Home Directory",
+            "docker_home_directory",
             settings.docker_settings.docker_home_directory or "[dim]Auto-detect[/dim]",
             "Host directory for container home",
         )
         docker_table.add_row(
-            "Workspace Directory",
+            "docker_workspace_directory",
             settings.docker_settings.docker_workspace_directory
             or "[dim]Auto-detect[/dim]",
             "Host directory for workspace",
@@ -196,9 +187,11 @@ def config() -> None:
         # Docker volumes
         if settings.docker_settings.docker_volumes:
             volumes_text = "\n".join(settings.docker_settings.docker_volumes)
-            docker_table.add_row("Volumes", volumes_text, "Docker volume mounts")
+            docker_table.add_row("docker_volumes", volumes_text, "Docker volume mounts")
         else:
-            docker_table.add_row("Volumes", "[dim]None[/dim]", "Docker volume mounts")
+            docker_table.add_row(
+                "docker_volumes", "[dim]None[/dim]", "Docker volume mounts"
+            )
 
         # Docker environment variables
         if settings.docker_settings.docker_environment:
@@ -209,22 +202,24 @@ def config() -> None:
                 ]
             )
             docker_table.add_row(
-                "Environment", env_text, "Docker environment variables"
+                "docker_environment", env_text, "Docker environment variables"
             )
         else:
             docker_table.add_row(
-                "Environment", "[dim]None[/dim]", "Docker environment variables"
+                "docker_environment", "[dim]None[/dim]", "Docker environment variables"
             )
 
         # Additional docker args
         if settings.docker_settings.docker_additional_args:
             args_text = " ".join(settings.docker_settings.docker_additional_args)
             docker_table.add_row(
-                "Additional Args", args_text, "Extra Docker run arguments"
+                "docker_additional_args", args_text, "Extra Docker run arguments"
             )
         else:
             docker_table.add_row(
-                "Additional Args", "[dim]None[/dim]", "Extra Docker run arguments"
+                "docker_additional_args",
+                "[dim]None[/dim]",
+                "Extra Docker run arguments",
             )
 
         # Display all tables
