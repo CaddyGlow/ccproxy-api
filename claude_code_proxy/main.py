@@ -71,10 +71,11 @@ def create_app() -> FastAPI:
 
     # Include API routes
     from claude_code_proxy.api.openai import chat_router, models_router
-    from claude_code_proxy.api.v1 import chat
+    from claude_code_proxy.api.v1 import chat, messages
 
     # Anthropic-compatible endpoints
     app.include_router(chat.router, prefix="/v1")
+    app.include_router(messages.router, prefix="/v1")
 
     # OpenAI-compatible endpoints
     app.include_router(chat_router, prefix="/openai/v1")

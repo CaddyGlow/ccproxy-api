@@ -212,3 +212,32 @@ async def stream_claude_response(
     finally:
         # Always send DONE at the end
         yield formatter.format_done()
+
+
+async def stream_anthropic_message_response(
+    claude_response_iterator: AsyncIterable[dict[str, Any]],
+    message_id: str,
+    model: str,
+) -> AsyncGenerator[str, None]:
+    """
+    Convert Claude SDK response to Anthropic Messages API streaming format.
+
+    This is essentially the same as stream_claude_response but maintains
+    a separate function for clarity and potential future differences.
+
+    Args:
+        claude_response_iterator: Async iterator of Claude response chunks
+        message_id: Unique message identifier
+        model: Model name being used
+
+    Yields:
+        Formatted SSE strings for Anthropic Messages API
+
+    Raises:
+        TypeError: If claude_response_iterator is not an async iterable
+    """
+    # Use the same streaming logic as the chat completions endpoint
+    async for chunk in stream_claude_response(
+        claude_response_iterator, message_id, model
+    ):
+        yield chunk

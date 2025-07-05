@@ -58,34 +58,20 @@ async def create_message(
         options = settings.claude_code_options
         options.model = request.model
 
-        if request.max_tokens:
-            options.max_tokens = request.max_tokens
-
-        if request.temperature is not None:
-            options.temperature = request.temperature
-
-        if request.top_p is not None:
-            options.top_p = request.top_p
-
-        if request.top_k is not None:
-            options.top_k = request.top_k
-
-        if request.stop_sequences:
-            options.stop_sequences = request.stop_sequences
-
         if request.max_thinking_tokens:
             options.max_thinking_tokens = request.max_thinking_tokens
 
         # Convert request to messages format
         messages = [msg.model_dump() for msg in request.messages]
 
-        # Add system message if provided
+        # Add system message if provided - handle through system_prompt instead
         if request.system:
             if isinstance(request.system, str):
-                options.system = request.system
-            else:
-                # Handle system message blocks
-                options.system = request.system
+                options.system_prompt = request.system
+            elif isinstance(request.system, list):
+                # Handle system message blocks by converting to string
+                system_text = "\n".join([block.text for block in request.system])
+                options.system_prompt = system_text
 
         # Generate unique message ID
         message_id = f"msg_{uuid.uuid4().hex[:12]}"
