@@ -618,7 +618,15 @@ class TestClaudeCommand:
         mock_get_settings.return_value = mock_settings
 
         # Mock Docker command builder
-        mock_docker_cmd = ["docker", "run", "--user", "1001:1001", "claude:latest", "claude", "--version"]
+        mock_docker_cmd = [
+            "docker",
+            "run",
+            "--user",
+            "1001:1001",
+            "claude:latest",
+            "claude",
+            "--version",
+        ]
         mock_docker_builder.from_settings_and_overrides.return_value = mock_docker_cmd
         mock_docker_builder.execute_from_settings.return_value = None
 

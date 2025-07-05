@@ -340,7 +340,9 @@ def schema(
                     raise typer.Exit(1)
             except ImportError as e:
                 typer.echo(f"Error: {e}", err=True)
-                typer.echo("Install jsonschema: pip install jsonschema", err=True)
+                typer.echo(
+                    "Install check-jsonschema: pip install check-jsonschema", err=True
+                )
                 raise typer.Exit(1) from e
             except Exception as e:
                 typer.echo(f"Validation error: {e}", err=True)

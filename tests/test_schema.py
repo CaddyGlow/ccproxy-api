@@ -130,9 +130,6 @@ class TestSchemaValidation:
             try:
                 is_valid = validate_toml_with_schema(Path(f.name))
                 assert is_valid is True
-            except ImportError:
-                # jsonschema not installed, skip test
-                pytest.skip("jsonschema package not available")
             finally:
                 Path(f.name).unlink()
 
@@ -148,9 +145,6 @@ class TestSchemaValidation:
             try:
                 is_valid = validate_toml_with_schema(Path(f.name))
                 assert is_valid is False
-            except ImportError:
-                # jsonschema not installed, skip test
-                pytest.skip("jsonschema package not available")
             finally:
                 Path(f.name).unlink()
 
@@ -172,21 +166,13 @@ class TestSchemaValidation:
             toml_path = Path(temp_dir) / "config.toml"
             toml_path.write_text('host = "localhost"\nport = 8080')
 
-            try:
-                is_valid = validate_toml_with_schema(toml_path, schema_path)
-                assert is_valid is True
-            except ImportError:
-                # jsonschema not installed, skip test
-                pytest.skip("jsonschema package not available")
+            is_valid = validate_toml_with_schema(toml_path, schema_path)
+            assert is_valid is True
 
     def test_validate_nonexistent_file(self):
         """Test validation of non-existent file."""
         nonexistent_path = Path("/nonexistent/file.toml")
 
-        try:
-            # Should raise an exception due to file not existing
-            with pytest.raises((FileNotFoundError, OSError)):
-                validate_toml_with_schema(nonexistent_path)
-        except ImportError:
-            # jsonschema not installed, skip test
-            pytest.skip("jsonschema package not available")
+        # Should raise an exception due to file not existing
+        with pytest.raises((FileNotFoundError, OSError)):
+            validate_toml_with_schema(nonexistent_path)

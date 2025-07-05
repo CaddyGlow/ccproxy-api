@@ -170,30 +170,48 @@ def validate_toml_with_schema(toml_path: Path, schema_path: Path | None = None) 
     Raises:
         ValidationError: If TOML content is invalid according to schema
     """
-    try:
-        import jsonschema  # type: ignore[import-untyped]
-    except ImportError:
-        raise ImportError(
-            "jsonschema package required for validation. "
-            "Install with: pip install jsonschema"
-        ) from None
-
+    import subprocess
     import tomllib
 
-    # Load TOML content
+    # Load TOML content and convert to JSON for validation
     with toml_path.open("rb") as f:
         toml_data = tomllib.load(f)
 
-    # Load or generate schema
-    if schema_path is None:
-        schema = generate_json_schema()
-    else:
-        with schema_path.open() as f:
-            schema = json.load(f)
+    # Create temporary JSON file from TOML data
+    import tempfile
 
-    # Validate
+    with tempfile.NamedTemporaryFile(
+        mode="w", suffix=".json", delete=False
+    ) as temp_json:
+        json.dump(toml_data, temp_json)
+        temp_json_path = temp_json.name
+
     try:
-        jsonschema.validate(toml_data, schema)
-        return True
-    except jsonschema.ValidationError:
-        return False
+        # Load or generate schema
+        if schema_path is None:
+            schema = generate_json_schema()
+            # Create temporary schema file
+            with tempfile.NamedTemporaryFile(
+                mode="w", suffix=".json", delete=False
+            ) as temp_schema:
+                json.dump(schema, temp_schema)
+                schema_file = temp_schema.name
+        else:
+            schema_file = str(schema_path)
+
+        try:
+            # Use check-jsonschema CLI to validate
+            result = subprocess.run(
+                ["check-jsonschema", "--schemafile", schema_file, temp_json_path],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            return result.returncode == 0
+        finally:
+            # Clean up temporary schema file if we created one
+            if schema_path is None:
+                Path(schema_file).unlink(missing_ok=True)
+    finally:
+        # Clean up temporary JSON file
+        Path(temp_json_path).unlink(missing_ok=True)
