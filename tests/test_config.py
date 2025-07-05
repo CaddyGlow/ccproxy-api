@@ -3,10 +3,12 @@
 import os
 import tempfile
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
 from claude_code_proxy.config import Settings, get_settings
+from claude_code_proxy.utils import find_toml_config_file
 
 
 @pytest.mark.unit
@@ -243,3 +245,294 @@ class TestSettings:
         settings = Settings()
         # The path should be detected automatically if available
         assert hasattr(settings, "claude_cli_path")
+
+
+@pytest.mark.unit
+class TestTOMLConfiguration:
+    """Test TOML configuration loading functionality."""
+
+    def test_load_toml_config_valid_file(self):
+        """Test loading valid TOML configuration."""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".toml", delete=False) as f:
+            f.write("""
+            host = "127.0.0.1"
+            port = 9000
+            log_level = "DEBUG"
+
+            [docker_settings]
+            docker_image = "custom-claude"
+            """)
+            f.flush()
+
+            try:
+                config = Settings.load_toml_config(Path(f.name))
+
+                assert config["host"] == "127.0.0.1"
+                assert config["port"] == 9000
+                assert config["log_level"] == "DEBUG"
+                assert config["docker_settings"]["docker_image"] == "custom-claude"
+            finally:
+                Path(f.name).unlink()
+
+    def test_load_toml_config_invalid_syntax(self):
+        """Test loading TOML file with invalid syntax."""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".toml", delete=False) as f:
+            f.write("invalid toml [ content")
+            f.flush()
+
+            try:
+                with pytest.raises(ValueError, match="Invalid TOML syntax"):
+                    Settings.load_toml_config(Path(f.name))
+            finally:
+                Path(f.name).unlink()
+
+    def test_load_toml_config_nonexistent_file(self):
+        """Test loading non-existent TOML file."""
+        with pytest.raises(ValueError, match="Cannot read TOML config file"):
+            Settings.load_toml_config(Path("/nonexistent/file.toml"))
+
+    def test_from_toml_with_explicit_path(self):
+        """Test creating Settings from explicit TOML path."""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".toml", delete=False) as f:
+            f.write("""
+            host = "localhost"
+            port = 8888
+            workers = 4
+            cors_origins = ["https://example.com"]
+            """)
+            f.flush()
+
+            try:
+                settings = Settings.from_toml(Path(f.name))
+
+                assert settings.host == "localhost"
+                assert settings.port == 8888
+                assert settings.workers == 4
+                assert settings.cors_origins == ["https://example.com"]
+            finally:
+                Path(f.name).unlink()
+
+    def test_from_toml_with_kwargs_override(self):
+        """Test that kwargs override TOML configuration."""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".toml", delete=False) as f:
+            f.write("""
+            host = "127.0.0.1"
+            port = 9000
+            """)
+            f.flush()
+
+            try:
+                settings = Settings.from_toml(
+                    Path(f.name), port=7777, log_level="ERROR"
+                )
+
+                assert settings.host == "127.0.0.1"  # From TOML
+                assert settings.port == 7777  # Overridden by kwargs
+                assert settings.log_level == "ERROR"  # From kwargs
+            finally:
+                Path(f.name).unlink()
+
+    def test_from_toml_auto_discovery(self):
+        """Test auto-discovery of TOML configuration files."""
+        with patch(
+            "claude_code_proxy.config.settings.find_toml_config_file"
+        ) as mock_find:
+            # Test when no config file is found
+            mock_find.return_value = None
+            settings = Settings.from_toml()
+
+            # Should create settings with defaults
+            assert settings.host == "0.0.0.0"
+            assert settings.port == 8000
+
+            # Test when config file is found
+            with tempfile.NamedTemporaryFile(
+                mode="w", suffix=".toml", delete=False
+            ) as f:
+                f.write("host = '10.0.0.1'\nport = 9999")
+                f.flush()
+
+                try:
+                    mock_find.return_value = Path(f.name)
+                    settings = Settings.from_toml()
+
+                    assert settings.host == "10.0.0.1"
+                    assert settings.port == 9999
+                finally:
+                    Path(f.name).unlink()
+
+    def test_from_toml_with_docker_settings(self):
+        """Test TOML loading with Docker settings section."""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".toml", delete=False) as f:
+            f.write("""
+            host = "0.0.0.0"
+            port = 8000
+
+            [docker_settings]
+            docker_image = "my-claude-image"
+            docker_environment = {CLAUDE_ENV = "production"}
+            """)
+            f.flush()
+
+            try:
+                settings = Settings.from_toml(Path(f.name))
+
+                assert settings.host == "0.0.0.0"
+                assert settings.port == 8000
+                assert settings.docker_settings.docker_image == "my-claude-image"
+                # Check that our custom environment variable is included
+                assert (
+                    settings.docker_settings.docker_environment["CLAUDE_ENV"]
+                    == "production"
+                )
+                # Default variables should also be present
+                assert "CLAUDE_HOME" in settings.docker_settings.docker_environment
+                assert "CLAUDE_WORKSPACE" in settings.docker_settings.docker_environment
+            finally:
+                Path(f.name).unlink()
+
+    def test_get_settings_with_toml(self):
+        """Test that get_settings() uses TOML configuration."""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".toml", delete=False) as f:
+            f.write("host = 'test-host'\nport = 5555")
+            f.flush()
+
+            try:
+                with patch(
+                    "claude_code_proxy.config.settings.find_toml_config_file",
+                    return_value=Path(f.name),
+                ):
+                    settings = get_settings()
+
+                    assert settings.host == "test-host"
+                    assert settings.port == 5555
+            finally:
+                Path(f.name).unlink()
+
+
+@pytest.mark.unit
+class TestTOMLConfigDiscovery:
+    """Test TOML configuration file discovery logic."""
+
+    def test_find_toml_config_current_directory(self):
+        """Test finding .ccproxy.toml in current directory."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config_file = Path(temp_dir) / ".ccproxy.toml"
+            config_file.write_text("host = 'test'")
+
+            original_cwd = Path.cwd()
+            os.chdir(temp_dir)
+
+            try:
+                found_config = find_toml_config_file()
+                assert found_config == config_file
+            finally:
+                os.chdir(original_cwd)
+
+    def test_find_toml_config_git_repo_root(self):
+        """Test finding ccproxy.toml in git repository root."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_root = Path(temp_dir)
+
+            # Create .git directory to simulate git repo
+            git_dir = repo_root / ".git"
+            git_dir.mkdir()
+
+            # Create config file in repo root
+            config_file = repo_root / "ccproxy.toml"
+            config_file.write_text("host = 'repo'")
+
+            # Create subdirectory and change to it
+            sub_dir = repo_root / "subdir"
+            sub_dir.mkdir()
+
+            original_cwd = Path.cwd()
+            os.chdir(sub_dir)
+
+            try:
+                found_config = find_toml_config_file()
+                assert found_config == config_file
+            finally:
+                os.chdir(original_cwd)
+
+    def test_find_toml_config_xdg_location(self):
+        """Test finding config.toml in XDG config directory."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            # Mock XDG config directory
+            xdg_config = Path(temp_dir) / ".config" / "ccproxy"
+            xdg_config.mkdir(parents=True)
+
+            config_file = xdg_config / "config.toml"
+            config_file.write_text("host = 'xdg'")
+
+            with patch(
+                "claude_code_proxy.utils.xdg.get_ccproxy_config_dir",
+                return_value=xdg_config,
+            ):
+                found_config = find_toml_config_file()
+                assert found_config == config_file
+
+    def test_find_toml_config_priority_order(self):
+        """Test that config files are found in correct priority order."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            repo_root = Path(temp_dir)
+
+            # Create .git directory
+            git_dir = repo_root / ".git"
+            git_dir.mkdir()
+
+            # Create all possible config files
+            current_config = repo_root / ".ccproxy.toml"
+            current_config.write_text("location = 'current'")
+
+            repo_config = repo_root / "ccproxy.toml"
+            repo_config.write_text("location = 'repo'")
+
+            xdg_config_dir = repo_root / ".config" / "ccproxy"
+            xdg_config_dir.mkdir(parents=True)
+            xdg_config = xdg_config_dir / "config.toml"
+            xdg_config.write_text("location = 'xdg'")
+
+            original_cwd = Path.cwd()
+            os.chdir(repo_root)
+
+            try:
+                with patch(
+                    "claude_code_proxy.utils.xdg.get_ccproxy_config_dir",
+                    return_value=xdg_config_dir,
+                ):
+                    # Should find current directory first
+                    found_config = find_toml_config_file()
+                    assert found_config == current_config
+
+                    # Remove current directory config
+                    current_config.unlink()
+
+                    # Should find repo root next
+                    found_config = find_toml_config_file()
+                    assert found_config == repo_config
+
+                    # Remove repo config
+                    repo_config.unlink()
+
+                    # Should find XDG config last
+                    found_config = find_toml_config_file()
+                    assert found_config == xdg_config
+            finally:
+                os.chdir(original_cwd)
+
+    def test_find_toml_config_no_files_found(self):
+        """Test when no config files are found."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            original_cwd = Path.cwd()
+            os.chdir(temp_dir)
+
+            try:
+                with patch(
+                    "claude_code_proxy.utils.xdg.get_ccproxy_config_dir",
+                    return_value=Path(temp_dir) / ".config" / "ccproxy",
+                ):
+                    found_config = find_toml_config_file()
+                    assert found_config is None
+            finally:
+                os.chdir(original_cwd)

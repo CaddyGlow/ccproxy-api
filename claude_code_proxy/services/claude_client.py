@@ -70,10 +70,7 @@ class ClaudeClient:
 
         Args:
             messages: List of messages in Anthropic format
-            model: Model to use (overrides default)
-            max_tokens: Maximum tokens (overrides default)
-            temperature: Temperature (overrides default)
-            system: System prompt (overrides default)
+            options: Claude Code options configuration
             stream: Whether to stream responses
             **kwargs: Additional arguments
 

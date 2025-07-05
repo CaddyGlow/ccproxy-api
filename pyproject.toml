@@ -19,13 +19,15 @@ readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
   "anthropic>=0.57.1",
-  "claude-code-sdk>=0.0.14",     # Using GitHub version with PR #60 fix
+  "claude-code-sdk>=0.0.14", # Using GitHub version with PR #60 fix
   "fastapi[standard]>=0.115.14",
   "httpx>=0.28.1",
+  "jsonschema>=4.24.0",
   "openai>=1.93.0",
   "pydantic>=2.8.0",
   "pydantic-settings>=2.4.0",
   "rich>=13.0.0",
+  "tomli>=2.0.0; python_version<'3.11'",
   "typer>=0.16.0",
   "typing-extensions>=4.0.0",
   "uvicorn>=0.34.0",
@@ -57,6 +59,11 @@ docs = [
   "mkdocs-glightbox>=0.3.0",
   "mkdocs-minify-plugin>=0.7.0",
   "mkdocs-redirects>=1.2.0",
+]
+schema = [
+  "pydantic[json-schema]>=2.8.0",
+  "jsonschema>=4.0.0",
+  "types-jsonschema>=4.0.0",
 ]
 
 [tool.coverage.run]

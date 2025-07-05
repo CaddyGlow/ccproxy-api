@@ -347,6 +347,7 @@ Now that you have the server running locally:
 ### Claude CLI not found
 
 **For Local Installation:**
+
 1. **Install Claude CLI** following [official instructions](https://docs.anthropic.com/en/docs/claude-code)
 2. **Verify installation**: `claude --version`
 3. **Test authentication**: `claude auth login`
@@ -354,6 +355,7 @@ Now that you have the server running locally:
 5. **Set custom path** (if needed): `export CLAUDE_CLI_PATH=/path/to/claude`
 
 **For Docker Users:**
+
 1. **No local installation needed** - Claude CLI is included in Docker image
 2. **Test Docker Claude**: `ccproxy claude --docker -- /status`
 3. **Check volume mapping**: Ensure `~/.config/cc-proxy/home` directory exists
@@ -362,14 +364,18 @@ Now that you have the server running locally:
 ### Claude authentication issues
 
 **For Local Installation:**
+
 If `ccproxy claude -- /status` shows authentication errors:
+
 1. **Re-authenticate**: `claude auth login`
 2. **Check account status**: `claude /status`
 3. **Verify subscription**: Ensure your Claude account has an active subscription
 4. **Check permissions**: Ensure Claude CLI has proper permissions to access your account
 
 **For Docker Users:**
+
 If `ccproxy claude --docker -- /status` shows authentication errors:
+
 1. **Authenticate in Docker**: `ccproxy claude --docker -- auth login`
 2. **Check Docker volumes**: Verify `~/.config/cc-proxy/home` is properly mounted
 3. **Verify isolated config**: Docker uses separate config from your local Claude installation
@@ -378,6 +384,7 @@ If `ccproxy claude --docker -- /status` shows authentication errors:
 ### Expected ccproxy output
 
 When running `ccproxy claude -- /status` or `ccproxy claude --docker -- /status`, you should see:
+
 - **Executing**: Shows the Claude CLI path being used (local or Docker)
 - **Welcome message**: Confirms Claude CLI is working
 - **Account info**: Shows your authentication status

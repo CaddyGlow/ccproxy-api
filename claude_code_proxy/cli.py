@@ -15,11 +15,20 @@ import uvicorn
 from fastapi_cli.cli import _run
 from fastapi_cli.cli import app as fastapi_app
 from fastapi_cli.exceptions import FastAPICLIException
+from rich.console import Console
+from rich.panel import Panel
+from rich.table import Table
+from rich.text import Text
 
 from claude_code_proxy._version import __version__
 from claude_code_proxy.config.settings import get_settings
 from claude_code_proxy.utils.docker_builder import DockerCommandBuilder
 from claude_code_proxy.utils.helper import get_package_dir
+from claude_code_proxy.utils.schema import (
+    generate_schema_files,
+    generate_taplo_config,
+    validate_toml_with_schema,
+)
 
 
 def version_callback(value: bool) -> None:
@@ -84,16 +93,171 @@ def config() -> None:
     """Show current configuration."""
     try:
         settings = get_settings()
-        typer.echo("Current Configuration:")
-        typer.echo(f"  Host: {settings.host}")
-        typer.echo(f"  Port: {settings.port}")
-        typer.echo(f"  Log Level: {settings.log_level}")
-        typer.echo(f"  Claude CLI Path: {settings.claude_cli_path or 'Auto-detect'}")
-        typer.echo(f"  Workers: {settings.workers}")
-        typer.echo(f"  Reload: {settings.reload}")
+        console = Console()
+
+        # Main server configuration table
+        server_table = Table(
+            title="Server Configuration", show_header=True, header_style="bold magenta"
+        )
+        server_table.add_column("Setting", style="cyan", width=20)
+        server_table.add_column("Value", style="green")
+        server_table.add_column("Description", style="dim")
+
+        server_table.add_row("Host", settings.host, "Server host address")
+        server_table.add_row("Port", str(settings.port), "Server port number")
+        server_table.add_row("Log Level", settings.log_level, "Logging verbosity level")
+        server_table.add_row(
+            "Workers", str(settings.workers), "Number of worker processes"
+        )
+        server_table.add_row(
+            "Reload", str(settings.reload), "Auto-reload for development"
+        )
+        server_table.add_row("Server URL", settings.server_url, "Complete server URL")
+
+        # Claude CLI configuration table
+        claude_table = Table(
+            title="Claude CLI Configuration",
+            show_header=True,
+            header_style="bold magenta",
+        )
+        claude_table.add_column("Setting", style="cyan", width=20)
+        claude_table.add_column("Value", style="green")
+        claude_table.add_column("Description", style="dim")
+
+        claude_path_display = settings.claude_cli_path or "[dim]Auto-detect[/dim]"
+        claude_table.add_row(
+            "CLI Path", claude_path_display, "Path to Claude CLI executable"
+        )
+        claude_table.add_row(
+            "Tools Handling", settings.tools_handling, "How to handle tools in requests"
+        )
+
+        # Security configuration table
+        security_table = Table(
+            title="Security Configuration",
+            show_header=True,
+            header_style="bold magenta",
+        )
+        security_table.add_column("Setting", style="cyan", width=20)
+        security_table.add_column("Value", style="green")
+        security_table.add_column("Description", style="dim")
+
+        auth_token_display = (
+            "[dim]Not set[/dim]" if not settings.auth_token else "[green]Set[/green]"
+        )
+        cors_origins_display = (
+            ", ".join(settings.cors_origins)
+            if settings.cors_origins
+            else "[dim]None[/dim]"
+        )
+
+        security_table.add_row(
+            "Auth Token", auth_token_display, "Bearer token for authentication"
+        )
+        security_table.add_row(
+            "CORS Origins", cors_origins_display, "Allowed CORS origins"
+        )
+        security_table.add_row(
+            "Claude User",
+            settings.claude_user or "[dim]Not set[/dim]",
+            "User for Claude subprocess",
+        )
+        security_table.add_row(
+            "Claude Group",
+            settings.claude_group or "[dim]Not set[/dim]",
+            "Group for Claude subprocess",
+        )
+
+        # Docker configuration table
+        docker_table = Table(
+            title="Docker Configuration", show_header=True, header_style="bold magenta"
+        )
+        docker_table.add_column("Setting", style="cyan", width=20)
+        docker_table.add_column("Value", style="green")
+        docker_table.add_column("Description", style="dim")
+
+        docker_table.add_row(
+            "Docker Image",
+            settings.docker_settings.docker_image,
+            "Docker image for Claude commands",
+        )
+        docker_table.add_row(
+            "Home Directory",
+            settings.docker_settings.docker_home_directory or "[dim]Auto-detect[/dim]",
+            "Host directory for container home",
+        )
+        docker_table.add_row(
+            "Workspace Directory",
+            settings.docker_settings.docker_workspace_directory
+            or "[dim]Auto-detect[/dim]",
+            "Host directory for workspace",
+        )
+
+        # Docker volumes
+        if settings.docker_settings.docker_volumes:
+            volumes_text = "\n".join(settings.docker_settings.docker_volumes)
+            docker_table.add_row("Volumes", volumes_text, "Docker volume mounts")
+        else:
+            docker_table.add_row("Volumes", "[dim]None[/dim]", "Docker volume mounts")
+
+        # Docker environment variables
+        if settings.docker_settings.docker_environment:
+            env_text = "\n".join(
+                [
+                    f"{k}={v}"
+                    for k, v in settings.docker_settings.docker_environment.items()
+                ]
+            )
+            docker_table.add_row(
+                "Environment", env_text, "Docker environment variables"
+            )
+        else:
+            docker_table.add_row(
+                "Environment", "[dim]None[/dim]", "Docker environment variables"
+            )
+
+        # Additional docker args
+        if settings.docker_settings.docker_additional_args:
+            args_text = " ".join(settings.docker_settings.docker_additional_args)
+            docker_table.add_row(
+                "Additional Args", args_text, "Extra Docker run arguments"
+            )
+        else:
+            docker_table.add_row(
+                "Additional Args", "[dim]None[/dim]", "Extra Docker run arguments"
+            )
+
+        # Display all tables
+        console.print(
+            Panel.fit(
+                f"[bold]Claude Code Proxy API Configuration[/bold]\n[dim]Version: {__version__}[/dim]",
+                border_style="blue",
+            )
+        )
+        console.print()
+        console.print(server_table)
+        console.print()
+        console.print(claude_table)
+        console.print()
+        console.print(security_table)
+        console.print()
+        console.print(docker_table)
+
+        # Show configuration file sources
+        console.print()
+        info_text = Text()
+        info_text.append("Configuration loaded from: ", style="bold")
+        info_text.append(
+            "environment variables, .env file, and TOML configuration files",
+            style="dim",
+        )
+        console.print(
+            Panel(info_text, title="Configuration Sources", border_style="green")
+        )
 
     except Exception as e:
-        typer.echo(f"Error loading configuration: {e}", err=True)
+        console = Console()
+        console.print(f"[bold red]Error loading configuration:[/bold red] {e}")
         raise typer.Exit(1) from e
 
 
@@ -109,6 +273,98 @@ def generate_token() -> None:
     typer.echo("")
     typer.echo("Or add to your .env file:")
     typer.echo(f"AUTH_TOKEN={token}")
+
+
+@app.command()
+def schema(
+    output_dir: Path | None = typer.Option(
+        None,
+        "--output-dir",
+        "-o",
+        help="Output directory for schema files (default: current directory)",
+    ),
+    validate: Path | None = typer.Option(
+        None,
+        "--validate",
+        "-v",
+        help="Validate a TOML file against the schema",
+    ),
+    taplo: bool = typer.Option(
+        False,
+        "--taplo",
+        help="Generate taplo configuration for TOML editor support",
+    ),
+) -> None:
+    """Generate JSON Schema files for TOML configuration validation.
+
+    This command generates JSON Schema files that can be used by editors
+    for TOML configuration file validation, autocomplete, and syntax highlighting.
+
+    Examples:
+        ccproxy schema                    # Generate schema files in current directory
+        ccproxy schema --output-dir ./schemas  # Generate in specific directory
+        ccproxy schema --taplo           # Also generate taplo config
+        ccproxy schema --validate config.toml  # Validate a TOML file
+    """
+    try:
+        if validate:
+            # Validate a TOML file
+            if not validate.exists():
+                typer.echo(f"Error: File {validate} does not exist.", err=True)
+                raise typer.Exit(1)
+
+            typer.echo(f"Validating {validate}...")
+
+            try:
+                is_valid = validate_toml_with_schema(validate)
+                if is_valid:
+                    typer.echo("✓ TOML file is valid according to schema.")
+                else:
+                    typer.echo("✗ TOML file validation failed.", err=True)
+                    raise typer.Exit(1)
+            except ImportError as e:
+                typer.echo(f"Error: {e}", err=True)
+                typer.echo("Install jsonschema: pip install jsonschema", err=True)
+                raise typer.Exit(1) from e
+            except Exception as e:
+                typer.echo(f"Validation error: {e}", err=True)
+                raise typer.Exit(1) from e
+        else:
+            # Generate schema files
+            if output_dir is None:
+                output_dir = Path.cwd()
+
+            typer.echo("Generating JSON Schema files for TOML configuration...")
+
+            generated_files = generate_schema_files(output_dir)
+
+            for file_path in generated_files:
+                typer.echo(f"Generated: {file_path}")
+
+            if taplo:
+                typer.echo("Generating taplo configuration...")
+                taplo_config = generate_taplo_config(output_dir)
+                typer.echo(f"Generated: {taplo_config}")
+
+            typer.echo("")
+            typer.echo("Schema files generated successfully!")
+            typer.echo("")
+            typer.echo("To use in VS Code:")
+            typer.echo("1. Install the 'Even Better TOML' extension")
+            typer.echo(
+                "2. The schema will be automatically applied to ccproxy TOML files"
+            )
+            typer.echo("")
+            typer.echo("To use with taplo CLI:")
+            if taplo:
+                typer.echo("  taplo check your-config.toml")
+            else:
+                typer.echo("  ccproxy schema --taplo  # Generate taplo config first")
+                typer.echo("  taplo check your-config.toml")
+
+    except Exception as e:
+        typer.echo(f"Error generating schema: {e}", err=True)
+        raise typer.Exit(1) from e
 
 
 @app.command()

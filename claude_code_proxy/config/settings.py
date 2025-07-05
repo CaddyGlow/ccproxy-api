@@ -2,12 +2,14 @@
 
 import os
 import shutil
+import tomllib
 from pathlib import Path
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from claude_code_proxy.utils import find_toml_config_file, get_claude_cli_config_dir
 from claude_code_proxy.utils.helper import get_package_dir, patched_typing
 
 
@@ -117,25 +119,15 @@ class DockerSettings(BaseModel):
     @model_validator(mode="after")
     def setup_docker_volumes(self) -> "DockerSettings":
         """Set up Docker volumes based on home and workspace directories."""
-        # Expand environment variables in paths
-        # home_host_path = os.path.expandvars("$HOME/.config/cc-proxy/home")
-        # workspace_host_path = os.path.expandvars("$PWD")
-        #
-        # # Create default volumes if none are explicitly set
-        # if not self.docker_volumes:
-        #     self.docker_volumes = [
-        #         f"{home_host_path}:{self.docker_home_directory}",
-        #         f"{workspace_host_path}:{self.docker_workspace_directory}",
-        #     ]
-
         # Create default volumes if none are explicitly set and no custom directories
         if (
             not self.docker_volumes
             and not self.docker_home_directory
             and not self.docker_workspace_directory
         ):
-            # Set default directories
-            home_host_path = os.path.expandvars("$HOME/.config/cc-proxy/home")
+            # Use XDG config directory for Claude CLI data
+            claude_config_dir = get_claude_cli_config_dir()
+            home_host_path = str(claude_config_dir)
             workspace_host_path = os.path.expandvars("$PWD")
 
             self.docker_volumes = [
@@ -176,8 +168,12 @@ class Settings(BaseSettings):
     """
     Configuration settings for the Claude Proxy API Server.
 
-    Settings are loaded from environment variables and .env files.
+    Settings are loaded from environment variables, .env files, and TOML configuration files.
     Environment variables take precedence over .env file values.
+    TOML configuration files are loaded in the following order:
+    1. .ccproxy.toml in current directory
+    2. ccproxy.toml in git repository root
+    3. config.toml in XDG_CONFIG_HOME/ccproxy/
     """
 
     model_config = SettingsConfigDict(
@@ -466,11 +462,58 @@ class Settings(BaseSettings):
         """
         return self.model_dump()
 
+    @classmethod
+    def load_toml_config(cls, toml_path: Path) -> dict[str, Any]:
+        """Load configuration from a TOML file.
+
+        Args:
+            toml_path: Path to the TOML configuration file
+
+        Returns:
+            dict: Configuration data from the TOML file
+
+        Raises:
+            ValueError: If the TOML file is invalid or cannot be read
+        """
+        try:
+            with toml_path.open("rb") as f:
+                return tomllib.load(f)
+        except OSError as e:
+            raise ValueError(f"Cannot read TOML config file {toml_path}: {e}") from e
+        except tomllib.TOMLDecodeError as e:
+            raise ValueError(f"Invalid TOML syntax in {toml_path}: {e}") from e
+
+    @classmethod
+    def from_toml(cls, toml_path: Path | None = None, **kwargs: Any) -> "Settings":
+        """Create Settings instance from TOML configuration.
+
+        Args:
+            toml_path: Path to TOML configuration file. If None, auto-discovers file.
+            **kwargs: Additional keyword arguments to override config values
+
+        Returns:
+            Settings: Configured Settings instance
+        """
+        # Auto-discover TOML config file if not provided
+        if toml_path is None:
+            toml_path = find_toml_config_file()
+
+        # Load TOML config if found
+        toml_config = {}
+        if toml_path and toml_path.exists():
+            toml_config = cls.load_toml_config(toml_path)
+
+        # Merge TOML config with kwargs (kwargs take precedence)
+        merged_config = {**toml_config, **kwargs}
+
+        # Create Settings instance with merged config
+        return cls(**merged_config)
+
 
 def get_settings() -> Settings:
-    """Get the global settings instance."""
+    """Get the global settings instance with TOML configuration support."""
     try:
-        return Settings()
+        return Settings.from_toml()
     except Exception as e:
         # If settings can't be loaded (e.g., missing API key),
         # this will be handled by the caller
