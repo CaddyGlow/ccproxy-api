@@ -35,6 +35,12 @@ class PoolManager:
             self._initialized = True
             self._settings: Settings | None = None
 
+    def reset(self) -> None:
+        """Reset the pool manager state (for testing purposes)."""
+        self._pool = None
+        self._settings = None
+        logger.debug("[POOL_MANAGER] Pool manager state reset")
+
     def configure(self, settings: Settings) -> None:
         """
         Configure the pool manager with settings.

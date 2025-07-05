@@ -277,7 +277,7 @@ class TestHealthCheckLoop:
         pool._shutdown = False
         health_task = asyncio.create_task(pool._health_check_loop())
         # Wait for health check to complete one cycle
-        await asyncio.sleep(0.3)  # Slightly longer than the 0.1s interval
+        await asyncio.sleep(1.5)  # Slightly longer than the 1s interval
         pool._shutdown = True
         health_task.cancel()
         with contextlib.suppress(asyncio.CancelledError):

@@ -22,7 +22,7 @@ class TestSettings:
         assert settings.host == "127.0.0.1"
         assert settings.port == 8000
         assert settings.log_level == "INFO"
-        assert settings.workers == 1
+        assert settings.workers == 4
         assert settings.reload is False
         assert settings.cors_origins == ["*"]
         assert settings.tools_handling == "warning"

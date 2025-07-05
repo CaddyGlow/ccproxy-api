@@ -49,11 +49,12 @@ class TestOpenAIChatCompletionsEndpoint:
 
     @pytest.fixture
     def mock_claude_client(self):
-        """Mock Claude client."""
-        with patch("claude_code_proxy.api.openai.chat.ClaudeClient") as mock_class:
-            mock_instance = MagicMock()
-            mock_class.return_value = mock_instance
-            yield mock_instance
+        """Mock Claude client via pool manager."""
+        with patch("claude_code_proxy.api.openai.chat.pool_manager") as mock_pool:
+            mock_client = MagicMock()
+            mock_pool.acquire_client = AsyncMock(return_value=(mock_client, None))
+            mock_pool.release_client = AsyncMock()
+            yield mock_client
 
     @pytest.fixture
     def sample_request(self):
@@ -432,11 +433,12 @@ class TestOpenAIToolsValidation:
 
     @pytest.fixture
     def mock_claude_client(self):
-        """Mock Claude client."""
-        with patch("claude_code_proxy.api.openai.chat.ClaudeClient") as mock_class:
-            mock_instance = MagicMock()
-            mock_class.return_value = mock_instance
-            yield mock_instance
+        """Mock Claude client via pool manager."""
+        with patch("claude_code_proxy.api.openai.chat.pool_manager") as mock_pool:
+            mock_client = MagicMock()
+            mock_pool.acquire_client = AsyncMock(return_value=(mock_client, None))
+            mock_pool.release_client = AsyncMock()
+            yield mock_client
 
     @pytest.fixture
     def sample_request_with_tools(self):

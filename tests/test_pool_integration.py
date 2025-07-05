@@ -15,6 +15,19 @@ from claude_code_proxy.services.pool_manager import pool_manager
 class TestPoolIntegration:
     """Integration tests for connection pool with API endpoints."""
 
+    @pytest.fixture(autouse=True)
+    async def reset_pool_manager(self):
+        """Reset pool manager before each test and cleanup after."""
+        # Reset before test
+        pool_manager.reset()
+        if pool_manager._pool:
+            await pool_manager.shutdown()
+        yield
+        # Cleanup after test
+        if pool_manager._pool:
+            await pool_manager.shutdown()
+        pool_manager.reset()
+
     @pytest.fixture
     def mock_settings_with_pool(self):
         """Create settings with pool enabled."""
@@ -64,7 +77,7 @@ class TestPoolIntegration:
         pool_manager.configure(mock_settings_with_pool)
 
         with patch(
-            "claude_code_proxy.services.claude_pool.ClaudeClient"
+            "claude_code_proxy.services.claude_client.ClaudeClient"
         ) as mock_client:
             mock_client.return_value = MagicMock()
 
@@ -82,7 +95,7 @@ class TestPoolIntegration:
         pool_manager.configure(mock_settings_with_pool)
 
         with patch(
-            "claude_code_proxy.services.claude_pool.ClaudeClient"
+            "claude_code_proxy.services.claude_client.ClaudeClient"
         ) as mock_client:
             mock_client.return_value = MagicMock()
             await pool_manager.initialize()
@@ -104,20 +117,18 @@ class TestPoolIntegration:
             assert len(unique_ids) < 10  # Some reuse occurred
 
     @pytest.mark.asyncio
-    async def test_api_endpoint_with_pool(self, test_app, mock_settings_with_pool):
+    async def test_api_endpoint_with_pool(self, test_client, mock_settings_with_pool):
         """Test API endpoint uses pool correctly."""
         with patch(
             "claude_code_proxy.config.settings.get_settings"
         ) as mock_get_settings:
             mock_get_settings.return_value = mock_settings_with_pool
-            pool_manager.configure(mock_settings_with_pool)
 
-            with patch(
-                "claude_code_proxy.services.claude_pool.ClaudeClient"
-            ) as mock_client:
+            # Mock the pool manager to return a mock client
+            with patch("claude_code_proxy.api.v1.messages.pool_manager") as mock_pool:
                 # Mock the Claude client
-                mock_instance = MagicMock()
-                mock_instance.create_completion = AsyncMock(
+                mock_client = MagicMock()
+                mock_client.create_completion = AsyncMock(
                     return_value={
                         "id": "test_id",
                         "type": "message",
@@ -133,14 +144,13 @@ class TestPoolIntegration:
                         },
                     }
                 )
-                mock_client.return_value = mock_instance
 
-                # Initialize pool
-                await pool_manager.initialize()
+                # Mock pool manager methods
+                mock_pool.acquire_client = AsyncMock(return_value=(mock_client, None))
+                mock_pool.release_client = AsyncMock()
 
                 # Make request
-                client = TestClient(test_app)
-                response = client.post(
+                response = test_client.post(
                     "/v1/messages",
                     json={
                         "model": "claude-3-opus-20240229",
@@ -159,7 +169,7 @@ class TestPoolIntegration:
         pool_manager.configure(mock_settings_with_pool)
 
         with patch(
-            "claude_code_proxy.services.claude_pool.ClaudeClient"
+            "claude_code_proxy.services.claude_client.ClaudeClient"
         ) as mock_client:
             mock_client.return_value = MagicMock()
             await pool_manager.initialize()
@@ -201,7 +211,7 @@ class TestPoolIntegration:
         pool_manager.configure(mock_settings_with_pool)
 
         with patch(
-            "claude_code_proxy.services.claude_pool.ClaudeClient"
+            "claude_code_proxy.services.claude_client.ClaudeClient"
         ) as mock_client:
             # Make client creation fail sometimes
             call_count = 0
@@ -237,7 +247,7 @@ class TestPoolIntegration:
         pool_manager.configure(mock_settings_with_pool)
 
         with patch(
-            "claude_code_proxy.services.claude_pool.ClaudeClient"
+            "claude_code_proxy.services.claude_client.ClaudeClient"
         ) as mock_client:
             mock_client.return_value = MagicMock()
             await pool_manager.initialize()
@@ -259,8 +269,19 @@ class TestPoolIntegration:
 class TestPoolWithStreaming:
     """Test pool integration with streaming responses."""
 
+    @pytest.fixture(autouse=True)
+    async def reset_pool_manager(self):
+        """Reset pool manager before each test and cleanup after."""
+        pool_manager.reset()
+        if pool_manager._pool:
+            await pool_manager.shutdown()
+        yield
+        if pool_manager._pool:
+            await pool_manager.shutdown()
+        pool_manager.reset()
+
     @pytest.mark.asyncio
-    async def test_streaming_with_pool(self, test_app):
+    async def test_streaming_with_pool(self, test_client):
         """Test streaming responses work correctly with pooling."""
         settings = Settings()
         settings.pool_settings = PoolSettings(enabled=True, min_size=1, max_size=3)
@@ -269,11 +290,8 @@ class TestPoolWithStreaming:
             "claude_code_proxy.config.settings.get_settings"
         ) as mock_get_settings:
             mock_get_settings.return_value = settings
-            pool_manager.configure(settings)
 
-            with patch(
-                "claude_code_proxy.services.claude_pool.ClaudeClient"
-            ) as mock_client:
+            with patch("claude_code_proxy.api.v1.messages.pool_manager") as mock_pool:
                 # Mock streaming response
                 async def mock_stream(*args, **kwargs):
                     yield {
@@ -286,14 +304,14 @@ class TestPoolWithStreaming:
                         "delta": {"stop_reason": "end_turn"},
                     }
 
-                mock_instance = MagicMock()
-                mock_instance.create_completion = AsyncMock(return_value=mock_stream())
-                mock_client.return_value = mock_instance
+                mock_client = MagicMock()
+                mock_client.create_completion = AsyncMock(return_value=mock_stream())
 
-                await pool_manager.initialize()
+                # Mock pool manager methods
+                mock_pool.acquire_client = AsyncMock(return_value=(mock_client, None))
+                mock_pool.release_client = AsyncMock()
 
-                client = TestClient(test_app)
-                with client.stream(
+                with test_client.stream(
                     "POST",
                     "/v1/messages",
                     json={
@@ -312,13 +330,37 @@ class TestPoolWithStreaming:
 class TestPoolMetrics:
     """Test pool metrics and monitoring."""
 
+    @pytest.fixture(autouse=True)
+    async def reset_pool_manager(self):
+        """Reset pool manager before each test and cleanup after."""
+        pool_manager.reset()
+        if pool_manager._pool:
+            await pool_manager.shutdown()
+        yield
+        if pool_manager._pool:
+            await pool_manager.shutdown()
+        pool_manager.reset()
+
+    @pytest.fixture
+    def mock_settings_with_pool(self):
+        """Create settings with pool enabled."""
+        settings = Settings()
+        settings.pool_settings = PoolSettings(
+            enabled=True,
+            min_size=2,
+            max_size=5,
+            idle_timeout=300,
+            warmup_on_startup=True,
+        )
+        return settings
+
     @pytest.mark.asyncio
     async def test_pool_statistics(self, mock_settings_with_pool):
         """Test pool provides accurate statistics."""
         pool_manager.configure(mock_settings_with_pool)
 
         with patch(
-            "claude_code_proxy.services.claude_pool.ClaudeClient"
+            "claude_code_proxy.services.claude_client.ClaudeClient"
         ) as mock_client:
             mock_client.return_value = MagicMock()
             await pool_manager.initialize()
