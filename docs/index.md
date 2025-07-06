@@ -80,24 +80,24 @@ The application follows a layered architecture with clear separation of concerns
 ```mermaid
 graph TB
     Client[Client Applications]
-    
+
     subgraph "API Layer"
         Anthropic[Anthropic Endpoints<br/>/v1/*]
         OpenAI[OpenAI Endpoints<br/>/openai/v1/*]
     end
-    
+
     subgraph "Service Layer"
         ClaudeClient[Claude Client Service]
         Translator[OpenAI Translator]
         Streaming[Streaming Services]
     end
-    
+
     subgraph "Infrastructure"
         CLI[Claude CLI]
         Config[Configuration]
         Health[Health Monitoring]
     end
-    
+
     Client --> Anthropic
     Client --> OpenAI
     Anthropic --> ClaudeClient

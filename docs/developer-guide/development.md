@@ -451,7 +451,7 @@ from claude_code_proxy.config.settings import get_settings
 
 class ChatRequest(BaseModel):
     """Chat completion request model."""
-    
+
     model: str
     messages: list[dict[str, Any]]
     max_tokens: Optional[int] = 1000
@@ -464,20 +464,20 @@ async def create_chat_completion(
 ) -> dict[str, Any]:
     """
     Create a chat completion.
-    
+
     Args:
         request: The chat completion request
         settings: Optional settings override
-        
+
     Returns:
         Chat completion response
-        
+
     Raises:
         HTTPException: If request validation fails
     """
     if settings is None:
         settings = get_settings()
-        
+
     # Implementation here
     return {"response": "example"}
 ```
@@ -614,15 +614,15 @@ from concurrent.futures import ThreadPoolExecutor
 async def performance_test():
     """Test API performance under load."""
     start_time = time.time()
-    
+
     # Simulate concurrent requests
     tasks = []
     for _ in range(100):
         task = asyncio.create_task(make_api_request())
         tasks.append(task)
-    
+
     results = await asyncio.gather(*tasks)
-    
+
     end_time = time.time()
     print(f"Processed {len(results)} requests in {end_time - start_time:.2f}s")
 ```
@@ -733,12 +733,12 @@ from starlette.middleware.base import BaseHTTPMiddleware
 class CustomMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         start_time = time.time()
-        
+
         response = await call_next(request)
-        
+
         process_time = time.time() - start_time
         response.headers["X-Process-Time"] = str(process_time)
-        
+
         return response
 ```
 

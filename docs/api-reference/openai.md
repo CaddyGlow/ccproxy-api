@@ -89,7 +89,7 @@ Content-Type: application/json
   "model": "claude-3-5-sonnet-20241022",
   "messages": [
     {
-      "role": "user", 
+      "role": "user",
       "content": "Help me write some code"
     }
   ],
@@ -301,7 +301,7 @@ To migrate existing OpenAI-based applications:
    ```python
    # Before
    client = OpenAI(api_key="your-openai-key")
-   
+
    # After
    client = OpenAI(
        base_url="http://localhost:8000/openai/v1",
@@ -313,7 +313,7 @@ To migrate existing OpenAI-based applications:
    ```python
    # Before
    model="gpt-4-turbo"
-   
+
    # After
    model="claude-3-5-sonnet-20241022"
    ```
@@ -384,7 +384,7 @@ For advanced control, use ClaudeCodeOptions parameters with OpenAI format:
   "model": "claude-3-5-sonnet-20241022",
   "messages": [{"role": "user", "content": "Help me code"}],
   "max_tokens": 2000,
-  
+
   // Claude-specific options work with OpenAI format
   "max_thinking_tokens": 10000,
   "allowed_tools": ["Read", "Write", "Bash"],
@@ -418,7 +418,7 @@ When migrating from OpenAI to this proxy:
 ### Why These Limitations Exist
 
 The Claude Code SDK is designed for:
-- **Interactive development workflows** 
+- **Interactive development workflows**
 - **Built-in coding tools** (Read, Write, Bash, etc.)
 - **Local project contexts**
 - **Permission-based tool access**

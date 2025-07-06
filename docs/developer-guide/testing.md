@@ -80,7 +80,7 @@ from claude_code_proxy.main import create_app
 def test_chat_completion_endpoint():
     app = create_app()
     client = TestClient(app)
-    
+
     response = client.post(
         "/v1/chat/completions",
         json={

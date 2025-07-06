@@ -21,4 +21,3 @@ mkdocs build --clean --verbose
 
 echo "Documentation built successfully!"
 echo "Open 'site/index.html' in your browser to view the documentation."
-

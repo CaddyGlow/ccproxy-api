@@ -25,7 +25,7 @@ theme:
       toggle:
         icon: material/brightness-4
         name: Switch to light mode
-  
+
   features:
     - navigation.tabs
     - navigation.sections
@@ -47,9 +47,7 @@ theme:
     repo: fontawesome/brands/github
     edit: material/pencil
     view: material/eye
-    
-  logo: assets/logo.png
-  favicon: assets/favicon.ico
+    logo: material/robot
 
 # Navigation structure
 nav:

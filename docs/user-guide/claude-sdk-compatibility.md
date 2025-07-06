@@ -112,7 +112,7 @@ These different design goals create fundamental incompatibilities.
   "model": "claude-3-5-sonnet-20241022",
   "messages": [{"role": "user", "content": "Help me debug this code"}],
   "max_tokens": 2000,
-  
+
   // Claude SDK specific options
   "max_thinking_tokens": 10000,
   "allowed_tools": ["Read", "Write", "Bash", "Edit"],
@@ -152,7 +152,7 @@ Consider whether Claude SDK limitations are acceptable:
        top_p=0.9,           # Remove
        presence_penalty=0.1  # Remove
    )
-   
+
    # After
    response = client.chat.completions.create(
        model="claude-3-5-sonnet-20241022",
@@ -164,7 +164,7 @@ Consider whether Claude SDK limitations are acceptable:
    ```python
    # Before: Custom function definitions
    tools = [{"type": "function", "function": {...}}]
-   
+
    # After: Use built-in Claude tools
    extra_params = {
        "allowed_tools": ["Read", "Write", "Bash"],
@@ -184,7 +184,7 @@ Consider whether Claude SDK limitations are acceptable:
        top_p=0.9,       # Remove
        top_k=40         # Remove
    )
-   
+
    # After
    response = client.messages.create(
        model="claude-3-5-sonnet-20241022",

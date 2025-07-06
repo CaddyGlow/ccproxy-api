@@ -400,10 +400,10 @@ RELOAD=false                # Disable auto-reload for stability
    ```bash
    # Check Docker is running
    docker info
-   
+
    # Check for port conflicts
    netstat -an | grep :8000
-   
+
    # Check container logs
    docker logs claude-code-proxy-api-personal
    ```
@@ -412,10 +412,10 @@ RELOAD=false                # Disable auto-reload for stability
    ```bash
    # Check Claude CLI authentication
    claude auth status
-   
+
    # Re-authenticate if needed
    claude auth login
-   
+
    # Verify config directory
    ls -la ~/.config/claude/
    ```
@@ -424,7 +424,7 @@ RELOAD=false                # Disable auto-reload for stability
    ```bash
    # Monitor resource usage
    docker stats claude-code-proxy-api-personal
-   
+
    # Adjust resource limits in docker-compose.yml
    # Reduce workers if needed
    ```

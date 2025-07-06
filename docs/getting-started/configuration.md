@@ -633,7 +633,7 @@ ccproxy claude -- --version
    ```bash
    # Check volume permissions
    ls -la ~/.config/claude/
-   
+
    # Fix permissions if needed
    chmod -R 755 ~/.config/claude/
    ```
@@ -649,7 +649,7 @@ ccproxy claude -- --version
    ```bash
    # Multiple origins
    CORS_ORIGINS="https://app1.example.com,https://app2.example.com"
-   
+
    # Development with multiple ports
    CORS_ORIGINS="http://localhost:3000,http://localhost:3001,http://127.0.0.1:3000"
    ```

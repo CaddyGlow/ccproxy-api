@@ -16,7 +16,7 @@ We welcome contributions to the Claude Code Proxy API! This guide will help you 
    ```bash
    # Using devenv (preferred)
    devenv shell
-   
+
    # Or using uv
    uv sync
    ```

@@ -86,7 +86,7 @@ Content-Type: application/json
   "model": "claude-3-5-sonnet-20241022",
   "messages": [
     {
-      "role": "user", 
+      "role": "user",
       "content": "Help me write some code"
     }
   ],
@@ -307,7 +307,7 @@ Tool-related parameters have **limited support**:
 These Anthropic API features are **not available** through the Claude SDK:
 
 - **Custom sampling parameters** (temperature, top_p, top_k)
-- **Custom stop sequences** 
+- **Custom stop sequences**
 - **Tool definitions** (use Claude's built-in tools instead)
 - **Function calling** (use Claude's tool system)
 - **Image analysis** (depends on Claude SDK support)
@@ -322,7 +322,7 @@ Instead of standard API parameters, use **ClaudeCodeOptions** for advanced contr
   "model": "claude-3-5-sonnet-20241022",
   "messages": [{"role": "user", "content": "Help me code"}],
   "max_tokens": 2000,
-  
+
   // Use ClaudeCodeOptions instead of standard API parameters
   "max_thinking_tokens": 10000,
   "allowed_tools": ["Read", "Write", "Bash"],

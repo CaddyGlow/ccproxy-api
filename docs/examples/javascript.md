@@ -87,7 +87,7 @@ async function streamChat(message) {
       if (line.startsWith('data: ')) {
         const data = line.slice(6);
         if (data === '[DONE]') return;
-        
+
         try {
           const parsed = JSON.parse(data);
           if (parsed.type === 'content_block_delta') {

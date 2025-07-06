@@ -113,4 +113,3 @@ jobs:
           linkchecker http://127.0.0.1:8000 --check-extern --ignore-url=".*localhost.*" --ignore-url=".*127\.0\.0\.1.*" || true
           # Kill the server
           kill $SERVER_PID
-

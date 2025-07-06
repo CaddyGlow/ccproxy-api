@@ -66,7 +66,7 @@ Follows the standard Anthropic API format:
   "model": "claude-3-5-sonnet-20241022",
   "messages": [
     {
-      "role": "user", 
+      "role": "user",
       "content": "Hello!"
     }
   ],

@@ -44,7 +44,7 @@ async function chat() {
       { role: 'user', content: 'Hello, Claude!' }
     ]
   });
-  
+
   console.log(response.choices[0].message.content);
 }
 

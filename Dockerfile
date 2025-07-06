@@ -57,8 +57,8 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 # COPY --from=node-deps /usr/local/bin/pnpm /usr/local/bin/pnpm
 # COPY --from=node-deps /usr/local/lib/node_modules /usr/local/lib/node_modules
 
-# We have to copy the entire /usr/local that seem to be 
-# more realiable  
+# We have to copy the entire /usr/local that seem to be
+# more realiable
 COPY --from=node-deps /usr/local /usr/local
 
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
@@ -83,7 +83,7 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
   CMD curl -f http://localhost:8000/health || exit 1
 
-# Entrypoint used to create user and set 
+# Entrypoint used to create user and set
 # user home folder
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 

@@ -73,7 +73,7 @@ The Claude Code Proxy API supports passing all ClaudeCodeOptions parameters thro
 #### `mcp_servers`
 - **Type**: `object`
 - **Description**: MCP server configurations with connection details
-- **Example**: 
+- **Example**:
   ```json
   {
     "filesystem": {
@@ -144,7 +144,7 @@ The Claude Code Proxy API supports passing all ClaudeCodeOptions parameters thro
   "model": "claude-3-5-sonnet-20241022",
   "messages": [
     {
-      "role": "user", 
+      "role": "user",
       "content": "Continue where we left off"
     }
   ],

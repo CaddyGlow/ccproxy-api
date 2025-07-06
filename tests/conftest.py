@@ -171,3 +171,172 @@ def cleanup_env():
     for var in test_vars:
         if var in os.environ:
             del os.environ[var]
+
+
+@pytest.fixture
+def mock_claude_streaming_response():
+    """Mock Claude streaming response for testing."""
+
+    async def stream_generator():
+        # Message start
+        yield {
+            "type": "message_start",
+            "message": {"id": "msg_123", "role": "assistant"},
+        }
+
+        # Content block start
+        yield {
+            "type": "content_block_start",
+            "content_block": {"type": "text", "text": ""},
+        }
+
+        # Content deltas
+        yield {
+            "type": "content_block_delta",
+            "delta": {"type": "text_delta", "text": "Hello "},
+        }
+        yield {
+            "type": "content_block_delta",
+            "delta": {"type": "text_delta", "text": "world!"},
+        }
+
+        # Content block stop
+        yield {"type": "content_block_stop"}
+
+        # Message delta
+        yield {
+            "type": "message_delta",
+            "delta": {"stop_reason": "end_turn", "usage": {"output_tokens": 10}},
+        }
+
+        # Message stop
+        yield {"type": "message_stop"}
+
+    return stream_generator()
+
+
+@pytest.fixture
+def mock_claude_tool_streaming_response():
+    """Mock Claude streaming response with tool calls for testing."""
+
+    async def stream_generator():
+        # Message start
+        yield {
+            "type": "message_start",
+            "message": {"id": "msg_123", "role": "assistant"},
+        }
+
+        # Tool use content block start
+        yield {
+            "type": "content_block_start",
+            "content_block": {
+                "type": "tool_use",
+                "id": "tool_123",
+                "name": "get_weather",
+            },
+        }
+
+        # Tool use input delta
+        yield {
+            "type": "content_block_delta",
+            "delta": {"type": "input_json_delta", "partial_json": '{"location": "'},
+        }
+        yield {
+            "type": "content_block_delta",
+            "delta": {"type": "input_json_delta", "partial_json": 'New York"}'},
+        }
+
+        # Content block stop
+        yield {"type": "content_block_stop"}
+
+        # Message delta
+        yield {
+            "type": "message_delta",
+            "delta": {"stop_reason": "tool_use", "usage": {"output_tokens": 5}},
+        }
+
+        # Message stop
+        yield {"type": "message_stop"}
+
+    return stream_generator()
+
+
+@pytest.fixture
+def mock_claude_error_streaming_response():
+    """Mock Claude streaming response that raises an error."""
+
+    async def stream_generator():
+        # Message start
+        yield {
+            "type": "message_start",
+            "message": {"id": "msg_123", "role": "assistant"},
+        }
+
+        # Content block start
+        yield {
+            "type": "content_block_start",
+            "content_block": {"type": "text", "text": ""},
+        }
+
+        # Content delta
+        yield {
+            "type": "content_block_delta",
+            "delta": {"type": "text_delta", "text": "Hello "},
+        }
+
+        # Raise error
+        raise Exception("Test streaming error")
+
+    return stream_generator()
+
+
+@pytest.fixture
+def mock_claude_cancelled_streaming_response():
+    """Mock Claude streaming response that gets cancelled."""
+
+    async def stream_generator():
+        # Message start
+        yield {
+            "type": "message_start",
+            "message": {"id": "msg_123", "role": "assistant"},
+        }
+
+        # Content block start
+        yield {
+            "type": "content_block_start",
+            "content_block": {"type": "text", "text": ""},
+        }
+
+        # Content delta
+        yield {
+            "type": "content_block_delta",
+            "delta": {"type": "text_delta", "text": "Hello "},
+        }
+
+        # Raise cancellation
+        raise asyncio.CancelledError("Test cancellation")
+
+    return stream_generator()
+
+
+@pytest.fixture
+def mock_claude_empty_streaming_response():
+    """Mock Claude streaming response with no content."""
+
+    async def stream_generator():
+        # Message start
+        yield {
+            "type": "message_start",
+            "message": {"id": "msg_123", "role": "assistant"},
+        }
+
+        # Message delta (no content)
+        yield {
+            "type": "message_delta",
+            "delta": {"stop_reason": "end_turn", "usage": {"output_tokens": 0}},
+        }
+
+        # Message stop
+        yield {"type": "message_stop"}
+
+    return stream_generator()

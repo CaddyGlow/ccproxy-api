@@ -228,7 +228,7 @@ localhost:8000/
 ```python
 class ClaudeClient:
     """Personal service for your Claude account integration"""
-    
+
     # Your local authentication
     # Private request processing
     # Local error handling
@@ -264,7 +264,7 @@ The translator enables your existing tools to work with Claude:
 ```python
 class OpenAITranslator:
     """Translates between your tools and Claude formats"""
-    
+
     # Your OpenAI tools → Claude requests
     # Claude responses → Your tool format
     # Local parameter mapping
@@ -278,7 +278,7 @@ class OpenAITranslator:
 ```python
 class Settings(BaseSettings):
     """Your personal configuration management"""
-    
+
     # Your local server settings
     # Your Claude CLI integration
     # Your Docker preferences
@@ -298,7 +298,7 @@ class Settings(BaseSettings):
 ```python
 class DockerSettings:
     """Your personal Docker configuration"""
-    
+
     # Your container preferences
     # Your local volume mounts
     # Your environment setup
@@ -337,7 +337,7 @@ ClaudeProxyError (Base - Your Local Errors)
 {
   "error": {
     "message": "Safe error description",
-    "type": "invalid_request_error", 
+    "type": "invalid_request_error",
     "param": "parameter_name",
     "code": "error_code"
   }

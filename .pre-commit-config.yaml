@@ -1,0 +1,96 @@
+repos:
+  # Ruff linting and formatting
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.12.2
+    hooks:
+      # Ruff linting (matches: make lint -> uv run ruff check .)
+      - id: ruff
+        name: ruff lint
+        args: [--fix]
+        types_or: [python, pyi]
+
+      # Ruff formatting (matches: make format-check -> uv run ruff format --check .)
+      - id: ruff-format
+        name: ruff format
+        types_or: [python, pyi]
+
+  # MyPy type checking (matches: make typecheck -> uv run mypy .)
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.16.1
+    hooks:
+      - id: mypy
+        name: mypy type check
+        additional_dependencies:
+          # Type stubs
+          # - types-toml
+          # - types-PyYAML
+          # Core dependencies
+          - pydantic>=2.8.0
+          - pydantic-settings>=2.4.0
+          - fastapi[standard]>=0.115.14
+          - anthropic>=0.57.1
+          - openai>=1.93.0
+          - httpx>=0.28.1
+          - rich>=13.0.0
+          - typer>=0.16.0
+          - uvicorn>=0.34.0
+          - check-jsonschema>=0.33.2
+          # Test dependencies
+          - pytest>=7.0.0
+          - pytest-asyncio>=0.23.0
+          - pytest-cov>=4.0.0
+          - pytest-env>=0.8.0
+          # Claude SDK (from git source)
+          - claude-code-sdk @ git+https://github.com/anthropics/claude-code-sdk-python.git
+        args: [--config-file=pyproject.toml]
+        exclude: ^(docs/|examples/)
+
+  # General file checks
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      # Basic file checks
+      - id: trailing-whitespace
+        args: [--markdown-linebreak-ext=md]
+      - id: end-of-file-fixer
+      - id: check-yaml
+        exclude: ^mkdocs\.yml$ # MkDocs uses custom YAML tags like !ENV
+      - id: check-toml
+      - id: check-json
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: [--maxkb=1000]
+      - id: check-case-conflict
+
+      # Python-specific checks
+      - id: check-ast
+      - id: check-docstring-first
+      - id: debug-statements
+      - id: name-tests-test
+        args: [--pytest-test-first]
+
+  # Security checks
+  # - repo: https://github.com/PyCQA/bandit
+  #   rev: 1.7.10
+  #   hooks:
+  #     - id: bandit
+  #       name: bandit security check
+  #       args: [-c, pyproject.toml]
+  #       additional_dependencies: ["bandit[toml]"]
+
+# Configuration
+ci:
+  autofix_commit_msg: |
+    [pre-commit.ci] auto fixes from pre-commit hooks
+
+    for more information, see https://pre-commit.ci
+  autofix_prs: true
+  autoupdate_branch: ""
+  autoupdate_commit_msg: "[pre-commit.ci] pre-commit autoupdate"
+  autoupdate_schedule: weekly
+  skip: []
+  submodules: false
+# Note: Tests are intentionally not run in pre-commit hooks as they can be slow
+# Run tests manually with: make test or make ci
+# The CI pipeline will run the full test suite including:
+# - uv run pytest -v --cov=claude_code_proxy --cov-report=xml --cov-report=term-missing
