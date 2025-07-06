@@ -22,6 +22,7 @@ from claude_code_proxy.models.requests import ChatCompletionRequest
 from claude_code_proxy.models.responses import ChatCompletionResponse
 from claude_code_proxy.services.claude_client import ClaudeClient
 from claude_code_proxy.services.streaming import stream_claude_response
+from claude_code_proxy.utils import merge_claude_code_options
 
 
 logger = logging.getLogger(__name__)
@@ -56,11 +57,16 @@ async def create_chat_completion(
         # Initialize Claude client
         claude_client = ClaudeClient()
 
-        options = settings.claude_code_options
-        options.model = request.model
+        # Prepare Claude Code options overrides from request
+        overrides: dict[str, Any] = {
+            "model": request.model,
+        }
 
         if request.max_thinking_tokens:
-            options.max_thinking_tokens = request.max_thinking_tokens
+            overrides["max_thinking_tokens"] = request.max_thinking_tokens
+
+        # Merge base options with request-specific overrides
+        options = merge_claude_code_options(settings.claude_code_options, **overrides)
 
         # Convert request to messages format
         messages = [msg.model_dump() for msg in request.messages]

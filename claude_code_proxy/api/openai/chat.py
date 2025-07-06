@@ -23,6 +23,7 @@ from claude_code_proxy.services.claude_client import ClaudeClient
 from claude_code_proxy.services.openai_streaming import stream_claude_response_openai
 from claude_code_proxy.services.pool_manager import pool_manager
 from claude_code_proxy.services.translator import OpenAITranslator
+from claude_code_proxy.utils import merge_claude_code_options
 
 
 logger = logging.getLogger(__name__)
@@ -74,13 +75,47 @@ async def create_chat_completion(
         claude_client, pooled_connection = await pool_manager.acquire_client()
         translator = OpenAITranslator()
 
-        # Get Claude Code options from settings
-        options = settings.claude_code_options
-        options.model = request.model
+        # Prepare Claude Code options overrides from request
+        overrides: dict[str, Any] = {
+            "model": request.model,
+        }
 
-        # Handle max_thinking_tokens if provided
+        # Check for Claude Code specific options in the request
         if hasattr(request, "max_thinking_tokens") and request.max_thinking_tokens:
-            options.max_thinking_tokens = request.max_thinking_tokens
+            overrides["max_thinking_tokens"] = request.max_thinking_tokens
+        if hasattr(request, "allowed_tools") and request.allowed_tools:
+            overrides["allowed_tools"] = request.allowed_tools
+        if hasattr(request, "disallowed_tools") and request.disallowed_tools:
+            overrides["disallowed_tools"] = request.disallowed_tools
+        if hasattr(request, "append_system_prompt") and request.append_system_prompt:
+            overrides["append_system_prompt"] = request.append_system_prompt
+        if hasattr(request, "permission_mode") and request.permission_mode:
+            overrides["permission_mode"] = request.permission_mode
+        if (
+            hasattr(request, "continue_conversation")
+            and request.continue_conversation is not None
+        ):
+            overrides["continue_conversation"] = request.continue_conversation
+        if hasattr(request, "resume") and request.resume:
+            overrides["resume"] = request.resume
+        if hasattr(request, "max_turns") and request.max_turns:
+            overrides["max_turns"] = request.max_turns
+        if (
+            hasattr(request, "permission_prompt_tool_name")
+            and request.permission_prompt_tool_name
+        ):
+            overrides["permission_prompt_tool_name"] = (
+                request.permission_prompt_tool_name
+            )
+        if hasattr(request, "cwd") and request.cwd:
+            overrides["cwd"] = request.cwd
+        if hasattr(request, "mcp_tools") and request.mcp_tools:
+            overrides["mcp_tools"] = request.mcp_tools
+        if hasattr(request, "mcp_servers") and request.mcp_servers:
+            overrides["mcp_servers"] = request.mcp_servers
+
+        # Merge base options with request-specific overrides
+        options = merge_claude_code_options(settings.claude_code_options, **overrides)
 
         # Convert OpenAI request to Anthropic format
         anthropic_request = translator.openai_to_anthropic_request(request.model_dump())

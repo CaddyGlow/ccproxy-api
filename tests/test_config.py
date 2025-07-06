@@ -515,8 +515,11 @@ class TestTOMLConfigDiscovery:
 
             try:
                 with patch(
-                    "claude_code_proxy.utils.xdg.get_ccproxy_config_dir",
+                    "claude_code_proxy.utils.config.get_ccproxy_config_dir",
                     return_value=Path(temp_dir) / ".config" / "ccproxy",
+                ), patch(
+                    "claude_code_proxy.utils.config.find_git_root",
+                    return_value=None,
                 ):
                     found_config = find_toml_config_file()
                     assert found_config is None

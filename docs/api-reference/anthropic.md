@@ -20,6 +20,9 @@ No API key required - uses your existing Claude CLI authentication automatically
 
 Create a chat completion using Anthropic format.
 
+!!! warning "Claude SDK Limitations"
+    This proxy uses the **Claude Code SDK** internally, which has different capabilities than the official Anthropic API. Many standard API parameters are **ignored or not supported** because they cannot be passed to the Claude SDK. See the [Compatibility Notes](#compatibility-notes) section below for details.
+
 #### Request
 
 ```http
@@ -55,6 +58,45 @@ Content-Type: application/json
 | `stream` | boolean | No | Enable streaming responses |
 | `stop_sequences` | array | No | Stop sequences for completion |
 | `system` | string | No | System prompt |
+
+#### Extended ClaudeCodeOptions Parameters (Unofficial)
+
+!!! note "Unofficial Parameters"
+    The following parameters are **not part of the official Anthropic API**. They are Claude Code SDK-specific extensions that allow you to configure advanced Claude Code options through the API.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `max_thinking_tokens` | integer | No | Maximum thinking tokens for Claude Code |
+| `allowed_tools` | array | No | List of allowed tools |
+| `disallowed_tools` | array | No | List of disallowed tools |
+| `append_system_prompt` | string | No | Additional system prompt to append |
+| `mcp_tools` | array | No | MCP tools to enable |
+| `mcp_servers` | object | No | MCP server configurations |
+| `permission_mode` | string | No | Permission mode: `default`, `acceptEdits`, or `bypassPermissions` |
+| `continue_conversation` | boolean | No | Continue previous conversation |
+| `resume` | string | No | Resume conversation ID |
+| `max_turns` | integer | No | Maximum conversation turns |
+| `permission_prompt_tool_name` | string | No | Permission prompt tool name |
+| `cwd` | string | No | Working directory path |
+
+**Example with Extended Parameters:**
+
+```json
+{
+  "model": "claude-3-5-sonnet-20241022",
+  "messages": [
+    {
+      "role": "user", 
+      "content": "Help me write some code"
+    }
+  ],
+  "max_tokens": 1000,
+  "permission_mode": "acceptEdits",
+  "allowed_tools": ["Read", "Write", "Bash"],
+  "max_thinking_tokens": 5000,
+  "cwd": "/path/to/project"
+}
+```
 
 #### Response
 
@@ -222,4 +264,89 @@ curl -X POST http://localhost:8000/v1/chat/completions \
     "max_tokens": 500,
     "stream": true
   }'
+
+## Compatibility Notes
+
+!!! important "Claude SDK vs Anthropic API Differences"
+    This proxy uses the **Claude Code SDK** internally, which provides a different interface than the official Anthropic API. Understanding these differences is crucial for proper usage.
+
+### Supported Parameters
+
+These parameters are **fully supported** and passed to the Claude SDK:
+
+| Parameter | Support Level | Notes |
+|-----------|---------------|-------|
+| `model` | ✅ Full | Passed to Claude SDK |
+| `messages` | ✅ Full | Converted to Claude SDK format |
+| `max_tokens` | ✅ Full | Passed to Claude SDK |
+| `system` | ✅ Full | Passed as system prompt |
+| `stream` | ✅ Full | Handled by proxy streaming logic |
+
+### Partially Supported Parameters
+
+These parameters are **accepted but ignored** due to Claude SDK limitations:
+
+| Parameter | Support Level | Notes |
+|-----------|---------------|-------|
+| `temperature` | ⚠️ Ignored | Claude SDK doesn't support temperature control |
+| `top_p` | ⚠️ Ignored | Claude SDK doesn't support nucleus sampling |
+| `top_k` | ⚠️ Ignored | Claude SDK doesn't support top-k sampling |
+| `stop_sequences` | ⚠️ Ignored | Claude SDK doesn't support custom stop sequences |
+
+### Tool Parameters
+
+Tool-related parameters have **limited support**:
+
+| Parameter | Support Level | Notes |
+|-----------|---------------|-------|
+| `tools` | ⚠️ Limited | Claude SDK has its own tool system - see ClaudeCodeOptions |
+| `tool_choice` | ⚠️ Limited | Use `allowed_tools`/`disallowed_tools` instead |
+
+### Unsupported Features
+
+These Anthropic API features are **not available** through the Claude SDK:
+
+- **Custom sampling parameters** (temperature, top_p, top_k)
+- **Custom stop sequences** 
+- **Tool definitions** (use Claude's built-in tools instead)
+- **Function calling** (use Claude's tool system)
+- **Image analysis** (depends on Claude SDK support)
+- **PDF processing** (depends on Claude SDK support)
+
+### Alternative: ClaudeCodeOptions
+
+Instead of standard API parameters, use **ClaudeCodeOptions** for advanced control:
+
+```json
+{
+  "model": "claude-3-5-sonnet-20241022",
+  "messages": [{"role": "user", "content": "Help me code"}],
+  "max_tokens": 2000,
+  
+  // Use ClaudeCodeOptions instead of standard API parameters
+  "max_thinking_tokens": 10000,
+  "allowed_tools": ["Read", "Write", "Bash"],
+  "permission_mode": "acceptEdits",
+  "append_system_prompt": "You are a coding assistant.",
+  "cwd": "/path/to/project"
+}
+```
+
+### Migration Considerations
+
+If migrating from the official Anthropic API:
+
+1. **Remove unsupported parameters**: temperature, top_p, top_k, stop_sequences
+2. **Replace tool definitions**: Use Claude's built-in tools via `allowed_tools`
+3. **Add ClaudeCodeOptions**: Use Claude-specific options for advanced features
+4. **Test thoroughly**: Behavior may differ due to Claude SDK implementation
+
+### Why These Limitations Exist
+
+The Claude Code Proxy uses the **Claude Code SDK** which is designed for:
+- **Interactive coding sessions** rather than general API usage
+- **Built-in tool ecosystem** rather than custom functions
+- **Local development workflows** rather than production API scenarios
+
+This provides powerful coding capabilities but with different parameters than the standard Anthropic API.
 ```

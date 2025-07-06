@@ -22,6 +22,9 @@ No API key required - uses your existing Claude CLI authentication automatically
 
 Create a chat completion using OpenAI format, automatically translated to Claude.
 
+!!! warning "Claude SDK Limitations"
+    This proxy uses the **Claude Code SDK** internally, not the official OpenAI or Anthropic APIs. Many OpenAI parameters are **ignored or not supported** because they cannot be passed to the Claude SDK. See the [Claude SDK Compatibility](#claude-sdk-compatibility) section below for details.
+
 #### Request
 
 ```http
@@ -58,6 +61,45 @@ Content-Type: application/json
 | `presence_penalty` | float | No | Presence penalty (-2.0 to 2.0) |
 | `frequency_penalty` | float | No | Frequency penalty (-2.0 to 2.0) |
 | `user` | string | No | User identifier |
+
+#### Extended ClaudeCodeOptions Parameters (Unofficial)
+
+!!! note "Unofficial Parameters"
+    The following parameters are **not part of the official OpenAI API**. They are Claude Code SDK-specific extensions that allow you to configure advanced Claude Code options through the API.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `max_thinking_tokens` | integer | No | Maximum thinking tokens for Claude Code |
+| `allowed_tools` | array | No | List of allowed tools |
+| `disallowed_tools` | array | No | List of disallowed tools |
+| `append_system_prompt` | string | No | Additional system prompt to append |
+| `mcp_tools` | array | No | MCP tools to enable |
+| `mcp_servers` | object | No | MCP server configurations |
+| `permission_mode` | string | No | Permission mode: `default`, `acceptEdits`, or `bypassPermissions` |
+| `continue_conversation` | boolean | No | Continue previous conversation |
+| `resume` | string | No | Resume conversation ID |
+| `max_turns` | integer | No | Maximum conversation turns |
+| `permission_prompt_tool_name` | string | No | Permission prompt tool name |
+| `cwd` | string | No | Working directory path |
+
+**Example with Extended Parameters:**
+
+```json
+{
+  "model": "claude-3-5-sonnet-20241022",
+  "messages": [
+    {
+      "role": "user", 
+      "content": "Help me write some code"
+    }
+  ],
+  "max_tokens": 1000,
+  "permission_mode": "acceptEdits",
+  "allowed_tools": ["Read", "Write", "Bash"],
+  "max_thinking_tokens": 5000,
+  "cwd": "/path/to/project"
+}
+```
 
 #### Response
 
@@ -282,3 +324,114 @@ To migrate existing OpenAI-based applications:
    - `user`
 
 That's it! Your existing OpenAI code should work without other changes.
+
+## Claude SDK Compatibility
+
+!!! important "Understanding Claude SDK Limitations"
+    This proxy uses the **Claude Code SDK** internally, which provides different capabilities than both OpenAI and Anthropic APIs. Many standard parameters are **ignored or not supported**.
+
+### Fully Supported Parameters
+
+These OpenAI parameters work correctly:
+
+| Parameter | Support Level | Notes |
+|-----------|---------------|-------|
+| `model` | ✅ Full | Mapped to Claude models |
+| `messages` | ✅ Full | Converted to Claude SDK format |
+| `max_tokens` | ✅ Full | Passed to Claude SDK |
+| `stream` | ✅ Full | Handled by proxy streaming logic |
+
+### Ignored Parameters
+
+These parameters are **accepted but completely ignored** due to Claude SDK limitations:
+
+| Parameter | Support Level | Reason |
+|-----------|---------------|--------|
+| `temperature` | ❌ Ignored | Claude SDK doesn't support temperature control |
+| `top_p` | ❌ Ignored | Claude SDK doesn't support nucleus sampling |
+| `presence_penalty` | ❌ Ignored | Claude SDK doesn't support penalty parameters |
+| `frequency_penalty` | ❌ Ignored | Claude SDK doesn't support penalty parameters |
+| `logit_bias` | ❌ Ignored | Claude SDK doesn't support logit manipulation |
+| `stop` | ❌ Ignored | Claude SDK doesn't support custom stop sequences |
+| `user` | ❌ Ignored | Claude SDK doesn't track user identifiers |
+| `seed` | ❌ Ignored | Claude SDK doesn't support deterministic sampling |
+| `logprobs` | ❌ Ignored | Claude SDK doesn't provide log probabilities |
+| `top_logprobs` | ❌ Ignored | Claude SDK doesn't provide log probabilities |
+
+### Limited Tool Support
+
+OpenAI tool parameters have very limited support:
+
+| Parameter | Support Level | Notes |
+|-----------|---------------|-------|
+| `tools` | ⚠️ Very Limited | Claude SDK has its own tool ecosystem |
+| `tool_choice` | ⚠️ Very Limited | Use ClaudeCodeOptions instead |
+| `parallel_tool_calls` | ❌ Ignored | Claude SDK controls tool execution |
+
+### Response Format Limitations
+
+| Parameter | Support Level | Notes |
+|-----------|---------------|-------|
+| `response_format` | ❌ Ignored | Claude SDK doesn't support structured output |
+| `n` | ❌ Ignored | Claude SDK only generates single responses |
+
+### Using ClaudeCodeOptions Instead
+
+For advanced control, use ClaudeCodeOptions parameters with OpenAI format:
+
+```json
+{
+  "model": "claude-3-5-sonnet-20241022",
+  "messages": [{"role": "user", "content": "Help me code"}],
+  "max_tokens": 2000,
+  
+  // Claude-specific options work with OpenAI format
+  "max_thinking_tokens": 10000,
+  "allowed_tools": ["Read", "Write", "Bash"],
+  "permission_mode": "acceptEdits",
+  "cwd": "/path/to/project"
+}
+```
+
+### Migration Impact
+
+When migrating from OpenAI to this proxy:
+
+**✅ Will Work:**
+- Basic chat completions
+- Message history
+- Streaming responses
+- Model selection (mapped to Claude models)
+
+**❌ Will Be Ignored:**
+- All sampling parameters (temperature, top_p, etc.)
+- Penalty parameters
+- Custom stop sequences
+- Deterministic generation (seed)
+- Log probabilities
+- Multiple response generation
+
+**⚠️ Limited Functionality:**
+- Tool/function calling (use Claude's built-in tools)
+- Structured output (response_format)
+
+### Why These Limitations Exist
+
+The Claude Code SDK is designed for:
+- **Interactive development workflows** 
+- **Built-in coding tools** (Read, Write, Bash, etc.)
+- **Local project contexts**
+- **Permission-based tool access**
+
+This is fundamentally different from OpenAI's API which focuses on:
+- **Configurable text generation**
+- **Custom function definitions**
+- **Fine-grained sampling control**
+- **Structured output formats**
+
+### Recommendations
+
+1. **For basic chat**: OpenAI format works fine, ignore unsupported parameters
+2. **For coding tasks**: Use ClaudeCodeOptions for powerful development features
+3. **For production**: Consider whether Claude SDK limitations meet your needs
+4. **For migration**: Test thoroughly and remove unsupported parameter usage

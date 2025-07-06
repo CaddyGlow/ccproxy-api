@@ -7,7 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, validator
 
 class ClaudeCodeOptionsMixin(BaseModel):
     """Mixin class for ClaudeCodeOptions parameters (not part of official Anthropic API)."""
-    
+
     # Extended ClaudeCodeOptions parameters (not part of official Anthropic API)
     # These fields allow passing Claude Code SDK specific options through the API
     max_thinking_tokens: int | None = Field(None, description="Claude code settings")
@@ -26,7 +26,7 @@ class ClaudeCodeOptionsMixin(BaseModel):
         Field(None, description="Permission mode")
     )
     continue_conversation: bool | None = Field(
-        False, description="Continue previous conversation"
+        None, description="Continue previous conversation"
     )
     resume: str | None = Field(None, description="Resume conversation ID")
     max_turns: int | None = Field(None, description="Maximum conversation turns")

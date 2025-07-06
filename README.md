@@ -333,19 +333,14 @@ docker run -p 8000:8000 -v ~/.claude:/root/.claude claude-code-proxy-api
 ```python
 from openai import OpenAI
 
-# Point to your local proxy
+# Standard OpenAI client setup - just point to your proxy
 client = OpenAI(
     base_url="http://localhost:8000/openai/v1",
-    api_key="dummy-key"  # Required but not used
+    api_key="your-auth-token-here"  # This automatically sets Authorization: Bearer header
 )
 
-# If authentication is enabled, choose your preferred header format:
-# Option 1: Bearer token (OpenAI style)
-if auth_token := "your-auth-token-here":
-    client.default_headers = {"Authorization": f"Bearer {auth_token}"}
-
-# Option 2: x-api-key (Anthropic style)
-# client.default_headers = {"x-api-key": auth_token}
+# That's it! The OpenAI client automatically sends the api_key as a Bearer token
+# No additional configuration needed
 
 response = client.chat.completions.create(
     model="claude-sonnet-4-20250514",
@@ -359,19 +354,14 @@ print(response.choices[0].message.content)
 ```python
 from anthropic import Anthropic
 
-# Point to your local proxy
+# Standard Anthropic client setup - just point to your proxy
 client = Anthropic(
     base_url="http://localhost:8000",
-    api_key="dummy-key"  # Required but not used
+    api_key="your-auth-token-here"  # This automatically sets x-api-key header
 )
 
-# If authentication is enabled, choose your preferred header format:
-# Option 1: x-api-key (Anthropic style - recommended)
-if auth_token := "your-auth-token-here":
-    client.default_headers = {"x-api-key": auth_token}
-
-# Option 2: Bearer token (OpenAI style)
-# client.default_headers = {"Authorization": f"Bearer {auth_token}"}
+# That's it! The Anthropic client automatically sends the api_key as x-api-key
+# No additional configuration needed
 
 response = client.messages.create(
     model="claude-sonnet-4-20250514",

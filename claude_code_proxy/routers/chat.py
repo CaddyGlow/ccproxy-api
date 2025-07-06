@@ -23,6 +23,7 @@ from claude_code_proxy.models.responses import (
     StreamingChatCompletionResponse,
 )
 from claude_code_proxy.services.claude_client import ClaudeClient, ClaudeClientError
+from claude_code_proxy.utils import merge_claude_code_options
 
 
 logger = logging.getLogger(__name__)
@@ -98,12 +99,15 @@ async def create_chat_completion(
 
             messages.append(msg_dict)
 
-        # Create completion
-        options = settings.claude_code_options
+        # Prepare Claude Code options overrides from request
+        overrides: dict[str, Any] = {}
         if request.model:
-            options.model = request.model
+            overrides["model"] = request.model
         if request.system:
-            options.system_prompt = request.system
+            overrides["system_prompt"] = request.system
+
+        # Merge base options with request-specific overrides
+        options = merge_claude_code_options(settings.claude_code_options, **overrides)
 
         response = await claude_client.create_completion(
             messages=messages,

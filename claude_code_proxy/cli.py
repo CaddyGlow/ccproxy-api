@@ -1,10 +1,11 @@
 """Main entry point for Claude Proxy API Server."""
 
+import json
 import logging
 import os
 import secrets
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 import fastapi_cli.discover
 import typer
@@ -122,6 +123,7 @@ def generate_token() -> None:
 
 @app.command()
 def api(
+    # Core server settings
     docker: bool = typer.Option(
         False,
         "--docker",
@@ -129,22 +131,153 @@ def api(
         help="Run API server using Docker instead of local execution",
     ),
     port: int = typer.Option(
-        8000,
+        None,
         "--port",
         "-p",
         help="Port to run the server on",
     ),
     host: str = typer.Option(
-        "127.0.0.1",
+        None,
         "--host",
         "-h",
         help="Host to bind the server to",
     ),
     reload: bool = typer.Option(
-        False,
-        "--reload",
+        None,
+        "--reload/--no-reload",
         help="Enable auto-reload for development",
     ),
+    log_level: str = typer.Option(
+        None,
+        "--log-level",
+        help="Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)",
+    ),
+    workers: int = typer.Option(
+        None,
+        "--workers",
+        help="Number of worker processes",
+        min=1,
+        max=32,
+    ),
+    # Security settings
+    cors_origins: str = typer.Option(
+        None,
+        "--cors-origins",
+        help="CORS allowed origins (comma-separated)",
+    ),
+    auth_token: str = typer.Option(
+        None,
+        "--auth-token",
+        help="Bearer token for API authentication",
+    ),
+    tools_handling: str = typer.Option(
+        None,
+        "--tools-handling",
+        help="How to handle tools definitions: error, warning, or ignore",
+    ),
+    claude_cli_path: str = typer.Option(
+        None,
+        "--claude-cli-path",
+        help="Path to Claude CLI executable",
+    ),
+    # ClaudeCodeOptions parameters
+    max_thinking_tokens: int = typer.Option(
+        None,
+        "--max-thinking-tokens",
+        help="Maximum thinking tokens for Claude Code",
+    ),
+    allowed_tools: str = typer.Option(
+        None,
+        "--allowed-tools",
+        help="List of allowed tools (comma-separated)",
+    ),
+    disallowed_tools: str = typer.Option(
+        None,
+        "--disallowed-tools",
+        help="List of disallowed tools (comma-separated)",
+    ),
+    append_system_prompt: str = typer.Option(
+        None,
+        "--append-system-prompt",
+        help="Additional system prompt to append",
+    ),
+    permission_mode: str = typer.Option(
+        None,
+        "--permission-mode",
+        help="Permission mode: default, acceptEdits, or bypassPermissions",
+    ),
+    continue_conversation: bool = typer.Option(
+        None,
+        "--continue-conversation/--no-continue-conversation",
+        help="Continue previous conversation",
+    ),
+    resume: str = typer.Option(
+        None,
+        "--resume",
+        help="Resume conversation ID",
+    ),
+    max_turns: int = typer.Option(
+        None,
+        "--max-turns",
+        help="Maximum conversation turns",
+    ),
+    permission_prompt_tool_name: str = typer.Option(
+        None,
+        "--permission-prompt-tool-name",
+        help="Permission prompt tool name",
+    ),
+    cwd: str = typer.Option(
+        None,
+        "--cwd",
+        help="Working directory path",
+    ),
+    # Pool settings
+    pool_enabled: bool = typer.Option(
+        None,
+        "--pool-enabled/--no-pool-enabled",
+        help="Enable/disable connection pooling",
+    ),
+    pool_min_size: int = typer.Option(
+        None,
+        "--pool-min-size",
+        help="Minimum number of instances in pool",
+        min=0,
+        max=100,
+    ),
+    pool_max_size: int = typer.Option(
+        None,
+        "--pool-max-size",
+        help="Maximum number of instances in pool",
+        min=1,
+        max=100,
+    ),
+    pool_idle_timeout: int = typer.Option(
+        None,
+        "--pool-idle-timeout",
+        help="Seconds before idle connections are closed",
+        min=30,
+        max=3600,
+    ),
+    pool_warmup_on_startup: bool = typer.Option(
+        None,
+        "--pool-warmup-on-startup/--no-pool-warmup-on-startup",
+        help="Pre-create minimum instances on startup",
+    ),
+    pool_health_check_interval: int = typer.Option(
+        None,
+        "--pool-health-check-interval",
+        help="Seconds between connection health checks",
+        min=10,
+        max=600,
+    ),
+    pool_acquire_timeout: float = typer.Option(
+        None,
+        "--pool-acquire-timeout",
+        help="Maximum seconds to wait for an available instance",
+        min=0.1,
+        max=30.0,
+    ),
+    # Docker settings
     docker_image: str | None = typer.Option(
         None,
         "--docker-image",
@@ -199,40 +332,133 @@ def api(
     This command starts the API server either locally or in Docker.
     The server provides both Anthropic and OpenAI-compatible endpoints.
 
+    All configuration options can be provided via CLI parameters,
+    which override values from configuration files and environment variables.
+
     Examples:
-        ccproxy run
-        ccproxy run --port 8080 --reload
-        ccproxy run --docker
-        ccproxy run --docker --docker-image custom:latest --port 8080
+        ccproxy api
+        ccproxy api --port 8080 --reload
+        ccproxy api --docker
+        ccproxy api --docker --docker-image custom:latest --port 8080
+        ccproxy api --max-thinking-tokens 10000 --allowed-tools Read,Write,Bash
+        ccproxy api --pool-enabled --pool-min-size 3 --pool-max-size 8
     """
     try:
+        # Prepare CLI overrides dictionary
+        cli_overrides: dict[str, Any] = {}
+
+        # Server settings
+        if host is not None:
+            cli_overrides["host"] = host
+        if port is not None:
+            cli_overrides["port"] = port
+        if reload is not None:
+            cli_overrides["reload"] = reload
+        if log_level is not None:
+            cli_overrides["log_level"] = log_level
+        if workers is not None:
+            cli_overrides["workers"] = workers
+
+        # Security settings
+        if cors_origins is not None:
+            cli_overrides["cors_origins"] = [
+                origin.strip() for origin in cors_origins.split(",")
+            ]
+        if auth_token is not None:
+            cli_overrides["auth_token"] = auth_token
+        if tools_handling is not None:
+            cli_overrides["tools_handling"] = tools_handling
+        if claude_cli_path is not None:
+            cli_overrides["claude_cli_path"] = claude_cli_path
+
+        # ClaudeCodeOptions parameters
+        claude_code_opts: dict[str, Any] = {}
+        if max_thinking_tokens is not None:
+            claude_code_opts["max_thinking_tokens"] = max_thinking_tokens
+        if allowed_tools is not None:
+            claude_code_opts["allowed_tools"] = [
+                tool.strip() for tool in allowed_tools.split(",")
+            ]
+        if disallowed_tools is not None:
+            claude_code_opts["disallowed_tools"] = [
+                tool.strip() for tool in disallowed_tools.split(",")
+            ]
+        if append_system_prompt is not None:
+            claude_code_opts["append_system_prompt"] = append_system_prompt
+        if permission_mode is not None:
+            claude_code_opts["permission_mode"] = permission_mode
+        if continue_conversation is not None:
+            claude_code_opts["continue_conversation"] = continue_conversation
+        if resume is not None:
+            claude_code_opts["resume"] = resume
+        if max_turns is not None:
+            claude_code_opts["max_turns"] = max_turns
+        if permission_prompt_tool_name is not None:
+            claude_code_opts["permission_prompt_tool_name"] = (
+                permission_prompt_tool_name
+            )
+        if cwd is not None:
+            claude_code_opts["cwd"] = cwd
+
+        if claude_code_opts:
+            cli_overrides["claude_code_options"] = claude_code_opts
+
+        # Pool settings
+        pool_opts: dict[str, Any] = {}
+        if pool_enabled is not None:
+            pool_opts["enabled"] = pool_enabled
+        if pool_min_size is not None:
+            pool_opts["min_size"] = pool_min_size
+        if pool_max_size is not None:
+            pool_opts["max_size"] = pool_max_size
+        if pool_idle_timeout is not None:
+            pool_opts["idle_timeout"] = pool_idle_timeout
+        if pool_warmup_on_startup is not None:
+            pool_opts["warmup_on_startup"] = pool_warmup_on_startup
+        if pool_health_check_interval is not None:
+            pool_opts["health_check_interval"] = pool_health_check_interval
+        if pool_acquire_timeout is not None:
+            pool_opts["acquire_timeout"] = pool_acquire_timeout
+
+        if pool_opts:
+            cli_overrides["pool_settings"] = pool_opts
+
+        # Load settings with CLI overrides
+        settings = get_settings(config_path=get_config_path_from_context())
+        if cli_overrides:
+            # Create new settings instance with overrides
+            from claude_code_proxy.config.settings import Settings
+
+            settings = Settings.from_config(
+                config_path=get_config_path_from_context(), **cli_overrides
+            )
+
         if docker:
-            # Load settings to get Docker configuration
-            settings = get_settings(config_path=get_config_path_from_context())
-            port = port if port is None else settings.port
             # Prepare server command using fastapi
             server_args = [
                 "run",
                 "--host",
                 "0.0.0.0",  # Docker needs to bind to 0.0.0.0
                 "--port",
-                str(port),
+                str(settings.port),
             ]
 
-            if reload:
+            if settings.reload:
                 server_args.append("--reload")
 
             # Build and execute Docker command with settings and CLI overrides
             typer.echo("Starting Claude Code Proxy API server with Docker...")
-            typer.echo(f"Server will be available at: http://{host}:{port}")
+            typer.echo(
+                f"Server will be available at: http://{settings.host}:{settings.port}"
+            )
 
             # Show the command before executing
             docker_cmd = DockerCommandBuilder.from_settings_and_overrides(
                 settings.docker_settings,
                 docker_image=docker_image,
-                docker_env=docker_env + [f"PORT={port}"],
+                docker_env=docker_env + [f"PORT={settings.port}"],
                 docker_volume=docker_volume,
-                docker_arg=docker_arg + ["-p", f"{port}:{port}"],
+                docker_arg=docker_arg + ["-p", f"{settings.port}:{settings.port}"],
                 docker_home=docker_home,
                 docker_workspace=docker_workspace,
                 user_mapping_enabled=user_mapping_enabled,
@@ -247,9 +473,9 @@ def api(
             DockerCommandBuilder.execute_from_settings(
                 settings.docker_settings,
                 docker_image=docker_image,
-                docker_env=docker_env + [f"PORT={port}"],
+                docker_env=docker_env + [f"PORT={settings.port}"],
                 docker_volume=docker_volume,
-                docker_arg=docker_arg + ["-p", f"{port}:{port}"],
+                docker_arg=docker_arg + ["-p", f"{settings.port}:{settings.port}"],
                 docker_home=docker_home,
                 docker_workspace=docker_workspace,
                 user_mapping_enabled=user_mapping_enabled,
@@ -260,16 +486,23 @@ def api(
         else:
             # Run server locally using fastapi-cli's _run function
             typer.echo("Starting Claude Code Proxy API server locally...")
-            typer.echo(f"Server will be available at: http://{host}:{port}")
+            typer.echo(
+                f"Server will be available at: http://{settings.host}:{settings.port}"
+            )
             typer.echo("")
+
+            # Set environment variables for the server to access the settings
+            if cli_overrides:
+                # Set environment variables for any CLI overrides
+                os.environ["CCPROXY_CONFIG_OVERRIDES"] = json.dumps(cli_overrides)
 
             # Use fastapi-cli's internal _run function
             _run(
                 command="production",
                 path=get_default_path_hook(),
-                host=host,
-                port=port,
-                reload=reload,
+                host=settings.host,
+                port=settings.port,
+                reload=settings.reload,
             )
 
     except Exception as e:

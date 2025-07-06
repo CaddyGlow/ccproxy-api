@@ -167,6 +167,8 @@ disallow_untyped_defs = false
 disallow_incomplete_defs = false
 disallow_untyped_calls = false
 warn_unused_ignores = false
+# Ignore call-arg errors for Pydantic models with optional fields
+disable_error_code = ["call-arg"]
 
 [tool.pytest.ini_options]
 minversion = "6.0"

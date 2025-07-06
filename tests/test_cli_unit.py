@@ -255,6 +255,25 @@ class TestConfigCommand:
         mock_docker_settings.user_uid = 1000
         mock_docker_settings.user_gid = 100
         mock_settings.docker_settings = mock_docker_settings
+
+        # Add mock claude_code_options
+        mock_claude_code_options = Mock()
+        mock_claude_code_options.model = None
+        mock_claude_code_options.max_thinking_tokens = 8000
+        mock_claude_code_options.max_turns = None
+        mock_claude_code_options.cwd = None
+        mock_claude_code_options.system_prompt = None
+        mock_claude_code_options.append_system_prompt = None
+        mock_claude_code_options.permission_mode = None
+        mock_claude_code_options.permission_prompt_tool_name = None
+        mock_claude_code_options.continue_conversation = False
+        mock_claude_code_options.resume = None
+        mock_claude_code_options.allowed_tools = []
+        mock_claude_code_options.disallowed_tools = []
+        mock_claude_code_options.mcp_servers = []
+        mock_claude_code_options.mcp_tools = []
+        mock_settings.claude_code_options = mock_claude_code_options
+
         mock_get_settings.return_value = mock_settings
 
         # Mock console instance
@@ -302,6 +321,25 @@ class TestConfigCommand:
         mock_docker_settings.user_uid = 1000
         mock_docker_settings.user_gid = 100
         mock_settings.docker_settings = mock_docker_settings
+
+        # Add mock claude_code_options
+        mock_claude_code_options = Mock()
+        mock_claude_code_options.model = None
+        mock_claude_code_options.max_thinking_tokens = 8000
+        mock_claude_code_options.max_turns = None
+        mock_claude_code_options.cwd = None
+        mock_claude_code_options.system_prompt = None
+        mock_claude_code_options.append_system_prompt = None
+        mock_claude_code_options.permission_mode = None
+        mock_claude_code_options.permission_prompt_tool_name = None
+        mock_claude_code_options.continue_conversation = False
+        mock_claude_code_options.resume = None
+        mock_claude_code_options.allowed_tools = []
+        mock_claude_code_options.disallowed_tools = []
+        mock_claude_code_options.mcp_servers = []
+        mock_claude_code_options.mcp_tools = []
+        mock_settings.claude_code_options = mock_claude_code_options
+
         mock_get_settings.return_value = mock_settings
 
         # Mock console instance

@@ -2,7 +2,18 @@
 
 ## Overview
 
-The Claude Code Proxy API supports optional token authentication for securing access to the API endpoints. The proxy accepts multiple authentication header formats for compatibility with different clients.
+The Claude Code Proxy API supports optional token authentication for securing access to the API endpoints. The proxy is designed to work seamlessly with the standard Anthropic and OpenAI client libraries without requiring any modifications.
+
+## Why Multiple Authentication Formats?
+
+Different AI client libraries use different authentication header formats:
+- **Anthropic SDK**: Sends the API key as `x-api-key` header
+- **OpenAI SDK**: Sends the API key as `Authorization: Bearer` header
+
+By supporting both formats, you can:
+1. **Use standard libraries as-is**: No need to modify headers or use custom configurations
+2. **Secure your proxy**: Add authentication without breaking compatibility
+3. **Switch between clients easily**: Same auth token works with any client library
 
 ## Supported Authentication Headers
 
@@ -64,16 +75,18 @@ curl -X POST http://localhost:8000/openai/v1/chat/completions \
 ```python
 from anthropic import Anthropic
 
+# Just use the standard Anthropic client - no modifications needed!
 client = Anthropic(
     base_url="http://localhost:8000",
-    api_key="dummy-key"  # Required but not used
+    api_key="your-secret-token-here"  # Automatically sent as x-api-key header
 )
 
-# Using x-api-key header (recommended for Anthropic client)
-client.default_headers = {"x-api-key": "your-secret-token-here"}
-
-# Alternative: Using Bearer token
-# client.default_headers = {"Authorization": "Bearer your-secret-token-here"}
+# Make requests normally
+response = client.messages.create(
+    model="claude-sonnet-4-20250514",
+    max_tokens=100,
+    messages=[{"role": "user", "content": "Hello!"}]
+)
 ```
 
 ### Python with OpenAI Client
@@ -81,16 +94,35 @@ client.default_headers = {"x-api-key": "your-secret-token-here"}
 ```python
 from openai import OpenAI
 
+# Just use the standard OpenAI client - no modifications needed!
 client = OpenAI(
     base_url="http://localhost:8000/openai/v1",
-    api_key="dummy-key"  # Required but not used
+    api_key="your-secret-token-here"  # Automatically sent as Bearer token
 )
 
-# Using Bearer token (recommended for OpenAI client)
-client.default_headers = {"Authorization": "Bearer your-secret-token-here"}
+# Make requests normally
+response = client.chat.completions.create(
+    model="claude-sonnet-4-20250514",
+    messages=[{"role": "user", "content": "Hello!"}]
+)
+```
 
-# Alternative: Using x-api-key header
-# client.default_headers = {"x-api-key": "your-secret-token-here"}
+### JavaScript/TypeScript with OpenAI SDK
+
+```javascript
+import OpenAI from 'openai';
+
+// Standard OpenAI client setup
+const openai = new OpenAI({
+  baseURL: 'http://localhost:8000/openai/v1',
+  apiKey: 'your-secret-token-here',  // Automatically sent as Bearer token
+});
+
+// Use normally
+const response = await openai.chat.completions.create({
+  model: 'claude-sonnet-4-20250514',
+  messages: [{ role: 'user', content: 'Hello!' }],
+});
 ```
 
 ## No Authentication

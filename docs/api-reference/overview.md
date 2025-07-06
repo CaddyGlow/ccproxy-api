@@ -35,9 +35,12 @@ Claude Code Proxy integrates with Claude CLI for authentication. Additionally, y
 
 ### Optional API Authentication
 
-When `AUTH_TOKEN` is configured, the proxy accepts authentication tokens in these formats:
-- **Anthropic Format**: `x-api-key: <token>` (takes precedence)
-- **OpenAI/Bearer Format**: `Authorization: Bearer <token>`
+When `AUTH_TOKEN` is configured, the proxy automatically works with standard client libraries:
+
+- **Anthropic SDK**: Sends API key as `x-api-key` header
+- **OpenAI SDK**: Sends API key as `Authorization: Bearer` header
+
+Both formats are accepted and use the same `AUTH_TOKEN` value. This means you can use the official SDKs without any modifications - just set the `api_key` parameter as usual.
 
 ### Request Headers
 
@@ -191,25 +194,34 @@ Note: Only chat completions are supported. Other OpenAI endpoints (completions, 
 ### Python
 
 ```python
-# Using OpenAI client
+# Using OpenAI client - works exactly like the official OpenAI API
 from openai import OpenAI
-client = OpenAI(base_url="http://localhost:8000/openai/v1", api_key="dummy")
+client = OpenAI(
+    base_url="http://localhost:8000/openai/v1",
+    api_key="your-auth-token"  # If AUTH_TOKEN is set, use it here. Otherwise any value works.
+)
 
-# With authentication (if configured)
-auth_token = "your-auth-token"
-client.default_headers = {"Authorization": f"Bearer {auth_token}"}
-# Or use x-api-key: client.default_headers = {"x-api-key": auth_token}
+# That's it! The OpenAI SDK automatically handles the Bearer token
+response = client.chat.completions.create(
+    model="claude-sonnet-4-20250514",
+    messages=[{"role": "user", "content": "Hello!"}]
+)
 
-# Using Anthropic client  
+# Using Anthropic client - works exactly like the official Anthropic API
 from anthropic import Anthropic
-client = Anthropic(base_url="http://localhost:8000", api_key="dummy")
+client = Anthropic(
+    base_url="http://localhost:8000",
+    api_key="your-auth-token"  # If AUTH_TOKEN is set, use it here. Otherwise any value works.
+)
 
-# With authentication (if configured)
-auth_token = "your-auth-token"
-client.default_headers = {"x-api-key": auth_token}
-# Or use Bearer: client.default_headers = {"Authorization": f"Bearer {auth_token}"}
+# That's it! The Anthropic SDK automatically handles the x-api-key header
+response = client.messages.create(
+    model="claude-sonnet-4-20250514",
+    max_tokens=100,
+    messages=[{"role": "user", "content": "Hello!"}]
+)
 
-# Using requests
+# Using requests directly
 import requests
 headers = {"Content-Type": "application/json"}
 
@@ -223,19 +235,20 @@ response = requests.post("http://localhost:8000/v1/chat/completions", json=data,
 ### JavaScript/Node.js
 
 ```javascript
-// Using OpenAI SDK
+// Using OpenAI SDK - works exactly like the official OpenAI API
 import OpenAI from 'openai';
 const client = new OpenAI({
   baseURL: 'http://localhost:8000/openai/v1',
-  apiKey: 'dummy',
-  // With authentication (if configured)
-  defaultHeaders: {
-    'Authorization': 'Bearer your-auth-token'
-    // Or: 'x-api-key': 'your-auth-token'
-  }
+  apiKey: 'your-auth-token',  // If AUTH_TOKEN is set, use it here. Otherwise any value works.
 });
 
-// Using fetch
+// That's it! The OpenAI SDK automatically handles the Bearer token
+const response = await client.chat.completions.create({
+  model: 'claude-sonnet-4-20250514',
+  messages: [{ role: 'user', content: 'Hello!' }],
+});
+
+// Using fetch directly
 const headers = { 'Content-Type': 'application/json' };
 
 // With authentication (if configured)

@@ -5,6 +5,7 @@ from .config import (
     find_git_root,
     find_toml_config_file,
 )
+from .helper import merge_claude_code_options
 from .schema import (
     generate_json_schema,
     generate_schema_files,
@@ -33,6 +34,7 @@ __all__ = [
     "get_xdg_cache_home",
     "get_xdg_config_home",
     "get_xdg_data_home",
+    "merge_claude_code_options",
     "save_schema_file",
     "validate_toml_with_schema",
 ]

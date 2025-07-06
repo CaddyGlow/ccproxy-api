@@ -22,6 +22,7 @@ from claude_code_proxy.models.messages import MessageRequest, MessageResponse
 from claude_code_proxy.services.claude_client import ClaudeClient
 from claude_code_proxy.services.pool_manager import pool_manager
 from claude_code_proxy.services.streaming import stream_anthropic_message_response
+from claude_code_proxy.utils import merge_claude_code_options
 
 
 logger = logging.getLogger(__name__)
@@ -58,23 +59,28 @@ async def create_message(
         logger.info("[API] Acquiring Claude client from pool for message request")
         claude_client, pooled_connection = await pool_manager.acquire_client()
 
-        options = settings.claude_code_options
-        options.model = request.model
+        # Prepare Claude Code options overrides from request
+        overrides: dict[str, Any] = {
+            "model": request.model,
+        }
 
         if request.max_thinking_tokens:
-            options.max_thinking_tokens = request.max_thinking_tokens
-
-        # Convert request to messages format
-        messages = [msg.model_dump() for msg in request.messages]
+            overrides["max_thinking_tokens"] = request.max_thinking_tokens
 
         # Add system message if provided - handle through system_prompt instead
         if request.system:
             if isinstance(request.system, str):
-                options.system_prompt = request.system
+                overrides["system_prompt"] = request.system
             elif isinstance(request.system, list):
                 # Handle system message blocks by converting to string
                 system_text = "\n".join([block.text for block in request.system])
-                options.system_prompt = system_text
+                overrides["system_prompt"] = system_text
+
+        # Merge base options with request-specific overrides
+        options = merge_claude_code_options(settings.claude_code_options, **overrides)
+
+        # Convert request to messages format
+        messages = [msg.model_dump() for msg in request.messages]
 
         # Generate unique message ID
         message_id = f"msg_{uuid.uuid4().hex[:12]}"
