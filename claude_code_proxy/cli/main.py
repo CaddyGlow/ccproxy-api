@@ -7,13 +7,9 @@ import secrets
 from pathlib import Path
 from typing import Any, Optional
 
-import fastapi_cli.discover
 import typer
 import uvicorn
 from click import get_current_context
-from fastapi_cli.cli import _run
-from fastapi_cli.cli import app as fastapi_app
-from fastapi_cli.exceptions import FastAPICLIException
 
 from claude_code_proxy._version import __version__
 from claude_code_proxy.config.settings import get_settings
@@ -220,20 +216,72 @@ def main(
         )
 
 
-# Create fastapi subcommand group
-fastapi_group = typer.Typer(
-    name="fastapi",
-    help="FastAPI development commands (run, dev)",
-    no_args_is_help=True,
-)
+# Create our own run and dev commands instead of using fastapi-cli
+@app.command()
+def run(
+    path: Path | None = typer.Argument(None, help="Path to the FastAPI app"),
+    host: str = typer.Option("127.0.0.1", "--host", "-h", help="Host to bind to"),
+    port: int = typer.Option(8000, "--port", "-p", help="Port to bind to"),
+    reload: bool = typer.Option(
+        False, "--reload/--no-reload", help="Enable auto-reload"
+    ),
+    app: str | None = typer.Option(None, "--app", help="App import string"),
+) -> None:
+    """Run the FastAPI application in production mode with rich logging."""
+    _run_with_rich_logging("production", path, host, port, reload, app)
 
-# Remove the fastapi callback to avoid the warning
-fastapi_app.callback()(None)  # type: ignore[type-var]
-# Register fastapi app under the fastapi group
-fastapi_group.add_typer(fastapi_app, name="")
 
-# Register fastapi group with main app
-app.add_typer(fastapi_group)
+@app.command()
+def dev(
+    path: Path | None = typer.Argument(None, help="Path to the FastAPI app"),
+    host: str = typer.Option("127.0.0.1", "--host", "-h", help="Host to bind to"),
+    port: int = typer.Option(8000, "--port", "-p", help="Port to bind to"),
+    app: str | None = typer.Option(None, "--app", help="App import string"),
+) -> None:
+    """Run the FastAPI application in development mode with rich logging."""
+    _run_with_rich_logging("development", path, host, port, True, app)
+
+
+def _run_with_rich_logging(
+    command: str,
+    path: Path | None,
+    host: str,
+    port: int,
+    reload: bool,
+    app: str | None,
+) -> None:
+    """Run FastAPI with our rich logging setup."""
+    # Get settings and setup logging
+    settings = get_settings(config_path=get_config_path_from_context())
+    setup_rich_logging(level=settings.log_level)
+
+    # Use the default path if not provided
+    if path is None:
+        path = get_default_path_hook()
+
+    # Get the app import string
+    if app is None:
+        # Default to our app
+        app_import_string = "claude_code_proxy.main:app"
+    else:
+        app_import_string = app
+
+    # Configure uvicorn logging to use our setup
+    # Set None to use our already configured logging
+    log_config = None
+
+    logger.info(f"Starting {command} server...")
+    logger.info(f"Server will run at http://{host}:{port}")
+
+    # Run uvicorn directly
+    uvicorn.run(
+        app=app_import_string,
+        host=host,
+        port=port,
+        reload=reload,
+        log_config=log_config,
+    )
+
 
 # Register config command
 app.add_typer(config_app)
@@ -244,7 +292,7 @@ def get_default_path_hook() -> Path:
     if app_entry_path.is_file():
         return app_entry_path
 
-    raise FastAPICLIException(
+    raise FileNotFoundError(
         "Could not find a default file to run, please provide an explicit path"
     )
 
@@ -260,9 +308,6 @@ def get_config_path_from_context() -> Path | None:
         # No active click context (e.g., in tests)
         pass
     return None
-
-
-fastapi_cli.discover.get_default_path = get_default_path_hook
 
 
 @app.command(hidden=True)
@@ -607,31 +652,20 @@ def api(
                 # Set environment variables for any CLI overrides
                 os.environ["CCPROXY_CONFIG_OVERRIDES"] = json.dumps(cli_overrides)
 
-            # Override fastapi-cli logging with our rich logger
-            import fastapi_cli.logging
+            # Run uvicorn directly with our logging
+            # Set None to use our already configured logging
+            log_config = None
 
-            original_setup = fastapi_cli.logging.setup_logging
+            logger.info(
+                f"Starting production server at http://{settings.host}:{settings.port}"
+            )
 
-            def custom_setup_logging(
-                terminal_width: int | None = None, level: int = logging.INFO
-            ) -> None:
-                # Use our rich logging instead
-                setup_rich_logging(level=settings.log_level)
-                # Also configure the fastapi_cli logger with our handler
-                fastapi_logger = logging.getLogger("fastapi_cli")
-                fastapi_logger.setLevel(getattr(logging, settings.log_level.upper()))
-                fastapi_logger.propagate = False
-
-            # Monkey patch the setup_logging function
-            fastapi_cli.logging.setup_logging = custom_setup_logging
-
-            # Use fastapi-cli's internal _run function
-            _run(
-                command="production",
-                path=get_default_path_hook(),
+            uvicorn.run(
+                app="claude_code_proxy.main:app",
                 host=settings.host,
                 port=settings.port,
                 reload=settings.reload,
+                log_config=log_config,
             )
 
     except Exception as e:

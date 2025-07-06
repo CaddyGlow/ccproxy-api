@@ -71,13 +71,17 @@ def setup_rich_logging(
     # Configure specific loggers
     if configure_uvicorn:
         # Configure uvicorn loggers to use our rich handler
-        for logger_name in ["uvicorn", "uvicorn.error", "uvicorn.access"]:
+        uvicorn_loggers = {
+            "uvicorn": logging.INFO,
+            "uvicorn.error": logging.INFO,
+            "uvicorn.access": logging.INFO,  # Always show access logs
+        }
+
+        for logger_name, log_level in uvicorn_loggers.items():
             uvicorn_logger = logging.getLogger(logger_name)
             uvicorn_logger.handlers = []
             uvicorn_logger.addHandler(rich_handler)
-            uvicorn_logger.setLevel(
-                logging.INFO if level == "DEBUG" else logging.WARNING
-            )
+            uvicorn_logger.setLevel(log_level)
             uvicorn_logger.propagate = False
 
         # Configure fastapi_cli logger
