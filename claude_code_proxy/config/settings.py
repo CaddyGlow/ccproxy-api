@@ -272,56 +272,12 @@ class DockerSettings(BaseModel):
         return key, value
 
 
-class WorkerPoolSettings(BaseModel):
-    """Configuration settings for Claude Node.js worker pool."""
-
-    enabled: bool = Field(
-        default=False,
-        description="Enable/disable worker pooling",
-    )
-
-    size: int = Field(
-        default=2,
-        description="Initial number of workers to maintain in pool",
-        ge=1,
-        le=20,
-    )
-
-    max_size: int = Field(
-        default=5,
-        description="Maximum number of workers allowed in pool",
-        ge=1,
-        le=20,
-    )
-
-    idle_timeout: int = Field(
-        default=300000,
-        description="Milliseconds before idle workers are terminated",
-        ge=60000,
-        le=3600000,
-    )
-
-    node_path: str = Field(
-        default="node",
-        description="Path to Node.js executable",
-    )
-
-    @model_validator(mode="after")
-    def validate_pool_sizes(self) -> "WorkerPoolSettings":
-        """Ensure size is not greater than max_size."""
-        if self.size > self.max_size:
-            raise ValueError(
-                f"size ({self.size}) cannot be greater than max_size ({self.max_size})"
-            )
-        return self
-
-
 class PoolSettings(BaseModel):
-    """Legacy configuration settings for Claude instance connection pool."""
+    """Configuration settings for Claude instance connection pool."""
 
     enabled: bool = Field(
         default=False,
-        description="Enable/disable connection pooling (deprecated, use worker_pool_settings)",
+        description="Enable/disable connection pooling",
     )
 
     min_size: int = Field(
@@ -467,11 +423,6 @@ class Settings(BaseSettings):
         description="Claude instance connection pool configuration",
     )
 
-    # Worker pool settings
-    worker_pool_settings: WorkerPoolSettings = Field(
-        default_factory=WorkerPoolSettings,
-        description="Claude Node.js worker pool configuration",
-    )
 
     @field_validator("claude_code_options", mode="before")
     @classmethod
@@ -535,29 +486,6 @@ class Settings(BaseSettings):
             return PoolSettings(**v.model_dump())
         elif hasattr(v, "__dict__"):
             return PoolSettings(**v.__dict__)
-
-        return v
-
-    @field_validator("worker_pool_settings", mode="before")
-    @classmethod
-    def validate_worker_pool_settings(cls, v: Any) -> Any:
-        """Validate and convert Worker Pool settings."""
-        if v is None:
-            return WorkerPoolSettings()
-
-        # If it's already a WorkerPoolSettings instance, return as-is
-        if isinstance(v, WorkerPoolSettings):
-            return v
-
-        # If it's a dict, create WorkerPoolSettings from it
-        if isinstance(v, dict):
-            return WorkerPoolSettings(**v)
-
-        # Try to convert to dict if possible
-        if hasattr(v, "model_dump"):
-            return WorkerPoolSettings(**v.model_dump())
-        elif hasattr(v, "__dict__"):
-            return WorkerPoolSettings(**v.__dict__)
 
         return v
 
