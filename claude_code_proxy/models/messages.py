@@ -4,7 +4,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from .requests import Message, MessageContent, Usage
+from .requests import ClaudeCodeOptionsMixin, Message, MessageContent, Usage
 
 
 class SystemMessage(BaseModel):
@@ -14,7 +14,7 @@ class SystemMessage(BaseModel):
     text: str = Field(..., description="System message text")
 
 
-class MessageRequest(BaseModel):
+class MessageRequest(ClaudeCodeOptionsMixin):
     """Request model for Anthropic Messages API endpoint."""
 
     model: str = Field(
@@ -63,10 +63,6 @@ class MessageRequest(BaseModel):
         description="Custom sequences where the model should stop generating",
         max_length=4,
     )
-    max_thinking_tokens: int | None = Field(
-        None,
-        description="Maximum number of thinking tokens to generate (Claude specific)",
-    )
 
     @field_validator("model")
     @classmethod
@@ -78,13 +74,7 @@ class MessageRequest(BaseModel):
             "claude-3-7-sonnet-20250219",
             "claude-3-5-sonnet-20241022",
             "claude-3-5-sonnet-20240620",
-            "claude-3-opus-20240229",
-            "claude-3-sonnet-20240229",
-            "claude-3-haiku-20240307",
             "claude-3-5-haiku-20241022",
-            "claude-3-opus",
-            "claude-3-sonnet",
-            "claude-3-haiku",
             "claude-3-5-sonnet",
             "claude-3-5-haiku",
         }

@@ -257,7 +257,22 @@ The proxy automatically detects and uses Claude Code CLI for authentication:
 
 ### API Authentication (Optional)
 
-For added security, you can enable bearer token authentication for API access:
+For added security, you can enable token authentication for API access. The proxy supports multiple authentication header formats, allowing you to use the standard Anthropic and OpenAI libraries without modification.
+
+#### Why Multiple Authentication Formats?
+
+The proxy accepts authentication tokens in multiple formats to ensure compatibility with official client libraries:
+- **Anthropic SDK**: Uses `x-api-key` header by default
+- **OpenAI SDK**: Uses `Authorization: Bearer` header by default
+
+This means you can secure your proxy instance while still using the standard libraries exactly as documented.
+
+#### Supported Authentication Headers
+
+- **Anthropic Format**: `x-api-key: <token>` (takes precedence)
+- **OpenAI/Bearer Format**: `Authorization: Bearer <token>`
+
+All formats use the same configured `AUTH_TOKEN` value.
 
 #### Generate Authentication Token
 
@@ -279,14 +294,22 @@ echo "AUTH_TOKEN=abc123xyz789..." >> .env
 
 #### Using Authentication
 
-When authentication is enabled, all API requests must include the bearer token:
+When authentication is enabled, include the token in your API requests using any supported format:
 
+**Anthropic Format (x-api-key):**
 ```bash
-# Example with curl
+curl -H "x-api-key: abc123xyz789..." \
+     -H "Content-Type: application/json" \
+     -d '{"model":"claude-sonnet-4-20250514","messages":[{"role":"user","content":"Hello"}]}' \
+     http://localhost:8000/v1/messages
+```
+
+**OpenAI/Bearer Format:**
+```bash
 curl -H "Authorization: Bearer abc123xyz789..." \
      -H "Content-Type: application/json" \
      -d '{"model":"claude-sonnet-4-20250514","messages":[{"role":"user","content":"Hello"}]}' \
-     http://localhost:8000/v1/chat/completions
+     http://localhost:8000/openai/v1/chat/completions
 ```
 
 **Note:** The `/health` endpoint remains unprotected for monitoring purposes.
@@ -316,9 +339,13 @@ client = OpenAI(
     api_key="dummy-key"  # Required but not used
 )
 
-# If authentication is enabled, add the token header
+# If authentication is enabled, choose your preferred header format:
+# Option 1: Bearer token (OpenAI style)
 if auth_token := "your-auth-token-here":
     client.default_headers = {"Authorization": f"Bearer {auth_token}"}
+
+# Option 2: x-api-key (Anthropic style)
+# client.default_headers = {"x-api-key": auth_token}
 
 response = client.chat.completions.create(
     model="claude-sonnet-4-20250514",
@@ -338,9 +365,13 @@ client = Anthropic(
     api_key="dummy-key"  # Required but not used
 )
 
-# If authentication is enabled, add the token header
+# If authentication is enabled, choose your preferred header format:
+# Option 1: x-api-key (Anthropic style - recommended)
 if auth_token := "your-auth-token-here":
-    client.default_headers = {"Authorization": f"Bearer {auth_token}"}
+    client.default_headers = {"x-api-key": auth_token}
+
+# Option 2: Bearer token (OpenAI style)
+# client.default_headers = {"Authorization": f"Bearer {auth_token}"}
 
 response = client.messages.create(
     model="claude-sonnet-4-20250514",
@@ -384,6 +415,17 @@ curl -X POST http://localhost:8000/v1/chat/completions \
   }'
 
 # With authentication (if enabled)
+# Option 1: Using x-api-key header (Anthropic style)
+curl -X POST http://localhost:8000/v1/chat/completions \
+  -H "x-api-key: your-auth-token-here" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "claude-sonnet-4-20250514",
+    "messages": [{"role": "user", "content": "Hello!"}],
+    "max_tokens": 100
+  }'
+
+# Option 2: Using Bearer token (OpenAI style)
 curl -X POST http://localhost:8000/v1/chat/completions \
   -H "Authorization: Bearer your-auth-token-here" \
   -H "Content-Type: application/json" \
@@ -435,7 +477,9 @@ pytest
 2. **API Authentication**
    ```
    Error: 401 Unauthorized - Missing authentication token
-   Solution: Include Bearer token: curl -H "Authorization: Bearer your-token" ...
+   Solution: Include authentication token using one of:
+   - Anthropic format: curl -H "x-api-key: your-token" ...
+   - Bearer format: curl -H "Authorization: Bearer your-token" ...
    ```
 
 3. **Port Already in Use**

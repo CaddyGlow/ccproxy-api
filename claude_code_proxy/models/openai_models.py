@@ -12,6 +12,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from .requests import ClaudeCodeOptionsMixin
+
 
 # OpenAI Message Models
 class OpenAIMessageContent(BaseModel):
@@ -101,7 +103,7 @@ class OpenAIStreamOptions(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
-class OpenAIChatCompletionRequest(BaseModel):
+class OpenAIChatCompletionRequest(ClaudeCodeOptionsMixin):
     """OpenAI-compatible chat completion request model."""
 
     model: str = Field(..., description="ID of the model to use")

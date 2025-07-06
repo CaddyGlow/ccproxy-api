@@ -225,11 +225,11 @@ class TestErrorHandling:
 class TestConfigCommand:
     """Test config command function."""
 
-    @patch("claude_code_proxy.cli.get_settings")
+    @patch("claude_code_proxy.commands.config.get_settings")
     @patch("rich.console.Console")
     def test_config_command_success(self, mock_console_class, mock_get_settings):
         """Test config command displays settings successfully."""
-        from claude_code_proxy.cli import config
+        from claude_code_proxy.commands.config import config_list
 
         # Mock settings object with all required attributes
         mock_settings = Mock()
@@ -262,7 +262,7 @@ class TestConfigCommand:
         mock_console_class.return_value = mock_console
 
         # Call config command - should not raise exceptions
-        config()
+        config_list()
 
         # Verify settings were fetched
         mock_get_settings.assert_called_once()
@@ -270,13 +270,13 @@ class TestConfigCommand:
         # Verify console was used for output (real console is used, so we just check that no exception was raised)
         # The config function completed successfully if we reach this point
 
-    @patch("claude_code_proxy.cli.get_settings")
+    @patch("claude_code_proxy.commands.config.get_settings")
     @patch("rich.console.Console")
     def test_config_command_with_none_claude_path(
         self, mock_console_class, mock_get_settings
     ):
         """Test config command when claude_cli_path is None."""
-        from claude_code_proxy.cli import config
+        from claude_code_proxy.commands.config import config_list
 
         # Mock settings object with None claude_cli_path and all required attributes
         mock_settings = Mock()
@@ -309,7 +309,7 @@ class TestConfigCommand:
         mock_console_class.return_value = mock_console
 
         # Call config command - should not raise exceptions
-        config()
+        config_list()
 
         # Verify settings were fetched
         mock_get_settings.assert_called_once()
@@ -317,18 +317,18 @@ class TestConfigCommand:
         # Verify console was used for output (real console is used, so we just check that no exception was raised)
         # The config function completed successfully if we reach this point
 
-    @patch("claude_code_proxy.cli.get_settings")
+    @patch("claude_code_proxy.commands.config.get_settings")
     @patch("rich.console.Console.print")
     def test_config_command_exception_handling(self, mock_print, mock_get_settings):
         """Test config command handles exceptions properly."""
-        from claude_code_proxy.cli import config
+        from claude_code_proxy.commands.config import config_list
 
         # Mock get_settings to raise an exception
         mock_get_settings.side_effect = Exception("Settings error")
 
         # Call config command and expect it to raise typer.Exit
         with pytest.raises(typer.Exit) as exc_info:
-            config()
+            config_list()
 
         # Verify exit code is 1
         assert exc_info.value.exit_code == 1
@@ -729,7 +729,6 @@ class TestModuleImports:
         from claude_code_proxy.cli import (
             app,
             claude,
-            config,
             get_default_path_hook,
             main,
             version_callback,
@@ -738,7 +737,6 @@ class TestModuleImports:
         assert callable(version_callback)
         assert callable(get_default_path_hook)
         assert callable(main)
-        assert callable(config)
         assert callable(claude)
         assert isinstance(app, typer.Typer)
 

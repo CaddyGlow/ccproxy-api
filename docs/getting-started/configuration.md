@@ -25,7 +25,13 @@ The server supports multiple configuration methods with the following priority o
 
 | Variable | Description | Default | Example |
 |----------|-------------|---------|---------|
-| `AUTH_TOKEN` | Bearer token for API authentication | None | `AUTH_TOKEN=abc123xyz789...` |
+| `AUTH_TOKEN` | Authentication token for API access | None | `AUTH_TOKEN=abc123xyz789...` |
+
+The proxy accepts authentication tokens in multiple header formats:
+- **Anthropic Format**: `x-api-key: <token>` (takes precedence)
+- **OpenAI/Bearer Format**: `Authorization: Bearer <token>`
+
+All formats use the same configured `AUTH_TOKEN` value.
 
 ### Claude CLI Configuration
 
@@ -213,13 +219,17 @@ Configure API authentication and security features:
 ```json
 {
   "security": {
-    "auth_token": "your-secure-token-here",    // Bearer token for API auth
-    "enabled": true,                           // Enable/disable auth
-    "token_header": "Authorization",           // Header name for token
-    "token_prefix": "Bearer"                   // Token prefix
+    "auth_token": "your-secure-token-here",    // Authentication token for API access
+    "enabled": true                            // Enable/disable auth
   }
 }
 ```
+
+**Authentication Headers:** The proxy accepts tokens in multiple formats:
+- **Anthropic Format**: `x-api-key: <token>` (takes precedence)
+- **OpenAI/Bearer Format**: `Authorization: Bearer <token>`
+
+All formats use the same configured `auth_token` value.
 
 **Note:** When `auth_token` is not set or is null, authentication is disabled.
 

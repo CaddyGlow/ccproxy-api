@@ -5,6 +5,39 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator, validator
 
 
+class ClaudeCodeOptionsMixin(BaseModel):
+    """Mixin class for ClaudeCodeOptions parameters (not part of official Anthropic API)."""
+    
+    # Extended ClaudeCodeOptions parameters (not part of official Anthropic API)
+    # These fields allow passing Claude Code SDK specific options through the API
+    max_thinking_tokens: int | None = Field(None, description="Claude code settings")
+    allowed_tools: list[str] | None = Field(None, description="List of allowed tools")
+    disallowed_tools: list[str] | None = Field(
+        None, description="List of disallowed tools"
+    )
+    append_system_prompt: str | None = Field(
+        None, description="Additional system prompt to append"
+    )
+    mcp_tools: list[str] | None = Field(None, description="MCP tools to enable")
+    mcp_servers: dict[str, Any] | None = Field(
+        None, description="MCP server configurations"
+    )
+    permission_mode: Literal["default", "acceptEdits", "bypassPermissions"] | None = (
+        Field(None, description="Permission mode")
+    )
+    continue_conversation: bool | None = Field(
+        False, description="Continue previous conversation"
+    )
+    resume: str | None = Field(None, description="Resume conversation ID")
+    max_turns: int | None = Field(None, description="Maximum conversation turns")
+    permission_prompt_tool_name: str | None = Field(
+        None, description="Permission prompt tool name"
+    )
+    cwd: str | None = Field(None, description="Working directory path")
+
+    model_config = ConfigDict(extra="forbid")
+
+
 class ImageSource(BaseModel):
     """Image source data."""
 
@@ -89,7 +122,7 @@ class ToolChoice(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
-class ChatCompletionRequest(BaseModel):
+class ChatCompletionRequest(ClaudeCodeOptionsMixin):
     """Request model for Claude chat completions compatible with Anthropic's API."""
 
     model: str = Field(
@@ -146,8 +179,6 @@ class ChatCompletionRequest(BaseModel):
         None,
         description="How the model should use the provided tools",
     )
-
-    max_thinking_tokens: int | None = Field(None, description="Claude code settings")
 
     @field_validator("model")
     @classmethod

@@ -17,12 +17,44 @@ logger = logging.getLogger(__name__)
 bearer_scheme = HTTPBearer(auto_error=False)
 
 
+def extract_token_from_headers(
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer_scheme)],
+    request: Request,
+) -> str | None:
+    """
+    Extract authentication token from various header formats.
+
+    Supports:
+    - Anthropic format: x-api-key: <token>
+    - OpenAI/Classic format: Authorization: Bearer <token>
+
+    Args:
+        credentials: Bearer token credentials from Authorization header
+        request: FastAPI request object
+
+    Returns:
+        The extracted token or None if not found
+    """
+    # Check x-api-key header first (Anthropic style)
+    x_api_key = request.headers.get("x-api-key")
+    if x_api_key:
+        logger.debug("Found token in x-api-key header")
+        return x_api_key
+
+    # Check Authorization Bearer header (OpenAI/Classic style)
+    if credentials and credentials.credentials:
+        logger.debug("Found token in Authorization Bearer header")
+        return credentials.credentials
+
+    return None
+
+
 def verify_token(
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer_scheme)],
     request: Request,
 ) -> None:
     """
-    Verify bearer token authentication.
+    Verify authentication token from multiple header formats.
 
     Args:
         credentials: Bearer token credentials from request header
@@ -38,8 +70,11 @@ def verify_token(
         logger.debug("No auth token configured, skipping authentication")
         return
 
-    # Check if credentials are provided
-    if not credentials:
+    # Extract token from headers
+    token = extract_token_from_headers(credentials, request)
+
+    # Check if any token was provided
+    if not token:
         logger.warning(f"Missing authentication token for {request.url.path}")
         raise HTTPException(
             status_code=401,
@@ -52,7 +87,7 @@ def verify_token(
         )
 
     # Verify token
-    if credentials.credentials != settings.auth_token:
+    if token != settings.auth_token:
         logger.warning(f"Invalid authentication token for {request.url.path}")
         raise HTTPException(
             status_code=401,

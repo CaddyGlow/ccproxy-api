@@ -26,10 +26,14 @@ class ClaudeProxyClient:
     """Client for Claude Proxy API Server."""
 
     def __init__(
-        self, base_url: str = "http://localhost:8000", api_key: str | None = None
+        self,
+        base_url: str = "http://localhost:8000",
+        api_key: str | None = None,
+        auth_header_style: str = "anthropic",
     ):
         self.base_url = base_url.rstrip("/")
-        # self.api_key = api_key
+        self.api_key = api_key
+        self.auth_header_style = auth_header_style.lower()
         self.client = httpx.AsyncClient(timeout=300.0)
 
     async def __aenter__(self) -> "ClaudeProxyClient":
@@ -61,8 +65,11 @@ class ClaudeProxyClient:
         }
 
         headers = {"Content-Type": "application/json"}
-        # if self.api_key:
-        #     headers["x-api-key"] = self.api_key
+        if self.api_key:
+            if self.auth_header_style == "anthropic":
+                headers["x-api-key"] = self.api_key
+            else:  # openai or bearer style
+                headers["Authorization"] = f"Bearer {self.api_key}"
 
         async with self.client.stream(
             "POST",
@@ -97,8 +104,11 @@ class ClaudeProxyClient:
         }
 
         headers = {"Content-Type": "application/json"}
-        # if self.api_key:
-        #     headers["x-api-key"] = self.api_key
+        if self.api_key:
+            if self.auth_header_style == "anthropic":
+                headers["x-api-key"] = self.api_key
+            else:  # openai or bearer style
+                headers["Authorization"] = f"Bearer {self.api_key}"
 
         response = await self.client.post(
             f"{self.base_url}/v1/chat/completions",
@@ -155,6 +165,11 @@ def chat(
         "-k",
         help="API key for authentication",
     ),
+    auth_style: str = typer.Option(
+        "anthropic",
+        "--auth-style",
+        help="Authentication header style: 'anthropic' (x-api-key) or 'openai' (Bearer)",
+    ),
     model: str = typer.Option(
         "claude-sonnet-4-20250514",
         "--model",
@@ -168,11 +183,11 @@ def chat(
     ),
 ) -> None:
     """Start an interactive chat session with Claude via the proxy server."""
-    asyncio.run(chat_session(server_url, api_key, model, stream))
+    asyncio.run(chat_session(server_url, api_key, auth_style, model, stream))
 
 
 async def chat_session(
-    server_url: str, api_key: str | None, model: str, stream: bool
+    server_url: str, api_key: str | None, auth_style: str, model: str, stream: bool
 ) -> None:
     """Run the interactive chat session."""
     console.print(
@@ -186,7 +201,7 @@ async def chat_session(
         )
     )
 
-    async with ClaudeProxyClient(server_url, api_key) as client:
+    async with ClaudeProxyClient(server_url, api_key, auth_style) as client:
         # Health check
         with Status("Checking server health...", spinner="dots"):
             if not await client.health_check():
@@ -257,16 +272,23 @@ def test(
         "-k",
         help="API key for authentication",
     ),
+    auth_style: str = typer.Option(
+        "anthropic",
+        "--auth-style",
+        help="Authentication header style: 'anthropic' (x-api-key) or 'openai' (Bearer)",
+    ),
 ) -> None:
     """Test the connection to the Claude proxy server."""
-    asyncio.run(test_connection(server_url, api_key))
+    asyncio.run(test_connection(server_url, api_key, auth_style))
 
 
-async def test_connection(server_url: str, api_key: str | None) -> None:
+async def test_connection(
+    server_url: str, api_key: str | None, auth_style: str
+) -> None:
     """Test the connection to the server."""
     console.print(f"Testing connection to {server_url}...")
 
-    async with ClaudeProxyClient(server_url, api_key) as client:
+    async with ClaudeProxyClient(server_url, api_key, auth_style) as client:
         # Health check
         if await client.health_check():
             console.print("[green]✓ Server is healthy[/green]")

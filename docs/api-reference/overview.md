@@ -31,15 +31,26 @@ Claude Code Proxy API provides both Anthropic and OpenAI-compatible endpoints fo
 
 ## Authentication
 
-Claude Code Proxy integrates with Claude CLI for authentication. No API key is required in requests as authentication is handled automatically through your Claude CLI setup.
+Claude Code Proxy integrates with Claude CLI for authentication. Additionally, you can optionally secure the API endpoints with token authentication.
+
+### Optional API Authentication
+
+When `AUTH_TOKEN` is configured, the proxy accepts authentication tokens in these formats:
+- **Anthropic Format**: `x-api-key: <token>` (takes precedence)
+- **OpenAI/Bearer Format**: `Authorization: Bearer <token>`
 
 ### Request Headers
 
 ```http
 Content-Type: application/json
+
+# Optional authentication (if AUTH_TOKEN is configured)
+x-api-key: your-auth-token
+# OR
+Authorization: Bearer your-auth-token
 ```
 
-Note: Unlike direct API usage, no `Authorization` header is required when using the proxy.
+Note: When authentication is not configured, no authentication headers are required.
 
 ## Request/Response Format
 
@@ -182,15 +193,31 @@ Note: Only chat completions are supported. Other OpenAI endpoints (completions, 
 ```python
 # Using OpenAI client
 from openai import OpenAI
-client = OpenAI(base_url="http://localhost:8000/v1", api_key="dummy")
+client = OpenAI(base_url="http://localhost:8000/openai/v1", api_key="dummy")
+
+# With authentication (if configured)
+auth_token = "your-auth-token"
+client.default_headers = {"Authorization": f"Bearer {auth_token}"}
+# Or use x-api-key: client.default_headers = {"x-api-key": auth_token}
 
 # Using Anthropic client  
 from anthropic import Anthropic
 client = Anthropic(base_url="http://localhost:8000", api_key="dummy")
 
+# With authentication (if configured)
+auth_token = "your-auth-token"
+client.default_headers = {"x-api-key": auth_token}
+# Or use Bearer: client.default_headers = {"Authorization": f"Bearer {auth_token}"}
+
 # Using requests
 import requests
-response = requests.post("http://localhost:8000/v1/chat/completions", json=data)
+headers = {"Content-Type": "application/json"}
+
+# With authentication (if configured)
+headers["x-api-key"] = "your-auth-token"
+# Or: headers["Authorization"] = "Bearer your-auth-token"
+
+response = requests.post("http://localhost:8000/v1/chat/completions", json=data, headers=headers)
 ```
 
 ### JavaScript/Node.js
@@ -199,14 +226,25 @@ response = requests.post("http://localhost:8000/v1/chat/completions", json=data)
 // Using OpenAI SDK
 import OpenAI from 'openai';
 const client = new OpenAI({
-  baseURL: 'http://localhost:8000/v1',
-  apiKey: 'dummy'
+  baseURL: 'http://localhost:8000/openai/v1',
+  apiKey: 'dummy',
+  // With authentication (if configured)
+  defaultHeaders: {
+    'Authorization': 'Bearer your-auth-token'
+    // Or: 'x-api-key': 'your-auth-token'
+  }
 });
 
 // Using fetch
+const headers = { 'Content-Type': 'application/json' };
+
+// With authentication (if configured)
+headers['x-api-key'] = 'your-auth-token';
+// Or: headers['Authorization'] = 'Bearer your-auth-token';
+
 const response = await fetch('http://localhost:8000/v1/chat/completions', {
   method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
+  headers: headers,
   body: JSON.stringify(requestData)
 });
 ```
@@ -214,14 +252,21 @@ const response = await fetch('http://localhost:8000/v1/chat/completions', {
 ### curl
 
 ```bash
-# Anthropic format
+# Anthropic format (without authentication)
 curl -X POST http://localhost:8000/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{"model": "claude-3-5-sonnet-20241022", "messages": [{"role": "user", "content": "Hello"}]}'
 
-# OpenAI format  
+# Anthropic format (with authentication)
+curl -X POST http://localhost:8000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -H "x-api-key: your-auth-token" \
+  -d '{"model": "claude-3-5-sonnet-20241022", "messages": [{"role": "user", "content": "Hello"}]}'
+
+# OpenAI format (with Bearer authentication)
 curl -X POST http://localhost:8000/openai/v1/chat/completions \
   -H "Content-Type: application/json" \
+  -H "Authorization: Bearer your-auth-token" \
   -d '{"model": "claude-3-5-sonnet-20241022", "messages": [{"role": "user", "content": "Hello"}]}'
 ```
 
