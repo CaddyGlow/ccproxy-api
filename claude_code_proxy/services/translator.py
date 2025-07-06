@@ -1,14 +1,15 @@
 """Translation layer for converting between OpenAI and Anthropic formats."""
 
-import logging
 import uuid
 from collections.abc import AsyncIterator
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
+from claude_code_proxy.utils.logging import get_logger
 
-logger = logging.getLogger(__name__)
+
+logger = get_logger(__name__)
 
 
 # OpenAI to Claude model mapping (startswith matching)

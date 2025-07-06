@@ -8,6 +8,9 @@ import tomllib
 from pathlib import Path
 from typing import Any, Literal
 
+from claude_code_proxy import __version__
+from claude_code_proxy.utils.version import format_version
+
 
 try:
     import yaml  # type: ignore[import-untyped]
@@ -33,7 +36,7 @@ class DockerSettings(BaseModel):
     """Docker configuration settings for running Claude commands in containers."""
 
     docker_image: str = Field(
-        default="claude-code-proxy",
+        default=f"ghcr.io/caddyglow/claude-code-proxy-api:{format_version(__version__, 'docker')}",
         description="Docker image to use for Claude commands",
     )
 
@@ -333,6 +336,37 @@ class Settings(BaseSettings):
         description="CORS allowed origins",
     )
 
+    cors_credentials: bool = Field(
+        default=True,
+        description="CORS allow credentials",
+    )
+
+    cors_methods: list[str] = Field(
+        default_factory=lambda: ["*"],
+        description="CORS allowed methods",
+    )
+
+    cors_headers: list[str] = Field(
+        default_factory=lambda: ["*"],
+        description="CORS allowed headers",
+    )
+
+    cors_origin_regex: str | None = Field(
+        default=None,
+        description="CORS origin regex pattern",
+    )
+
+    cors_expose_headers: list[str] = Field(
+        default_factory=list,
+        description="CORS exposed headers",
+    )
+
+    cors_max_age: int = Field(
+        default=600,
+        description="CORS preflight max age in seconds",
+        ge=0,
+    )
+
     auth_token: str | None = Field(
         default=None,
         description="Bearer token for API authentication (optional)",
@@ -425,6 +459,33 @@ class Settings(BaseSettings):
         if isinstance(v, str):
             # Split comma-separated string
             return [origin.strip() for origin in v.split(",") if origin.strip()]
+        return v
+
+    @field_validator("cors_methods", mode="before")
+    @classmethod
+    def validate_cors_methods(cls, v: str | list[str]) -> list[str]:
+        """Parse CORS methods from string or list."""
+        if isinstance(v, str):
+            # Split comma-separated string
+            return [method.strip().upper() for method in v.split(",") if method.strip()]
+        return [method.upper() for method in v]
+
+    @field_validator("cors_headers", mode="before")
+    @classmethod
+    def validate_cors_headers(cls, v: str | list[str]) -> list[str]:
+        """Parse CORS headers from string or list."""
+        if isinstance(v, str):
+            # Split comma-separated string
+            return [header.strip() for header in v.split(",") if header.strip()]
+        return v
+
+    @field_validator("cors_expose_headers", mode="before")
+    @classmethod
+    def validate_cors_expose_headers(cls, v: str | list[str]) -> list[str]:
+        """Parse CORS expose headers from string or list."""
+        if isinstance(v, str):
+            # Split comma-separated string
+            return [header.strip() for header in v.split(",") if header.strip()]
         return v
 
     @property

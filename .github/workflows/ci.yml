@@ -30,6 +30,9 @@ jobs:
       - name: Run CI pipeline
         run: make ci
 
+      - name: Build documentation
+        run: make docs-build
+
       - name: Upload coverage reports
         uses: codecov/codecov-action@v4
         with:

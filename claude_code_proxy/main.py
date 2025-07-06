@@ -10,14 +10,15 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from claude_code_proxy.config.settings import Settings, get_settings
+from claude_code_proxy.utils.logging import get_logger, setup_rich_logging
 
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-)
-logger = logging.getLogger(__name__)
+# Get settings first to determine log level
+settings = get_settings()
+
+# Configure rich logging with settings
+setup_rich_logging(level=settings.log_level)
+logger = get_logger(__name__)
 
 
 @asynccontextmanager
@@ -58,10 +59,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # Add CORS middleware
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],  # Configure as needed for production
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
+        allow_origins=settings.cors_origins,
+        allow_credentials=settings.cors_credentials,
+        allow_methods=settings.cors_methods,
+        allow_headers=settings.cors_headers,
+        allow_origin_regex=settings.cors_origin_regex,
+        expose_headers=settings.cors_expose_headers,
+        max_age=settings.cors_max_age,
     )
 
     # Health check endpoint
@@ -71,16 +75,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return {"status": "healthy", "service": "claude-proxy"}
 
     # Include API routes
-    from claude_code_proxy.api.openai import chat_router, models_router
-    from claude_code_proxy.api.v1 import chat, messages
+    from claude_code_proxy.routers import anthropic, openai
 
     # Anthropic-compatible endpoints
-    app.include_router(chat.router, prefix="/v1")
-    app.include_router(messages.router, prefix="/v1")
+    app.include_router(anthropic.router, prefix="/v1")
 
     # OpenAI-compatible endpoints
-    app.include_router(chat_router, prefix="/openai/v1")
-    app.include_router(models_router, prefix="/openai/v1")
+    app.include_router(openai.router, prefix="/openai/v1")
 
     # Global exception handler
     @app.exception_handler(Exception)

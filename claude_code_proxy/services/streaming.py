@@ -2,14 +2,14 @@
 
 import asyncio
 import json
-import logging
 from collections.abc import AsyncGenerator, AsyncIterable
 from typing import Any
 
 from claude_code_proxy.models.errors import ErrorDetail, StreamingError
+from claude_code_proxy.utils.logging import get_logger
 
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class StreamingFormatter:

@@ -23,7 +23,7 @@ class TestChatCompletionsEndpoint:
         assert data["status"] == "healthy"
         assert data["service"] == "claude-proxy"
 
-    @patch("claude_code_proxy.api.v1.chat.ClaudeClient")
+    @patch("claude_code_proxy.routers.anthropic.ClaudeClient")
     def test_successful_chat_completion(
         self,
         mock_claude_client_class,
@@ -99,7 +99,7 @@ class TestChatCompletionsEndpoint:
 
         assert response.status_code == 422  # Validation error
 
-    @patch("claude_code_proxy.api.v1.chat.ClaudeClient")
+    @patch("claude_code_proxy.routers.anthropic.ClaudeClient")
     def test_streaming_chat_completion(
         self,
         mock_claude_client_class,
@@ -158,7 +158,7 @@ class TestChatCompletionsEndpoint:
         assert len(messages) == 1
         assert messages[0]["role"] == "user"
 
-    @patch("claude_code_proxy.api.v1.chat.ClaudeClient")
+    @patch("claude_code_proxy.routers.anthropic.ClaudeClient")
     def test_claude_client_error(
         self,
         mock_claude_client_class,
@@ -184,7 +184,7 @@ class TestChatCompletionsEndpoint:
         assert data["detail"]["type"] == "error"
         assert data["detail"]["error"]["type"] == "service_unavailable_error"
 
-    @patch("claude_code_proxy.api.v1.chat.ClaudeClient")
+    @patch("claude_code_proxy.routers.anthropic.ClaudeClient")
     def test_max_thinking_tokens_parameter(
         self,
         mock_claude_client_class,
@@ -223,7 +223,7 @@ class TestChatCompletionsEndpoint:
 class TestModelsEndpoint:
     """Test /v1/models endpoint."""
 
-    @patch("claude_code_proxy.api.v1.chat.ClaudeClient")
+    @patch("claude_code_proxy.routers.anthropic.ClaudeClient")
     def test_list_models_success(
         self,
         mock_claude_client_class,
@@ -245,7 +245,7 @@ class TestModelsEndpoint:
         assert data["data"][0]["id"] == "claude-opus-4-20250514"
         assert data["data"][1]["id"] == "claude-3-5-sonnet-20241022"
 
-    @patch("claude_code_proxy.api.v1.chat.ClaudeClient")
+    @patch("claude_code_proxy.routers.anthropic.ClaudeClient")
     def test_list_models_error(self, mock_claude_client_class, test_client: TestClient):
         """Test models listing with error."""
         from claude_code_proxy.exceptions import ClaudeProxyError
@@ -298,7 +298,7 @@ class TestErrorHandling:
 class TestCORSHeaders:
     """Test CORS headers."""
 
-    @patch("claude_code_proxy.api.v1.chat.ClaudeClient")
+    @patch("claude_code_proxy.routers.anthropic.ClaudeClient")
     def test_cors_functionality(
         self,
         mock_claude_client_class,
@@ -328,7 +328,7 @@ class TestCORSHeaders:
         assert "content" in data
         assert data["type"] == "message"
 
-    @patch("claude_code_proxy.api.v1.chat.ClaudeClient")
+    @patch("claude_code_proxy.routers.anthropic.ClaudeClient")
     def test_streaming_cors_headers(
         self,
         mock_claude_client_class,

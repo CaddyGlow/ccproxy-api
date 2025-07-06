@@ -4,7 +4,12 @@ import os
 from pathlib import Path
 from typing import Any
 
+from claude_code_proxy.utils.logging import get_logger
+
 from ..config.settings import DockerSettings
+
+
+logger = get_logger(__name__)
 
 
 class DockerCommandBuilder:
@@ -225,6 +230,7 @@ class DockerCommandBuilder:
             OSError: If the command cannot be executed
         """
         cmd = self.build_command(**kwargs)
+        logger.info("Executing Docker command: %s", cmd)
         os.execvp(cmd[0], cmd)
 
     def build_and_execute(self, **kwargs: Any) -> None:

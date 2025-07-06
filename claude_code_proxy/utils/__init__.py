@@ -13,6 +13,7 @@ from .schema import (
     save_schema_file,
     validate_toml_with_schema,
 )
+from .version import format_version, parse_version
 from .xdg import (
     get_ccproxy_config_dir,
     get_claude_cli_config_dir,
@@ -37,4 +38,6 @@ __all__ = [
     "merge_claude_code_options",
     "save_schema_file",
     "validate_toml_with_schema",
+    "format_version",
+    "parse_version",
 ]

@@ -1,6 +1,5 @@
 """Chat completion API routes."""
 
-import logging
 from collections.abc import AsyncIterator
 from typing import Any
 
@@ -24,9 +23,10 @@ from claude_code_proxy.models.responses import (
 )
 from claude_code_proxy.services.claude_client import ClaudeClient, ClaudeClientError
 from claude_code_proxy.utils import merge_claude_code_options
+from claude_code_proxy.utils.logging import get_logger
 
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 router = APIRouter(prefix="/v1", tags=["chat"])
 

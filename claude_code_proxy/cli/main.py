@@ -16,10 +16,12 @@ from fastapi_cli.cli import app as fastapi_app
 from fastapi_cli.exceptions import FastAPICLIException
 
 from claude_code_proxy._version import __version__
-from claude_code_proxy.commands.config import app as config_app
 from claude_code_proxy.config.settings import get_settings
 from claude_code_proxy.utils.docker_builder import DockerCommandBuilder
 from claude_code_proxy.utils.helper import get_package_dir
+from claude_code_proxy.utils.logging import get_logger, setup_rich_logging
+
+from .commands.config import app as config_app
 
 
 def version_callback(value: bool) -> None:
@@ -35,7 +37,9 @@ app = typer.Typer(
     no_args_is_help=False,
     pretty_exceptions_enable=False,
 )
-logger = logging.getLogger(__name__)
+
+# Set up rich logging for CLI (will be configured with proper level in commands)
+logger = get_logger(__name__)
 
 
 # Add global --version option
@@ -502,6 +506,9 @@ def api(
 
         # Load settings with CLI overrides
         settings = get_settings(config_path=get_config_path_from_context())
+
+        # Set up rich logging with the configured log level
+        setup_rich_logging(level=settings.log_level)
         if cli_overrides:
             # Create new settings instance with overrides
             from claude_code_proxy.config.settings import Settings
@@ -511,46 +518,74 @@ def api(
             )
 
         if docker:
-            # Prepare server command using fastapi
-            server_args = [
-                "run",
-                "--host",
-                "0.0.0.0",  # Docker needs to bind to 0.0.0.0
-                "--port",
-                str(settings.port),
-            ]
-
+            docker_env_dict = {v[0]: v[1] for v in docker_env}
             if settings.reload:
-                server_args.append("--reload")
+                docker_env_dict["RELOAD"] = "true"
+
+            docker_env_dict["PORT"] = str(settings.port)
+            docker_env_dict["HOST"] = "0.0.0.0"
+            # docker_env.append(f"HOST={settings.host}")
 
             # Build and execute Docker command with settings and CLI overrides
             typer.echo("Starting Claude Code Proxy API server with Docker...")
             typer.echo(
                 f"Server will be available at: http://{settings.host}:{settings.port}"
             )
+            typer.echo("")
 
-            # Show the command before executing
-            docker_cmd = DockerCommandBuilder.from_settings_and_overrides(
-                settings.docker_settings,
-                docker_image=docker_image,
-                docker_env=docker_env + [f"PORT={settings.port}"],
-                docker_volume=docker_volume,
-                docker_arg=docker_arg + ["-p", f"{settings.port}:{settings.port}"],
-                docker_home=docker_home,
-                docker_workspace=docker_workspace,
-                user_mapping_enabled=user_mapping_enabled,
-                user_uid=user_uid,
-                user_gid=user_gid,
-                cmd_args=server_args,
+            # Show Docker configuration summary
+            typer.echo("=== Docker Configuration Summary ===")
+
+            # Determine effective directories for volume mapping
+            home_dir = docker_home or settings.docker_settings.docker_home_directory
+            workspace_dir = (
+                docker_workspace or settings.docker_settings.docker_workspace_directory
             )
-            typer.echo(f"Executing: {' '.join(docker_cmd)}")
+
+            # Show volume information
+            typer.echo("Volumes:")
+            if home_dir:
+                typer.echo(f"  Home: {home_dir} → /data/home")
+            if workspace_dir:
+                typer.echo(f"  Workspace: {workspace_dir} → /data/workspace")
+            if docker_volume:
+                for vol in docker_volume:
+                    typer.echo(f"  Additional: {vol}")
+            typer.echo("")
+
+            # Show environment information (INFO level)
+            typer.echo("Environment Variables:")
+            key_env_vars = {
+                "CLAUDE_HOME": "/data/home",
+                "CLAUDE_WORKSPACE": "/data/workspace",
+                "PORT": str(settings.port),
+                "HOST": "0.0.0.0",
+            }
+            if settings.reload:
+                key_env_vars["RELOAD"] = "true"
+
+            for key, value in key_env_vars.items():
+                typer.echo(f"  {key}={value}")
+
+            # Show additional environment variables from CLI
+            for env_var in docker_env:
+                typer.echo(f"  {env_var}")
+
+            # Show debug environment information if log level is DEBUG
+            if settings.log_level == "DEBUG":
+                typer.echo("")
+                typer.echo("=== Debug: All Environment Variables ===")
+                all_env = {**docker_env_dict}
+                for key, value in sorted(all_env.items()):
+                    typer.echo(f"  {key}={value}")
+
             typer.echo("")
 
             # Execute using the new Docker builder method
             DockerCommandBuilder.execute_from_settings(
                 settings.docker_settings,
                 docker_image=docker_image,
-                docker_env=docker_env + [f"PORT={settings.port}"],
+                docker_env=[f"{k}={v}" for k, v in docker_env_dict.items()],
                 docker_volume=docker_volume,
                 docker_arg=docker_arg + ["-p", f"{settings.port}:{settings.port}"],
                 docker_home=docker_home,
@@ -558,7 +593,6 @@ def api(
                 user_mapping_enabled=user_mapping_enabled,
                 user_uid=user_uid,
                 user_gid=user_gid,
-                cmd_args=server_args,
             )
         else:
             # Run server locally using fastapi-cli's _run function
@@ -572,6 +606,24 @@ def api(
             if cli_overrides:
                 # Set environment variables for any CLI overrides
                 os.environ["CCPROXY_CONFIG_OVERRIDES"] = json.dumps(cli_overrides)
+
+            # Override fastapi-cli logging with our rich logger
+            import fastapi_cli.logging
+
+            original_setup = fastapi_cli.logging.setup_logging
+
+            def custom_setup_logging(
+                terminal_width: int | None = None, level: int = logging.INFO
+            ) -> None:
+                # Use our rich logging instead
+                setup_rich_logging(level=settings.log_level)
+                # Also configure the fastapi_cli logger with our handler
+                fastapi_logger = logging.getLogger("fastapi_cli")
+                fastapi_logger.setLevel(getattr(logging, settings.log_level.upper()))
+                fastapi_logger.propagate = False
+
+            # Monkey patch the setup_logging function
+            fastapi_cli.logging.setup_logging = custom_setup_logging
 
             # Use fastapi-cli's internal _run function
             _run(

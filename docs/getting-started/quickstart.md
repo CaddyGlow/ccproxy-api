@@ -213,36 +213,137 @@ docker run -d \
   claude-code-proxy-api
 ```
 
-**Volume Mapping Explanation:**
-- **`~/.config/cc-proxy/home:/data/home`**: Isolated Claude configuration (separate from your local Claude config)
-- **`$(pwd):/data/workspace`**: Current directory as working directory for Claude
-- **Custom workspace**: Override with any path using `-v /custom/path:/data/workspace`
+## Docker Configuration Summary
 
-This setup ensures:
-- Your local Claude configuration remains untouched
-- Claude in Docker has its own isolated configuration
-- Working directory matches your current location (or custom path)
+### 📁 **Volume Mappings**
 
-### Docker Compose (Personal Setup)
+| Host Path | Container Path | Purpose | Required |
+|-----------|---------------|---------|----------|
+| `~/.config/cc-proxy/home` | `/data/home` | **Claude Home**: Isolated Claude config & cache | **Required** |
+| `$(pwd)` or custom path | `/data/workspace` | **Workspace**: Working directory for Claude operations | **Required** |
+
+**Volume Details:**
+
+- **`/data/home`** (CLAUDE_HOME):
+  - Stores Claude CLI configuration, authentication, and cache
+  - **Isolated** from your local `~/.claude` directory
+  - Contains: `.config/`, `.cache/`, `.local/` subdirectories
+  - **Persists** authentication between container restarts
+
+- **`/data/workspace`** (CLAUDE_WORKSPACE):
+  - Active working directory where Claude operates
+  - **Maps to** your project directory or any custom path
+  - Claude reads/writes files relative to this directory
+  - Should contain your code projects
+
+### 🔧 **Environment Variables**
+
+| Variable | Default | Purpose | Docker Support |
+|----------|---------|---------|----------------|
+| `HOST` | `0.0.0.0` | Server bind address | ✅ Built-in |
+| `PORT` | `8000` | Server port | ✅ Built-in |
+| `LOG_LEVEL` | `INFO` | Logging verbosity | ✅ Built-in |
+| `PUID` | `1000` | User ID for file permissions | ✅ Docker only |
+| `PGID` | `1000` | Group ID for file permissions | ✅ Docker only |
+| `CLAUDE_HOME` | `/data/home` | Claude config directory | ✅ Docker only |
+| `CLAUDE_WORKSPACE` | `/data/workspace` | Claude working directory | ✅ Docker only |
+
+**Docker-Specific Variables:**
+
+- **`PUID`/`PGID`**: Ensures files created in volumes have correct ownership
+- **`CLAUDE_HOME`**: Overrides default Claude home directory
+- **`CLAUDE_WORKSPACE`**: Sets Claude's working directory
+
+### 🛡️ **Security & Isolation Benefits**
+
+This Docker setup provides:
+
+- **Isolated Configuration**: Docker Claude config separate from local installation
+- **File Permission Management**: Proper ownership of created files via PUID/PGID
+- **Working Directory Control**: Claude operates in mapped workspace only
+- **Container Security**: Claude CLI runs in isolated container environment
+- **No Local Installation**: Claude CLI included in Docker image
+
+### 📋 **Quick Setup Commands**
+
+```bash
+# Create required directories
+mkdir -p ~/.config/cc-proxy/home
+
+# Run with automatic volume setup
+docker run -d \
+  --name claude-code-proxy \
+  -p 8000:8000 \
+  -e PUID=$(id -u) \
+  -e PGID=$(id -g) \
+  -v ~/.config/cc-proxy/home:/data/home \
+  -v $(pwd):/data/workspace \
+  ghcr.io/caddyglow/claude-code-proxy-api
+
+# First-time authentication
+docker exec -it claude-code-proxy ccproxy claude -- auth login
+
+# Verify setup
+docker exec -it claude-code-proxy ccproxy claude -- /status
+```
+
+### Docker Compose (Recommended)
+
+Complete Docker Compose setup with proper configuration:
 
 ```yaml
 version: '3.8'
 services:
-  claude-code-proxy-api:
-    build: .
+  claude-code-proxy:
+    image: ghcr.io/caddyglow/claude-code-proxy-api:latest
+    container_name: claude-code-proxy
     ports:
       - "8000:8000"
     environment:
-      - LOG_LEVEL=INFO
+      # Server Configuration
+      - HOST=0.0.0.0
       - PORT=8000
+      - LOG_LEVEL=INFO
+
+      # File Permissions (matches your user)
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
+
+      # Docker Paths (pre-configured)
+      - CLAUDE_HOME=/data/home
+      - CLAUDE_WORKSPACE=/data/workspace
     volumes:
+      # Claude config & auth (isolated)
       - ~/.config/cc-proxy/home:/data/home
+      # Your workspace (current directory)
       - .:/data/workspace
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
 ```
 
+**Setup Commands:**
 ```bash
+# Create Docker Compose file (save as docker-compose.yml)
+# Set your user ID (optional, defaults to 1000)
+export PUID=$(id -u)
+export PGID=$(id -g)
+
+# Start the service
 docker-compose up -d
+
+# First-time authentication
+docker-compose exec claude-code-proxy ccproxy claude -- auth login
+
+# Verify setup
+docker-compose exec claude-code-proxy ccproxy claude -- /status
+
+# View logs
+docker-compose logs -f claude-code-proxy
 ```
 
 ## First API Call

@@ -11,7 +11,6 @@ from fastapi import HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import ValidationError
 
-from claude_code_proxy.api.v1.messages import create_message
 from claude_code_proxy.exceptions import (
     ClaudeProxyError,
     ModelNotFoundError,
@@ -27,6 +26,7 @@ from claude_code_proxy.models.messages import (
     SystemMessage,
 )
 from claude_code_proxy.models.requests import Message
+from claude_code_proxy.routers.anthropic import create_message
 
 
 class TestCreateMessage:

@@ -5,9 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.1.0] - 2024-12-04
+## [0.1.0] - 2025-07-06
 
 ### Added
+
+#### Configuration & CLI Enhancements
+- **TOML Configuration Support**: Full TOML configuration file support with schema validation
+- **Multi-format Configuration**: Support for TOML, JSON, and YAML configuration files with auto-detection
+- **Enhanced CLI Interface**: New unified `ccproxy` command with improved usability
+- **Schema Validation**: JSON Schema generation for TOML configuration files with editor support
+- **Token Generation**: `generate-token` command with force option for API key management
+- **User Mapping**: Docker user mapping support for better security and file permissions
+
+#### API & Integration Features
+- **Anthropic Messages API**: Native Anthropic Messages API endpoint with MCP integration
+- **OpenAI Model Mapping**: Enhanced OpenAI model compatibility with increased token limits
+- **Pre-commit Configuration**: Comprehensive pre-commit hooks for code quality assurance
 
 #### Personal Claude Access
 - **OAuth2 Authentication**: Use your existing Claude subscription without API costs
@@ -63,6 +76,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **API Reference**: Documentation for both Anthropic and OpenAI endpoints
 - **Troubleshooting**: Common issues and solutions for personal use
 - **Docker Guide**: Optional containerization for enhanced isolation
+
+### Changed
+- **Removed Connection Pooling**: Simplified architecture by removing connection pooling for better stability
+- **Improved Type Safety**: Enhanced type annotations and mypy compliance throughout codebase
+- **Better Error Handling**: More robust API error handling with proper HTTP status codes
+- **CLI Usability**: Default behavior now runs API server when no command specified
+- **Configuration Display**: Enhanced config display formatting with better organization
+- **Documentation**: Updated repository references and comprehensive documentation additions
+
+### Fixed
+- **Test Reliability**: Improved test stability and reliability across all test suites
+- **Docker Integration**: Fixed Claude Docker home directory usage and command execution
+- **Environment Variables**: Resolved nested environment variable handling for configuration
+- **API Response Handling**: Better handling of unexpected API response types
+- **File Standardization**: Consistent file endings and formatting across all files
+
+### Removed
+- **Worker Pool Implementation**: Removed Node.js worker pool for simplified architecture
+- **Unused Dependencies**: Cleaned up unused imports and dependencies
+- **Rate Limiting Documentation**: Removed outdated rate limiting references
+
+### Security
+- **Enhanced GitHub Actions**: Security features added to CI/CD workflows
+- **Docker Security**: Improved Docker isolation and user mapping
+- **Input Validation**: Strengthened request validation and sanitization
 
 ### Technical Details
 

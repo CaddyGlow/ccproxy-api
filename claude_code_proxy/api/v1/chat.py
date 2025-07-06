@@ -1,6 +1,5 @@
 """Chat completions API endpoint."""
 
-import logging
 import uuid
 from collections.abc import AsyncGenerator
 from typing import Any
@@ -23,9 +22,10 @@ from claude_code_proxy.models.responses import ChatCompletionResponse
 from claude_code_proxy.services.claude_client import ClaudeClient
 from claude_code_proxy.services.streaming import stream_claude_response
 from claude_code_proxy.utils import merge_claude_code_options
+from claude_code_proxy.utils.logging import get_logger
 
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 router = APIRouter()
 
 

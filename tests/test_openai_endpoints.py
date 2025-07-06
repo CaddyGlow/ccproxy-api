@@ -462,7 +462,7 @@ class TestOpenAIToolsValidation:
             ],
         }
 
-    @patch("claude_code_proxy.api.openai.chat.get_settings")
+    @patch("claude_code_proxy.routers.openai.get_settings")
     def test_tools_validation_error_mode(
         self, mock_get_settings, test_client, sample_request_with_tools
     ):
@@ -485,7 +485,7 @@ class TestOpenAIToolsValidation:
         )
         assert data["detail"]["error"]["type"] == "unsupported_parameter"
 
-    @patch("claude_code_proxy.api.openai.chat.get_settings")
+    @patch("claude_code_proxy.routers.openai.get_settings")
     def test_tools_validation_warning_mode(
         self,
         mock_get_settings,
@@ -523,7 +523,7 @@ class TestOpenAIToolsValidation:
             assert "Tools ignored" in warning_call
             assert "1 tools" in warning_call
 
-    @patch("claude_code_proxy.api.openai.chat.get_settings")
+    @patch("claude_code_proxy.routers.openai.get_settings")
     def test_tools_validation_ignore_mode(
         self,
         mock_get_settings,
@@ -560,7 +560,7 @@ class TestOpenAIToolsValidation:
             mock_logger.warning.assert_not_called()
             mock_logger.error.assert_not_called()
 
-    @patch("claude_code_proxy.api.openai.chat.get_settings")
+    @patch("claude_code_proxy.routers.openai.get_settings")
     def test_request_without_tools_continues_normally(
         self, mock_get_settings, test_client, mock_claude_client
     ):

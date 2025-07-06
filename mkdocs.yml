@@ -68,11 +68,11 @@ nav:
     - OpenAI Endpoints: api-reference/openai.md
     - Models: api-reference/models.md
     - Health Check: api-reference/health.md
+  - Contributing: contributing.md
   - Developer Guide:
     - Architecture: developer-guide/architecture.md
     - Development Setup: developer-guide/development.md
     - Testing: developer-guide/testing.md
-    - Contributing: developer-guide/contributing.md
   - Code Reference:
     - API Modules: reference/api/
     - Services: reference/services/
@@ -170,6 +170,7 @@ markdown_extensions:
   - pymdownx.mark
   - pymdownx.smartsymbols
   - pymdownx.snippets:
+      base_path: .
       auto_append:
         - includes/abbreviations.md
   - pymdownx.superfences:
@@ -205,6 +206,7 @@ watch:
   - claude_code_proxy/
   - README.md
   - CHANGELOG.md
+  - CONTRIBUTING.md
 
 # Extra CSS and JavaScript
 extra_css:

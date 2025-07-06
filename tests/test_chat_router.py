@@ -19,12 +19,16 @@ from claude_code_proxy.models.responses import (
     InternalServerError,
     InvalidRequestError,
 )
-from claude_code_proxy.routers.chat import (
+from claude_code_proxy.routers.anthropic import (
     create_chat_completion,
-    get_claude_client,
     list_models,
 )
 from claude_code_proxy.services.claude_client import ClaudeClient, ClaudeClientError
+
+
+def get_claude_client(settings: Settings) -> ClaudeClient:
+    """Get Claude client instance."""
+    return ClaudeClient()
 
 
 @pytest.mark.unit

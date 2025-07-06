@@ -1,4 +1,6 @@
-.PHONY: help install dev-install clean test lint typecheck format check ci build docker-build docker-run docs-install docs-build docs-serve docs-clean
+.PHONY: help install dev-install clean test lint typecheck format check pre-commit ci build docker-build docker-run docs-install docs-build docs-serve docs-clean
+
+$(eval VERSION_DOCKER := $(shell uv run python3 scripts/format_version.py docker))
 
 # Default target
 help:
@@ -11,7 +13,8 @@ help:
 	@echo "  typecheck    - Run type checking"
 	@echo "  format       - Format code"
 	@echo "  check        - Run all checks (lint + typecheck)"
-	@echo "  ci           - Run full CI pipeline (check + test)"
+	@echo "  pre-commit   - Run pre-commit hooks (comprehensive checks + auto-fixes)"
+	@echo "  ci           - Run full CI pipeline (pre-commit + test)"
 	@echo "  build        - Build Python package"
 	@echo "  docker-build - Build Docker image"
 	@echo "  docker-run   - Run Docker container"
@@ -26,6 +29,7 @@ install:
 
 dev-install:
 	uv sync --all-extras --dev
+	uv run pre-commit install
 
 # Cleanup
 clean:
@@ -64,11 +68,17 @@ format:
 format-check:
 	uv run ruff format --check .
 
-# Combined checks
+# Combined checks (individual targets for granular control)
 check: lint typecheck format-check
 
-# Full CI pipeline
-ci: check test
+# Pre-commit hooks (comprehensive checks + auto-fixes)
+pre-commit:
+	uv run pre-commit run --all-files
+
+# Full CI pipeline (comprehensive: pre-commit does more checks + auto-fixes)
+ci:
+	uv run pre-commit run --all-files
+	$(MAKE) test
 
 # Build targets
 build:
@@ -76,10 +86,10 @@ build:
 
 # Docker targets
 docker-build:
-	docker build -t claude-code-proxy .
+	docker build -t ghcr.io/caddyglow/claude-code-proxy-api:$(VERSION_DOCKER) .
 
 docker-run:
-	docker run --rm -p 8000:8000 claude-code-proxy
+	docker run --rm -p 8000:8000 ghcr.io/caddyglow/claude-code-proxy-api:$(VERSION_DOCKER)
 
 docker-compose-up:
 	docker-compose up --build

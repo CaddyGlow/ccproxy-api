@@ -10,7 +10,7 @@ import typer
 from typer.testing import CliRunner
 
 from claude_code_proxy.cli import app, claude
-from claude_code_proxy.commands.config import config_list
+from claude_code_proxy.cli.commands.config import config_list
 from claude_code_proxy.config.settings import Settings
 
 

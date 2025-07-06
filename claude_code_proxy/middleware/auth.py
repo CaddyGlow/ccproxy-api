@@ -1,6 +1,5 @@
 """Authentication middleware for Claude Proxy API."""
 
-import logging
 from collections.abc import Callable
 from typing import Annotated
 
@@ -9,9 +8,10 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from claude_code_proxy.config import get_settings
 from claude_code_proxy.exceptions import AuthenticationError
+from claude_code_proxy.utils.logging import get_logger
 
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # HTTP Bearer scheme for extracting tokens
 bearer_scheme = HTTPBearer(auto_error=False)

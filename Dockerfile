@@ -87,4 +87,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
 # user home folder
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 
-CMD ["fastapi", "run", "claude_code_proxy/main.py"]
+CMD ["ccproxy", "--host", "0.0.0.0", "--port", "8000"]

@@ -233,7 +233,7 @@ class TestConfigCommand:
     @patch("rich.console.Console")
     def test_config_command_success(self, mock_console_class, mock_get_settings):
         """Test config command displays settings successfully."""
-        from claude_code_proxy.commands.config import config_list
+        from claude_code_proxy.cli.commands.config import config_list
 
         # Mock settings object with all required attributes
         mock_settings = Mock()
@@ -299,7 +299,7 @@ class TestConfigCommand:
         self, mock_console_class, mock_get_settings
     ):
         """Test config command when claude_cli_path is None."""
-        from claude_code_proxy.commands.config import config_list
+        from claude_code_proxy.cli.commands.config import config_list
 
         # Mock settings object with None claude_cli_path and all required attributes
         mock_settings = Mock()
@@ -363,7 +363,7 @@ class TestConfigCommand:
     @patch("rich.console.Console.print")
     def test_config_command_exception_handling(self, mock_print, mock_get_settings):
         """Test config command handles exceptions properly."""
-        from claude_code_proxy.commands.config import config_list
+        from claude_code_proxy.cli.commands.config import config_list
 
         # Mock get_settings to raise an exception
         mock_get_settings.side_effect = Exception("Settings error")

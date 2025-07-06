@@ -153,5 +153,4 @@ echo "  Environment: CLAUDE_USER=$CLAUDE_USER, CLAUDE_GROUP=$CLAUDE_GROUP_NAME"
 
 # Execute the main command
 echo "Starting application: $*"
-setpriv --reuid=claude --regid=claude --init-groups ccproxy "$@"
-# exec "$@"
+setpriv --reuid=claude --regid=claude --init-groups "$@"

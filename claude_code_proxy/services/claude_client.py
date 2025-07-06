@@ -1,6 +1,5 @@
 """Claude SDK client for handling API requests and responses."""
 
-import logging
 from collections.abc import AsyncIterator
 from typing import Any
 
@@ -10,6 +9,7 @@ from claude_code_proxy.exceptions import (
     TimeoutError,
 )
 from claude_code_proxy.utils.helper import patched_typing
+from claude_code_proxy.utils.logging import get_logger
 
 
 with patched_typing():
@@ -30,7 +30,7 @@ with patched_typing():
     )
 
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class ClaudeClientError(Exception):

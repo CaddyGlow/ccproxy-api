@@ -1,4 +1,4 @@
-"""OpenAI-compatible chat completions endpoint."""
+"""OpenAI-compatible API endpoints."""
 
 import json
 import time
@@ -17,11 +17,10 @@ from claude_code_proxy.models.openai_models import (
     OpenAIChatCompletionRequest,
     OpenAIChatCompletionResponse,
     OpenAIErrorResponse,
+    OpenAIModelsResponse,
 )
 from claude_code_proxy.services.claude_client import ClaudeClient
 from claude_code_proxy.services.openai_streaming import stream_claude_response_openai
-
-# Pool manager removed - creating clients directly
 from claude_code_proxy.services.translator import OpenAITranslator
 from claude_code_proxy.utils import merge_claude_code_options
 from claude_code_proxy.utils.logging import get_logger
@@ -226,3 +225,9 @@ async def create_chat_completion(
             status_code=HTTP_500_INTERNAL_SERVER_ERROR,
             detail=error_response.model_dump(),
         ) from e
+
+
+@router.get("/models", response_model=OpenAIModelsResponse)
+async def list_models(_: None = Depends(get_auth_dependency())) -> OpenAIModelsResponse:
+    """List available OpenAI-compatible models."""
+    return OpenAIModelsResponse.create_default()

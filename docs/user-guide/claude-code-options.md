@@ -211,4 +211,4 @@ The API will return validation errors for:
 
 - [API Usage Guide](api-usage.md)
 - [MCP Integration](mcp-integration.md)
-- [Tool Configuration](../developer-guide/claude-sdk.md)
+- [Development Setup](../developer-guide/development.md)
