@@ -272,62 +272,7 @@ class DockerSettings(BaseModel):
         return key, value
 
 
-class PoolSettings(BaseModel):
-    """Configuration settings for Claude instance connection pool."""
-
-    enabled: bool = Field(
-        default=False,
-        description="Enable/disable connection pooling",
-    )
-
-    min_size: int = Field(
-        default=2,
-        description="Minimum number of instances to maintain in pool",
-        ge=0,
-        le=100,
-    )
-
-    max_size: int = Field(
-        default=10,
-        description="Maximum number of instances allowed in pool",
-        ge=1,
-        le=100,
-    )
-
-    idle_timeout: int = Field(
-        default=300,
-        description="Seconds before idle connections are closed",
-        ge=30,
-        le=3600,
-    )
-
-    warmup_on_startup: bool = Field(
-        default=True,
-        description="Pre-create minimum instances on startup",
-    )
-
-    health_check_interval: int = Field(
-        default=60,
-        description="Seconds between connection health checks",
-        ge=10,
-        le=600,
-    )
-
-    acquire_timeout: float = Field(
-        default=5.0,
-        description="Maximum seconds to wait for an available instance",
-        gt=0.0,
-        le=30.0,
-    )
-
-    @model_validator(mode="after")
-    def validate_pool_sizes(self) -> "PoolSettings":
-        """Ensure min_size is not greater than max_size."""
-        if self.min_size > self.max_size:
-            raise ValueError(
-                f"min_size ({self.min_size}) cannot be greater than max_size ({self.max_size})"
-            )
-        return self
+# PoolSettings class removed - connection pooling functionality has been removed
 
 
 class Settings(BaseSettings):
@@ -417,12 +362,7 @@ class Settings(BaseSettings):
         description="Docker configuration for running Claude commands in containers",
     )
 
-    # Pool settings
-    pool_settings: PoolSettings = Field(
-        default_factory=PoolSettings,
-        description="Claude instance connection pool configuration",
-    )
-
+    # Pool settings removed - connection pooling functionality has been removed
 
     @field_validator("claude_code_options", mode="before")
     @classmethod
@@ -466,28 +406,7 @@ class Settings(BaseSettings):
 
         return v
 
-    @field_validator("pool_settings", mode="before")
-    @classmethod
-    def validate_pool_settings(cls, v: Any) -> Any:
-        """Validate and convert Pool settings."""
-        if v is None:
-            return PoolSettings()
-
-        # If it's already a PoolSettings instance, return as-is
-        if isinstance(v, PoolSettings):
-            return v
-
-        # If it's a dict, create PoolSettings from it
-        if isinstance(v, dict):
-            return PoolSettings(**v)
-
-        # Try to convert to dict if possible
-        if hasattr(v, "model_dump"):
-            return PoolSettings(**v.model_dump())
-        elif hasattr(v, "__dict__"):
-            return PoolSettings(**v.__dict__)
-
-        return v
+    # validate_pool_settings method removed - connection pooling functionality has been removed
 
     @field_validator("log_level")
     @classmethod

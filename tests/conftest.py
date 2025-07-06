@@ -29,13 +29,19 @@ def test_settings() -> Settings:
     os.environ["ANTHROPIC_API_KEY"] = "test-api-key"
     # Don't set CLAUDE_CLI_PATH to avoid validation errors
 
-    return Settings()
+    # Override global settings to disable authentication for tests
+    import json
+
+    os.environ["CCPROXY_CONFIG_OVERRIDES"] = json.dumps({"auth_token": None})
+
+    # Create settings without loading any config files and disable authentication
+    return Settings(_env_file=None, auth_token=None)
 
 
 @pytest.fixture
 def test_client(test_settings: Settings) -> TestClient:
     """Create a test client."""
-    app = create_app()
+    app = create_app(test_settings)
     return TestClient(app)
 
 
@@ -161,7 +167,7 @@ def cleanup_env():
     """Clean up environment variables after each test."""
     yield
     # Clean up test environment variables
-    test_vars = ["ANTHROPIC_API_KEY", "CLAUDE_CLI_PATH"]
+    test_vars = ["ANTHROPIC_API_KEY", "CLAUDE_CLI_PATH", "CCPROXY_CONFIG_OVERRIDES"]
     for var in test_vars:
         if var in os.environ:
             del os.environ[var]

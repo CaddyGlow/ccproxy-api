@@ -183,3 +183,48 @@ class TestAuthentication:
 
         token = extract_token_from_headers(None, mock_request)
         assert token is None
+
+    def test_empty_token_values(self, monkeypatch):
+        """Test that empty token values are treated as missing tokens."""
+        # Mock settings with auth token
+        mock_settings = Mock()
+        mock_settings.auth_token = "correct-token-123"
+        monkeypatch.setattr(
+            "claude_code_proxy.middleware.auth.get_settings", lambda: mock_settings
+        )
+
+        mock_request = Mock()
+        mock_request.url.path = "/v1/messages"
+        # Empty x-api-key value (empty string is falsy, so treated as no token)
+        mock_request.headers = {"x-api-key": ""}
+
+        # Should raise HTTPException for missing token
+        with pytest.raises(HTTPException) as exc_info:
+            verify_token(None, mock_request)
+
+        assert exc_info.value.status_code == 401
+        assert "authentication_error" in str(exc_info.value.detail)
+        # Empty string is falsy, so it's treated as missing token
+        assert "Missing authentication token" in str(exc_info.value.detail)
+
+    def test_both_headers_with_same_token(self, monkeypatch):
+        """Test that authentication works when both headers have the same correct token."""
+        # Mock settings with auth token
+        mock_settings = Mock()
+        mock_settings.auth_token = "correct-token-123"
+        monkeypatch.setattr(
+            "claude_code_proxy.middleware.auth.get_settings", lambda: mock_settings
+        )
+
+        mock_request = Mock()
+        mock_request.url.path = "/v1/messages"
+        # Both headers have the same correct token
+        mock_request.headers = {"x-api-key": "correct-token-123"}
+
+        # Mock Bearer credentials with same token
+        bearer_credentials = HTTPAuthorizationCredentials(
+            scheme="Bearer", credentials="correct-token-123"
+        )
+
+        # Should not raise any exception
+        verify_token(bearer_credentials, mock_request)

@@ -32,15 +32,16 @@ def version_callback(value: bool) -> None:
 app = typer.Typer(
     rich_markup_mode="rich",
     add_completion=False,
-    no_args_is_help=True,
+    no_args_is_help=False,
     pretty_exceptions_enable=False,
 )
 logger = logging.getLogger(__name__)
 
 
 # Add global --version option
-@app.callback()
+@app.callback(invoke_without_command=True)
 def main(
+    ctx: typer.Context,
     version: bool = typer.Option(
         False,
         "--version",
@@ -59,23 +60,176 @@ def main(
         dir_okay=False,
         readable=True,
     ),
+    # Forward all API command options
+    port: int = typer.Option(None, "--port", "-p", help="Port to run the server on"),
+    host: str = typer.Option(None, "--host", "-h", help="Host to bind the server to"),
+    reload: bool = typer.Option(
+        None, "--reload/--no-reload", help="Enable auto-reload for development"
+    ),
+    log_level: str = typer.Option(
+        None,
+        "--log-level",
+        help="Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)",
+    ),
+    workers: int = typer.Option(
+        None, "--workers", help="Number of worker processes", min=1, max=32
+    ),
+    docker: bool = typer.Option(
+        False,
+        "--docker",
+        "-d",
+        help="Run API server using Docker instead of local execution",
+    ),
+    cors_origins: str = typer.Option(
+        None, "--cors-origins", help="CORS allowed origins (comma-separated)"
+    ),
+    auth_token: str = typer.Option(
+        None, "--auth-token", help="Bearer token for API authentication"
+    ),
+    tools_handling: str = typer.Option(
+        None,
+        "--tools-handling",
+        help="How to handle tools definitions: error, warning, or ignore",
+    ),
+    claude_cli_path: str = typer.Option(
+        None, "--claude-cli-path", help="Path to Claude CLI executable"
+    ),
+    max_thinking_tokens: int = typer.Option(
+        None, "--max-thinking-tokens", help="Maximum thinking tokens for Claude Code"
+    ),
+    allowed_tools: str = typer.Option(
+        None, "--allowed-tools", help="List of allowed tools (comma-separated)"
+    ),
+    disallowed_tools: str = typer.Option(
+        None, "--disallowed-tools", help="List of disallowed tools (comma-separated)"
+    ),
+    append_system_prompt: str = typer.Option(
+        None, "--append-system-prompt", help="Additional system prompt to append"
+    ),
+    permission_mode: str = typer.Option(
+        None,
+        "--permission-mode",
+        help="Permission mode: default, acceptEdits, or bypassPermissions",
+    ),
+    continue_conversation: bool = typer.Option(
+        None,
+        "--continue-conversation/--no-continue-conversation",
+        help="Continue previous conversation",
+    ),
+    resume: str = typer.Option(None, "--resume", help="Resume conversation ID"),
+    max_turns: int = typer.Option(
+        None, "--max-turns", help="Maximum conversation turns"
+    ),
+    permission_prompt_tool_name: str = typer.Option(
+        None, "--permission-prompt-tool-name", help="Permission prompt tool name"
+    ),
+    cwd: str = typer.Option(None, "--cwd", help="Working directory path"),
+    docker_image: str | None = typer.Option(
+        None, "--docker-image", help="Docker image to use (overrides config)"
+    ),
+    docker_env: list[str] = typer.Option(
+        [],
+        "--docker-env",
+        help="Environment variables to pass to Docker (KEY=VALUE format, can be used multiple times)",
+    ),
+    docker_volume: list[str] = typer.Option(
+        [],
+        "--docker-volume",
+        help="Volume mounts to add (host:container[:options] format, can be used multiple times)",
+    ),
+    docker_arg: list[str] = typer.Option(
+        [],
+        "--docker-arg",
+        help="Additional Docker run arguments (can be used multiple times)",
+    ),
+    docker_home: str | None = typer.Option(
+        None,
+        "--docker-home",
+        help="Home directory inside Docker container (overrides config)",
+    ),
+    docker_workspace: str | None = typer.Option(
+        None,
+        "--docker-workspace",
+        help="Workspace directory inside Docker container (overrides config)",
+    ),
+    user_mapping_enabled: bool | None = typer.Option(
+        None,
+        "--user-mapping/--no-user-mapping",
+        help="Enable/disable UID/GID mapping (overrides config)",
+    ),
+    user_uid: int | None = typer.Option(
+        None, "--user-uid", help="User ID to run container as (overrides config)", min=0
+    ),
+    user_gid: int | None = typer.Option(
+        None,
+        "--user-gid",
+        help="Group ID to run container as (overrides config)",
+        min=0,
+    ),
 ) -> None:
     """Claude Code Proxy API Server - Anthropic and OpenAI compatible interface for Claude."""
     # Store config path in context for use by commands
     try:
-        ctx = get_current_context()
-        ctx.ensure_object(dict)
-        ctx.obj["config_path"] = config
+        from click import get_current_context as click_get_current_context
+
+        click_ctx = click_get_current_context()
+        click_ctx.ensure_object(dict)
+        click_ctx.obj["config_path"] = config
     except RuntimeError:
         # No active click context (e.g., in tests)
         pass
 
+    # If no subcommand was invoked, run the api command by default
+    if ctx.invoked_subcommand is None:
+        # Call the api command with all the provided parameters
+        ctx.invoke(
+            api,
+            docker=docker,
+            port=port,
+            host=host,
+            reload=reload,
+            log_level=log_level,
+            workers=workers,
+            cors_origins=cors_origins,
+            auth_token=auth_token,
+            tools_handling=tools_handling,
+            claude_cli_path=claude_cli_path,
+            max_thinking_tokens=max_thinking_tokens,
+            allowed_tools=allowed_tools,
+            disallowed_tools=disallowed_tools,
+            append_system_prompt=append_system_prompt,
+            permission_mode=permission_mode,
+            continue_conversation=continue_conversation,
+            resume=resume,
+            max_turns=max_turns,
+            permission_prompt_tool_name=permission_prompt_tool_name,
+            cwd=cwd,
+            docker_image=docker_image,
+            docker_env=docker_env,
+            docker_volume=docker_volume,
+            docker_arg=docker_arg,
+            docker_home=docker_home,
+            docker_workspace=docker_workspace,
+            user_mapping_enabled=user_mapping_enabled,
+            user_uid=user_uid,
+            user_gid=user_gid,
+        )
+
+
+# Create fastapi subcommand group
+fastapi_group = typer.Typer(
+    name="fastapi",
+    help="FastAPI development commands (run, dev)",
+    no_args_is_help=True,
+)
 
 # Remove the fastapi callback to avoid the warning
-# fastapi_app.callback()(lambda: None)
 fastapi_app.callback()(None)  # type: ignore[type-var]
-# Register fastapi app with typer
-app.add_typer(fastapi_app)
+# Register fastapi app under the fastapi group
+fastapi_group.add_typer(fastapi_app, name="")
+
+# Register fastapi group with main app
+app.add_typer(fastapi_group)
 
 # Register config command
 app.add_typer(config_app)
@@ -107,21 +261,7 @@ def get_config_path_from_context() -> Path | None:
 fastapi_cli.discover.get_default_path = get_default_path_hook
 
 
-@app.command()
-def generate_token() -> None:
-    """Generate a secure random token for API authentication."""
-    token = secrets.token_urlsafe(32)
-    typer.echo("Generated authentication token:")
-    typer.echo(f"AUTH_TOKEN={token}")
-    typer.echo("")
-    typer.echo("Add this to your environment variables:")
-    typer.echo(f"export AUTH_TOKEN={token}")
-    typer.echo("")
-    typer.echo("Or add to your .env file:")
-    typer.echo(f"AUTH_TOKEN={token}")
-
-
-@app.command()
+@app.command(hidden=True)
 def api(
     # Core server settings
     docker: bool = typer.Option(
@@ -231,52 +371,7 @@ def api(
         "--cwd",
         help="Working directory path",
     ),
-    # Pool settings
-    pool_enabled: bool = typer.Option(
-        None,
-        "--pool-enabled/--no-pool-enabled",
-        help="Enable/disable connection pooling",
-    ),
-    pool_min_size: int = typer.Option(
-        None,
-        "--pool-min-size",
-        help="Minimum number of instances in pool",
-        min=0,
-        max=100,
-    ),
-    pool_max_size: int = typer.Option(
-        None,
-        "--pool-max-size",
-        help="Maximum number of instances in pool",
-        min=1,
-        max=100,
-    ),
-    pool_idle_timeout: int = typer.Option(
-        None,
-        "--pool-idle-timeout",
-        help="Seconds before idle connections are closed",
-        min=30,
-        max=3600,
-    ),
-    pool_warmup_on_startup: bool = typer.Option(
-        None,
-        "--pool-warmup-on-startup/--no-pool-warmup-on-startup",
-        help="Pre-create minimum instances on startup",
-    ),
-    pool_health_check_interval: int = typer.Option(
-        None,
-        "--pool-health-check-interval",
-        help="Seconds between connection health checks",
-        min=10,
-        max=600,
-    ),
-    pool_acquire_timeout: float = typer.Option(
-        None,
-        "--pool-acquire-timeout",
-        help="Maximum seconds to wait for an available instance",
-        min=0.1,
-        max=30.0,
-    ),
+    # Pool settings removed - connection pooling functionality has been removed
     # Docker settings
     docker_image: str | None = typer.Option(
         None,
@@ -341,7 +436,7 @@ def api(
         ccproxy api --docker
         ccproxy api --docker --docker-image custom:latest --port 8080
         ccproxy api --max-thinking-tokens 10000 --allowed-tools Read,Write,Bash
-        ccproxy api --pool-enabled --pool-min-size 3 --pool-max-size 8
+        ccproxy api --port 8080 --workers 4
     """
     try:
         # Prepare CLI overrides dictionary
@@ -403,25 +498,7 @@ def api(
         if claude_code_opts:
             cli_overrides["claude_code_options"] = claude_code_opts
 
-        # Pool settings
-        pool_opts: dict[str, Any] = {}
-        if pool_enabled is not None:
-            pool_opts["enabled"] = pool_enabled
-        if pool_min_size is not None:
-            pool_opts["min_size"] = pool_min_size
-        if pool_max_size is not None:
-            pool_opts["max_size"] = pool_max_size
-        if pool_idle_timeout is not None:
-            pool_opts["idle_timeout"] = pool_idle_timeout
-        if pool_warmup_on_startup is not None:
-            pool_opts["warmup_on_startup"] = pool_warmup_on_startup
-        if pool_health_check_interval is not None:
-            pool_opts["health_check_interval"] = pool_health_check_interval
-        if pool_acquire_timeout is not None:
-            pool_opts["acquire_timeout"] = pool_acquire_timeout
-
-        if pool_opts:
-            cli_overrides["pool_settings"] = pool_opts
+        # Pool settings removed - connection pooling functionality has been removed
 
         # Load settings with CLI overrides
         settings = get_settings(config_path=get_config_path_from_context())
@@ -662,4 +739,32 @@ def claude(
 
 
 if __name__ == "__main__":
+    import sys
+
+    # Enhanced default command handling
+    if len(sys.argv) == 1:
+        # No arguments provided, run api command
+        sys.argv.append("api")
+    elif len(sys.argv) > 1:
+        # Check if any argument is a known command
+        known_commands = {"api", "claude", "config", "fastapi"}
+
+        # Find the first non-option argument that could be a command
+        has_command = False
+        for arg in sys.argv[1:]:
+            if not arg.startswith("-") and arg in known_commands:
+                has_command = True
+                break
+
+        # If no known command found, but there are arguments,
+        # assume they are for the api command
+        if (
+            not has_command
+            and "--help" not in sys.argv
+            and "-h" not in sys.argv
+            and "--version" not in sys.argv
+            and "-V" not in sys.argv
+        ):
+            sys.argv.insert(1, "api")
+
     app()

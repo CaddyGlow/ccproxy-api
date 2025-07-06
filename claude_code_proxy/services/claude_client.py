@@ -59,10 +59,10 @@ class ClaudeClient:
         Initialize Claude client.
 
         Args:
-            connection_id: Optional ID for pooled connections
+            connection_id: Optional ID for connections (deprecated, no longer used)
         """
         self.connection_id = connection_id
-        self._is_pooled = connection_id is not None
+        # Connection pooling removed - this flag is no longer used
 
     async def create_completion(
         self,

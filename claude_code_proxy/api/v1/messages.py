@@ -20,7 +20,8 @@ from claude_code_proxy.middleware.auth import get_auth_dependency
 from claude_code_proxy.models.errors import create_error_response
 from claude_code_proxy.models.messages import MessageRequest, MessageResponse
 from claude_code_proxy.services.claude_client import ClaudeClient
-from claude_code_proxy.services.pool_manager import pool_manager
+
+# Pool manager removed - creating clients directly
 from claude_code_proxy.services.streaming import stream_anthropic_message_response
 from claude_code_proxy.utils import merge_claude_code_options
 
@@ -51,13 +52,12 @@ async def create_message(
     Raises:
         HTTPException: For validation errors, API errors, or service failures
     """
-    pooled_connection = None
     try:
         settings = get_settings()
 
-        # Get Claude client from pool
-        logger.info("[API] Acquiring Claude client from pool for message request")
-        claude_client, pooled_connection = await pool_manager.acquire_client()
+        # Create Claude client directly
+        logger.info("[API] Creating Claude client for message request")
+        claude_client = ClaudeClient()
 
         # Prepare Claude Code options overrides from request
         overrides: dict[str, Any] = {
@@ -176,10 +176,3 @@ async def create_message(
             "internal_server_error", "An unexpected error occurred"
         )
         raise HTTPException(status_code=500, detail=error_response) from e
-    finally:
-        # Release connection back to pool
-        if pooled_connection:
-            logger.info(
-                f"[API] Releasing Claude client connection {pooled_connection.id} back to pool"
-            )
-            await pool_manager.release_client(pooled_connection)

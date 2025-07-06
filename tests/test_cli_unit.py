@@ -95,13 +95,17 @@ class TestMainFunction:
     def test_main_function_with_version_false(self):
         """Test main function with version=False."""
         # Should not raise any exception
-        main(version=False)
+        with patch("typer.Context") as mock_ctx:
+            mock_ctx.invoked_subcommand = "api"
+            main(mock_ctx, version=False)
 
     def test_main_function_with_version_true(self):
         """Test main function with version=True."""
         # The version callback is handled eagerly by typer, so we just test
         # that the main function doesn't raise an exception when called directly
-        main(version=True)
+        with patch("typer.Context") as mock_ctx:
+            mock_ctx.invoked_subcommand = "api"
+            main(mock_ctx, version=True)
 
     def test_main_function_signature(self):
         """Test main function has correct signature."""

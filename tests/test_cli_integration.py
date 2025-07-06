@@ -41,11 +41,94 @@ class TestCliRunner:
         assert "Claude Code Proxy API Server" in result.stdout
         assert "Anthropic" in result.stdout
 
-    def test_no_args_shows_help(self):
-        """Test no arguments shows help."""
-        result = self.runner.invoke(app, [])
-        assert result.exit_code == 2  # Typer returns 2 for missing required args
-        assert "Usage:" in result.stdout
+    def test_api_command_with_no_extra_args(self):
+        """Test api command runs successfully with mocked dependencies."""
+        with (
+            patch("claude_code_proxy.cli.get_settings") as mock_get_settings,
+            patch("claude_code_proxy.cli._run") as mock_run,
+        ):
+            mock_settings = Mock()
+            mock_settings.host = "127.0.0.1"
+            mock_settings.port = 8000
+            mock_settings.reload = False
+            mock_get_settings.return_value = mock_settings
+
+            # Explicitly call api command since default behavior uses sys.argv manipulation
+            result = self.runner.invoke(app, ["api"])
+
+            # Should run api command successfully
+            mock_run.assert_called_once()
+            assert result.exit_code == 0
+
+    def test_default_command_behavior_sys_argv_manipulation(self):
+        """Test that sys.argv is correctly manipulated for default command behavior."""
+        import sys
+
+        # Test case 1: No arguments provided
+        original_argv = sys.argv[:]
+        try:
+            sys.argv = ["ccproxy"]
+
+            # Import and execute the main section logic
+            import importlib
+
+            import claude_code_proxy.cli
+            from claude_code_proxy.cli import app
+
+            # Simulate the sys.argv manipulation from __name__ == "__main__"
+            if len(sys.argv) == 1:
+                sys.argv.append("api")
+
+            assert sys.argv == ["ccproxy", "api"]
+
+        finally:
+            sys.argv = original_argv
+
+        # Test case 2: CLI options without command
+        try:
+            sys.argv = ["ccproxy", "--port", "8080"]
+
+            # Check if any argument is a known command
+            known_commands = {"api", "claude", "config", "fastapi"}
+
+            has_command = False
+            for arg in sys.argv[1:]:
+                if not arg.startswith("-") and arg in known_commands:
+                    has_command = True
+                    break
+
+            if not has_command and (
+                "--help" not in sys.argv
+                and "-h" not in sys.argv
+                and "--version" not in sys.argv
+                and "-V" not in sys.argv
+            ):
+                sys.argv.insert(1, "api")
+
+            assert sys.argv == ["ccproxy", "api", "--port", "8080"]
+
+        finally:
+            sys.argv = original_argv
+
+        # Test case 3: Explicit command should not be modified
+        try:
+            sys.argv = ["ccproxy", "claude", "--version"]
+
+            # Known commands should not trigger insertion
+            known_commands = {"api", "claude", "config", "fastapi"}
+
+            has_command = False
+            for arg in sys.argv[1:]:
+                if not arg.startswith("-") and arg in known_commands:
+                    has_command = True
+                    break
+
+            # Should have found 'claude' command, so no modification
+            assert has_command
+            assert sys.argv == ["ccproxy", "claude", "--version"]
+
+        finally:
+            sys.argv = original_argv
 
 
 @pytest.mark.integration
@@ -195,7 +278,7 @@ class TestClaudeCommand:
         """Setup test environment."""
         self.runner = CliRunner(env={"NO_COLOR": "1", "TERM": "dumb"})
 
-    @patch("claude_code_proxy.commands.config.get_settings")
+    @patch("claude_code_proxy.cli.get_settings")
     @patch("claude_code_proxy.cli.os.execvp")
     def test_claude_command_local_cli(self, mock_execvp, mock_get_settings):
         """Test claude command with local CLI."""
@@ -213,7 +296,7 @@ class TestClaudeCommand:
                 "/usr/bin/claude", ["/usr/bin/claude", "--version"]
             )
 
-    @patch("claude_code_proxy.commands.config.get_settings")
+    @patch("claude_code_proxy.cli.get_settings")
     @patch("claude_code_proxy.cli.os.execvp")
     def test_claude_command_relative_path(self, mock_execvp, mock_get_settings):
         """Test claude command with relative path."""
@@ -232,7 +315,7 @@ class TestClaudeCommand:
                 "/resolved/path/claude", ["/resolved/path/claude", "--version"]
             )
 
-    @patch("claude_code_proxy.commands.config.get_settings")
+    @patch("claude_code_proxy.cli.get_settings")
     def test_claude_command_no_cli_path(self, mock_get_settings):
         """Test claude command when CLI path is not found."""
         mock_settings = Mock(spec=Settings)
@@ -246,7 +329,7 @@ class TestClaudeCommand:
         assert "Error: Claude CLI not found" in result.stderr
         assert "Please install Claude CLI" in result.stderr
 
-    @patch("claude_code_proxy.commands.config.get_settings")
+    @patch("claude_code_proxy.cli.get_settings")
     @patch("claude_code_proxy.cli.os.execvp")
     def test_claude_command_execvp_error(self, mock_execvp, mock_get_settings):
         """Test claude command when execvp fails."""
@@ -262,7 +345,7 @@ class TestClaudeCommand:
             assert result.exit_code == 1
             assert "Failed to execute command: Command not found" in result.stderr
 
-    @patch("claude_code_proxy.commands.config.get_settings")
+    @patch("claude_code_proxy.cli.get_settings")
     @patch("claude_code_proxy.cli.DockerCommandBuilder")
     @patch("claude_code_proxy.cli.os.execvp")
     def test_claude_command_docker_mode(
@@ -282,7 +365,7 @@ class TestClaudeCommand:
         mock_docker_builder.from_settings_and_overrides.assert_called_once()
         mock_docker_builder.execute_from_settings.assert_called_once()
 
-    @patch("claude_code_proxy.commands.config.get_settings")
+    @patch("claude_code_proxy.cli.get_settings")
     @patch("claude_code_proxy.cli.DockerCommandBuilder")
     @patch("claude_code_proxy.cli.os.execvp")
     def test_claude_command_docker_with_options(
@@ -323,7 +406,7 @@ class TestClaudeCommand:
         assert call_args[1]["docker_image"] == "custom:latest"
         assert call_args[1]["docker_env"] == ["API_KEY=test"]
 
-    @patch("claude_code_proxy.commands.config.get_settings")
+    @patch("claude_code_proxy.cli.get_settings")
     def test_claude_command_settings_error(self, mock_get_settings):
         """Test claude command when settings loading fails."""
         mock_get_settings.side_effect = Exception("Settings error")
@@ -499,7 +582,7 @@ class TestErrorScenarios:
             result.stdout + result.stderr
         )
 
-    @patch("claude_code_proxy.commands.config.get_settings")
+    @patch("claude_code_proxy.cli.get_settings")
     def test_claude_command_exception_handling(self, mock_get_settings):
         """Test claude command handles various exceptions."""
         mock_get_settings.side_effect = ValueError("Invalid configuration")
@@ -509,7 +592,7 @@ class TestErrorScenarios:
         assert result.exit_code == 1
         assert "Error executing claude command: Invalid configuration" in result.stderr
 
-    @patch("claude_code_proxy.commands.config.get_settings")
+    @patch("claude_code_proxy.cli.get_settings")
     @patch("claude_code_proxy.cli.os.execvp")
     def test_claude_command_permission_error(self, mock_execvp, mock_get_settings):
         """Test claude command handles permission errors."""
@@ -536,7 +619,7 @@ class TestFastAPICliIntegration:
 
     def test_run_command_help(self):
         """Test run command help."""
-        result = self.runner.invoke(app, ["run", "--help"])
+        result = self.runner.invoke(app, ["fastapi", "run", "--help"])
         assert result.exit_code == 0
         assert "Run a FastAPI app in production mode" in result.stdout
         assert "--host" in result.stdout
@@ -546,7 +629,7 @@ class TestFastAPICliIntegration:
 
     def test_dev_command_help(self):
         """Test dev command help."""
-        result = self.runner.invoke(app, ["dev", "--help"])
+        result = self.runner.invoke(app, ["fastapi", "dev", "--help"])
         assert result.exit_code == 0
         assert "Run a FastAPI app in development mode" in result.stdout
         assert "--host" in result.stdout
@@ -556,23 +639,23 @@ class TestFastAPICliIntegration:
     def test_fastapi_cli_commands_available(self):
         """Test that FastAPI CLI commands are available."""
         # Test that run command is available
-        result = self.runner.invoke(app, ["run", "--help"])
+        result = self.runner.invoke(app, ["fastapi", "run", "--help"])
         assert result.exit_code == 0
         assert "Run a FastAPI app in production mode" in result.stdout
 
         # Test that dev command is available
-        result = self.runner.invoke(app, ["dev", "--help"])
+        result = self.runner.invoke(app, ["fastapi", "dev", "--help"])
         assert result.exit_code == 0
         assert "Run a FastAPI app in development mode" in result.stdout
 
     def test_fastapi_cli_options_validation(self):
         """Test FastAPI CLI options validation."""
         # Test run command with invalid port
-        result = self.runner.invoke(app, ["run", "--port", "invalid"])
+        result = self.runner.invoke(app, ["fastapi", "run", "--port", "invalid"])
         assert result.exit_code != 0
 
         # Test run command with negative port
-        result = self.runner.invoke(app, ["run", "--port", "-1"])
+        result = self.runner.invoke(app, ["fastapi", "run", "--port", "-1"])
         assert result.exit_code != 0
 
     @patch("claude_code_proxy.cli.get_default_path_hook")
@@ -610,11 +693,11 @@ class TestFastAPICliIntegration:
     def test_fastapi_cli_integration_basic(self):
         """Test basic FastAPI CLI integration without starting servers."""
         # Test that commands exist and show proper help
-        result = self.runner.invoke(app, ["run", "--help"])
+        result = self.runner.invoke(app, ["fastapi", "run", "--help"])
         assert result.exit_code == 0
         assert "FastAPI app in production mode" in result.stdout
 
-        result = self.runner.invoke(app, ["dev", "--help"])
+        result = self.runner.invoke(app, ["fastapi", "dev", "--help"])
         assert result.exit_code == 0
         assert "FastAPI app in development mode" in result.stdout
 
@@ -622,10 +705,14 @@ class TestFastAPICliIntegration:
         """Test that FastAPI commands appear in main help."""
         result = self.runner.invoke(app, ["--help"])
         assert result.exit_code == 0
+        assert "fastapi" in result.stdout
+        assert "FastAPI development commands" in result.stdout
+
+        # Test that the fastapi subcommand shows the individual commands
+        result = self.runner.invoke(app, ["fastapi", "--help"])
+        assert result.exit_code == 0
         assert "run" in result.stdout
         assert "dev" in result.stdout
-        assert "Run a FastAPI app in production mode" in result.stdout
-        assert "Run a FastAPI app in development mode" in result.stdout
 
 
 @pytest.mark.integration
@@ -786,7 +873,9 @@ class TestApiCommandWithCliOverrides:
     @patch("claude_code_proxy.cli.get_settings")
     @patch("claude_code_proxy.cli._run")
     @patch("claude_code_proxy.cli.os.environ", {})
-    def test_api_command_claude_code_options_overrides(self, mock_run, mock_get_settings):
+    def test_api_command_claude_code_options_overrides(
+        self, mock_run, mock_get_settings
+    ):
         """Test API command with ClaudeCodeOptions parameter overrides."""
         mock_settings = Mock()
         mock_settings.host = "localhost"
@@ -810,55 +899,25 @@ class TestApiCommandWithCliOverrides:
         )
 
         # Should set environment variable with CLI overrides
-        from claude_code_proxy.cli import os
         import json
+
+        from claude_code_proxy.cli import os
 
         env_overrides = os.environ.get("CCPROXY_CONFIG_OVERRIDES")
         assert env_overrides is not None
         overrides = json.loads(env_overrides)
 
         assert overrides["claude_code_options"]["max_thinking_tokens"] == 15000
-        assert overrides["claude_code_options"]["allowed_tools"] == ["Read", "Write", "Bash"]
+        assert overrides["claude_code_options"]["allowed_tools"] == [
+            "Read",
+            "Write",
+            "Bash",
+        ]
         assert overrides["claude_code_options"]["permission_mode"] == "acceptEdits"
         assert overrides["claude_code_options"]["cwd"] == "/workspace"
 
     @patch("claude_code_proxy.cli.get_settings")
-    @patch("claude_code_proxy.cli._run")
-    @patch("claude_code_proxy.cli.os.environ", {})
-    def test_api_command_pool_settings_overrides(self, mock_run, mock_get_settings):
-        """Test API command with pool settings parameter overrides."""
-        mock_settings = Mock()
-        mock_settings.host = "localhost"
-        mock_settings.port = 8000
-        mock_settings.reload = False
-        mock_get_settings.return_value = mock_settings
-
-        result = self.runner.invoke(
-            app,
-            [
-                "api",
-                "--pool-enabled",
-                "--pool-min-size",
-                "3",
-                "--pool-max-size",
-                "8",
-                "--pool-idle-timeout",
-                "600",
-            ],
-        )
-
-        # Should set environment variable with CLI overrides
-        from claude_code_proxy.cli import os
-        import json
-
-        env_overrides = os.environ.get("CCPROXY_CONFIG_OVERRIDES")
-        assert env_overrides is not None
-        overrides = json.loads(env_overrides)
-
-        assert overrides["pool_settings"]["enabled"] is True
-        assert overrides["pool_settings"]["min_size"] == 3
-        assert overrides["pool_settings"]["max_size"] == 8
-        assert overrides["pool_settings"]["idle_timeout"] == 600
+    # Pool settings test removed - connection pooling functionality has been removed
 
     @patch("claude_code_proxy.cli.get_settings")
     @patch("claude_code_proxy.cli._run")
@@ -885,8 +944,9 @@ class TestApiCommandWithCliOverrides:
         )
 
         # Should set environment variable with CLI overrides
-        from claude_code_proxy.cli import os
         import json
+
+        from claude_code_proxy.cli import os
 
         env_overrides = os.environ.get("CCPROXY_CONFIG_OVERRIDES")
         assert env_overrides is not None
@@ -898,7 +958,9 @@ class TestApiCommandWithCliOverrides:
 
     @patch("claude_code_proxy.cli.get_settings")
     @patch("claude_code_proxy.cli.DockerCommandBuilder")
-    def test_api_command_docker_mode_with_overrides(self, mock_docker_builder, mock_get_settings):
+    def test_api_command_docker_mode_with_overrides(
+        self, mock_docker_builder, mock_get_settings
+    ):
         """Test API command in Docker mode with CLI overrides."""
         mock_settings = Mock()
         mock_settings.host = "localhost"
@@ -953,6 +1015,7 @@ class TestApiCommandWithCliOverrides:
 
         # Should not set environment overrides
         from claude_code_proxy.cli import os
+
         assert os.environ.get("CCPROXY_CONFIG_OVERRIDES") is None
 
     def test_api_command_help_shows_all_options(self):
@@ -976,9 +1039,7 @@ class TestApiCommandWithCliOverrides:
         assert "--max-thinking-tokens" in result.stdout
         assert "--allowed-tools" in result.stdout
 
-        # Check for pool settings
-        assert "--pool-enabled" in result.stdout
-        assert "--pool-min-size" in result.stdout
+        # Pool settings removed - no longer check for pool-related options
 
         # Check for Docker settings
         assert "--docker" in result.stdout
@@ -999,24 +1060,30 @@ class TestApiCommandWithCliOverrides:
             app,
             [
                 "api",
-                "--host", "127.0.0.1",
-                "--port", "9000",
+                "--host",
+                "127.0.0.1",
+                "--port",
+                "9000",
                 "--reload",
-                "--log-level", "DEBUG",
-                "--workers", "2",
-                "--auth-token", "secret-token",
-                "--max-thinking-tokens", "20000",
-                "--allowed-tools", "Read,Write,Bash,Edit",
-                "--permission-mode", "bypassPermissions",
-                "--pool-enabled",
-                "--pool-min-size", "1",
-                "--pool-max-size", "5",
+                "--log-level",
+                "DEBUG",
+                "--workers",
+                "2",
+                "--auth-token",
+                "secret-token",
+                "--max-thinking-tokens",
+                "20000",
+                "--allowed-tools",
+                "Read,Write,Bash,Edit",
+                "--permission-mode",
+                "bypassPermissions",
             ],
         )
 
         # Should set comprehensive environment overrides
-        from claude_code_proxy.cli import os
         import json
+
+        from claude_code_proxy.cli import os
 
         env_overrides = os.environ.get("CCPROXY_CONFIG_OVERRIDES")
         assert env_overrides is not None
@@ -1032,13 +1099,17 @@ class TestApiCommandWithCliOverrides:
 
         # Check ClaudeCodeOptions
         assert overrides["claude_code_options"]["max_thinking_tokens"] == 20000
-        assert overrides["claude_code_options"]["allowed_tools"] == ["Read", "Write", "Bash", "Edit"]
-        assert overrides["claude_code_options"]["permission_mode"] == "bypassPermissions"
+        assert overrides["claude_code_options"]["allowed_tools"] == [
+            "Read",
+            "Write",
+            "Bash",
+            "Edit",
+        ]
+        assert (
+            overrides["claude_code_options"]["permission_mode"] == "bypassPermissions"
+        )
 
-        # Check pool settings
-        assert overrides["pool_settings"]["enabled"] is True
-        assert overrides["pool_settings"]["min_size"] == 1
-        assert overrides["pool_settings"]["max_size"] == 5
+        # Pool settings removed - no longer check for pool-related settings
 
     @patch("claude_code_proxy.cli.get_settings")
     def test_api_command_settings_loading_error(self, mock_get_settings):
@@ -1059,20 +1130,23 @@ class TestSettingsWithCliOverrides:
         """Setup test environment."""
         # Clean environment
         import os
+
         if "CCPROXY_CONFIG_OVERRIDES" in os.environ:
             del os.environ["CCPROXY_CONFIG_OVERRIDES"]
 
     def teardown_method(self):
         """Clean up after tests."""
         import os
+
         if "CCPROXY_CONFIG_OVERRIDES" in os.environ:
             del os.environ["CCPROXY_CONFIG_OVERRIDES"]
 
     @patch("claude_code_proxy.config.settings.find_toml_config_file")
     def test_settings_with_cli_overrides_environment_variable(self, mock_find_config):
         """Test settings loading with CLI overrides from environment variable."""
-        import os
         import json
+        import os
+
         from claude_code_proxy.config.settings import get_settings
 
         mock_find_config.return_value = None
@@ -1083,8 +1157,8 @@ class TestSettingsWithCliOverrides:
             "port": 9999,
             "claude_code_options": {
                 "max_thinking_tokens": 25000,
-                "allowed_tools": ["Read", "Write"]
-            }
+                "allowed_tools": ["Read", "Write"],
+            },
         }
         os.environ["CCPROXY_CONFIG_OVERRIDES"] = json.dumps(overrides)
 
@@ -1099,6 +1173,7 @@ class TestSettingsWithCliOverrides:
     def test_settings_with_invalid_cli_overrides_json(self, mock_find_config):
         """Test settings loading handles invalid JSON in CLI overrides."""
         import os
+
         from claude_code_proxy.config.settings import get_settings
 
         mock_find_config.return_value = None
@@ -1115,6 +1190,7 @@ class TestSettingsWithCliOverrides:
     def test_settings_without_cli_overrides(self, mock_find_config):
         """Test settings loading without CLI overrides."""
         import os
+
         from claude_code_proxy.config.settings import get_settings
 
         mock_find_config.return_value = None

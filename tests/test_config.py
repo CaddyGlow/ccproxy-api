@@ -514,12 +514,15 @@ class TestTOMLConfigDiscovery:
             os.chdir(temp_dir)
 
             try:
-                with patch(
-                    "claude_code_proxy.utils.config.get_ccproxy_config_dir",
-                    return_value=Path(temp_dir) / ".config" / "ccproxy",
-                ), patch(
-                    "claude_code_proxy.utils.config.find_git_root",
-                    return_value=None,
+                with (
+                    patch(
+                        "claude_code_proxy.utils.config.get_ccproxy_config_dir",
+                        return_value=Path(temp_dir) / ".config" / "ccproxy",
+                    ),
+                    patch(
+                        "claude_code_proxy.utils.config.find_git_root",
+                        return_value=None,
+                    ),
                 ):
                     found_config = find_toml_config_file()
                     assert found_config is None
@@ -861,7 +864,7 @@ class TestJSONConfigSupport:
                     "host": "0.0.0.0",
                     "port": 5555,
                     "cors_origins": ["https://json.example.com"],
-                    "pool_settings": {"enabled": False, "max_size": 5},
+                    # Pool settings removed
                 },
                 f,
             )
@@ -873,8 +876,7 @@ class TestJSONConfigSupport:
                 assert settings.host == "0.0.0.0"
                 assert settings.port == 5555
                 assert settings.cors_origins == ["https://json.example.com"]
-                assert settings.pool_settings.enabled is False
-                assert settings.pool_settings.max_size == 5
+                # Pool settings assertions removed
             finally:
                 Path(f.name).unlink()
 
@@ -956,7 +958,7 @@ class TestYAMLConfigSupport:
                     "port": 7777,
                     "workers": 8,
                     "auth_token": "yaml-token",
-                    "pool_settings": {"min_size": 1, "max_size": 20},
+                    # Pool settings removed
                 },
                 f,
             )
@@ -969,8 +971,7 @@ class TestYAMLConfigSupport:
                 assert settings.port == 7777
                 assert settings.workers == 8
                 assert settings.auth_token == "yaml-token"
-                assert settings.pool_settings.min_size == 1
-                assert settings.pool_settings.max_size == 20
+                # Pool settings assertions removed
             finally:
                 Path(f.name).unlink()
 

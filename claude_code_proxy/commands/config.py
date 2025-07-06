@@ -1,6 +1,9 @@
 """Config command for Claude Code Proxy API."""
 
 import json
+import secrets
+import tempfile
+import tomllib
 from pathlib import Path
 from typing import Optional
 
@@ -303,15 +306,6 @@ def config_init(
                 "user_uid": None,
                 "user_gid": None,
             },
-            "pool_settings": {
-                "enabled": True,
-                "min_size": 2,
-                "max_size": 10,
-                "idle_timeout": 300,
-                "warmup_on_startup": True,
-                "health_check_interval": 60,
-                "acquire_timeout": 5.0,
-            },
         }
 
         # Determine output file name
@@ -380,15 +374,7 @@ def config_init(
                     "# user_gid = 1000  # Group ID for container (auto-detect if not set)\n\n"
                 )
 
-                f.write("# Connection pool configuration\n")
-                f.write("[pool_settings]\n")
-                f.write("enabled = true  # Enable connection pooling\n")
-                f.write("min_size = 2  # Minimum pool size\n")
-                f.write("max_size = 10  # Maximum pool size\n")
-                f.write("idle_timeout = 300  # Seconds before idle connections close\n")
-                f.write("warmup_on_startup = true  # Pre-create minimum instances\n")
-                f.write("health_check_interval = 60  # Seconds between health checks\n")
-                f.write("acquire_timeout = 5.0  # Max seconds to wait for instance\n")
+                # Pool settings removed - connection pooling functionality has been removed
 
         elif format == "json":
             output_file = output_dir / "config.json"
@@ -548,3 +534,255 @@ def config_validate(
     except Exception as e:
         typer.echo(f"Error validating configuration: {e}", err=True)
         raise typer.Exit(1) from e
+
+
+@app.command(name="generate-token")
+def generate_token(
+    save: bool = typer.Option(
+        False,
+        "--save",
+        "--write",
+        help="Save the token to configuration file",
+    ),
+    config_file: Path | None = typer.Option(
+        None,
+        "--config-file",
+        "-c",
+        help="Configuration file to update (default: auto-detect or create .ccproxy.toml)",
+    ),
+) -> None:
+    """Generate a secure random token for API authentication.
+
+    This command generates a secure authentication token that can be used with
+    both Anthropic and OpenAI compatible APIs.
+
+    Examples:
+        ccproxy config generate-token                    # Generate and display token
+        ccproxy config generate-token --save             # Generate and save to config
+        ccproxy config generate-token --save --config-file custom.toml  # Save to specific config
+    """
+    try:
+        # Generate a secure token
+        token = secrets.token_urlsafe(32)
+
+        console = Console()
+
+        # Display the generated token
+        console.print()
+        console.print(
+            Panel.fit(
+                f"[bold green]Generated Authentication Token[/bold green]\n[dim]Token: [/dim][bold]{token}[/bold]",
+                border_style="green",
+            )
+        )
+        console.print()
+
+        # Show environment variable commands - server first, then clients
+        console.print("[bold]Server Environment Variables:[/bold]")
+        console.print(f"[cyan]export AUTH_TOKEN={token}[/cyan]")
+        console.print()
+
+        console.print("[bold]Client Environment Variables:[/bold]")
+        console.print()
+
+        console.print("[dim]For Anthropic Python SDK clients:[/dim]")
+        console.print(f"[cyan]export ANTHROPIC_API_KEY={token}[/cyan]")
+        console.print("[cyan]export ANTHROPIC_BASE_URL=http://localhost:8000[/cyan]")
+        console.print()
+
+        console.print("[dim]For OpenAI Python SDK clients:[/dim]")
+        console.print(f"[cyan]export OPENAI_API_KEY={token}[/cyan]")
+        console.print(
+            "[cyan]export OPENAI_BASE_URL=http://localhost:8000/openai[/cyan]"
+        )
+        console.print()
+
+        console.print("[bold]For .env file:[/bold]")
+        console.print(f"[cyan]AUTH_TOKEN={token}[/cyan]")
+        console.print()
+
+        console.print("[bold]Usage with curl (using environment variables):[/bold]")
+        console.print("[dim]Anthropic API:[/dim]")
+        console.print('[cyan]curl -H "x-api-key: $ANTHROPIC_API_KEY" \\\\[/cyan]')
+        console.print('[cyan]     -H "Content-Type: application/json" \\\\[/cyan]')
+        console.print('[cyan]     "$ANTHROPIC_BASE_URL/v1/messages"[/cyan]')
+        console.print()
+        console.print("[dim]OpenAI API:[/dim]")
+        console.print(
+            '[cyan]curl -H "Authorization: Bearer $OPENAI_API_KEY" \\\\[/cyan]'
+        )
+        console.print('[cyan]     -H "Content-Type: application/json" \\\\[/cyan]')
+        console.print('[cyan]     "$OPENAI_BASE_URL/v1/chat/completions"[/cyan]')
+        console.print()
+
+        # Save to config file if requested
+        if save:
+            # Determine config file path
+            if config_file is None:
+                # Try to find existing config file or create default
+                from claude_code_proxy.utils import find_toml_config_file
+
+                config_file = find_toml_config_file()
+
+                if config_file is None:
+                    # Create default config file in current directory
+                    config_file = Path(".ccproxy.toml")
+
+            console.print(
+                f"[bold]Saving token to configuration file:[/bold] {config_file}"
+            )
+
+            # Read existing config or create new one
+            config_data = {}
+            if config_file.exists():
+                try:
+                    with config_file.open("rb") as f:
+                        config_data = tomllib.load(f)
+                    console.print("[dim]Updated existing configuration file[/dim]")
+                except Exception as e:
+                    console.print(
+                        f"[yellow]Warning: Could not read existing config file: {e}[/yellow]"
+                    )
+                    console.print("[dim]Creating new configuration file[/dim]")
+            else:
+                console.print("[dim]Created new configuration file[/dim]")
+
+            # Update auth_token in config
+            config_data["auth_token"] = token
+
+            # Write updated config
+            _write_toml_config(config_file, config_data)
+
+            console.print(f"[green]✓[/green] Token saved to {config_file}")
+            console.print()
+            console.print("[bold]To use this configuration:[/bold]")
+            console.print(f"[cyan]ccproxy --config {config_file} api[/cyan]")
+            console.print()
+            console.print("[dim]Or set CONFIG_FILE environment variable:[/dim]")
+            console.print(f"[cyan]export CONFIG_FILE={config_file}[/cyan]")
+            console.print("[cyan]ccproxy api[/cyan]")
+
+    except Exception as e:
+        typer.echo(f"Error generating token: {e}", err=True)
+        raise typer.Exit(1) from e
+
+
+def _write_toml_config(config_file: Path, config_data: dict) -> None:
+    """Write configuration data to a TOML file with proper formatting."""
+    try:
+        # Create a nicely formatted TOML file
+        with config_file.open("w", encoding="utf-8") as f:
+            f.write("# Claude Code Proxy API Configuration\n")
+            f.write("# Generated by ccproxy config generate-token\n\n")
+
+            # Write server settings
+            if any(
+                key in config_data
+                for key in ["host", "port", "log_level", "workers", "reload"]
+            ):
+                f.write("# Server configuration\n")
+                if "host" in config_data:
+                    f.write(f'host = "{config_data["host"]}"\n')
+                if "port" in config_data:
+                    f.write(f"port = {config_data['port']}\n")
+                if "log_level" in config_data:
+                    f.write(f'log_level = "{config_data["log_level"]}"\n')
+                if "workers" in config_data:
+                    f.write(f"workers = {config_data['workers']}\n")
+                if "reload" in config_data:
+                    f.write(f"reload = {str(config_data['reload']).lower()}\n")
+                f.write("\n")
+
+            # Write security settings
+            if any(
+                key in config_data
+                for key in ["auth_token", "cors_origins", "tools_handling"]
+            ):
+                f.write("# Security configuration\n")
+                if "auth_token" in config_data:
+                    f.write(f'auth_token = "{config_data["auth_token"]}"\n')
+                if "cors_origins" in config_data:
+                    origins = config_data["cors_origins"]
+                    if isinstance(origins, list):
+                        origins_str = '", "'.join(origins)
+                        f.write(f'cors_origins = ["{origins_str}"]\n')
+                    else:
+                        f.write(f'cors_origins = ["{origins}"]\n')
+                if "tools_handling" in config_data:
+                    f.write(f'tools_handling = "{config_data["tools_handling"]}"\n')
+                f.write("\n")
+
+            # Write Claude CLI configuration
+            if "claude_cli_path" in config_data:
+                f.write("# Claude CLI configuration\n")
+                if config_data["claude_cli_path"]:
+                    f.write(f'claude_cli_path = "{config_data["claude_cli_path"]}"\n')
+                else:
+                    f.write(
+                        '# claude_cli_path = "/path/to/claude"  # Auto-detect if not set\n'
+                    )
+                f.write("\n")
+
+            # Write Docker settings
+            if "docker_settings" in config_data:
+                docker_settings = config_data["docker_settings"]
+                f.write("# Docker configuration\n")
+                f.write("[docker_settings]\n")
+
+                for key, value in docker_settings.items():
+                    if isinstance(value, str):
+                        f.write(f'{key} = "{value}"\n')
+                    elif isinstance(value, bool):
+                        f.write(f"{key} = {str(value).lower()}\n")
+                    elif isinstance(value, int | float):
+                        f.write(f"{key} = {value}\n")
+                    elif isinstance(value, list):
+                        if value:  # Only write non-empty lists
+                            if all(isinstance(item, str) for item in value):
+                                items_str = '", "'.join(value)
+                                f.write(f'{key} = ["{items_str}"]\n')
+                            else:
+                                f.write(f"{key} = {value}\n")
+                        else:
+                            f.write(f"{key} = []\n")
+                    elif isinstance(value, dict):
+                        if value:  # Only write non-empty dicts
+                            f.write(f"{key} = {json.dumps(value)}\n")
+                        else:
+                            f.write(f"{key} = {{}}\n")
+                    elif value is None:
+                        f.write(f"# {key} = null  # Not configured\n")
+                f.write("\n")
+
+            # Write any remaining top-level settings
+            written_keys = {
+                "host",
+                "port",
+                "log_level",
+                "workers",
+                "reload",
+                "auth_token",
+                "cors_origins",
+                "tools_handling",
+                "claude_cli_path",
+                "docker_settings",
+            }
+            remaining_keys = set(config_data.keys()) - written_keys
+
+            if remaining_keys:
+                f.write("# Additional settings\n")
+                for key in sorted(remaining_keys):
+                    value = config_data[key]
+                    if isinstance(value, str):
+                        f.write(f'{key} = "{value}"\n')
+                    elif isinstance(value, bool):
+                        f.write(f"{key} = {str(value).lower()}\n")
+                    elif isinstance(value, int | float):
+                        f.write(f"{key} = {value}\n")
+                    elif isinstance(value, list | dict):
+                        f.write(f"{key} = {json.dumps(value)}\n")
+                    elif value is None:
+                        f.write(f"# {key} = null\n")
+
+    except Exception as e:
+        raise ValueError(f"Failed to write TOML configuration: {e}") from e

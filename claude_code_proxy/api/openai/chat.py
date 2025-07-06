@@ -21,7 +21,8 @@ from claude_code_proxy.models.openai_models import (
 )
 from claude_code_proxy.services.claude_client import ClaudeClient
 from claude_code_proxy.services.openai_streaming import stream_claude_response_openai
-from claude_code_proxy.services.pool_manager import pool_manager
+
+# Pool manager removed - creating clients directly
 from claude_code_proxy.services.translator import OpenAITranslator
 from claude_code_proxy.utils import merge_claude_code_options
 
@@ -46,7 +47,6 @@ async def create_chat_completion(
     Returns:
         OpenAI-compatible chat completion response or streaming response
     """
-    pooled_connection = None
     try:
         # Get settings and check tools handling configuration
         settings = get_settings()
@@ -68,11 +68,9 @@ async def create_chat_completion(
             elif settings.tools_handling == "warning":
                 logger.warning(f"Tools ignored: {tools_message}")
 
-        # Get Claude client from pool
-        logger.info(
-            "[API] Acquiring Claude client from pool for OpenAI chat completion request"
-        )
-        claude_client, pooled_connection = await pool_manager.acquire_client()
+        # Create Claude client directly
+        logger.info("[API] Creating Claude client for OpenAI chat completion request")
+        claude_client = ClaudeClient()
         translator = OpenAITranslator()
 
         # Prepare Claude Code options overrides from request
@@ -228,10 +226,3 @@ async def create_chat_completion(
             status_code=HTTP_500_INTERNAL_SERVER_ERROR,
             detail=error_response.model_dump(),
         ) from e
-    finally:
-        # Release connection back to pool
-        if pooled_connection:
-            logger.info(
-                f"[API] Releasing Claude client connection {pooled_connection.id} back to pool"
-            )
-            await pool_manager.release_client(pooled_connection)
