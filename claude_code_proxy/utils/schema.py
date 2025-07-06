@@ -75,7 +75,7 @@ def save_schema_file(schema: dict[str, Any], output_path: Path) -> None:
 
 
 def generate_schema_files(output_dir: Path | None = None) -> list[Path]:
-    """Generate JSON Schema files for TOML configuration.
+    """Generate JSON Schema files for configuration validation.
 
     Args:
         output_dir: Directory to save schema files. Defaults to project root.
@@ -184,6 +184,88 @@ def validate_toml_with_schema(toml_path: Path, schema_path: Path | None = None) 
         mode="w", suffix=".json", delete=False
     ) as temp_json:
         json.dump(toml_data, temp_json)
+        temp_json_path = temp_json.name
+
+    try:
+        # Load or generate schema
+        if schema_path is None:
+            schema = generate_json_schema()
+            # Create temporary schema file
+            with tempfile.NamedTemporaryFile(
+                mode="w", suffix=".json", delete=False
+            ) as temp_schema:
+                json.dump(schema, temp_schema)
+                schema_file = temp_schema.name
+        else:
+            schema_file = str(schema_path)
+
+        try:
+            # Use check-jsonschema CLI to validate
+            result = subprocess.run(
+                ["check-jsonschema", "--schemafile", schema_file, temp_json_path],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            return result.returncode == 0
+        finally:
+            # Clean up temporary schema file if we created one
+            if schema_path is None:
+                Path(schema_file).unlink(missing_ok=True)
+    finally:
+        # Clean up temporary JSON file
+        Path(temp_json_path).unlink(missing_ok=True)
+
+
+def validate_config_with_schema(
+    config_path: Path, schema_path: Path | None = None
+) -> bool:
+    """Validate a configuration file against the generated JSON Schema.
+
+    Args:
+        config_path: Path to config file to validate (TOML, JSON, or YAML)
+        schema_path: Path to JSON Schema file. Auto-detects if None.
+
+    Returns:
+        bool: True if valid, False otherwise
+
+    Raises:
+        ValidationError: If config content is invalid according to schema
+        ValueError: If config format is unsupported
+    """
+    import subprocess
+    import tempfile
+    import tomllib
+
+    suffix = config_path.suffix.lower()
+
+    # Load config data based on file type
+    if suffix in [".toml"]:
+        with config_path.open("rb") as f:
+            config_data = tomllib.load(f)
+    elif suffix in [".json"]:
+        with config_path.open("r", encoding="utf-8") as f:
+            config_data = json.load(f)
+    elif suffix in [".yaml", ".yml"]:
+        try:
+            import yaml  # type: ignore[import-untyped]
+        except ImportError as e:
+            raise ValueError(
+                "YAML support is not available. Install with: pip install pyyaml"
+            ) from e
+        with config_path.open("r", encoding="utf-8") as f:
+            config_data = yaml.safe_load(f)
+    else:
+        raise ValueError(
+            f"Unsupported config file format: {suffix}. "
+            "Supported formats: .toml, .json, .yaml, .yml"
+        )
+
+    # Create temporary JSON file from config data
+    with tempfile.NamedTemporaryFile(
+        mode="w", suffix=".json", delete=False
+    ) as temp_json:
+        json.dump(config_data, temp_json)
         temp_json_path = temp_json.name
 
     try:

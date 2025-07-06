@@ -12,6 +12,7 @@ from typing import Optional
 import fastapi_cli.discover
 import typer
 import uvicorn
+from click import get_current_context
 from fastapi_cli.cli import _run
 from fastapi_cli.cli import app as fastapi_app
 from fastapi_cli.exceptions import FastAPICLIException
@@ -27,7 +28,7 @@ from claude_code_proxy.utils.helper import get_package_dir
 from claude_code_proxy.utils.schema import (
     generate_schema_files,
     generate_taplo_config,
-    validate_toml_with_schema,
+    validate_config_with_schema,
 )
 
 
@@ -58,9 +59,26 @@ def main(
         is_eager=True,
         help="Show version and exit.",
     ),
+    config: Path | None = typer.Option(
+        None,
+        "--config",
+        "-c",
+        help="Path to configuration file (TOML, JSON, or YAML)",
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+        readable=True,
+    ),
 ) -> None:
     """Claude Code Proxy API Server - Anthropic and OpenAI compatible interface for Claude."""
-    pass
+    # Store config path in context for use by commands
+    try:
+        ctx = get_current_context()
+        ctx.ensure_object(dict)
+        ctx.obj["config_path"] = config
+    except RuntimeError:
+        # No active click context (e.g., in tests)
+        pass
 
 
 # Remove the fastapi callback to avoid the warning
@@ -80,6 +98,19 @@ def get_default_path_hook() -> Path:
     )
 
 
+def get_config_path_from_context() -> Path | None:
+    """Get config path from typer context if available."""
+    try:
+        ctx = get_current_context()
+        if ctx and ctx.obj and "config_path" in ctx.obj:
+            config_path = ctx.obj["config_path"]
+            return config_path if config_path is None else Path(config_path)
+    except RuntimeError:
+        # No active click context (e.g., in tests)
+        pass
+    return None
+
+
 fastapi_cli.discover.get_default_path = get_default_path_hook
 
 
@@ -87,7 +118,7 @@ fastapi_cli.discover.get_default_path = get_default_path_hook
 def config() -> None:
     """Show current configuration."""
     try:
-        settings = get_settings()
+        settings = get_settings(config_path=get_config_path_from_context())
         console = Console()
 
         # Main server configuration table
@@ -273,6 +304,217 @@ def config() -> None:
 
 
 @app.command()
+def config_init(
+    format: str = typer.Option(
+        "toml",
+        "--format",
+        "-f",
+        help="Configuration file format (toml, json, or yaml)",
+    ),
+    output_dir: Path | None = typer.Option(
+        None,
+        "--output-dir",
+        "-o",
+        help="Output directory for example config files (default: XDG_CONFIG_HOME/ccproxy)",
+    ),
+    force: bool = typer.Option(
+        False,
+        "--force",
+        help="Overwrite existing configuration files",
+    ),
+) -> None:
+    """Generate example configuration files.
+
+    This command creates example configuration files with all available options
+    and documentation comments.
+
+    Examples:
+        ccproxy config init                      # Create TOML config in default location
+        ccproxy config init --format json        # Create JSON config
+        ccproxy config init --format yaml        # Create YAML config
+        ccproxy config init --output-dir ./config  # Create in specific directory
+    """
+    # Validate format
+    valid_formats = ["toml", "json", "yaml"]
+    if format not in valid_formats:
+        typer.echo(
+            f"Error: Invalid format '{format}'. Must be one of: {', '.join(valid_formats)}",
+            err=True,
+        )
+        raise typer.Exit(1)
+
+    try:
+        from claude_code_proxy.utils.xdg import get_ccproxy_config_dir
+
+        # Determine output directory
+        if output_dir is None:
+            output_dir = get_ccproxy_config_dir()
+
+        # Create output directory if it doesn't exist
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        # Generate example configuration
+        example_config = {
+            "host": "127.0.0.1",
+            "port": 8000,
+            "log_level": "INFO",
+            "workers": 4,
+            "reload": False,
+            "cors_origins": ["*"],
+            "auth_token": None,
+            "tools_handling": "warning",
+            "claude_cli_path": None,
+            "docker_settings": {
+                "docker_image": "claude-code-proxy",
+                "docker_volumes": [],
+                "docker_environment": {},
+                "docker_additional_args": [],
+                "docker_home_directory": None,
+                "docker_workspace_directory": None,
+                "user_mapping_enabled": True,
+                "user_uid": None,
+                "user_gid": None,
+            },
+            "pool_settings": {
+                "enabled": True,
+                "min_size": 2,
+                "max_size": 10,
+                "idle_timeout": 300,
+                "warmup_on_startup": True,
+                "health_check_interval": 60,
+                "acquire_timeout": 5.0,
+            },
+        }
+
+        # Determine output file name
+        if format == "toml":
+            output_file = output_dir / "config.toml"
+            if output_file.exists() and not force:
+                typer.echo(
+                    f"Error: {output_file} already exists. Use --force to overwrite.",
+                    err=True,
+                )
+                raise typer.Exit(1)
+
+            # Write TOML with comments
+            with output_file.open("w", encoding="utf-8") as f:
+                f.write("# Claude Code Proxy API Configuration\n")
+                f.write("# This file configures the ccproxy server settings\n\n")
+
+                f.write("# Server configuration\n")
+                f.write('host = "127.0.0.1"  # Server host address\n')
+                f.write("port = 8000  # Server port number\n")
+                f.write(
+                    'log_level = "INFO"  # Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)\n'
+                )
+                f.write("workers = 4  # Number of worker processes\n")
+                f.write("reload = false  # Enable auto-reload for development\n\n")
+
+                f.write("# Security configuration\n")
+                f.write('cors_origins = ["*"]  # CORS allowed origins\n')
+                f.write(
+                    '# auth_token = "your-secret-token"  # Bearer token for API authentication (optional)\n'
+                )
+                f.write(
+                    'tools_handling = "warning"  # How to handle tools in requests (error, warning, ignore)\n\n'
+                )
+
+                f.write("# Claude CLI configuration\n")
+                f.write(
+                    '# claude_cli_path = "/path/to/claude"  # Path to Claude CLI executable (auto-detect if not set)\n\n'
+                )
+
+                f.write("# Docker configuration\n")
+                f.write("[docker_settings]\n")
+                f.write(
+                    'docker_image = "claude-code-proxy"  # Docker image for Claude commands\n'
+                )
+                f.write(
+                    "docker_volumes = []  # Volume mounts in 'host:container[:options]' format\n"
+                )
+                f.write(
+                    "docker_environment = {}  # Environment variables for Docker container\n"
+                )
+                f.write(
+                    "docker_additional_args = []  # Additional Docker run arguments\n"
+                )
+                f.write(
+                    '# docker_home_directory = "/path/to/home"  # Host directory for container home\n'
+                )
+                f.write(
+                    '# docker_workspace_directory = "/path/to/workspace"  # Host directory for workspace\n'
+                )
+                f.write("user_mapping_enabled = true  # Enable UID/GID mapping\n")
+                f.write(
+                    "# user_uid = 1000  # User ID for container (auto-detect if not set)\n"
+                )
+                f.write(
+                    "# user_gid = 1000  # Group ID for container (auto-detect if not set)\n\n"
+                )
+
+                f.write("# Connection pool configuration\n")
+                f.write("[pool_settings]\n")
+                f.write("enabled = true  # Enable connection pooling\n")
+                f.write("min_size = 2  # Minimum pool size\n")
+                f.write("max_size = 10  # Maximum pool size\n")
+                f.write("idle_timeout = 300  # Seconds before idle connections close\n")
+                f.write("warmup_on_startup = true  # Pre-create minimum instances\n")
+                f.write("health_check_interval = 60  # Seconds between health checks\n")
+                f.write("acquire_timeout = 5.0  # Max seconds to wait for instance\n")
+
+        elif format == "json":
+            output_file = output_dir / "config.json"
+            if output_file.exists() and not force:
+                typer.echo(
+                    f"Error: {output_file} already exists. Use --force to overwrite.",
+                    err=True,
+                )
+                raise typer.Exit(1)
+
+            # Write JSON with pretty formatting
+            with output_file.open("w", encoding="utf-8") as f:
+                json.dump(example_config, f, indent=2)
+                f.write("\n")
+
+        elif format == "yaml":
+            try:
+                import yaml  # type: ignore[import-untyped]
+            except ImportError as e:
+                typer.echo(
+                    "Error: YAML support is not available. Install with: pip install pyyaml",
+                    err=True,
+                )
+                raise typer.Exit(1) from e
+
+            output_file = output_dir / "config.yaml"
+            if output_file.exists() and not force:
+                typer.echo(
+                    f"Error: {output_file} already exists. Use --force to overwrite.",
+                    err=True,
+                )
+                raise typer.Exit(1)
+
+            # Write YAML with comments
+            with output_file.open("w", encoding="utf-8") as f:
+                f.write("# Claude Code Proxy API Configuration\n")
+                f.write("# This file configures the ccproxy server settings\n\n")
+                yaml.dump(example_config, f, default_flow_style=False, sort_keys=False)
+
+        typer.echo(f"Created example configuration file: {output_file}")
+        typer.echo("")
+        typer.echo("To use this configuration:")
+        typer.echo(f"  ccproxy --config {output_file} api")
+        typer.echo("")
+        typer.echo("Or set the CONFIG_FILE environment variable:")
+        typer.echo(f"  export CONFIG_FILE={output_file}")
+        typer.echo("  ccproxy api")
+
+    except Exception as e:
+        typer.echo(f"Error creating configuration file: {e}", err=True)
+        raise typer.Exit(1) from e
+
+
+@app.command()
 def generate_token() -> None:
     """Generate a secure random token for API authentication."""
     token = secrets.token_urlsafe(32)
@@ -298,7 +540,7 @@ def schema(
         None,
         "--validate",
         "-v",
-        help="Validate a TOML file against the schema",
+        help="Validate a configuration file (TOML/JSON/YAML) against the schema",
     ),
     taplo: bool = typer.Option(
         False,
@@ -306,16 +548,19 @@ def schema(
         help="Generate taplo configuration for TOML editor support",
     ),
 ) -> None:
-    """Generate JSON Schema files for TOML configuration validation.
+    """Generate JSON Schema files for configuration validation.
 
     This command generates JSON Schema files that can be used by editors
-    for TOML configuration file validation, autocomplete, and syntax highlighting.
+    for configuration file validation, autocomplete, and syntax highlighting.
+    Supports TOML, JSON, and YAML configuration files.
 
     Examples:
         ccproxy schema                    # Generate schema files in current directory
         ccproxy schema --output-dir ./schemas  # Generate in specific directory
         ccproxy schema --taplo           # Also generate taplo config
-        ccproxy schema --validate config.toml  # Validate a TOML file
+        ccproxy schema --validate config.toml  # Validate a config file
+        ccproxy schema --validate config.yaml  # Validate a YAML config
+        ccproxy schema --validate config.json  # Validate a JSON config
     """
     try:
         if validate:
@@ -327,11 +572,11 @@ def schema(
             typer.echo(f"Validating {validate}...")
 
             try:
-                is_valid = validate_toml_with_schema(validate)
+                is_valid = validate_config_with_schema(validate)
                 if is_valid:
-                    typer.echo("✓ TOML file is valid according to schema.")
+                    typer.echo("✓ Configuration file is valid according to schema.")
                 else:
-                    typer.echo("✗ TOML file validation failed.", err=True)
+                    typer.echo("✗ Configuration file validation failed.", err=True)
                     raise typer.Exit(1)
             except ImportError as e:
                 typer.echo(f"Error: {e}", err=True)
@@ -468,7 +713,7 @@ def api(
     try:
         if docker:
             # Load settings to get Docker configuration
-            settings = get_settings()
+            settings = get_settings(config_path=get_config_path_from_context())
             port = port if port is None else settings.port
             # Prepare server command using fastapi
             server_args = [
@@ -618,7 +863,7 @@ def claude(
     try:
         if docker:
             # Load settings to get Docker configuration
-            settings = get_settings()
+            settings = get_settings(config_path=get_config_path_from_context())
 
             # Show the command before executing
             docker_cmd = DockerCommandBuilder.from_settings_and_overrides(
@@ -656,7 +901,7 @@ def claude(
             )
         else:
             # Load settings to find claude path
-            settings = get_settings()
+            settings = get_settings(config_path=get_config_path_from_context())
 
             # Get claude path
             claude_path = settings.claude_cli_path

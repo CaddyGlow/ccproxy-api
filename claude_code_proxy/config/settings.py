@@ -1,10 +1,19 @@
 """Settings configuration for Claude Proxy API Server."""
 
+import json
 import os
 import shutil
 import tomllib
 from pathlib import Path
 from typing import Any, Literal
+
+
+try:
+    import yaml  # type: ignore[import-untyped]
+
+    HAS_YAML = True
+except ImportError:
+    HAS_YAML = False
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -636,6 +645,82 @@ class Settings(BaseSettings):
             raise ValueError(f"Invalid TOML syntax in {toml_path}: {e}") from e
 
     @classmethod
+    def load_json_config(cls, json_path: Path) -> dict[str, Any]:
+        """Load configuration from a JSON file.
+
+        Args:
+            json_path: Path to the JSON configuration file
+
+        Returns:
+            dict: Configuration data from the JSON file
+
+        Raises:
+            ValueError: If the JSON file is invalid or cannot be read
+        """
+        try:
+            with json_path.open("r", encoding="utf-8") as f:
+                data = json.load(f)
+                return data if isinstance(data, dict) else {}
+        except OSError as e:
+            raise ValueError(f"Cannot read JSON config file {json_path}: {e}") from e
+        except json.JSONDecodeError as e:
+            raise ValueError(f"Invalid JSON syntax in {json_path}: {e}") from e
+
+    @classmethod
+    def load_yaml_config(cls, yaml_path: Path) -> dict[str, Any]:
+        """Load configuration from a YAML file.
+
+        Args:
+            yaml_path: Path to the YAML configuration file
+
+        Returns:
+            dict: Configuration data from the YAML file
+
+        Raises:
+            ValueError: If the YAML file is invalid or cannot be read
+        """
+        if not HAS_YAML:
+            raise ValueError(
+                "YAML support is not available. Install with: pip install pyyaml"
+            )
+
+        try:
+            with yaml_path.open("r", encoding="utf-8") as f:
+                data = yaml.safe_load(f)
+                return data if isinstance(data, dict) else {}
+        except OSError as e:
+            raise ValueError(f"Cannot read YAML config file {yaml_path}: {e}") from e
+        except yaml.YAMLError as e:
+            raise ValueError(f"Invalid YAML syntax in {yaml_path}: {e}") from e
+
+    @classmethod
+    def load_config_file(cls, config_path: Path) -> dict[str, Any]:
+        """Load configuration from a file based on its extension.
+
+        Args:
+            config_path: Path to the configuration file
+
+        Returns:
+            dict: Configuration data from the file
+
+        Raises:
+            ValueError: If the file format is unsupported or invalid
+        """
+        suffix = config_path.suffix.lower()
+
+        if suffix in [".toml"]:
+            return cls.load_toml_config(config_path)
+        elif suffix in [".json"]:
+            return cls.load_json_config(config_path)
+        elif suffix in [".yaml", ".yml"]:
+            return cls.load_yaml_config(config_path)
+        else:
+            raise ValueError(
+                f"Unsupported config file format: {suffix}. "
+                "Supported formats: .toml, .json, .yaml, .yml"
+            )
+
+    @classmethod
     def from_toml(cls, toml_path: Path | None = None, **kwargs: Any) -> "Settings":
         """Create Settings instance from TOML configuration.
 
@@ -646,26 +731,62 @@ class Settings(BaseSettings):
         Returns:
             Settings: Configured Settings instance
         """
-        # Auto-discover TOML config file if not provided
-        if toml_path is None:
-            toml_path = find_toml_config_file()
+        # Use the more generic from_config method
+        return cls.from_config(config_path=toml_path, **kwargs)
 
-        # Load TOML config if found
-        toml_config = {}
-        if toml_path and toml_path.exists():
-            toml_config = cls.load_toml_config(toml_path)
+    @classmethod
+    def from_config(
+        cls, config_path: Path | str | None = None, **kwargs: Any
+    ) -> "Settings":
+        """Create Settings instance from configuration file.
 
-        # Merge TOML config with kwargs (kwargs take precedence)
-        merged_config = {**toml_config, **kwargs}
+        Args:
+            config_path: Path to configuration file. Can be:
+                - None: Auto-discover config file or use CONFIG_FILE env var
+                - Path or str: Use this specific config file
+            **kwargs: Additional keyword arguments to override config values
+
+        Returns:
+            Settings: Configured Settings instance
+        """
+        # Check for CONFIG_FILE environment variable first
+        if config_path is None:
+            config_path_env = os.environ.get("CONFIG_FILE")
+            if config_path_env:
+                config_path = Path(config_path_env)
+
+        # Convert string to Path if needed
+        if isinstance(config_path, str):
+            config_path = Path(config_path)
+
+        # Auto-discover config file if not provided
+        if config_path is None:
+            config_path = find_toml_config_file()
+
+        # Load config if found
+        config_data = {}
+        if config_path and config_path.exists():
+            config_data = cls.load_config_file(config_path)
+
+        # Merge config with kwargs (kwargs take precedence)
+        merged_config = {**config_data, **kwargs}
 
         # Create Settings instance with merged config
         return cls(**merged_config)
 
 
-def get_settings() -> Settings:
-    """Get the global settings instance with TOML configuration support."""
+def get_settings(config_path: Path | str | None = None) -> Settings:
+    """Get the global settings instance with configuration file support.
+
+    Args:
+        config_path: Optional path to configuration file. If None, uses CONFIG_FILE env var
+                    or auto-discovers config file.
+
+    Returns:
+        Settings: Configured Settings instance
+    """
     try:
-        return Settings.from_toml()
+        return Settings.from_config(config_path=config_path)
     except Exception as e:
         # If settings can't be loaded (e.g., missing API key),
         # this will be handled by the caller

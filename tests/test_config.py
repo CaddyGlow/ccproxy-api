@@ -1,5 +1,6 @@
 """Test configuration module."""
 
+import json
 import os
 import tempfile
 from pathlib import Path
@@ -708,3 +709,344 @@ class TestDockerSettingsUserMapping:
                     os.environ.pop(key, None)
                 else:
                     os.environ[key] = old_value
+
+
+@pytest.mark.unit
+class TestConfigFileOverride:
+    """Test configuration file override functionality."""
+
+    def test_config_file_env_var_override(self):
+        """Test CONFIG_FILE environment variable overrides default discovery."""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".toml", delete=False) as f:
+            f.write("""
+            host = "test-env-override"
+            port = 7777
+            log_level = "WARNING"
+            """)
+            f.flush()
+
+            # Save original CONFIG_FILE
+            original_config_file = os.environ.get("CONFIG_FILE")
+
+            try:
+                # Set CONFIG_FILE environment variable
+                os.environ["CONFIG_FILE"] = str(f.name)
+
+                # Create settings - should use CONFIG_FILE
+                settings = Settings.from_config()
+
+                assert settings.host == "test-env-override"
+                assert settings.port == 7777
+                assert settings.log_level == "WARNING"
+            finally:
+                # Restore original CONFIG_FILE
+                if original_config_file is not None:
+                    os.environ["CONFIG_FILE"] = original_config_file
+                else:
+                    os.environ.pop("CONFIG_FILE", None)
+
+                Path(f.name).unlink()
+
+    def test_config_path_parameter_override(self):
+        """Test config_path parameter overrides CONFIG_FILE env var."""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".toml", delete=False) as f1:
+            f1.write("""
+            host = "from-env"
+            port = 1111
+            """)
+            f1.flush()
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".toml", delete=False) as f2:
+            f2.write("""
+            host = "from-param"
+            port = 2222
+            """)
+            f2.flush()
+
+        # Save original CONFIG_FILE
+        original_config_file = os.environ.get("CONFIG_FILE")
+
+        try:
+            # Set CONFIG_FILE to point to first file
+            os.environ["CONFIG_FILE"] = str(f1.name)
+
+            # But pass second file as parameter - should override env var
+            settings = Settings.from_config(config_path=f2.name)
+
+            assert settings.host == "from-param"
+            assert settings.port == 2222
+        finally:
+            # Restore original CONFIG_FILE
+            if original_config_file is not None:
+                os.environ["CONFIG_FILE"] = original_config_file
+            else:
+                os.environ.pop("CONFIG_FILE", None)
+
+            Path(f1.name).unlink()
+            Path(f2.name).unlink()
+
+    def test_get_settings_with_config_path(self):
+        """Test get_settings function with config_path parameter."""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".toml", delete=False) as f:
+            f.write("""
+            host = "custom-host"
+            port = 3333
+            workers = 2
+            """)
+            f.flush()
+
+            try:
+                settings = get_settings(config_path=f.name)
+
+                assert settings.host == "custom-host"
+                assert settings.port == 3333
+                assert settings.workers == 2
+            finally:
+                Path(f.name).unlink()
+
+
+@pytest.mark.unit
+class TestJSONConfigSupport:
+    """Test JSON configuration file support."""
+
+    def test_load_json_config_valid_file(self):
+        """Test loading valid JSON configuration."""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            json.dump(
+                {
+                    "host": "json-host",
+                    "port": 4444,
+                    "log_level": "ERROR",
+                    "docker_settings": {"docker_image": "json-image"},
+                },
+                f,
+            )
+            f.flush()
+
+            try:
+                config = Settings.load_json_config(Path(f.name))
+
+                assert config["host"] == "json-host"
+                assert config["port"] == 4444
+                assert config["log_level"] == "ERROR"
+                assert config["docker_settings"]["docker_image"] == "json-image"
+            finally:
+                Path(f.name).unlink()
+
+    def test_load_json_config_invalid_syntax(self):
+        """Test loading JSON file with invalid syntax."""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            f.write("{invalid json content")
+            f.flush()
+
+            try:
+                with pytest.raises(ValueError, match="Invalid JSON syntax"):
+                    Settings.load_json_config(Path(f.name))
+            finally:
+                Path(f.name).unlink()
+
+    def test_load_json_config_nonexistent_file(self):
+        """Test loading non-existent JSON file."""
+        with pytest.raises(ValueError, match="Cannot read JSON config file"):
+            Settings.load_json_config(Path("/nonexistent/file.json"))
+
+    def test_from_config_with_json_file(self):
+        """Test creating Settings from JSON file."""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            json.dump(
+                {
+                    "host": "0.0.0.0",
+                    "port": 5555,
+                    "cors_origins": ["https://json.example.com"],
+                    "pool_settings": {"enabled": False, "max_size": 5},
+                },
+                f,
+            )
+            f.flush()
+
+            try:
+                settings = Settings.from_config(config_path=f.name)
+
+                assert settings.host == "0.0.0.0"
+                assert settings.port == 5555
+                assert settings.cors_origins == ["https://json.example.com"]
+                assert settings.pool_settings.enabled is False
+                assert settings.pool_settings.max_size == 5
+            finally:
+                Path(f.name).unlink()
+
+
+@pytest.mark.unit
+class TestYAMLConfigSupport:
+    """Test YAML configuration file support."""
+
+    @pytest.mark.skipif(
+        not Settings.load_yaml_config.__module__.endswith("settings"),
+        reason="YAML support not available",
+    )
+    def test_load_yaml_config_valid_file(self):
+        """Test loading valid YAML configuration."""
+        try:
+            import yaml  # type: ignore[import-untyped]
+        except ImportError:
+            pytest.skip("YAML support not available")
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+            yaml.dump(
+                {
+                    "host": "yaml-host",
+                    "port": 6666,
+                    "log_level": "DEBUG",
+                    "docker_settings": {
+                        "docker_image": "yaml-image",
+                        "docker_volumes": ["/host:/container"],
+                    },
+                },
+                f,
+            )
+            f.flush()
+
+            try:
+                config = Settings.load_yaml_config(Path(f.name))
+
+                assert config["host"] == "yaml-host"
+                assert config["port"] == 6666
+                assert config["log_level"] == "DEBUG"
+                assert config["docker_settings"]["docker_image"] == "yaml-image"
+                assert config["docker_settings"]["docker_volumes"] == [
+                    "/host:/container"
+                ]
+            finally:
+                Path(f.name).unlink()
+
+    def test_load_yaml_config_no_yaml_module(self):
+        """Test loading YAML when PyYAML is not installed."""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+            f.write("host: test")
+            f.flush()
+
+            try:
+                # Mock the HAS_YAML flag
+                with (
+                    patch("claude_code_proxy.config.settings.HAS_YAML", False),
+                    pytest.raises(ValueError, match="YAML support is not available"),
+                ):
+                    Settings.load_yaml_config(Path(f.name))
+            finally:
+                Path(f.name).unlink()
+
+    @pytest.mark.skipif(
+        not Settings.load_yaml_config.__module__.endswith("settings"),
+        reason="YAML support not available",
+    )
+    def test_from_config_with_yaml_file(self):
+        """Test creating Settings from YAML file."""
+        try:
+            import yaml  # type: ignore[import-untyped]
+        except ImportError:
+            pytest.skip("YAML support not available")
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yml", delete=False) as f:
+            yaml.dump(
+                {
+                    "host": "127.0.0.1",
+                    "port": 7777,
+                    "workers": 8,
+                    "auth_token": "yaml-token",
+                    "pool_settings": {"min_size": 1, "max_size": 20},
+                },
+                f,
+            )
+            f.flush()
+
+            try:
+                settings = Settings.from_config(config_path=f.name)
+
+                assert settings.host == "127.0.0.1"
+                assert settings.port == 7777
+                assert settings.workers == 8
+                assert settings.auth_token == "yaml-token"
+                assert settings.pool_settings.min_size == 1
+                assert settings.pool_settings.max_size == 20
+            finally:
+                Path(f.name).unlink()
+
+
+@pytest.mark.unit
+class TestLoadConfigFile:
+    """Test the generic load_config_file method."""
+
+    def test_load_config_file_toml(self):
+        """Test load_config_file with TOML format."""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".toml", delete=False) as f:
+            f.write('format = "toml"\nvalue = 123')
+            f.flush()
+
+            try:
+                config = Settings.load_config_file(Path(f.name))
+                assert config["format"] == "toml"
+                assert config["value"] == 123
+            finally:
+                Path(f.name).unlink()
+
+    def test_load_config_file_json(self):
+        """Test load_config_file with JSON format."""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            json.dump({"format": "json", "value": 456}, f)
+            f.flush()
+
+            try:
+                config = Settings.load_config_file(Path(f.name))
+                assert config["format"] == "json"
+                assert config["value"] == 456
+            finally:
+                Path(f.name).unlink()
+
+    @pytest.mark.skipif(
+        not Settings.load_yaml_config.__module__.endswith("settings"),
+        reason="YAML support not available",
+    )
+    def test_load_config_file_yaml(self):
+        """Test load_config_file with YAML format."""
+        try:
+            import yaml  # type: ignore[import-untyped]
+        except ImportError:
+            pytest.skip("YAML support not available")
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+            yaml.dump({"format": "yaml", "value": 789}, f)
+            f.flush()
+
+            try:
+                config = Settings.load_config_file(Path(f.name))
+                assert config["format"] == "yaml"
+                assert config["value"] == 789
+            finally:
+                Path(f.name).unlink()
+
+    def test_load_config_file_unsupported_format(self):
+        """Test load_config_file with unsupported format."""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".xml", delete=False) as f:
+            f.write("<config>test</config>")
+            f.flush()
+
+            try:
+                with pytest.raises(ValueError, match="Unsupported config file format"):
+                    Settings.load_config_file(Path(f.name))
+            finally:
+                Path(f.name).unlink()
+
+    def test_load_config_file_with_string_path(self):
+        """Test Settings.from_config with string path."""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".toml", delete=False) as f:
+            f.write('host = "string-path"\nport = 8888')
+            f.flush()
+
+            try:
+                # Pass path as string instead of Path object
+                settings = Settings.from_config(config_path=str(f.name))
+
+                assert settings.host == "string-path"
+                assert settings.port == 8888
+            finally:
+                Path(f.name).unlink()
