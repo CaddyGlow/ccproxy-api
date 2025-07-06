@@ -5,7 +5,7 @@ import secrets
 import tempfile
 import tomllib
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 import typer
 from click import get_current_context
@@ -550,16 +550,27 @@ def generate_token(
         "-c",
         help="Configuration file to update (default: auto-detect or create .ccproxy.toml)",
     ),
+    force: bool = typer.Option(
+        False,
+        "--force",
+        help="Overwrite existing auth_token without confirmation",
+    ),
 ) -> None:
     """Generate a secure random token for API authentication.
 
     This command generates a secure authentication token that can be used with
     both Anthropic and OpenAI compatible APIs.
 
+    Use --save to write the token to a configuration file. The command supports
+    TOML, JSON, and YAML formats and will auto-detect the format from the file extension.
+
     Examples:
         ccproxy config generate-token                    # Generate and display token
         ccproxy config generate-token --save             # Generate and save to config
-        ccproxy config generate-token --save --config-file custom.toml  # Save to specific config
+        ccproxy config generate-token --save --config-file custom.toml  # Save to TOML config
+        ccproxy config generate-token --save --config-file config.json  # Save to JSON config
+        ccproxy config generate-token --save --config-file config.yaml  # Save to YAML config
+        ccproxy config generate-token --save --force     # Overwrite existing token
     """
     try:
         # Generate a secure token
@@ -615,6 +626,13 @@ def generate_token(
         console.print('[cyan]     "$OPENAI_BASE_URL/v1/chat/completions"[/cyan]')
         console.print()
 
+        # Mention the save functionality if not using it
+        if not save:
+            console.print(
+                "[dim]Tip: Use --save to write this token to a configuration file[/dim]"
+            )
+            console.print()
+
         # Save to config file if requested
         if save:
             # Determine config file path
@@ -632,26 +650,48 @@ def generate_token(
                 f"[bold]Saving token to configuration file:[/bold] {config_file}"
             )
 
-            # Read existing config or create new one
+            # Detect file format from extension
+            file_format = _detect_config_format(config_file)
+            console.print(f"[dim]Detected format: {file_format.upper()}[/dim]")
+
+            # Read existing config or create new one using existing Settings functionality
             config_data = {}
+            existing_token = None
+
             if config_file.exists():
                 try:
-                    with config_file.open("rb") as f:
-                        config_data = tomllib.load(f)
-                    console.print("[dim]Updated existing configuration file[/dim]")
+                    from claude_code_proxy.config.settings import Settings
+
+                    config_data = Settings.load_config_file(config_file)
+                    existing_token = config_data.get("auth_token")
+                    console.print("[dim]Found existing configuration file[/dim]")
                 except Exception as e:
                     console.print(
                         f"[yellow]Warning: Could not read existing config file: {e}[/yellow]"
                     )
-                    console.print("[dim]Creating new configuration file[/dim]")
+                    console.print("[dim]Will create new configuration file[/dim]")
             else:
-                console.print("[dim]Created new configuration file[/dim]")
+                console.print("[dim]Will create new configuration file[/dim]")
+
+            # Check for existing token and ask for confirmation if needed
+            if existing_token and not force:
+                console.print()
+                console.print(
+                    "[yellow]Warning: Configuration file already contains an auth_token[/yellow]"
+                )
+                console.print(f"[dim]Current token: {existing_token[:16]}...[/dim]")
+                console.print(f"[dim]New token: {token[:16]}...[/dim]")
+                console.print()
+
+                if not typer.confirm("Do you want to overwrite the existing token?"):
+                    console.print("[dim]Token generation cancelled[/dim]")
+                    return
 
             # Update auth_token in config
             config_data["auth_token"] = token
 
-            # Write updated config
-            _write_toml_config(config_file, config_data)
+            # Write updated config in the appropriate format
+            _write_config_file(config_file, config_data, file_format)
 
             console.print(f"[green]✓[/green] Token saved to {config_file}")
             console.print()
@@ -667,7 +707,59 @@ def generate_token(
         raise typer.Exit(1) from e
 
 
-def _write_toml_config(config_file: Path, config_data: dict) -> None:
+def _detect_config_format(config_file: Path) -> str:
+    """Detect configuration file format from extension."""
+    suffix = config_file.suffix.lower()
+    if suffix in [".toml"]:
+        return "toml"
+    elif suffix in [".json"]:
+        return "json"
+    elif suffix in [".yaml", ".yml"]:
+        return "yaml"
+    else:
+        # Default to TOML if unknown extension
+        return "toml"
+
+
+def _write_json_config(config_file: Path, config_data: dict[str, Any]) -> None:
+    """Write configuration data to a JSON file with proper formatting."""
+    with config_file.open("w", encoding="utf-8") as f:
+        json.dump(config_data, f, indent=2, sort_keys=True)
+        f.write("\n")
+
+
+def _write_yaml_config(config_file: Path, config_data: dict[str, Any]) -> None:
+    """Write configuration data to a YAML file with proper formatting."""
+    try:
+        import yaml
+
+        with config_file.open("w", encoding="utf-8") as f:
+            f.write("# Claude Code Proxy API Configuration\n")
+            f.write("# Generated by ccproxy config generate-token\n\n")
+            yaml.dump(
+                config_data, f, default_flow_style=False, sort_keys=True, indent=2
+            )
+    except ImportError as e:
+        raise ValueError(
+            "YAML support not available. Install with: pip install pyyaml"
+        ) from e
+
+
+def _write_config_file(
+    config_file: Path, config_data: dict[str, Any], file_format: str
+) -> None:
+    """Write configuration data to file in the specified format."""
+    if file_format == "toml":
+        _write_toml_config(config_file, config_data)
+    elif file_format == "json":
+        _write_json_config(config_file, config_data)
+    elif file_format == "yaml":
+        _write_yaml_config(config_file, config_data)
+    else:
+        raise ValueError(f"Unsupported config format: {file_format}")
+
+
+def _write_toml_config(config_file: Path, config_data: dict[str, Any]) -> None:
     """Write configuration data to a TOML file with proper formatting."""
     try:
         # Create a nicely formatted TOML file

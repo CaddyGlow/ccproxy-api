@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
-from claude_code_proxy.main import app
+# Removed import of global app - using test_client fixture instead
 from claude_code_proxy.models.openai_models import (
     OpenAIChatCompletionRequest,
     OpenAIMessage,
@@ -14,19 +14,16 @@ from claude_code_proxy.models.openai_models import (
 )
 
 
-@pytest.fixture
-def client():
-    """Create a test client."""
-    return TestClient(app)
+# Removed custom client fixture - using test_client from conftest.py instead
 
 
 @pytest.mark.integration
 class TestOpenAIModelsEndpoint:
     """Test OpenAI models endpoint."""
 
-    def test_list_models(self, client):
+    def test_list_models(self, test_client):
         """Test listing available models."""
-        response = client.get("/openai/v1/models")
+        response = test_client.get("/openai/v1/models")
         assert response.status_code == 200
 
         data = response.json()
@@ -84,14 +81,14 @@ class TestOpenAIChatCompletionsEndpoint:
         }
 
     def test_chat_completion_non_streaming(
-        self, client, mock_claude_client, sample_request, sample_claude_response
+        self, test_client, mock_claude_client, sample_request, sample_claude_response
     ):
         """Test non-streaming chat completion."""
         mock_claude_client.create_completion = AsyncMock(
             return_value=sample_claude_response
         )
 
-        response = client.post("/openai/v1/chat/completions", json=sample_request)
+        response = test_client.post("/openai/v1/chat/completions", json=sample_request)
         assert response.status_code == 200
 
         data = response.json()
@@ -119,7 +116,7 @@ class TestOpenAIChatCompletionsEndpoint:
         assert data["usage"]["total_tokens"] == 25
 
     def test_chat_completion_streaming(
-        self, client, mock_claude_client, sample_request
+        self, test_client, mock_claude_client, sample_request
     ):
         """Test streaming chat completion."""
 
@@ -143,12 +140,12 @@ class TestOpenAIChatCompletionsEndpoint:
         mock_claude_client.create_completion = AsyncMock(return_value=mock_stream())
 
         request_data = {**sample_request, "stream": True}
-        response = client.post("/openai/v1/chat/completions", json=request_data)
+        response = test_client.post("/openai/v1/chat/completions", json=request_data)
         assert response.status_code == 200
         assert response.headers["content-type"] == "text/event-stream; charset=utf-8"
 
     def test_chat_completion_with_tools(
-        self, client, mock_claude_client, sample_claude_response
+        self, test_client, mock_claude_client, sample_claude_response
     ):
         """Test chat completion with tool calls."""
         request_data = {
@@ -186,7 +183,7 @@ class TestOpenAIChatCompletionsEndpoint:
 
         mock_claude_client.create_completion = AsyncMock(return_value=tool_response)
 
-        response = client.post("/openai/v1/chat/completions", json=request_data)
+        response = test_client.post("/openai/v1/chat/completions", json=request_data)
         assert response.status_code == 200
 
         data = response.json()
@@ -199,18 +196,18 @@ class TestOpenAIChatCompletionsEndpoint:
         assert tool_call["type"] == "function"
         assert tool_call["function"]["name"] == "get_weather"
 
-    def test_chat_completion_invalid_request(self, client):
+    def test_chat_completion_invalid_request(self, test_client):
         """Test chat completion with invalid request."""
         invalid_request = {
             "model": "claude-opus-4-20250514",
             "messages": [],  # Empty messages should fail validation
         }
 
-        response = client.post("/openai/v1/chat/completions", json=invalid_request)
+        response = test_client.post("/openai/v1/chat/completions", json=invalid_request)
         assert response.status_code == 422  # Validation error
 
     def test_chat_completion_client_error(
-        self, client, mock_claude_client, sample_request
+        self, test_client, mock_claude_client, sample_request
     ):
         """Test chat completion with Claude client error."""
         from claude_code_proxy.exceptions import ClaudeProxyError
@@ -219,7 +216,7 @@ class TestOpenAIChatCompletionsEndpoint:
             side_effect=ClaudeProxyError("API rate limit exceeded")
         )
 
-        response = client.post("/openai/v1/chat/completions", json=sample_request)
+        response = test_client.post("/openai/v1/chat/completions", json=sample_request)
         assert response.status_code == 500
 
         data = response.json()
@@ -227,7 +224,7 @@ class TestOpenAIChatCompletionsEndpoint:
         assert data["detail"]["error"]["type"] == "api_error"
 
     def test_model_passthrough(
-        self, client, mock_claude_client, sample_claude_response
+        self, test_client, mock_claude_client, sample_claude_response
     ):
         """Test that model names are passed through as-is."""
         mock_claude_client.create_completion = AsyncMock(
@@ -239,7 +236,7 @@ class TestOpenAIChatCompletionsEndpoint:
             "messages": [{"role": "user", "content": "Hello"}],
         }
 
-        response = client.post("/openai/v1/chat/completions", json=request_data)
+        response = test_client.post("/openai/v1/chat/completions", json=request_data)
         assert response.status_code == 200
 
         # Verify the call was made with the same model name
@@ -467,7 +464,7 @@ class TestOpenAIToolsValidation:
 
     @patch("claude_code_proxy.api.openai.chat.get_settings")
     def test_tools_validation_error_mode(
-        self, mock_get_settings, client, sample_request_with_tools
+        self, mock_get_settings, test_client, sample_request_with_tools
     ):
         """Test that tools validation returns error in error mode."""
         # Mock settings to return error mode
@@ -475,7 +472,7 @@ class TestOpenAIToolsValidation:
         mock_settings.tools_handling = "error"
         mock_get_settings.return_value = mock_settings
 
-        response = client.post(
+        response = test_client.post(
             "/openai/v1/chat/completions", json=sample_request_with_tools
         )
 
@@ -490,7 +487,11 @@ class TestOpenAIToolsValidation:
 
     @patch("claude_code_proxy.api.openai.chat.get_settings")
     def test_tools_validation_warning_mode(
-        self, mock_get_settings, client, mock_claude_client, sample_request_with_tools
+        self,
+        mock_get_settings,
+        test_client,
+        mock_claude_client,
+        sample_request_with_tools,
     ):
         """Test that tools validation logs warning in warning mode."""
         # Mock settings to return warning mode
@@ -512,7 +513,7 @@ class TestOpenAIToolsValidation:
         )
 
         with patch("claude_code_proxy.api.openai.chat.logger") as mock_logger:
-            response = client.post(
+            response = test_client.post(
                 "/openai/v1/chat/completions", json=sample_request_with_tools
             )
 
@@ -524,7 +525,11 @@ class TestOpenAIToolsValidation:
 
     @patch("claude_code_proxy.api.openai.chat.get_settings")
     def test_tools_validation_ignore_mode(
-        self, mock_get_settings, client, mock_claude_client, sample_request_with_tools
+        self,
+        mock_get_settings,
+        test_client,
+        mock_claude_client,
+        sample_request_with_tools,
     ):
         """Test that tools validation ignores tools in ignore mode."""
         # Mock settings to return ignore mode
@@ -546,7 +551,7 @@ class TestOpenAIToolsValidation:
         )
 
         with patch("claude_code_proxy.api.openai.chat.logger") as mock_logger:
-            response = client.post(
+            response = test_client.post(
                 "/openai/v1/chat/completions", json=sample_request_with_tools
             )
 
@@ -557,7 +562,7 @@ class TestOpenAIToolsValidation:
 
     @patch("claude_code_proxy.api.openai.chat.get_settings")
     def test_request_without_tools_continues_normally(
-        self, mock_get_settings, client, mock_claude_client
+        self, mock_get_settings, test_client, mock_claude_client
     ):
         """Test that requests without tools continue normally regardless of settings."""
         # Mock settings (tools_handling doesn't matter for this test)
@@ -584,7 +589,7 @@ class TestOpenAIToolsValidation:
             }
         )
 
-        response = client.post("/openai/v1/chat/completions", json=sample_request)
+        response = test_client.post("/openai/v1/chat/completions", json=sample_request)
         assert response.status_code == 200
         data = response.json()
         assert data["object"] == "chat.completion"

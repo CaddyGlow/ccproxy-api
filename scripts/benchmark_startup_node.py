@@ -7,9 +7,10 @@ import os
 import subprocess
 import sys
 import time
+from collections.abc import Callable
 from pathlib import Path
 from statistics import mean, stdev
-from typing import Any, Dict, List
+from typing import Any, Optional
 
 
 # Number of runs for each benchmark
@@ -23,7 +24,7 @@ TEST_PROMPT = None  # Not needed for version command
 class StartupBenchmark:
     """Benchmark different startup approaches for Claude CLI."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.results: dict[str, list[float]] = {}
         # Use the actual Claude CLI path instead of the npm symlink
         self.claude_path = "/home/rick/.claude/local/claude"
@@ -47,13 +48,15 @@ class StartupBenchmark:
             for path in common_paths:
                 if path.exists() and path.is_file():
                     return str(path)
-            raise RuntimeError("Claude CLI not found")
+            raise RuntimeError("Claude CLI not found") from None
 
-    def run_benchmark(self, name: str, runs: int = BENCHMARK_RUNS):
+    def run_benchmark(
+        self, name: str, runs: int = BENCHMARK_RUNS
+    ) -> Callable[[Callable[..., Any]], Callable[..., None]]:
         """Decorator to run a benchmark multiple times."""
 
-        def decorator(func):
-            def wrapper(*args, **kwargs):
+        def decorator(func: Callable[..., Any]) -> Callable[..., None]:
+            def wrapper(*args: Any, **kwargs: Any) -> None:
                 print(f"\nRunning benchmark: {name}")
                 times = []
 
@@ -93,11 +96,11 @@ class StartupBenchmark:
 
         return decorator
 
-    def benchmark_normal_subprocess(self):
+    def benchmark_normal_subprocess(self) -> None:
         """Benchmark normal subprocess execution."""
 
         @self.run_benchmark("Normal Subprocess")
-        def run():
+        def run() -> None:
             cmd = [self.claude_path, "-v"]
             proc = subprocess.run(
                 cmd,
@@ -114,13 +117,13 @@ class StartupBenchmark:
         # Actually run the benchmark
         run()
 
-    def benchmark_node_direct(self):
+    def benchmark_node_direct(self) -> None:
         """Benchmark running Node.js directly with Claude CLI."""
 
         @self.run_benchmark(
             "Node.js Direct Execution", runs=5
         )  # Reduced runs since this will fail
-        def run():
+        def run() -> None:
             # Find the actual Node.js script, not the shell wrapper
             # The claude shell script wraps the actual Node.js claude script
             actual_claude_path = (
@@ -152,11 +155,11 @@ class StartupBenchmark:
 
         run()
 
-    def benchmark_preloaded_env(self):
+    def benchmark_preloaded_env(self) -> None:
         """Benchmark with preloaded environment variables."""
 
         @self.run_benchmark("Preloaded Environment")
-        def run():
+        def run() -> None:
             env = os.environ.copy()
             # Pre-set commonly used environment variables
             env["NODE_ENV"] = "production"
@@ -175,11 +178,11 @@ class StartupBenchmark:
 
         run()
 
-    def benchmark_subprocess_popen(self):
+    def benchmark_subprocess_popen(self) -> None:
         """Benchmark using Popen with pipes."""
 
         @self.run_benchmark("Subprocess Popen with Pipes")
-        def run():
+        def run() -> None:
             proc = subprocess.Popen(
                 [self.claude_path, "-v"],
                 stdout=subprocess.PIPE,
@@ -192,11 +195,11 @@ class StartupBenchmark:
 
         run()
 
-    def benchmark_asyncio_subprocess(self):
+    def benchmark_asyncio_subprocess(self) -> None:
         """Benchmark using asyncio subprocess."""
 
         @self.run_benchmark("Asyncio Subprocess")
-        async def run():
+        async def run() -> None:
             proc = await asyncio.create_subprocess_exec(
                 self.claude_path,
                 "-v",
@@ -210,7 +213,7 @@ class StartupBenchmark:
         # Actually run the benchmark
         run()
 
-    def benchmark_node_snapshot(self):
+    def benchmark_node_snapshot(self) -> None:
         """Benchmark using Node.js startup snapshots (if available)."""
         print("\nPreparing Node.js snapshot benchmark...")
 
@@ -272,7 +275,7 @@ console.log('Snapshot created with preloaded modules');
 
             # Benchmark with snapshot
             @self.run_benchmark("Node.js with Snapshot")
-            def run():
+            def run() -> None:
                 proc = subprocess.run(
                     [
                         "node",
@@ -298,7 +301,7 @@ console.log('Snapshot created with preloaded modules');
             if snapshot_blob.exists():
                 snapshot_blob.unlink()
 
-    def benchmark_repeated_calls(self):
+    def benchmark_repeated_calls(self) -> None:
         """Benchmark repeated calls to see if OS caching helps."""
         print("\nBenchmarking repeated calls to test OS caching effect...")
 
@@ -329,7 +332,7 @@ console.log('Snapshot created with preloaded modules');
         print(f"Last 5 calls average: {last_5_avg:.3f}s")
         print(f"Improvement from caching: {improvement:.1f}%")
 
-    def print_summary(self):
+    def print_summary(self) -> None:
         """Print a summary of all benchmark results."""
         print("\n" + "=" * 60)
         print("BENCHMARK SUMMARY")
@@ -359,7 +362,7 @@ console.log('Snapshot created with preloaded modules');
         print("\nNote: Positive percentages indicate improvement over baseline")
 
 
-def main():
+def main() -> None:
     """Run all benchmarks."""
     benchmark = StartupBenchmark()
 

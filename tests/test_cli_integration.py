@@ -825,7 +825,8 @@ class TestCliEnvironmentIsolation:
         assert result3.exit_code == 0
         assert "Claude Code Proxy API Server" in result3.stdout
 
-    def test_cli_typer_integration(self):
+    @patch("claude_code_proxy.cli._run")
+    def test_cli_typer_integration(self, mock_run):
         """Test Typer integration specifics."""
         # Test that the CLI app is properly configured
         assert app.info is not None
@@ -834,9 +835,10 @@ class TestCliEnvironmentIsolation:
         # Test rich markup is configured
         assert hasattr(app, "rich_markup_mode")
 
-        # Test no_args_is_help is configured
+        # Test default command starts server (now default behavior)
         result = self.runner.invoke(app, [])
-        assert result.exit_code == 2  # Typer returns 2 for help when no args
+        assert result.exit_code == 0  # Should succeed when server start is mocked
+        mock_run.assert_called_once()  # Verify server start was attempted
 
 
 @pytest.mark.integration
@@ -900,8 +902,7 @@ class TestApiCommandWithCliOverrides:
 
         # Should set environment variable with CLI overrides
         import json
-
-        from claude_code_proxy.cli import os
+        import os
 
         env_overrides = os.environ.get("CCPROXY_CONFIG_OVERRIDES")
         assert env_overrides is not None
@@ -922,7 +923,9 @@ class TestApiCommandWithCliOverrides:
     @patch("claude_code_proxy.cli.get_settings")
     @patch("claude_code_proxy.cli._run")
     @patch("claude_code_proxy.cli.os.environ", {})
-    def test_api_command_security_settings_overrides(self, mock_run, mock_get_settings):
+    def test_api_command_security_settings_overrides(
+        self, mock_environ, mock_run, mock_get_settings
+    ):
         """Test API command with security settings parameter overrides."""
         mock_settings = Mock()
         mock_settings.host = "localhost"
@@ -945,8 +948,7 @@ class TestApiCommandWithCliOverrides:
 
         # Should set environment variable with CLI overrides
         import json
-
-        from claude_code_proxy.cli import os
+        import os
 
         env_overrides = os.environ.get("CCPROXY_CONFIG_OVERRIDES")
         assert env_overrides is not None
@@ -1014,7 +1016,7 @@ class TestApiCommandWithCliOverrides:
         )
 
         # Should not set environment overrides
-        from claude_code_proxy.cli import os
+        import os
 
         assert os.environ.get("CCPROXY_CONFIG_OVERRIDES") is None
 
@@ -1082,8 +1084,7 @@ class TestApiCommandWithCliOverrides:
 
         # Should set comprehensive environment overrides
         import json
-
-        from claude_code_proxy.cli import os
+        import os
 
         env_overrides = os.environ.get("CCPROXY_CONFIG_OVERRIDES")
         assert env_overrides is not None

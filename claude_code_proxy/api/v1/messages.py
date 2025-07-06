@@ -155,8 +155,14 @@ async def create_message(
                     usage=response.get("usage", {}),
                 )
                 return message_response
-
-            return MessageResponse(**response)
+            else:
+                # This should not happen in non-streaming mode, but handle it gracefully
+                logger.error(
+                    f"Unexpected response type from Claude client: {type(response)}"
+                )
+                raise ValueError(
+                    f"Invalid response type: expected dict, got {type(response)}"
+                )
 
     except ClaudeProxyError as e:
         logger.error(f"Claude proxy error: {e}")
