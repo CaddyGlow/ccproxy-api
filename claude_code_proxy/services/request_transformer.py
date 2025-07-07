@@ -120,15 +120,21 @@ class RequestTransformer:
 
         return json.dumps(data).encode("utf-8")
 
-    def transform_path(self, path: str) -> str:
+    def transform_path(self, path: str, mode: str = "full") -> str:
         """Transform request path by removing OpenAI prefix and converting to Anthropic endpoints.
 
         Args:
             path: Original request path
+            mode: Proxy mode - "minimal", "full", or "passthrough"
 
         Returns:
             Transformed path with /openai prefix removed and endpoint conversion
         """
+        # In minimal or passthrough mode, don't transform paths
+        if mode in ("minimal", "passthrough"):
+            return path
+
+        # Full mode - current behavior
         # Remove /openai prefix if present
         if path.startswith("/openai/"):
             path = path[7:]  # Remove "/openai" (7 characters)
@@ -140,16 +146,29 @@ class RequestTransformer:
 
         return path
 
-    def transform_request_body(self, body: bytes, path: str) -> bytes:
+    def transform_request_body(
+        self, body: bytes, path: str, mode: str = "full"
+    ) -> bytes:
         """Apply all necessary transformations to the request body.
 
         Args:
             body: Original request body
             path: Request path for context
+            mode: Proxy mode - "minimal", "full", or "passthrough"
 
         Returns:
             Transformed request body
         """
+        # In passthrough mode, don't transform anything
+        if mode == "passthrough":
+            return body
+
+        # In minimal mode, skip most transformations
+        if mode == "minimal":
+            # Don't do format conversion or system prompt injection
+            return body
+
+        # Full mode - current behavior
         # Check if this is an OpenAI format request
         is_openai_request = self._is_openai_request(path, body)
 
@@ -170,59 +189,99 @@ class RequestTransformer:
             return body
 
     def create_proxy_headers(
-        self, original_headers: dict[str, str], access_token: str
+        self, original_headers: dict[str, str], access_token: str, mode: str = "full"
     ) -> dict[str, str]:
         """Create headers for the proxied request.
 
+        Security: This function strips authentication headers (Authorization, x-api-key)
+        from the original request and replaces them with OAuth authentication.
+        This prevents client API keys from being leaked to the Anthropic API.
+
         Args:
-            original_headers: Original request headers
-            access_token: OAuth access token
+            original_headers: Original request headers (may contain client API keys)
+            access_token: OAuth access token for Anthropic API
+            mode: Proxy mode - "minimal", "full", or "passthrough"
 
         Returns:
-            Headers for the proxied request
+            Headers for the proxied request with OAuth auth and stripped client tokens
         """
-        # Create fresh headers with OAuth authentication and Claude CLI characteristics
-        headers = {
-            "Authorization": f"Bearer {access_token}",
-            "anthropic-beta": "claude-code-20250219,oauth-2025-04-20,interleaved-thinking-2025-05-14,fine-grained-tool-streaming-2025-05-14",
-            "anthropic-version": "2023-06-01",
-            "anthropic-dangerous-direct-browser-access": "true",
-            "x-app": "cli",
-            "User-Agent": "claude-cli/1.0.43 (external, cli)",
-            "Connection": "keep-alive",
-            "X-Stainless-Retry-Count": "0",
-            "X-Stainless-Timeout": "60",
-            "X-Stainless-Lang": "js",
-            "X-Stainless-Package-Version": "0.55.1",
-            "X-Stainless-OS": "Linux",
-            "X-Stainless-Arch": "x64",
-            "X-Stainless-Runtime": "node",
-            "X-Stainless-Runtime-Version": "v22.14.0",
-            "accept-language": "*",
-            "sec-fetch-mode": "cors",
-            "accept-encoding": "gzip, deflate",
-        }
+        # Mode-specific header creation
+        if mode == "minimal" or mode == "passthrough":
+            # Minimal headers - only essentials
+            headers = {
+                "Authorization": f"Bearer {access_token}",
+                "anthropic-version": "2023-06-01",  # Required
+            }
 
-        # Preserve essential headers with defaults, but allow override
-        content_type = self._get_header_case_insensitive(
-            original_headers, "content-type"
-        )
-        headers["Content-Type"] = content_type or "application/json"
+            # Preserve essential headers
+            content_type = self._get_header_case_insensitive(
+                original_headers, "content-type"
+            )
+            headers["Content-Type"] = content_type or "application/json"
 
-        accept = self._get_header_case_insensitive(original_headers, "accept")
-        headers["Accept"] = accept or "application/json"
+            accept = self._get_header_case_insensitive(original_headers, "accept")
+            headers["Accept"] = accept or "application/json"
 
-        # Override connection if specifically provided
-        connection = self._get_header_case_insensitive(original_headers, "connection")
-        if connection:
-            headers["Connection"] = connection
+            # Preserve connection and cache control if present
+            connection = self._get_header_case_insensitive(
+                original_headers, "connection"
+            )
+            if connection:
+                headers["Connection"] = connection
 
-        # Preserve cache control for SSE
-        cache_control = self._get_header_case_insensitive(
-            original_headers, "cache-control"
-        )
-        if cache_control:
-            headers["Cache-Control"] = cache_control
+            cache_control = self._get_header_case_insensitive(
+                original_headers, "cache-control"
+            )
+            if cache_control:
+                headers["Cache-Control"] = cache_control
+
+        else:
+            # Full mode - all Claude CLI characteristics
+            # Create fresh headers with OAuth authentication and Claude CLI characteristics
+            # This approach naturally strips any client authentication headers
+            headers = {
+                "Authorization": f"Bearer {access_token}",
+                "anthropic-beta": "claude-code-20250219,oauth-2025-04-20,interleaved-thinking-2025-05-14,fine-grained-tool-streaming-2025-05-14",
+                "anthropic-version": "2023-06-01",
+                "anthropic-dangerous-direct-browser-access": "true",
+                "x-app": "cli",
+                "User-Agent": "claude-cli/1.0.43 (external, cli)",
+                "Connection": "keep-alive",
+                "X-Stainless-Retry-Count": "0",
+                "X-Stainless-Timeout": "60",
+                "X-Stainless-Lang": "js",
+                "X-Stainless-Package-Version": "0.55.1",
+                "X-Stainless-OS": "Linux",
+                "X-Stainless-Arch": "x64",
+                "X-Stainless-Runtime": "node",
+                "X-Stainless-Runtime-Version": "v22.14.0",
+                "accept-language": "*",
+                "sec-fetch-mode": "cors",
+                "accept-encoding": "gzip, deflate",
+            }
+
+            # Preserve essential headers with defaults, but allow override
+            content_type = self._get_header_case_insensitive(
+                original_headers, "content-type"
+            )
+            headers["Content-Type"] = content_type or "application/json"
+
+            accept = self._get_header_case_insensitive(original_headers, "accept")
+            headers["Accept"] = accept or "application/json"
+
+            # Override connection if specifically provided
+            connection = self._get_header_case_insensitive(
+                original_headers, "connection"
+            )
+            if connection:
+                headers["Connection"] = connection
+
+            # Preserve cache control for SSE
+            cache_control = self._get_header_case_insensitive(
+                original_headers, "cache-control"
+            )
+            if cache_control:
+                headers["Cache-Control"] = cache_control
 
         return headers
 

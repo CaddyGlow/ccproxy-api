@@ -30,12 +30,12 @@ class ChatAgent:
         api_key = api_key or os.getenv("ANTHROPIC_API_KEY")
         base_url = os.getenv("ANTHROPIC_BASE_URL")
 
-        # Create client with optional base URL
-        client_kwargs: dict[str, Any] = {"api_key": api_key}
+        # Create client with type-safe parameters
         if base_url:
-            client_kwargs["base_url"] = base_url
+            self.client = AsyncAnthropic(api_key=api_key, base_url=base_url)
+        else:
+            self.client = AsyncAnthropic(api_key=api_key)
 
-        self.client = AsyncAnthropic(**client_kwargs)
         self.messages: list[MessageParam] = []
 
         # Store config for debugging

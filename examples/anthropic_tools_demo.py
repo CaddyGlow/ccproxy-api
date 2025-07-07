@@ -16,6 +16,8 @@ from typing import Any, Union
 
 import anthropic
 import httpx
+from anthropic.types import MessageParam, ToolParam
+from httpx import URL
 
 
 def setup_logging(debug: bool = False) -> None:
@@ -44,7 +46,7 @@ logger = logging.getLogger(__name__)
 class LoggingHTTPClient(httpx.Client):
     """Custom HTTP client that logs requests and responses"""
 
-    def request(self, method: str, url: str, **kwargs: Any) -> httpx.Response:
+    def request(self, method: str, url: URL | str, **kwargs: Any) -> httpx.Response:
         logger.info("=== HTTP REQUEST ===")
         logger.info(f"Method: {method}")
         logger.info(f"URL: {url}")
@@ -224,33 +226,33 @@ def generate_json_schema_for_function(func: Any) -> dict[str, Any]:
         Path(temp_file).unlink(missing_ok=True)
 
 
-def create_anthropic_tools() -> list[dict[str, Any]]:
+def create_anthropic_tools() -> list[ToolParam]:
     """
     Create Anthropic-compatible tool definitions with JSON schemas.
 
     Returns:
         List of tool definitions
     """
-    tools = []
+    tools: list[ToolParam] = []
 
     # Get weather tool
     weather_schema = generate_json_schema_for_function(get_weather)
     tools.append(
-        {
-            "name": "get_weather",
-            "description": "Get current weather information for a specific location",
-            "input_schema": weather_schema,
-        }
+        ToolParam(
+            name="get_weather",
+            description="Get current weather information for a specific location",
+            input_schema=weather_schema,
+        )
     )
 
     # Calculate distance tool
     distance_schema = generate_json_schema_for_function(calculate_distance)
     tools.append(
-        {
-            "name": "calculate_distance",
-            "description": "Calculate the distance between two geographic coordinates",
-            "input_schema": distance_schema,
-        }
+        ToolParam(
+            name="calculate_distance",
+            description="Calculate the distance between two geographic coordinates",
+            input_schema=distance_schema,
+        )
     )
 
     return tools
@@ -324,9 +326,11 @@ def main() -> None:
 
     print("\nGenerated Tools:")
     for tool in tools:
-        print(f"\n{tool['name']}:")
-        print(f"  Description: {tool['description']}")
-        print(f"  Schema: {json.dumps(tool['input_schema'], indent=4)}")
+        # Use dict access for ToolParam attributes
+        tool_dict = tool if isinstance(tool, dict) else tool.model_dump()
+        print(f"\n{tool_dict['name']}:")
+        print(f"  Description: {tool_dict['description']}")
+        print(f"  Schema: {json.dumps(tool_dict['input_schema'], indent=4)}")
 
     # Initialize Anthropic client with custom HTTP client
     try:
@@ -337,7 +341,7 @@ def main() -> None:
         )
 
         # Example conversation with tools
-        messages: list[dict[str, Any]] = [
+        messages: list[MessageParam] = [
             {
                 "role": "user",
                 "content": "What's the weather like in New York, and how far is it from Los Angeles?",
@@ -349,7 +353,9 @@ def main() -> None:
         print("=" * 40)
 
         logger.info(f"Sending request to Claude with {len(tools)} tools")
-        logger.info(f"Tools available: {[tool['name'] for tool in tools]}")
+        logger.info(
+            f"Tools available: {[getattr(tool, 'name', None) if hasattr(tool, 'name') else tool.get('name', 'Unknown') if isinstance(tool, dict) else 'Unknown' for tool in tools]}"
+        )
         logger.info(f"Initial message: {messages[0]['content']}")
 
         # Log the complete request structure
@@ -403,7 +409,9 @@ def main() -> None:
                 for content_block in response.content:
                     if content_block.type == "tool_use":
                         tool_name = content_block.name
-                        tool_input = content_block.input
+                        tool_input = (
+                            dict(content_block.input) if content_block.input else {}  # type: ignore[call-overload]
+                        )
                         tool_use_id = content_block.id
 
                         print(f"\nTool: {tool_name}")
@@ -423,7 +431,7 @@ def main() -> None:
 
                 # Add assistant message and tool results to conversation
                 messages.append({"role": "assistant", "content": response.content})
-                messages.append({"role": "user", "content": tool_results})
+                messages.append({"role": "user", "content": tool_results})  # type: ignore[typeddict-item]
 
                 logger.info("=== MESSAGE HISTORY AFTER TOOL USE ===")
                 for i, msg in enumerate(messages):

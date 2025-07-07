@@ -13,7 +13,7 @@ from starlette.status import HTTP_500_INTERNAL_SERVER_ERROR
 from claude_code_proxy.config.settings import get_settings
 from claude_code_proxy.exceptions import ClaudeProxyError
 from claude_code_proxy.middleware.auth import get_auth_dependency
-from claude_code_proxy.models.openai_models import (
+from claude_code_proxy.models.openai import (
     OpenAIChatCompletionRequest,
     OpenAIChatCompletionResponse,
     OpenAIErrorResponse,

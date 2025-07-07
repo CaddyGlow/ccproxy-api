@@ -1,6 +1,6 @@
 """Pydantic models for Claude Proxy API Server."""
 
-from .openai_models import (
+from .openai import (
     OpenAIChatCompletionRequest,
     OpenAIChatCompletionResponse,
     OpenAIChoice,

@@ -2,10 +2,11 @@
 
 from typing import Any
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import Response, StreamingResponse
 
 from claude_code_proxy.config.settings import get_settings
+from claude_code_proxy.middleware.auth import get_auth_dependency
 from claude_code_proxy.services.reverse_proxy import ReverseProxyService
 from claude_code_proxy.utils.logging import get_logger
 
@@ -28,7 +29,7 @@ proxy_service = ReverseProxyService(
     response_model=None,
 )
 async def proxy_to_anthropic(
-    request: Request, path: str
+    request: Request, path: str, _: None = Depends(get_auth_dependency())
 ) -> Response | StreamingResponse:
     """Proxy requests from /unclaude/* to api.anthropic.com/*.
 

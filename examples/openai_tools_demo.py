@@ -16,6 +16,14 @@ from typing import Any, Union
 
 import httpx
 import openai
+from httpx import URL
+from openai.types.chat import (
+    ChatCompletionAssistantMessageParam,
+    ChatCompletionMessageParam,
+    ChatCompletionToolMessageParam,
+    ChatCompletionToolParam,
+    ChatCompletionUserMessageParam,
+)
 
 
 def setup_logging(debug: bool = False) -> None:
@@ -44,7 +52,7 @@ logger = logging.getLogger(__name__)
 class LoggingHTTPClient(httpx.Client):
     """Custom HTTP client that logs requests and responses"""
 
-    def request(self, method: str, url: str, **kwargs: Any) -> httpx.Response:
+    def request(self, method: str, url: URL | str, **kwargs: Any) -> httpx.Response:
         logger.info("=== HTTP REQUEST ===")
         logger.info(f"Method: {method}")
         logger.info(f"URL: {url}")
@@ -224,39 +232,39 @@ def generate_json_schema_for_function(func: Any) -> dict[str, Any]:
         Path(temp_file).unlink(missing_ok=True)
 
 
-def create_openai_tools() -> list[dict[str, Any]]:
+def create_openai_tools() -> list[ChatCompletionToolParam]:
     """
     Create OpenAI-compatible tool definitions with JSON schemas.
 
     Returns:
         List of tool definitions
     """
-    tools = []
+    tools: list[ChatCompletionToolParam] = []
 
     # Get weather tool
     weather_schema = generate_json_schema_for_function(get_weather)
     tools.append(
-        {
-            "type": "function",
-            "function": {
+        ChatCompletionToolParam(
+            type="function",
+            function={
                 "name": "get_weather",
                 "description": "Get current weather information for a specific location",
                 "parameters": weather_schema,
             },
-        }
+        )
     )
 
     # Calculate distance tool
     distance_schema = generate_json_schema_for_function(calculate_distance)
     tools.append(
-        {
-            "type": "function",
-            "function": {
+        ChatCompletionToolParam(
+            type="function",
+            function={
                 "name": "calculate_distance",
                 "description": "Calculate the distance between two geographic coordinates",
                 "parameters": distance_schema,
             },
-        }
+        )
     )
 
     return tools
@@ -330,10 +338,12 @@ def main() -> None:
 
     print("\nGenerated Tools:")
     for tool in tools:
-        func_def = tool["function"]
-        print(f"\n{func_def['name']}:")
-        print(f"  Description: {func_def['description']}")
-        print(f"  Schema: {json.dumps(func_def['parameters'], indent=4)}")
+        # Use dict access for ChatCompletionToolParam attributes
+        tool_dict = tool if isinstance(tool, dict) else tool.model_dump()
+        func_def = tool_dict.get("function", {})
+        print(f"\n{func_def.get('name', 'Unknown')}:")
+        print(f"  Description: {func_def.get('description', 'No description')}")
+        print(f"  Schema: {json.dumps(func_def.get('parameters', {}), indent=4)}")
 
     # Initialize OpenAI client with custom HTTP client
     try:
@@ -346,11 +356,11 @@ def main() -> None:
         logger.info("OpenAI client initialized successfully with logging HTTP client")
 
         # Example conversation with tools
-        messages: list[dict[str, Any]] = [
-            {
-                "role": "user",
-                "content": "What's the weather like in New York, and how far is it from Los Angeles?",
-            }
+        messages: list[ChatCompletionMessageParam] = [
+            ChatCompletionUserMessageParam(
+                role="user",
+                content="What's the weather like in New York, and how far is it from Los Angeles?",
+            )
         ]
 
         print("\n" + "=" * 40)
@@ -358,8 +368,10 @@ def main() -> None:
         print("=" * 40)
 
         logger.info(f"Sending request to Claude with {len(tools)} tools")
-        logger.info(f"Tools available: {[tool['function']['name'] for tool in tools]}")
-        logger.info(f"Initial message: {messages[0]['content']}")
+        logger.info(
+            f"Tools available: {[getattr(tool, 'function', {}).get('name', 'Unknown') if hasattr(tool, 'function') else tool.get('function', {}).get('name', 'Unknown') for tool in tools]}"
+        )
+        logger.info(f"Initial message: {getattr(messages[0], 'content', 'No content')}")
 
         # Log the complete request structure
         logger.info("=== REQUEST STRUCTURE ===")
@@ -424,19 +436,19 @@ def main() -> None:
                     print(f"Result: {json.dumps(result, indent=2)}")
 
                     tool_messages.append(
-                        {
-                            "role": "tool",
-                            "content": json.dumps(result),
-                            "tool_call_id": tool_call_id,
-                        }
+                        ChatCompletionToolMessageParam(
+                            role="tool",
+                            content=json.dumps(result),
+                            tool_call_id=tool_call_id,
+                        )
                     )
 
                 # Add assistant message and tool results to conversation
                 messages.append(
-                    {
-                        "role": "assistant",
-                        "content": choice.message.content,
-                        "tool_calls": [
+                    ChatCompletionAssistantMessageParam(
+                        role="assistant",
+                        content=choice.message.content,
+                        tool_calls=[
                             {
                                 "id": tc.id,
                                 "type": tc.type,
@@ -447,20 +459,21 @@ def main() -> None:
                             }
                             for tc in choice.message.tool_calls
                         ],
-                    }
+                    )
                 )
                 messages.extend(tool_messages)
 
                 logger.info("=== MESSAGE HISTORY AFTER TOOL USE ===")
                 for i, msg in enumerate(messages):
-                    logger.info(f"Message {i}: role={msg['role']}")
-                    if isinstance(msg.get("content"), str):
-                        content = msg["content"]
+                    logger.info(f"Message {i}: role={getattr(msg, 'role', 'Unknown')}")
+                    msg_content = getattr(msg, "content", None)
+                    if isinstance(msg_content, str):
+                        content = msg_content
                         logger.info(
                             f"  Content: {content[:100] + '...' if len(content) > 100 else content}"
                         )
                     else:
-                        logger.info(f"  Content: {type(msg.get('content'))}")
+                        logger.info(f"  Content: {type(msg_content)}")
 
                 # Continue conversation with tool results
                 logger.info("Sending follow-up request with tool results")

@@ -24,15 +24,18 @@ class ReverseProxyService:
         self,
         target_base_url: str = "https://api.anthropic.com",
         timeout: float = 120.0,
+        proxy_mode: str = "full",
     ):
         """Initialize the reverse proxy service.
 
         Args:
             target_base_url: Base URL for the target API
             timeout: Request timeout in seconds
+            proxy_mode: Transformation mode - "minimal", "full", or "passthrough"
         """
         self.target_base_url = target_base_url.rstrip("/")
         self.timeout = timeout
+        self.proxy_mode = proxy_mode
         self.request_transformer = RequestTransformer()
         self.response_transformer = ResponseTransformer()
 
@@ -91,7 +94,9 @@ class ReverseProxyService:
             logger.debug(f"Access token (first 20 chars): {access_token[:20]}...")
 
             # Transform request path (remove /openai prefix)
-            transformed_path = self.request_transformer.transform_path(path)
+            transformed_path = self.request_transformer.transform_path(
+                path, self.proxy_mode
+            )
             target_url = f"{self.target_base_url}{transformed_path}"
 
             # Add beta=true query parameter for /v1/messages requests if not already present
@@ -110,7 +115,7 @@ class ReverseProxyService:
                     )
 
             proxy_headers = self.request_transformer.create_proxy_headers(
-                headers, access_token
+                headers, access_token, self.proxy_mode
             )
 
             # Log the headers being sent (safely)
@@ -125,7 +130,9 @@ class ReverseProxyService:
             # Transform request body if present
             proxy_body = None
             if body:
-                proxy_body = self.request_transformer.transform_request_body(body, path)
+                proxy_body = self.request_transformer.transform_request_body(
+                    body, path, self.proxy_mode
+                )
 
             logger.debug(f"Making request to: {method} {target_url}")
             logger.debug(
@@ -171,10 +178,10 @@ class ReverseProxyService:
 
             # Handle regular responses
             response_body = self.response_transformer.transform_response_body(
-                response.content, path
+                response.content, path, self.proxy_mode
             )
             response_headers = self.response_transformer.transform_response_headers(
-                dict(response.headers), path, len(response_body)
+                dict(response.headers), path, len(response_body), self.proxy_mode
             )
 
             return response.status_code, response_headers, response_body

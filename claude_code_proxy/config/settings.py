@@ -183,6 +183,18 @@ class Settings(BaseSettings):
         le=600.0,
     )
 
+    # Reverse proxy mode configuration
+    default_proxy_mode: Literal["minimal", "full", "passthrough"] = Field(
+        default="full",
+        description="Default transformation mode for root path reverse proxy",
+    )
+
+    # Claude Code SDK endpoint configuration
+    claude_code_prefix: str = Field(
+        default="/cc",
+        description="URL prefix for Claude Code SDK endpoints",
+    )
+
     # Pool settings removed - connection pooling functionality has been removed
 
     @field_validator("claude_code_options", mode="before")

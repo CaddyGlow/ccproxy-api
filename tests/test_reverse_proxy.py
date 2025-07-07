@@ -1,8 +1,10 @@
 """Tests for reverse proxy functionality."""
 
 import json
+from unittest.mock import Mock
 
 import pytest
+from fastapi.testclient import TestClient
 
 from claude_code_proxy.services.request_transformer import RequestTransformer
 
@@ -418,3 +420,275 @@ class TestRequestTransformer:
             data["system"][0]["text"]
             == "You are Claude Code, Anthropic's official CLI for Claude."
         )
+
+    def test_create_proxy_headers_strips_api_keys(self):
+        """Test that API keys are properly stripped from headers."""
+        transformer = RequestTransformer()
+
+        original_headers = {
+            "content-type": "application/json",
+            "authorization": "Bearer client-api-key-123",  # Should be stripped
+            "x-api-key": "sk-ant-client-key-456",  # Should be stripped
+            "X-API-KEY": "another-client-key",  # Case variant - should be stripped
+            "Authorization": "Bearer another-token",  # Case variant - should be stripped
+            "accept": "application/json",
+            "user-agent": "MyClient/1.0",
+        }
+
+        headers = transformer.create_proxy_headers(original_headers, "oauth-token-789")
+
+        # Should have OAuth token (not client keys)
+        assert headers["Authorization"] == "Bearer oauth-token-789"
+
+        # Should NOT contain any client authentication headers
+        assert "x-api-key" not in headers
+        assert "X-API-KEY" not in headers
+        assert "X-Api-Key" not in headers
+
+        # Should not contain the old authorization values
+        assert "client-api-key-123" not in str(headers.values())
+        assert "sk-ant-client-key-456" not in str(headers.values())
+        assert "another-client-key" not in str(headers.values())
+        assert "another-token" not in str(headers.values())
+
+        # Should preserve safe headers
+        assert headers["Content-Type"] == "application/json"
+        assert headers["Accept"] == "application/json"
+
+        # Should have Claude CLI headers
+        assert headers["User-Agent"] == "claude-cli/1.0.43 (external, cli)"
+        assert headers["x-app"] == "cli"
+
+    def test_create_proxy_headers_no_auth_leakage(self):
+        """Test comprehensive check that no authentication data leaks through."""
+        transformer = RequestTransformer()
+
+        # Test with various auth header formats
+        original_headers = {
+            "authorization": "Bearer sk-ant-api03-secret-key",
+            "x-api-key": "sk-ant-another-secret",
+            "X-API-KEY": "CAPS-SECRET-KEY",
+            "Authorization": "Basic dXNlcjpwYXNz",  # Base64 user:pass
+            "proxy-authorization": "Bearer proxy-secret",
+            "www-authenticate": "Bearer realm=api",
+            "content-type": "application/json",
+        }
+
+        headers = transformer.create_proxy_headers(original_headers, "safe-oauth-token")
+
+        # Convert all header values to a single string for comprehensive check
+        all_header_values = " ".join(str(v) for v in headers.values()).lower()
+
+        # Ensure no secrets leak through
+        assert "sk-ant-api03-secret-key" not in all_header_values
+        assert "sk-ant-another-secret" not in all_header_values
+        assert "caps-secret-key" not in all_header_values
+        assert "dxnlcjpwyxnz" not in all_header_values  # Base64 decoded check
+        assert "proxy-secret" not in all_header_values
+
+        # Should only have the safe OAuth token
+        assert headers["Authorization"] == "Bearer safe-oauth-token"
+        assert "safe-oauth-token" in all_header_values
+
+
+class TestReverseProxyAuthentication:
+    """Test authentication for reverse proxy endpoints."""
+
+    @pytest.fixture
+    def app_with_auth(self, monkeypatch):
+        """Create app with authentication enabled."""
+        from claude_code_proxy.config.settings import Settings
+        from claude_code_proxy.main import create_app
+
+        # Create settings with authentication enabled
+        auth_settings = Settings(
+            auth_token="test-auth-token-123",
+            reverse_proxy_target_url="https://api.anthropic.com",
+            reverse_proxy_timeout=30.0,
+            _env_file=None,  # Don't load from file
+        )
+
+        # Mock the global get_settings function to return our auth settings
+        # This is necessary because the auth middleware uses get_settings()
+        # instead of the settings passed to create_app()
+        monkeypatch.setattr(
+            "claude_code_proxy.middleware.auth.get_settings", lambda: auth_settings
+        )
+
+        # Create app with auth settings
+        return create_app(auth_settings)
+
+    @pytest.fixture
+    def app_no_auth(self, monkeypatch):
+        """Create app with authentication disabled."""
+        from claude_code_proxy.config.settings import Settings
+        from claude_code_proxy.main import create_app
+
+        # Create settings with authentication disabled
+        no_auth_settings = Settings(
+            auth_token=None,
+            reverse_proxy_target_url="https://api.anthropic.com",
+            reverse_proxy_timeout=30.0,
+            _env_file=None,  # Don't load from file
+        )
+
+        # Mock the global get_settings function to return our no-auth settings
+        monkeypatch.setattr(
+            "claude_code_proxy.middleware.auth.get_settings", lambda: no_auth_settings
+        )
+
+        # Create app with no auth settings
+        return create_app(no_auth_settings)
+
+    def test_reverse_proxy_requires_auth_when_configured(
+        self, app_with_auth, monkeypatch
+    ):
+        """Test that reverse proxy requires authentication when auth is configured."""
+        client = TestClient(app_with_auth)
+
+        # Request without authentication should fail at middleware level
+        response = client.post(
+            "/unclaude/v1/messages", json={"model": "claude-3-5-sonnet", "messages": []}
+        )
+
+        assert response.status_code == 401
+        assert "authentication_error" in response.json()["detail"]["error"]["type"]
+        assert (
+            "Missing authentication token"
+            in response.json()["detail"]["error"]["message"]
+        )
+
+    def test_reverse_proxy_accepts_valid_auth_x_api_key(
+        self, app_with_auth, monkeypatch
+    ):
+        """Test that reverse proxy accepts valid x-api-key authentication."""
+
+        # Mock the OAuth service to return a token
+        async def mock_get_token():
+            return "oauth-token-123"
+
+        monkeypatch.setattr(
+            "claude_code_proxy.services.reverse_proxy.CredentialsService.get_access_token_with_refresh",
+            mock_get_token,
+        )
+
+        # Mock httpx to avoid actual API calls
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.content = b'{"message": "success"}'
+        mock_response.headers = {"content-type": "application/json"}
+        mock_response.reason_phrase = "OK"
+
+        async def mock_request(*args, **kwargs):
+            return mock_response
+
+        monkeypatch.setattr("httpx.AsyncClient.request", mock_request)
+
+        client = TestClient(app_with_auth)
+
+        # Request with valid x-api-key should succeed
+        response = client.post(
+            "/unclaude/v1/messages",
+            json={"model": "claude-3-5-sonnet", "messages": []},
+            headers={"x-api-key": "test-auth-token-123"},
+        )
+
+        assert response.status_code == 200
+
+    def test_reverse_proxy_accepts_valid_auth_bearer(self, app_with_auth, monkeypatch):
+        """Test that reverse proxy accepts valid Authorization Bearer authentication."""
+
+        # Mock the OAuth service to return a token
+        async def mock_get_token():
+            return "oauth-token-123"
+
+        monkeypatch.setattr(
+            "claude_code_proxy.services.reverse_proxy.CredentialsService.get_access_token_with_refresh",
+            mock_get_token,
+        )
+
+        # Mock httpx to avoid actual API calls
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.content = b'{"message": "success"}'
+        mock_response.headers = {"content-type": "application/json"}
+        mock_response.reason_phrase = "OK"
+
+        async def mock_request(*args, **kwargs):
+            return mock_response
+
+        monkeypatch.setattr("httpx.AsyncClient.request", mock_request)
+
+        client = TestClient(app_with_auth)
+
+        # Request with valid Authorization Bearer should succeed
+        response = client.post(
+            "/unclaude/v1/messages",
+            json={"model": "claude-3-5-sonnet", "messages": []},
+            headers={"Authorization": "Bearer test-auth-token-123"},
+        )
+
+        assert response.status_code == 200
+
+    def test_reverse_proxy_rejects_invalid_auth(self, app_with_auth, monkeypatch):
+        """Test that reverse proxy rejects invalid authentication."""
+        client = TestClient(app_with_auth)
+
+        # Request with invalid x-api-key should fail at middleware level
+        response = client.post(
+            "/unclaude/v1/messages",
+            json={"model": "claude-3-5-sonnet", "messages": []},
+            headers={"x-api-key": "invalid-token"},
+        )
+
+        assert response.status_code == 401
+        assert "authentication_error" in response.json()["detail"]["error"]["type"]
+        assert (
+            "Invalid authentication token"
+            in response.json()["detail"]["error"]["message"]
+        )
+
+        # Request with invalid Authorization Bearer should fail at middleware level
+        response2 = client.post(
+            "/unclaude/v1/messages",
+            json={"model": "claude-3-5-sonnet", "messages": []},
+            headers={"Authorization": "Bearer invalid-token"},
+        )
+
+        assert response2.status_code == 401
+        assert "authentication_error" in response2.json()["detail"]["error"]["type"]
+
+    def test_reverse_proxy_no_auth_required_when_disabled(
+        self, app_no_auth, monkeypatch
+    ):
+        """Test that reverse proxy doesn't require auth when authentication is disabled."""
+
+        # Mock the OAuth service to return a token
+        async def mock_get_token():
+            return "oauth-token-123"
+
+        monkeypatch.setattr(
+            "claude_code_proxy.services.reverse_proxy.CredentialsService.get_access_token_with_refresh",
+            mock_get_token,
+        )
+
+        # Mock httpx to avoid actual API calls
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.content = b'{"message": "success"}'
+        mock_response.headers = {"content-type": "application/json"}
+        mock_response.reason_phrase = "OK"
+
+        async def mock_request(*args, **kwargs):
+            return mock_response
+
+        monkeypatch.setattr("httpx.AsyncClient.request", mock_request)
+
+        client = TestClient(app_no_auth)
+
+        # Request without authentication should succeed when auth is disabled
+        response = client.post(
+            "/unclaude/v1/messages", json={"model": "claude-3-5-sonnet", "messages": []}
+        )
+
+        assert response.status_code == 200

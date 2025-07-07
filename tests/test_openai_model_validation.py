@@ -3,7 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
-from claude_code_proxy.models.openai_models import (
+from claude_code_proxy.models.openai import (
     OpenAIChatCompletionRequest,
     OpenAIMessage,
     OpenAITool,
@@ -29,7 +29,7 @@ class TestOpenAIRequestValidation:
 
     def test_custom_messages_validator_empty_list(self) -> None:
         """Test the custom messages validator directly with empty list."""
-        from claude_code_proxy.models.openai_models import OpenAIChatCompletionRequest
+        from claude_code_proxy.models.openai import OpenAIChatCompletionRequest
 
         # Call the validator method directly to test line 193
         with pytest.raises(ValueError) as exc_info:
@@ -85,7 +85,7 @@ class TestOpenAIRequestValidation:
         # Create 129 tools to exceed the limit
         tools = []
         for i in range(129):
-            from claude_code_proxy.models.openai_models import OpenAIFunction
+            from claude_code_proxy.models.openai import OpenAIFunction
 
             tools.append(
                 OpenAITool(
@@ -116,7 +116,7 @@ class TestOpenAIRequestValidation:
         # Create exactly 128 tools (at the limit)
         tools = []
         for i in range(128):
-            from claude_code_proxy.models.openai_models import OpenAIFunction
+            from claude_code_proxy.models.openai import OpenAIFunction
 
             tools.append(
                 OpenAITool(
@@ -168,7 +168,7 @@ class TestOpenAIResponseGeneration:
 
     def test_create_response_factory_method(self) -> None:
         """Test the create class method for generating responses."""
-        from claude_code_proxy.models.openai_models import OpenAIChatCompletionResponse
+        from claude_code_proxy.models.openai import OpenAIChatCompletionResponse
 
         # Test the factory method - covers line 337
         response = OpenAIChatCompletionResponse.create(
@@ -191,7 +191,7 @@ class TestOpenAIResponseGeneration:
 
     def test_create_response_with_tool_calls(self) -> None:
         """Test creating response with tool calls."""
-        from claude_code_proxy.models.openai_models import (
+        from claude_code_proxy.models.openai import (
             OpenAIChatCompletionResponse,
             OpenAIFunctionCall,
             OpenAIToolCall,

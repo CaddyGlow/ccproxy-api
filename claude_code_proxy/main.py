@@ -75,19 +75,34 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return {"status": "healthy", "service": "claude-proxy"}
 
     # Include API routes
-    from claude_code_proxy.routers import anthropic, oauth, openai, reverse_proxy
+    from claude_code_proxy.routers import anthropic, oauth, openai
+    from claude_code_proxy.routers.reverse_proxy_factory import (
+        create_reverse_proxy_router,
+    )
 
-    # Anthropic-compatible endpoints
-    app.include_router(anthropic.router, prefix="/v1")
-
-    # OpenAI-compatible endpoints
-    app.include_router(openai.router, prefix="/openai/v1")
+    # Claude Code SDK endpoints (local execution)
+    app.include_router(anthropic.router, prefix=f"{settings.claude_code_prefix}/v1")
+    app.include_router(openai.router, prefix=f"{settings.claude_code_prefix}/openai/v1")
 
     # OAuth authentication endpoints
     app.include_router(oauth.router)
 
-    # Reverse proxy endpoints
-    app.include_router(reverse_proxy.router)
+    # Reverse proxy endpoints with different modes
+    app.include_router(create_reverse_proxy_router("minimal"), prefix="/min")
+    app.include_router(create_reverse_proxy_router("full"), prefix="/full")
+    app.include_router(create_reverse_proxy_router("passthrough"), prefix="/pt")
+
+    # Default reverse proxy for root path
+    app.include_router(
+        create_reverse_proxy_router(settings.default_proxy_mode), prefix=""
+    )
+
+    # Backward compatibility - keep /unclaude as alias to full mode
+    app.include_router(create_reverse_proxy_router("full"), prefix="/unclaude")
+
+    # Legacy compatibility - old paths redirect to new ones
+    app.include_router(anthropic.router, prefix="/v1")
+    app.include_router(openai.router, prefix="/openai/v1")
 
     # Global exception handler
     @app.exception_handler(Exception)

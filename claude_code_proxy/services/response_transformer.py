@@ -12,16 +12,24 @@ logger = get_logger(__name__)
 class ResponseTransformer:
     """Handles response transformations for reverse proxy."""
 
-    def transform_response_body(self, body: bytes, path: str) -> bytes:
+    def transform_response_body(
+        self, body: bytes, path: str, mode: str = "full"
+    ) -> bytes:
         """Transform response body based on the endpoint.
 
         Args:
             body: Original response body
             path: Original request path for context
+            mode: Proxy mode - "minimal", "full", or "passthrough"
 
         Returns:
             Transformed response body
         """
+        # In minimal or passthrough mode, don't transform responses
+        if mode in ("minimal", "passthrough"):
+            return body
+
+        # Full mode - current behavior
         # Check if this is an OpenAI request that needs response conversion
         if self._is_openai_request(path):
             return self._transform_anthropic_to_openai_response(body, path)
@@ -30,7 +38,11 @@ class ResponseTransformer:
         return body
 
     def transform_response_headers(
-        self, headers: dict[str, str], path: str = "", body_size: int | None = None
+        self,
+        headers: dict[str, str],
+        path: str = "",
+        body_size: int | None = None,
+        mode: str = "full",
     ) -> dict[str, str]:
         """Transform response headers if needed.
 
@@ -38,6 +50,7 @@ class ResponseTransformer:
             headers: Original response headers
             path: Request path for context
             body_size: New body size if content was transformed
+            mode: Proxy mode - "minimal", "full", or "passthrough"
 
         Returns:
             Transformed response headers
