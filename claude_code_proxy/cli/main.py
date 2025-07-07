@@ -846,6 +846,7 @@ def _run_local_server(settings: Settings, cli_overrides: dict[str, Any]) -> None
         port=settings.port,
         reload=settings.reload,
         workers=None,  # ,settings.workers,
+        log_config=None,
         # log_config=get_uvicorn_log_config(),
     )
 
