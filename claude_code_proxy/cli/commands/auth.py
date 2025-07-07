@@ -38,6 +38,11 @@ def validate_credentials(
         "--docker",
         help="Use Docker credential paths (from get_claude_docker_home_dir())",
     ),
+    credential_file: str | None = typer.Option(
+        None,
+        "--credential-file",
+        help="Path to specific credential file to validate",
+    ),
 ) -> None:
     """Validate Claude CLI credentials.
 
@@ -49,17 +54,24 @@ def validate_credentials(
     - {docker_home}/.claude/credentials.json
     - {docker_home}/.config/claude/credentials.json
 
+    With --credential-file, validates the specified file directly.
+
     Examples:
         ccproxy auth validate
         ccproxy auth validate --docker
+        ccproxy auth validate --credential-file /path/to/credentials.json
     """
     toolkit = get_rich_toolkit()
     toolkit.print("[bold cyan]Claude Credentials Validation[/bold cyan]", centered=True)
     toolkit.print_line()
 
     try:
-        # Get credential paths based on --docker flag
-        custom_paths = get_docker_credential_paths() if docker else None
+        # Get credential paths based on options
+        custom_paths = None
+        if credential_file:
+            custom_paths = [Path(credential_file)]
+        elif docker:
+            custom_paths = get_docker_credential_paths()
 
         # Validate credentials
         validation_result = CredentialsService.validate_credentials(custom_paths)
@@ -143,6 +155,11 @@ def credential_info(
         "--docker",
         help="Use Docker credential paths (from get_claude_docker_home_dir())",
     ),
+    credential_file: str | None = typer.Option(
+        None,
+        "--credential-file",
+        help="Path to specific credential file to display info for",
+    ),
 ) -> None:
     """Display detailed credential information.
 
@@ -152,14 +169,19 @@ def credential_info(
     Examples:
         ccproxy auth info
         ccproxy auth info --docker
+        ccproxy auth info --credential-file /path/to/credentials.json
     """
     toolkit = get_rich_toolkit()
     toolkit.print("[bold cyan]Claude Credential Information[/bold cyan]", centered=True)
     toolkit.print_line()
 
     try:
-        # Get credential paths based on --docker flag
-        custom_paths = get_docker_credential_paths() if docker else None
+        # Get credential paths based on options
+        custom_paths = None
+        if credential_file:
+            custom_paths = [Path(credential_file)]
+        elif docker:
+            custom_paths = get_docker_credential_paths()
 
         # Find credential file
         cred_file = CredentialsService.find_credentials_file(custom_paths)
@@ -285,6 +307,11 @@ def login_command(
         "--docker",
         help="Use Docker credential paths (from get_claude_docker_home_dir())",
     ),
+    credential_file: str | None = typer.Option(
+        None,
+        "--credential-file",
+        help="Path to specific credential file to save to",
+    ),
 ) -> None:
     """Login to Claude using OAuth authentication.
 
@@ -294,14 +321,19 @@ def login_command(
     Examples:
         ccproxy auth login
         ccproxy auth login --docker
+        ccproxy auth login --credential-file /path/to/credentials.json
     """
     toolkit = get_rich_toolkit()
     toolkit.print("[bold cyan]Claude OAuth Login[/bold cyan]", centered=True)
     toolkit.print_line()
 
     try:
-        # Get credential paths based on --docker flag
-        custom_paths = get_docker_credential_paths() if docker else None
+        # Get credential paths based on options
+        custom_paths = None
+        if credential_file:
+            custom_paths = [Path(credential_file)]
+        elif docker:
+            custom_paths = get_docker_credential_paths()
 
         # Check if already logged in
         validation_result = CredentialsService.validate_credentials(custom_paths)
@@ -323,6 +355,9 @@ def login_command(
         # Perform OAuth login
         console.print("Starting OAuth login process...")
         console.print("Your browser will open for authentication.")
+        console.print(
+            "A temporary server will start on port 54545 for the OAuth callback..."
+        )
 
         success = asyncio.run(CredentialsService.login(custom_paths))
 
@@ -350,7 +385,7 @@ def login_command(
 
     except KeyboardInterrupt:
         console.print("\n[yellow]Login cancelled by user.[/yellow]")
-        raise typer.Exit(1)
+        raise typer.Exit(1) from None
     except Exception as e:
         toolkit.print(f"Error during login: {e}", tag="error")
         raise typer.Exit(1) from e

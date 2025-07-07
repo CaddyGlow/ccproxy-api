@@ -51,6 +51,8 @@ dev = [
   "pytest-env>=0.8.0",
   "tox>=4.27.0",
   "pre-commit>=4.2.0",
+  "anthropic>=0.57.1",
+  "textual-dev>=1.7.0",
 ]
 docs = [
   "mkdocs>=1.5.3",

@@ -78,7 +78,7 @@ def create_development_adapter(
                 from .middleware import create_chained_docker_middleware
 
                 kwargs["output_middleware"] = create_chained_docker_middleware(
-                    middleware, kwargs["output_middleware"]
+                    [middleware, kwargs["output_middleware"]]
                 )
             else:
                 kwargs["output_middleware"] = middleware

@@ -673,22 +673,45 @@ class OpenAITranslator:
         self, tool_call: dict[str, Any]
     ) -> dict[str, Any]:
         """Convert OpenAI tool call to Anthropic format."""
+        import json
+
         func = tool_call.get("function", {})
+
+        # Parse arguments string to dict for Anthropic format
+        arguments_str = func.get("arguments", "{}")
+        try:
+            if isinstance(arguments_str, str):
+                input_dict = json.loads(arguments_str)
+            else:
+                input_dict = arguments_str  # Already a dict
+        except json.JSONDecodeError:
+            logger.warning(f"Failed to parse tool arguments as JSON: {arguments_str}")
+            input_dict = {}
+
         return {
             "type": "tool_use",
             "id": tool_call.get("id", ""),
             "name": func.get("name", ""),
-            "input": func.get("arguments", "{}"),
+            "input": input_dict,
         }
 
     def _convert_tool_use_to_openai(self, tool_use: dict[str, Any]) -> dict[str, Any]:
         """Convert Anthropic tool use to OpenAI format."""
+        import json
+
+        # Convert input to JSON string if it's a dict, otherwise stringify
+        tool_input = tool_use.get("input", {})
+        if isinstance(tool_input, dict):
+            arguments_str = json.dumps(tool_input)
+        else:
+            arguments_str = str(tool_input)
+
         return {
             "id": tool_use.get("id", ""),
             "type": "function",
             "function": {
                 "name": tool_use.get("name", ""),
-                "arguments": str(tool_use.get("input", "{}")),
+                "arguments": arguments_str,
             },
         }
 

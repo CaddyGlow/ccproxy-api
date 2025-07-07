@@ -7,6 +7,10 @@ from pathlib import Path
 import typer
 from click import get_current_context
 
+# Removed duplicate import - _create_docker_adapter_from_settings is imported below
+from claude_code_proxy.cli.docker.adapter_factory import (
+    _create_docker_adapter_from_settings,
+)
 from claude_code_proxy.config.settings import (
     ConfigurationError,
     Settings,
@@ -22,7 +26,6 @@ from claude_code_proxy.docker import (
 from claude_code_proxy.utils.cli import get_rich_toolkit
 from claude_code_proxy.utils.logging import get_logger
 
-# Removed duplicate import - _create_docker_adapter_from_settings is imported below
 from ..docker.params import (
     docker_arg_option,
     docker_env_option,
@@ -54,10 +57,7 @@ def get_config_path_from_context() -> Path | None:
 
 
 # This function has been moved to claude_code_proxy.cli.docker.adapter_factory
-# Import it from there instead
-from claude_code_proxy.cli.docker.adapter_factory import (
-    _create_docker_adapter_from_settings,
-)
+# Import it from there instead (imported at top of file)
 
 
 def claude(

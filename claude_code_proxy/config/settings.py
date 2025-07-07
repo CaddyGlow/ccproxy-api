@@ -28,6 +28,16 @@ from claude_code_proxy.utils.helper import get_package_dir, patched_typing
 from .docker_settings import DockerSettings
 
 
+__all__ = [
+    "DockerSettings",
+    "Settings",
+    "ConfigurationError",
+    "ConfigurationManager",
+    "config_manager",
+    "get_settings",
+]
+
+
 class ConfigurationError(Exception):
     """Raised when configuration loading or validation fails."""
 
@@ -158,6 +168,19 @@ class Settings(BaseSettings):
     docker_settings: DockerSettings = Field(
         default_factory=DockerSettings,
         description="Docker configuration for running Claude commands in containers",
+    )
+
+    # Reverse Proxy settings
+    reverse_proxy_target_url: str = Field(
+        default="https://api.anthropic.com",
+        description="Target URL for reverse proxy requests",
+    )
+
+    reverse_proxy_timeout: float = Field(
+        default=120.0,
+        description="Timeout for reverse proxy requests in seconds",
+        ge=1.0,
+        le=600.0,
     )
 
     # Pool settings removed - connection pooling functionality has been removed

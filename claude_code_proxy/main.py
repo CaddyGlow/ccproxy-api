@@ -75,13 +75,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return {"status": "healthy", "service": "claude-proxy"}
 
     # Include API routes
-    from claude_code_proxy.routers import anthropic, openai
+    from claude_code_proxy.routers import anthropic, oauth, openai, reverse_proxy
 
     # Anthropic-compatible endpoints
     app.include_router(anthropic.router, prefix="/v1")
 
     # OpenAI-compatible endpoints
     app.include_router(openai.router, prefix="/openai/v1")
+
+    # OAuth authentication endpoints
+    app.include_router(oauth.router)
+
+    # Reverse proxy endpoints
+    app.include_router(reverse_proxy.router)
 
     # Global exception handler
     @app.exception_handler(Exception)

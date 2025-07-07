@@ -431,8 +431,8 @@ class TestOpenAITranslator:
         assert tool_calls[0]["id"] == "call_123"
         assert tool_calls[0]["type"] == "function"
         assert tool_calls[0]["function"]["name"] == "get_weather"
-        # The actual implementation uses str() which formats with single quotes
-        assert tool_calls[0]["function"]["arguments"] == "{'location': 'New York'}"
+        # The actual implementation uses json.dumps which formats with double quotes
+        assert tool_calls[0]["function"]["arguments"] == '{"location": "New York"}'
         assert result["choices"][0]["finish_reason"] == "tool_calls"
 
     def test_anthropic_to_openai_response_auto_generated_id(self) -> None:
@@ -842,7 +842,7 @@ class TestOpenAITranslator:
             "type": "tool_use",
             "id": "call_123",
             "name": "get_weather",
-            "input": '{"location": "NY"}',
+            "input": {"location": "NY"},
         }
 
     def test_convert_tool_use_to_openai(self) -> None:
@@ -862,7 +862,7 @@ class TestOpenAITranslator:
                 "type": "function",
                 "function": {
                     "name": "get_weather",
-                    "arguments": "{'location': 'NY'}",  # str() converts dict to single-quoted format
+                    "arguments": '{"location": "NY"}',  # json.dumps converts dict to JSON format
                 },
             }
         )
@@ -957,7 +957,7 @@ class TestOpenAITranslator:
         assert result["type"] == "tool_use"
         assert result["id"] == ""
         assert result["name"] == ""
-        assert result["input"] == "{}"
+        assert result["input"] == {}
 
     def test_tool_use_with_missing_data(self) -> None:
         """Test tool use conversion with missing data."""

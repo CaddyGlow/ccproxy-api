@@ -35,22 +35,32 @@ class TestVersionCallback:
 
     def test_version_callback_true(self):
         """Test version_callback with True value prints version and exits."""
-        with patch("typer.echo") as mock_echo:
+        with patch("claude_code_proxy.cli.main.get_rich_toolkit") as mock_get_toolkit:
+            mock_toolkit = Mock()
+            mock_get_toolkit.return_value = mock_toolkit
+
             with pytest.raises(typer.Exit):
                 version_callback(True)
 
-            mock_echo.assert_called_once_with(f"claude-code-proxy-api {__version__}")
+            mock_toolkit.print.assert_called_once_with(
+                f"claude-code-proxy-api {__version__}", tag="version"
+            )
 
     def test_version_callback_with_mock_version(self):
         """Test version_callback with mocked version."""
         with (
             patch("claude_code_proxy.cli.main.__version__", "1.2.3"),
-            patch("typer.echo") as mock_echo,
+            patch("claude_code_proxy.cli.main.get_rich_toolkit") as mock_get_toolkit,
             pytest.raises(typer.Exit),
         ):
+            mock_toolkit = Mock()
+            mock_get_toolkit.return_value = mock_toolkit
+
             version_callback(True)
 
-        mock_echo.assert_called_once_with("claude-code-proxy-api 1.2.3")
+            mock_toolkit.print.assert_called_once_with(
+                "claude-code-proxy-api 1.2.3", tag="version"
+            )
 
 
 # @pytest.mark.unit
@@ -181,11 +191,14 @@ class TestTyperOptions:
         """Test version option has eager=True and callback set."""
         # The version callback is handled eagerly by typer's option system
         # We test this indirectly by verifying the callback function works
-        with patch("typer.echo") as mock_echo:
+        with patch("claude_code_proxy.cli.main.get_rich_toolkit") as mock_get_toolkit:
+            mock_toolkit = Mock()
+            mock_get_toolkit.return_value = mock_toolkit
+
             with pytest.raises(typer.Exit):
                 version_callback(True)
 
-            mock_echo.assert_called_once()
+            mock_toolkit.print.assert_called_once()
 
 
 @pytest.mark.unit
@@ -217,11 +230,14 @@ class TestErrorHandling:
     def test_version_callback_type_error(self):
         """Test version_callback with wrong type."""
         # This should work due to Python's truthiness
-        with patch("typer.echo") as mock_echo:
+        with patch("claude_code_proxy.cli.main.get_rich_toolkit") as mock_get_toolkit:
+            mock_toolkit = Mock()
+            mock_get_toolkit.return_value = mock_toolkit
+
             with pytest.raises(typer.Exit):
                 version_callback(True)  # Use bool instead of string
 
-            mock_echo.assert_called_once()
+            mock_toolkit.print.assert_called_once()
 
     # def test_get_default_path_hook_exception_message(self):
     #     """Test get_default_path_hook exception message is descriptive."""
@@ -374,13 +390,19 @@ class TestConfigCommand:
         # The config function completed successfully if we reach this point
 
     @patch("claude_code_proxy.cli.commands.config.commands.get_settings")
-    @patch("rich.console.Console.print")
-    def test_config_command_exception_handling(self, mock_print, mock_get_settings):
+    @patch("claude_code_proxy.cli.commands.config.commands.get_rich_toolkit")
+    def test_config_command_exception_handling(
+        self, mock_get_toolkit, mock_get_settings
+    ):
         """Test config command handles exceptions properly."""
         from claude_code_proxy.cli.commands.config.commands import config_list
 
         # Mock get_settings to raise an exception
         mock_get_settings.side_effect = Exception("Settings error")
+
+        # Mock toolkit
+        mock_toolkit = Mock()
+        mock_get_toolkit.return_value = mock_toolkit
 
         # Call config command and expect it to raise typer.Exit
         with pytest.raises(typer.Exit) as exc_info:
@@ -389,9 +411,9 @@ class TestConfigCommand:
         # Verify exit code is 1
         assert exc_info.value.exit_code == 1
 
-        # Verify error message was printed using Rich console
-        mock_print.assert_called_with(
-            "[bold red]Error loading configuration:[/bold red] Settings error"
+        # Verify error message was printed using toolkit
+        mock_toolkit.print.assert_called_with(
+            "Error loading configuration: Settings error", tag="error"
         )
 
 
@@ -399,19 +421,23 @@ class TestConfigCommand:
 class TestClaudeCommand:
     """Test claude command function."""
 
-    @patch("claude_code_proxy.cli.commands.config.commands.get_settings")
-    @patch("typer.echo")
+    @patch("claude_code_proxy.cli.commands.claude.config_manager.load_settings")
+    @patch("claude_code_proxy.cli.commands.claude.get_rich_toolkit")
     @patch("os.execvp")
     def test_claude_command_local_execution(
-        self, mock_execvp, mock_echo, mock_get_settings
+        self, mock_execvp, mock_get_toolkit, mock_load_settings
     ):
         """Test claude command with local execution."""
-        from claude_code_proxy.cli import claude
+        from claude_code_proxy.cli.commands.claude import claude
 
         # Mock settings
         mock_settings = Mock()
         mock_settings.claude_cli_path = "/usr/bin/claude"
-        mock_get_settings.return_value = mock_settings
+        mock_load_settings.return_value = mock_settings
+
+        # Mock toolkit
+        mock_toolkit = Mock()
+        mock_get_toolkit.return_value = mock_toolkit
 
         # Call claude command
         claude(
@@ -429,27 +455,33 @@ class TestClaudeCommand:
         )
 
         # Verify settings were fetched
-        mock_get_settings.assert_called_once()
+        mock_load_settings.assert_called_once()
 
-        # Verify echo was called with execution message
-        mock_echo.assert_any_call("Executing: /usr/bin/claude --version")
-        mock_echo.assert_any_call("")
+        # Verify toolkit was used for output
+        mock_toolkit.print.assert_any_call(
+            "Executing: /usr/bin/claude --version", tag="claude"
+        )
+        mock_toolkit.print_line.assert_called()
 
         # Verify execvp was called with correct arguments
         mock_execvp.assert_called_once_with(
             "/usr/bin/claude", ["/usr/bin/claude", "--version"]
         )
 
-    @patch("claude_code_proxy.cli.commands.config.commands.get_settings")
-    @patch("typer.echo")
-    def test_claude_command_no_cli_path(self, mock_echo, mock_get_settings):
+    @patch("claude_code_proxy.cli.commands.claude.config_manager.load_settings")
+    @patch("claude_code_proxy.cli.commands.claude.get_rich_toolkit")
+    def test_claude_command_no_cli_path(self, mock_get_toolkit, mock_load_settings):
         """Test claude command when claude CLI path is not found."""
-        from claude_code_proxy.cli.main import claude
+        from claude_code_proxy.cli.commands.claude import claude
 
         # Mock settings with no claude_cli_path
         mock_settings = Mock()
         mock_settings.claude_cli_path = None
-        mock_get_settings.return_value = mock_settings
+        mock_load_settings.return_value = mock_settings
+
+        # Mock toolkit
+        mock_toolkit = Mock()
+        mock_get_toolkit.return_value = mock_toolkit
 
         # Call claude command and expect it to raise typer.Exit
         with pytest.raises(typer.Exit) as exc_info:
@@ -471,24 +503,28 @@ class TestClaudeCommand:
         assert exc_info.value.exit_code == 1
 
         # Verify error messages
-        mock_echo.assert_any_call("Error: Claude CLI not found.", err=True)
-        mock_echo.assert_any_call(
-            "Please install Claude CLI or configure claude_cli_path.", err=True
+        mock_toolkit.print.assert_any_call("Error: Claude CLI not found.", tag="error")
+        mock_toolkit.print.assert_any_call(
+            "Please install Claude CLI or configure claude_cli_path.", tag="error"
         )
 
-    @patch("claude_code_proxy.cli.commands.config.commands.get_settings")
-    @patch("typer.echo")
+    @patch("claude_code_proxy.cli.commands.claude.config_manager.load_settings")
+    @patch("claude_code_proxy.cli.commands.claude.get_rich_toolkit")
     @patch("os.execvp")
     def test_claude_command_relative_path_resolution(
-        self, mock_execvp, mock_echo, mock_get_settings
+        self, mock_execvp, mock_get_toolkit, mock_load_settings
     ):
         """Test claude command resolves relative paths."""
-        from claude_code_proxy.cli.main import claude
+        from claude_code_proxy.cli.commands.claude import claude
 
         # Mock settings with relative path
         mock_settings = Mock()
         mock_settings.claude_cli_path = "claude"
-        mock_get_settings.return_value = mock_settings
+        mock_load_settings.return_value = mock_settings
+
+        # Mock toolkit
+        mock_toolkit = Mock()
+        mock_get_toolkit.return_value = mock_toolkit
 
         with patch("pathlib.Path.resolve", return_value=Path("/resolved/path/claude")):
             # Call claude command
@@ -511,25 +547,47 @@ class TestClaudeCommand:
             "/resolved/path/claude", ["/resolved/path/claude", "doctor"]
         )
 
-    @patch("claude_code_proxy.cli.commands.config.commands.get_settings")
-    @patch("claude_code_proxy.utils.docker_builder.DockerCommandBuilder")
-    @patch("typer.echo")
+    @patch("claude_code_proxy.cli.commands.claude.config_manager.load_settings")
+    @patch("claude_code_proxy.cli.commands.claude._create_docker_adapter_from_settings")
+    @patch("claude_code_proxy.cli.commands.claude.create_docker_adapter")
+    @patch("claude_code_proxy.cli.commands.claude.get_rich_toolkit")
     @patch("os.execvp")
     def test_claude_command_docker_execution(
-        self, mock_execvp, mock_echo, mock_docker_builder, mock_get_settings
+        self,
+        mock_execvp,
+        mock_get_toolkit,
+        mock_create_adapter,
+        mock_create_from_settings,
+        mock_load_settings,
     ):
         """Test claude command with Docker execution."""
-        from claude_code_proxy.cli.main import claude
+        from claude_code_proxy.cli.commands.claude import claude
 
         # Mock settings
         mock_settings = Mock()
         mock_settings.docker_settings = Mock()
-        mock_get_settings.return_value = mock_settings
+        mock_settings.docker_settings.docker_image = "claude:latest"
+        mock_settings.docker_settings.docker_volumes = []
+        mock_settings.docker_settings.docker_environment = {}
+        mock_load_settings.return_value = mock_settings
 
-        # Mock Docker command builder
-        mock_docker_cmd = ["docker", "run", "claude:latest", "claude", "--version"]
-        mock_docker_builder.from_settings_and_overrides.return_value = mock_docker_cmd
-        mock_docker_builder.execute_from_settings.return_value = None
+        # Mock toolkit
+        mock_toolkit = Mock()
+        mock_get_toolkit.return_value = mock_toolkit
+
+        # Mock Docker adapter factory
+        mock_create_from_settings.return_value = (
+            "claude:latest",  # image
+            [],  # volumes
+            {},  # environment
+            ["claude", "--version"],  # command
+            None,  # user_context
+            [],  # additional_args
+        )
+
+        # Mock Docker adapter
+        mock_adapter = Mock()
+        mock_create_adapter.return_value = mock_adapter
 
         # Call claude command with Docker
         claude(
@@ -546,9 +604,9 @@ class TestClaudeCommand:
             user_gid=None,
         )
 
-        # Verify Docker command builder was called with correct arguments
-        mock_docker_builder.from_settings_and_overrides.assert_called_once_with(
-            mock_settings.docker_settings,
+        # Verify Docker adapter factory was called with correct arguments
+        mock_create_from_settings.assert_called_once_with(
+            mock_settings,
             docker_image="custom:latest",
             docker_env=["API_KEY=test"],
             docker_volume=["./data:/data"],
@@ -562,41 +620,38 @@ class TestClaudeCommand:
             cmd_args=["--version"],
         )
 
-        # Verify echo was called with Docker command
-        mock_echo.assert_any_call(
-            "Executing: docker run claude:latest claude --version"
+        # Verify toolkit was called with Docker command
+        mock_toolkit.print.assert_any_call(
+            "Executing: docker run ... claude:latest claude --version", tag="docker"
         )
-        mock_echo.assert_any_call("")
+        mock_toolkit.print_line.assert_called()
 
-        # Verify execute_from_settings was called
-        mock_docker_builder.execute_from_settings.assert_called_once_with(
-            mock_settings.docker_settings,
-            docker_image="custom:latest",
-            docker_env=["API_KEY=test"],
-            docker_volume=["./data:/data"],
-            docker_arg=["--rm"],
-            docker_home="/home/user",
-            docker_workspace="/workspace",
-            user_mapping_enabled=None,
-            user_uid=None,
-            user_gid=None,
-            command=["claude"],
-            cmd_args=["--version"],
+        # Verify Docker adapter exec_container was called
+        mock_adapter.exec_container.assert_called_once_with(
+            image="claude:latest",
+            volumes=[],
+            environment={},
+            command=["claude", "--version"],
+            user_context=None,
         )
 
-    @patch("claude_code_proxy.cli.commands.config.commands.get_settings")
-    @patch("typer.echo")
+    @patch("claude_code_proxy.cli.commands.claude.config_manager.load_settings")
+    @patch("claude_code_proxy.cli.commands.claude.get_rich_toolkit")
     @patch("os.execvp")
     def test_claude_command_execvp_os_error(
-        self, mock_execvp, mock_echo, mock_get_settings
+        self, mock_execvp, mock_get_toolkit, mock_load_settings
     ):
         """Test claude command handles OSError from execvp."""
-        from claude_code_proxy.cli.main import claude
+        from claude_code_proxy.cli.commands.claude import claude
 
         # Mock settings
         mock_settings = Mock()
         mock_settings.claude_cli_path = "/usr/bin/claude"
-        mock_get_settings.return_value = mock_settings
+        mock_load_settings.return_value = mock_settings
+
+        # Mock toolkit
+        mock_toolkit = Mock()
+        mock_get_toolkit.return_value = mock_toolkit
 
         # Mock execvp to raise OSError
         mock_execvp.side_effect = OSError("Command not found")
@@ -621,18 +676,24 @@ class TestClaudeCommand:
         assert exc_info.value.exit_code == 1
 
         # Verify error message
-        mock_echo.assert_any_call(
-            "Failed to execute command: Command not found", err=True
+        mock_toolkit.print.assert_any_call(
+            "Failed to execute command: Command not found", tag="error"
         )
 
-    @patch("claude_code_proxy.cli.commands.config.commands.get_settings")
-    @patch("typer.echo")
-    def test_claude_command_general_exception(self, mock_echo, mock_get_settings):
+    @patch("claude_code_proxy.cli.commands.claude.config_manager.load_settings")
+    @patch("claude_code_proxy.cli.commands.claude.get_rich_toolkit")
+    def test_claude_command_general_exception(
+        self, mock_get_toolkit, mock_load_settings
+    ):
         """Test claude command handles general exceptions."""
-        from claude_code_proxy.cli.main import claude
+        from claude_code_proxy.cli.commands.claude import claude
 
-        # Mock get_settings to raise an exception
-        mock_get_settings.side_effect = Exception("Settings error")
+        # Mock load_settings to raise an exception
+        mock_load_settings.side_effect = Exception("Settings error")
+
+        # Mock toolkit
+        mock_toolkit = Mock()
+        mock_get_toolkit.return_value = mock_toolkit
 
         # Call claude command and expect it to raise typer.Exit
         with pytest.raises(typer.Exit) as exc_info:
@@ -654,37 +715,51 @@ class TestClaudeCommand:
         assert exc_info.value.exit_code == 1
 
         # Verify error message
-        mock_echo.assert_any_call(
-            "Error executing claude command: Settings error", err=True
+        mock_toolkit.print.assert_any_call(
+            "Error executing claude command: Settings error", tag="error"
         )
 
-    @patch("claude_code_proxy.cli.commands.config.commands.get_settings")
-    @patch("claude_code_proxy.utils.docker_builder.DockerCommandBuilder")
-    @patch("typer.echo")
+    @patch("claude_code_proxy.cli.commands.claude.config_manager.load_settings")
+    @patch("claude_code_proxy.cli.commands.claude._create_docker_adapter_from_settings")
+    @patch("claude_code_proxy.cli.commands.claude.create_docker_adapter")
+    @patch("claude_code_proxy.cli.commands.claude.get_rich_toolkit")
     @patch("os.execvp")
     def test_claude_command_docker_with_user_mapping(
-        self, mock_execvp, mock_echo, mock_docker_builder, mock_get_settings
+        self,
+        mock_execvp,
+        mock_get_toolkit,
+        mock_create_adapter,
+        mock_create_from_settings,
+        mock_load_settings,
     ):
         """Test claude command with Docker execution and user mapping parameters."""
-        from claude_code_proxy.cli.main import claude
+        from claude_code_proxy.cli.commands.claude import claude
 
         # Mock settings
         mock_settings = Mock()
         mock_settings.docker_settings = Mock()
-        mock_get_settings.return_value = mock_settings
+        mock_settings.docker_settings.docker_image = "claude:latest"
+        mock_settings.docker_settings.docker_volumes = []
+        mock_settings.docker_settings.docker_environment = {}
+        mock_load_settings.return_value = mock_settings
 
-        # Mock Docker command builder
-        mock_docker_cmd = [
-            "docker",
-            "run",
-            "--user",
-            "1001:1001",
-            "claude:latest",
-            "claude",
-            "--version",
-        ]
-        mock_docker_builder.from_settings_and_overrides.return_value = mock_docker_cmd
-        mock_docker_builder.execute_from_settings.return_value = None
+        # Mock toolkit
+        mock_toolkit = Mock()
+        mock_get_toolkit.return_value = mock_toolkit
+
+        # Mock Docker adapter factory
+        mock_create_from_settings.return_value = (
+            "claude:latest",  # image
+            [],  # volumes
+            {},  # environment
+            ["claude", "--version"],  # command
+            Mock(uid=1001, gid=1001),  # user_context
+            [],  # additional_args
+        )
+
+        # Mock Docker adapter
+        mock_adapter = Mock()
+        mock_create_adapter.return_value = mock_adapter
 
         # Call claude command with Docker and user mapping
         claude(
@@ -701,9 +776,9 @@ class TestClaudeCommand:
             user_gid=1001,
         )
 
-        # Verify Docker command builder was called with user mapping parameters
-        mock_docker_builder.from_settings_and_overrides.assert_called_once_with(
-            mock_settings.docker_settings,
+        # Verify Docker adapter factory was called with user mapping parameters
+        mock_create_from_settings.assert_called_once_with(
+            mock_settings,
             docker_image=None,
             docker_env=[],
             docker_volume=[],
@@ -717,31 +792,25 @@ class TestClaudeCommand:
             cmd_args=["--version"],
         )
 
-        # Verify echo was called with Docker command
-        mock_echo.assert_any_call(
-            "Executing: docker run --user 1001:1001 claude:latest claude --version"
+        # Verify toolkit was called with Docker command
+        mock_toolkit.print.assert_any_call(
+            "Executing: docker run ... claude:latest claude --version", tag="docker"
         )
-        mock_echo.assert_any_call("")
+        mock_toolkit.print_line.assert_called()
 
-        # Verify execute_from_settings was called
-        mock_docker_builder.execute_from_settings.assert_called_once_with(
-            mock_settings.docker_settings,
-            docker_image=None,
-            docker_env=[],
-            docker_volume=[],
-            docker_arg=[],
-            docker_home=None,
-            docker_workspace=None,
-            user_mapping_enabled=True,
-            user_uid=1001,
-            user_gid=1001,
-            command=["claude"],
-            cmd_args=["--version"],
+        # Verify Docker adapter exec_container was called
+        user_context_mock = mock_create_from_settings.return_value[4]
+        mock_adapter.exec_container.assert_called_once_with(
+            image="claude:latest",
+            volumes=[],
+            environment={},
+            command=["claude", "--version"],
+            user_context=user_context_mock,
         )
 
     def test_claude_command_docstring(self):
         """Test claude command has proper docstring."""
-        from claude_code_proxy.cli.main import claude
+        from claude_code_proxy.cli.commands.claude import claude
 
         assert claude.__doc__ is not None
         assert "Execute claude CLI commands directly" in claude.__doc__
@@ -751,7 +820,7 @@ class TestClaudeCommand:
         """Test claude command has correct parameter defaults."""
         import inspect
 
-        from claude_code_proxy.cli.main import claude
+        from claude_code_proxy.cli.commands.claude import claude
 
         sig = inspect.signature(claude)
 
@@ -782,10 +851,9 @@ class TestModuleImports:
     def test_required_imports_available(self):
         """Test that all required imports are available."""
         # Test that we can import the functions we're testing
+        from claude_code_proxy.cli.commands.claude import claude
         from claude_code_proxy.cli.main import (
             app,
-            claude,
-            # get_default_path_hook,
             version_callback,
         )
 

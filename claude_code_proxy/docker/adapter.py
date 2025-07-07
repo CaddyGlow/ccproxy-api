@@ -184,6 +184,32 @@ class DockerAdapter:
             logger.error("Unexpected error running Docker container: %s", e)
             raise error from e
 
+    def run(
+        self,
+        image: str,
+        volumes: list[DockerVolume],
+        environment: DockerEnv,
+        command: list[str] | None = None,
+        middleware: OutputMiddleware[T] | None = None,
+        user_context: DockerUserContext | None = None,
+        entrypoint: str | None = None,
+        ports: list[DockerPortSpec] | None = None,
+    ) -> ProcessResult[T]:
+        """Run a Docker container with specified configuration.
+
+        This is an alias for run_container method.
+        """
+        return self.run_container(
+            image=image,
+            volumes=volumes,
+            environment=environment,
+            command=command,
+            middleware=middleware,
+            user_context=user_context,
+            entrypoint=entrypoint,
+            ports=ports,
+        )
+
     def exec_container(
         self,
         image: str,
@@ -502,9 +528,22 @@ class DockerAdapter:
             raise error from e
 
 
-def create_docker_adapter() -> DockerAdapterProtocol:
+def create_docker_adapter(
+    image: str | None = None,
+    volumes: list[DockerVolume] | None = None,
+    environment: DockerEnv | None = None,
+    additional_args: list[str] | None = None,
+    user_context: DockerUserContext | None = None,
+) -> DockerAdapterProtocol:
     """
     Factory function to create a DockerAdapter instance.
+
+    Args:
+        image: Docker image to use (optional)
+        volumes: Optional list of volume mappings
+        environment: Optional environment variables
+        additional_args: Optional additional Docker arguments
+        user_context: Optional user context for container
 
     Returns:
         Configured DockerAdapter instance

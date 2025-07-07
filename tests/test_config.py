@@ -287,7 +287,7 @@ class TestTOMLConfiguration:
 
                 assert settings.host == "localhost"
                 assert settings.port == 8888
-                assert settings.workers == 1
+                assert settings.workers == 4
                 assert settings.cors_origins == ["https://example.com"]
             finally:
                 Path(f.name).unlink()

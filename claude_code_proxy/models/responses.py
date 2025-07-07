@@ -129,7 +129,9 @@ class APIError(BaseModel):
     type: str = Field(..., description="Error type")
     message: str = Field(..., description="Error message")
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(
+        extra="forbid", validate_by_alias=True, validate_by_name=True
+    )
 
 
 class PermissionToolAllowResponse(BaseModel):

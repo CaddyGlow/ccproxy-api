@@ -73,10 +73,10 @@ class CredentialsService:
     # OAuth constants
     OAUTH_BETA_VERSION = "oauth-2025-04-20"
     TOKEN_URL = "https://console.anthropic.com/v1/oauth/token"
-    AUTHORIZE_URL = "https://console.anthropic.com/v1/oauth/authorize"
+    AUTHORIZE_URL = "https://claude.ai/oauth/authorize"
     CLIENT_ID = "9d1c250a-e61b-44d9-88ed-5944d1962f5e"
-    REDIRECT_URI = "http://localhost:8080/oauth/callback"
-    SCOPES = ["user:inference", "user:profile"]
+    REDIRECT_URI = "http://localhost:54545/callback"
+    SCOPES = ["org:create_api_key", "user:profile", "user:inference"]
 
     @classmethod
     def find_credentials_file(
@@ -92,12 +92,18 @@ class CredentialsService:
         """
         search_paths = custom_paths if custom_paths else cls.CREDENTIAL_PATHS
 
+        logger.info("Searching for Claude credentials file...")
         for path in search_paths:
+            logger.debug(f"Checking: {path}")
             if path.exists() and path.is_file():
-                logger.debug(f"Found credentials file at: {path}")
+                logger.info(f"Found credentials file at: {path}")
                 return path
+            else:
+                logger.debug(f"Not found: {path}")
 
-        logger.debug("No credentials file found in searched locations")
+        logger.warning("No credentials file found in any searched locations:")
+        for path in search_paths:
+            logger.warning(f"  - {path}")
         return None
 
     @classmethod
@@ -114,23 +120,33 @@ class CredentialsService:
         """
         cred_file = cls.find_credentials_file(custom_paths)
         if not cred_file:
+            logger.info(
+                "No credentials file found - OAuth authentication not available"
+            )
             return None
 
         try:
+            logger.info(f"Loading credentials from: {cred_file}")
             with cred_file.open() as f:
                 data = json.load(f)
 
             credentials = ClaudeCredentials.model_validate(data)
-            logger.debug(
-                f"Successfully loaded credentials for subscription: {credentials.claude_ai_oauth.subscription_type}"
-            )
+
+            # Log credential details (safely)
+            oauth_token = credentials.claude_ai_oauth
+            logger.info("Successfully loaded credentials:")
+            logger.info(f"  - Subscription type: {oauth_token.subscription_type}")
+            logger.info(f"  - Token expires at: {oauth_token.expires_at_datetime}")
+            logger.info(f"  - Token expired: {oauth_token.is_expired}")
+            logger.info(f"  - Scopes: {oauth_token.scopes}")
+
             return credentials
 
         except json.JSONDecodeError as e:
-            logger.error(f"Failed to parse credentials file: {e}")
+            logger.error(f"Failed to parse credentials file {cred_file}: {e}")
             return None
         except Exception as e:
-            logger.error(f"Error loading credentials: {e}")
+            logger.error(f"Error loading credentials from {cred_file}: {e}")
             return None
 
     @classmethod
@@ -190,7 +206,14 @@ class CredentialsService:
         """
         try:
             cred_file = cls.find_credentials_file(custom_paths)
-            if not cred_file:
+
+            # If no existing file found and we have custom paths, use the first one
+            if not cred_file and custom_paths:
+                cred_file = custom_paths[0]
+                # Ensure parent directory exists
+                cred_file.parent.mkdir(parents=True, exist_ok=True)
+                logger.debug(f"Creating new credential file at: {cred_file}")
+            elif not cred_file:
                 logger.error("No credentials file found to update")
                 return False
 
@@ -417,23 +440,36 @@ class CredentialsService:
         Returns:
             Access token string or None if not available/refresh failed
         """
+        logger.info("Getting access token with refresh capability...")
         credentials = cls.load_credentials(custom_paths)
         if not credentials:
+            logger.error("No credentials available for OAuth authentication")
             return None
 
+        # Check token expiration status
+        oauth_token = credentials.claude_ai_oauth
+        logger.info("Token status check:")
+        logger.info(f"  - Current time: {datetime.now(UTC)}")
+        logger.info(f"  - Token expires: {oauth_token.expires_at_datetime}")
+        logger.info(f"  - Is expired: {oauth_token.is_expired}")
+
         # If token is not expired, return it
-        if not credentials.claude_ai_oauth.is_expired:
-            return credentials.claude_ai_oauth.access_token
+        if not oauth_token.is_expired:
+            logger.info("Using valid access token (not expired)")
+            return oauth_token.access_token
 
         # Token is expired, try to refresh it
-        logger.info("Access token is expired, attempting to refresh")
-        new_token, _ = await cls.refresh_token(custom_paths)
+        logger.warning("Access token is expired, attempting to refresh...")
+        new_token, updated_credentials = await cls.refresh_token(custom_paths)
 
-        if new_token:
+        if new_token and updated_credentials:
             logger.info("Successfully refreshed access token")
+            logger.info(
+                f"New token expires: {updated_credentials.claude_ai_oauth.expires_at_datetime}"
+            )
             return new_token
         else:
-            logger.error("Failed to refresh access token")
+            logger.error("Failed to refresh access token - authentication unavailable")
             return None
 
     @classmethod
@@ -446,6 +482,8 @@ class CredentialsService:
         Returns:
             True if login successful, False otherwise
         """
+        import base64
+        import hashlib
         import secrets
         import urllib.parse
         import webbrowser
@@ -455,18 +493,34 @@ class CredentialsService:
 
         # Generate state parameter for security
         state = secrets.token_urlsafe(32)
+
+        # Generate PKCE parameters
+        code_verifier = secrets.token_urlsafe(32)
+        code_challenge = (
+            base64.urlsafe_b64encode(hashlib.sha256(code_verifier.encode()).digest())
+            .decode()
+            .rstrip("=")
+        )
+
         authorization_code = None
         error = None
 
         class OAuthCallbackHandler(BaseHTTPRequestHandler):
-            def do_GET(self) -> None:
+            def do_GET(self) -> None:  # noqa: N802
                 nonlocal authorization_code, error
+
+                # Ignore favicon requests
+                if self.path == "/favicon.ico":
+                    self.send_response(404)
+                    self.end_headers()
+                    return
 
                 parsed_url = urlparse(self.path)
                 query_params = parse_qs(parsed_url.query)
 
                 # Check state parameter
                 received_state = query_params.get("state", [None])[0]
+
                 if received_state != state:
                     error = "Invalid state parameter"
                     self.send_response(400)
@@ -495,8 +549,8 @@ class CredentialsService:
                 # Suppress HTTP server logs
                 pass
 
-        # Start local HTTP server for OAuth callback
-        server = HTTPServer(("localhost", 8080), OAuthCallbackHandler)
+        # Start local HTTP server for OAuth callback on port 54545
+        server = HTTPServer(("localhost", 54545), OAuthCallbackHandler)
         server_thread = Thread(target=server.serve_forever)
         server_thread.daemon = True
         server_thread.start()
@@ -509,6 +563,8 @@ class CredentialsService:
                 "redirect_uri": cls.REDIRECT_URI,
                 "scope": " ".join(cls.SCOPES),
                 "state": state,
+                "code_challenge": code_challenge,
+                "code_challenge_method": "S256",
             }
 
             auth_url = f"{cls.AUTHORIZE_URL}?{urllib.parse.urlencode(auth_params)}"
@@ -545,6 +601,8 @@ class CredentialsService:
                 "code": authorization_code,
                 "redirect_uri": cls.REDIRECT_URI,
                 "client_id": cls.CLIENT_ID,
+                "code_verifier": code_verifier,
+                "state": state,  # Include state parameter as shown in Go example
             }
 
             headers = {
@@ -557,7 +615,7 @@ class CredentialsService:
                 response = await client.post(
                     cls.TOKEN_URL,
                     headers=headers,
-                    json=token_data,
+                    json=token_data,  # Back to JSON format like refresh method
                     timeout=30.0,
                 )
 

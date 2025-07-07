@@ -29,6 +29,39 @@ class DockerAdapterProtocol(Protocol):
         """
         ...
 
+    def run(
+        self,
+        image: str,
+        volumes: list[DockerVolume],
+        environment: DockerEnv,
+        command: list[str] | None = None,
+        middleware: OutputMiddleware[T] | None = None,
+        user_context: DockerUserContext | None = None,
+        entrypoint: str | None = None,
+        ports: list[DockerPortSpec] | None = None,
+    ) -> ProcessResult[T]:
+        """Run a Docker container with specified configuration.
+
+        Alias for run_container method.
+
+        Args:
+            image: Docker image name/tag to run
+            volumes: List of volume mounts (host_path, container_path)
+            environment: Dictionary of environment variables
+            command: Optional command to run in the container
+            middleware: Optional middleware for processing output
+            user_context: Optional user context for Docker --user flag
+            entrypoint: Optional custom entrypoint to override the image's default
+            ports: Optional port specifications (e.g., ["8080:80", "localhost:9000:9000"])
+
+        Returns:
+            Tuple containing (return_code, stdout_lines, stderr_lines)
+
+        Raises:
+            DockerError: If the container fails to run
+        """
+        ...
+
     def run_container(
         self,
         image: str,
