@@ -70,3 +70,29 @@ def format_version(version: str, level: str) -> str:
         return base_version
     else:
         raise ValueError(f"Unknown version level: {level}")
+
+
+def get_next_minor_version(version: str) -> str:
+    """
+    Get the next minor version.
+
+    Examples:
+    - 1.2.3 -> 1.3.0
+    - 1.2.3-dev -> 1.3.0
+    - 0.1.dev59+g1624e1e -> 0.2.0
+    """
+    major, minor, _, _ = parse_version(version)
+    return f"{major}.{minor + 1}.0"
+
+
+def get_next_major_version(version: str) -> str:
+    """
+    Get the next major version.
+
+    Examples:
+    - 1.2.3 -> 2.0.0
+    - 1.2.3-dev -> 2.0.0
+    - 0.1.dev59+g1624e1e -> 1.0.0
+    """
+    major, _, _, _ = parse_version(version)
+    return f"{major + 1}.0.0"

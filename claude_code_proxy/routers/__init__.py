@@ -1,6 +1,7 @@
 """Router modules for the Claude Proxy API."""
 
-from .chat import router as chat_router
+from .anthropic import router as anthropic_router
+from .openai import router as openai_router
 
 
-__all__ = ["chat_router"]
+__all__ = ["anthropic_router", "openai_router"]

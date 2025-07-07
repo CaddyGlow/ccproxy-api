@@ -27,6 +27,12 @@ from claude_code_proxy.utils.helper import get_package_dir, patched_typing
 from claude_code_proxy.utils.xdg import get_claude_docker_home_dir
 
 
+class ConfigurationError(Exception):
+    """Raised when configuration loading or validation fails."""
+
+    pass
+
+
 # For further information visit https://errors.pydantic.dev/2.11/u/typed-dict-version
 with patched_typing():
     from claude_code_sdk import ClaudeCodeOptions  # noqa: E402
@@ -373,7 +379,7 @@ class Settings(BaseSettings):
     )
 
     # Tools handling behavior
-    tools_handling: Literal["error", "warning", "ignore"] = Field(
+    api_tools_handling: Literal["error", "warning", "ignore"] = Field(
         default="warning",
         description="How to handle tools definitions in requests: error, warning, or ignore",
     )
@@ -755,6 +761,108 @@ class Settings(BaseSettings):
 
         # Create Settings instance with merged config
         return cls(**merged_config)
+
+
+class ConfigurationManager:
+    """Centralized configuration management for CLI and server."""
+
+    def __init__(self) -> None:
+        self._settings: Settings | None = None
+        self._config_path: Path | None = None
+        self._logging_configured = False
+
+    def load_settings(
+        self,
+        config_path: Path | None = None,
+        cli_overrides: dict[str, Any] | None = None,
+    ) -> Settings:
+        """Load settings with CLI overrides and caching."""
+        if self._settings is None or config_path != self._config_path:
+            try:
+                self._settings = Settings.from_config(
+                    config_path=config_path, **(cli_overrides or {})
+                )
+                self._config_path = config_path
+            except Exception as e:
+                raise ConfigurationError(f"Failed to load configuration: {e}") from e
+
+        return self._settings
+
+    def setup_logging(self, log_level: str | None = None) -> None:
+        """Configure logging once based on settings."""
+        if self._logging_configured:
+            return
+
+        # Import here to avoid circular import
+        from claude_code_proxy.utils.logging import setup_rich_logging
+
+        effective_level = log_level or (
+            self._settings.log_level if self._settings else "INFO"
+        )
+
+        setup_rich_logging(level=effective_level)
+        self._logging_configured = True
+
+    def get_cli_overrides_from_args(self, **cli_args: Any) -> dict[str, Any]:
+        """Extract non-None CLI arguments as configuration overrides."""
+        overrides = {}
+
+        # Server settings
+        for key in [
+            "host",
+            "port",
+            "reload",
+            "log_level",
+            "auth_token",
+            "claude_cli_path",
+        ]:
+            if cli_args.get(key) is not None:
+                overrides[key] = cli_args[key]
+
+        # Claude Code options
+        claude_opts = {}
+        for key in [
+            "max_thinking_tokens",
+            "permission_mode",
+            "cwd",
+            "max_turns",
+            "append_system_prompt",
+            "permission_prompt_tool_name",
+            "continue_conversation",
+        ]:
+            if cli_args.get(key) is not None:
+                claude_opts[key] = cli_args[key]
+
+        # Handle comma-separated lists
+        for key, target_key in [
+            ("allowed_tools", "allowed_tools"),
+            ("disallowed_tools", "disallowed_tools"),
+            ("cors_origins", "cors_origins"),
+        ]:
+            if cli_args.get(key):
+                if key == "cors_origins":
+                    overrides["cors_origins"] = [
+                        origin.strip() for origin in cli_args[key].split(",")
+                    ]
+                else:
+                    claude_opts[target_key] = [
+                        tool.strip() for tool in cli_args[key].split(",")
+                    ]
+
+        if claude_opts:
+            overrides["claude_code_options"] = claude_opts
+
+        return overrides
+
+    def reset(self) -> None:
+        """Reset configuration state (useful for testing)."""
+        self._settings = None
+        self._config_path = None
+        self._logging_configured = False
+
+
+# Global configuration manager instance
+config_manager = ConfigurationManager()
 
 
 def get_settings(config_path: Path | str | None = None) -> Settings:

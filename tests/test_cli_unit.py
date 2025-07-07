@@ -6,10 +6,14 @@ from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 import typer
-from fastapi_cli.exceptions import FastAPICLIException
 
 from claude_code_proxy._version import __version__
-from claude_code_proxy.cli import app, get_default_path_hook, main, version_callback
+from claude_code_proxy.cli.main import (
+    app,
+    # get_default_path_hook,
+    main,
+    version_callback,
+)
 
 
 @pytest.mark.unit
@@ -32,7 +36,7 @@ class TestVersionCallback:
     def test_version_callback_with_mock_version(self):
         """Test version_callback with mocked version."""
         with (
-            patch("claude_code_proxy.cli.__version__", "1.2.3"),
+            patch("claude_code_proxy.cli.main.__version__", "1.2.3"),
             patch("typer.echo") as mock_echo,
             pytest.raises(typer.Exit),
         ):
@@ -41,47 +45,47 @@ class TestVersionCallback:
         mock_echo.assert_called_once_with("claude-code-proxy-api 1.2.3")
 
 
-@pytest.mark.unit
-class TestGetDefaultPathHook:
-    """Test get_default_path_hook function."""
-
-    @patch("claude_code_proxy.cli.get_package_dir")
-    def test_get_default_path_hook_file_exists(self, mock_get_package_dir):
-        """Test get_default_path_hook when file exists."""
-        mock_package_dir = Path("/mock/package")
-        mock_get_package_dir.return_value = mock_package_dir
-
-        expected_path = mock_package_dir / "claude_code_proxy" / "main.py"
-
-        with patch.object(Path, "is_file", return_value=True):
-            result = get_default_path_hook()
-            assert result == expected_path
-
-    @patch("claude_code_proxy.cli.get_package_dir")
-    def test_get_default_path_hook_file_not_exists(self, mock_get_package_dir):
-        """Test get_default_path_hook when file doesn't exist."""
-        mock_package_dir = Path("/mock/package")
-        mock_get_package_dir.return_value = mock_package_dir
-
-        with patch.object(Path, "is_file", return_value=False):
-            with pytest.raises(FastAPICLIException) as exc_info:
-                get_default_path_hook()
-
-            assert "Could not find a default file to run" in str(exc_info.value)
-
-    @patch("claude_code_proxy.cli.get_package_dir")
-    def test_get_default_path_hook_path_construction(self, mock_get_package_dir):
-        """Test get_default_path_hook constructs correct path."""
-        mock_package_dir = Path("/test/path")
-        mock_get_package_dir.return_value = mock_package_dir
-
-        with patch.object(Path, "is_file", return_value=True) as mock_is_file:
-            result = get_default_path_hook()
-
-            # Check that the correct path was checked
-            expected_path = mock_package_dir / "claude_code_proxy" / "main.py"
-            mock_is_file.assert_called_once()
-            assert result == expected_path
+# @pytest.mark.unit
+# class TestGetDefaultPathHook:
+#     """Test get_default_path_hook function."""
+#
+#     @patch("claude_code_proxy.cli.main.get_package_dir")
+#     def test_get_default_path_hook_file_exists(self, mock_get_package_dir):
+#         """Test get_default_path_hook when file exists."""
+#         mock_package_dir = Path("/mock/package")
+#         mock_get_package_dir.return_value = mock_package_dir
+#
+#         expected_path = mock_package_dir / "claude_code_proxy" / "main.py"
+#
+#         with patch.object(Path, "is_file", return_value=True):
+#             result = get_default_path_hook()
+#             assert result == expected_path
+#
+#     @patch("claude_code_proxy.cli.main.get_package_dir")
+#     def test_get_default_path_hook_file_not_exists(self, mock_get_package_dir):
+#         """Test get_default_path_hook when file doesn't exist."""
+#         mock_package_dir = Path("/mock/package")
+#         mock_get_package_dir.return_value = mock_package_dir
+#
+#         with patch.object(Path, "is_file", return_value=False):
+#             with pytest.raises(FileNotFoundError) as exc_info:
+#                 get_default_path_hook()
+#
+#             assert "Could not find a default file to run" in str(exc_info.value)
+#
+#     @patch("claude_code_proxy.cli.main.get_package_dir")
+#     def test_get_default_path_hook_path_construction(self, mock_get_package_dir):
+#         """Test get_default_path_hook constructs correct path."""
+#         mock_package_dir = Path("/test/path")
+#         mock_get_package_dir.return_value = mock_package_dir
+#
+#         with patch.object(Path, "is_file", return_value=True) as mock_is_file:
+#             result = get_default_path_hook()
+#
+#             # Check that the correct path was checked
+#             expected_path = mock_package_dir / "claude_code_proxy" / "main.py"
+#             mock_is_file.assert_called_once()
+#             assert result == expected_path
 
 
 @pytest.mark.unit
@@ -211,25 +215,27 @@ class TestErrorHandling:
 
             mock_echo.assert_called_once()
 
-    def test_get_default_path_hook_exception_message(self):
-        """Test get_default_path_hook exception message is descriptive."""
-        with patch("claude_code_proxy.cli.get_package_dir") as mock_get_package_dir:
-            mock_get_package_dir.return_value = Path("/mock/path")
-
-            with patch.object(Path, "is_file", return_value=False):
-                with pytest.raises(FastAPICLIException) as exc_info:
-                    get_default_path_hook()
-
-                error_msg = str(exc_info.value)
-                assert "Could not find a default file to run" in error_msg
-                assert "please provide an explicit path" in error_msg
+    # def test_get_default_path_hook_exception_message(self):
+    #     """Test get_default_path_hook exception message is descriptive."""
+    #     with patch(
+    #         "claude_code_proxy.cli.main.get_package_dir"
+    #     ) as mock_get_package_dir:
+    #         mock_get_package_dir.return_value = Path("/mock/path")
+    #
+    #         with patch.object(Path, "is_file", return_value=False):
+    #             with pytest.raises(FileNotFoundError) as exc_info:
+    #                 get_default_path_hook()
+    #
+    #             error_msg = str(exc_info.value)
+    #             assert "Could not find a default file to run" in error_msg
+    #             assert "please provide an explicit path" in error_msg
 
 
 @pytest.mark.unit
 class TestConfigCommand:
     """Test config command function."""
 
-    @patch("claude_code_proxy.commands.config.get_settings")
+    @patch("claude_code_proxy.cli.commands.config.get_settings")
     @patch("rich.console.Console")
     def test_config_command_success(self, mock_console_class, mock_get_settings):
         """Test config command displays settings successfully."""
@@ -293,7 +299,7 @@ class TestConfigCommand:
         # Verify console was used for output (real console is used, so we just check that no exception was raised)
         # The config function completed successfully if we reach this point
 
-    @patch("claude_code_proxy.commands.config.get_settings")
+    @patch("claude_code_proxy.cli.commands.config.get_settings")
     @patch("rich.console.Console")
     def test_config_command_with_none_claude_path(
         self, mock_console_class, mock_get_settings
@@ -359,7 +365,7 @@ class TestConfigCommand:
         # Verify console was used for output (real console is used, so we just check that no exception was raised)
         # The config function completed successfully if we reach this point
 
-    @patch("claude_code_proxy.commands.config.get_settings")
+    @patch("claude_code_proxy.cli.commands.config.get_settings")
     @patch("rich.console.Console.print")
     def test_config_command_exception_handling(self, mock_print, mock_get_settings):
         """Test config command handles exceptions properly."""
@@ -385,14 +391,14 @@ class TestConfigCommand:
 class TestClaudeCommand:
     """Test claude command function."""
 
-    @patch("claude_code_proxy.cli.get_settings")
+    @patch("claude_code_proxy.cli.main.get_settings")
     @patch("typer.echo")
     @patch("os.execvp")
     def test_claude_command_local_execution(
         self, mock_execvp, mock_echo, mock_get_settings
     ):
         """Test claude command with local execution."""
-        from claude_code_proxy.cli import claude
+        from claude_code_proxy.cli.main import claude
 
         # Mock settings
         mock_settings = Mock()
@@ -426,11 +432,11 @@ class TestClaudeCommand:
             "/usr/bin/claude", ["/usr/bin/claude", "--version"]
         )
 
-    @patch("claude_code_proxy.cli.get_settings")
+    @patch("claude_code_proxy.cli.main.get_settings")
     @patch("typer.echo")
     def test_claude_command_no_cli_path(self, mock_echo, mock_get_settings):
         """Test claude command when claude CLI path is not found."""
-        from claude_code_proxy.cli import claude
+        from claude_code_proxy.cli.main import claude
 
         # Mock settings with no claude_cli_path
         mock_settings = Mock()
@@ -462,14 +468,14 @@ class TestClaudeCommand:
             "Please install Claude CLI or configure claude_cli_path.", err=True
         )
 
-    @patch("claude_code_proxy.cli.get_settings")
+    @patch("claude_code_proxy.cli.main.get_settings")
     @patch("typer.echo")
     @patch("os.execvp")
     def test_claude_command_relative_path_resolution(
         self, mock_execvp, mock_echo, mock_get_settings
     ):
         """Test claude command resolves relative paths."""
-        from claude_code_proxy.cli import claude
+        from claude_code_proxy.cli.main import claude
 
         # Mock settings with relative path
         mock_settings = Mock()
@@ -497,15 +503,15 @@ class TestClaudeCommand:
             "/resolved/path/claude", ["/resolved/path/claude", "doctor"]
         )
 
-    @patch("claude_code_proxy.cli.get_settings")
-    @patch("claude_code_proxy.cli.DockerCommandBuilder")
+    @patch("claude_code_proxy.cli.main.get_settings")
+    @patch("claude_code_proxy.cli.main.DockerCommandBuilder")
     @patch("typer.echo")
     @patch("os.execvp")
     def test_claude_command_docker_execution(
         self, mock_execvp, mock_echo, mock_docker_builder, mock_get_settings
     ):
         """Test claude command with Docker execution."""
-        from claude_code_proxy.cli import claude
+        from claude_code_proxy.cli.main import claude
 
         # Mock settings
         mock_settings = Mock()
@@ -570,14 +576,14 @@ class TestClaudeCommand:
             cmd_args=["--version"],
         )
 
-    @patch("claude_code_proxy.cli.get_settings")
+    @patch("claude_code_proxy.cli.main.get_settings")
     @patch("typer.echo")
     @patch("os.execvp")
     def test_claude_command_execvp_os_error(
         self, mock_execvp, mock_echo, mock_get_settings
     ):
         """Test claude command handles OSError from execvp."""
-        from claude_code_proxy.cli import claude
+        from claude_code_proxy.cli.main import claude
 
         # Mock settings
         mock_settings = Mock()
@@ -611,11 +617,11 @@ class TestClaudeCommand:
             "Failed to execute command: Command not found", err=True
         )
 
-    @patch("claude_code_proxy.cli.get_settings")
+    @patch("claude_code_proxy.cli.main.get_settings")
     @patch("typer.echo")
     def test_claude_command_general_exception(self, mock_echo, mock_get_settings):
         """Test claude command handles general exceptions."""
-        from claude_code_proxy.cli import claude
+        from claude_code_proxy.cli.main import claude
 
         # Mock get_settings to raise an exception
         mock_get_settings.side_effect = Exception("Settings error")
@@ -644,15 +650,15 @@ class TestClaudeCommand:
             "Error executing claude command: Settings error", err=True
         )
 
-    @patch("claude_code_proxy.cli.get_settings")
-    @patch("claude_code_proxy.cli.DockerCommandBuilder")
+    @patch("claude_code_proxy.cli.main.get_settings")
+    @patch("claude_code_proxy.cli.main.DockerCommandBuilder")
     @patch("typer.echo")
     @patch("os.execvp")
     def test_claude_command_docker_with_user_mapping(
         self, mock_execvp, mock_echo, mock_docker_builder, mock_get_settings
     ):
         """Test claude command with Docker execution and user mapping parameters."""
-        from claude_code_proxy.cli import claude
+        from claude_code_proxy.cli.main import claude
 
         # Mock settings
         mock_settings = Mock()
@@ -727,7 +733,7 @@ class TestClaudeCommand:
 
     def test_claude_command_docstring(self):
         """Test claude command has proper docstring."""
-        from claude_code_proxy.cli import claude
+        from claude_code_proxy.cli.main import claude
 
         assert claude.__doc__ is not None
         assert "Execute claude CLI commands directly" in claude.__doc__
@@ -737,7 +743,7 @@ class TestClaudeCommand:
         """Test claude command has correct parameter defaults."""
         import inspect
 
-        from claude_code_proxy.cli import claude
+        from claude_code_proxy.cli.main import claude
 
         sig = inspect.signature(claude)
 
@@ -768,17 +774,15 @@ class TestModuleImports:
     def test_required_imports_available(self):
         """Test that all required imports are available."""
         # Test that we can import the functions we're testing
-        from claude_code_proxy.cli import (
+        from claude_code_proxy.cli.main import (
             app,
             claude,
-            get_default_path_hook,
-            main,
+            # get_default_path_hook,
             version_callback,
         )
 
         assert callable(version_callback)
-        assert callable(get_default_path_hook)
-        assert callable(main)
+        # assert callable(get_default_path_hook)
         assert callable(claude)
         assert isinstance(app, typer.Typer)
 

@@ -107,7 +107,9 @@ def config_list() -> None:
             else "[dim]None[/dim]"
         )
         security_table.add_row(
-            "tools_handling", settings.tools_handling, "How to handle tools in requests"
+            "tools_handling",
+            settings.api_tools_handling,
+            "How to handle tools in requests",
         )
         security_table.add_row(
             "auth_token", auth_token_display, "Bearer token for authentication"
@@ -289,7 +291,7 @@ def config_init(
             "host": "127.0.0.1",
             "port": 8000,
             "log_level": "INFO",
-            "workers": 4,
+            "workers": 1,
             "reload": False,
             "cors_origins": ["*"],
             "auth_token": None,

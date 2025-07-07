@@ -51,10 +51,10 @@ async def create_chat_completion(
         settings = get_settings()
 
         # Check if tools are defined in the request
-        if request.tools and settings.tools_handling != "ignore":
+        if request.tools and settings.api_tools_handling != "ignore":
             tools_message = f"Tools definition detected with {len(request.tools)} tools"
 
-            if settings.tools_handling == "error":
+            if settings.api_tools_handling == "error":
                 logger.error(f"Tools not supported: {tools_message}")
                 error_response = OpenAIErrorResponse.create(
                     message="Tools definitions are not supported by this proxy",
@@ -64,7 +64,7 @@ async def create_chat_completion(
                     status_code=400,
                     detail=error_response.model_dump(),
                 )
-            elif settings.tools_handling == "warning":
+            elif settings.api_tools_handling == "warning":
                 logger.warning(f"Tools ignored: {tools_message}")
 
         # Create Claude client directly

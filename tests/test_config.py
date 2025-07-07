@@ -26,7 +26,7 @@ class TestSettings:
         assert settings.workers == 4
         assert settings.reload is False
         assert settings.cors_origins == ["*"]
-        assert settings.tools_handling == "warning"
+        assert settings.api_tools_handling == "warning"
 
     def test_settings_from_env_vars(self):
         """Test loading settings from environment variables."""
@@ -115,12 +115,12 @@ class TestSettings:
         """Test tools_handling setting validation."""
         # Test default value
         settings = Settings()
-        assert settings.tools_handling == "warning"
+        assert settings.api_tools_handling == "warning"
 
         # Test valid values
         for value in ["error", "warning", "ignore"]:
-            settings = Settings(tools_handling=value)  # type: ignore[arg-type]
-            assert settings.tools_handling == value
+            settings = Settings(api_tools_handling=value)  # type: ignore[arg-type]
+            assert settings.api_tools_handling == value
 
     def test_tools_handling_from_env(self):
         """Test tools_handling setting from environment variable."""
@@ -131,7 +131,7 @@ class TestSettings:
             for value in ["error", "warning", "ignore"]:
                 os.environ["TOOLS_HANDLING"] = value
                 settings = Settings()
-                assert settings.tools_handling == value
+                assert settings.api_tools_handling == value
         finally:
             # Restore original environment
             if original_env is not None:

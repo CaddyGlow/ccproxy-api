@@ -91,3 +91,28 @@ class ServiceUnavailableError(ClaudeProxyError):
         super().__init__(
             message=message, error_type="service_unavailable_error", status_code=503
         )
+
+
+class DockerError(ClaudeProxyError):
+    """Docker operation error."""
+
+    def __init__(
+        self,
+        message: str,
+        command: str | None = None,
+        cause: Exception | None = None,
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        error_details = details or {}
+        if command:
+            error_details["command"] = command
+        if cause:
+            error_details["cause"] = str(cause)
+            error_details["cause_type"] = type(cause).__name__
+
+        super().__init__(
+            message=message,
+            error_type="docker_error",
+            status_code=500,
+            details=error_details,
+        )

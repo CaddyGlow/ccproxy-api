@@ -48,7 +48,7 @@ class TestOpenAIChatCompletionsEndpoint:
     def mock_claude_client(self):
         """Mock Claude client directly."""
         with patch(
-            "claude_code_proxy.api.openai.chat.ClaudeClient"
+            "claude_code_proxy.routers.openai.ClaudeClient"
         ) as mock_client_class:
             mock_client = MagicMock()
             mock_client_class.return_value = mock_client
@@ -433,7 +433,7 @@ class TestOpenAIToolsValidation:
     def mock_claude_client(self):
         """Mock Claude client directly."""
         with patch(
-            "claude_code_proxy.api.openai.chat.ClaudeClient"
+            "claude_code_proxy.routers.openai.ClaudeClient"
         ) as mock_client_class:
             mock_client = MagicMock()
             mock_client_class.return_value = mock_client
@@ -512,7 +512,7 @@ class TestOpenAIToolsValidation:
             }
         )
 
-        with patch("claude_code_proxy.api.openai.chat.logger") as mock_logger:
+        with patch("claude_code_proxy.routers.openai.logger") as mock_logger:
             response = test_client.post(
                 "/openai/v1/chat/completions", json=sample_request_with_tools
             )
@@ -550,7 +550,7 @@ class TestOpenAIToolsValidation:
             }
         )
 
-        with patch("claude_code_proxy.api.openai.chat.logger") as mock_logger:
+        with patch("claude_code_proxy.routers.openai.logger") as mock_logger:
             response = test_client.post(
                 "/openai/v1/chat/completions", json=sample_request_with_tools
             )

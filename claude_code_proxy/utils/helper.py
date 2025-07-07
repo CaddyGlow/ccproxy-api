@@ -27,7 +27,7 @@ def get_package_dir() -> Path:
         import importlib.util
 
         # Get the path to the claude_code_proxy package and resolve it
-        spec = importlib.util.find_spec("claude_code_proxy")
+        spec = importlib.util.find_spec(get_root_package_name())
         if spec and spec.origin:
             package_dir = Path(spec.origin).parent.parent.resolve()
         else:
@@ -87,3 +87,10 @@ def merge_claude_code_options(base_options: Any, **overrides: Any) -> Any:
             setattr(options, key, value)
 
     return options
+
+
+def get_root_package_name() -> str:
+    """Get the root package name."""
+    if __package__:
+        return __package__.split(".")[0]
+    return __name__.split(".")[0]

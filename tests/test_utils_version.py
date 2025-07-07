@@ -2,7 +2,12 @@
 
 import pytest
 
-from claude_code_proxy.utils.version import format_version, parse_version
+from claude_code_proxy.utils.version import (
+    format_version,
+    get_next_major_version,
+    get_next_minor_version,
+    parse_version,
+)
 
 
 @pytest.mark.unit
@@ -348,3 +353,105 @@ class TestVersionEdgeCases:
             assert "dev" in formatted_docker
             assert "dev" in formatted_npm
             assert "dev" in formatted_python
+
+
+@pytest.mark.unit
+class TestGetNextMinorVersion:
+    """Test get_next_minor_version function."""
+
+    def test_simple_version(self):
+        """Test getting next minor version for simple version."""
+        assert get_next_minor_version("1.2.3") == "1.3.0"
+
+    def test_zero_version(self):
+        """Test getting next minor version for zero version."""
+        assert get_next_minor_version("0.0.0") == "0.1.0"
+
+    def test_dev_version(self):
+        """Test getting next minor version for dev version."""
+        assert get_next_minor_version("1.2.3.dev59") == "1.3.0"
+
+    def test_setuptools_scm_version(self):
+        """Test getting next minor version for setuptools-scm version."""
+        assert get_next_minor_version("1.2.3.dev59+g1624e1e.d19800101") == "1.3.0"
+
+    def test_dev_version_without_patch(self):
+        """Test getting next minor version for dev version without patch."""
+        assert get_next_minor_version("0.1.dev59+g1624e1e") == "0.2.0"
+
+    def test_large_minor_version(self):
+        """Test getting next minor version for large minor number."""
+        assert get_next_minor_version("1.999.0") == "1.1000.0"
+
+    def test_two_part_version(self):
+        """Test getting next minor version for two-part version."""
+        assert get_next_minor_version("1.2") == "1.3.0"
+
+    def test_single_part_version(self):
+        """Test getting next minor version for single-part version."""
+        assert get_next_minor_version("1") == "1.1.0"
+
+    def test_version_with_high_patch(self):
+        """Test getting next minor version resets patch to 0."""
+        assert get_next_minor_version("1.2.999") == "1.3.0"
+
+    def test_multiple_increments(self):
+        """Test multiple minor version increments."""
+        version = "1.0.0"
+        version = get_next_minor_version(version)
+        assert version == "1.1.0"
+        version = get_next_minor_version(version)
+        assert version == "1.2.0"
+        version = get_next_minor_version(version)
+        assert version == "1.3.0"
+
+
+@pytest.mark.unit
+class TestGetNextMajorVersion:
+    """Test get_next_major_version function."""
+
+    def test_simple_version(self):
+        """Test getting next major version for simple version."""
+        assert get_next_major_version("1.2.3") == "2.0.0"
+
+    def test_zero_version(self):
+        """Test getting next major version for zero version."""
+        assert get_next_major_version("0.0.0") == "1.0.0"
+
+    def test_dev_version(self):
+        """Test getting next major version for dev version."""
+        assert get_next_major_version("1.2.3.dev59") == "2.0.0"
+
+    def test_setuptools_scm_version(self):
+        """Test getting next major version for setuptools-scm version."""
+        assert get_next_major_version("1.2.3.dev59+g1624e1e.d19800101") == "2.0.0"
+
+    def test_dev_version_without_patch(self):
+        """Test getting next major version for dev version without patch."""
+        assert get_next_major_version("0.1.dev59+g1624e1e") == "1.0.0"
+
+    def test_large_major_version(self):
+        """Test getting next major version for large major number."""
+        assert get_next_major_version("999.888.777") == "1000.0.0"
+
+    def test_two_part_version(self):
+        """Test getting next major version for two-part version."""
+        assert get_next_major_version("1.2") == "2.0.0"
+
+    def test_single_part_version(self):
+        """Test getting next major version for single-part version."""
+        assert get_next_major_version("1") == "2.0.0"
+
+    def test_version_with_high_minor_patch(self):
+        """Test getting next major version resets minor and patch to 0."""
+        assert get_next_major_version("1.999.888") == "2.0.0"
+
+    def test_multiple_increments(self):
+        """Test multiple major version increments."""
+        version = "0.1.0"
+        version = get_next_major_version(version)
+        assert version == "1.0.0"
+        version = get_next_major_version(version)
+        assert version == "2.0.0"
+        version = get_next_major_version(version)
+        assert version == "3.0.0"
