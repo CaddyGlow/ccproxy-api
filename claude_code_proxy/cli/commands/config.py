@@ -9,13 +9,10 @@ from typing import Any, Optional
 
 import typer
 from click import get_current_context
-from rich.console import Console
-from rich.panel import Panel
-from rich.table import Table
-from rich.text import Text
 
 from claude_code_proxy._version import __version__
 from claude_code_proxy.config.settings import get_settings
+from claude_code_proxy.utils.cli import get_rich_toolkit
 from claude_code_proxy.utils.schema import (
     generate_schema_files,
     generate_taplo_config,
@@ -48,8 +45,16 @@ app = typer.Typer(
 @app.command(name="list")
 def config_list() -> None:
     """Show current configuration."""
+    toolkit = get_rich_toolkit()
+
     try:
         settings = get_settings(config_path=get_config_path_from_context())
+
+        from rich.console import Console
+        from rich.panel import Panel
+        from rich.table import Table
+        from rich.text import Text
+
         console = Console()
 
         # Main server configuration table
@@ -231,8 +236,7 @@ def config_list() -> None:
         )
 
     except Exception as e:
-        console = Console()
-        console.print(f"[bold red]Error loading configuration:[/bold red] {e}")
+        toolkit.print(f"Error loading configuration: {e}", tag="error")
         raise typer.Exit(1) from e
 
 
@@ -270,11 +274,14 @@ def config_init(
     # Validate format
     valid_formats = ["toml", "json", "yaml"]
     if format not in valid_formats:
-        typer.echo(
+        toolkit = get_rich_toolkit()
+        toolkit.print(
             f"Error: Invalid format '{format}'. Must be one of: {', '.join(valid_formats)}",
-            err=True,
+            tag="error",
         )
         raise typer.Exit(1)
+
+    toolkit = get_rich_toolkit()
 
     try:
         from claude_code_proxy.utils.xdg import get_ccproxy_config_dir
@@ -291,32 +298,32 @@ def config_init(
             "host": "127.0.0.1",
             "port": 8000,
             "log_level": "INFO",
-            "workers": 1,
-            "reload": False,
-            "cors_origins": ["*"],
-            "auth_token": None,
-            "tools_handling": "warning",
-            "claude_cli_path": None,
-            "docker_settings": {
-                "docker_image": "claude-code-proxy",
-                "docker_volumes": [],
-                "docker_environment": {},
-                "docker_additional_args": [],
-                "docker_home_directory": None,
-                "docker_workspace_directory": None,
-                "user_mapping_enabled": True,
-                "user_uid": None,
-                "user_gid": None,
-            },
+            # "workers": 1,
+            # "reload": False,
+            # "cors_origins": ["*"],
+            # "auth_token": None,
+            # "tools_handling": "warning",
+            # "claude_cli_path": None,
+            # "docker_settings": {
+            #     "docker_image": "claude-code-proxy",
+            #     "docker_volumes": [],
+            #     "docker_environment": {},
+            #     "docker_additional_args": [],
+            #     "docker_home_directory": None,
+            #     "docker_workspace_directory": None,
+            #     "user_mapping_enabled": True,
+            #     "user_uid": None,
+            #     "user_gid": None,
+            # },
         }
 
         # Determine output file name
         if format == "toml":
             output_file = output_dir / "config.toml"
             if output_file.exists() and not force:
-                typer.echo(
+                toolkit.print(
                     f"Error: {output_file} already exists. Use --force to overwrite.",
-                    err=True,
+                    tag="error",
                 )
                 raise typer.Exit(1)
 
@@ -331,7 +338,6 @@ def config_init(
                 f.write(
                     'log_level = "INFO"  # Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)\n'
                 )
-                f.write("workers = 4  # Number of worker processes\n")
                 f.write("reload = false  # Enable auto-reload for development\n\n")
 
                 f.write("# Security configuration\n")
@@ -381,9 +387,9 @@ def config_init(
         elif format == "json":
             output_file = output_dir / "config.json"
             if output_file.exists() and not force:
-                typer.echo(
+                toolkit.print(
                     f"Error: {output_file} already exists. Use --force to overwrite.",
-                    err=True,
+                    tag="error",
                 )
                 raise typer.Exit(1)
 
@@ -396,17 +402,17 @@ def config_init(
             try:
                 import yaml  # type: ignore[import-untyped]
             except ImportError as e:
-                typer.echo(
+                toolkit.print(
                     "Error: YAML support is not available. Install with: pip install pyyaml",
-                    err=True,
+                    tag="error",
                 )
                 raise typer.Exit(1) from e
 
             output_file = output_dir / "config.yaml"
             if output_file.exists() and not force:
-                typer.echo(
+                toolkit.print(
                     f"Error: {output_file} already exists. Use --force to overwrite.",
-                    err=True,
+                    tag="error",
                 )
                 raise typer.Exit(1)
 
@@ -416,17 +422,19 @@ def config_init(
                 f.write("# This file configures the ccproxy server settings\n\n")
                 yaml.dump(example_config, f, default_flow_style=False, sort_keys=False)
 
-        typer.echo(f"Created example configuration file: {output_file}")
-        typer.echo("")
-        typer.echo("To use this configuration:")
-        typer.echo(f"  ccproxy --config {output_file} api")
-        typer.echo("")
-        typer.echo("Or set the CONFIG_FILE environment variable:")
-        typer.echo(f"  export CONFIG_FILE={output_file}")
-        typer.echo("  ccproxy api")
+        toolkit.print(
+            f"Created example configuration file: {output_file}", tag="success"
+        )
+        toolkit.print_line()
+        toolkit.print("To use this configuration:", tag="info")
+        toolkit.print(f"  ccproxy --config {output_file} api", tag="command")
+        toolkit.print_line()
+        toolkit.print("Or set the CONFIG_FILE environment variable:", tag="info")
+        toolkit.print(f"  export CONFIG_FILE={output_file}", tag="command")
+        toolkit.print("  ccproxy api", tag="command")
 
     except Exception as e:
-        typer.echo(f"Error creating configuration file: {e}", err=True)
+        toolkit.print(f"Error creating configuration file: {e}", tag="error")
         raise typer.Exit(1) from e
 
 
@@ -455,39 +463,49 @@ def config_schema(
         ccproxy config schema --output-dir ./schemas  # Generate in specific directory
         ccproxy config schema --taplo           # Also generate taplo config
     """
+    toolkit = get_rich_toolkit()
+
     try:
         # Generate schema files
         if output_dir is None:
             output_dir = Path.cwd()
 
-        typer.echo("Generating JSON Schema files for TOML configuration...")
+        toolkit.print(
+            "Generating JSON Schema files for TOML configuration...", tag="info"
+        )
 
         generated_files = generate_schema_files(output_dir)
 
         for file_path in generated_files:
-            typer.echo(f"Generated: {file_path}")
+            toolkit.print(f"Generated: {file_path}", tag="success")
 
         if taplo:
-            typer.echo("Generating taplo configuration...")
+            toolkit.print("Generating taplo configuration...", tag="info")
             taplo_config = generate_taplo_config(output_dir)
-            typer.echo(f"Generated: {taplo_config}")
+            toolkit.print(f"Generated: {taplo_config}", tag="success")
 
-        typer.echo("")
-        typer.echo("Schema files generated successfully!")
-        typer.echo("")
-        typer.echo("To use in VS Code:")
-        typer.echo("1. Install the 'Even Better TOML' extension")
-        typer.echo("2. The schema will be automatically applied to ccproxy TOML files")
-        typer.echo("")
-        typer.echo("To use with taplo CLI:")
+        toolkit.print_line()
+        toolkit.print("Schema files generated successfully!", tag="success")
+        toolkit.print_line()
+        toolkit.print("To use in VS Code:", tag="info")
+        toolkit.print("1. Install the 'Even Better TOML' extension", tag="info")
+        toolkit.print(
+            "2. The schema will be automatically applied to ccproxy TOML files",
+            tag="info",
+        )
+        toolkit.print_line()
+        toolkit.print("To use with taplo CLI:", tag="info")
         if taplo:
-            typer.echo("  taplo check your-config.toml")
+            toolkit.print("  taplo check your-config.toml", tag="command")
         else:
-            typer.echo("  ccproxy config schema --taplo  # Generate taplo config first")
-            typer.echo("  taplo check your-config.toml")
+            toolkit.print(
+                "  ccproxy config schema --taplo  # Generate taplo config first",
+                tag="command",
+            )
+            toolkit.print("  taplo check your-config.toml", tag="command")
 
     except Exception as e:
-        typer.echo(f"Error generating schema: {e}", err=True)
+        toolkit.print(f"Error generating schema: {e}", tag="error")
         raise typer.Exit(1) from e
 
 
@@ -508,33 +526,37 @@ def config_validate(
         ccproxy config validate config.yaml  # Validate a YAML config
         ccproxy config validate config.json  # Validate a JSON config
     """
+    toolkit = get_rich_toolkit()
+
     try:
         # Validate the config file
         if not config_file.exists():
-            typer.echo(f"Error: File {config_file} does not exist.", err=True)
+            toolkit.print(f"Error: File {config_file} does not exist.", tag="error")
             raise typer.Exit(1)
 
-        typer.echo(f"Validating {config_file}...")
+        toolkit.print(f"Validating {config_file}...", tag="info")
 
         try:
             is_valid = validate_config_with_schema(config_file)
             if is_valid:
-                typer.echo("✓ Configuration file is valid according to schema.")
+                toolkit.print(
+                    "Configuration file is valid according to schema.", tag="success"
+                )
             else:
-                typer.echo("✗ Configuration file validation failed.", err=True)
+                toolkit.print("Configuration file validation failed.", tag="error")
                 raise typer.Exit(1)
         except ImportError as e:
-            typer.echo(f"Error: {e}", err=True)
-            typer.echo(
-                "Install check-jsonschema: pip install check-jsonschema", err=True
+            toolkit.print(f"Error: {e}", tag="error")
+            toolkit.print(
+                "Install check-jsonschema: pip install check-jsonschema", tag="error"
             )
             raise typer.Exit(1) from e
         except Exception as e:
-            typer.echo(f"Validation error: {e}", err=True)
+            toolkit.print(f"Validation error: {e}", tag="error")
             raise typer.Exit(1) from e
 
     except Exception as e:
-        typer.echo(f"Error validating configuration: {e}", err=True)
+        toolkit.print(f"Error validating configuration: {e}", tag="error")
         raise typer.Exit(1) from e
 
 
@@ -574,9 +596,14 @@ def generate_token(
         ccproxy config generate-token --save --config-file config.yaml  # Save to YAML config
         ccproxy config generate-token --save --force     # Overwrite existing token
     """
+    toolkit = get_rich_toolkit()
+
     try:
         # Generate a secure token
         token = secrets.token_urlsafe(32)
+
+        from rich.console import Console
+        from rich.panel import Panel
 
         console = Console()
 
@@ -705,7 +732,7 @@ def generate_token(
             console.print("[cyan]ccproxy api[/cyan]")
 
     except Exception as e:
-        typer.echo(f"Error generating token: {e}", err=True)
+        toolkit.print(f"Error generating token: {e}", tag="error")
         raise typer.Exit(1) from e
 
 

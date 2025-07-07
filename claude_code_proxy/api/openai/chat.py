@@ -23,7 +23,7 @@ from claude_code_proxy.services.openai_streaming import stream_claude_response_o
 
 # Pool manager removed - creating clients directly
 from claude_code_proxy.services.translator import OpenAITranslator
-from claude_code_proxy.utils import merge_claude_code_options
+from claude_code_proxy.utils.cli import merge_claude_code_options
 from claude_code_proxy.utils.logging import get_logger
 
 

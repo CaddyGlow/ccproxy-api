@@ -132,6 +132,33 @@ class APIError(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class PermissionToolAllowResponse(BaseModel):
+    """Response model for allowed permission tool requests."""
+
+    behavior: Literal["allow"] = "allow"
+    updated_input: dict[str, Any] = Field(
+        ...,
+        description="Updated input parameters for the tool, or original input if unchanged",
+        alias="updatedInput",
+    )
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class PermissionToolDenyResponse(BaseModel):
+    """Response model for denied permission tool requests."""
+
+    behavior: Literal["deny"] = "deny"
+    message: str = Field(
+        ..., description="Human-readable explanation of why the permission was denied"
+    )
+
+    model_config = ConfigDict(extra="forbid")
+
+
+PermissionToolResponse = PermissionToolAllowResponse | PermissionToolDenyResponse
+
+
 class RateLimitError(APIError):
     """Rate limit error."""
 

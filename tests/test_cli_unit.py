@@ -1,18 +1,26 @@
 """Unit tests for CLI functions."""
 
+import json
 import os
 from pathlib import Path
+from typing import Any
 from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 import typer
+from typer.testing import CliRunner
 
 from claude_code_proxy._version import __version__
 from claude_code_proxy.cli.main import (
     app,
     # get_default_path_hook,
     main,
+    permission_tool,
     version_callback,
+)
+from claude_code_proxy.models.responses import (
+    PermissionToolAllowResponse,
+    PermissionToolDenyResponse,
 )
 
 
@@ -398,7 +406,7 @@ class TestClaudeCommand:
         self, mock_execvp, mock_echo, mock_get_settings
     ):
         """Test claude command with local execution."""
-        from claude_code_proxy.cli.main import claude
+        from claude_code_proxy.cli import claude
 
         # Mock settings
         mock_settings = Mock()
@@ -810,3 +818,211 @@ class TestModuleImports:
         from claude_code_proxy.utils.helper import get_package_dir
 
         assert callable(get_package_dir)
+
+
+@pytest.mark.unit
+class TestPermissionToolCommand:
+    """Test permission_tool command function."""
+
+    def _extract_json_from_output(self, output: str) -> Any:
+        """Extract JSON from Rich toolkit output."""
+        # The Rich toolkit wraps output, so we need to extract just the JSON part
+        import re
+
+        # Find the start of JSON
+        start_idx = output.find('{"behavior"')
+        if start_idx == -1:
+            raise ValueError(f"No JSON found in output: {output}")
+
+        # Extract from the start of JSON to the end
+        json_part = output[start_idx:]
+
+        # Find the end of the JSON object by counting braces, but be careful about whitespace
+        brace_count = 0
+        end_idx = 0
+        in_string = False
+        escape_next = False
+
+        for i, char in enumerate(json_part):
+            if escape_next:
+                escape_next = False
+                continue
+
+            if char == "\\":
+                escape_next = True
+                continue
+
+            if char == '"' and not escape_next:
+                in_string = not in_string
+            elif not in_string:
+                if char == "{":
+                    brace_count += 1
+                elif char == "}":
+                    brace_count -= 1
+                    if brace_count == 0:
+                        end_idx = i + 1
+                        break
+
+        if end_idx == 0:
+            raise ValueError(f"Invalid JSON structure in output: {output}")
+
+        json_str = json_part[:end_idx]
+        # Clean up any Rich formatting artifacts but preserve JSON structure
+        # Only remove line breaks that are inside the JSON, not spaces within strings
+        json_str = re.sub(r"\n\s*", "", json_str)  # Remove line breaks only
+        return json.loads(json_str)
+
+    def test_permission_tool_allow_response(self):
+        """Test permission_tool command allows safe tool calls."""
+        runner = CliRunner()
+
+        # Test with safe tool call
+        result = runner.invoke(
+            app, ["permission-tool", "bash", '{"command": "ls -la"}']
+        )
+
+        assert result.exit_code == 0
+        response_data = self._extract_json_from_output(result.stdout)
+        assert response_data["behavior"] == "allow"
+        assert "updatedInput" in response_data
+        assert response_data["updatedInput"]["command"] == "ls -la"
+
+    def test_permission_tool_deny_dangerous_pattern(self):
+        """Test permission_tool command denies dangerous patterns."""
+        runner = CliRunner()
+
+        # Test with dangerous command
+        result = runner.invoke(
+            app, ["permission-tool", "bash", '{"command": "rm -rf /"}']
+        )
+
+        assert result.exit_code == 0
+        response_data = self._extract_json_from_output(result.stdout)
+        assert response_data["behavior"] == "deny"
+        assert "rm -rf" in response_data["message"]
+
+    def test_permission_tool_deny_restricted_tool(self):
+        """Test permission_tool command denies restricted tools."""
+        runner = CliRunner()
+
+        # Test with restricted tool
+        result = runner.invoke(
+            app, ["permission-tool", "exec", '{"command": "echo hello"}']
+        )
+
+        assert result.exit_code == 0
+        response_data = self._extract_json_from_output(result.stdout)
+        assert response_data["behavior"] == "deny"
+        assert "exec is restricted for security reasons" in response_data["message"]
+
+    def test_permission_tool_invalid_json(self):
+        """Test permission_tool command handles invalid JSON input."""
+        runner = CliRunner()
+
+        # Test with invalid JSON
+        result = runner.invoke(app, ["permission-tool", "bash", "invalid json"])
+
+        assert result.exit_code == 1
+        response_data = self._extract_json_from_output(result.stdout)
+        assert response_data["behavior"] == "deny"
+        assert "Invalid JSON input" in response_data["message"]
+
+    def test_permission_tool_response_models(self):
+        """Test permission_tool response models are valid."""
+        # Test allow response
+        allow_response = PermissionToolAllowResponse(updatedInput={"command": "ls"})
+        assert allow_response.behavior == "allow"
+        assert allow_response.updated_input == {"command": "ls"}
+
+        # Test deny response
+        deny_response = PermissionToolDenyResponse(message="Tool is not allowed")
+        assert deny_response.behavior == "deny"
+        assert deny_response.message == "Tool is not allowed"
+
+    def test_permission_tool_multiple_dangerous_patterns(self):
+        """Test permission_tool command with multiple dangerous patterns."""
+        runner = CliRunner()
+
+        dangerous_patterns = [
+            '{"command": "sudo rm -rf /"}',
+            '{"path": "/etc/passwd", "content": "malicious"}',
+            '{"command": "chmod 777 /etc"}',
+            '{"command": "mkfs /dev/sda"}',
+        ]
+
+        for pattern in dangerous_patterns:
+            result = runner.invoke(app, ["permission-tool", "bash", pattern])
+
+            assert result.exit_code == 0
+            response_data = self._extract_json_from_output(result.stdout)
+            assert response_data["behavior"] == "deny"
+            assert "dangerous pattern" in response_data["message"]
+
+    def test_permission_tool_case_insensitive_tool_check(self):
+        """Test permission_tool command is case insensitive for tool names."""
+        runner = CliRunner()
+
+        # Test uppercase restricted tool
+        result = runner.invoke(
+            app, ["permission-tool", "EXEC", '{"command": "echo hello"}']
+        )
+
+        assert result.exit_code == 0
+        response_data = self._extract_json_from_output(result.stdout)
+        assert response_data["behavior"] == "deny"
+        assert "EXEC is restricted for security reasons" in response_data["message"]
+
+    @patch("claude_code_proxy.cli.main.config_manager.load_settings")
+    def test_permission_tool_settings_load_error(self, mock_load_settings):
+        """Test permission_tool command handles settings loading errors."""
+        runner = CliRunner()
+
+        # Mock settings loading to raise an exception
+        mock_load_settings.side_effect = Exception("Settings load error")
+
+        result = runner.invoke(app, ["permission-tool", "bash", '{"command": "ls"}'])
+
+        assert result.exit_code == 1
+        response_data = self._extract_json_from_output(result.stdout)
+        assert response_data["behavior"] == "deny"
+        assert "Error processing permission request" in response_data["message"]
+
+    def test_permission_tool_complex_json_input(self):
+        """Test permission_tool command with complex JSON input."""
+        runner = CliRunner()
+
+        complex_input = {
+            "command": "echo",
+            "args": ["hello", "world"],
+            "options": {"verbose": True, "output": "/tmp/safe_file.txt"},
+        }
+
+        result = runner.invoke(
+            app, ["permission-tool", "safe_tool", json.dumps(complex_input)]
+        )
+
+        assert result.exit_code == 0
+        response_data = self._extract_json_from_output(result.stdout)
+        assert response_data["behavior"] == "allow"
+        assert response_data["updatedInput"] == complex_input
+
+    def test_permission_tool_docstring(self):
+        """Test permission_tool command has proper docstring."""
+        assert permission_tool.__doc__ is not None
+        assert "MCP permission prompt tool" in permission_tool.__doc__
+        assert "Claude Code SDK" in permission_tool.__doc__
+        assert "Examples:" in permission_tool.__doc__
+
+    def test_permission_tool_parameter_types(self):
+        """Test permission_tool command has correct parameter types."""
+        import inspect
+
+        sig = inspect.signature(permission_tool)
+
+        # Check tool_name parameter
+        tool_name_param = sig.parameters["tool_name"]
+        assert tool_name_param.annotation is str
+
+        # Check tool_input parameter
+        tool_input_param = sig.parameters["tool_input"]
+        assert tool_input_param.annotation is str

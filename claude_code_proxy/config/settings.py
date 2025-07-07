@@ -325,7 +325,7 @@ class Settings(BaseSettings):
 
     # Optional server settings
     workers: int = Field(
-        default=4,
+        default=1,
         description="Number of worker processes",
         ge=1,
         le=32,

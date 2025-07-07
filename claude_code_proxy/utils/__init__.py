@@ -1,11 +1,11 @@
 """Utility modules for Claude proxy."""
 
+from .cli import merge_claude_code_options
 from .config import (
     create_default_config_dir,
     find_git_root,
     find_toml_config_file,
 )
-from .helper import merge_claude_code_options
 from .schema import (
     generate_json_schema,
     generate_schema_files,
