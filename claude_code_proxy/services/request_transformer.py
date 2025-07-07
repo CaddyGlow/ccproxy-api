@@ -166,7 +166,7 @@ class RequestTransformer:
             return self.transform_system_prompt(body)
 
         except (json.JSONDecodeError, UnicodeDecodeError) as e:
-            logger.warning(f"Failed to transform request body: {e}")
+            logger.debug(f"Failed to transform request body: {e}")
             return body
 
     def create_proxy_headers(
@@ -286,5 +286,5 @@ class RequestTransformer:
             return self.transform_system_prompt(anthropic_body)
 
         except Exception as e:
-            logger.warning(f"Failed to transform OpenAI request to Anthropic: {e}")
+            logger.debug(f"Failed to transform OpenAI request to Anthropic: {e}")
             return body

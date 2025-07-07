@@ -92,7 +92,7 @@ class CredentialsService:
         """
         search_paths = custom_paths if custom_paths else cls.CREDENTIAL_PATHS
 
-        logger.info("Searching for Claude credentials file...")
+        logger.debug("Searching for Claude credentials file...")
         for path in search_paths:
             logger.debug(f"Checking: {path}")
             if path.exists() and path.is_file():
@@ -126,7 +126,7 @@ class CredentialsService:
             return None
 
         try:
-            logger.info(f"Loading credentials from: {cred_file}")
+            logger.debug(f"Loading credentials from: {cred_file}")
             with cred_file.open() as f:
                 data = json.load(f)
 
@@ -134,11 +134,11 @@ class CredentialsService:
 
             # Log credential details (safely)
             oauth_token = credentials.claude_ai_oauth
-            logger.info("Successfully loaded credentials:")
-            logger.info(f"  - Subscription type: {oauth_token.subscription_type}")
-            logger.info(f"  - Token expires at: {oauth_token.expires_at_datetime}")
-            logger.info(f"  - Token expired: {oauth_token.is_expired}")
-            logger.info(f"  - Scopes: {oauth_token.scopes}")
+            logger.debug("Successfully loaded credentials:")
+            logger.debug(f"  - Subscription type: {oauth_token.subscription_type}")
+            logger.debug(f"  - Token expires at: {oauth_token.expires_at_datetime}")
+            logger.debug(f"  - Token expired: {oauth_token.is_expired}")
+            logger.debug(f"  - Scopes: {oauth_token.scopes}")
 
             return credentials
 
@@ -440,7 +440,7 @@ class CredentialsService:
         Returns:
             Access token string or None if not available/refresh failed
         """
-        logger.info("Getting access token with refresh capability...")
+        logger.debug("Getting access token with refresh capability...")
         credentials = cls.load_credentials(custom_paths)
         if not credentials:
             logger.error("No credentials available for OAuth authentication")
@@ -448,23 +448,23 @@ class CredentialsService:
 
         # Check token expiration status
         oauth_token = credentials.claude_ai_oauth
-        logger.info("Token status check:")
-        logger.info(f"  - Current time: {datetime.now(UTC)}")
-        logger.info(f"  - Token expires: {oauth_token.expires_at_datetime}")
-        logger.info(f"  - Is expired: {oauth_token.is_expired}")
+        logger.debug("Token status check:")
+        logger.debug(f"  - Current time: {datetime.now(UTC)}")
+        logger.debug(f"  - Token expires: {oauth_token.expires_at_datetime}")
+        logger.debug(f"  - Is expired: {oauth_token.is_expired}")
 
         # If token is not expired, return it
         if not oauth_token.is_expired:
-            logger.info("Using valid access token (not expired)")
+            logger.debug("Using valid access token (not expired)")
             return oauth_token.access_token
 
         # Token is expired, try to refresh it
-        logger.warning("Access token is expired, attempting to refresh...")
+        logger.info("Access token expired, refreshing...")
         new_token, updated_credentials = await cls.refresh_token(custom_paths)
 
         if new_token and updated_credentials:
             logger.info("Successfully refreshed access token")
-            logger.info(
+            logger.debug(
                 f"New token expires: {updated_credentials.claude_ai_oauth.expires_at_datetime}"
             )
             return new_token

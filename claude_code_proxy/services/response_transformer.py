@@ -112,5 +112,5 @@ class ResponseTransformer:
             return json.dumps(openai_data).encode("utf-8")
 
         except Exception as e:
-            logger.warning(f"Failed to transform Anthropic response to OpenAI: {e}")
+            logger.debug(f"Failed to transform Anthropic response to OpenAI: {e}")
             return body

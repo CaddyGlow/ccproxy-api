@@ -64,7 +64,7 @@ async def proxy_to_anthropic(
     transformer = RequestTransformer()
     transformed_path = transformer.transform_path(path)
 
-    logger.info(f"Proxying {method} /unclaude{path} -> {method} {transformed_path}")
+    logger.debug(f"Proxying {method} /unclaude{path} -> {method} {transformed_path}")
 
     # Proxy the request
     result = await proxy_service.proxy_request(

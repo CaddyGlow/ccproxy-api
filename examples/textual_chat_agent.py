@@ -9,30 +9,34 @@ and a textual GUI with vim mode for input.
 import asyncio
 import os
 from collections.abc import AsyncGenerator
+from typing import Any, Optional, Union
 
 from anthropic import AsyncAnthropic
+from anthropic.types import MessageParam
 from rich.console import Console
 from rich.markdown import Markdown
-from textual.app import App, ComposeResult
-from textual.containers import Container, Horizontal, Vertical
-from textual.widgets import Button, Input, RichLog, Static
+from textual.app import App, ComposeResult  # type: ignore
+from textual.containers import Container, Horizontal, Vertical  # type: ignore
+from textual.events import Key  # type: ignore
+from textual.message import Message  # type: ignore
+from textual.widgets import Button, Input, RichLog, Static  # type: ignore
 
 
 class ChatAgent:
     """Simple chat agent using Anthropic SDK."""
 
-    def __init__(self, api_key: str | None = None):
+    def __init__(self, api_key: str | None = None) -> None:
         # Get configuration from environment
         api_key = api_key or os.getenv("ANTHROPIC_API_KEY")
         base_url = os.getenv("ANTHROPIC_BASE_URL")
 
         # Create client with optional base URL
-        client_kwargs = {"api_key": api_key}
+        client_kwargs: dict[str, Any] = {"api_key": api_key}
         if base_url:
             client_kwargs["base_url"] = base_url
 
         self.client = AsyncAnthropic(**client_kwargs)
-        self.messages: list[dict[str, str]] = []
+        self.messages: list[MessageParam] = []
 
         # Store config for debugging
         self.api_key = api_key
@@ -67,21 +71,21 @@ class ChatAgent:
                 yield f"\nUnderlying cause: {type(e.__cause__).__name__}: {str(e.__cause__)}"
 
 
-class VimInput(Input):
+class VimInput(Input):  # type: ignore
     """Input widget with vim mode support."""
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         self.vim_mode = False
         self.vim_command = ""
 
-    def on_key(self, event):
+    def on_key(self, event: Key) -> None:  # type: ignore
         """Handle vim mode key presses."""
         # Handle Shift+Enter for new lines in insert mode
         if event.key == "shift+enter" and not self.vim_mode:
             # Insert a newline at cursor position
-            cursor_pos = self.cursor_position
-            self.value = self.value[:cursor_pos] + "\n" + self.value[cursor_pos:]
+            cursor_pos = self.cursor_position  # type: ignore
+            self.value = self.value[:cursor_pos] + "\n" + self.value[cursor_pos:]  # type: ignore
             self.cursor_position = cursor_pos + 1
             return
 
@@ -136,7 +140,7 @@ class VimInput(Input):
         # Don't call super().on_key() as it doesn't exist
 
 
-class ChatApp(App):
+class ChatApp(App):  # type: ignore
     """Main chat application."""
 
     CSS = """
@@ -184,12 +188,12 @@ class ChatApp(App):
     }
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__()
         self.chat_agent = ChatAgent()
         self.is_sending = False
 
-    def compose(self) -> ComposeResult:
+    def compose(self) -> ComposeResult:  # type: ignore
         """Compose the UI."""
         yield Container(
             RichLog(classes="chat-log", highlight=True, markup=True, wrap=True),
@@ -243,7 +247,7 @@ class ChatApp(App):
         # Set focus to input
         self.input_field.focus()
 
-    def on_key(self, event) -> None:
+    def on_key(self, event: Key) -> None:  # type: ignore
         """Handle global key events."""
         if event.key == "ctrl+c" or event.key == "ctrl+q":
             self.exit()
@@ -263,12 +267,12 @@ class ChatApp(App):
             self.status_bar.remove_class("vim-mode")
             self.status_bar.add_class("insert-mode")
 
-    def on_input_submitted(self, event) -> None:
+    def on_input_submitted(self, event: Any) -> None:
         """Handle input submission."""
         if not self.is_sending and event.input.value.strip():
             self.send_message(event.input.value)
 
-    def on_button_pressed(self, event) -> None:
+    def on_button_pressed(self, event: Any) -> None:
         """Handle button press."""
         if event.button.id == "send-btn" and not self.is_sending:
             message = self.input_field.value.strip()
@@ -324,7 +328,7 @@ class ChatApp(App):
             self.input_field.focus()
 
 
-def main():
+def main() -> None:
     """Run the chat application."""
     # Check for API key
     if not os.getenv("ANTHROPIC_API_KEY"):
