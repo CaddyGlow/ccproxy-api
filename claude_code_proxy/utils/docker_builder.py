@@ -4,6 +4,11 @@ import os
 from pathlib import Path
 from typing import Any
 
+from claude_code_proxy.utils.docker_validation import (
+    validate_environment_variable,
+    validate_host_path,
+    validate_volume_format,
+)
 from claude_code_proxy.utils.logging import get_logger
 
 from ..config.settings import DockerSettings
@@ -72,9 +77,9 @@ class DockerCommandBuilder:
 
         # Validate and normalize overrides if provided
         if docker_home:
-            home_dir = self.settings.validate_host_path(docker_home)
+            home_dir = validate_host_path(docker_home)
         if docker_workspace:
-            workspace_dir = self.settings.validate_host_path(docker_workspace)
+            workspace_dir = validate_host_path(docker_workspace)
 
         # Create volumes based on directories only if they are specified
         if home_dir or workspace_dir:
@@ -84,7 +89,7 @@ class DockerCommandBuilder:
         if docker_volume:
             normalized_volumes = []
             for volume in docker_volume:
-                normalized_volume = self.settings.validate_volume_format(volume)
+                normalized_volume = validate_volume_format(volume)
                 normalized_volumes.append(normalized_volume)
             volumes.extend(normalized_volumes)
 
@@ -102,7 +107,7 @@ class DockerCommandBuilder:
         # Add CLI environment overrides
         if docker_env:
             for env_var in docker_env:
-                key, value = self.settings.validate_environment_variable(env_var)
+                key, value = validate_environment_variable(env_var)
                 env_vars[key] = value
 
         # Add environment variables to command
@@ -159,7 +164,7 @@ class DockerCommandBuilder:
             # Validate and normalize CLI volumes
             normalized_volumes = []
             for volume in cli_volumes:
-                normalized_volume = self.settings.validate_volume_format(volume)
+                normalized_volume = validate_volume_format(volume)
                 normalized_volumes.append(normalized_volume)
             volumes.extend(normalized_volumes)
         return volumes
@@ -172,7 +177,7 @@ class DockerCommandBuilder:
 
         if cli_env:
             for env_var in cli_env:
-                key, value = self.settings.validate_environment_variable(env_var)
+                key, value = validate_environment_variable(env_var)
                 env[key] = value
 
         return env

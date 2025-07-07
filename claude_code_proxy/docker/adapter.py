@@ -1,17 +1,14 @@
 """Docker adapter for container operations."""
 
-import datetime
-import hashlib
-import logging
 import os
 import shlex
 import subprocess
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, cast
+from typing import cast
 
-from claude_code_proxy.exceptions import DockerError
 from claude_code_proxy.utils.logging import get_logger
 
+from .middleware import LoggerOutputMiddleware
 from .models import DockerUserContext
 from .protocol import (
     DockerAdapterProtocol,
@@ -23,194 +20,12 @@ from .stream_process import (
     OutputMiddleware,
     ProcessResult,
     T,
-    create_chained_middleware,
     run_command,
 )
+from .validators import create_docker_error, validate_port_spec
 
 
 logger = get_logger(__name__)
-
-
-def validate_port_spec(port_spec: str) -> str:
-    """Validate a Docker port specification string.
-
-    Supports formats like:
-    - "8080:80"
-    - "localhost:8080:80"
-    - "127.0.0.1:8080:80"
-    - "8080:80/tcp"
-    - "localhost:8080:80/udp"
-    - "[::1]:8080:80"
-
-    Args:
-        port_spec: Port specification string
-
-    Returns:
-        Validated port specification string
-
-    Raises:
-        DockerError: If port specification is invalid
-    """
-    if not port_spec or not isinstance(port_spec, str):
-        raise create_docker_error(
-            f"Invalid port specification: {port_spec!r}",
-            details={"port_spec": port_spec},
-        )
-
-    # Remove protocol suffix for validation if present
-    port_part = port_spec
-    protocol = None
-    if "/" in port_spec:
-        port_part, protocol = port_spec.rsplit("/", 1)
-        if protocol not in ("tcp", "udp"):
-            raise create_docker_error(
-                f"Invalid protocol in port specification: {protocol}",
-                details={"port_spec": port_spec, "protocol": protocol},
-            )
-
-    # Handle IPv6 address format specially
-    if port_part.startswith("["):
-        # IPv6 format like [::1]:8080:80
-        ipv6_end = port_part.find("]:")
-        if ipv6_end == -1:
-            raise create_docker_error(
-                f"Invalid IPv6 port specification format: {port_spec}",
-                details={
-                    "port_spec": port_spec,
-                    "expected_format": "[ipv6]:host_port:container_port",
-                },
-            )
-
-        host_ip = port_part[: ipv6_end + 1]  # Include the closing ]
-        remaining = port_part[ipv6_end + 2 :]  # Skip ]:
-        port_parts = remaining.split(":")
-
-        if len(port_parts) != 2:
-            raise create_docker_error(
-                f"Invalid IPv6 port specification format: {port_spec}",
-                details={
-                    "port_spec": port_spec,
-                    "expected_format": "[ipv6]:host_port:container_port",
-                },
-            )
-
-        host_port, container_port = port_parts
-        parts = [host_ip, host_port, container_port]
-    else:
-        # Regular format
-        parts = port_part.split(":")
-
-    if len(parts) == 2:
-        # Format: "host_port:container_port"
-        host_port, container_port = parts
-        try:
-            host_port_num = int(host_port)
-            container_port_num = int(container_port)
-            if not (1 <= host_port_num <= 65535) or not (
-                1 <= container_port_num <= 65535
-            ):
-                raise ValueError("Port numbers must be between 1 and 65535")
-        except ValueError as e:
-            raise create_docker_error(
-                f"Invalid port numbers in specification: {port_spec}",
-                details={"port_spec": port_spec, "error": str(e)},
-            ) from e
-
-    elif len(parts) == 3:
-        # Format: "host_ip:host_port:container_port"
-        host_ip, host_port, container_port = parts
-
-        # Basic IP validation (simplified)
-        if not host_ip or host_ip in (
-            "localhost",
-            "127.0.0.1",
-            "0.0.0.0",
-            "::1",
-            "[::1]",
-        ):
-            pass  # Common valid values
-        elif host_ip.startswith("[") and host_ip.endswith("]"):
-            pass  # IPv6 format like [::1]
-        else:
-            # Basic check for IPv4-like format
-            ip_parts = host_ip.split(".")
-            if len(ip_parts) == 4:
-                try:
-                    for part in ip_parts:
-                        num = int(part)
-                        if not (0 <= num <= 255):
-                            raise ValueError("Invalid IPv4 address")
-                except ValueError as e:
-                    raise create_docker_error(
-                        f"Invalid host IP in port specification: {host_ip}",
-                        details={
-                            "port_spec": port_spec,
-                            "host_ip": host_ip,
-                            "error": str(e),
-                        },
-                    ) from e
-
-        try:
-            host_port_num = int(host_port)
-            container_port_num = int(container_port)
-            if not (1 <= host_port_num <= 65535) or not (
-                1 <= container_port_num <= 65535
-            ):
-                raise ValueError("Port numbers must be between 1 and 65535")
-        except ValueError as e:
-            raise create_docker_error(
-                f"Invalid port numbers in specification: {port_spec}",
-                details={"port_spec": port_spec, "error": str(e)},
-            ) from e
-    else:
-        raise create_docker_error(
-            f"Invalid port specification format: {port_spec}",
-            details={
-                "port_spec": port_spec,
-                "expected_format": "host_port:container_port or host_ip:host_port:container_port",
-            },
-        )
-
-    return port_spec
-
-
-class LoggerOutputMiddleware(OutputMiddleware[str]):
-    """Simple middleware that prints output with optional prefixes.
-
-    This middleware prints each line to the console with configurable
-    prefixes for stdout and stderr streams.
-    """
-
-    def __init__(
-        self, logger: logging.Logger, stdout_prefix: str = "", stderr_prefix: str = ""
-    ):
-        """Initialize middleware with custom prefixes.
-
-        Args:
-            stdout_prefix: Prefix for stdout lines (default: "")
-            stderr_prefix: Prefix for stderr lines (default: "")
-        """
-        self.logger = logger
-        self.stderr_prefix = stderr_prefix
-        self.stdout_prefix = stdout_prefix
-
-    def process(self, line: str, stream_type: str) -> str:
-        """Process and print a line with the appropriate prefix.
-
-        Args:
-            line: Output line to process
-            stream_type: Either "stdout" or "stderr"
-
-        Returns:
-            The original line (unmodified)
-        """
-        if stream_type == "stdout":
-            logger.info(f"{self.stdout_prefix}{line}")
-            # logger.debug(f"{self.stdout_prefix}{line}")
-        else:
-            logger.info(f"{self.stderr_prefix}{line}")
-            # logger.info(f"{self.stderr_prefix}{line}")
-        return line
 
 
 class DockerAdapter:
@@ -685,85 +500,6 @@ class DockerAdapter:
 
             logger.error("Unexpected Docker pull error for %s: %s", image_full_name, e)
             raise error from e
-
-
-def create_logger_middleware(
-    logger_instance: logging.Logger | None = None,
-    stdout_prefix: str = "",
-    stderr_prefix: str = "",
-) -> LoggerOutputMiddleware:
-    """Factory function to create a LoggerOutputMiddleware instance.
-
-    Args:
-        logger_instance: Logger instance to use (defaults to module logger)
-        stdout_prefix: Prefix for stdout lines
-        stderr_prefix: Prefix for stderr lines
-
-    Returns:
-        Configured LoggerOutputMiddleware instance
-    """
-    if logger_instance is None:
-        logger_instance = logger
-    return LoggerOutputMiddleware(logger_instance, stdout_prefix, stderr_prefix)
-
-
-def create_chained_docker_middleware(
-    middleware_chain: list[OutputMiddleware[Any]],
-    include_logger: bool = True,
-    logger_instance: logging.Logger | None = None,
-    stdout_prefix: str = "",
-    stderr_prefix: str = "",
-) -> OutputMiddleware[Any]:
-    """Factory function to create chained middleware for Docker operations.
-
-    Args:
-        middleware_chain: List of middleware components to chain together
-        include_logger: Whether to automatically add logger middleware at the end
-        logger_instance: Logger instance to use (defaults to module logger)
-        stdout_prefix: Prefix for stdout lines in logger middleware
-        stderr_prefix: Prefix for stderr lines in logger middleware
-
-    Returns:
-        Chained middleware instance
-
-    """
-    final_chain = list(middleware_chain)
-
-    if include_logger:
-        logger_middleware = create_logger_middleware(
-            logger_instance, stdout_prefix, stderr_prefix
-        )
-        final_chain.append(logger_middleware)
-
-    if len(final_chain) == 1:
-        return final_chain[0]
-
-    return create_chained_middleware(final_chain)
-
-
-def create_docker_error(
-    message: str,
-    command: str | None = None,
-    cause: Exception | None = None,
-    details: dict[str, Any] | None = None,
-) -> DockerError:
-    """Create a DockerError with standardized context.
-
-    Args:
-        message: Human-readable error message
-        command: Docker command that failed (optional)
-        cause: Original exception that caused this error (optional)
-        details: Additional context details (optional)
-
-    Returns:
-        DockerError instance with all context information
-    """
-    return DockerError(
-        message=message,
-        command=command,
-        cause=cause,
-        details=details,
-    )
 
 
 def create_docker_adapter() -> DockerAdapterProtocol:

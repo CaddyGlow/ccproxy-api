@@ -9,6 +9,11 @@ import pytest
 
 from claude_code_proxy.config.settings import DockerSettings
 from claude_code_proxy.utils.docker_builder import DockerCommandBuilder
+from claude_code_proxy.utils.docker_validation import (
+    validate_environment_variable,
+    validate_host_path,
+    validate_volume_format,
+)
 
 
 @pytest.mark.unit
@@ -193,7 +198,7 @@ class TestDockerCommandBuilder:
         ]
 
         for volume in valid_volumes:
-            result = DockerSettings.validate_volume_format(volume)
+            result = validate_volume_format(volume)
             assert result.startswith(str(test_dir))
             assert ":/app/data" in result
 
@@ -208,11 +213,11 @@ class TestDockerCommandBuilder:
 
         for volume in invalid_volumes:
             with pytest.raises(ValueError, match="Invalid volume format"):
-                DockerSettings.validate_volume_format(volume)
+                validate_volume_format(volume)
 
         # Test case where container path is missing
         with pytest.raises(ValueError):  # Could be either format or path error
-            DockerSettings.validate_volume_format("/nonexistent/path:")
+            validate_volume_format("/nonexistent/path:")
 
     def test_validate_volume_format_nonexistent_path(
         self, basic_docker_settings: DockerSettings
@@ -222,7 +227,7 @@ class TestDockerCommandBuilder:
         volume = f"{nonexistent_path}:/app/data"
 
         with pytest.raises(ValueError, match="Host path does not exist"):
-            DockerSettings.validate_volume_format(volume)
+            validate_volume_format(volume)
 
     def test_validate_volume_format_relative_path(
         self, basic_docker_settings: DockerSettings, tmp_path: Path
@@ -240,7 +245,7 @@ class TestDockerCommandBuilder:
         try:
             os.chdir(tmp_path)
             volume = "test:/app/data"
-            result = DockerSettings.validate_volume_format(volume)
+            result = validate_volume_format(volume)
 
             # Should convert to absolute path
             assert result.startswith(str(test_dir))
@@ -252,13 +257,13 @@ class TestDockerCommandBuilder:
         """Test host path validation and normalization."""
         # Test absolute path
         abs_path = "/home/user"
-        result = DockerSettings.validate_host_path(abs_path)
+        result = validate_host_path(abs_path)
         assert result == abs_path
 
         # Test path with environment variables
         with patch.dict(os.environ, {"HOME": "/home/user"}):
             env_path = "$HOME/documents"
-            result = DockerSettings.validate_host_path(env_path)
+            result = validate_host_path(env_path)
             assert result == "/home/user/documents"
 
     def test_validate_environment_variable(
@@ -267,19 +272,19 @@ class TestDockerCommandBuilder:
         """Test environment variable validation and parsing."""
         # Test valid environment variable
         env_var = "KEY=VALUE"
-        key, value = DockerSettings.validate_environment_variable(env_var)
+        key, value = validate_environment_variable(env_var)
         assert key == "KEY"
         assert value == "VALUE"
 
         # Test environment variable with equals in value
         env_var = "DATABASE_URL=mysql://user:pass@host:3306/db"
-        key, value = DockerSettings.validate_environment_variable(env_var)
+        key, value = validate_environment_variable(env_var)
         assert key == "DATABASE_URL"
         assert value == "mysql://user:pass@host:3306/db"
 
         # Test invalid environment variable
         with pytest.raises(ValueError, match="Invalid environment variable format"):
-            DockerSettings.validate_environment_variable("INVALID_NO_EQUALS")
+            validate_environment_variable("INVALID_NO_EQUALS")
 
     def test_get_merged_volumes(
         self, basic_docker_settings: DockerSettings, tmp_path: Path

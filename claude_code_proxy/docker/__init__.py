@@ -9,16 +9,13 @@ This module provides a comprehensive Docker integration system with support for:
 - User context management with proper UID/GID mapping
 """
 
-from .adapter import (
-    DockerAdapter,
+from .adapter import DockerAdapter, create_docker_adapter
+from .docker_path import DockerPath, DockerPathSet
+from .middleware import (
     LoggerOutputMiddleware,
     create_chained_docker_middleware,
-    create_docker_adapter,
-    create_docker_error,
     create_logger_middleware,
-    validate_port_spec,
 )
-from .docker_path import DockerPath, DockerPathSet
 from .models import DockerUserContext
 from .protocol import (
     DockerAdapterProtocol,
@@ -35,6 +32,7 @@ from .stream_process import (
     create_chained_middleware,
     run_command,
 )
+from .validators import create_docker_error, validate_port_spec
 
 
 __all__ = [

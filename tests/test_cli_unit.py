@@ -243,11 +243,11 @@ class TestErrorHandling:
 class TestConfigCommand:
     """Test config command function."""
 
-    @patch("claude_code_proxy.cli.commands.config.get_settings")
+    @patch("claude_code_proxy.cli.commands.config.commands.get_settings")
     @patch("rich.console.Console")
     def test_config_command_success(self, mock_console_class, mock_get_settings):
         """Test config command displays settings successfully."""
-        from claude_code_proxy.cli.commands.config import config_list
+        from claude_code_proxy.cli.commands.config.commands import config_list
 
         # Mock settings object with all required attributes
         mock_settings = Mock()
@@ -259,7 +259,7 @@ class TestConfigCommand:
         mock_settings.reload = False
         mock_settings.server_url = "http://0.0.0.0:8000"
         mock_settings.auth_token = None
-        mock_settings.tools_handling = "warning"
+        mock_settings.api_tools_handling = "warning"
         mock_settings.cors_origins = ["*"]
         # Add mock docker settings
         mock_docker_settings = Mock()
@@ -307,13 +307,13 @@ class TestConfigCommand:
         # Verify console was used for output (real console is used, so we just check that no exception was raised)
         # The config function completed successfully if we reach this point
 
-    @patch("claude_code_proxy.cli.commands.config.get_settings")
+    @patch("claude_code_proxy.cli.commands.config.commands.get_settings")
     @patch("rich.console.Console")
     def test_config_command_with_none_claude_path(
         self, mock_console_class, mock_get_settings
     ):
         """Test config command when claude_cli_path is None."""
-        from claude_code_proxy.cli.commands.config import config_list
+        from claude_code_proxy.cli.commands.config.commands import config_list
 
         # Mock settings object with None claude_cli_path and all required attributes
         mock_settings = Mock()
@@ -325,7 +325,7 @@ class TestConfigCommand:
         mock_settings.reload = True
         mock_settings.server_url = "http://localhost:3000"
         mock_settings.auth_token = None
-        mock_settings.tools_handling = "warning"
+        mock_settings.api_tools_handling = "warning"
         mock_settings.cors_origins = ["*"]
         # Add mock docker settings
         mock_docker_settings = Mock()
@@ -373,11 +373,11 @@ class TestConfigCommand:
         # Verify console was used for output (real console is used, so we just check that no exception was raised)
         # The config function completed successfully if we reach this point
 
-    @patch("claude_code_proxy.cli.commands.config.get_settings")
+    @patch("claude_code_proxy.cli.commands.config.commands.get_settings")
     @patch("rich.console.Console.print")
     def test_config_command_exception_handling(self, mock_print, mock_get_settings):
         """Test config command handles exceptions properly."""
-        from claude_code_proxy.cli.commands.config import config_list
+        from claude_code_proxy.cli.commands.config.commands import config_list
 
         # Mock get_settings to raise an exception
         mock_get_settings.side_effect = Exception("Settings error")
@@ -399,7 +399,7 @@ class TestConfigCommand:
 class TestClaudeCommand:
     """Test claude command function."""
 
-    @patch("claude_code_proxy.cli.main.get_settings")
+    @patch("claude_code_proxy.cli.commands.config.commands.get_settings")
     @patch("typer.echo")
     @patch("os.execvp")
     def test_claude_command_local_execution(
@@ -440,7 +440,7 @@ class TestClaudeCommand:
             "/usr/bin/claude", ["/usr/bin/claude", "--version"]
         )
 
-    @patch("claude_code_proxy.cli.main.get_settings")
+    @patch("claude_code_proxy.cli.commands.config.commands.get_settings")
     @patch("typer.echo")
     def test_claude_command_no_cli_path(self, mock_echo, mock_get_settings):
         """Test claude command when claude CLI path is not found."""
@@ -476,7 +476,7 @@ class TestClaudeCommand:
             "Please install Claude CLI or configure claude_cli_path.", err=True
         )
 
-    @patch("claude_code_proxy.cli.main.get_settings")
+    @patch("claude_code_proxy.cli.commands.config.commands.get_settings")
     @patch("typer.echo")
     @patch("os.execvp")
     def test_claude_command_relative_path_resolution(
@@ -511,8 +511,8 @@ class TestClaudeCommand:
             "/resolved/path/claude", ["/resolved/path/claude", "doctor"]
         )
 
-    @patch("claude_code_proxy.cli.main.get_settings")
-    @patch("claude_code_proxy.cli.main.DockerCommandBuilder")
+    @patch("claude_code_proxy.cli.commands.config.commands.get_settings")
+    @patch("claude_code_proxy.utils.docker_builder.DockerCommandBuilder")
     @patch("typer.echo")
     @patch("os.execvp")
     def test_claude_command_docker_execution(
@@ -584,7 +584,7 @@ class TestClaudeCommand:
             cmd_args=["--version"],
         )
 
-    @patch("claude_code_proxy.cli.main.get_settings")
+    @patch("claude_code_proxy.cli.commands.config.commands.get_settings")
     @patch("typer.echo")
     @patch("os.execvp")
     def test_claude_command_execvp_os_error(
@@ -625,7 +625,7 @@ class TestClaudeCommand:
             "Failed to execute command: Command not found", err=True
         )
 
-    @patch("claude_code_proxy.cli.main.get_settings")
+    @patch("claude_code_proxy.cli.commands.config.commands.get_settings")
     @patch("typer.echo")
     def test_claude_command_general_exception(self, mock_echo, mock_get_settings):
         """Test claude command handles general exceptions."""
@@ -658,8 +658,8 @@ class TestClaudeCommand:
             "Error executing claude command: Settings error", err=True
         )
 
-    @patch("claude_code_proxy.cli.main.get_settings")
-    @patch("claude_code_proxy.cli.main.DockerCommandBuilder")
+    @patch("claude_code_proxy.cli.commands.config.commands.get_settings")
+    @patch("claude_code_proxy.utils.docker_builder.DockerCommandBuilder")
     @patch("typer.echo")
     @patch("os.execvp")
     def test_claude_command_docker_with_user_mapping(

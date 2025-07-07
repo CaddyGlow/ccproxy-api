@@ -23,7 +23,7 @@ class TestSettings:
         assert settings.host == "127.0.0.1"
         assert settings.port == 8000
         assert settings.log_level == "INFO"
-        assert settings.workers == 4
+        assert settings.workers == 1
         assert settings.reload is False
         assert settings.cors_origins == ["*"]
         assert settings.api_tools_handling == "warning"
@@ -124,20 +124,20 @@ class TestSettings:
 
     def test_tools_handling_from_env(self):
         """Test tools_handling setting from environment variable."""
-        original_env = os.environ.get("TOOLS_HANDLING")
+        original_env = os.environ.get("API_TOOLS_HANDLING")
 
         try:
             # Test each valid value
             for value in ["error", "warning", "ignore"]:
-                os.environ["TOOLS_HANDLING"] = value
+                os.environ["API_TOOLS_HANDLING"] = value
                 settings = Settings()
                 assert settings.api_tools_handling == value
         finally:
             # Restore original environment
             if original_env is not None:
-                os.environ["TOOLS_HANDLING"] = original_env
-            elif "TOOLS_HANDLING" in os.environ:
-                del os.environ["TOOLS_HANDLING"]
+                os.environ["API_TOOLS_HANDLING"] = original_env
+            elif "API_TOOLS_HANDLING" in os.environ:
+                del os.environ["API_TOOLS_HANDLING"]
 
     def test_field_validation(self):
         """Test field validation."""
@@ -287,7 +287,7 @@ class TestTOMLConfiguration:
 
                 assert settings.host == "localhost"
                 assert settings.port == 8888
-                assert settings.workers == 4
+                assert settings.workers == 1
                 assert settings.cors_origins == ["https://example.com"]
             finally:
                 Path(f.name).unlink()

@@ -44,7 +44,9 @@ class TestCliRunner:
     def test_api_command_with_no_extra_args(self):
         """Test api command runs successfully with mocked dependencies."""
         with (
-            patch("claude_code_proxy.cli.main.get_settings") as mock_get_settings,
+            patch(
+                "claude_code_proxy.cli.commands.api.get_settings"
+            ) as mock_get_settings,
             patch("uvicorn.run") as mock_run,
         ):
             # Create a proper Settings instance with valid values
@@ -54,7 +56,7 @@ class TestCliRunner:
                 host="127.0.0.1",
                 port=8000,
                 reload=False,
-                workers=4,
+                workers=1,
                 claude_cli_path=None,
             )
             mock_get_settings.return_value = mock_settings
@@ -284,7 +286,7 @@ class TestClaudeCommand:
         """Setup test environment."""
         self.runner = CliRunner(env={"NO_COLOR": "1", "TERM": "dumb"})
 
-    @patch("claude_code_proxy.cli.main.get_settings")
+    @patch("claude_code_proxy.cli.commands.api.config_manager.load_settings")
     @patch("claude_code_proxy.cli.main.os.execvp")
     def test_claude_command_local_cli(self, mock_execvp, mock_get_settings):
         """Test claude command with local CLI."""
@@ -302,7 +304,7 @@ class TestClaudeCommand:
                 "/usr/bin/claude", ["/usr/bin/claude", "--version"]
             )
 
-    @patch("claude_code_proxy.cli.main.get_settings")
+    @patch("claude_code_proxy.cli.commands.api.config_manager.load_settings")
     @patch("claude_code_proxy.cli.main.os.execvp")
     def test_claude_command_relative_path(self, mock_execvp, mock_get_settings):
         """Test claude command with relative path."""
@@ -321,7 +323,7 @@ class TestClaudeCommand:
                 "/resolved/path/claude", ["/resolved/path/claude", "--version"]
             )
 
-    @patch("claude_code_proxy.cli.main.get_settings")
+    @patch("claude_code_proxy.cli.commands.api.config_manager.load_settings")
     def test_claude_command_no_cli_path(self, mock_get_settings):
         """Test claude command when CLI path is not found."""
         mock_settings = Mock(spec=Settings)
@@ -335,7 +337,7 @@ class TestClaudeCommand:
         assert "Error: Claude CLI not found" in result.stderr
         assert "Please install Claude CLI" in result.stderr
 
-    @patch("claude_code_proxy.cli.main.get_settings")
+    @patch("claude_code_proxy.cli.commands.api.config_manager.load_settings")
     @patch("claude_code_proxy.cli.main.os.execvp")
     def test_claude_command_execvp_error(self, mock_execvp, mock_get_settings):
         """Test claude command when execvp fails."""
@@ -351,7 +353,7 @@ class TestClaudeCommand:
             assert result.exit_code == 1
             assert "Failed to execute command: Command not found" in result.stderr
 
-    @patch("claude_code_proxy.cli.main.get_settings")
+    @patch("claude_code_proxy.cli.commands.api.config_manager.load_settings")
     @patch("claude_code_proxy.utils.docker_builder.DockerCommandBuilder")
     @patch("claude_code_proxy.cli.main.os.execvp")
     def test_claude_command_docker_mode(
@@ -391,7 +393,7 @@ class TestClaudeCommand:
         assert "claude" in call_args[0][1]
         assert "--version" in call_args[0][1]
 
-    @patch("claude_code_proxy.cli.main.get_settings")
+    @patch("claude_code_proxy.cli.commands.api.config_manager.load_settings")
     @patch("claude_code_proxy.utils.docker_builder.DockerCommandBuilder")
     @patch("claude_code_proxy.cli.main.os.execvp")
     def test_claude_command_docker_with_options(
@@ -450,7 +452,7 @@ class TestClaudeCommand:
         assert "claude" in docker_cmd
         assert "--version" in docker_cmd
 
-    @patch("claude_code_proxy.cli.main.get_settings")
+    @patch("claude_code_proxy.cli.commands.api.config_manager.load_settings")
     def test_claude_command_settings_error(self, mock_get_settings):
         """Test claude command when settings loading fails."""
         mock_get_settings.side_effect = Exception("Settings error")
@@ -534,7 +536,7 @@ class TestDockerIntegration:
         """Setup test environment."""
         self.runner = CliRunner(env={"NO_COLOR": "1", "TERM": "dumb"})
 
-    @patch("claude_code_proxy.cli.main.get_settings")
+    @patch("claude_code_proxy.cli.commands.api.config_manager.load_settings")
     @patch("claude_code_proxy.utils.docker_builder.DockerCommandBuilder")
     @patch("claude_code_proxy.cli.main.os.execvp")
     def test_docker_command_building(
@@ -586,7 +588,7 @@ class TestDockerIntegration:
         docker_cmd = call_args[0][1]
         assert "claude" in docker_cmd or "doctor" in docker_cmd
 
-    @patch("claude_code_proxy.cli.main.get_settings")
+    @patch("claude_code_proxy.cli.commands.api.config_manager.load_settings")
     @patch("claude_code_proxy.utils.docker_builder.DockerCommandBuilder")
     @patch("claude_code_proxy.cli.main.os.execvp")
     def test_docker_multiple_volumes_and_env(
@@ -661,7 +663,7 @@ class TestErrorScenarios:
             result.stdout + result.stderr
         )
 
-    @patch("claude_code_proxy.cli.main.get_settings")
+    @patch("claude_code_proxy.cli.commands.api.config_manager.load_settings")
     def test_claude_command_exception_handling(self, mock_get_settings):
         """Test claude command handles various exceptions."""
         mock_get_settings.side_effect = ValueError("Invalid configuration")
@@ -671,7 +673,7 @@ class TestErrorScenarios:
         assert result.exit_code == 1
         assert "Error executing claude command: Invalid configuration" in result.stderr
 
-    @patch("claude_code_proxy.cli.main.get_settings")
+    @patch("claude_code_proxy.cli.commands.api.config_manager.load_settings")
     @patch("claude_code_proxy.cli.main.os.execvp")
     def test_claude_command_permission_error(self, mock_execvp, mock_get_settings):
         """Test claude command handles permission errors."""
@@ -928,7 +930,7 @@ class TestApiCommandWithCliOverrides:
         """Setup test environment."""
         self.runner = CliRunner(env={"NO_COLOR": "1", "TERM": "dumb"})
 
-    @patch("claude_code_proxy.cli.main.get_settings")
+    @patch("claude_code_proxy.cli.commands.api.config_manager.load_settings")
     @patch("uvicorn.run")
     def test_api_command_basic_cli_overrides(self, mock_run, mock_get_settings):
         """Test API command with basic CLI parameter overrides."""
@@ -952,7 +954,7 @@ class TestApiCommandWithCliOverrides:
         assert call_args[1]["reload"]
 
     @patch("uvicorn.run")
-    @patch("claude_code_proxy.cli.main.get_settings")
+    @patch("claude_code_proxy.cli.commands.api.config_manager.load_settings")
     def test_api_command_claude_code_options_overrides(
         self, mock_get_settings, mock_run
     ):
@@ -1003,7 +1005,7 @@ class TestApiCommandWithCliOverrides:
     # Pool settings test removed - connection pooling functionality has been removed
 
     @patch("uvicorn.run")
-    @patch("claude_code_proxy.cli.main.get_settings")
+    @patch("claude_code_proxy.cli.commands.api.config_manager.load_settings")
     def test_api_command_security_settings_overrides(self, mock_get_settings, mock_run):
         """Test API command with security settings parameter overrides."""
         mock_settings = Mock()
@@ -1045,7 +1047,7 @@ class TestApiCommandWithCliOverrides:
     @patch(
         "claude_code_proxy.utils.docker_builder.DockerCommandBuilder.execute_from_settings"
     )
-    @patch("claude_code_proxy.cli.main.get_settings")
+    @patch("claude_code_proxy.cli.commands.api.config_manager.load_settings")
     def test_api_command_docker_mode_with_overrides(
         self, mock_get_settings, mock_docker_execute
     ):
@@ -1096,7 +1098,7 @@ class TestApiCommandWithCliOverrides:
         assert "HOST=0.0.0.0" in docker_env_str
 
     @patch("uvicorn.run")
-    @patch("claude_code_proxy.cli.main.get_settings")
+    @patch("claude_code_proxy.cli.commands.api.config_manager.load_settings")
     def test_api_command_no_overrides(self, mock_get_settings, mock_run):
         """Test API command without any CLI overrides."""
         mock_settings = Mock()
@@ -1152,7 +1154,7 @@ class TestApiCommandWithCliOverrides:
         assert "--docker-image" in result.stdout
 
     @patch("uvicorn.run")
-    @patch("claude_code_proxy.cli.main.get_settings")
+    @patch("claude_code_proxy.cli.commands.api.config_manager.load_settings")
     def test_api_command_comprehensive_overrides(self, mock_get_settings, mock_run):
         """Test API command with comprehensive CLI parameter overrides."""
         mock_settings = Mock()
@@ -1219,7 +1221,7 @@ class TestApiCommandWithCliOverrides:
 
         # Pool settings removed - no longer check for pool-related settings
 
-    @patch("claude_code_proxy.cli.main.get_settings")
+    @patch("claude_code_proxy.cli.commands.api.config_manager.load_settings")
     def test_api_command_settings_loading_error(self, mock_get_settings):
         """Test API command handles settings loading errors."""
         mock_get_settings.side_effect = ValueError("Configuration error")

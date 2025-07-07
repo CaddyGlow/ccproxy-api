@@ -142,7 +142,7 @@ class PermissionToolAllowResponse(BaseModel):
         alias="updatedInput",
     )
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
 
 class PermissionToolDenyResponse(BaseModel):

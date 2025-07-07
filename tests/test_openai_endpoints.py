@@ -469,7 +469,7 @@ class TestOpenAIToolsValidation:
         """Test that tools validation returns error in error mode."""
         # Mock settings to return error mode
         mock_settings = MagicMock()
-        mock_settings.tools_handling = "error"
+        mock_settings.api_tools_handling = "error"
         mock_get_settings.return_value = mock_settings
 
         response = test_client.post(
@@ -496,7 +496,7 @@ class TestOpenAIToolsValidation:
         """Test that tools validation logs warning in warning mode."""
         # Mock settings to return warning mode
         mock_settings = MagicMock()
-        mock_settings.tools_handling = "warning"
+        mock_settings.api_tools_handling = "warning"
         mock_get_settings.return_value = mock_settings
 
         # Mock Claude client response
@@ -567,7 +567,7 @@ class TestOpenAIToolsValidation:
         """Test that requests without tools continue normally regardless of settings."""
         # Mock settings (tools_handling doesn't matter for this test)
         mock_settings = MagicMock()
-        mock_settings.tools_handling = "error"
+        mock_settings.api_tools_handling = "error"
         mock_get_settings.return_value = mock_settings
 
         sample_request = {
