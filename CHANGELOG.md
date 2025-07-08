@@ -78,11 +78,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Docker Guide**: Optional containerization for enhanced isolation
 
 ### Changed
-- **Removed Connection Pooling**: Simplified architecture by removing connection pooling for better stability
+
+#### CLI & Architecture Improvements
+- **Major CLI Restructuring**: Moved CLI to dedicated `claude_code_proxy/cli/` package with modular command structure
+- **Rich CLI Experience**: Replaced basic output with Rich toolkit for colored, structured output
+- **Docker Architecture**: Refactored from DockerCommandBuilder to new adapter-based architecture
+- **FastAPI Subcommands**: Organized commands under FastAPI subcommand group for better organization
+- **Version Management**: Implemented dynamic versioning using hatch-vcs and git tags
+
+#### API & Routing Enhancements
+- **URL Structure Refactoring**: Moved Claude Code SDK endpoints to `/cc/` prefix for clear separation
+- **Dual Router Support**: Added dedicated Anthropic (`/v1/`) and OpenAI (`/openai/v1/`) routers
+- **Legacy Path Support**: Maintained backward compatibility with deprecated warnings
+- **Improved Error Handling**: More robust API error handling with proper HTTP status codes
+
+#### Logging & Configuration
+- **Enhanced Logging**: Integrated Rich toolkit with uvicorn for consistent, structured logging
+- **Optimized Log Levels**: Reduced noise by moving verbose messages from INFO to DEBUG
+- **Configuration Display**: Enhanced config display with API usage information
+- **Simplified Examples**: Streamlined example configurations for better usability
+
+#### Code Quality & Organization
 - **Improved Type Safety**: Enhanced type annotations and mypy compliance throughout codebase
-- **Better Error Handling**: More robust API error handling with proper HTTP status codes
-- **CLI Usability**: Default behavior now runs API server when no command specified
-- **Configuration Display**: Enhanced config display formatting with better organization
+- **Modular Services**: Extracted credentials, Docker, and CLI utilities to dedicated modules
+- **Removed Connection Pooling**: Simplified architecture by removing connection pooling for better stability
 - **Documentation**: Updated repository references and comprehensive documentation additions
 
 ### Fixed
@@ -101,6 +120,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Enhanced GitHub Actions**: Security features added to CI/CD workflows
 - **Docker Security**: Improved Docker isolation and user mapping
 - **Input Validation**: Strengthened request validation and sanitization
+
+### Authentication & Reverse Proxy Features
+- **OAuth Authentication**: Implemented OAuth2 authentication flow with credentials management
+- **Credentials Service**: Comprehensive credential management with secure storage and token refresh
+- **OAuth Client Integration**: Built-in OAuth client for Claude authentication flow
+- **Reverse Proxy Modes**: Multiple transformation modes accessible via URL prefixes:
+  - `/min/*` - Minimal transformations (OAuth headers only)
+  - `/full/*` - Full transformations (system prompts, format conversion)
+  - `/pt/*` - Passthrough mode (no transformations except OAuth)
+  - `/unclaude/*` - Backward compatibility alias for full mode
+- **Configurable Default Mode**: Set default proxy mode via `default_proxy_mode` setting
+- **Enhanced Security**: Automatic stripping of client auth headers to prevent key leakage
+- **Beta Parameter Support**: Automatic addition of beta=true for /v1/messages requests
+- **Request/Response Transformers**: Modular transformation pipeline for flexible request handling
 
 ### Technical Details
 
