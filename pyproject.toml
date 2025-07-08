@@ -11,6 +11,7 @@ dependencies = [
   "claude-code-sdk>=0.0.14", # Using GitHub version with PR #60 fix
   "fastapi[standard]>=0.115.14",
   "httpx>=0.28.1",
+  "keyring>=25.6.0",
   "openai>=1.93.0",
   "pydantic>=2.8.0",
   "pydantic-settings>=2.4.0",
@@ -53,6 +54,9 @@ dev = [
   "pre-commit>=4.2.0",
   "anthropic>=0.57.1",
   "textual-dev>=1.7.0",
+]
+security = [
+  "keyring>=25.0.0",  # Optional keyring support for secure credential storage
 ]
 docs = [
   "mkdocs>=1.5.3",
