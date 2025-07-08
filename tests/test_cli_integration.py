@@ -46,11 +46,6 @@ class TestCLIIntegration:
         result = self.runner.invoke(app, ["config", "--help"])
         assert result.exit_code == 0
 
-    def test_fastapi_command_help(self):
-        """Test fastapi command help."""
-        result = self.runner.invoke(app, ["fastapi", "--help"])
-        assert result.exit_code == 0
-
     @patch("uvicorn.run")
     @patch("ccproxy.cli.commands.api.config_manager.load_settings")
     def test_api_command_basic(self, mock_load_settings, mock_uvicorn_run):

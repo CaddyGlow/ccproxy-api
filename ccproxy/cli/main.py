@@ -32,7 +32,6 @@ from .commands.api import api, get_config_path_from_context
 from .commands.auth import app as auth_app
 from .commands.claude import claude
 from .commands.config import app as config_app
-from .commands.fastapi import app as fastapi_app
 
 
 def version_callback(value: bool) -> None:
@@ -227,9 +226,6 @@ app.add_typer(config_app)
 # Register auth command
 app.add_typer(auth_app)
 
-# Register fastapi command
-app.add_typer(fastapi_app, name="fastapi")
-
 
 # Register imported commands
 app.command(hidden=True)(api)
@@ -331,7 +327,7 @@ if __name__ == "__main__":
         sys.argv.append("api")
     elif len(sys.argv) > 1:
         # Check if any argument is a known command
-        known_commands = {"api", "claude", "config", "fastapi", "permission_tool"}
+        known_commands = {"api", "claude", "config", "permission_tool"}
 
         # Find the first non-option argument that could be a command
         has_command = False

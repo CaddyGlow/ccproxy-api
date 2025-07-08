@@ -12,6 +12,7 @@ from ccproxy.models.openai import (
     OpenAIMessage,
     OpenAIModelsResponse,
 )
+from ccproxy.services.translator import map_openai_model_to_claude
 
 
 # Removed custom client fixture - using test_client from conftest.py instead
@@ -250,6 +251,106 @@ class TestOpenAIChatCompletionsEndpoint:
         # Verify response contains the same model name
         data = response.json()
         assert data["model"] == "claude-opus-4-20250514"
+
+    def test_openai_model_translation(
+        self, test_client, mock_claude_client, sample_claude_response
+    ):
+        """Test that OpenAI model names are translated to Claude models."""
+        # Test cases for model translation
+        test_cases = [
+            ("o3-mini", "claude-opus-4-20250514"),
+            ("o1-mini", "claude-sonnet-4-20250514"),
+            ("gpt-4o-mini", "claude-3-5-haiku-latest"),
+            ("gpt-4o", "claude-3-7-sonnet-20250219"),
+            ("claude-3-5-sonnet-latest", "claude-3-5-sonnet-latest"),  # Pass through
+        ]
+
+        for openai_model, expected_claude_model in test_cases:
+            # Adjust response to match the model
+            adjusted_response = {
+                **sample_claude_response,
+                "model": expected_claude_model,
+            }
+            mock_claude_client.create_completion = AsyncMock(
+                return_value=adjusted_response
+            )
+
+            request_data = {
+                "model": openai_model,
+                "messages": [{"role": "user", "content": "Hello"}],
+            }
+
+            response = test_client.post(
+                "/cc/openai/v1/chat/completions", json=request_data
+            )
+            assert response.status_code == 200
+
+            # Verify the Claude client was called with the translated model
+            args, kwargs = mock_claude_client.create_completion.call_args
+            assert args[1].model == expected_claude_model
+
+            # Verify response contains the original OpenAI model name
+            data = response.json()
+            assert data["model"] == openai_model
+
+    def test_streaming_format_openai_endpoint(self, test_client, mock_claude_client):
+        """Test that /cc/openai/v1 endpoint returns OpenAI SSE format."""
+
+        # Mock streaming response with Anthropic format
+        async def mock_stream():
+            yield {"type": "message_start", "message": {"role": "assistant"}}
+            yield {
+                "type": "content_block_delta",
+                "delta": {"type": "text_delta", "text": "Hello"},
+            }
+            yield {
+                "type": "message_delta",
+                "delta": {"stop_reason": "end_turn"},
+            }
+
+        mock_claude_client.create_completion = AsyncMock(return_value=mock_stream())
+
+        request_data = {
+            "model": "o3-mini",
+            "messages": [{"role": "user", "content": "Hi"}],
+            "stream": True,
+        }
+
+        # Send request to OpenAI endpoint
+        with test_client.stream(
+            "POST", "/cc/openai/v1/chat/completions", json=request_data
+        ) as response:
+            assert response.status_code == 200
+            assert (
+                response.headers["content-type"] == "text/event-stream; charset=utf-8"
+            )
+
+            # Collect all chunks
+            chunks = []
+            for line in response.iter_lines():
+                if line and line.startswith("data: "):
+                    chunks.append(line)
+
+            # Verify OpenAI SSE format
+            assert len(chunks) > 0
+
+            # First chunk should have role
+            first_chunk_data = json.loads(chunks[0][6:])  # Remove "data: " prefix
+            assert first_chunk_data["object"] == "chat.completion.chunk"
+            assert "choices" in first_chunk_data
+            assert first_chunk_data["choices"][0]["delta"].get("role") == "assistant"
+
+            # Content chunks should have OpenAI format
+            for chunk_line in chunks[1:-1]:  # Skip first and last
+                if chunk_line == "data: [DONE]":
+                    continue
+                chunk_data = json.loads(chunk_line[6:])
+                assert chunk_data["object"] == "chat.completion.chunk"
+                assert "choices" in chunk_data
+                assert "delta" in chunk_data["choices"][0]
+
+            # Last chunk should be [DONE]
+            assert chunks[-1] == "data: [DONE]"
 
 
 @pytest.mark.unit

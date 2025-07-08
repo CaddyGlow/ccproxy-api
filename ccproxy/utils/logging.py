@@ -90,7 +90,7 @@ def setup_rich_logging(
             uvicorn_logger.propagate = False
 
         # Disable propagation for specific noisy loggers
-        for logger_name in ["httpx", "httpcore"]:
+        for logger_name in ["httpx", "httpcore", "keyring"]:
             logger = logging.getLogger(logger_name)
             logger.setLevel(logging.WARNING)
 

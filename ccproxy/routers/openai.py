@@ -73,8 +73,12 @@ async def create_chat_completion(
         translator = OpenAITranslator()
 
         # Prepare Claude Code options overrides from request
+        # Map OpenAI model to Claude model for the options
+        from ccproxy.services.translator import map_openai_model_to_claude
+
+        mapped_model = map_openai_model_to_claude(request.model)
         overrides: dict[str, Any] = {
-            "model": request.model,
+            "model": mapped_model,
         }
 
         # Check for Claude Code specific options in the request

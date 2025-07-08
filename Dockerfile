@@ -45,9 +45,9 @@ FROM python:3.11-slim-bookworm
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
   --mount=type=cache,target=/var/lib/apt,sharing=locked \
   apt-get update && apt-get install -y \
-  curl \
+  curl wget ripgrep fd-find exa sed mawk procps\
+  build-essential \
   git \
-  procps \
   && rm -rf /var/lib/apt/lists/*
 
 # Copy Node.js binaries from node-deps stage

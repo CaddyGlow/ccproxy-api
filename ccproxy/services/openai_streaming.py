@@ -336,27 +336,50 @@ async def stream_claude_response_openai(
                 )
 
                 if chunk_type == "content_block_delta":
-                    # Handle text content
-                    text = chunk.get("delta", {}).get("text", "")
-                    if text:
-                        has_content = True
+                    delta = chunk.get("delta", {})
+                    delta_type = delta.get("type")
 
-                        # Split large text chunks for better streaming experience
-                        # This makes the streaming feel more like OpenAI's token-by-token streaming
-                        text_parts = _split_text_for_streaming(text)
+                    if delta_type == "text_delta":
+                        # Handle text content
+                        text = delta.get("text", "")
+                        if text:
+                            has_content = True
 
-                        for i, part in enumerate(text_parts):
-                            content_chunk = formatter.format_content_chunk(
-                                message_id, model, created, part
+                            # Split large text chunks for better streaming experience
+                            # This makes the streaming feel more like OpenAI's token-by-token streaming
+                            text_parts = _split_text_for_streaming(text)
+
+                            for i, part in enumerate(text_parts):
+                                content_chunk = formatter.format_content_chunk(
+                                    message_id, model, created, part
+                                )
+                                logger.debug(
+                                    f"Sending content chunk: {repr(part)} -> {content_chunk[:100]}..."
+                                )
+                                yield content_chunk
+
+                                # Add small delay between chunks for more natural streaming
+                                if (
+                                    i < len(text_parts) - 1
+                                ):  # Don't delay after last chunk
+                                    await asyncio.sleep(0.01)  # 10ms delay
+
+                    elif delta_type == "input_json_delta":
+                        # Handle tool use input delta
+                        partial_json = delta.get("partial_json", "")
+                        if partial_json and tool_calls:
+                            # Find the tool call this belongs to (typically the last one)
+                            tool_call_id = list(tool_calls.keys())[-1]
+                            tool_call_data = tool_calls[tool_call_id]
+                            tool_call_data["arguments"] += partial_json
+                            yield formatter.format_tool_call_chunk(
+                                message_id,
+                                model,
+                                created,
+                                tool_call_id,
+                                None,
+                                partial_json,
                             )
-                            logger.debug(
-                                f"Sending content chunk: {repr(part)} -> {content_chunk[:100]}..."
-                            )
-                            yield content_chunk
-
-                            # Add small delay between chunks for more natural streaming
-                            if i < len(text_parts) - 1:  # Don't delay after last chunk
-                                await asyncio.sleep(0.01)  # 10ms delay
 
                 elif chunk_type == "content_block_start":
                     # Handle tool use start
@@ -372,26 +395,6 @@ async def stream_claude_response_openai(
                         yield formatter.format_tool_call_chunk(
                             message_id, model, created, tool_call_id, function_name, ""
                         )
-
-                elif chunk_type == "content_block_delta":
-                    # Handle tool use input delta
-                    delta = chunk.get("delta", {})
-                    if delta.get("type") == "input_json_delta":
-                        # This is tool arguments
-                        partial_json = delta.get("partial_json", "")
-                        if partial_json and tool_calls:
-                            # Find the tool call this belongs to (typically the last one)
-                            tool_call_id = list(tool_calls.keys())[-1]
-                            tool_call_data = tool_calls[tool_call_id]
-                            tool_call_data["arguments"] += partial_json
-                            yield formatter.format_tool_call_chunk(
-                                message_id,
-                                model,
-                                created,
-                                tool_call_id,
-                                None,
-                                partial_json,
-                            )
 
                 elif chunk_type == "message_delta":
                     # Message is ending

@@ -29,7 +29,7 @@ class ResponseTransformer:
         if mode in ("minimal", "passthrough"):
             return body
 
-        # Full mode - current behavior
+        # For claude_code, full, and api modes - transform OpenAI requests
         # Check if this is an OpenAI request that needs response conversion
         if self._is_openai_request(path):
             return self._transform_anthropic_to_openai_response(body, path)

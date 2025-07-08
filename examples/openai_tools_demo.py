@@ -475,15 +475,22 @@ def main() -> None:
 
                 logger.info("=== MESSAGE HISTORY AFTER TOOL USE ===")
                 for i, msg in enumerate(messages):
-                    logger.info(f"Message {i}: role={getattr(msg, 'role', 'Unknown')}")
-                    msg_content = getattr(msg, "content", None)
-                    if isinstance(msg_content, str):
-                        content = msg_content
+                    # Handle both dict and object types
+                    if isinstance(msg, dict):
+                        role = msg.get("role", "Unknown")
+                        content = msg.get("content", None)
+                    else:
+                        role = getattr(msg, "role", "Unknown")
+                        content = getattr(msg, "content", None)
+
+                    logger.info(f"Message {i}: role={role}")
+
+                    if isinstance(content, str):
                         logger.info(
                             f"  Content: {content[:100] + '...' if len(content) > 100 else content}"
                         )
                     else:
-                        logger.info(f"  Content: {type(msg_content)}")
+                        logger.info(f"  Content: {type(content)}")
 
                 # Continue conversation with tool results
                 logger.info("Sending follow-up request with tool results")

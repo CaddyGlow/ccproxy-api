@@ -2,13 +2,15 @@
 
 import base64
 import hashlib
+import os
 import secrets
 import urllib.parse
 import webbrowser
 from datetime import UTC, datetime
 from http.server import BaseHTTPRequestHandler, HTTPServer
+from pathlib import Path
 from threading import Thread
-from typing import Any
+from typing import Any, Union
 from urllib.parse import parse_qs, urlparse
 
 import httpx
@@ -50,10 +52,57 @@ class OAuthClient:
         self._http_client = http_client
         self._owns_http_client = http_client is None
 
+    def _get_proxy_url(self) -> str | None:
+        """Get proxy URL from environment variables.
+
+        Returns:
+            str or None: Proxy URL if any proxy is set
+        """
+        # Check for standard proxy environment variables
+        # For HTTPS requests, prioritize HTTPS_PROXY
+        https_proxy = os.environ.get("HTTPS_PROXY") or os.environ.get("https_proxy")
+        all_proxy = os.environ.get("ALL_PROXY")
+        http_proxy = os.environ.get("HTTP_PROXY") or os.environ.get("http_proxy")
+
+        proxy_url = https_proxy or all_proxy or http_proxy
+
+        if proxy_url:
+            logger.debug(f"Using proxy: {proxy_url}")
+
+        return proxy_url
+
+    def _get_ssl_context(self) -> str | bool:
+        """Get SSL context configuration from environment variables.
+
+        Returns:
+            SSL verification configuration:
+            - Path to CA bundle file
+            - True for default verification
+            - False to disable verification (insecure)
+        """
+        # Check for custom CA bundle
+        ca_bundle = os.environ.get("REQUESTS_CA_BUNDLE") or os.environ.get(
+            "SSL_CERT_FILE"
+        )
+
+        # Check if SSL verification should be disabled (NOT RECOMMENDED)
+        ssl_verify = os.environ.get("SSL_VERIFY", "true").lower()
+
+        if ca_bundle and Path(ca_bundle).exists():
+            logger.debug(f"Using custom CA bundle: {ca_bundle}")
+            return ca_bundle
+        elif ssl_verify in ("false", "0", "no"):
+            logger.warning("SSL verification disabled - this is insecure!")
+            return False
+        else:
+            return True
+
     async def __aenter__(self) -> "OAuthClient":
         """Async context manager entry."""
         if self._http_client is None:
-            self._http_client = httpx.AsyncClient()
+            proxy_url = self._get_proxy_url()
+            verify = self._get_ssl_context()
+            self._http_client = httpx.AsyncClient(proxy=proxy_url, verify=verify)
         return self
 
     async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
@@ -65,7 +114,9 @@ class OAuthClient:
     def http_client(self) -> httpx.AsyncClient:
         """Get the HTTP client, creating one if needed."""
         if self._http_client is None:
-            self._http_client = httpx.AsyncClient()
+            proxy_url = self._get_proxy_url()
+            verify = self._get_ssl_context()
+            self._http_client = httpx.AsyncClient(proxy=proxy_url, verify=verify)
         return self._http_client
 
     async def login(self) -> ClaudeCredentials:

@@ -1,8 +1,10 @@
 """Reverse proxy service for forwarding requests to api.anthropic.com."""
 
 import asyncio
+import os
 from collections.abc import AsyncGenerator
-from typing import Any
+from pathlib import Path
+from typing import Any, Union
 
 import httpx
 from fastapi import HTTPException
@@ -41,6 +43,52 @@ class ReverseProxyService:
         self.request_transformer = RequestTransformer()
         self.response_transformer = ResponseTransformer()
         self._credentials_manager = credentials_manager
+
+    def _get_proxy_url(self) -> str | None:
+        """Get proxy URL from environment variables.
+
+        Returns:
+            str or None: Proxy URL if any proxy is set
+        """
+        # Check for standard proxy environment variables
+        # For HTTPS requests, prioritize HTTPS_PROXY
+        https_proxy = os.environ.get("HTTPS_PROXY") or os.environ.get("https_proxy")
+        all_proxy = os.environ.get("ALL_PROXY")
+        http_proxy = os.environ.get("HTTP_PROXY") or os.environ.get("http_proxy")
+
+        proxy_url = https_proxy or all_proxy or http_proxy
+
+        if proxy_url:
+            logger.debug(f"Using proxy: {proxy_url}")
+
+        return proxy_url
+
+    def _get_ssl_context(self) -> str | bool:
+        """Get SSL context configuration from environment variables.
+
+        Returns:
+            SSL verification configuration:
+            - Path to CA bundle file
+            - True for default verification
+            - False to disable verification (insecure)
+        """
+        # Check for custom CA bundle
+        ca_bundle = os.environ.get("REQUESTS_CA_BUNDLE") or os.environ.get(
+            "SSL_CERT_FILE"
+        )
+
+        # Check if SSL verification should be disabled (NOT RECOMMENDED)
+        ssl_verify = os.environ.get("SSL_VERIFY", "true").lower()
+
+        if ca_bundle and Path(ca_bundle).exists():
+            logger.info(f"Using custom CA bundle: {ca_bundle}")
+            return ca_bundle
+        elif ssl_verify in ("false", "0", "no"):
+            logger.warning("SSL verification disabled - this is insecure!")
+            return False
+        else:
+            logger.debug("Using default SSL verification")
+            return True
 
     async def proxy_request(
         self,
@@ -131,13 +179,13 @@ class ReverseProxyService:
             )
 
             # Log the headers being sent (safely)
-            logger.debug("Request headers prepared:")
-            for key, value in proxy_headers.items():
-                if key.lower() == "authorization":
-                    # Show only first part of auth header for security
-                    logger.debug(f"  - {key}: {value[:20]}...")
-                else:
-                    logger.debug(f"  - {key}: {value}")
+            logger.debug(f"Request headers prepared {len(proxy_headers)}")
+            # for key, value in proxy_headers.items():
+            #     if key.lower() == "authorization":
+            #         # Show only first part of auth header for security
+            #         logger.debug(f"  - {key}: {value[:20]}...")
+            #     else:
+            #         logger.debug(f"  - {key}: {value}")
 
             # Transform request body if present
             proxy_body = None
@@ -152,7 +200,14 @@ class ReverseProxyService:
             )
 
             # Make the request
-            async with httpx.AsyncClient(timeout=self.timeout) as client:
+            proxy_url = self._get_proxy_url()
+            verify = self._get_ssl_context()
+
+            logger.debug(f"HTTP client config - proxy: {proxy_url}, verify: {verify}")
+
+            async with httpx.AsyncClient(
+                timeout=self.timeout, proxy=proxy_url, verify=verify
+            ) as client:
                 logger.debug(f"Sending {method} request to Anthropic API...")
                 response = await client.request(
                     method=method,
@@ -247,8 +302,12 @@ class ReverseProxyService:
 
         async def stream_generator() -> AsyncGenerator[bytes, None]:
             try:
+                proxy_url = self._get_proxy_url()
+                verify = self._get_ssl_context()
                 async with (
-                    httpx.AsyncClient(timeout=self.timeout) as client,
+                    httpx.AsyncClient(
+                        timeout=self.timeout, proxy=proxy_url, verify=verify
+                    ) as client,
                     client.stream(
                         method=method,
                         url=url,
@@ -267,10 +326,30 @@ class ReverseProxyService:
                         yield error_content
                         return
 
-                    # Stream the response
-                    async for chunk in response.aiter_bytes():
-                        if chunk:
-                            yield chunk
+                    # Check if this is an OpenAI endpoint that needs transformation
+                    is_openai = self.response_transformer._is_openai_request(
+                        original_path
+                    )
+                    logger.debug(
+                        f"Streaming response for path: {original_path}, is_openai: {is_openai}, mode: {self.proxy_mode}"
+                    )
+
+                    if is_openai and self.proxy_mode not in ("minimal", "passthrough"):
+                        # Transform Anthropic SSE to OpenAI SSE format
+                        logger.info(
+                            f"Transforming Anthropic SSE to OpenAI format for {original_path}"
+                        )
+                        async for (
+                            transformed_chunk
+                        ) in self._transform_anthropic_to_openai_stream(
+                            response, original_path
+                        ):
+                            yield transformed_chunk
+                    else:
+                        # Stream the response as-is for Anthropic endpoints
+                        async for chunk in response.aiter_bytes():
+                            if chunk:
+                                yield chunk
 
             except Exception as e:
                 logger.exception("Error in streaming response")
@@ -287,3 +366,120 @@ class ReverseProxyService:
                 "Access-Control-Allow-Headers": "*",
             },
         )
+
+    async def _transform_anthropic_to_openai_stream(
+        self, response: httpx.Response, original_path: str
+    ) -> AsyncGenerator[bytes, None]:
+        """Transform Anthropic SSE stream to OpenAI SSE format.
+
+        Args:
+            response: The streaming response from Anthropic
+            original_path: Original request path for extracting model info
+
+        Yields:
+            Transformed OpenAI SSE format chunks
+        """
+        import json
+        import time
+        import uuid
+
+        from ccproxy.services.openai_streaming import OpenAIStreamingFormatter
+
+        # Generate metadata
+        message_id = f"chatcmpl-{uuid.uuid4().hex[:29]}"
+        created = int(time.time())
+
+        # Extract model from request body if possible, otherwise use default
+        # For reverse proxy, we might not have access to the original request model
+        # So we'll use a generic model name
+        model = "gpt-4o"  # Default model name for OpenAI format
+
+        formatter = OpenAIStreamingFormatter()
+        has_sent_role = False
+        has_content = False
+
+        # Parse Anthropic SSE events
+        buffer = b""
+        async for chunk in response.aiter_bytes():
+            buffer += chunk
+
+            # Process complete lines
+            while b"\n" in buffer:
+                line_end = buffer.find(b"\n")
+                line = buffer[:line_end]
+                buffer = buffer[line_end + 1 :]
+
+                # Skip empty lines
+                if not line.strip():
+                    continue
+
+                line_str = line.decode("utf-8", errors="replace").strip()
+
+                # Parse SSE format
+                if line_str.startswith("event:"):
+                    event_type = line_str[6:].strip()
+                elif line_str.startswith("data:"):
+                    data_str = line_str[5:].strip()
+
+                    try:
+                        data = json.loads(data_str)
+
+                        # Transform based on event type
+                        event_type = data.get("type")
+                        logger.debug(f"Processing event type: {event_type}")
+
+                        if event_type == "message_start":
+                            # Send initial role chunk
+                            if not has_sent_role:
+                                first_chunk = formatter.format_first_chunk(
+                                    message_id, model, created
+                                )
+                                logger.debug(
+                                    f"Sending first chunk: {first_chunk[:80]}..."
+                                )
+                                yield first_chunk.encode("utf-8")
+                                has_sent_role = True
+
+                        elif data.get("type") == "content_block_delta":
+                            delta = data.get("delta", {})
+                            if delta.get("type") == "text_delta":
+                                text = delta.get("text", "")
+                                if text:
+                                    has_content = True
+                                    yield formatter.format_content_chunk(
+                                        message_id, model, created, text
+                                    ).encode("utf-8")
+
+                        elif data.get("type") == "message_delta":
+                            # Message is ending
+                            delta = data.get("delta", {})
+                            stop_reason = delta.get("stop_reason", "stop")
+
+                            # Map stop reasons
+                            finish_reason_map = {
+                                "end_turn": "stop",
+                                "max_tokens": "length",
+                                "tool_use": "tool_calls",
+                                "stop_sequence": "stop",
+                            }
+                            finish_reason = finish_reason_map.get(stop_reason, "stop")
+
+                            yield formatter.format_final_chunk(
+                                message_id, model, created, finish_reason
+                            ).encode("utf-8")
+
+                    except json.JSONDecodeError:
+                        logger.debug(f"Failed to parse SSE data: {data_str}")
+                    except Exception as e:
+                        logger.error(
+                            f"Error processing SSE event: {e}, data: {data_str[:100]}"
+                        )
+
+        # Ensure we send a final chunk if we haven't already
+        if has_sent_role and not has_content:
+            yield formatter.format_final_chunk(message_id, model, created).encode(
+                "utf-8"
+            )
+
+        # Always send DONE
+        yield formatter.format_done().encode("utf-8")
