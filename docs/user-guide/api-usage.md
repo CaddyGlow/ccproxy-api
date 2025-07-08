@@ -2,30 +2,26 @@
 
 ## Overview
 
-The Claude Code Proxy API provides both Anthropic and OpenAI-compatible interfaces for Claude AI models with three transformation modes.
+The Claude Code Proxy API is a reverse proxy to api.anthropic.com that provides both Anthropic and OpenAI-compatible interfaces. It offers two main access modes:
 
-## Proxy Modes
+## Access Modes
 
-| Mode | URL Prefix | Authentication | Use Case |
-|------|------------|----------------|----------|
-| Full | `/` or `/full/` | OAuth, API Key | Claude Code features, OAuth users |
-| Minimal | `/min/` | API Key only | Lightweight proxy |
-| Passthrough | `/pt/` | API Key only | Direct API access |
-
-**Important**: OAuth credentials from Claude Code only work with full mode.
+| Mode | URL Prefix | Method | Use Case |
+|------|------------|--------|----------|
+| Claude Code | `/` or `/cc/` | Uses claude-code-sdk | Access to all Claude Code tools |
+| API | `/api/` | Direct proxy with headers | Full API control and settings |
 
 ## Anthropic API Format
 
 ### Base URLs by Mode
 ```
-Full Mode:    http://localhost:8000/v1/
-Minimal Mode: http://localhost:8000/min/v1/
-Passthrough:  http://localhost:8000/pt/v1/
+Claude Code Mode: http://localhost:8000/v1/
+API Mode:         http://localhost:8000/api/v1/
 ```
 
 ### Messages Endpoint
 ```bash
-# OAuth users (full mode only)
+# Claude Code mode (default) - with all tools
 curl -X POST http://localhost:8000/v1/messages \
   -H "Content-Type: application/json" \
   -d '{
@@ -36,10 +32,9 @@ curl -X POST http://localhost:8000/v1/messages \
     ]
   }'
 
-# API key users (any mode)
-curl -X POST http://localhost:8000/min/v1/messages \
+# API mode - direct proxy for full control
+curl -X POST http://localhost:8000/api/v1/messages \
   -H "Content-Type: application/json" \
-  -H "x-api-key: sk-ant-api03-..." \
   -d '{
     "model": "claude-3-5-sonnet-20241022",
     "max_tokens": 1000,
@@ -53,14 +48,13 @@ curl -X POST http://localhost:8000/min/v1/messages \
 
 ### Base URLs by Mode
 ```
-Full Mode:    http://localhost:8000/openai/v1/
-Minimal Mode: http://localhost:8000/min/openai/v1/
-Passthrough:  http://localhost:8000/pt/openai/v1/
+Claude Code Mode: http://localhost:8000/openai/v1/
+API Mode:         http://localhost:8000/api/openai/v1/
 ```
 
 ### Chat Completions
 ```bash
-# OAuth users (full mode only)
+# Claude Code mode (default) - with all tools
 curl -X POST http://localhost:8000/openai/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
@@ -70,10 +64,9 @@ curl -X POST http://localhost:8000/openai/v1/chat/completions \
     ]
   }'
 
-# API key users (minimal mode)
-curl -X POST http://localhost:8000/min/openai/v1/chat/completions \
+# API mode - direct proxy for full control
+curl -X POST http://localhost:8000/api/openai/v1/chat/completions \
   -H "Content-Type: application/json" \
-  -H "Authorization: Bearer sk-ant-api03-..." \
   -d '{
     "model": "claude-3-5-sonnet-20241022",
     "messages": [
@@ -90,8 +83,21 @@ curl -X POST http://localhost:8000/min/openai/v1/chat/completions \
 - claude-3-sonnet-20240229
 - claude-3-haiku-20240307
 
-## Function Calling
+## Function Calling and Tools
 
-The Claude Code Proxy API does not directly support function calling or tool use through the API endpoints. However, you can extend Claude's capabilities using MCP (Model Context Protocol) servers.
+### Claude Code Mode Limitations
+When using Claude Code mode (default), the proxy uses the claude-code-sdk which has these limitations:
+- Cannot directly use ToolCall/function calling through the API
+- Limited control over model settings
+- However, you get access to all tools configured in Claude Code
+
+### API Mode Advantages
+When using API mode (`/api/*`), you get:
+- Full access to all API features including ToolCall
+- Complete control over model settings
+- Direct pass-through to api.anthropic.com
+
+### MCP Integration
+You can extend Claude's capabilities using MCP (Model Context Protocol) servers in Claude Code mode.
 
 For detailed information on setting up and using MCP servers with Claude Code, see the [MCP Server Integration guide](mcp-integration.md).

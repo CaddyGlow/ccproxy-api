@@ -89,7 +89,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     # Reverse proxy endpoints with different modes
     app.include_router(create_reverse_proxy_router("minimal"), prefix="/min")
-    app.include_router(create_reverse_proxy_router("full"), prefix="/full")
+    app.include_router(create_reverse_proxy_router("full"), prefix="/api")
     app.include_router(create_reverse_proxy_router("passthrough"), prefix="/pt")
 
     # Default reverse proxy for root path

@@ -8,7 +8,7 @@ import mkdocs_gen_files
 nav = mkdocs_gen_files.Nav()
 
 src = Path(__file__).parent.parent
-package_dir = src / "claude_code_proxy"
+package_dir = src / "ccproxy"
 
 for path in sorted(package_dir.rglob("*.py")):
     module_path = path.relative_to(src).with_suffix("")

@@ -1,11 +1,10 @@
-.PHONY: help setup install dev-install clean test lint typecheck format check pre-commit ci build docker-build docker-run docs-install docs-build docs-serve docs-clean
+.PHONY: help install dev-install clean test lint typecheck format check pre-commit ci build docker-build docker-run docs-install docs-build docs-serve docs-clean
 
 $(eval VERSION_DOCKER := $(shell uv run python3 scripts/format_version.py docker))
 
 # Default target
 help:
 	@echo "Available targets:"
-	@echo "  setup        - Full setup including Claude CLI check/install"
 	@echo "  install      - Install production dependencies"
 	@echo "  dev-install  - Install development dependencies"
 	@echo "  clean        - Clean build artifacts"
@@ -25,12 +24,8 @@ help:
 	@echo "  docs-clean   - Clean documentation build files"
 
 # Installation targets
-setup:
-	@bash scripts/setup.sh
-
 install:
 	uv sync --no-dev
-	pnpm install --prod
 
 dev-install:
 	uv sync --all-extras --dev

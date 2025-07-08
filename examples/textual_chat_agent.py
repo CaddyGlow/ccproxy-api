@@ -61,11 +61,41 @@ class ChatAgent:
                 messages=self.messages,
             ) as stream:
                 response_content = ""
-                async for text in stream.text_stream:
-                    response_content += text
-                    yield text
+                thinking_content = ""
+                in_thinking_block = False
 
-                # Store the complete response
+                # Process raw events to capture thinking blocks
+                async for event in stream:
+                    if event.type == "content_block_start":
+                        content_block = event.content_block
+                        if (
+                            content_block.type == "text"
+                            and hasattr(content_block, "thinking")
+                            and content_block.thinking
+                        ):
+                            in_thinking_block = True
+                            yield "[THINKING_START]"
+
+                    elif event.type == "content_block_delta":
+                        delta = event.delta
+                        if hasattr(delta, "type") and delta.type == "thinking_delta":
+                            thinking_text = getattr(delta, "thinking", "")
+                            thinking_content += thinking_text
+                            yield thinking_text
+                        elif hasattr(delta, "type") and delta.type == "text_delta":
+                            text = getattr(delta, "text", "")
+                            response_content += text
+                            if in_thinking_block:
+                                in_thinking_block = False
+                                yield "[THINKING_END]"
+                            yield text
+
+                    elif event.type == "content_block_stop":
+                        if in_thinking_block:
+                            in_thinking_block = False
+                            yield "[THINKING_END]"
+
+                # Store the complete response (without thinking content)
                 self.messages.append({"role": "assistant", "content": response_content})
 
         except Exception as e:
@@ -310,12 +340,28 @@ class ChatApp(App):  # type: ignore
         try:
             # Start the response
             response_content = ""
+            thinking_content = ""
+            in_thinking = False
             self.chat_log.write("[bold blue]Claude:[/bold blue]")
 
             async for chunk in self.chat_agent.send_message(message):
-                response_content += chunk
-                # For better streaming effect, we just accumulate and show final result
-                # RichLog doesn't support true streaming updates to same line
+                if chunk == "[THINKING_START]":
+                    in_thinking = True
+                    self.chat_log.write("[dim italic]Thinking...[/dim italic]")
+                    continue
+                elif chunk == "[THINKING_END]":
+                    in_thinking = False
+                    if thinking_content.strip():
+                        # Display thinking content in a special format
+                        self.chat_log.write(f"[dim]{thinking_content}[/dim]")
+                        self.chat_log.write("[dim]---[/dim]")
+                        thinking_content = ""
+                    continue
+
+                if in_thinking:
+                    thinking_content += chunk
+                else:
+                    response_content += chunk
 
             # Write the complete response with markdown rendering
             if response_content.strip():
