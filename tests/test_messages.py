@@ -3,7 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
-from claude_code_proxy.models.messages import MessageRequest
+from ccproxy.models.messages import MessageRequest
 
 
 class TestMessageRequest:

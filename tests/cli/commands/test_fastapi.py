@@ -12,7 +12,7 @@ def _setup_mocks():
     # Mock the toolkit before any imports
     mock_toolkit = Mock()
     mock_toolkit.print = Mock()
-    sys.modules["claude_code_proxy.utils.cli"] = Mock(
+    sys.modules["ccproxy.utils.cli"] = Mock(
         get_rich_toolkit=Mock(return_value=mock_toolkit),
         get_uvicorn_log_config=Mock(return_value={"version": 1}),
         RichToolkit=Mock(return_value=mock_toolkit),
@@ -23,8 +23,8 @@ def _setup_mocks():
 _setup_mocks()
 
 # Now we can safely import
-from claude_code_proxy.cli.commands.fastapi import _run, app  # noqa: E402
-from claude_code_proxy.config.settings import ConfigurationError  # noqa: E402
+from ccproxy.cli.commands.fastapi import _run, app  # noqa: E402
+from ccproxy.config.settings import ConfigurationError  # noqa: E402
 
 
 @pytest.fixture
@@ -36,9 +36,9 @@ def runner():
 class TestFastAPICommands:
     """Test FastAPI CLI commands."""
 
-    @patch("claude_code_proxy.cli.commands.fastapi.uvicorn.run")
-    @patch("claude_code_proxy.cli.commands.fastapi.config_manager")
-    @patch("claude_code_proxy.cli.commands.fastapi.get_config_path_from_context")
+    @patch("ccproxy.cli.commands.fastapi.uvicorn.run")
+    @patch("ccproxy.cli.commands.fastapi.config_manager")
+    @patch("ccproxy.cli.commands.fastapi.get_config_path_from_context")
     def test_run_command(
         self, mock_get_config_path, mock_config_manager, mock_uvicorn_run, runner
     ):
@@ -63,9 +63,9 @@ class TestFastAPICommands:
         assert call_args["port"] == 8080
         assert call_args["reload"] is False
 
-    @patch("claude_code_proxy.cli.commands.fastapi.uvicorn.run")
-    @patch("claude_code_proxy.cli.commands.fastapi.config_manager")
-    @patch("claude_code_proxy.cli.commands.fastapi.get_config_path_from_context")
+    @patch("ccproxy.cli.commands.fastapi.uvicorn.run")
+    @patch("ccproxy.cli.commands.fastapi.config_manager")
+    @patch("ccproxy.cli.commands.fastapi.get_config_path_from_context")
     def test_dev_command(
         self, mock_get_config_path, mock_config_manager, mock_uvicorn_run, runner
     ):
@@ -90,9 +90,9 @@ class TestFastAPICommands:
         assert call_args["port"] == 3000
         assert call_args["reload"] is True  # Dev mode has reload enabled by default
 
-    @patch("claude_code_proxy.cli.commands.fastapi.uvicorn.run")
-    @patch("claude_code_proxy.cli.commands.fastapi.config_manager")
-    @patch("claude_code_proxy.cli.commands.fastapi.get_config_path_from_context")
+    @patch("ccproxy.cli.commands.fastapi.uvicorn.run")
+    @patch("ccproxy.cli.commands.fastapi.config_manager")
+    @patch("ccproxy.cli.commands.fastapi.get_config_path_from_context")
     def test_run_command_with_reload(
         self, mock_get_config_path, mock_config_manager, mock_uvicorn_run, runner
     ):
@@ -110,9 +110,9 @@ class TestFastAPICommands:
         call_args = mock_uvicorn_run.call_args[1]
         assert call_args["reload"] is True
 
-    @patch("claude_code_proxy.cli.commands.fastapi.uvicorn.run")
-    @patch("claude_code_proxy.cli.commands.fastapi.config_manager")
-    @patch("claude_code_proxy.cli.commands.fastapi.get_config_path_from_context")
+    @patch("ccproxy.cli.commands.fastapi.uvicorn.run")
+    @patch("ccproxy.cli.commands.fastapi.config_manager")
+    @patch("ccproxy.cli.commands.fastapi.get_config_path_from_context")
     def test_dev_command_no_reload(
         self, mock_get_config_path, mock_config_manager, mock_uvicorn_run, runner
     ):
@@ -130,9 +130,9 @@ class TestFastAPICommands:
         call_args = mock_uvicorn_run.call_args[1]
         assert call_args["reload"] is False
 
-    @patch("claude_code_proxy.cli.commands.fastapi.config_manager")
-    @patch("claude_code_proxy.cli.commands.fastapi.get_config_path_from_context")
-    @patch("claude_code_proxy.cli.commands.fastapi.get_rich_toolkit")
+    @patch("ccproxy.cli.commands.fastapi.config_manager")
+    @patch("ccproxy.cli.commands.fastapi.get_config_path_from_context")
+    @patch("ccproxy.cli.commands.fastapi.get_rich_toolkit")
     def test_run_configuration_error(
         self, mock_get_toolkit, mock_get_config_path, mock_config_manager, runner
     ):
@@ -156,10 +156,10 @@ class TestFastAPICommands:
             "Configuration error: Invalid config", tag="error"
         )
 
-    @patch("claude_code_proxy.cli.commands.fastapi.uvicorn.run")
-    @patch("claude_code_proxy.cli.commands.fastapi.config_manager")
-    @patch("claude_code_proxy.cli.commands.fastapi.get_config_path_from_context")
-    @patch("claude_code_proxy.cli.commands.fastapi.get_rich_toolkit")
+    @patch("ccproxy.cli.commands.fastapi.uvicorn.run")
+    @patch("ccproxy.cli.commands.fastapi.config_manager")
+    @patch("ccproxy.cli.commands.fastapi.get_config_path_from_context")
+    @patch("ccproxy.cli.commands.fastapi.get_rich_toolkit")
     def test_run_generic_exception(
         self,
         mock_get_toolkit,
@@ -192,10 +192,10 @@ class TestFastAPICommands:
 class TestRunHelper:
     """Test the _run helper function."""
 
-    @patch("claude_code_proxy.cli.commands.fastapi.uvicorn.run")
-    @patch("claude_code_proxy.cli.commands.fastapi.config_manager")
-    @patch("claude_code_proxy.cli.commands.fastapi.get_config_path_from_context")
-    @patch("claude_code_proxy.cli.commands.fastapi.get_uvicorn_log_config")
+    @patch("ccproxy.cli.commands.fastapi.uvicorn.run")
+    @patch("ccproxy.cli.commands.fastapi.config_manager")
+    @patch("ccproxy.cli.commands.fastapi.get_config_path_from_context")
+    @patch("ccproxy.cli.commands.fastapi.get_uvicorn_log_config")
     def test_run_helper_production(
         self,
         mock_get_log_config,
@@ -218,7 +218,7 @@ class TestRunHelper:
         mock_config_manager.load_settings.assert_called_once()
         mock_config_manager.setup_logging.assert_called_once()
         mock_uvicorn_run.assert_called_once_with(
-            app="claude_code_proxy:app",
+            app="ccproxy:app",
             host="0.0.0.0",
             port=8000,
             reload=False,
@@ -226,9 +226,9 @@ class TestRunHelper:
             log_config=mock_log_config,
         )
 
-    @patch("claude_code_proxy.cli.commands.fastapi.uvicorn.run")
-    @patch("claude_code_proxy.cli.commands.fastapi.config_manager")
-    @patch("claude_code_proxy.cli.commands.fastapi.get_config_path_from_context")
+    @patch("ccproxy.cli.commands.fastapi.uvicorn.run")
+    @patch("ccproxy.cli.commands.fastapi.config_manager")
+    @patch("ccproxy.cli.commands.fastapi.get_config_path_from_context")
     def test_run_helper_with_workers(
         self, mock_get_config_path, mock_config_manager, mock_uvicorn_run
     ):

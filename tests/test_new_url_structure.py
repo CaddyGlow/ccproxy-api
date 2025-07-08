@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
-from claude_code_proxy.services.credentials import CredentialsManager
+from ccproxy.services.credentials import CredentialsManager
 
 
 @pytest.mark.integration
@@ -19,7 +19,7 @@ class TestNewURLStructure:
         assert response.status_code == 200
         assert response.json()["status"] == "healthy"
 
-    @patch("claude_code_proxy.routers.anthropic.ClaudeClient")
+    @patch("ccproxy.routers.anthropic.ClaudeClient")
     def test_new_claude_code_path(
         self, mock_client_class, test_client: TestClient, sample_claude_response
     ):
@@ -44,7 +44,7 @@ class TestNewURLStructure:
         assert response.status_code == 200
         assert response.json()["type"] == "message"
 
-    @patch("claude_code_proxy.routers.openai.ClaudeClient")
+    @patch("ccproxy.routers.openai.ClaudeClient")
     def test_new_openai_path(
         self, mock_client_class, test_client: TestClient, sample_claude_response
     ):

@@ -6,8 +6,8 @@ import pytest
 from fastapi import HTTPException
 from fastapi.security import HTTPAuthorizationCredentials
 
-from claude_code_proxy.config.settings import get_settings
-from claude_code_proxy.middleware.auth import extract_token_from_headers, verify_token
+from ccproxy.config.settings import get_settings
+from ccproxy.middleware.auth import extract_token_from_headers, verify_token
 
 
 class TestAuthentication:
@@ -19,7 +19,7 @@ class TestAuthentication:
         mock_settings = Mock()
         mock_settings.auth_token = None
         monkeypatch.setattr(
-            "claude_code_proxy.middleware.auth.get_settings", lambda: mock_settings
+            "ccproxy.middleware.auth.get_settings", lambda: mock_settings
         )
 
         mock_request = Mock()
@@ -35,7 +35,7 @@ class TestAuthentication:
         mock_settings = Mock()
         mock_settings.auth_token = "test-token-123"
         monkeypatch.setattr(
-            "claude_code_proxy.middleware.auth.get_settings", lambda: mock_settings
+            "ccproxy.middleware.auth.get_settings", lambda: mock_settings
         )
 
         mock_request = Mock()
@@ -56,7 +56,7 @@ class TestAuthentication:
         mock_settings = Mock()
         mock_settings.auth_token = "correct-token-123"
         monkeypatch.setattr(
-            "claude_code_proxy.middleware.auth.get_settings", lambda: mock_settings
+            "ccproxy.middleware.auth.get_settings", lambda: mock_settings
         )
 
         mock_request = Mock()
@@ -82,7 +82,7 @@ class TestAuthentication:
         mock_settings = Mock()
         mock_settings.auth_token = "correct-token-123"
         monkeypatch.setattr(
-            "claude_code_proxy.middleware.auth.get_settings", lambda: mock_settings
+            "ccproxy.middleware.auth.get_settings", lambda: mock_settings
         )
 
         mock_request = Mock()
@@ -103,7 +103,7 @@ class TestAuthentication:
         mock_settings = Mock()
         mock_settings.auth_token = "correct-token-123"
         monkeypatch.setattr(
-            "claude_code_proxy.middleware.auth.get_settings", lambda: mock_settings
+            "ccproxy.middleware.auth.get_settings", lambda: mock_settings
         )
 
         mock_request = Mock()
@@ -119,7 +119,7 @@ class TestAuthentication:
         mock_settings = Mock()
         mock_settings.auth_token = "correct-token-123"
         monkeypatch.setattr(
-            "claude_code_proxy.middleware.auth.get_settings", lambda: mock_settings
+            "ccproxy.middleware.auth.get_settings", lambda: mock_settings
         )
 
         mock_request = Mock()
@@ -140,7 +140,7 @@ class TestAuthentication:
         mock_settings = Mock()
         mock_settings.auth_token = "correct-token-123"
         monkeypatch.setattr(
-            "claude_code_proxy.middleware.auth.get_settings", lambda: mock_settings
+            "ccproxy.middleware.auth.get_settings", lambda: mock_settings
         )
 
         mock_request = Mock()
@@ -190,7 +190,7 @@ class TestAuthentication:
         mock_settings = Mock()
         mock_settings.auth_token = "correct-token-123"
         monkeypatch.setattr(
-            "claude_code_proxy.middleware.auth.get_settings", lambda: mock_settings
+            "ccproxy.middleware.auth.get_settings", lambda: mock_settings
         )
 
         mock_request = Mock()
@@ -213,7 +213,7 @@ class TestAuthentication:
         mock_settings = Mock()
         mock_settings.auth_token = "correct-token-123"
         monkeypatch.setattr(
-            "claude_code_proxy.middleware.auth.get_settings", lambda: mock_settings
+            "ccproxy.middleware.auth.get_settings", lambda: mock_settings
         )
 
         mock_request = Mock()

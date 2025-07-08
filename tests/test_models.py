@@ -5,13 +5,13 @@ from typing import Any
 import pytest
 from pydantic import ValidationError
 
-from claude_code_proxy.models.errors import (
+from ccproxy.models.errors import (
     AnthropicError,
     ErrorDetail,
     InvalidRequestError,
     create_error_response,
 )
-from claude_code_proxy.models.requests import (
+from ccproxy.models.requests import (
     ChatCompletionRequest,
     ImageContent,
     Message,
@@ -19,7 +19,7 @@ from claude_code_proxy.models.requests import (
     ToolDefinition,
     Usage,
 )
-from claude_code_proxy.models.responses import (
+from ccproxy.models.responses import (
     ChatCompletionResponse,
     StreamingChatCompletionResponse,
     ToolUse,

@@ -363,7 +363,7 @@ The server validates configuration on startup and will report errors for:
 
 ```bash
 # Check configuration without starting server
-uv run python -m claude_code_proxy.config.validate config.json
+uv run python -m ccproxy.config.validate config.json
 ```
 
 ## Personal Use Scenarios
@@ -621,7 +621,7 @@ CONFIG_FILE=/path/to/custom/config.json ccproxy run
 LOG_LEVEL=DEBUG ccproxy run
 
 # Validate configuration without starting server
-python -c "from claude_code_proxy.config.settings import get_settings; print('Config valid')"
+python -c "from ccproxy.config.settings import get_settings; print('Config valid')"
 
 # Check Claude CLI path resolution
 ccproxy claude -- --version

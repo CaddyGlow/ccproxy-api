@@ -4,7 +4,7 @@ import re
 
 import pytest
 
-from claude_code_proxy import _version
+from ccproxy import _version
 
 
 @pytest.mark.unit
@@ -87,7 +87,7 @@ class TestVersionModule:
     def test_import_behavior(self):
         """Test that module can be imported and all exports work."""
         # Test direct import
-        import claude_code_proxy._version as version_module
+        import ccproxy._version as version_module
 
         assert isinstance(version_module.__version__, str)
         assert isinstance(version_module.version, str)
@@ -95,7 +95,7 @@ class TestVersionModule:
         assert isinstance(version_module.version_tuple, tuple)
 
         # Test from import
-        from claude_code_proxy._version import (
+        from ccproxy._version import (
             __version__,
             __version_tuple__,
             version,
@@ -322,8 +322,8 @@ class TestErrorConditions:
     def test_import_safety(self):
         """Test that import operations are safe."""
         # Test that we can import the module multiple times without issues
-        import claude_code_proxy._version as v1
-        import claude_code_proxy._version as v2
+        import ccproxy._version as v1
+        import ccproxy._version as v2
 
         assert v1.__version__ == v2.__version__
         assert v1.__version_tuple__ == v2.__version_tuple__

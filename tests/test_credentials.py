@@ -2,7 +2,7 @@
 
 from datetime import UTC, datetime, timedelta
 
-from claude_code_proxy.services.credentials import (
+from ccproxy.services.credentials import (
     AccountInfo,
     ClaudeCredentials,
     OAuthToken,

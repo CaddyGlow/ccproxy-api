@@ -12,12 +12,12 @@ from pathlib import Path
 
 # Only add to sys.path if claude_code_proxy module is not available
 try:
-    import claude_code_proxy  # noqa: F401
+    import ccproxy  # noqa: F401
 except ImportError:
     sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from claude_code_proxy import __version__
-from claude_code_proxy.utils import format_version, parse_version
+from ccproxy import __version__
+from ccproxy.utils import format_version, parse_version
 
 
 def main() -> None:

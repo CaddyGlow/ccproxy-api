@@ -93,4 +93,4 @@ ci:
 # Note: Tests are intentionally not run in pre-commit hooks as they can be slow
 # Run tests manually with: make test or make ci
 # The CI pipeline will run the full test suite including:
-# - uv run pytest -v --cov=claude_code_proxy --cov-report=xml --cov-report=term-missing
+# - uv run pytest -v --cov=ccproxy --cov-report=xml --cov-report=term-missing

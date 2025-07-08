@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, Mock
 import pytest
 from fastapi.testclient import TestClient
 
-from claude_code_proxy.services.request_transformer import RequestTransformer
+from ccproxy.services.request_transformer import RequestTransformer
 
 
 class TestRequestTransformer:
@@ -373,7 +373,7 @@ class TestRequestTransformer:
 
     def test_get_claude_code_prompt_helper(self):
         """Test the helper function for Claude Code prompt."""
-        from claude_code_proxy.services.request_transformer import (
+        from ccproxy.services.request_transformer import (
             get_claude_code_prompt,
         )
 
@@ -497,8 +497,8 @@ class TestReverseProxyAuthentication:
     @pytest.fixture
     def app_with_auth(self, monkeypatch):
         """Create app with authentication enabled."""
-        from claude_code_proxy.config.settings import Settings
-        from claude_code_proxy.main import create_app
+        from ccproxy.config.settings import Settings
+        from ccproxy.main import create_app
 
         # Create settings with authentication enabled
         auth_settings = Settings(
@@ -512,7 +512,7 @@ class TestReverseProxyAuthentication:
         # This is necessary because the auth middleware uses get_settings()
         # instead of the settings passed to create_app()
         monkeypatch.setattr(
-            "claude_code_proxy.middleware.auth.get_settings", lambda: auth_settings
+            "ccproxy.middleware.auth.get_settings", lambda: auth_settings
         )
 
         # Create app with auth settings
@@ -521,8 +521,8 @@ class TestReverseProxyAuthentication:
     @pytest.fixture
     def app_no_auth(self, monkeypatch):
         """Create app with authentication disabled."""
-        from claude_code_proxy.config.settings import Settings
-        from claude_code_proxy.main import create_app
+        from ccproxy.config.settings import Settings
+        from ccproxy.main import create_app
 
         # Create settings with authentication disabled
         no_auth_settings = Settings(
@@ -534,7 +534,7 @@ class TestReverseProxyAuthentication:
 
         # Mock the global get_settings function to return our no-auth settings
         monkeypatch.setattr(
-            "claude_code_proxy.middleware.auth.get_settings", lambda: no_auth_settings
+            "ccproxy.middleware.auth.get_settings", lambda: no_auth_settings
         )
 
         # Create app with no auth settings

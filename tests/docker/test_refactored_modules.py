@@ -5,7 +5,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from claude_code_proxy.docker import (
+from ccproxy.docker import (
     DockerAdapter,
     LoggerOutputMiddleware,
     create_chained_docker_middleware,
@@ -14,17 +14,17 @@ from claude_code_proxy.docker import (
     create_logger_middleware,
     validate_port_spec,
 )
-from claude_code_proxy.docker.middleware import (
+from ccproxy.docker.middleware import (
     LoggerOutputMiddleware as MiddlewareLoggerOutputMiddleware,
 )
-from claude_code_proxy.docker.stream_process import OutputMiddleware
-from claude_code_proxy.docker.validators import (
+from ccproxy.docker.stream_process import OutputMiddleware
+from ccproxy.docker.validators import (
     create_docker_error as validators_create_docker_error,
 )
-from claude_code_proxy.docker.validators import (
+from ccproxy.docker.validators import (
     validate_port_spec as validators_validate_port_spec,
 )
-from claude_code_proxy.exceptions import DockerError
+from ccproxy.exceptions import DockerError
 
 
 class TestModuleImports:

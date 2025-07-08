@@ -1,4 +1,4 @@
-"""Tests for claude_code_proxy/commands/config.py module."""
+"""Tests for ccproxy/commands/config.py module."""
 
 import json
 import secrets
@@ -13,8 +13,8 @@ from click import Context
 from rich.console import Console
 from typer.testing import CliRunner
 
-from claude_code_proxy.cli.commands.config import app
-from claude_code_proxy.cli.commands.config.commands import (
+from ccproxy.cli.commands.config import app
+from ccproxy.cli.commands.config.commands import (
     _detect_config_format,
     _write_config_file,
     _write_json_config,
@@ -25,7 +25,7 @@ from claude_code_proxy.cli.commands.config.commands import (
     generate_token,
     get_config_path_from_context,
 )
-from claude_code_proxy.cli.commands.config.schema_commands import (
+from ccproxy.cli.commands.config.schema_commands import (
     config_schema,
     config_validate,
 )
@@ -38,7 +38,7 @@ class TestGetConfigPathFromContext:
     def test_get_config_path_from_context_with_valid_context(self):
         """Test getting config path from valid typer context."""
         with patch(
-            "claude_code_proxy.cli.commands.config.commands.get_current_context"
+            "ccproxy.cli.commands.config.commands.get_current_context"
         ) as mock_ctx:
             mock_context = Mock()
             mock_context.obj = {"config_path": "/path/to/config.toml"}
@@ -51,7 +51,7 @@ class TestGetConfigPathFromContext:
     def test_get_config_path_from_context_with_none_config_path(self):
         """Test getting config path when config_path is None."""
         with patch(
-            "claude_code_proxy.cli.commands.config.commands.get_current_context"
+            "ccproxy.cli.commands.config.commands.get_current_context"
         ) as mock_ctx:
             mock_context = Mock()
             mock_context.obj = {"config_path": None}
@@ -64,7 +64,7 @@ class TestGetConfigPathFromContext:
     def test_get_config_path_from_context_no_obj(self):
         """Test getting config path when context has no obj."""
         with patch(
-            "claude_code_proxy.cli.commands.config.commands.get_current_context"
+            "ccproxy.cli.commands.config.commands.get_current_context"
         ) as mock_ctx:
             mock_context = Mock()
             mock_context.obj = None
@@ -77,7 +77,7 @@ class TestGetConfigPathFromContext:
     def test_get_config_path_from_context_no_config_path_key(self):
         """Test getting config path when obj doesn't have config_path key."""
         with patch(
-            "claude_code_proxy.cli.commands.config.commands.get_current_context"
+            "ccproxy.cli.commands.config.commands.get_current_context"
         ) as mock_ctx:
             mock_context = Mock()
             mock_context.obj = {"other_key": "value"}
@@ -90,7 +90,7 @@ class TestGetConfigPathFromContext:
     def test_get_config_path_from_context_no_context(self):
         """Test getting config path when no context is available."""
         with patch(
-            "claude_code_proxy.cli.commands.config.commands.get_current_context"
+            "ccproxy.cli.commands.config.commands.get_current_context"
         ) as mock_ctx:
             mock_ctx.return_value = None
 
@@ -101,7 +101,7 @@ class TestGetConfigPathFromContext:
     def test_get_config_path_from_context_runtime_error(self):
         """Test getting config path when RuntimeError is raised (no active context)."""
         with patch(
-            "claude_code_proxy.cli.commands.config.commands.get_current_context"
+            "ccproxy.cli.commands.config.commands.get_current_context"
         ) as mock_ctx:
             mock_ctx.side_effect = RuntimeError("No active click context")
 
@@ -147,11 +147,11 @@ class TestConfigListCommand:
 
         with (
             patch(
-                "claude_code_proxy.cli.commands.config.commands.get_settings",
+                "ccproxy.cli.commands.config.commands.get_settings",
                 return_value=mock_settings,
             ),
             patch(
-                "claude_code_proxy.cli.commands.config.commands.get_config_path_from_context",
+                "ccproxy.cli.commands.config.commands.get_config_path_from_context",
                 return_value=None,
             ),
         ):
@@ -192,11 +192,11 @@ class TestConfigListCommand:
 
         with (
             patch(
-                "claude_code_proxy.cli.commands.config.commands.get_settings",
+                "ccproxy.cli.commands.config.commands.get_settings",
                 return_value=mock_settings,
             ) as mock_get_settings,
             patch(
-                "claude_code_proxy.cli.commands.config.commands.get_config_path_from_context",
+                "ccproxy.cli.commands.config.commands.get_config_path_from_context",
                 return_value=config_path,
             ),
         ):
@@ -208,7 +208,7 @@ class TestConfigListCommand:
     def test_config_list_exception_handling(self):
         """Test config list command with exception in get_settings."""
         with patch(
-            "claude_code_proxy.cli.commands.config.commands.get_settings"
+            "ccproxy.cli.commands.config.commands.get_settings"
         ) as mock_get_settings:
             mock_get_settings.side_effect = ValueError("Test error")
 
@@ -232,7 +232,7 @@ class TestConfigInitCommand:
             output_dir = Path(temp_dir)
 
             with patch(
-                "claude_code_proxy.utils.xdg.get_ccproxy_config_dir",
+                "ccproxy.utils.xdg.get_ccproxy_config_dir",
                 return_value=output_dir,
             ):
                 result = self.runner.invoke(app, ["init"])
@@ -254,7 +254,7 @@ class TestConfigInitCommand:
             output_dir = Path(temp_dir)
 
             with patch(
-                "claude_code_proxy.utils.xdg.get_ccproxy_config_dir",
+                "ccproxy.utils.xdg.get_ccproxy_config_dir",
                 return_value=output_dir,
             ):
                 result = self.runner.invoke(app, ["init", "--format", "json"])
@@ -275,7 +275,7 @@ class TestConfigInitCommand:
             output_dir = Path(temp_dir)
 
             with patch(
-                "claude_code_proxy.utils.xdg.get_ccproxy_config_dir",
+                "ccproxy.utils.xdg.get_ccproxy_config_dir",
                 return_value=output_dir,
             ):
                 result = self.runner.invoke(app, ["init", "--format", "yaml"])
@@ -292,11 +292,11 @@ class TestConfigInitCommand:
 
             with (
                 patch(
-                    "claude_code_proxy.utils.xdg.get_ccproxy_config_dir",
+                    "ccproxy.utils.xdg.get_ccproxy_config_dir",
                     return_value=output_dir,
                 ),
                 patch(
-                    "claude_code_proxy.cli.commands.config.commands.yaml",
+                    "ccproxy.cli.commands.config.commands.yaml",
                     None,
                     create=True,
                 ),
@@ -345,7 +345,7 @@ class TestConfigInitCommand:
             config_file.write_text("existing content")
 
             with patch(
-                "claude_code_proxy.utils.xdg.get_ccproxy_config_dir",
+                "ccproxy.utils.xdg.get_ccproxy_config_dir",
                 return_value=output_dir,
             ):
                 result = self.runner.invoke(app, ["init"])
@@ -361,7 +361,7 @@ class TestConfigInitCommand:
             config_file.write_text("existing content")
 
             with patch(
-                "claude_code_proxy.utils.xdg.get_ccproxy_config_dir",
+                "ccproxy.utils.xdg.get_ccproxy_config_dir",
                 return_value=output_dir,
             ):
                 result = self.runner.invoke(app, ["init", "--force"])
@@ -371,9 +371,7 @@ class TestConfigInitCommand:
 
     def test_config_init_exception_handling(self):
         """Test config init with exception during execution."""
-        with patch(
-            "claude_code_proxy.utils.xdg.get_ccproxy_config_dir"
-        ) as mock_get_dir:
+        with patch("ccproxy.utils.xdg.get_ccproxy_config_dir") as mock_get_dir:
             mock_get_dir.side_effect = PermissionError("Permission denied")
 
             result = self.runner.invoke(app, ["init"])
@@ -395,7 +393,7 @@ class TestConfigSchemaCommand:
         mock_files = [Path("schema1.json"), Path("schema2.json")]
 
         with patch(
-            "claude_code_proxy.utils.schema.generate_schema_files",
+            "ccproxy.utils.schema.generate_schema_files",
             return_value=mock_files,
         ):
             result = self.runner.invoke(app, ["schema"])
@@ -411,7 +409,7 @@ class TestConfigSchemaCommand:
             mock_files = [output_dir / "schema.json"]
 
             with patch(
-                "claude_code_proxy.cli.commands.config.schema_commands.generate_schema_files",
+                "ccproxy.cli.commands.config.schema_commands.generate_schema_files",
                 return_value=mock_files,
             ) as mock_gen:
                 result = self.runner.invoke(
@@ -428,11 +426,11 @@ class TestConfigSchemaCommand:
 
         with (
             patch(
-                "claude_code_proxy.cli.commands.config.schema_commands.generate_schema_files",
+                "ccproxy.cli.commands.config.schema_commands.generate_schema_files",
                 return_value=mock_files,
             ),
             patch(
-                "claude_code_proxy.cli.commands.config.schema_commands.generate_taplo_config",
+                "ccproxy.cli.commands.config.schema_commands.generate_taplo_config",
                 return_value=mock_taplo_config,
             ) as mock_taplo,
         ):
@@ -446,7 +444,7 @@ class TestConfigSchemaCommand:
     def test_config_schema_exception_handling(self):
         """Test config schema command with exception."""
         with patch(
-            "claude_code_proxy.cli.commands.config.schema_commands.generate_schema_files"
+            "ccproxy.cli.commands.config.schema_commands.generate_schema_files"
         ) as mock_gen:
             mock_gen.side_effect = ValueError("Schema generation failed")
 
@@ -472,7 +470,7 @@ class TestConfigValidateCommand:
 
             try:
                 with patch(
-                    "claude_code_proxy.cli.commands.config.schema_commands.validate_config_with_schema",
+                    "ccproxy.cli.commands.config.schema_commands.validate_config_with_schema",
                     return_value=True,
                 ):
                     result = self.runner.invoke(app, ["validate", f.name])
@@ -490,7 +488,7 @@ class TestConfigValidateCommand:
 
             try:
                 with patch(
-                    "claude_code_proxy.cli.commands.config.schema_commands.validate_config_with_schema",
+                    "ccproxy.cli.commands.config.schema_commands.validate_config_with_schema",
                     return_value=False,
                 ):
                     result = self.runner.invoke(app, ["validate", f.name])
@@ -515,7 +513,7 @@ class TestConfigValidateCommand:
 
             try:
                 with patch(
-                    "claude_code_proxy.cli.commands.config.schema_commands.validate_config_with_schema"
+                    "ccproxy.cli.commands.config.schema_commands.validate_config_with_schema"
                 ) as mock_validate:
                     mock_validate.side_effect = ImportError(
                         "check-jsonschema not available"
@@ -536,7 +534,7 @@ class TestConfigValidateCommand:
 
             try:
                 with patch(
-                    "claude_code_proxy.cli.commands.config.schema_commands.validate_config_with_schema"
+                    "ccproxy.cli.commands.config.schema_commands.validate_config_with_schema"
                 ) as mock_validate:
                     mock_validate.side_effect = ValueError("Validation error occurred")
 
@@ -558,7 +556,7 @@ class TestConfigValidateCommand:
             try:
                 # Mock the validate_config_with_schema to raise a general exception
                 with patch(
-                    "claude_code_proxy.cli.commands.config.schema_commands.validate_config_with_schema"
+                    "ccproxy.cli.commands.config.schema_commands.validate_config_with_schema"
                 ) as mock_validate:
                     mock_validate.side_effect = OSError("File system error")
 
@@ -581,7 +579,7 @@ class TestGenerateTokenCommand:
     def test_generate_token_display_only(self):
         """Test generate token command without saving."""
         with patch(
-            "claude_code_proxy.cli.commands.config.commands.secrets.token_urlsafe",
+            "ccproxy.cli.commands.config.commands.secrets.token_urlsafe",
             return_value="test-token-123",
         ):
             result = self.runner.invoke(app, ["generate-token"])
@@ -602,12 +600,10 @@ class TestGenerateTokenCommand:
 
             with (
                 patch(
-                    "claude_code_proxy.cli.commands.config.commands.secrets.token_urlsafe",
+                    "ccproxy.cli.commands.config.commands.secrets.token_urlsafe",
                     return_value="save-token-456",
                 ),
-                patch(
-                    "claude_code_proxy.utils.find_toml_config_file", return_value=None
-                ),
+                patch("ccproxy.utils.find_toml_config_file", return_value=None),
             ):
                 result = self.runner.invoke(
                     app, ["generate-token", "--save", "--config-file", str(config_file)]
@@ -631,11 +627,11 @@ class TestGenerateTokenCommand:
 
             with (
                 patch(
-                    "claude_code_proxy.cli.commands.config.commands.secrets.token_urlsafe",
+                    "ccproxy.cli.commands.config.commands.secrets.token_urlsafe",
                     return_value="new-token-789",
                 ),
                 patch(
-                    "claude_code_proxy.config.settings.Settings.load_config_file",
+                    "ccproxy.config.settings.Settings.load_config_file",
                     return_value=mock_load_config,
                 ),
             ):
@@ -659,11 +655,11 @@ class TestGenerateTokenCommand:
 
             with (
                 patch(
-                    "claude_code_proxy.cli.commands.config.commands.secrets.token_urlsafe",
+                    "ccproxy.cli.commands.config.commands.secrets.token_urlsafe",
                     return_value="force-token-xyz",
                 ),
                 patch(
-                    "claude_code_proxy.config.settings.Settings.load_config_file",
+                    "ccproxy.config.settings.Settings.load_config_file",
                     return_value=mock_load_config,
                 ),
             ):
@@ -694,11 +690,11 @@ class TestGenerateTokenCommand:
 
             with (
                 patch(
-                    "claude_code_proxy.cli.commands.config.commands.secrets.token_urlsafe",
+                    "ccproxy.cli.commands.config.commands.secrets.token_urlsafe",
                     return_value="confirm-token-abc",
                 ),
                 patch(
-                    "claude_code_proxy.config.settings.Settings.load_config_file",
+                    "ccproxy.config.settings.Settings.load_config_file",
                     return_value=mock_load_config,
                 ),
             ):
@@ -718,15 +714,15 @@ class TestGenerateTokenCommand:
 
             with (
                 patch(
-                    "claude_code_proxy.cli.commands.config.commands.secrets.token_urlsafe",
+                    "ccproxy.cli.commands.config.commands.secrets.token_urlsafe",
                     return_value="auto-token-def",
                 ),
                 patch(
-                    "claude_code_proxy.utils.find_toml_config_file",
+                    "ccproxy.utils.find_toml_config_file",
                     return_value=config_file,
                 ),
                 patch(
-                    "claude_code_proxy.config.settings.Settings.load_config_file",
+                    "ccproxy.config.settings.Settings.load_config_file",
                     return_value={},
                 ),
             ):
@@ -749,11 +745,11 @@ class TestGenerateTokenCommand:
 
                 with (
                     patch(
-                        "claude_code_proxy.cli.commands.config.commands.secrets.token_urlsafe",
+                        "ccproxy.cli.commands.config.commands.secrets.token_urlsafe",
                         return_value="default-token-ghi",
                     ),
                     patch(
-                        "claude_code_proxy.utils.find_toml_config_file",
+                        "ccproxy.utils.find_toml_config_file",
                         return_value=None,
                     ),
                 ):
@@ -771,11 +767,11 @@ class TestGenerateTokenCommand:
 
             with (
                 patch(
-                    "claude_code_proxy.cli.commands.config.commands.secrets.token_urlsafe",
+                    "ccproxy.cli.commands.config.commands.secrets.token_urlsafe",
                     return_value="json-token-jkl",
                 ),
                 patch(
-                    "claude_code_proxy.config.settings.Settings.load_config_file",
+                    "ccproxy.config.settings.Settings.load_config_file",
                     return_value={},
                 ),
             ):
@@ -797,11 +793,11 @@ class TestGenerateTokenCommand:
 
             with (
                 patch(
-                    "claude_code_proxy.cli.commands.config.commands.secrets.token_urlsafe",
+                    "ccproxy.cli.commands.config.commands.secrets.token_urlsafe",
                     return_value="yaml-token-mno",
                 ),
                 patch(
-                    "claude_code_proxy.config.settings.Settings.load_config_file",
+                    "ccproxy.config.settings.Settings.load_config_file",
                     return_value={},
                 ),
             ):
@@ -820,12 +816,10 @@ class TestGenerateTokenCommand:
 
             with (
                 patch(
-                    "claude_code_proxy.cli.commands.config.commands.secrets.token_urlsafe",
+                    "ccproxy.cli.commands.config.commands.secrets.token_urlsafe",
                     return_value="exception-token",
                 ),
-                patch(
-                    "claude_code_proxy.config.settings.Settings.load_config_file"
-                ) as mock_load,
+                patch("ccproxy.config.settings.Settings.load_config_file") as mock_load,
             ):
                 mock_load.side_effect = ValueError("Config read error")
 
@@ -840,7 +834,7 @@ class TestGenerateTokenCommand:
     def test_generate_token_exception_handling(self):
         """Test generate token command with general exception."""
         with patch(
-            "claude_code_proxy.cli.commands.config.commands.secrets.token_urlsafe"
+            "ccproxy.cli.commands.config.commands.secrets.token_urlsafe"
         ) as mock_token:
             mock_token.side_effect = OSError("Random generation failed")
 
@@ -1175,7 +1169,7 @@ class TestConfigCommandsIntegration:
 
             # Step 2: Validate the created config file
             with patch(
-                "claude_code_proxy.cli.commands.config.schema_commands.validate_config_with_schema",
+                "ccproxy.cli.commands.config.schema_commands.validate_config_with_schema",
                 return_value=True,
             ):
                 result = self.runner.invoke(app, ["validate", str(created_file)])
@@ -1209,11 +1203,11 @@ class TestConfigCommandsIntegration:
 
             with (
                 patch(
-                    "claude_code_proxy.cli.commands.config.commands.get_settings",
+                    "ccproxy.cli.commands.config.commands.get_settings",
                     return_value=mock_settings,
                 ),
                 patch(
-                    "claude_code_proxy.cli.commands.config.commands.get_config_path_from_context",
+                    "ccproxy.cli.commands.config.commands.get_config_path_from_context",
                     return_value=None,
                 ),
             ):
@@ -1228,12 +1222,10 @@ class TestConfigCommandsIntegration:
 
             with (
                 patch(
-                    "claude_code_proxy.cli.commands.config.commands.secrets.token_urlsafe",
+                    "ccproxy.cli.commands.config.commands.secrets.token_urlsafe",
                     return_value="integration-test-token",
                 ),
-                patch(
-                    "claude_code_proxy.utils.find_toml_config_file", return_value=None
-                ),
+                patch("ccproxy.utils.find_toml_config_file", return_value=None),
             ):
                 # Generate and save token
                 result = self.runner.invoke(

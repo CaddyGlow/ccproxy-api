@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from claude_code_proxy.utils.docker_validation import (
+from ccproxy.utils.docker_validation import (
     validate_docker_volumes,
     validate_environment_variable,
     validate_host_path,

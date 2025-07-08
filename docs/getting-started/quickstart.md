@@ -75,16 +75,19 @@ Install Claude Code CLI following the [official instructions](https://docs.anthr
 
 **Authentication:**
 ```bash
-claude auth login
+# Login to Claude (opens browser)
+ccproxy auth login
+
+# Verify authentication
+ccproxy auth validate
 ```
 
 **Verification:**
 ```bash
-# Clone and navigate to the project directory first
-git clone https://github.com/CaddyGlow/claude-code-proxy-api.git
-cd claude-code-proxy-api
+# Check credential details
+ccproxy auth info
 
-# Test Claude CLI detection and authentication
+# Test Claude CLI integration
 ccproxy claude -- /status
 ```
 

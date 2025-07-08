@@ -1,5 +1,5 @@
 site_name: Claude Code Proxy API
-site_description: High-performance API server that provides Anthropic and OpenAI-compatible interfaces for Claude AI models
+site_description: A reverse proxy to api.anthropic.com that leverages your Claude subscription through the official claude-code-sdk
 site_url: https://caddyglow.github.io/claude-code-proxy-api
 repo_url: https://github.com/CaddyGlow/claude-code-proxy-api
 repo_name: CaddyGlow/claude-code-proxy-api
@@ -60,34 +60,19 @@ nav:
     - API Usage: user-guide/api-usage.md
     - MCP Integration: user-guide/mcp-integration.md
     - Authentication: user-guide/authentication.md
-    - Streaming: user-guide/streaming.md
-    - Error Handling: user-guide/error-handling.md
-  - API Reference:
-    - Overview: api-reference/overview.md
-    - Anthropic Endpoints: api-reference/anthropic.md
-    - OpenAI Endpoints: api-reference/openai.md
-    - Models: api-reference/models.md
-    - Health Check: api-reference/health.md
+  - API Reference: api-reference.md
+  - Examples: examples.md
   - Contributing: contributing.md
-  - Developer Guide:
-    - Architecture: developer-guide/architecture.md
-    - Development Setup: developer-guide/development.md
-    - Testing: developer-guide/testing.md
   - Code Reference:
-    - Overview: reference/claude_code_proxy/
-    - API Modules: reference/claude_code_proxy/routers/
-    - Services: reference/claude_code_proxy/services/
-    - Models: reference/claude_code_proxy/models/
-    - Configuration: reference/claude_code_proxy/config/
-    - CLI: reference/claude_code_proxy/cli/
-    - Utilities: reference/claude_code_proxy/utils/
-    - Docker: reference/claude_code_proxy/docker/
-    - Middleware: reference/claude_code_proxy/middleware/
-  - Examples:
-    - Python Client: examples/python-client.md
-    - curl Examples: examples/curl.md
-    - JavaScript: examples/javascript.md
-    - OpenAI SDK: examples/openai-sdk.md
+    - Overview: reference/ccproxy/
+    - API Modules: reference/ccproxy/routers/
+    - Services: reference/ccproxy/services/
+    - Models: reference/ccproxy/models/
+    - Configuration: reference/ccproxy/config/
+    - CLI: reference/ccproxy/cli/
+    - Utilities: reference/ccproxy/utils/
+    - Docker: reference/ccproxy/docker/
+    - Middleware: reference/ccproxy/middleware/
 
 # Plugins
 plugins:
@@ -108,7 +93,7 @@ plugins:
             - https://docs.python.org/3/objects.inv
             - https://docs.pydantic.dev/latest/objects.inv
             - https://fastapi.tiangolo.com/objects.inv
-          paths: [claude_code_proxy]
+          paths: [ccproxy]
           options:
             docstring_style: google
             docstring_options:
@@ -207,7 +192,7 @@ dev_addr: '127.0.0.1:8080'
 
 # Watch additional files
 watch:
-  - claude_code_proxy/
+  - ccproxy/
   - README.md
   - CHANGELOG.md
   - CONTRIBUTING.md

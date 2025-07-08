@@ -1,8 +1,8 @@
-"""Unit tests for claude_code_proxy.utils.version module."""
+"""Unit tests for ccproxy.utils.version module."""
 
 import pytest
 
-from claude_code_proxy.utils.version import (
+from ccproxy.utils.version import (
     format_version,
     get_next_major_version,
     get_next_minor_version,

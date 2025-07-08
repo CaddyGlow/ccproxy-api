@@ -29,6 +29,7 @@ install:
 
 dev-install:
 	uv sync --all-extras --dev
+	pnpm install
 	uv run pre-commit install
 
 # Cleanup
@@ -40,10 +41,12 @@ clean:
 	find . -type f -name "*.pyc" -delete
 	rm -f .coverage
 	rm -f coverage.xml
+	rm -rf node_modules/
+	rm -f pnpm-lock.yaml
 
 # Testing
 test:
-	uv run pytest -v --cov=claude_code_proxy --cov-report=xml --cov-report=term-missing
+	uv run pytest -v --cov=ccproxy --cov-report=xml --cov-report=term-missing
 
 test-unit:
 	uv run pytest -v -m unit
@@ -86,10 +89,10 @@ build:
 
 # Docker targets
 docker-build:
-	docker build -t ghcr.io/caddyglow/claude-code-proxy-api:$(VERSION_DOCKER) .
+	docker build -t ghcr.io/caddyglow/ccproxy:$(VERSION_DOCKER) .
 
 docker-run:
-	docker run --rm -p 8000:8000 ghcr.io/caddyglow/claude-code-proxy-api:$(VERSION_DOCKER)
+	docker run --rm -p 8000:8000 ghcr.io/caddyglow/ccproxy:$(VERSION_DOCKER)
 
 docker-compose-up:
 	docker-compose up --build
@@ -99,7 +102,7 @@ docker-compose-down:
 
 # Development server
 dev:
-	uv run fastapi dev claude_code_proxy/main.py
+	uv run fastapi dev ccproxy/main.py
 
 # Documentation targets
 docs-install:

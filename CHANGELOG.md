@@ -80,7 +80,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 #### CLI & Architecture Improvements
-- **Major CLI Restructuring**: Moved CLI to dedicated `claude_code_proxy/cli/` package with modular command structure
+- **Major CLI Restructuring**: Moved CLI to dedicated `ccproxy/cli/` package with modular command structure
 - **Rich CLI Experience**: Replaced basic output with Rich toolkit for colored, structured output
 - **Docker Architecture**: Refactored from DockerCommandBuilder to new adapter-based architecture
 - **FastAPI Subcommands**: Organized commands under FastAPI subcommand group for better organization

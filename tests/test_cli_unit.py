@@ -10,15 +10,15 @@ import pytest
 import typer
 from typer.testing import CliRunner
 
-from claude_code_proxy._version import __version__
-from claude_code_proxy.cli.main import (
+from ccproxy._version import __version__
+from ccproxy.cli.main import (
     app,
     # get_default_path_hook,
     main,
     permission_tool,
     version_callback,
 )
-from claude_code_proxy.models.responses import (
+from ccproxy.models.responses import (
     PermissionToolAllowResponse,
     PermissionToolDenyResponse,
 )
@@ -35,7 +35,7 @@ class TestVersionCallback:
 
     def test_version_callback_true(self):
         """Test version_callback with True value prints version and exits."""
-        with patch("claude_code_proxy.cli.main.get_rich_toolkit") as mock_get_toolkit:
+        with patch("ccproxy.cli.main.get_rich_toolkit") as mock_get_toolkit:
             mock_toolkit = Mock()
             mock_get_toolkit.return_value = mock_toolkit
 
@@ -43,14 +43,14 @@ class TestVersionCallback:
                 version_callback(True)
 
             mock_toolkit.print.assert_called_once_with(
-                f"claude-code-proxy-api {__version__}", tag="version"
+                f"ccproxy {__version__}", tag="version"
             )
 
     def test_version_callback_with_mock_version(self):
         """Test version_callback with mocked version."""
         with (
-            patch("claude_code_proxy.cli.main.__version__", "1.2.3"),
-            patch("claude_code_proxy.cli.main.get_rich_toolkit") as mock_get_toolkit,
+            patch("ccproxy.cli.main.__version__", "1.2.3"),
+            patch("ccproxy.cli.main.get_rich_toolkit") as mock_get_toolkit,
             pytest.raises(typer.Exit),
         ):
             mock_toolkit = Mock()
@@ -58,28 +58,26 @@ class TestVersionCallback:
 
             version_callback(True)
 
-            mock_toolkit.print.assert_called_once_with(
-                "claude-code-proxy-api 1.2.3", tag="version"
-            )
+            mock_toolkit.print.assert_called_once_with("ccproxy 1.2.3", tag="version")
 
 
 # @pytest.mark.unit
 # class TestGetDefaultPathHook:
 #     """Test get_default_path_hook function."""
 #
-#     @patch("claude_code_proxy.cli.main.get_package_dir")
+#     @patch("ccproxy.cli.main.get_package_dir")
 #     def test_get_default_path_hook_file_exists(self, mock_get_package_dir):
 #         """Test get_default_path_hook when file exists."""
 #         mock_package_dir = Path("/mock/package")
 #         mock_get_package_dir.return_value = mock_package_dir
 #
-#         expected_path = mock_package_dir / "claude_code_proxy" / "main.py"
+#         expected_path = mock_package_dir / "ccproxy" / "main.py"
 #
 #         with patch.object(Path, "is_file", return_value=True):
 #             result = get_default_path_hook()
 #             assert result == expected_path
 #
-#     @patch("claude_code_proxy.cli.main.get_package_dir")
+#     @patch("ccproxy.cli.main.get_package_dir")
 #     def test_get_default_path_hook_file_not_exists(self, mock_get_package_dir):
 #         """Test get_default_path_hook when file doesn't exist."""
 #         mock_package_dir = Path("/mock/package")
@@ -91,7 +89,7 @@ class TestVersionCallback:
 #
 #             assert "Could not find a default file to run" in str(exc_info.value)
 #
-#     @patch("claude_code_proxy.cli.main.get_package_dir")
+#     @patch("ccproxy.cli.main.get_package_dir")
 #     def test_get_default_path_hook_path_construction(self, mock_get_package_dir):
 #         """Test get_default_path_hook constructs correct path."""
 #         mock_package_dir = Path("/test/path")
@@ -101,7 +99,7 @@ class TestVersionCallback:
 #             result = get_default_path_hook()
 #
 #             # Check that the correct path was checked
-#             expected_path = mock_package_dir / "claude_code_proxy" / "main.py"
+#             expected_path = mock_package_dir / "ccproxy" / "main.py"
 #             mock_is_file.assert_called_once()
 #             assert result == expected_path
 
@@ -191,7 +189,7 @@ class TestTyperOptions:
         """Test version option has eager=True and callback set."""
         # The version callback is handled eagerly by typer's option system
         # We test this indirectly by verifying the callback function works
-        with patch("claude_code_proxy.cli.main.get_rich_toolkit") as mock_get_toolkit:
+        with patch("ccproxy.cli.main.get_rich_toolkit") as mock_get_toolkit:
             mock_toolkit = Mock()
             mock_get_toolkit.return_value = mock_toolkit
 
@@ -230,7 +228,7 @@ class TestErrorHandling:
     def test_version_callback_type_error(self):
         """Test version_callback with wrong type."""
         # This should work due to Python's truthiness
-        with patch("claude_code_proxy.cli.main.get_rich_toolkit") as mock_get_toolkit:
+        with patch("ccproxy.cli.main.get_rich_toolkit") as mock_get_toolkit:
             mock_toolkit = Mock()
             mock_get_toolkit.return_value = mock_toolkit
 
@@ -242,7 +240,7 @@ class TestErrorHandling:
     # def test_get_default_path_hook_exception_message(self):
     #     """Test get_default_path_hook exception message is descriptive."""
     #     with patch(
-    #         "claude_code_proxy.cli.main.get_package_dir"
+    #         "ccproxy.cli.main.get_package_dir"
     #     ) as mock_get_package_dir:
     #         mock_get_package_dir.return_value = Path("/mock/path")
     #
@@ -259,11 +257,11 @@ class TestErrorHandling:
 class TestConfigCommand:
     """Test config command function."""
 
-    @patch("claude_code_proxy.cli.commands.config.commands.get_settings")
+    @patch("ccproxy.cli.commands.config.commands.get_settings")
     @patch("rich.console.Console")
     def test_config_command_success(self, mock_console_class, mock_get_settings):
         """Test config command displays settings successfully."""
-        from claude_code_proxy.cli.commands.config.commands import config_list
+        from ccproxy.cli.commands.config.commands import config_list
 
         # Mock settings object with all required attributes
         mock_settings = Mock()
@@ -323,13 +321,13 @@ class TestConfigCommand:
         # Verify console was used for output (real console is used, so we just check that no exception was raised)
         # The config function completed successfully if we reach this point
 
-    @patch("claude_code_proxy.cli.commands.config.commands.get_settings")
+    @patch("ccproxy.cli.commands.config.commands.get_settings")
     @patch("rich.console.Console")
     def test_config_command_with_none_claude_path(
         self, mock_console_class, mock_get_settings
     ):
         """Test config command when claude_cli_path is None."""
-        from claude_code_proxy.cli.commands.config.commands import config_list
+        from ccproxy.cli.commands.config.commands import config_list
 
         # Mock settings object with None claude_cli_path and all required attributes
         mock_settings = Mock()
@@ -389,13 +387,13 @@ class TestConfigCommand:
         # Verify console was used for output (real console is used, so we just check that no exception was raised)
         # The config function completed successfully if we reach this point
 
-    @patch("claude_code_proxy.cli.commands.config.commands.get_settings")
-    @patch("claude_code_proxy.cli.commands.config.commands.get_rich_toolkit")
+    @patch("ccproxy.cli.commands.config.commands.get_settings")
+    @patch("ccproxy.cli.commands.config.commands.get_rich_toolkit")
     def test_config_command_exception_handling(
         self, mock_get_toolkit, mock_get_settings
     ):
         """Test config command handles exceptions properly."""
-        from claude_code_proxy.cli.commands.config.commands import config_list
+        from ccproxy.cli.commands.config.commands import config_list
 
         # Mock get_settings to raise an exception
         mock_get_settings.side_effect = Exception("Settings error")
@@ -421,14 +419,14 @@ class TestConfigCommand:
 class TestClaudeCommand:
     """Test claude command function."""
 
-    @patch("claude_code_proxy.cli.commands.claude.config_manager.load_settings")
-    @patch("claude_code_proxy.cli.commands.claude.get_rich_toolkit")
+    @patch("ccproxy.cli.commands.claude.config_manager.load_settings")
+    @patch("ccproxy.cli.commands.claude.get_rich_toolkit")
     @patch("os.execvp")
     def test_claude_command_local_execution(
         self, mock_execvp, mock_get_toolkit, mock_load_settings
     ):
         """Test claude command with local execution."""
-        from claude_code_proxy.cli.commands.claude import claude
+        from ccproxy.cli.commands.claude import claude
 
         # Mock settings
         mock_settings = Mock()
@@ -468,11 +466,11 @@ class TestClaudeCommand:
             "/usr/bin/claude", ["/usr/bin/claude", "--version"]
         )
 
-    @patch("claude_code_proxy.cli.commands.claude.config_manager.load_settings")
-    @patch("claude_code_proxy.cli.commands.claude.get_rich_toolkit")
+    @patch("ccproxy.cli.commands.claude.config_manager.load_settings")
+    @patch("ccproxy.cli.commands.claude.get_rich_toolkit")
     def test_claude_command_no_cli_path(self, mock_get_toolkit, mock_load_settings):
         """Test claude command when claude CLI path is not found."""
-        from claude_code_proxy.cli.commands.claude import claude
+        from ccproxy.cli.commands.claude import claude
 
         # Mock settings with no claude_cli_path
         mock_settings = Mock()
@@ -508,14 +506,14 @@ class TestClaudeCommand:
             "Please install Claude CLI or configure claude_cli_path.", tag="error"
         )
 
-    @patch("claude_code_proxy.cli.commands.claude.config_manager.load_settings")
-    @patch("claude_code_proxy.cli.commands.claude.get_rich_toolkit")
+    @patch("ccproxy.cli.commands.claude.config_manager.load_settings")
+    @patch("ccproxy.cli.commands.claude.get_rich_toolkit")
     @patch("os.execvp")
     def test_claude_command_relative_path_resolution(
         self, mock_execvp, mock_get_toolkit, mock_load_settings
     ):
         """Test claude command resolves relative paths."""
-        from claude_code_proxy.cli.commands.claude import claude
+        from ccproxy.cli.commands.claude import claude
 
         # Mock settings with relative path
         mock_settings = Mock()
@@ -547,10 +545,10 @@ class TestClaudeCommand:
             "/resolved/path/claude", ["/resolved/path/claude", "doctor"]
         )
 
-    @patch("claude_code_proxy.cli.commands.claude.config_manager.load_settings")
-    @patch("claude_code_proxy.cli.commands.claude._create_docker_adapter_from_settings")
-    @patch("claude_code_proxy.cli.commands.claude.create_docker_adapter")
-    @patch("claude_code_proxy.cli.commands.claude.get_rich_toolkit")
+    @patch("ccproxy.cli.commands.claude.config_manager.load_settings")
+    @patch("ccproxy.cli.commands.claude._create_docker_adapter_from_settings")
+    @patch("ccproxy.cli.commands.claude.create_docker_adapter")
+    @patch("ccproxy.cli.commands.claude.get_rich_toolkit")
     @patch("os.execvp")
     def test_claude_command_docker_execution(
         self,
@@ -561,7 +559,7 @@ class TestClaudeCommand:
         mock_load_settings,
     ):
         """Test claude command with Docker execution."""
-        from claude_code_proxy.cli.commands.claude import claude
+        from ccproxy.cli.commands.claude import claude
 
         # Mock settings
         mock_settings = Mock()
@@ -635,14 +633,14 @@ class TestClaudeCommand:
             user_context=None,
         )
 
-    @patch("claude_code_proxy.cli.commands.claude.config_manager.load_settings")
-    @patch("claude_code_proxy.cli.commands.claude.get_rich_toolkit")
+    @patch("ccproxy.cli.commands.claude.config_manager.load_settings")
+    @patch("ccproxy.cli.commands.claude.get_rich_toolkit")
     @patch("os.execvp")
     def test_claude_command_execvp_os_error(
         self, mock_execvp, mock_get_toolkit, mock_load_settings
     ):
         """Test claude command handles OSError from execvp."""
-        from claude_code_proxy.cli.commands.claude import claude
+        from ccproxy.cli.commands.claude import claude
 
         # Mock settings
         mock_settings = Mock()
@@ -680,13 +678,13 @@ class TestClaudeCommand:
             "Failed to execute command: Command not found", tag="error"
         )
 
-    @patch("claude_code_proxy.cli.commands.claude.config_manager.load_settings")
-    @patch("claude_code_proxy.cli.commands.claude.get_rich_toolkit")
+    @patch("ccproxy.cli.commands.claude.config_manager.load_settings")
+    @patch("ccproxy.cli.commands.claude.get_rich_toolkit")
     def test_claude_command_general_exception(
         self, mock_get_toolkit, mock_load_settings
     ):
         """Test claude command handles general exceptions."""
-        from claude_code_proxy.cli.commands.claude import claude
+        from ccproxy.cli.commands.claude import claude
 
         # Mock load_settings to raise an exception
         mock_load_settings.side_effect = Exception("Settings error")
@@ -719,10 +717,10 @@ class TestClaudeCommand:
             "Error executing claude command: Settings error", tag="error"
         )
 
-    @patch("claude_code_proxy.cli.commands.claude.config_manager.load_settings")
-    @patch("claude_code_proxy.cli.commands.claude._create_docker_adapter_from_settings")
-    @patch("claude_code_proxy.cli.commands.claude.create_docker_adapter")
-    @patch("claude_code_proxy.cli.commands.claude.get_rich_toolkit")
+    @patch("ccproxy.cli.commands.claude.config_manager.load_settings")
+    @patch("ccproxy.cli.commands.claude._create_docker_adapter_from_settings")
+    @patch("ccproxy.cli.commands.claude.create_docker_adapter")
+    @patch("ccproxy.cli.commands.claude.get_rich_toolkit")
     @patch("os.execvp")
     def test_claude_command_docker_with_user_mapping(
         self,
@@ -733,7 +731,7 @@ class TestClaudeCommand:
         mock_load_settings,
     ):
         """Test claude command with Docker execution and user mapping parameters."""
-        from claude_code_proxy.cli.commands.claude import claude
+        from ccproxy.cli.commands.claude import claude
 
         # Mock settings
         mock_settings = Mock()
@@ -810,7 +808,7 @@ class TestClaudeCommand:
 
     def test_claude_command_docstring(self):
         """Test claude command has proper docstring."""
-        from claude_code_proxy.cli.commands.claude import claude
+        from ccproxy.cli.commands.claude import claude
 
         assert claude.__doc__ is not None
         assert "Execute claude CLI commands directly" in claude.__doc__
@@ -820,7 +818,7 @@ class TestClaudeCommand:
         """Test claude command has correct parameter defaults."""
         import inspect
 
-        from claude_code_proxy.cli.commands.claude import claude
+        from ccproxy.cli.commands.claude import claude
 
         sig = inspect.signature(claude)
 
@@ -851,8 +849,8 @@ class TestModuleImports:
     def test_required_imports_available(self):
         """Test that all required imports are available."""
         # Test that we can import the functions we're testing
-        from claude_code_proxy.cli.commands.claude import claude
-        from claude_code_proxy.cli.main import (
+        from ccproxy.cli.commands.claude import claude
+        from ccproxy.cli.main import (
             app,
             version_callback,
         )
@@ -864,26 +862,26 @@ class TestModuleImports:
 
     def test_version_import(self):
         """Test that version can be imported."""
-        from claude_code_proxy._version import __version__
+        from ccproxy._version import __version__
 
         assert isinstance(__version__, str)
         assert len(__version__) > 0
 
     def test_settings_import(self):
         """Test that settings can be imported."""
-        from claude_code_proxy.config.settings import get_settings
+        from ccproxy.config.settings import get_settings
 
         assert callable(get_settings)
 
     def test_docker_builder_import(self):
         """Test that DockerCommandBuilder can be imported."""
-        from claude_code_proxy.utils.docker_builder import DockerCommandBuilder
+        from ccproxy.utils.docker_builder import DockerCommandBuilder
 
         assert hasattr(DockerCommandBuilder, "from_settings_and_overrides")
 
     def test_helper_import(self):
         """Test that helper functions can be imported."""
-        from claude_code_proxy.utils.helper import get_package_dir
+        from ccproxy.utils.helper import get_package_dir
 
         assert callable(get_package_dir)
 
@@ -1040,7 +1038,7 @@ class TestPermissionToolCommand:
         assert response_data["behavior"] == "deny"
         assert "EXEC is restricted for security reasons" in response_data["message"]
 
-    @patch("claude_code_proxy.cli.main.config_manager.load_settings")
+    @patch("ccproxy.cli.main.config_manager.load_settings")
     def test_permission_tool_settings_load_error(self, mock_load_settings):
         """Test permission_tool command handles settings loading errors."""
         runner = CliRunner()

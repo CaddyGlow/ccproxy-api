@@ -6,7 +6,7 @@ from unittest.mock import Mock
 import pytest
 import typer
 
-from claude_code_proxy.cli.docker.params import (
+from ccproxy.cli.docker.params import (
     DockerOptions,
     docker_arg_option,
     docker_env_option,
@@ -18,7 +18,7 @@ from claude_code_proxy.cli.docker.params import (
     user_mapping_option,
     user_uid_option,
 )
-from claude_code_proxy.utils.docker_params import (
+from ccproxy.utils.docker_params import (
     parse_docker_env,
     parse_docker_volume,
     validate_docker_arg,

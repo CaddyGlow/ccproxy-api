@@ -2,7 +2,7 @@
 
 import pytest
 
-from claude_code_proxy.services.streaming import (
+from ccproxy.services.streaming import (
     StreamingFormatter,
     stream_claude_response,
 )
