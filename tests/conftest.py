@@ -4,7 +4,7 @@ import asyncio
 import os
 from collections.abc import AsyncGenerator, Generator
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -340,3 +340,27 @@ def mock_claude_empty_streaming_response():
         yield {"type": "message_stop"}
 
     return stream_generator()
+
+
+@pytest.fixture
+def disable_keyring():
+    """Disable keyring for tests that need to ensure file-only behavior."""
+    with (
+        patch("ccproxy.services.credentials.json_storage.KEYRING_AVAILABLE", False),
+        patch("ccproxy.services.credentials.json_storage.keyring", None),
+    ):
+        yield
+
+
+@pytest.fixture
+def mock_empty_keyring():
+    """Mock keyring with no stored credentials."""
+    mock_keyring = MagicMock()
+    mock_keyring.get_password.return_value = None
+    mock_keyring.delete_password.return_value = None
+
+    with (
+        patch("ccproxy.services.credentials.json_storage.KEYRING_AVAILABLE", True),
+        patch("ccproxy.services.credentials.json_storage.keyring", mock_keyring),
+    ):
+        yield mock_keyring

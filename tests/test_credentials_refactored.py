@@ -69,13 +69,13 @@ class TestJsonFileStorage:
         assert loaded.claude_ai_oauth.refresh_token == "test-refresh-token"
 
     @pytest.mark.asyncio
-    async def test_load_nonexistent(self, storage):
+    async def test_load_nonexistent(self, storage, mock_empty_keyring):
         """Test loading from non-existent file."""
         result = await storage.load()
         assert result is None
 
     @pytest.mark.asyncio
-    async def test_load_invalid_json(self, storage):
+    async def test_load_invalid_json(self, storage, mock_empty_keyring):
         """Test loading invalid JSON."""
         # Create invalid JSON file
         storage.file_path.write_text("invalid json{")
@@ -96,8 +96,10 @@ class TestJsonFileStorage:
         # Delete non-existent should return False
         assert not await storage.delete()
 
-    def test_get_location(self, storage):
+    def test_get_location(self, tmp_path, disable_keyring):
         """Test getting storage location."""
+        # Create storage with keyring disabled
+        storage = JsonFileStorage(tmp_path / "credentials.json")
         assert storage.get_location() == str(storage.file_path)
 
 
@@ -229,7 +231,7 @@ class TestCredentialsManager:
         assert result.claude_ai_oauth.access_token == "test-access-token"
 
     @pytest.mark.asyncio
-    async def test_get_valid_credentials_not_found(self, manager):
+    async def test_get_valid_credentials_not_found(self, manager, mock_empty_keyring):
         """Test getting credentials when none exist."""
         with pytest.raises(CredentialsNotFoundError):
             await manager.get_valid_credentials()
@@ -268,7 +270,7 @@ class TestCredentialsManager:
         assert result["subscription_type"] == "pro"
 
     @pytest.mark.asyncio
-    async def test_validate_no_credentials(self, manager):
+    async def test_validate_no_credentials(self, manager, mock_empty_keyring):
         """Test validation when no credentials exist."""
         result = await manager.validate()
         assert result["valid"] is False
