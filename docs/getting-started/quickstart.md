@@ -75,16 +75,22 @@ Install Claude Code CLI following the [official instructions](https://docs.anthr
 
 **Authentication:**
 ```bash
-# Login to Claude (opens browser)
+# Login to Claude CLI (opens browser)
+claude /login
+
+# For API/raw mode authentication (uses Anthropic OAuth2)
 ccproxy auth login
 
-# Verify authentication
-ccproxy auth validate
+# Verify Claude CLI status
+claude /status
 ```
 
 **Verification:**
 ```bash
-# Check credential details
+# Check ccproxy auth status
+ccproxy auth validate
+
+# Get detailed credential info
 ccproxy auth info
 
 # Test Claude CLI integration
@@ -102,8 +108,11 @@ Docker users don't need to install Claude CLI locally - it's included in the Doc
 
 **Authentication:**
 ```bash
-# Authenticate Claude in Docker (first time setup)
-ccproxy claude --docker -- auth login
+# Authenticate Claude CLI in Docker (first time setup)
+ccproxy claude --docker -- /login
+
+# For API/raw mode authentication (uses Anthropic OAuth2)
+ccproxy auth login
 ```
 
 **Verification:**
@@ -489,6 +498,45 @@ The proxy supports three transformation modes:
 **Important**: OAuth credentials from Claude Code only work with full mode. Using `/min` or `/pt` with OAuth will result in an authentication error.
 
 For detailed information about proxy modes, see the [Proxy Modes Guide](../user-guide/proxy-modes.md).
+
+## Using with Aider
+
+CCProxy works seamlessly with Aider and other AI coding assistants:
+
+### Anthropic Mode
+```bash
+export ANTHROPIC_API_KEY=dummy
+export ANTHROPIC_BASE_URL=http://127.0.0.1:8000/
+aider --model claude-sonnet-4-20250514
+```
+
+### OpenAI Mode with Model Mapping
+If your tool only supports OpenAI settings, ccproxy automatically maps OpenAI models to Claude:
+
+```bash
+export OPENAI_API_KEY=dummy
+export OPENAI_BASE_URL=http://127.0.0.1:8000/cc/openai/v1
+aider --model o3-mini
+```
+
+**Model Mapping:**
+```python
+OPENAI_TO_CLAUDE_MODEL_MAPPING = {
+    "gpt-4o-mini": "claude-3-5-haiku-latest",
+    "o3-mini": "claude-opus-4-20250514",
+    "o1-mini": "claude-sonnet-4-20250514",
+    "gpt-4o": "claude-3-7-sonnet-20250219",
+}
+```
+
+### API Mode (Direct Proxy)
+For minimal interference and direct API access:
+
+```bash
+export OPENAI_API_KEY=dummy
+export OPENAI_BASE_URL=http://127.0.0.1:8000/api/openai/v1
+aider --model o3-mini
+```
 
 ## Next Steps
 

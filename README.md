@@ -50,119 +50,39 @@ Both modes leverage your existing Claude subscription without requiring separate
 
 ## Quick Start
 
-### Prerequisites
-
-- Python 3.11 or higher
-- Claude account with an active subscription (Pro, Team, or Enterprise) or Anthropic API key
-
-### The `ccproxy` Command
-
-The `ccproxy` command is your unified interface for both local and Docker execution:
+### Install
 
 ```bash
-# Run Claude commands locally
-ccproxy claude -- /status
-
-# Run Claude commands in Docker (isolated environment)
-ccproxy claude --docker -- /status
-```
-
-**Key Features:**
-- **Unified Interface**: Same command syntax for local and Docker execution
-- **Automatic Docker Management**: Handles container lifecycle when using `--docker` flag
-- **Claude CLI Passthrough**: Forwards all Claude CLI commands and flags seamlessly
-- **Isolated Configuration**: Docker mode uses separate config at `~/.config/cc-proxy/home`
-- **Workspace Mapping**: Working directory remains consistent between local and Docker execution
-
-### API Server Commands
-
-Choose the right command for your use case:
-
-#### `ccproxy` - API server
-```bash
-# Start API server locally
-ccproxy
-
-# Start API server with Docker (production mode)
-ccproxy --docker
-
-# Custom port and settings
-ccproxy --port 8080 --host 0.0.0.0
-
-# With debug log and reload for development
-ccproxy run --reload --port 8080 --log-level DEBUG
-```
-
-### Installation
-
-#### Install with pipx (Recommended)
-
-The easiest way to install ccproxy is using pipx, which installs it in an isolated environment:
-
-```bash
-# Install pipx if you haven't already
-python -m pip install --user pipx
-python -m pipx ensurepath
+# Install Claude Code CLI
+npm install -g @anthropic-ai/claude-code
 
 # Install ccproxy
-pipx install git+https://github.com/CaddyGlow/claude-code-proxy-api.git
+pipx install git+https://github.com/caddyglow/claude-code-proxy-api.git@dev
 ```
 
-#### Install from source
-
-1. Clone the repository:
+### Authenticate
 
 ```bash
-git clone https://github.com/CaddyGlow/claude-code-proxy-api.git
-cd claude-code-proxy-api
-```
+# Authenticate Claude Code CLI
+claude /login
 
-2. Install dependencies using uv:
-
-```bash
-uv sync
-```
-
-Or using pip:
-```bash
-pip install -e .
-```
-
-### Authentication Setup
-
-CCProxy uses your Claude subscription credentials. You need to authenticate once:
-
-```bash
-# Login to Claude (required for first-time setup)
+# For API/raw mode (uses Anthropic OAuth2)
 ccproxy auth login
 ```
 
-This will open a browser window for Claude authentication. Your credentials are securely stored locally.
-
-#### Verify Authentication
+### Run
 
 ```bash
-# Check credential status
-ccproxy auth validate
+# Start the proxy server
+ccproxy
+
+# Use with your favorite tools
+export ANTHROPIC_API_KEY=dummy
+export ANTHROPIC_BASE_URL=http://127.0.0.1:8000/
+aider --model claude-sonnet-4-20250514
 ```
 
-This shows your subscription status, expiration, and available scopes.
-
-```bash
-# Get detailed credential information
-ccproxy auth info
-```
-
-This displays full credential details and automatically renews the token if expired.
-
-### Configuration (Optional)
-
-Configure environment variables if needed:
-
-```bash
-export PORT=8000  # Optional, defaults to 8000
-export LOG_LEVEL=INFO  # Optional, defaults to INFO
-```
+That's it! For detailed setup, see our [full documentation](https://caddyglow.github.io/claude-code-proxy-api/getting-started/quickstart/).
 
 ## Usage
 
