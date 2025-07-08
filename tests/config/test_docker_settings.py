@@ -18,9 +18,7 @@ class TestDockerSettings:
         """Test DockerSettings default values."""
         settings = DockerSettings()
 
-        assert settings.docker_image.startswith(
-            "ghcr.io/caddyglow/claude-code-proxy-api:"
-        )
+        assert settings.docker_image.startswith("ghcr.io/caddyglow/ccproxy")
         # Default volumes are created by setup_docker_volumes
         assert len(settings.docker_volumes) == 2
         assert any("/data/home" in v for v in settings.docker_volumes)
