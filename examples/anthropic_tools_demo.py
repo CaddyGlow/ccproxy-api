@@ -9,6 +9,7 @@ using check-jsonschema to generate input schemas for exposed functions.
 import argparse
 import json
 import logging
+import os
 import subprocess
 import tempfile
 from pathlib import Path
@@ -320,6 +321,17 @@ def main() -> None:
     if args.debug:
         print("Debug logging enabled")
         print("=" * 40)
+
+    api_key = os.getenv("ANTHROPIC_API_KEY")
+    base_url = os.getenv("ANTHROPIC_BASE_URL")
+    base_url_default = "http://127.0.0.1:8000"
+
+    if not api_key:
+        logger.warning("ANTHROPIC_API_KEY not set, using dummy key")
+        os.environ["ANTHROPIC_API_KEY"] = "dummy"
+    if not base_url:
+        logger.warning(f"ANTHROPIC_BASE_URL not set, using {base_url_default}")
+        os.environ["ANTHROPIC_BASE_URL"] = base_url_default
 
     # Create tools
     tools = create_anthropic_tools()

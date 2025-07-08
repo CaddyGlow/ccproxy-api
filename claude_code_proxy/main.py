@@ -97,12 +97,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         create_reverse_proxy_router(settings.default_proxy_mode), prefix=""
     )
 
-    # Backward compatibility - keep /unclaude as alias to full mode
-    app.include_router(create_reverse_proxy_router("full"), prefix="/unclaude")
-
     # Legacy compatibility - old paths redirect to new ones
-    app.include_router(anthropic.router, prefix="/v1")
-    app.include_router(openai.router, prefix="/openai/v1")
+    # app.include_router(anthropic.router, prefix="/v1")
+    # app.include_router(openai.router, prefix="/openai/v1")
 
     # Global exception handler
     @app.exception_handler(Exception)

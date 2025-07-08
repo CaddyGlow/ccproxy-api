@@ -9,6 +9,7 @@ using check-jsonschema to generate input schemas for exposed functions.
 import argparse
 import json
 import logging
+import os
 import subprocess
 import tempfile
 from pathlib import Path
@@ -333,6 +334,17 @@ def main() -> None:
         print("Debug logging enabled")
         print("=" * 40)
 
+    api_key = os.getenv("OPENAI_API_KEY")
+    base_url = os.getenv("OPENAI_BASE_URL")
+    base_url_default = "http://127.0.0.1:8000"
+
+    if not api_key:
+        logger.warning("OPENAI_API_KEY not set, using dummy key")
+        os.environ["OPENAI_API_KEY"] = "dummy"
+    if not base_url:
+        logger.warning(f"OPENAI_BASE_URL not set, using {base_url_default}")
+        os.environ["OPENAI_BASE_URL"] = base_url_default
+
     # Create tools
     tools = create_openai_tools()
 
@@ -349,8 +361,6 @@ def main() -> None:
     try:
         http_client = LoggingHTTPClient()
         client = openai.OpenAI(
-            api_key="dummy",  # Will be overridden by proxy
-            base_url="http://127.0.0.1:8000/unclaude/openai/v1",
             http_client=http_client,
         )
         logger.info("OpenAI client initialized successfully with logging HTTP client")

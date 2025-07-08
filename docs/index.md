@@ -61,6 +61,7 @@ curl -X POST http://localhost:8000/openai/v1/chat/completions \
 - **Your Claude Subscription**: Use your existing Claude subscription without additional API costs
 - **Local Privacy**: All processing happens on your computer - no data leaves your machine
 - **Dual API Compatibility**: Full support for both Anthropic and OpenAI API formats
+- **Multiple Proxy Modes**: Three transformation modes (Full, Minimal, Passthrough) for different use cases
 - **Streaming Support**: Real-time response streaming for both API formats
 - **Request Translation**: Seamless format conversion between OpenAI and Anthropic formats
 - **OAuth2 Authentication**: Secure authentication using your Claude account credentials

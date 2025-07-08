@@ -179,33 +179,54 @@ export ANTHROPIC_API_KEY="dummy-key"  # Required by client libraries but not use
 
 ### API Endpoints
 
+The proxy supports three transformation modes, each accessible via different URL prefixes:
+
+| Mode | URL Prefix | Description | Authentication |
+|------|------------|-------------|----------------|
+| **Full** | `/full/` or `/` | Complete Claude Code transformations | OAuth (Claude subscription), API key |
+| **Minimal** | `/min/` | Basic headers only | API key only |
+| **Passthrough** | `/pt/` | Minimal transformations | API key only |
+
+**Important**: OAuth credentials from Claude Code only work with full mode. Using `/min` or `/pt` with OAuth will result in an authentication error.
+
 #### Anthropic-Compatible Endpoints
 
-**Chat Completions:**
+**Messages (Full mode - OAuth compatible):**
 ```http
-POST /v1/chat/completions
+POST /v1/messages
+POST /full/v1/messages
+```
+
+**Messages (Minimal mode - API key only):**
+```http
+POST /min/v1/messages
 ```
 
 **Example request:**
 ```json
 {
-  "model": "claude-sonnet-4-20250514",
+  "model": "claude-3-5-sonnet-20241022",
   "messages": [
     {
       "role": "user",
       "content": "Hello, how are you?"
     }
   ],
-  "max_tokens": 1000,
-  "temperature": 0.7
+  "max_tokens": 1000
 }
 ```
 
 #### OpenAI-Compatible Endpoints
 
-**Chat Completions:**
+**Chat Completions (Full mode - OAuth compatible):**
 ```http
 POST /openai/v1/chat/completions
+POST /full/openai/v1/chat/completions
+```
+
+**Chat Completions (Minimal mode - API key only):**
+```http
+POST /min/openai/v1/chat/completions
 ```
 
 Uses OpenAI format with automatic translation to Claude format.
@@ -333,17 +354,20 @@ docker run -p 8000:8000 -v ~/.claude:/root/.claude claude-code-proxy-api
 ```python
 from openai import OpenAI
 
-# Standard OpenAI client setup - just point to your proxy
+# OAuth Users (Claude Subscription) - Full mode
 client = OpenAI(
     base_url="http://localhost:8000/openai/v1",
-    api_key="your-auth-token-here"  # This automatically sets Authorization: Bearer header
+    api_key="dummy"  # Ignored with OAuth
 )
 
-# That's it! The OpenAI client automatically sends the api_key as a Bearer token
-# No additional configuration needed
+# API Key Users - Can use any mode
+client = OpenAI(
+    base_url="http://localhost:8000/min/openai/v1",  # Minimal mode
+    api_key="sk-ant-api03-..."  # Your Anthropic API key
+)
 
 response = client.chat.completions.create(
-    model="claude-sonnet-4-20250514",
+    model="claude-3-5-sonnet-20241022",
     messages=[{"role": "user", "content": "Hello!"}]
 )
 print(response.choices[0].message.content)
@@ -354,17 +378,20 @@ print(response.choices[0].message.content)
 ```python
 from anthropic import Anthropic
 
-# Standard Anthropic client setup - just point to your proxy
+# OAuth Users (Claude Subscription) - Full mode
 client = Anthropic(
     base_url="http://localhost:8000",
-    api_key="your-auth-token-here"  # This automatically sets x-api-key header
+    api_key="dummy"  # Ignored with OAuth
 )
 
-# That's it! The Anthropic client automatically sends the api_key as x-api-key
-# No additional configuration needed
+# API Key Users - Can use any mode
+client = Anthropic(
+    base_url="http://localhost:8000/min",  # Minimal mode
+    api_key="sk-ant-api03-..."  # Your Anthropic API key
+)
 
 response = client.messages.create(
-    model="claude-sonnet-4-20250514",
+    model="claude-3-5-sonnet-20241022",
     max_tokens=1000,
     messages=[{"role": "user", "content": "Hello!"}]
 )
@@ -395,32 +422,31 @@ for chunk in stream:
 ### curl Example
 
 ```bash
-# Without authentication
-curl -X POST http://localhost:8000/v1/chat/completions \
+# OAuth Users (Claude Subscription) - Full mode
+curl -X POST http://localhost:8000/v1/messages \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "claude-sonnet-4-20250514",
+    "model": "claude-3-5-sonnet-20241022",
     "messages": [{"role": "user", "content": "Hello!"}],
     "max_tokens": 100
   }'
 
-# With authentication (if enabled)
-# Option 1: Using x-api-key header (Anthropic style)
-curl -X POST http://localhost:8000/v1/chat/completions \
-  -H "x-api-key: your-auth-token-here" \
+# API Key Users - Full mode
+curl -X POST http://localhost:8000/v1/messages \
+  -H "x-api-key: sk-ant-api03-..." \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "claude-sonnet-4-20250514",
+    "model": "claude-3-5-sonnet-20241022",
     "messages": [{"role": "user", "content": "Hello!"}],
     "max_tokens": 100
   }'
 
-# Option 2: Using Bearer token (OpenAI style)
-curl -X POST http://localhost:8000/v1/chat/completions \
-  -H "Authorization: Bearer your-auth-token-here" \
+# API Key Users - Minimal mode
+curl -X POST http://localhost:8000/min/v1/messages \
+  -H "x-api-key: sk-ant-api03-..." \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "claude-sonnet-4-20250514",
+    "model": "claude-3-5-sonnet-20241022",
     "messages": [{"role": "user", "content": "Hello!"}],
     "max_tokens": 100
   }'
@@ -458,13 +484,20 @@ pytest
 
 ### Common Issues
 
-1. **Claude Authentication**
+1. **OAuth with Wrong Mode**
+   ```
+   Error: "system: This credential is only authorized for use with Claude Code and cannot be used for other API requests."
+   Cause: Using /min or /pt endpoints with OAuth credentials
+   Solution: Use full mode (/ or /full/) - OAuth only works with full mode
+   ```
+
+2. **Claude Authentication**
    ```
    Error: Claude not authenticated
    Solution: Run `claude auth login` or restart the proxy to trigger auth flow
    ```
 
-2. **API Authentication**
+3. **API Authentication**
    ```
    Error: 401 Unauthorized - Missing authentication token
    Solution: Include authentication token using one of:
@@ -472,13 +505,13 @@ pytest
    - Bearer format: curl -H "Authorization: Bearer your-token" ...
    ```
 
-3. **Port Already in Use**
+4. **Port Already in Use**
    ```
    Error: Port 8000 already in use
    Solution: Use a different port: PORT=8001 python main.py
    ```
 
-4. **Subscription Access**
+5. **Subscription Access**
    ```
    Error: Model not available
    Solution: Check that your Claude subscription includes the requested model

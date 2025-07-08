@@ -7,6 +7,7 @@ from fastapi.responses import Response, StreamingResponse
 
 from claude_code_proxy.config.settings import get_settings
 from claude_code_proxy.middleware.auth import get_auth_dependency
+from claude_code_proxy.services.credentials import CredentialsManager
 from claude_code_proxy.services.reverse_proxy import ReverseProxyService
 from claude_code_proxy.utils.logging import get_logger
 
@@ -27,10 +28,12 @@ def create_reverse_proxy_router(proxy_mode: str) -> APIRouter:
 
     # Initialize the reverse proxy service with settings and mode
     settings = get_settings()
+    credentials_manager = CredentialsManager(config=settings.credentials)
     proxy_service = ReverseProxyService(
         target_base_url=settings.reverse_proxy_target_url,
         timeout=settings.reverse_proxy_timeout,
         proxy_mode=proxy_mode,
+        credentials_manager=credentials_manager,
     )
 
     @router.api_route(

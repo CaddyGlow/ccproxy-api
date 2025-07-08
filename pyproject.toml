@@ -190,6 +190,10 @@ python_functions = ["test_*"]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 
+# Set test mode to prevent pollution of real credential files
+env = [
+    "CCPROXY_TEST_MODE=true",
+]
 
 # Test markers for different test tiers
 markers = [

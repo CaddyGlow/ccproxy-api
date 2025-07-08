@@ -273,7 +273,31 @@ class TestErrorHandling:
 
     def test_404_endpoint(self, test_client: TestClient):
         """Test non-existent endpoint."""
-        response = test_client.get("/nonexistent")
+        # The test needs to handle that catch-all reverse proxy exists
+        # Create test credentials to avoid 401
+        from datetime import UTC, datetime, timedelta
+        from pathlib import Path
+
+        test_creds_dir = Path("/tmp/ccproxy-test/.claude")
+        test_creds_dir.mkdir(parents=True, exist_ok=True)
+        test_creds_file = test_creds_dir / ".credentials.json"
+
+        future_time = datetime.now(UTC) + timedelta(hours=1)
+        future_ms = int(future_time.timestamp() * 1000)
+
+        test_creds = {
+            "claudeAiOauth": {
+                "accessToken": "test-token",
+                "refreshToken": "test-refresh",
+                "expiresAt": future_ms,
+                "scopes": ["user:inference"],
+                "subscriptionType": "test",
+            }
+        }
+        test_creds_file.write_text(json.dumps(test_creds))
+
+        # Now test a truly non-existent path under health
+        response = test_client.get("/health/nonexistent")
 
         assert response.status_code == 404
 

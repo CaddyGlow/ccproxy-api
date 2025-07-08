@@ -4,14 +4,13 @@ import os
 from pathlib import Path
 from typing import Any
 
+from claude_code_proxy.config import DockerSettings
 from claude_code_proxy.utils.docker_validation import (
     validate_environment_variable,
     validate_host_path,
     validate_volume_format,
 )
 from claude_code_proxy.utils.logging import get_logger
-
-from ..config.settings import DockerSettings
 
 
 logger = get_logger(__name__)

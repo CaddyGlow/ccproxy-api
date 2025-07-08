@@ -350,10 +350,13 @@ docker-compose logs -f claude-code-proxy
 
 Once the server is running, test it with a simple API call:
 
-### Using curl
+### OAuth Users (Claude Subscription)
+
+OAuth users must use full mode (default):
 
 ```bash
-curl -X POST http://localhost:8000/v1/chat/completions \
+# Using curl
+curl -X POST http://localhost:8000/v1/messages \
   -H "Content-Type: application/json" \
   -d '{
     "model": "claude-3-5-sonnet-20241022",
@@ -367,21 +370,56 @@ curl -X POST http://localhost:8000/v1/chat/completions \
   }'
 ```
 
+### API Key Users
+
+API key users can use any mode:
+
+```bash
+# Full mode (with Claude Code features)
+curl -X POST http://localhost:8000/v1/messages \
+  -H "Content-Type: application/json" \
+  -H "x-api-key: sk-ant-api03-..." \
+  -d '{
+    "model": "claude-3-5-sonnet-20241022",
+    "messages": [{"role": "user", "content": "Hello!"}],
+    "max_tokens": 100
+  }'
+
+# Minimal mode (lightweight)
+curl -X POST http://localhost:8000/min/v1/messages \
+  -H "Content-Type: application/json" \
+  -H "x-api-key: sk-ant-api03-..." \
+  -d '{
+    "model": "claude-3-5-sonnet-20241022",
+    "messages": [{"role": "user", "content": "Hello!"}],
+    "max_tokens": 100
+  }'
+```
+
 ### Using Python
 
 ```python
-import requests
+from anthropic import Anthropic
 
-response = requests.post(
-    "http://localhost:8000/v1/chat/completions",
-    json={
-        "model": "claude-3-5-sonnet-20241022",
-        "messages": [{"role": "user", "content": "Hello!"}],
-        "max_tokens": 100
-    }
+# OAuth users (Claude subscription) - full mode
+client = Anthropic(
+    base_url="http://localhost:8000",
+    api_key="dummy"  # Ignored with OAuth
 )
 
-print(response.json())
+# API key users - any mode
+client = Anthropic(
+    base_url="http://localhost:8000/min",  # Minimal mode
+    api_key="sk-ant-api03-..."
+)
+
+response = client.messages.create(
+    model="claude-3-5-sonnet-20241022",
+    messages=[{"role": "user", "content": "Hello!"}],
+    max_tokens=100
+)
+
+print(response.content[0].text)
 ```
 
 ### Using OpenAI Python Client
@@ -389,9 +427,16 @@ print(response.json())
 ```python
 from openai import OpenAI
 
+# OAuth users - must use full mode
 client = OpenAI(
-    base_url="http://localhost:8000/v1",
-    api_key="dummy-key"  # Not used but required by OpenAI client
+    base_url="http://localhost:8000/openai/v1",
+    api_key="dummy"  # Ignored with OAuth
+)
+
+# API key users - can use any mode
+client = OpenAI(
+    base_url="http://localhost:8000/min/openai/v1",  # Minimal mode
+    api_key="sk-ant-api03-..."
 )
 
 response = client.chat.completions.create(
@@ -428,6 +473,20 @@ Check available models:
 curl http://localhost:8000/v1/models
 ```
 
+## Proxy Modes
+
+The proxy supports three transformation modes:
+
+| Mode | URL Prefix | Authentication | Use Case |
+|------|------------|----------------|----------|
+| Full | `/` or `/full/` | OAuth, API Key | Claude Code features, OAuth users |
+| Minimal | `/min/` | API Key only | Lightweight proxy |
+| Passthrough | `/pt/` | API Key only | Direct API access |
+
+**Important**: OAuth credentials from Claude Code only work with full mode. Using `/min` or `/pt` with OAuth will result in an authentication error.
+
+For detailed information about proxy modes, see the [Proxy Modes Guide](../user-guide/proxy-modes.md).
+
 ## Next Steps
 
 Now that you have the server running locally:
@@ -436,6 +495,7 @@ Now that you have the server running locally:
 2. **[Explore the API](../api-reference/overview.md)** to understand all available endpoints
 3. **[Try examples](../examples/python-client.md)** in different programming languages
 4. **[Set up Docker isolation](../deployment/overview.md)** for enhanced security
+5. **[Learn about proxy modes](../user-guide/proxy-modes.md)** to choose the right mode for your use case
 
 ## Troubleshooting
 

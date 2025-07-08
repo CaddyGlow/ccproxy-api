@@ -8,7 +8,14 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse
 
-from claude_code_proxy.services.credentials import CredentialsService
+from claude_code_proxy.services.credentials import (
+    ClaudeCredentials,
+    CredentialsManager,
+    JsonFileStorage,
+    OAuthClient,
+    OAuthConfig,
+    OAuthToken,
+)
 from claude_code_proxy.utils.logging import get_logger
 
 
@@ -230,30 +237,30 @@ async def _exchange_code_for_tokens(
     """Exchange authorization code for access tokens."""
     try:
         from datetime import UTC, datetime
-        from pathlib import Path
 
         import httpx
 
-        from claude_code_proxy.services.credentials import ClaudeCredentials, OAuthToken
+        # Create OAuth config with default values
+        oauth_config = OAuthConfig()
 
         # Exchange authorization code for tokens
         token_data = {
             "grant_type": "authorization_code",
             "code": authorization_code,
-            "redirect_uri": CredentialsService.REDIRECT_URI,
-            "client_id": CredentialsService.CLIENT_ID,
+            "redirect_uri": oauth_config.redirect_uri,
+            "client_id": oauth_config.client_id,
             "code_verifier": code_verifier,
         }
 
         headers = {
             "Content-Type": "application/json",
-            "anthropic-beta": CredentialsService.OAUTH_BETA_VERSION,
-            "User-Agent": "Claude-Code/1.0.43",
+            "anthropic-beta": oauth_config.beta_version,
+            "User-Agent": oauth_config.user_agent,
         }
 
         async with httpx.AsyncClient() as client:
             response = await client.post(
-                CredentialsService.TOKEN_URL,
+                oauth_config.token_url,
                 headers=headers,
                 json=token_data,
                 timeout=30.0,
@@ -277,19 +284,21 @@ async def _exchange_code_for_tokens(
                     "expiresAt": expires_at,
                     "scopes": result.get("scope", "").split()
                     if result.get("scope")
-                    else CredentialsService.SCOPES,
+                    else oauth_config.scopes,
                     "subscriptionType": result.get("subscription_type", "unknown"),
                 }
 
                 credentials = ClaudeCredentials(claudeAiOauth=OAuthToken(**oauth_data))
 
-                # Save credentials
+                # Save credentials using CredentialsManager
                 if custom_paths:
-                    # For custom paths, ensure directory exists
-                    for path in custom_paths:
-                        Path(path).parent.mkdir(parents=True, exist_ok=True)
+                    # Use the first custom path for storage
+                    storage = JsonFileStorage(custom_paths[0])
+                    manager = CredentialsManager(storage=storage)
+                else:
+                    manager = CredentialsManager()
 
-                if CredentialsService.save_credentials(credentials, custom_paths):
+                if await manager.save(credentials):
                     logger.info("Successfully saved OAuth credentials")
                     return True
                 else:

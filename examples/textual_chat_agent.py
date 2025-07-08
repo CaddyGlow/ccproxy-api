@@ -27,8 +27,16 @@ class ChatAgent:
 
     def __init__(self, api_key: str | None = None) -> None:
         # Get configuration from environment
-        api_key = api_key or os.getenv("ANTHROPIC_API_KEY")
+        api_key = os.getenv("ANTHROPIC_API_KEY")
         base_url = os.getenv("ANTHROPIC_BASE_URL")
+        base_url_default = "http://127.0.0.1:8000"
+
+        if not api_key:
+            # logger.warning("ANTHROPIC_API_KEY not set, using dummy key")
+            os.environ["ANTHROPIC_API_KEY"] = "dummy"
+        if not base_url:
+            # logger.warning(f"ANTHROPIC_BASE_URL not set, using {base_url_default}")
+            os.environ["ANTHROPIC_BASE_URL"] = base_url_default
 
         # Create client with type-safe parameters
         if base_url:

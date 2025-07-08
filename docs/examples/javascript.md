@@ -4,18 +4,21 @@
 
 Examples of using the Claude Code Proxy API with JavaScript and Node.js.
 
-## Using fetch (Browser/Node.js)
+## OAuth Users (Claude Subscription)
+
+### Using fetch (Full Mode Required)
 
 ```javascript
-// Basic chat completion
+// OAuth users must use full mode (default)
 async function chatWithClaude(message) {
-  const response = await fetch('http://localhost:8000/v1/chat/completions', {
+  const response = await fetch('http://localhost:8000/v1/messages', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
       model: 'claude-3-5-sonnet-20241022',
+      max_tokens: 1000,
       messages: [
         { role: 'user', content: message }
       ]
@@ -32,18 +35,45 @@ chatWithClaude('Hello, Claude!').then(response => {
 });
 ```
 
-## With Authentication
+## API Key Users
+
+### Full Mode (With Claude Code Features)
 
 ```javascript
-async function authenticatedChat(message, bearerToken) {
-  const response = await fetch('http://localhost:8000/v1/chat/completions', {
+async function fullModeChat(message, apiKey) {
+  const response = await fetch('http://localhost:8000/v1/messages', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${bearerToken}`
+      'x-api-key': apiKey  // Your Anthropic API key
     },
     body: JSON.stringify({
       model: 'claude-3-5-sonnet-20241022',
+      max_tokens: 1000,
+      messages: [
+        { role: 'user', content: message }
+      ]
+    })
+  });
+
+  const data = await response.json();
+  return data.content[0].text;
+}
+```
+
+### Minimal Mode (Lightweight)
+
+```javascript
+async function minimalModeChat(message, apiKey) {
+  const response = await fetch('http://localhost:8000/min/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': apiKey  // Your Anthropic API key
+    },
+    body: JSON.stringify({
+      model: 'claude-3-5-sonnet-20241022',
+      max_tokens: 1000,
       messages: [
         { role: 'user', content: message }
       ]

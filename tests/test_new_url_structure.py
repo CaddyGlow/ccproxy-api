@@ -6,6 +6,8 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
+from claude_code_proxy.services.credentials import CredentialsManager
+
 
 @pytest.mark.integration
 class TestNewURLStructure:
@@ -62,81 +64,80 @@ class TestNewURLStructure:
         assert response.status_code == 200
         assert response.json()["object"] == "chat.completion"
 
-    @patch(
-        "claude_code_proxy.services.credentials.CredentialsService.get_access_token_with_refresh"
-    )
     @patch("httpx.AsyncClient.request")
-    async def test_minimal_proxy_mode(
-        self, mock_request, mock_get_token, test_client: TestClient
-    ):
+    async def test_minimal_proxy_mode(self, mock_request, test_client: TestClient):
         """Test /min/* proxy with minimal transformations."""
-        mock_get_token.return_value = "test-oauth-token"
+        # Mock the credentials manager's get_access_token to return our test token
+        with patch.object(
+            CredentialsManager,
+            "get_access_token",
+            AsyncMock(return_value="test-oauth-token"),
+        ):
+            mock_response = AsyncMock()
+            mock_response.status_code = 200
+            mock_response.headers = {"content-type": "application/json"}
+            mock_response.content = json.dumps(
+                {
+                    "id": "msg_123",
+                    "type": "message",
+                    "role": "assistant",
+                    "content": [{"type": "text", "text": "Hello!"}],
+                }
+            ).encode()
+            mock_request.return_value = mock_response
 
-        mock_response = AsyncMock()
-        mock_response.status_code = 200
-        mock_response.headers = {"content-type": "application/json"}
-        mock_response.content = json.dumps(
-            {
-                "id": "msg_123",
-                "type": "message",
-                "role": "assistant",
-                "content": [{"type": "text", "text": "Hello!"}],
-            }
-        ).encode()
-        mock_request.return_value = mock_response
+            response = test_client.post(
+                "/min/v1/messages",
+                json={
+                    "model": "claude-3-5-sonnet-20241022",
+                    "messages": [{"role": "user", "content": "Hi"}],
+                },
+            )
 
-        response = test_client.post(
-            "/min/v1/messages",
-            json={
-                "model": "claude-3-5-sonnet-20241022",
-                "messages": [{"role": "user", "content": "Hi"}],
-            },
-        )
+            assert response.status_code == 200
 
-        assert response.status_code == 200
+            # Verify minimal headers
+            assert mock_request.called
+            headers = mock_request.call_args.kwargs["headers"]
+            assert headers["Authorization"] == "Bearer test-oauth-token"
+            assert "x-app" not in headers
 
-        # Verify minimal headers
-        headers = mock_request.call_args.kwargs["headers"]
-        assert headers["Authorization"] == "Bearer test-oauth-token"
-        assert "x-app" not in headers
-
-    @patch(
-        "claude_code_proxy.services.credentials.CredentialsService.get_access_token_with_refresh"
-    )
     @patch("httpx.AsyncClient.request")
-    async def test_full_proxy_mode(
-        self, mock_request, mock_get_token, test_client: TestClient
-    ):
+    async def test_full_proxy_mode(self, mock_request, test_client: TestClient):
         """Test /full/* proxy with full transformations."""
-        mock_get_token.return_value = "test-oauth-token"
+        # Mock the credentials manager's get_access_token to return our test token
+        with patch.object(
+            CredentialsManager,
+            "get_access_token",
+            AsyncMock(return_value="test-oauth-token"),
+        ):
+            mock_response = AsyncMock()
+            mock_response.status_code = 200
+            mock_response.headers = {"content-type": "application/json"}
+            mock_response.content = json.dumps(
+                {
+                    "id": "msg_123",
+                    "type": "message",
+                    "role": "assistant",
+                    "content": [{"type": "text", "text": "Hello!"}],
+                }
+            ).encode()
+            mock_request.return_value = mock_response
 
-        mock_response = AsyncMock()
-        mock_response.status_code = 200
-        mock_response.headers = {"content-type": "application/json"}
-        mock_response.content = json.dumps(
-            {
-                "id": "msg_123",
-                "type": "message",
-                "role": "assistant",
-                "content": [{"type": "text", "text": "Hello!"}],
-            }
-        ).encode()
-        mock_request.return_value = mock_response
+            response = test_client.post(
+                "/full/v1/messages",
+                json={
+                    "model": "claude-3-5-sonnet-20241022",
+                    "messages": [{"role": "user", "content": "Hi"}],
+                },
+            )
 
-        response = test_client.post(
-            "/full/v1/messages",
-            json={
-                "model": "claude-3-5-sonnet-20241022",
-                "messages": [{"role": "user", "content": "Hi"}],
-            },
-        )
+            assert response.status_code == 200
 
-        assert response.status_code == 200
-
-        # Verify full headers
-        headers = mock_request.call_args.kwargs["headers"]
-        assert headers["Authorization"] == "Bearer test-oauth-token"
-        assert headers["x-app"] == "cli"
+            # Verify full headers
+            headers = mock_request.call_args.kwargs["headers"]
+            assert headers["Authorization"] == "Bearer test-oauth-token"
+            assert headers["x-app"] == "cli"
 
     def test_legacy_paths_exist(self, test_client: TestClient):
         """Test legacy paths exist for backward compatibility."""

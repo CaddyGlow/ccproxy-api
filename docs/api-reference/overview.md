@@ -2,12 +2,36 @@
 
 Claude Code Proxy API provides both Anthropic and OpenAI-compatible endpoints for seamless integration with Claude AI models.
 
-## Base URLs
+## Base URLs by Mode
 
-| API Format | Base URL | Description |
-|------------|----------|-------------|
-| Anthropic | `http://localhost:8000/v1` | Native Anthropic API format |
-| OpenAI | `http://localhost:8000/openai/v1` | OpenAI-compatible format |
+| Mode | Anthropic Base URL | OpenAI Base URL | Authentication Support |
+|------|-------------------|-----------------|------------------------|
+| Full (Default) | `http://localhost:8000/v1` | `http://localhost:8000/openai/v1` | OAuth (Claude Code), API Key |
+| Full (Explicit) | `http://localhost:8000/full/v1` | `http://localhost:8000/full/openai/v1` | OAuth (Claude Code), API Key |
+| Minimal | `http://localhost:8000/min/v1` | `http://localhost:8000/min/openai/v1` | API Key only |
+| Passthrough | `http://localhost:8000/pt/v1` | `http://localhost:8000/pt/openai/v1` | API Key only |
+
+### Choosing the Right Mode
+
+- **Full Mode**:
+  - Required for OAuth authentication (Claude subscription users)
+  - Works with Anthropic API keys
+  - Injects Claude Code system prompt
+  - Full header transformations
+
+- **Minimal Mode**:
+  - Does not work with OAuth (Claude subscription)
+  - For Anthropic API key users only
+  - No system prompt injection
+  - Minimal header set
+
+- **Passthrough Mode**:
+  - Does not work with OAuth (Claude subscription)
+  - For Anthropic API key users only
+  - Minimal proxy interference
+  - Direct API access
+
+**Important**: OAuth credentials from Claude Code will return an error if used with `/min` or `/pt` modes.
 
 ## Endpoint Summary
 
@@ -123,6 +147,20 @@ The API uses standard HTTP status codes and returns detailed error information:
 }
 ```
 
+### OAuth with Wrong Mode Error
+
+When using OAuth credentials with `/min` or `/pt` modes:
+
+```json
+{
+  "type": "error",
+  "error": {
+    "type": "invalid_request_error",
+    "message": "system: This credential is only authorized for use with Claude Code and cannot be used for other API requests."
+  }
+}
+```
+
 ### Common Status Codes
 
 | Code | Description | Common Causes |
@@ -194,97 +232,103 @@ Note: Only chat completions are supported. Other OpenAI endpoints (completions, 
 ### Python
 
 ```python
-# Using OpenAI client - works exactly like the official OpenAI API
+# OAuth Users (Claude Subscription) - MUST use full mode
 from openai import OpenAI
 client = OpenAI(
-    base_url="http://localhost:8000/openai/v1",
-    api_key="your-auth-token"  # If AUTH_TOKEN is set, use it here. Otherwise any value works.
+    base_url="http://localhost:8000/openai/v1",  # Full mode (default)
+    api_key="dummy"  # Ignored with OAuth
 )
 
-# That's it! The OpenAI SDK automatically handles the Bearer token
-response = client.chat.completions.create(
-    model="claude-sonnet-4-20250514",
-    messages=[{"role": "user", "content": "Hello!"}]
-)
-
-# Using Anthropic client - works exactly like the official Anthropic API
 from anthropic import Anthropic
 client = Anthropic(
-    base_url="http://localhost:8000",
-    api_key="your-auth-token"  # If AUTH_TOKEN is set, use it here. Otherwise any value works.
+    base_url="http://localhost:8000",  # Full mode (default)
+    api_key="dummy"  # Ignored with OAuth
 )
 
-# That's it! The Anthropic SDK automatically handles the x-api-key header
-response = client.messages.create(
-    model="claude-sonnet-4-20250514",
-    max_tokens=100,
-    messages=[{"role": "user", "content": "Hello!"}]
+# API Key Users - Can use any mode
+from anthropic import Anthropic
+
+# Option 1: Full mode (with Claude Code features)
+client = Anthropic(
+    base_url="http://localhost:8000",  # or http://localhost:8000/full
+    api_key="sk-ant-api03-..."
 )
 
-# Using requests directly
-import requests
-headers = {"Content-Type": "application/json"}
+# Option 2: Minimal mode (lightweight, no Claude Code)
+client = Anthropic(
+    base_url="http://localhost:8000/min",
+    api_key="sk-ant-api03-..."
+)
 
-# With authentication (if configured)
-headers["x-api-key"] = "your-auth-token"
-# Or: headers["Authorization"] = "Bearer your-auth-token"
-
-response = requests.post("http://localhost:8000/v1/chat/completions", json=data, headers=headers)
+# Option 3: Passthrough mode (direct API access)
+client = Anthropic(
+    base_url="http://localhost:8000/pt",
+    api_key="sk-ant-api03-..."
+)
 ```
 
 ### JavaScript/Node.js
 
 ```javascript
-// Using OpenAI SDK - works exactly like the official OpenAI API
+// OAuth Users (Claude Subscription) - MUST use full mode
 import OpenAI from 'openai';
 const client = new OpenAI({
-  baseURL: 'http://localhost:8000/openai/v1',
-  apiKey: 'your-auth-token',  // If AUTH_TOKEN is set, use it here. Otherwise any value works.
+  baseURL: 'http://localhost:8000/openai/v1',  // Full mode (default)
+  apiKey: 'dummy',  // Ignored with OAuth
 });
 
-// That's it! The OpenAI SDK automatically handles the Bearer token
-const response = await client.chat.completions.create({
-  model: 'claude-sonnet-4-20250514',
-  messages: [{ role: 'user', content: 'Hello!' }],
+// API Key Users - Can use any mode
+import Anthropic from '@anthropic-ai/sdk';
+
+// Option 1: Full mode (with Claude Code features)
+const client = new Anthropic({
+  baseURL: 'http://localhost:8000',  // or http://localhost:8000/full
+  apiKey: 'sk-ant-api03-...',
 });
 
-// Using fetch directly
-const headers = { 'Content-Type': 'application/json' };
+// Option 2: Minimal mode (lightweight)
+const client = new Anthropic({
+  baseURL: 'http://localhost:8000/min',
+  apiKey: 'sk-ant-api03-...',
+});
 
-// With authentication (if configured)
-headers['x-api-key'] = 'your-auth-token';
-// Or: headers['Authorization'] = 'Bearer your-auth-token';
-
-const response = await fetch('http://localhost:8000/v1/chat/completions', {
-  method: 'POST',
-  headers: headers,
-  body: JSON.stringify(requestData)
+// Option 3: Passthrough mode
+const client = new Anthropic({
+  baseURL: 'http://localhost:8000/pt',
+  apiKey: 'sk-ant-api03-...',
 });
 ```
 
 ### curl
 
 ```bash
-# Anthropic format (without authentication)
-curl -X POST http://localhost:8000/v1/chat/completions \
+# OAuth Users (Claude Subscription) - MUST use full mode
+curl -X POST http://localhost:8000/v1/messages \
   -H "Content-Type: application/json" \
-  -d '{"model": "claude-3-5-sonnet-20241022", "messages": [{"role": "user", "content": "Hello"}]}'
+  -d '{"model": "claude-3-5-sonnet-20241022", "messages": [{"role": "user", "content": "Hello"}], "max_tokens": 100}'
 
-# Anthropic format (with authentication)
-curl -X POST http://localhost:8000/v1/chat/completions \
+# API Key Users - Full mode
+curl -X POST http://localhost:8000/v1/messages \
   -H "Content-Type: application/json" \
-  -H "x-api-key: your-auth-token" \
-  -d '{"model": "claude-3-5-sonnet-20241022", "messages": [{"role": "user", "content": "Hello"}]}'
+  -H "x-api-key: sk-ant-api03-..." \
+  -d '{"model": "claude-3-5-sonnet-20241022", "messages": [{"role": "user", "content": "Hello"}], "max_tokens": 100}'
 
-# OpenAI format (with Bearer authentication)
+# API Key Users - Minimal mode
+curl -X POST http://localhost:8000/min/v1/messages \
+  -H "Content-Type: application/json" \
+  -H "x-api-key: sk-ant-api03-..." \
+  -d '{"model": "claude-3-5-sonnet-20241022", "messages": [{"role": "user", "content": "Hello"}], "max_tokens": 100}'
+
+# OpenAI format with modes
 curl -X POST http://localhost:8000/openai/v1/chat/completions \
   -H "Content-Type: application/json" \
-  -H "Authorization: Bearer your-auth-token" \
-  -d '{"model": "claude-3-5-sonnet-20241022", "messages": [{"role": "user", "content": "Hello"}]}'
+  -H "Authorization: Bearer sk-ant-api03-..." \
+  -d '{"model": "claude-3-5-sonnet-20241022", "messages": [{"role": "user", "content": "Hello"}], "max_tokens": 100}'
 ```
 
 ## Next Steps
 
+- [Proxy Modes](../user-guide/proxy-modes.md) - Detailed guide on proxy transformation modes
 - [Anthropic Endpoints](anthropic.md) - Detailed Anthropic API documentation
 - [OpenAI Endpoints](openai.md) - Detailed OpenAI API documentation  
 - [Models](models.md) - Available models and their capabilities

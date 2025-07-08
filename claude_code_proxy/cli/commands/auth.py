@@ -10,7 +10,7 @@ from rich import box
 from rich.console import Console
 from rich.table import Table
 
-from claude_code_proxy.services.credentials import CredentialsService
+from claude_code_proxy.services.credentials import CredentialsConfig, CredentialsManager
 from claude_code_proxy.utils.cli import get_rich_toolkit
 from claude_code_proxy.utils.logging import get_logger
 from claude_code_proxy.utils.xdg import get_claude_docker_home_dir
@@ -22,12 +22,24 @@ console = Console()
 logger = get_logger(__name__)
 
 
+def get_credentials_manager(
+    custom_paths: list[Path] | None = None,
+) -> CredentialsManager:
+    """Get a CredentialsManager instance with custom paths if provided."""
+    if custom_paths:
+        config = CredentialsConfig(storage_paths=[str(p) for p in custom_paths])
+    else:
+        config = CredentialsConfig()
+    return CredentialsManager(config=config)
+
+
 def get_docker_credential_paths() -> list[Path]:
     """Get credential file paths for Docker environment."""
     docker_home = get_claude_docker_home_dir()
     return [
         docker_home / ".claude" / ".credentials.json",
         docker_home / ".config" / "claude" / ".credentials.json",
+        Path(".credentials.json"),
     ]
 
 
@@ -74,7 +86,8 @@ def validate_credentials(
             custom_paths = get_docker_credential_paths()
 
         # Validate credentials
-        validation_result = CredentialsService.validate_credentials(custom_paths)
+        manager = get_credentials_manager(custom_paths)
+        validation_result = asyncio.run(manager.validate())
 
         if validation_result.get("valid"):
             # Create a status table
@@ -183,21 +196,19 @@ def credential_info(
         elif docker:
             custom_paths = get_docker_credential_paths()
 
-        # Find credential file
-        cred_file = CredentialsService.find_credentials_file(custom_paths)
+        # Get credentials manager and find credential file
+        manager = get_credentials_manager(custom_paths)
+        cred_file = asyncio.run(manager.find_credentials_file())
 
         if not cred_file:
             toolkit.print("No credential file found", tag="error")
             console.print("\n[dim]Expected locations:[/dim]")
-            search_paths = (
-                custom_paths if custom_paths else CredentialsService.CREDENTIAL_PATHS
-            )
-            for path in search_paths:
+            for path in manager.config.storage_paths:
                 console.print(f"  - {path}")
             raise typer.Exit(1)
 
         # Load and display credentials
-        credentials = CredentialsService.load_credentials(custom_paths)
+        credentials = asyncio.run(manager.load())
         if not credentials:
             toolkit.print("Failed to load credentials", tag="error")
             raise typer.Exit(1)
@@ -216,13 +227,9 @@ def credential_info(
         # Use refresh-enabled token method to ensure we have a valid token
         try:
             # First try to get a valid access token (with refresh if needed)
-            valid_token = asyncio.run(
-                CredentialsService.get_access_token_with_refresh(custom_paths)
-            )
+            valid_token = asyncio.run(manager.get_access_token())
             if valid_token:
-                profile = asyncio.run(
-                    CredentialsService.fetch_user_profile(valid_token, custom_paths)
-                )
+                profile = asyncio.run(manager.fetch_user_profile())
                 if profile and profile.organization:
                     console.print(f"  L Organization: {profile.organization.name}")
                 else:
@@ -234,7 +241,7 @@ def credential_info(
                     console.print("  L Email: [dim]Unable to fetch[/dim]")
 
                 # Reload credentials after potential refresh to show updated token info
-                credentials = CredentialsService.load_credentials(custom_paths)
+                credentials = asyncio.run(manager.load())
                 if credentials:
                     oauth = credentials.claude_ai_oauth
             else:
@@ -336,7 +343,8 @@ def login_command(
             custom_paths = get_docker_credential_paths()
 
         # Check if already logged in
-        validation_result = CredentialsService.validate_credentials(custom_paths)
+        manager = get_credentials_manager(custom_paths)
+        validation_result = asyncio.run(manager.validate())
         if validation_result.get("valid") and not validation_result.get("expired"):
             console.print(
                 "[yellow]You are already logged in with valid credentials.[/yellow]"
@@ -359,14 +367,19 @@ def login_command(
             "A temporary server will start on port 54545 for the OAuth callback..."
         )
 
-        success = asyncio.run(CredentialsService.login(custom_paths))
+        try:
+            asyncio.run(manager.login())
+            success = True
+        except Exception as e:
+            logger.error(f"Login failed: {e}")
+            success = False
 
         if success:
             toolkit.print("Successfully logged in to Claude!", tag="success")
 
             # Show credential info
             console.print("\n[dim]Credential information:[/dim]")
-            updated_validation = CredentialsService.validate_credentials(custom_paths)
+            updated_validation = asyncio.run(manager.validate())
             if updated_validation.get("valid"):
                 console.print(
                     f"  Subscription: {updated_validation.get('subscription_type', 'Unknown')}"

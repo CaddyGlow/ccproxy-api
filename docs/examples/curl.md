@@ -4,20 +4,23 @@
 
 Examples of using the Claude Code Proxy API with curl commands.
 
-## Basic Chat Completion (Anthropic Format)
+## OAuth Users (Claude Subscription)
+
+### Basic Message (Anthropic Format - Full Mode)
 
 ```bash
-curl -X POST http://localhost:8000/v1/chat/completions \
+curl -X POST http://localhost:8000/v1/messages \
   -H "Content-Type: application/json" \
   -d '{
     "model": "claude-3-5-sonnet-20241022",
+    "max_tokens": 1000,
     "messages": [
       {"role": "user", "content": "Hello, Claude!"}
     ]
   }'
 ```
 
-## Basic Chat Completion (OpenAI Format)
+### Chat Completion (OpenAI Format - Full Mode)
 
 ```bash
 curl -X POST http://localhost:8000/openai/v1/chat/completions \
@@ -30,14 +33,47 @@ curl -X POST http://localhost:8000/openai/v1/chat/completions \
   }'
 ```
 
-## With Authentication
+## API Key Users
+
+### Full Mode (With Claude Code Features)
 
 ```bash
-curl -X POST http://localhost:8000/v1/chat/completions \
+curl -X POST http://localhost:8000/v1/messages \
   -H "Content-Type: application/json" \
-  -H "Authorization: Bearer your-secret-token" \
+  -H "x-api-key: sk-ant-api03-..." \
   -d '{
     "model": "claude-3-5-sonnet-20241022",
+    "max_tokens": 1000,
+    "messages": [
+      {"role": "user", "content": "Hello, Claude!"}
+    ]
+  }'
+```
+
+### Minimal Mode (Lightweight, No Claude Code)
+
+```bash
+curl -X POST http://localhost:8000/min/v1/messages \
+  -H "Content-Type: application/json" \
+  -H "x-api-key: sk-ant-api03-..." \
+  -d '{
+    "model": "claude-3-5-sonnet-20241022",
+    "max_tokens": 1000,
+    "messages": [
+      {"role": "user", "content": "Hello, Claude!"}
+    ]
+  }'
+```
+
+### Passthrough Mode (Direct API Access)
+
+```bash
+curl -X POST http://localhost:8000/pt/v1/messages \
+  -H "Content-Type: application/json" \
+  -H "x-api-key: sk-ant-api03-..." \
+  -d '{
+    "model": "claude-3-5-sonnet-20241022",
+    "max_tokens": 1000,
     "messages": [
       {"role": "user", "content": "Hello, Claude!"}
     ]

@@ -74,11 +74,15 @@ nav:
     - Development Setup: developer-guide/development.md
     - Testing: developer-guide/testing.md
   - Code Reference:
-    - API Modules: reference/api/
-    - Services: reference/services/
-    - Models: reference/models/
-    - Configuration: reference/config/
-    - CLI: reference/cli/
+    - Overview: reference/claude_code_proxy/
+    - API Modules: reference/claude_code_proxy/routers/
+    - Services: reference/claude_code_proxy/services/
+    - Models: reference/claude_code_proxy/models/
+    - Configuration: reference/claude_code_proxy/config/
+    - CLI: reference/claude_code_proxy/cli/
+    - Utilities: reference/claude_code_proxy/utils/
+    - Docker: reference/claude_code_proxy/docker/
+    - Middleware: reference/claude_code_proxy/middleware/
   - Examples:
     - Python Client: examples/python-client.md
     - curl Examples: examples/curl.md
@@ -110,7 +114,7 @@ plugins:
             docstring_options:
               ignore_init_summary: true
             merge_init_into_class: true
-            show_submodules: true
+            show_submodules: false
             show_source: true
             show_root_heading: true
             show_root_toc_entry: true

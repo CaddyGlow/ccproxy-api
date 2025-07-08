@@ -8,7 +8,7 @@ import httpx
 from fastapi import HTTPException
 from fastapi.responses import StreamingResponse
 
-from claude_code_proxy.services.credentials import CredentialsService
+from claude_code_proxy.services.credentials import CredentialsManager
 from claude_code_proxy.services.request_transformer import RequestTransformer
 from claude_code_proxy.services.response_transformer import ResponseTransformer
 from claude_code_proxy.utils.logging import get_logger
@@ -25,6 +25,7 @@ class ReverseProxyService:
         target_base_url: str = "https://api.anthropic.com",
         timeout: float = 120.0,
         proxy_mode: str = "full",
+        credentials_manager: CredentialsManager | None = None,
     ):
         """Initialize the reverse proxy service.
 
@@ -32,12 +33,14 @@ class ReverseProxyService:
             target_base_url: Base URL for the target API
             timeout: Request timeout in seconds
             proxy_mode: Transformation mode - "minimal", "full", or "passthrough"
+            credentials_manager: Optional credentials manager instance
         """
         self.target_base_url = target_base_url.rstrip("/")
         self.timeout = timeout
         self.proxy_mode = proxy_mode
         self.request_transformer = RequestTransformer()
         self.response_transformer = ResponseTransformer()
+        self._credentials_manager = credentials_manager
 
     async def proxy_request(
         self,
@@ -65,23 +68,32 @@ class ReverseProxyService:
         try:
             # Get OAuth access token
             logger.debug("Attempting to retrieve OAuth access token...")
-            access_token = await CredentialsService.get_access_token_with_refresh()
+
+            # Use provided credentials manager or create a temporary one
+            if self._credentials_manager:
+                credentials_manager = self._credentials_manager
+            else:
+                credentials_manager = CredentialsManager()
+
+            try:
+                access_token = await credentials_manager.get_access_token()
+            except Exception as e:
+                logger.error(f"Failed to get access token: {e}")
+                access_token = None
 
             if not access_token:
                 logger.error("No OAuth access token available")
                 # Try to get more details about credential status
                 try:
-                    creds = CredentialsService.load_credentials()
-                    if creds:
+                    validation = await credentials_manager.validate()
+                    if validation.get("valid"):
                         logger.debug(
                             "Found credentials but access token is invalid/expired"
                         )
-                        logger.debug(
-                            f"Credential expires at: {creds.claude_ai_oauth.expires_at}"
-                        )
-                        logger.debug("Current time check needed for expiration")
+                        logger.debug(f"Expired: {validation.get('expired')}")
+                        logger.debug(f"Expires at: {validation.get('expires_at')}")
                     else:
-                        logger.debug("No credentials file found")
+                        logger.debug(f"Credentials invalid: {validation.get('error')}")
                 except Exception as e:
                     logger.debug(f"Could not check credential details: {e}")
 

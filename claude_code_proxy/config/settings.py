@@ -22,6 +22,7 @@ except ImportError:
 from pydantic import BaseModel, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from claude_code_proxy.services.credentials import CredentialsConfig
 from claude_code_proxy.utils import find_toml_config_file, get_claude_cli_config_dir
 from claude_code_proxy.utils.helper import get_package_dir, patched_typing
 
@@ -29,7 +30,6 @@ from .docker_settings import DockerSettings
 
 
 __all__ = [
-    "DockerSettings",
     "Settings",
     "ConfigurationError",
     "ConfigurationManager",
@@ -195,6 +195,12 @@ class Settings(BaseSettings):
         description="URL prefix for Claude Code SDK endpoints",
     )
 
+    # Credentials configuration
+    credentials: CredentialsConfig = Field(
+        default_factory=CredentialsConfig,
+        description="Credentials management configuration",
+    )
+
     # Pool settings removed - connection pooling functionality has been removed
 
     @field_validator("claude_code_options", mode="before")
@@ -236,6 +242,29 @@ class Settings(BaseSettings):
             return DockerSettings(**v.model_dump())
         elif hasattr(v, "__dict__"):
             return DockerSettings(**v.__dict__)
+
+        return v
+
+    @field_validator("credentials", mode="before")
+    @classmethod
+    def validate_credentials(cls, v: Any) -> Any:
+        """Validate and convert credentials configuration."""
+        if v is None:
+            return CredentialsConfig()
+
+        # If it's already a CredentialsConfig instance, return as-is
+        if isinstance(v, CredentialsConfig):
+            return v
+
+        # If it's a dict, create CredentialsConfig from it
+        if isinstance(v, dict):
+            return CredentialsConfig(**v)
+
+        # Try to convert to dict if possible
+        if hasattr(v, "model_dump"):
+            return CredentialsConfig(**v.model_dump())
+        elif hasattr(v, "__dict__"):
+            return CredentialsConfig(**v.__dict__)
 
         return v
 

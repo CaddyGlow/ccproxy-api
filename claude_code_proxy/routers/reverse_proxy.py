@@ -7,6 +7,7 @@ from fastapi.responses import Response, StreamingResponse
 
 from claude_code_proxy.config.settings import get_settings
 from claude_code_proxy.middleware.auth import get_auth_dependency
+from claude_code_proxy.services.credentials import CredentialsManager
 from claude_code_proxy.services.reverse_proxy import ReverseProxyService
 from claude_code_proxy.utils.logging import get_logger
 
@@ -17,14 +18,16 @@ router = APIRouter(tags=["reverse-proxy"])
 
 # Initialize the reverse proxy service with settings
 settings = get_settings()
+credentials_manager = CredentialsManager(config=settings.credentials)
 proxy_service = ReverseProxyService(
     target_base_url=settings.reverse_proxy_target_url,
     timeout=settings.reverse_proxy_timeout,
+    credentials_manager=credentials_manager,
 )
 
 
 @router.api_route(
-    "/unclaude/{path:path}",
+    "/{path:path}",
     methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"],
     response_model=None,
 )
@@ -34,7 +37,7 @@ async def proxy_to_anthropic(
     """Proxy requests from /unclaude/* to api.anthropic.com/*.
 
     This endpoint handles all HTTP methods and transforms:
-    - Path: /unclaude/v1/messages -> https://api.anthropic.com/v1/messages
+    - Path: /unclaude/vw/messages -> https://api.anthropic.com/v1/messages
     - Headers: Injects OAuth authentication and required headers
     - Body: Adds Claude Code system prompt and maps model aliases
 

@@ -17,7 +17,8 @@ rm -rf site/
 
 # Build documentation
 echo "Building documentation..."
-mkdocs build --clean --verbose
+# mkdocs build --clean --verbose
+mkdocs build --clean
 
 echo "Documentation built successfully!"
 echo "Open 'site/index.html' in your browser to view the documentation."

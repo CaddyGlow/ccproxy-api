@@ -121,28 +121,36 @@ class RequestTransformer:
         return json.dumps(data).encode("utf-8")
 
     def transform_path(self, path: str, mode: str = "full") -> str:
-        """Transform request path by removing OpenAI prefix and converting to Anthropic endpoints.
+        """Transform request path by removing proxy prefixes and converting to Anthropic endpoints.
 
         Args:
             path: Original request path
             mode: Proxy mode - "minimal", "full", or "passthrough"
 
         Returns:
-            Transformed path with /openai prefix removed and endpoint conversion
+            Transformed path with proxy prefixes removed and endpoint conversion
         """
         # In minimal or passthrough mode, don't transform paths
         if mode in ("minimal", "passthrough"):
             return path
 
         # Full mode - current behavior
+        # Remove /unclaude prefix if present
+        if path.startswith("/unclaude/"):
+            path = path[9:]  # Remove "/unclaude" (9 characters)
+
         # Remove /openai prefix if present
-        if path.startswith("/openai/"):
+        elif path.startswith("/openai/"):
             path = path[7:]  # Remove "/openai" (7 characters)
 
         # Convert OpenAI endpoints to Anthropic endpoints
         if path.endswith("/chat/completions"):
             # OpenAI chat completions → Anthropic messages
             return "/v1/messages"
+
+        # Ensure path starts with /
+        if not path.startswith("/"):
+            path = f"/{path}"
 
         return path
 
@@ -211,6 +219,7 @@ class RequestTransformer:
             headers = {
                 "Authorization": f"Bearer {access_token}",
                 "anthropic-version": "2023-06-01",  # Required
+                "anthropic-beta": "oauth-2025-04-20",  # Required for OAuth
             }
 
             # Preserve essential headers

@@ -1,7 +1,7 @@
 """Tests for reverse proxy functionality."""
 
 import json
-from unittest.mock import Mock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 from fastapi.testclient import TestClient
@@ -563,14 +563,31 @@ class TestReverseProxyAuthentication:
     ):
         """Test that reverse proxy accepts valid x-api-key authentication."""
 
-        # Mock the OAuth service to return a token
-        async def mock_get_token():
-            return "oauth-token-123"
+        # Create a mock credentials file in test location
+        import json
+        from pathlib import Path
 
-        monkeypatch.setattr(
-            "claude_code_proxy.services.reverse_proxy.CredentialsService.get_access_token_with_refresh",
-            mock_get_token,
-        )
+        test_creds_dir = Path("/tmp/ccproxy-test/.claude")
+        test_creds_dir.mkdir(parents=True, exist_ok=True)
+        test_creds_file = test_creds_dir / ".credentials.json"
+
+        # Create valid test credentials
+        from datetime import UTC, datetime, timedelta
+
+        future_time = datetime.now(UTC) + timedelta(hours=1)
+        future_ms = int(future_time.timestamp() * 1000)
+
+        test_creds = {
+            "claudeAiOauth": {
+                "accessToken": "oauth-token-123",
+                "refreshToken": "test-refresh-token",
+                "expiresAt": future_ms,
+                "scopes": ["user:inference"],
+                "subscriptionType": "test",
+            }
+        }
+
+        test_creds_file.write_text(json.dumps(test_creds))
 
         # Mock httpx to avoid actual API calls
         mock_response = Mock()
@@ -598,14 +615,31 @@ class TestReverseProxyAuthentication:
     def test_reverse_proxy_accepts_valid_auth_bearer(self, app_with_auth, monkeypatch):
         """Test that reverse proxy accepts valid Authorization Bearer authentication."""
 
-        # Mock the OAuth service to return a token
-        async def mock_get_token():
-            return "oauth-token-123"
+        # Create a mock credentials file in test location
+        import json
+        from pathlib import Path
 
-        monkeypatch.setattr(
-            "claude_code_proxy.services.reverse_proxy.CredentialsService.get_access_token_with_refresh",
-            mock_get_token,
-        )
+        test_creds_dir = Path("/tmp/ccproxy-test/.claude")
+        test_creds_dir.mkdir(parents=True, exist_ok=True)
+        test_creds_file = test_creds_dir / ".credentials.json"
+
+        # Create valid test credentials
+        from datetime import UTC, datetime, timedelta
+
+        future_time = datetime.now(UTC) + timedelta(hours=1)
+        future_ms = int(future_time.timestamp() * 1000)
+
+        test_creds = {
+            "claudeAiOauth": {
+                "accessToken": "oauth-token-123",
+                "refreshToken": "test-refresh-token",
+                "expiresAt": future_ms,
+                "scopes": ["user:inference"],
+                "subscriptionType": "test",
+            }
+        }
+
+        test_creds_file.write_text(json.dumps(test_creds))
 
         # Mock httpx to avoid actual API calls
         mock_response = Mock()
@@ -663,14 +697,31 @@ class TestReverseProxyAuthentication:
     ):
         """Test that reverse proxy doesn't require auth when authentication is disabled."""
 
-        # Mock the OAuth service to return a token
-        async def mock_get_token():
-            return "oauth-token-123"
+        # Create a mock credentials file in test location
+        import json
+        from pathlib import Path
 
-        monkeypatch.setattr(
-            "claude_code_proxy.services.reverse_proxy.CredentialsService.get_access_token_with_refresh",
-            mock_get_token,
-        )
+        test_creds_dir = Path("/tmp/ccproxy-test/.claude")
+        test_creds_dir.mkdir(parents=True, exist_ok=True)
+        test_creds_file = test_creds_dir / ".credentials.json"
+
+        # Create valid test credentials
+        from datetime import UTC, datetime, timedelta
+
+        future_time = datetime.now(UTC) + timedelta(hours=1)
+        future_ms = int(future_time.timestamp() * 1000)
+
+        test_creds = {
+            "claudeAiOauth": {
+                "accessToken": "oauth-token-123",
+                "refreshToken": "test-refresh-token",
+                "expiresAt": future_ms,
+                "scopes": ["user:inference"],
+                "subscriptionType": "test",
+            }
+        }
+
+        test_creds_file.write_text(json.dumps(test_creds))
 
         # Mock httpx to avoid actual API calls
         mock_response = Mock()
