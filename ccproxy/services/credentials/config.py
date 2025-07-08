@@ -16,8 +16,9 @@ def _get_default_storage_paths() -> list[str]:
         ]
 
     return [
-        "~/.claude/.credentials.json",
-        "~/.config/claude/.credentials.json",
+        "~/.config/ccproxy/credentials.json",  # Primary location in app config
+        "~/.claude/.credentials.json",  # Legacy location
+        "~/.config/claude/.credentials.json",  # Alternative legacy location
     ]
 
 

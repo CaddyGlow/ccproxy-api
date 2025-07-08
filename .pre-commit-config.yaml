@@ -42,6 +42,7 @@ repos:
           - pytest-env>=0.8.0
           # Claude SDK (from git source)
           - claude-code-sdk @ git+https://github.com/anthropics/claude-code-sdk-python.git
+          - keyring>=24.0.0
         args: [--config-file=pyproject.toml]
         exclude: ^(docs/|examples/)
 
