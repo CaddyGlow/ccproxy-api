@@ -1,132 +1,175 @@
-# Claude Code Proxy API
+# Claude Code Proxy API (CCProxy)
 
-A personal API server that provides both Anthropic and OpenAI-compatible interfaces for Claude AI models. This proxy enables you to use your existing Claude subscription locally through familiar API endpoints, making it easy to integrate Claude into your personal projects and tools.
+A local reverse proxy server that routes requests to api.anthropic.com/v1/messages, leveraging your existing Claude subscription without requiring separate API costs.
 
-## Overview
+## What is CCProxy?
 
-The Claude Code Proxy API Server acts as a local bridge between your applications and Claude AI models, providing:
+CCProxy is a lightweight server that runs on your computer and acts as a bridge between your applications and Claude AI. It uses the official claude-code-sdk to authenticate with your Claude account, allowing you to:
 
-- **Dual API Compatibility**: Full support for both Anthropic and OpenAI API formats
-- **Streaming Support**: Real-time response streaming for both API formats  
-- **Request Translation**: Seamless format conversion between OpenAI and Anthropic formats
-- **OAuth2 Authentication**: Uses your existing Claude subscription through secure OAuth2 authentication
-- **Local Execution**: Runs entirely on your computer with no external data sharing
-- **Docker Isolation**: Secure containerized execution for Claude Code operations
-
-## Quick Start
-
-### Installation
-
-```bash
-# Clone the repository
-git clone https://github.com/CaddyGlow/claude-code-proxy-api.git
-cd claude-code-proxy-api
-
-# Install dependencies
-uv sync
-
-# Run the server
-uv run python main.py
-```
-
-The server will start on `http://localhost:8000` by default.
-
-### Basic Usage
-
-#### Anthropic Format
-```bash
-curl -X POST http://localhost:8000/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -d '{
-    "model": "claude-3-5-sonnet-20241022",
-    "messages": [{"role": "user", "content": "Hello!"}],
-    "max_tokens": 100
-  }'
-```
-
-#### OpenAI Format
-```bash
-curl -X POST http://localhost:8000/openai/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -d '{
-    "model": "claude-3-5-sonnet-20241022",
-    "messages": [{"role": "user", "content": "Hello!"}],
-    "max_tokens": 100
-  }'
-```
+- **Use your Claude Pro/Team/Enterprise subscription** instead of paying for API access
+- **Access Claude through standard API interfaces** (both Anthropic and OpenAI formats)
+- **Run everything locally** with no external dependencies
 
 ## Key Features
 
-### Personal Use Benefits
-- **Your Claude Subscription**: Use your existing Claude subscription without additional API costs
-- **Local Privacy**: All processing happens on your computer - no data leaves your machine
-- **Dual API Compatibility**: Full support for both Anthropic and OpenAI API formats
-- **Multiple Proxy Modes**: Three transformation modes (Full, Minimal, Passthrough) for different use cases
-- **Streaming Support**: Real-time response streaming for both API formats
-- **Request Translation**: Seamless format conversion between OpenAI and Anthropic formats
-- **OAuth2 Authentication**: Secure authentication using your Claude account credentials
+### 🔐 Subscription-Based Access
+- Uses OAuth2 authentication with your existing Claude account
+- No API keys required - just login with your Claude credentials
+- Automatic token management and renewal
 
-### Security & Isolation Features
-- **Docker Isolation**: Secure containerized execution for Claude Code operations
-- **Local Execution**: No external data sharing or third-party services
-- **Auto-detection**: Smart Claude CLI path resolution and configuration
-- **Health Monitoring**: Built-in health checks and status endpoints
-- **Error Handling**: Comprehensive error handling with detailed error responses
-- **CORS Support**: Cross-origin request handling for local web applications
+### 🔄 Two Access Modes
 
-## Architecture
+#### Claude Code Mode (Default at `/`)
+- Processes requests through claude-code-sdk
+- Provides access to all Claude Code tools and features
+- Some limitations: no direct ToolCall support, limited model settings
 
-The application follows a layered architecture with clear separation of concerns:
+#### API Mode (at `/api/`)
+- Direct reverse proxy to api.anthropic.com
+- Full API feature access including ToolCall
+- Complete control over all model settings
+- Only adds necessary authentication headers
 
-```mermaid
-graph TB
-    Client[Client Applications]
+### 🌐 Universal Compatibility
+- **Anthropic API format** at `/v1/messages`
+- **OpenAI API format** at `/openai/v1/chat/completions`
+- Drop-in replacement for existing applications
+- Streaming support for real-time responses
 
-    subgraph "API Layer"
-        Anthropic[Anthropic Endpoints<br/>/v1/*]
-        OpenAI[OpenAI Endpoints<br/>/openai/v1/*]
-    end
+## Quick Start
 
-    subgraph "Service Layer"
-        ClaudeClient[Claude Client Service]
-        Translator[OpenAI Translator]
-        Streaming[Streaming Services]
-    end
+### 1. Install CCProxy
 
-    subgraph "Infrastructure"
-        CLI[Claude CLI]
-        Config[Configuration]
-        Health[Health Monitoring]
-    end
+```bash
+# Using pipx (recommended)
+pipx install git+https://github.com/CaddyGlow/claude-code-proxy-api.git
 
-    Client --> Anthropic
-    Client --> OpenAI
-    Anthropic --> ClaudeClient
-    OpenAI --> Translator
-    Translator --> ClaudeClient
-    ClaudeClient --> CLI
-    ClaudeClient --> Streaming
-    Config --> ClaudeClient
-    Health --> CLI
+# Or from source for development
+git clone https://github.com/CaddyGlow/claude-code-proxy-api.git
+cd claude-code-proxy-api
+uv sync
 ```
 
-## Documentation Structure
+### 2. Authenticate with Claude
 
-This documentation is organized into several sections:
+```bash
+# Login to your Claude account
+ccproxy auth login
 
-- **[Getting Started](getting-started/quickstart.md)**: Installation, configuration, and first steps
-- **[Configuration](getting-started/configuration.md)**: Personal setup and customization options
-- **[API Reference](api-reference/overview.md)**: Complete API endpoint documentation
-- **[Examples](examples/python-client.md)**: Practical usage examples in different languages
-- **[Architecture](developer-guide/architecture.md)**: System design and component overview
-- **[Docker Setup](deployment/overview.md)**: Containerized deployment for security and isolation
+# Verify authentication
+ccproxy auth validate
+```
 
-## Community and Support
+### 3. Start the Server
 
-- **Issues**: [GitHub Issues](https://github.com/CaddyGlow/claude-code-proxy-api/issues)
-- **Source Code**: [GitHub Repository](https://github.com/CaddyGlow/claude-code-proxy-api)
-- **Documentation**: [Project Documentation](https://caddyglow.github.io/claude-code-proxy-api)
+```bash
+# Start the proxy server
+ccproxy
+
+# Or with custom settings
+ccproxy --port 8080 --log-level DEBUG
+```
+
+### 4. Use with Your Applications
+
+```python
+# Example with Python
+from anthropic import Anthropic
+
+# Claude Code mode (default) - with all tools
+client = Anthropic(
+    base_url="http://localhost:8000",
+    api_key="dummy"  # Not used but required by SDK
+)
+
+# API mode - direct proxy for full control
+client = Anthropic(
+    base_url="http://localhost:8000/api",
+    api_key="dummy"
+)
+
+response = client.messages.create(
+    model="claude-3-5-sonnet-20241022",
+    messages=[{"role": "user", "content": "Hello!"}],
+    max_tokens=100
+)
+```
+
+## Why CCProxy?
+
+### 💰 Cost Savings
+- Use your existing Claude Pro/Team subscription
+- No separate API costs
+- Same powerful Claude models
+
+### 🔒 Privacy & Security
+- Runs entirely on your local machine
+- Your data never leaves your computer
+- Credentials stored securely locally
+
+### 🛠️ Developer Friendly
+- Compatible with existing Anthropic and OpenAI SDKs
+- No code changes needed in your applications
+- Just point to `localhost:8000`
+
+## Supported Models
+
+All models available to your Claude subscription:
+
+| Model | Description |
+|-------|-------------|
+| `claude-opus-4-20250514` | Claude 4 Opus (most capable) |
+| `claude-sonnet-4-20250514` | Claude 4 Sonnet (latest) |
+| `claude-3-7-sonnet-20250219` | Claude 3.7 Sonnet |
+| `claude-3-5-sonnet-20241022` | Claude 3.5 Sonnet |
+
+## How It Works
+
+```mermaid
+graph LR
+    A[Your App] -->|API Request| B[CCProxy]
+    B -->|OAuth2 Auth| C[claude-code-sdk]
+    C -->|Authenticated Request| D[api.anthropic.com]
+    D -->|Response| C
+    C -->|Response| B
+    B -->|API Response| A
+```
+
+1. Your application sends standard API requests to CCProxy
+2. CCProxy uses your Claude credentials via claude-code-sdk
+3. Requests are forwarded to api.anthropic.com with proper authentication
+4. Responses are returned to your application
+
+## Authentication
+
+### Initial Setup
+```bash
+# One-time authentication
+ccproxy auth login
+```
+
+### Managing Credentials
+```bash
+# Check status
+ccproxy auth validate
+
+# View details (auto-renews if expired)
+ccproxy auth info
+```
+
+## Next Steps
+
+- **[Quick Start Guide](getting-started/quickstart.md)** - Get up and running in minutes
+- **[Installation Options](getting-started/installation.md)** - Detailed installation instructions
+- **[API Usage](user-guide/api-usage.md)** - Learn about the two proxy modes
+- **[Examples](examples.md)** - See code examples for various use cases
+
+## Need Help?
+
+- **[Troubleshooting](getting-started/quickstart.md#troubleshooting)** - Common issues and solutions
+- **[GitHub Issues](https://github.com/CaddyGlow/claude-code-proxy-api/issues)** - Report bugs or request features
+- **[API Reference](api-reference.md)** - Complete endpoint documentation
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](https://github.com/CaddyGlow/claude-code-proxy-api/blob/main/LICENSE) file for details.
+This project is licensed under the MIT License. CCProxy is not affiliated with Anthropic. It's a community tool that helps you use your existing Claude subscription more effectively.

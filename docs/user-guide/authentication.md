@@ -2,7 +2,45 @@
 
 ## Overview
 
-The Claude Code Proxy API supports optional token authentication for securing access to the API endpoints. The proxy is designed to work seamlessly with the standard Anthropic and OpenAI client libraries without requiring any modifications.
+Claude Code Proxy API handles authentication in two layers:
+1. **Claude Authentication**: Your Claude subscription credentials for accessing Claude AI
+2. **API Authentication**: Optional token authentication for securing access to the proxy endpoints
+
+## Claude Authentication
+
+CCProxy uses your Claude subscription credentials. Manage them with these commands:
+
+### Login
+```bash
+ccproxy auth login
+```
+Opens a browser window for Claude authentication. Required for first-time setup.
+
+### Validate Credentials
+```bash
+ccproxy auth validate
+```
+Checks if your credentials are valid and shows:
+- Subscription status and type
+- Token expiration time
+- Available OAuth scopes
+
+### View Credential Info
+```bash
+ccproxy auth info
+```
+Displays detailed credential information and automatically renews the token if expired. Shows:
+- Account email and organization
+- File location of credentials
+- Token expiration and time remaining
+- Access token (partially masked)
+
+### Credential Storage
+Credentials are stored locally at `~/.claude/.credentials.json` and are automatically managed by CCProxy.
+
+## API Authentication (Optional)
+
+The proxy supports optional token authentication for securing access to the API endpoints. The proxy is designed to work seamlessly with the standard Anthropic and OpenAI client libraries without requiring any modifications.
 
 ## Why Multiple Authentication Formats?
 

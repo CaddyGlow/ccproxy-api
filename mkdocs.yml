@@ -1,5 +1,5 @@
 site_name: Claude Code Proxy API
-site_description: High-performance API server that provides Anthropic and OpenAI-compatible interfaces for Claude AI models
+site_description: A reverse proxy to api.anthropic.com that leverages your Claude subscription through the official claude-code-sdk
 site_url: https://caddyglow.github.io/claude-code-proxy-api
 repo_url: https://github.com/CaddyGlow/claude-code-proxy-api
 repo_name: CaddyGlow/claude-code-proxy-api
@@ -60,19 +60,9 @@ nav:
     - API Usage: user-guide/api-usage.md
     - MCP Integration: user-guide/mcp-integration.md
     - Authentication: user-guide/authentication.md
-    - Streaming: user-guide/streaming.md
-    - Error Handling: user-guide/error-handling.md
-  - API Reference:
-    - Overview: api-reference/overview.md
-    - Anthropic Endpoints: api-reference/anthropic.md
-    - OpenAI Endpoints: api-reference/openai.md
-    - Models: api-reference/models.md
-    - Health Check: api-reference/health.md
+  - API Reference: api-reference.md
+  - Examples: examples.md
   - Contributing: contributing.md
-  - Developer Guide:
-    - Architecture: developer-guide/architecture.md
-    - Development Setup: developer-guide/development.md
-    - Testing: developer-guide/testing.md
   - Code Reference:
     - Overview: reference/ccproxy/
     - API Modules: reference/ccproxy/routers/
@@ -83,11 +73,6 @@ nav:
     - Utilities: reference/ccproxy/utils/
     - Docker: reference/ccproxy/docker/
     - Middleware: reference/ccproxy/middleware/
-  - Examples:
-    - Python Client: examples/python-client.md
-    - curl Examples: examples/curl.md
-    - JavaScript: examples/javascript.md
-    - OpenAI SDK: examples/openai-sdk.md
 
 # Plugins
 plugins:

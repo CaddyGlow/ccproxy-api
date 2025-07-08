@@ -1,10 +1,10 @@
 # Claude Code Proxy API Server
 
-A personal API proxy server that enables you to use your existing Claude subscription through familiar API interfaces. This tool runs locally on your computer and leverages Claude OAuth2 authentication, allowing you to use your Claude subscription without paying for separate API access.
+CCProxy is a reverse proxy to *api.anthropic.com/v1/messages* that leverages your current Claude subscription. This server uses the official claude-code-sdk to process requests locally, allowing you to access Claude AI through standard API interfaces without separate API costs.
 
 ## Why Use This Tool?
 
-### Personal Access to Your Claude Subscription
+### Access to Your Claude Subscription
 - **Use Your Existing Subscription**: Leverage your Claude Pro or Team subscription instead of paying for API access
 - **OAuth2 Authentication**: Uses your existing Claude account authentication
 - **Local Execution**: Runs securely on your personal computer
@@ -16,22 +16,37 @@ A personal API proxy server that enables you to use your existing Claude subscri
 - **Streaming Support**: Real-time response streaming for both API formats
 - **Local Development**: Perfect for personal projects and local development
 
+## How It Works
+
+This proxy server provides two main access modes:
+
+### Claude Code Mode (Default at `/`)
+- Uses the official claude-code-sdk for request processing
+- **Advantages**: Access to all tools configured in Claude Code
+- **Limitations**: Cannot directly use ToolCall, limited model settings management
+
+### API Mode (`/api` prefix)
+- Direct reverse proxy to api.anthropic.com with header injection
+- **Advantages**: Full access to all API features and model settings
+- **Method**: Only injects necessary authentication headers and OAuth token
+
+Both modes leverage your existing Claude subscription without requiring separate API costs.
+
 ## Features
 
 ### Core Capabilities
-- **Claude OAuth2 Integration**: Uses your Claude account authentication through Claude Code SDK
-- **Personal API Server**: Runs locally on your computer (localhost)
+- **Reverse Proxy Architecture**: Routes requests to api.anthropic.com/v1/messages
+- **Claude OAuth2 Integration**: Uses your Claude account authentication
 - **Dual API Compatibility**: Supports both Anthropic and OpenAI API formats
 - **Request Translation**: Seamless format conversion between API types
 - **Streaming Support**: Real-time response streaming
-- **Docker Support**: Optional containerized execution for better isolation
+- **Two Access Modes**: Claude Code (with tools) or API (direct access)
 
 ### Security & Privacy
 - **Local Execution**: All processing happens on your computer
 - **No API Keys Required**: Uses your existing Claude subscription via OAuth2
 - **Secure Authentication**: Leverages Claude's official authentication system
 - **Optional API Authentication**: Bearer token protection for API endpoints
-- **Optional Isolation**: Docker support for sandboxed Claude Code execution
 
 ## Quick Start
 
@@ -39,7 +54,6 @@ A personal API proxy server that enables you to use your existing Claude subscri
 
 - Python 3.11 or higher
 - Claude account with an active subscription (Pro, Team, or Enterprise) or Anthropic API key
-- Claude Code CLI (will be set up automatically)
 
 ### The `ccproxy` Command
 
@@ -64,66 +78,47 @@ ccproxy claude --docker -- /status
 
 Choose the right command for your use case:
 
-#### `ccproxy api` - Production Ready
+#### `ccproxy` - API server
 ```bash
-# Start API server locally (production mode)
-ccproxy api
+# Start API server locally
+ccproxy
 
 # Start API server with Docker (production mode)
-ccproxy api --docker
+ccproxy --docker
 
 # Custom port and settings
-ccproxy api --port 8080 --host 0.0.0.0
+ccproxy --port 8080 --host 0.0.0.0
+
+# With debug log and reload for development
+ccproxy run --reload --port 8080 --log-level DEBUG
 ```
-
-**Best for:**
-- Production deployments
-- Stable, optimized performance
-- When you need maximum reliability
-
-#### `ccproxy run` - Balanced Development
-```bash
-# Start API server locally (balanced mode)
-ccproxy run
-
-# Start API server with Docker
-ccproxy run --docker
-
-# With reload for development
-ccproxy run --reload --port 8080
-```
-
-**Best for:**
-- General development work
-- Testing and debugging
-- When you need a balance of features and performance
-
-#### `ccproxy dev` - Full Development Features
-```bash
-# Start API server with full development features
-ccproxy dev
-
-# Development mode with Docker
-ccproxy dev --docker
-
-# Custom development settings
-ccproxy dev --reload --port 8080 --log-level DEBUG
-```
-
-**Best for:**
-- Active development and debugging
-- When you need hot-reload and detailed logging
-- Rapid iteration and testing
 
 ### Installation
 
+#### Install with pipx (Recommended)
+
+The easiest way to install ccproxy is using pipx, which installs it in an isolated environment:
+
+```bash
+# Install pipx if you haven't already
+python -m pip install --user pipx
+python -m pipx ensurepath
+
+# Install ccproxy
+pipx install git+https://github.com/CaddyGlow/claude-code-proxy-api.git
+```
+
+#### Install from source
+
 1. Clone the repository:
+
 ```bash
 git clone https://github.com/CaddyGlow/claude-code-proxy-api.git
 cd claude-code-proxy-api
 ```
 
-2. Install dependencies using uv (recommended):
+2. Install dependencies using uv:
+
 ```bash
 uv sync
 ```
@@ -133,40 +128,52 @@ Or using pip:
 pip install -e .
 ```
 
-3. Optional: Configure environment variables:
+### Authentication Setup
+
+CCProxy uses your Claude subscription credentials. You need to authenticate once:
+
+```bash
+# Login to Claude (required for first-time setup)
+ccproxy auth login
+```
+
+This will open a browser window for Claude authentication. Your credentials are securely stored locally.
+
+#### Verify Authentication
+
+```bash
+# Check credential status
+ccproxy auth validate
+```
+
+This shows your subscription status, expiration, and available scopes.
+
+```bash
+# Get detailed credential information
+ccproxy auth info
+```
+
+This displays full credential details and automatically renews the token if expired.
+
+### Configuration (Optional)
+
+Configure environment variables if needed:
+
 ```bash
 export PORT=8000  # Optional, defaults to 8000
 export LOG_LEVEL=INFO  # Optional, defaults to INFO
 ```
 
-### Running Your Personal Proxy
-
-```bash
-# Production mode (recommended for most users)
-ccproxy api
-
-# Development mode with auto-reload
-ccproxy run --reload
-
-# Full development mode with debugging
-ccproxy dev --log-level DEBUG
-
-# Using Docker for isolation
-ccproxy api --docker
-```
-
-The proxy will start on `http://localhost:8000` and automatically handle Claude authentication.
-
-## Using Your Personal Proxy
+## Usage
 
 ### With Your Existing Applications
 
-Once running, you can point any application that uses OpenAI or Anthropic APIs to your local proxy:
+Once running, you can point any application that uses OpenAI or Anthropic APIs sdk to your local proxy:
 
 **For OpenAI-compatible applications:**
 ```bash
 # Set base URL to your local proxy
-export OPENAI_BASE_URL="http://localhost:8000/openai/v1"
+export OPENAI_BASE_URL="http://localhost:8000/openai/"
 export OPENAI_API_KEY="dummy-key"  # Required by client libraries but not used
 ```
 
@@ -179,27 +186,26 @@ export ANTHROPIC_API_KEY="dummy-key"  # Required by client libraries but not use
 
 ### API Endpoints
 
-The proxy supports three transformation modes, each accessible via different URL prefixes:
+The proxy provides two main access modes:
 
-| Mode | URL Prefix | Description | Authentication |
-|------|------------|-------------|----------------|
-| **Full** | `/full/` or `/` | Complete Claude Code transformations | OAuth (Claude subscription), API key |
-| **Minimal** | `/min/` | Basic headers only | API key only |
-| **Passthrough** | `/pt/` | Minimal transformations | API key only |
+| Mode | URL Prefix | Description | Use Case |
+|------|------------|-------------|----------|
+| **Claude Code** | `/` or `/cc/` | Uses claude-code-sdk with all tools | When you need Claude Code features |
+| **API** | `/api/` | Direct proxy with header injection | When you need full API control |
 
-**Important**: OAuth credentials from Claude Code only work with full mode. Using `/min` or `/pt` with OAuth will result in an authentication error.
+All mode provide a compatibility interface with openai under `openai` like `/cc/openai`
 
 #### Anthropic-Compatible Endpoints
 
-**Messages (Full mode - OAuth compatible):**
+**Messages (Claude Code mode):**
 ```http
-POST /v1/messages
-POST /full/v1/messages
+POST /v1/messages      # Default route
+POST /cc/v1/messages   # Explicit Claude Code route
 ```
 
-**Messages (Minimal mode - API key only):**
+**Messages (API mode - direct proxy):**
 ```http
-POST /min/v1/messages
+POST /api/v1/messages
 ```
 
 **Example request:**
@@ -218,15 +224,15 @@ POST /min/v1/messages
 
 #### OpenAI-Compatible Endpoints
 
-**Chat Completions (Full mode - OAuth compatible):**
+**Chat Completions (Claude Code mode):**
 ```http
-POST /openai/v1/chat/completions
-POST /full/openai/v1/chat/completions
+POST /openai/v1/chat/completions       # Default route
+POST /cc/openai/v1/chat/completions    # Explicit Claude Code route
 ```
 
-**Chat Completions (Minimal mode - API key only):**
+**Chat Completions (API mode - direct proxy):**
 ```http
-POST /min/openai/v1/chat/completions
+POST /api/openai/v1/chat/completions
 ```
 
 Uses OpenAI format with automatic translation to Claude format.
@@ -246,7 +252,7 @@ GET /openai/v1/models
 
 ### Supported Models
 
-Your proxy supports all Claude models available to your subscription:
+It supports all Claude models available to your subscription:
 
 | Model | Description |
 |-------|-------------|
@@ -269,16 +275,30 @@ Your proxy supports all Claude models available to your subscription:
 | `LOG_LEVEL` | Logging level | `INFO` |
 | `AUTH_TOKEN` | Bearer token for API authentication (optional) | None |
 
+All the settings can be override using environment variable
+
 ### Claude Authentication
 
-The proxy automatically detects and uses Claude Code CLI for authentication:
-- First run will prompt for Claude login
-- Authentication is cached for subsequent uses
-- Works with all Claude subscription types
+CCProxy manages Claude authentication through the `ccproxy auth` commands:
+
+```bash
+# Initial login (opens browser)
+ccproxy auth login
+
+# Validate credentials
+ccproxy auth validate
+
+# View credential details (auto-renews if expired)
+ccproxy auth info
+```
+
+- Authentication is cached locally at `~/.claude/.credentials.json`
+- Tokens are automatically renewed when using `ccproxy auth info`
+- Works with all Claude subscription types (Pro, Team, Enterprise)
 
 ### API Authentication (Optional)
 
-For added security, you can enable token authentication for API access. The proxy supports multiple authentication header formats, allowing you to use the standard Anthropic and OpenAI libraries without modification.
+For added security, you can enable token authentication for your local API access. The proxy supports multiple authentication header formats, allowing you to use the standard Anthropic and OpenAI libraries without modification.
 
 #### Why Multiple Authentication Formats?
 
@@ -293,7 +313,7 @@ This means you can secure your proxy instance while still using the standard lib
 - **Anthropic Format**: `x-api-key: <token>` (takes precedence)
 - **OpenAI/Bearer Format**: `Authorization: Bearer <token>`
 
-All formats use the same configured `AUTH_TOKEN` value.
+All formats use the same configured token value.
 
 #### Generate Authentication Token
 
@@ -335,115 +355,25 @@ curl -H "Authorization: Bearer abc123xyz789..." \
 
 **Note:** The `/health` endpoint remains unprotected for monitoring purposes.
 
-### Optional Docker Isolation
-
-For enhanced security and isolation when running Claude Code:
-
-```bash
-# Build with Docker support
-docker build -t claude-code-proxy-api .
-
-# Run with Docker isolation
-docker run -p 8000:8000 -v ~/.claude:/root/.claude claude-code-proxy-api
 ```
 
 ## Usage Examples
 
-### Python with OpenAI Client
-
-```python
-from openai import OpenAI
-
-# OAuth Users (Claude Subscription) - Full mode
-client = OpenAI(
-    base_url="http://localhost:8000/openai/v1",
-    api_key="dummy"  # Ignored with OAuth
-)
-
-# API Key Users - Can use any mode
-client = OpenAI(
-    base_url="http://localhost:8000/min/openai/v1",  # Minimal mode
-    api_key="sk-ant-api03-..."  # Your Anthropic API key
-)
-
-response = client.chat.completions.create(
-    model="claude-3-5-sonnet-20241022",
-    messages=[{"role": "user", "content": "Hello!"}]
-)
-print(response.choices[0].message.content)
-```
-
-### Python with Anthropic Client
-
-```python
-from anthropic import Anthropic
-
-# OAuth Users (Claude Subscription) - Full mode
-client = Anthropic(
-    base_url="http://localhost:8000",
-    api_key="dummy"  # Ignored with OAuth
-)
-
-# API Key Users - Can use any mode
-client = Anthropic(
-    base_url="http://localhost:8000/min",  # Minimal mode
-    api_key="sk-ant-api03-..."  # Your Anthropic API key
-)
-
-response = client.messages.create(
-    model="claude-3-5-sonnet-20241022",
-    max_tokens=1000,
-    messages=[{"role": "user", "content": "Hello!"}]
-)
-print(response.content[0].text)
-```
-
-### Streaming Example
-
-```python
-from openai import OpenAI
-
-client = OpenAI(
-    base_url="http://localhost:8000/openai/v1",
-    api_key="dummy-key"
-)
-
-stream = client.chat.completions.create(
-    model="claude-sonnet-4-20250514",
-    messages=[{"role": "user", "content": "Tell me a story"}],
-    stream=True
-)
-
-for chunk in stream:
-    if chunk.choices[0].delta.content is not None:
-        print(chunk.choices[0].delta.content, end="")
-```
+(Examples are available)[exmaples/]
 
 ### curl Example
 
 ```bash
-# OAuth Users (Claude Subscription) - Full mode
+# Claude Code mode (default)
 curl -X POST http://localhost:8000/v1/messages \
   -H "Content-Type: application/json" \
   -d '{
     "model": "claude-3-5-sonnet-20241022",
     "messages": [{"role": "user", "content": "Hello!"}],
-    "max_tokens": 100
   }'
 
-# API Key Users - Full mode
-curl -X POST http://localhost:8000/v1/messages \
-  -H "x-api-key: sk-ant-api03-..." \
-  -H "Content-Type: application/json" \
-  -d '{
-    "model": "claude-3-5-sonnet-20241022",
-    "messages": [{"role": "user", "content": "Hello!"}],
-    "max_tokens": 100
-  }'
-
-# API Key Users - Minimal mode
-curl -X POST http://localhost:8000/min/v1/messages \
-  -H "x-api-key: sk-ant-api03-..." \
+# API mode - direct proxy, with all the models settings
+curl -X POST http://localhost:8000/api/v1/messages \
   -H "Content-Type: application/json" \
   -d '{
     "model": "claude-3-5-sonnet-20241022",
@@ -452,51 +382,24 @@ curl -X POST http://localhost:8000/min/v1/messages \
   }'
 ```
 
-## Development
-
-### Setup Development Environment
-
-```bash
-# Using devenv (recommended)
-devenv shell
-
-# Or using uv
-uv sync --group dev
-```
-
-### Code Quality
-
-```bash
-# Format code
-ruff format .
-
-# Lint code
-ruff check .
-
-# Type checking
-mypy .
-
-# Run tests
-pytest
 ```
 
 ## Troubleshooting
 
 ### Common Issues
 
-1. **OAuth with Wrong Mode**
+1. **Authentication Error**
    ```
-   Error: "system: This credential is only authorized for use with Claude Code and cannot be used for other API requests."
-   Cause: Using /min or /pt endpoints with OAuth credentials
-   Solution: Use full mode (/ or /full/) - OAuth only works with full mode
+   Error: Invalid authentication credentials
+   Solution: Ensure you're using the correct mode for your authentication method
    ```
 
 2. **Claude Authentication**
    ```
-   Error: Claude not authenticated
-   Solution: Run `claude auth login` or restart the proxy to trigger auth flow
+   Error: Claude not authenticated or credentials expired
+   Solution: Run `ccproxy auth login` to authenticate
+   Verify: Run `ccproxy auth validate` to check credential status
    ```
-
 3. **API Authentication**
    ```
    Error: 401 Unauthorized - Missing authentication token
@@ -517,40 +420,9 @@ pytest
    Solution: Check that your Claude subscription includes the requested model
    ```
 
-### Debug Mode
-
-Enable debug logging for troubleshooting:
-```bash
-export LOG_LEVEL=DEBUG
-python main.py
-```
-
-## Privacy & Security
-
-- **Local Only**: The proxy runs entirely on your computer
-- **No External APIs**: Uses your existing Claude subscription, no additional API costs
-- **Secure Authentication**: Uses Claude's official OAuth2 flow
-- **Optional API Authentication**: Bearer token authentication for API access
-- **Optional Isolation**: Docker support for sandboxed execution
-- **No Data Logging**: Conversations are not stored or logged by the proxy
-
-## Limitations
-
-- **Personal Use Only**: Designed for individual use, not multi-user scenarios
-- **Subscription Required**: Requires an active Claude subscription
-- **Local Access**: Accessible only from your computer (for security)
-- **Model Availability**: Limited to models available in your subscription
 
 ## Contributing
 
-1. Fork the repository
-2. Create a feature branch: `git checkout -b feature/your-feature`
-3. Make your changes and add tests
-4. Run the test suite: `pytest`
-5. Run code quality checks: `ruff check . && mypy .`
-6. Commit your changes: `git commit -am 'Add your feature'`
-7. Push to the branch: `git push origin feature/your-feature`
-8. Create a Pull Request
 
 ## License
 
@@ -564,18 +436,7 @@ Comprehensive documentation is available:
 - **[API Reference](https://caddyglow.github.io/claude-code-proxy-api/api-reference/overview/)** - Complete API documentation
 - **[Developer Guide](https://caddyglow.github.io/claude-code-proxy-api/developer-guide/architecture/)** - Architecture and development
 
-### Building Documentation Locally
 
-```bash
-# Install documentation dependencies
-make docs-install
-
-# Serve documentation locally with live reload
-make docs-serve
-
-# Build static documentation
-make docs-build
-```
 
 ## Support
 
