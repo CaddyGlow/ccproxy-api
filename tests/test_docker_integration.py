@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from claude_code_proxy.docker import (
+from ccproxy.docker import (
     DockerAdapter,
     DockerPath,
     DockerUserContext,
@@ -12,7 +12,7 @@ from claude_code_proxy.docker import (
     create_docker_error,
     validate_port_spec,
 )
-from claude_code_proxy.exceptions import DockerError
+from ccproxy.exceptions import DockerError
 
 
 class TestDockerPath:

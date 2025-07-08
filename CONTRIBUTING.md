@@ -165,7 +165,7 @@ The project uses [Bandit](https://bandit.readthedocs.io/) for security scanning:
 
 ```bash
 # Run security scan (currently disabled in pre-commit but available)
-uv run bandit -c pyproject.toml -r claude_code_proxy/
+uv run bandit -c pyproject.toml -r ccproxy/
 ```
 
 ### Security Guidelines

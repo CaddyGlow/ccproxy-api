@@ -7,8 +7,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 from typer.testing import CliRunner
 
-from claude_code_proxy.cli.commands.claude import claude
-from claude_code_proxy.config.settings import Settings
+from ccproxy.cli.commands.claude import claude
+from ccproxy.config.settings import Settings
 
 
 @pytest.fixture
@@ -42,8 +42,8 @@ def mock_settings():
 class TestClaudeCommand:
     """Test cases for the Claude command."""
 
-    @patch("claude_code_proxy.cli.commands.claude.config_manager")
-    @patch("claude_code_proxy.cli.commands.claude.os.execvp")
+    @patch("ccproxy.cli.commands.claude.config_manager")
+    @patch("ccproxy.cli.commands.claude.os.execvp")
     def test_claude_local_execution(
         self, mock_execvp, mock_config_manager, mock_settings
     ):
@@ -64,7 +64,7 @@ class TestClaudeCommand:
             "/usr/local/bin/claude", ["/usr/local/bin/claude", "--version"]
         )
 
-    @patch("claude_code_proxy.cli.commands.claude.config_manager")
+    @patch("ccproxy.cli.commands.claude.config_manager")
     def test_claude_no_cli_path(self, mock_config_manager):
         """Test claude command when CLI path is not configured."""
         mock_settings = MagicMock()
@@ -83,8 +83,8 @@ class TestClaudeCommand:
         assert result.exit_code == 1
         assert "Claude CLI not found" in result.output
 
-    @patch("claude_code_proxy.cli.commands.claude.config_manager")
-    @patch("claude_code_proxy.cli.commands.claude.create_docker_adapter")
+    @patch("ccproxy.cli.commands.claude.config_manager")
+    @patch("ccproxy.cli.commands.claude.create_docker_adapter")
     def test_claude_docker_execution(
         self, mock_docker_adapter, mock_config_manager, mock_settings
     ):
@@ -113,8 +113,8 @@ class TestClaudeCommand:
         command = call_args.kwargs["command"]
         assert command == ["claude", "--version"]
 
-    @patch("claude_code_proxy.cli.commands.claude.config_manager")
-    @patch("claude_code_proxy.cli.commands.claude.create_docker_adapter")
+    @patch("ccproxy.cli.commands.claude.config_manager")
+    @patch("ccproxy.cli.commands.claude.create_docker_adapter")
     def test_claude_docker_with_custom_image(
         self, mock_docker_adapter, mock_config_manager, mock_settings
     ):
@@ -139,8 +139,8 @@ class TestClaudeCommand:
         assert call_args.kwargs["image"] == "custom:v2"
         assert call_args.kwargs["command"] == ["claude", "doctor"]
 
-    @patch("claude_code_proxy.cli.commands.claude.config_manager")
-    @patch("claude_code_proxy.cli.commands.claude.create_docker_adapter")
+    @patch("ccproxy.cli.commands.claude.config_manager")
+    @patch("ccproxy.cli.commands.claude.create_docker_adapter")
     def test_claude_docker_with_volumes_and_env(
         self, mock_docker_adapter, mock_config_manager, mock_settings, tmp_path
     ):
@@ -185,8 +185,8 @@ class TestClaudeCommand:
         assert "CLAUDE_API_KEY" in environment
         assert environment["CLAUDE_API_KEY"] == "sk-123"
 
-    @patch("claude_code_proxy.cli.commands.claude.config_manager")
-    @patch("claude_code_proxy.cli.commands.claude.create_docker_adapter")
+    @patch("ccproxy.cli.commands.claude.config_manager")
+    @patch("ccproxy.cli.commands.claude.create_docker_adapter")
     def test_claude_docker_with_user_mapping(
         self, mock_docker_adapter, mock_config_manager, mock_settings
     ):
@@ -224,8 +224,8 @@ class TestClaudeCommand:
         assert user_context.uid == 1000
         assert user_context.gid == 1000
 
-    @patch("claude_code_proxy.cli.commands.claude.config_manager")
-    @patch("claude_code_proxy.cli.commands.claude.os.execvp")
+    @patch("ccproxy.cli.commands.claude.config_manager")
+    @patch("ccproxy.cli.commands.claude.os.execvp")
     def test_claude_with_multiple_args(
         self, mock_execvp, mock_config_manager, mock_settings
     ):
@@ -255,7 +255,7 @@ class TestClaudeCommand:
             ],
         )
 
-    @patch("claude_code_proxy.cli.commands.claude.config_manager")
+    @patch("ccproxy.cli.commands.claude.config_manager")
     def test_claude_no_args(self, mock_config_manager, mock_settings):
         """Test claude command with no arguments."""
         mock_config_manager.load_settings.return_value = mock_settings
@@ -266,7 +266,7 @@ class TestClaudeCommand:
         app = Typer()
         app.command()(claude)
 
-        with patch("claude_code_proxy.cli.commands.claude.os.execvp") as mock_execvp:
+        with patch("ccproxy.cli.commands.claude.os.execvp") as mock_execvp:
             runner = CliRunner()
             result = runner.invoke(app, [])
 
@@ -275,10 +275,10 @@ class TestClaudeCommand:
                 "/usr/local/bin/claude", ["/usr/local/bin/claude"]
             )
 
-    @patch("claude_code_proxy.cli.commands.claude.config_manager")
-    @patch("claude_code_proxy.cli.commands.claude.Path.is_absolute")
-    @patch("claude_code_proxy.cli.commands.claude.Path.resolve")
-    @patch("claude_code_proxy.cli.commands.claude.os.execvp")
+    @patch("ccproxy.cli.commands.claude.config_manager")
+    @patch("ccproxy.cli.commands.claude.Path.is_absolute")
+    @patch("ccproxy.cli.commands.claude.Path.resolve")
+    @patch("ccproxy.cli.commands.claude.os.execvp")
     def test_claude_relative_path_resolution(
         self, mock_execvp, mock_resolve, mock_is_absolute, mock_config_manager
     ):
@@ -303,10 +303,10 @@ class TestClaudeCommand:
             "/usr/local/bin/claude", ["/usr/local/bin/claude", "--version"]
         )
 
-    @patch("claude_code_proxy.cli.commands.claude.config_manager")
+    @patch("ccproxy.cli.commands.claude.config_manager")
     def test_claude_configuration_error(self, mock_config_manager):
         """Test claude command with configuration error."""
-        from claude_code_proxy.config.settings import ConfigurationError
+        from ccproxy.config.settings import ConfigurationError
 
         mock_config_manager.load_settings.side_effect = ConfigurationError(
             "Invalid config"
@@ -324,8 +324,8 @@ class TestClaudeCommand:
         assert result.exit_code == 1
         assert "Configuration error" in result.output
 
-    @patch("claude_code_proxy.cli.commands.claude.config_manager")
-    @patch("claude_code_proxy.cli.commands.claude.os.execvp")
+    @patch("ccproxy.cli.commands.claude.config_manager")
+    @patch("ccproxy.cli.commands.claude.os.execvp")
     def test_claude_os_error(self, mock_execvp, mock_config_manager, mock_settings):
         """Test claude command with OS error during execution."""
         mock_config_manager.load_settings.return_value = mock_settings

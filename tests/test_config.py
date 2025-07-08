@@ -8,8 +8,8 @@ from unittest.mock import patch
 
 import pytest
 
-from claude_code_proxy.config import Settings, get_settings
-from claude_code_proxy.utils import find_toml_config_file
+from ccproxy.config import Settings, get_settings
+from ccproxy.utils import find_toml_config_file
 
 
 @pytest.mark.unit
@@ -314,9 +314,7 @@ class TestTOMLConfiguration:
 
     def test_from_toml_auto_discovery(self):
         """Test auto-discovery of TOML configuration files."""
-        with patch(
-            "claude_code_proxy.config.settings.find_toml_config_file"
-        ) as mock_find:
+        with patch("ccproxy.config.settings.find_toml_config_file") as mock_find:
             # Test when no config file is found
             mock_find.return_value = None
             settings = Settings.from_toml()
@@ -379,7 +377,7 @@ class TestTOMLConfiguration:
 
             try:
                 with patch(
-                    "claude_code_proxy.config.settings.find_toml_config_file",
+                    "ccproxy.config.settings.find_toml_config_file",
                     return_value=Path(f.name),
                 ):
                     settings = get_settings()
@@ -450,7 +448,7 @@ class TestTOMLConfigDiscovery:
             try:
                 os.chdir(temp_dir)
                 with patch(
-                    "claude_code_proxy.utils.config.get_ccproxy_config_dir",
+                    "ccproxy.utils.config.get_ccproxy_config_dir",
                     return_value=xdg_config,
                 ):
                     found_config = find_toml_config_file()
@@ -484,7 +482,7 @@ class TestTOMLConfigDiscovery:
 
             try:
                 with patch(
-                    "claude_code_proxy.utils.config.get_ccproxy_config_dir",
+                    "ccproxy.utils.config.get_ccproxy_config_dir",
                     return_value=xdg_config_dir,
                 ):
                     # Should find current directory first
@@ -516,11 +514,11 @@ class TestTOMLConfigDiscovery:
             try:
                 with (
                     patch(
-                        "claude_code_proxy.utils.config.get_ccproxy_config_dir",
+                        "ccproxy.utils.config.get_ccproxy_config_dir",
                         return_value=Path(temp_dir) / ".config" / "ccproxy",
                     ),
                     patch(
-                        "claude_code_proxy.utils.config.find_git_root",
+                        "ccproxy.utils.config.find_git_root",
                         return_value=None,
                     ),
                 ):
@@ -536,7 +534,7 @@ class TestDockerSettingsUserMapping:
 
     def test_docker_settings_default_user_mapping(self):
         """Test default user mapping settings."""
-        from claude_code_proxy.config.docker_settings import DockerSettings
+        from ccproxy.config.docker_settings import DockerSettings
 
         settings = DockerSettings()
 
@@ -551,7 +549,7 @@ class TestDockerSettingsUserMapping:
 
     def test_docker_settings_explicit_user_mapping(self):
         """Test explicit user mapping configuration."""
-        from claude_code_proxy.config.docker_settings import DockerSettings
+        from ccproxy.config.docker_settings import DockerSettings
 
         settings = DockerSettings(
             user_mapping_enabled=True,
@@ -565,7 +563,7 @@ class TestDockerSettingsUserMapping:
 
     def test_docker_settings_disabled_user_mapping(self):
         """Test disabled user mapping configuration."""
-        from claude_code_proxy.config.docker_settings import DockerSettings
+        from ccproxy.config.docker_settings import DockerSettings
 
         settings = DockerSettings(
             user_mapping_enabled=False,
@@ -579,7 +577,7 @@ class TestDockerSettingsUserMapping:
 
     def test_docker_settings_user_mapping_validation(self):
         """Test user mapping UID/GID validation."""
-        from claude_code_proxy.config.docker_settings import DockerSettings
+        from ccproxy.config.docker_settings import DockerSettings
 
         # Test valid UID/GID values
         settings = DockerSettings(user_uid=0, user_gid=0)
@@ -602,7 +600,7 @@ class TestDockerSettingsUserMapping:
     @patch("os.getgid", return_value=5678)
     def test_docker_settings_auto_detection_unix(self, mock_getgid, mock_getuid):
         """Test auto-detection of UID/GID on Unix systems."""
-        from claude_code_proxy.config.docker_settings import DockerSettings
+        from ccproxy.config.docker_settings import DockerSettings
 
         settings = DockerSettings(
             user_mapping_enabled=True,
@@ -618,7 +616,7 @@ class TestDockerSettingsUserMapping:
     @patch("os.name", "nt")  # Windows
     def test_docker_settings_auto_detection_windows(self):
         """Test user mapping behavior on Windows systems."""
-        from claude_code_proxy.config.docker_settings import DockerSettings
+        from ccproxy.config.docker_settings import DockerSettings
 
         with patch("os.name", "nt"):
             settings = DockerSettings(
@@ -635,7 +633,7 @@ class TestDockerSettingsUserMapping:
     @patch("os.getgid", return_value=888)
     def test_docker_settings_partial_auto_detection(self, mock_getgid, mock_getuid):
         """Test partial auto-detection when only one of UID/GID is set."""
-        from claude_code_proxy.config.docker_settings import DockerSettings
+        from ccproxy.config.docker_settings import DockerSettings
 
         # Only UID set, GID should be auto-detected
         settings = DockerSettings(
@@ -695,7 +693,7 @@ class TestDockerSettingsUserMapping:
         try:
             # Environment variables for docker settings need to be prefixed
             # or tested through full settings loading
-            from claude_code_proxy.config.docker_settings import DockerSettings
+            from ccproxy.config.docker_settings import DockerSettings
 
             # Test direct construction with the values
             settings = DockerSettings(
@@ -933,7 +931,7 @@ class TestYAMLConfigSupport:
             try:
                 # Mock the HAS_YAML flag
                 with (
-                    patch("claude_code_proxy.config.settings.HAS_YAML", False),
+                    patch("ccproxy.config.settings.HAS_YAML", False),
                     pytest.raises(ValueError, match="YAML support is not available"),
                 ):
                     Settings.load_yaml_config(Path(f.name))

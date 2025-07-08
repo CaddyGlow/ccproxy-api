@@ -1,4 +1,4 @@
-"""Tests for claude_code_proxy.routers module."""
+"""Tests for ccproxy.routers module."""
 
 import importlib.util
 import sys
@@ -10,17 +10,12 @@ import pytest
 
 @pytest.mark.unit
 class TestRoutersInit:
-    """Tests for claude_code_proxy.routers.__init__ module."""
+    """Tests for ccproxy.routers.__init__ module."""
 
     def test_module_docstring(self) -> None:
         """Test that the module has the expected docstring."""
         # Read the __init__.py file directly to test its contents
-        init_path = (
-            Path(__file__).parent.parent
-            / "claude_code_proxy"
-            / "routers"
-            / "__init__.py"
-        )
+        init_path = Path(__file__).parent.parent / "ccproxy" / "routers" / "__init__.py"
         content = init_path.read_text()
 
         # Verify the module docstring exists
@@ -29,12 +24,7 @@ class TestRoutersInit:
     def test_import_statement_exists(self) -> None:
         """Test that the import statement for chat router exists."""
         # Read the __init__.py file directly to test its contents
-        init_path = (
-            Path(__file__).parent.parent
-            / "claude_code_proxy"
-            / "routers"
-            / "__init__.py"
-        )
+        init_path = Path(__file__).parent.parent / "ccproxy" / "routers" / "__init__.py"
         content = init_path.read_text()
 
         # Verify the import statement exists (line 3)
@@ -43,12 +33,7 @@ class TestRoutersInit:
     def test_all_definition(self) -> None:
         """Test that __all__ is defined with the expected content."""
         # Read the __init__.py file directly to test its contents
-        init_path = (
-            Path(__file__).parent.parent
-            / "claude_code_proxy"
-            / "routers"
-            / "__init__.py"
-        )
+        init_path = Path(__file__).parent.parent / "ccproxy" / "routers" / "__init__.py"
         content = init_path.read_text()
 
         # Verify __all__ is defined (line 6)
@@ -68,21 +53,14 @@ class TestRoutersInit:
         with patch.dict(
             "sys.modules",
             {
-                "claude_code_proxy.routers.anthropic": MagicMock(
-                    router=mock_anthropic_router
-                ),
-                "claude_code_proxy.routers.openai": MagicMock(
-                    router=mock_openai_router
-                ),
+                "ccproxy.routers.anthropic": MagicMock(router=mock_anthropic_router),
+                "ccproxy.routers.openai": MagicMock(router=mock_openai_router),
             },
         ):
             # Now we can safely import the routers module
             spec = importlib.util.spec_from_file_location(
-                "claude_code_proxy.routers",
-                Path(__file__).parent.parent
-                / "claude_code_proxy"
-                / "routers"
-                / "__init__.py",
+                "ccproxy.routers",
+                Path(__file__).parent.parent / "ccproxy" / "routers" / "__init__.py",
             )
             assert spec is not None
             module = importlib.util.module_from_spec(spec)
@@ -104,12 +82,7 @@ class TestRoutersInit:
     def test_module_attributes_structure(self) -> None:
         """Test the structure of the module without importing dependencies."""
         # This tests the static structure of the module
-        init_path = (
-            Path(__file__).parent.parent
-            / "claude_code_proxy"
-            / "routers"
-            / "__init__.py"
-        )
+        init_path = Path(__file__).parent.parent / "ccproxy" / "routers" / "__init__.py"
         lines = init_path.read_text().splitlines()
 
         # Test specific lines to ensure coverage of lines 3-6

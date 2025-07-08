@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from typer.testing import CliRunner
 
-from claude_code_proxy.cli.commands.auth import app
+from ccproxy.cli.commands.auth import app
 
 
 class TestAuthCommands:
@@ -15,7 +15,7 @@ class TestAuthCommands:
         """Set up test fixtures."""
         self.runner = CliRunner()
 
-    @patch("claude_code_proxy.cli.commands.auth.get_credentials_manager")
+    @patch("ccproxy.cli.commands.auth.get_credentials_manager")
     def test_validate_command_success(self, mock_get_manager):
         """Test successful credential validation."""
         future_time = datetime.now(UTC) + timedelta(days=7)
@@ -39,7 +39,7 @@ class TestAuthCommands:
         assert "max" in result.stdout
         assert "Valid Claude credentials found" in result.stdout
 
-    @patch("claude_code_proxy.cli.commands.auth.get_credentials_manager")
+    @patch("ccproxy.cli.commands.auth.get_credentials_manager")
     def test_validate_command_expired(self, mock_get_manager):
         """Test validation with expired credentials."""
         past_time = datetime.now(UTC) - timedelta(days=1)
@@ -63,7 +63,7 @@ class TestAuthCommands:
         assert "pro" in result.stdout
         assert "credentials found but expired" in result.stdout
 
-    @patch("claude_code_proxy.cli.commands.auth.get_credentials_manager")
+    @patch("ccproxy.cli.commands.auth.get_credentials_manager")
     def test_validate_command_not_found(self, mock_get_manager):
         """Test validation when credentials not found."""
         mock_manager = MagicMock()
@@ -81,7 +81,7 @@ class TestAuthCommands:
         assert "No credentials file found" in result.stdout
         assert "claude login" in result.stdout
 
-    @patch("claude_code_proxy.cli.commands.auth.get_credentials_manager")
+    @patch("ccproxy.cli.commands.auth.get_credentials_manager")
     def test_validate_command_error(self, mock_get_manager):
         """Test validation with exception."""
         mock_manager = MagicMock()
@@ -93,12 +93,12 @@ class TestAuthCommands:
         assert result.exit_code == 1
         assert "Error validating credentials" in result.output
 
-    @patch("claude_code_proxy.cli.commands.auth.get_credentials_manager")
+    @patch("ccproxy.cli.commands.auth.get_credentials_manager")
     def test_info_command_success(self, mock_get_manager):
         """Test info command with valid credentials."""
         from pathlib import Path
 
-        from claude_code_proxy.services.credentials import ClaudeCredentials, OAuthToken
+        from ccproxy.services.credentials import ClaudeCredentials, OAuthToken
 
         future_time = datetime.now(UTC) + timedelta(days=7)
         future_ms = int(future_time.timestamp() * 1000)
@@ -130,7 +130,7 @@ class TestAuthCommands:
         assert "No" in result.stdout  # Not expired
         assert "test-acc...ery-long" in result.stdout  # Token preview
 
-    @patch("claude_code_proxy.cli.commands.auth.get_credentials_manager")
+    @patch("ccproxy.cli.commands.auth.get_credentials_manager")
     def test_info_command_not_found(self, mock_get_manager):
         """Test info command when credentials not found."""
         mock_manager = MagicMock()
@@ -143,7 +143,7 @@ class TestAuthCommands:
         assert "No credential file found" in result.output
         assert "Expected locations:" in result.stdout
 
-    @patch("claude_code_proxy.cli.commands.auth.get_credentials_manager")
+    @patch("ccproxy.cli.commands.auth.get_credentials_manager")
     def test_info_command_load_error(self, mock_get_manager):
         """Test info command with load error."""
         from pathlib import Path

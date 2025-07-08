@@ -1,5 +1,5 @@
 [project]
-name = "claude-code-proxy-api"
+name = "ccproxy"
 # version = "0.1.0"
 dynamic = ["version"]
 description = "API server that provides an Anthropic and OpenAI compatible interface over Claude Code, allowing to use your Claude OAuth account or over the API."
@@ -33,13 +33,13 @@ build-backend = "hatchling.build"
 source = "vcs"
 
 [tool.hatch.build.hooks.vcs]
-version-file = "claude_code_proxy/_version.py"
+version-file = "ccproxy/_version.py"
 
 [tool.hatch.build.targets.wheel]
-packages = ["claude_code_proxy"]
+packages = ["ccproxy"]
 
 [project.scripts]
-ccproxy = "claude_code_proxy.cli:app"
+ccproxy = "ccproxy.cli:app"
 
 [dependency-groups]
 dev = [
@@ -71,7 +71,7 @@ docs = [
 schema = ["pydantic>=2.8.0", "check-jsonschema>=0.33.2"]
 
 [tool.coverage.run]
-include = ["claude_code_proxy", "tests"]
+include = ["ccproxy", "tests"]
 
 [tool.coverage.report]
 exclude_lines = [
@@ -124,7 +124,7 @@ quote-style = "double"
 indent-style = "space"
 
 [tool.ruff.lint.isort]
-known-first-party = ["claude_code_proxy"]
+known-first-party = ["ccproxy"]
 force-single-line = false
 lines-after-imports = 2
 
@@ -236,7 +236,7 @@ legacy_tox_ini = """
   """
 
 [tool.setuptools.packages.find]
-include = ["claude_code_proxy*"]
+include = ["ccproxy*"]
 
 [tool.uv]
 package = true

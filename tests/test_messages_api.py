@@ -1,4 +1,4 @@
-"""Tests for claude_code_proxy/routers/anthropic.py - Messages API endpoint."""
+"""Tests for ccproxy/routers/anthropic.py - Messages API endpoint."""
 
 import json
 import uuid
@@ -11,22 +11,22 @@ from fastapi import HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import ValidationError
 
-from claude_code_proxy.exceptions import (
+from ccproxy.exceptions import (
     ClaudeProxyError,
     ModelNotFoundError,
     ServiceUnavailableError,
     TimeoutError,
 )
-from claude_code_proxy.exceptions import (
+from ccproxy.exceptions import (
     ValidationError as ProxyValidationError,
 )
-from claude_code_proxy.models.messages import (
+from ccproxy.models.messages import (
     MessageRequest,
     MessageResponse,
     SystemMessage,
 )
-from claude_code_proxy.models.requests import Message
-from claude_code_proxy.routers.anthropic import create_message
+from ccproxy.models.requests import Message
+from ccproxy.routers.anthropic import create_message
 
 
 class TestCreateMessage:
@@ -125,16 +125,12 @@ class TestCreateMessage:
         """Test successful non-streaming message creation."""
         with (
             patch(
-                "claude_code_proxy.routers.anthropic.get_settings",
+                "ccproxy.routers.anthropic.get_settings",
                 return_value=mock_settings,
             ),
-            patch(
-                "claude_code_proxy.routers.anthropic.ClaudeClient"
-            ) as mock_client_class,
-            patch(
-                "claude_code_proxy.routers.anthropic.merge_claude_code_options"
-            ) as mock_merge,
-            patch("claude_code_proxy.routers.anthropic.uuid.uuid4") as mock_uuid,
+            patch("ccproxy.routers.anthropic.ClaudeClient") as mock_client_class,
+            patch("ccproxy.routers.anthropic.merge_claude_code_options") as mock_merge,
+            patch("ccproxy.routers.anthropic.uuid.uuid4") as mock_uuid,
         ):
             # Setup mocks
             mock_uuid.return_value.hex = "abcdef123456"
@@ -184,15 +180,11 @@ class TestCreateMessage:
         """Test message creation with system string."""
         with (
             patch(
-                "claude_code_proxy.routers.anthropic.get_settings",
+                "ccproxy.routers.anthropic.get_settings",
                 return_value=mock_settings,
             ),
-            patch(
-                "claude_code_proxy.routers.anthropic.ClaudeClient"
-            ) as mock_client_class,
-            patch(
-                "claude_code_proxy.routers.anthropic.merge_claude_code_options"
-            ) as mock_merge,
+            patch("ccproxy.routers.anthropic.ClaudeClient") as mock_client_class,
+            patch("ccproxy.routers.anthropic.merge_claude_code_options") as mock_merge,
         ):
             mock_client = MagicMock()
             mock_client.create_completion = AsyncMock(return_value=mock_claude_response)
@@ -226,15 +218,11 @@ class TestCreateMessage:
         """Test message creation with system message blocks."""
         with (
             patch(
-                "claude_code_proxy.routers.anthropic.get_settings",
+                "ccproxy.routers.anthropic.get_settings",
                 return_value=mock_settings,
             ),
-            patch(
-                "claude_code_proxy.routers.anthropic.ClaudeClient"
-            ) as mock_client_class,
-            patch(
-                "claude_code_proxy.routers.anthropic.merge_claude_code_options"
-            ) as mock_merge,
+            patch("ccproxy.routers.anthropic.ClaudeClient") as mock_client_class,
+            patch("ccproxy.routers.anthropic.merge_claude_code_options") as mock_merge,
         ):
             mock_client = MagicMock()
             mock_client.create_completion = AsyncMock(return_value=mock_claude_response)
@@ -270,15 +258,11 @@ class TestCreateMessage:
         """Test message creation with max_thinking_tokens."""
         with (
             patch(
-                "claude_code_proxy.routers.anthropic.get_settings",
+                "ccproxy.routers.anthropic.get_settings",
                 return_value=mock_settings,
             ),
-            patch(
-                "claude_code_proxy.routers.anthropic.ClaudeClient"
-            ) as mock_client_class,
-            patch(
-                "claude_code_proxy.routers.anthropic.merge_claude_code_options"
-            ) as mock_merge,
+            patch("ccproxy.routers.anthropic.ClaudeClient") as mock_client_class,
+            patch("ccproxy.routers.anthropic.merge_claude_code_options") as mock_merge,
         ):
             mock_client = MagicMock()
             mock_client.create_completion = AsyncMock(return_value=mock_claude_response)
@@ -313,19 +297,15 @@ class TestCreateMessage:
         """Test successful streaming message creation."""
         with (
             patch(
-                "claude_code_proxy.routers.anthropic.get_settings",
+                "ccproxy.routers.anthropic.get_settings",
                 return_value=mock_settings,
             ),
+            patch("ccproxy.routers.anthropic.ClaudeClient") as mock_client_class,
+            patch("ccproxy.routers.anthropic.merge_claude_code_options") as mock_merge,
             patch(
-                "claude_code_proxy.routers.anthropic.ClaudeClient"
-            ) as mock_client_class,
-            patch(
-                "claude_code_proxy.routers.anthropic.merge_claude_code_options"
-            ) as mock_merge,
-            patch(
-                "claude_code_proxy.routers.anthropic.stream_anthropic_message_response"
+                "ccproxy.routers.anthropic.stream_anthropic_message_response"
             ) as mock_stream,
-            patch("claude_code_proxy.routers.anthropic.uuid.uuid4") as mock_uuid,
+            patch("ccproxy.routers.anthropic.uuid.uuid4") as mock_uuid,
         ):
             # Setup mocks
             mock_uuid.return_value.hex = "streaming123"
@@ -389,15 +369,11 @@ class TestCreateMessage:
         """Test streaming with invalid iterator from Claude client."""
         with (
             patch(
-                "claude_code_proxy.routers.anthropic.get_settings",
+                "ccproxy.routers.anthropic.get_settings",
                 return_value=mock_settings,
             ),
-            patch(
-                "claude_code_proxy.routers.anthropic.ClaudeClient"
-            ) as mock_client_class,
-            patch(
-                "claude_code_proxy.routers.anthropic.merge_claude_code_options"
-            ) as mock_merge,
+            patch("ccproxy.routers.anthropic.ClaudeClient") as mock_client_class,
+            patch("ccproxy.routers.anthropic.merge_claude_code_options") as mock_merge,
         ):
             mock_client = MagicMock()
             # Return a non-async iterator (invalid)
@@ -430,15 +406,11 @@ class TestCreateMessage:
         """Test non-streaming with invalid response type."""
         with (
             patch(
-                "claude_code_proxy.routers.anthropic.get_settings",
+                "ccproxy.routers.anthropic.get_settings",
                 return_value=mock_settings,
             ),
-            patch(
-                "claude_code_proxy.routers.anthropic.ClaudeClient"
-            ) as mock_client_class,
-            patch(
-                "claude_code_proxy.routers.anthropic.merge_claude_code_options"
-            ) as mock_merge,
+            patch("ccproxy.routers.anthropic.ClaudeClient") as mock_client_class,
+            patch("ccproxy.routers.anthropic.merge_claude_code_options") as mock_merge,
         ):
             mock_client = MagicMock()
             # Return a non-dict response (invalid)
@@ -462,17 +434,13 @@ class TestCreateMessage:
         """Test handling of ClaudeProxyError."""
         with (
             patch(
-                "claude_code_proxy.routers.anthropic.get_settings",
+                "ccproxy.routers.anthropic.get_settings",
                 return_value=mock_settings,
             ),
+            patch("ccproxy.routers.anthropic.ClaudeClient") as mock_client_class,
+            patch("ccproxy.routers.anthropic.merge_claude_code_options") as mock_merge,
             patch(
-                "claude_code_proxy.routers.anthropic.ClaudeClient"
-            ) as mock_client_class,
-            patch(
-                "claude_code_proxy.routers.anthropic.merge_claude_code_options"
-            ) as mock_merge,
-            patch(
-                "claude_code_proxy.routers.anthropic.create_error_response"
+                "ccproxy.routers.anthropic.create_error_response"
             ) as mock_create_error,
         ):
             mock_client = MagicMock()
@@ -498,17 +466,13 @@ class TestCreateMessage:
         """Test handling of ModelNotFoundError."""
         with (
             patch(
-                "claude_code_proxy.routers.anthropic.get_settings",
+                "ccproxy.routers.anthropic.get_settings",
                 return_value=mock_settings,
             ),
+            patch("ccproxy.routers.anthropic.ClaudeClient") as mock_client_class,
+            patch("ccproxy.routers.anthropic.merge_claude_code_options") as mock_merge,
             patch(
-                "claude_code_proxy.routers.anthropic.ClaudeClient"
-            ) as mock_client_class,
-            patch(
-                "claude_code_proxy.routers.anthropic.merge_claude_code_options"
-            ) as mock_merge,
-            patch(
-                "claude_code_proxy.routers.anthropic.create_error_response"
+                "ccproxy.routers.anthropic.create_error_response"
             ) as mock_create_error,
         ):
             mock_client = MagicMock()
@@ -533,17 +497,13 @@ class TestCreateMessage:
         """Test handling of ServiceUnavailableError."""
         with (
             patch(
-                "claude_code_proxy.routers.anthropic.get_settings",
+                "ccproxy.routers.anthropic.get_settings",
                 return_value=mock_settings,
             ),
+            patch("ccproxy.routers.anthropic.ClaudeClient") as mock_client_class,
+            patch("ccproxy.routers.anthropic.merge_claude_code_options") as mock_merge,
             patch(
-                "claude_code_proxy.routers.anthropic.ClaudeClient"
-            ) as mock_client_class,
-            patch(
-                "claude_code_proxy.routers.anthropic.merge_claude_code_options"
-            ) as mock_merge,
-            patch(
-                "claude_code_proxy.routers.anthropic.create_error_response"
+                "ccproxy.routers.anthropic.create_error_response"
             ) as mock_create_error,
         ):
             mock_client = MagicMock()
@@ -568,17 +528,13 @@ class TestCreateMessage:
         """Test handling of TimeoutError."""
         with (
             patch(
-                "claude_code_proxy.routers.anthropic.get_settings",
+                "ccproxy.routers.anthropic.get_settings",
                 return_value=mock_settings,
             ),
+            patch("ccproxy.routers.anthropic.ClaudeClient") as mock_client_class,
+            patch("ccproxy.routers.anthropic.merge_claude_code_options") as mock_merge,
             patch(
-                "claude_code_proxy.routers.anthropic.ClaudeClient"
-            ) as mock_client_class,
-            patch(
-                "claude_code_proxy.routers.anthropic.merge_claude_code_options"
-            ) as mock_merge,
-            patch(
-                "claude_code_proxy.routers.anthropic.create_error_response"
+                "ccproxy.routers.anthropic.create_error_response"
             ) as mock_create_error,
         ):
             mock_client = MagicMock()
@@ -603,17 +559,13 @@ class TestCreateMessage:
         """Test handling of ValidationError."""
         with (
             patch(
-                "claude_code_proxy.routers.anthropic.get_settings",
+                "ccproxy.routers.anthropic.get_settings",
                 return_value=mock_settings,
             ),
+            patch("ccproxy.routers.anthropic.ClaudeClient") as mock_client_class,
+            patch("ccproxy.routers.anthropic.merge_claude_code_options") as mock_merge,
             patch(
-                "claude_code_proxy.routers.anthropic.ClaudeClient"
-            ) as mock_client_class,
-            patch(
-                "claude_code_proxy.routers.anthropic.merge_claude_code_options"
-            ) as mock_merge,
-            patch(
-                "claude_code_proxy.routers.anthropic.create_error_response"
+                "ccproxy.routers.anthropic.create_error_response"
             ) as mock_create_error,
         ):
             mock_client = MagicMock()
@@ -638,17 +590,13 @@ class TestCreateMessage:
         """Test handling of ValueError."""
         with (
             patch(
-                "claude_code_proxy.routers.anthropic.get_settings",
+                "ccproxy.routers.anthropic.get_settings",
                 return_value=mock_settings,
             ),
+            patch("ccproxy.routers.anthropic.ClaudeClient") as mock_client_class,
+            patch("ccproxy.routers.anthropic.merge_claude_code_options") as mock_merge,
             patch(
-                "claude_code_proxy.routers.anthropic.ClaudeClient"
-            ) as mock_client_class,
-            patch(
-                "claude_code_proxy.routers.anthropic.merge_claude_code_options"
-            ) as mock_merge,
-            patch(
-                "claude_code_proxy.routers.anthropic.create_error_response"
+                "ccproxy.routers.anthropic.create_error_response"
             ) as mock_create_error,
         ):
             mock_client = MagicMock()
@@ -676,17 +624,13 @@ class TestCreateMessage:
         """Test handling of generic Exception."""
         with (
             patch(
-                "claude_code_proxy.routers.anthropic.get_settings",
+                "ccproxy.routers.anthropic.get_settings",
                 return_value=mock_settings,
             ),
+            patch("ccproxy.routers.anthropic.ClaudeClient") as mock_client_class,
+            patch("ccproxy.routers.anthropic.merge_claude_code_options") as mock_merge,
             patch(
-                "claude_code_proxy.routers.anthropic.ClaudeClient"
-            ) as mock_client_class,
-            patch(
-                "claude_code_proxy.routers.anthropic.merge_claude_code_options"
-            ) as mock_merge,
-            patch(
-                "claude_code_proxy.routers.anthropic.create_error_response"
+                "ccproxy.routers.anthropic.create_error_response"
             ) as mock_create_error,
         ):
             mock_client = MagicMock()
@@ -714,17 +658,13 @@ class TestCreateMessage:
         """Test handling of ClaudeProxyError in streaming mode."""
         with (
             patch(
-                "claude_code_proxy.routers.anthropic.get_settings",
+                "ccproxy.routers.anthropic.get_settings",
                 return_value=mock_settings,
             ),
+            patch("ccproxy.routers.anthropic.ClaudeClient") as mock_client_class,
+            patch("ccproxy.routers.anthropic.merge_claude_code_options") as mock_merge,
             patch(
-                "claude_code_proxy.routers.anthropic.ClaudeClient"
-            ) as mock_client_class,
-            patch(
-                "claude_code_proxy.routers.anthropic.merge_claude_code_options"
-            ) as mock_merge,
-            patch(
-                "claude_code_proxy.routers.anthropic.create_error_response"
+                "ccproxy.routers.anthropic.create_error_response"
             ) as mock_create_error,
         ):
             mock_client = MagicMock()
@@ -758,17 +698,13 @@ class TestCreateMessage:
         """Test handling of generic Exception in streaming mode."""
         with (
             patch(
-                "claude_code_proxy.routers.anthropic.get_settings",
+                "ccproxy.routers.anthropic.get_settings",
                 return_value=mock_settings,
             ),
+            patch("ccproxy.routers.anthropic.ClaudeClient") as mock_client_class,
+            patch("ccproxy.routers.anthropic.merge_claude_code_options") as mock_merge,
             patch(
-                "claude_code_proxy.routers.anthropic.ClaudeClient"
-            ) as mock_client_class,
-            patch(
-                "claude_code_proxy.routers.anthropic.merge_claude_code_options"
-            ) as mock_merge,
-            patch(
-                "claude_code_proxy.routers.anthropic.create_error_response"
+                "ccproxy.routers.anthropic.create_error_response"
             ) as mock_create_error,
         ):
             mock_client = MagicMock()
@@ -802,17 +738,13 @@ class TestCreateMessage:
         """Test streaming with valid async iterator from Claude client."""
         with (
             patch(
-                "claude_code_proxy.routers.anthropic.get_settings",
+                "ccproxy.routers.anthropic.get_settings",
                 return_value=mock_settings,
             ),
+            patch("ccproxy.routers.anthropic.ClaudeClient") as mock_client_class,
+            patch("ccproxy.routers.anthropic.merge_claude_code_options") as mock_merge,
             patch(
-                "claude_code_proxy.routers.anthropic.ClaudeClient"
-            ) as mock_client_class,
-            patch(
-                "claude_code_proxy.routers.anthropic.merge_claude_code_options"
-            ) as mock_merge,
-            patch(
-                "claude_code_proxy.routers.anthropic.stream_anthropic_message_response"
+                "ccproxy.routers.anthropic.stream_anthropic_message_response"
             ) as mock_stream,
         ):
             mock_client = MagicMock()
@@ -860,16 +792,12 @@ class TestCreateMessage:
         """Test message ID generation is unique."""
         with (
             patch(
-                "claude_code_proxy.routers.anthropic.get_settings",
+                "ccproxy.routers.anthropic.get_settings",
                 return_value=mock_settings,
             ),
-            patch(
-                "claude_code_proxy.routers.anthropic.ClaudeClient"
-            ) as mock_client_class,
-            patch(
-                "claude_code_proxy.routers.anthropic.merge_claude_code_options"
-            ) as mock_merge,
-            patch("claude_code_proxy.routers.anthropic.uuid.uuid4") as mock_uuid,
+            patch("ccproxy.routers.anthropic.ClaudeClient") as mock_client_class,
+            patch("ccproxy.routers.anthropic.merge_claude_code_options") as mock_merge,
+            patch("ccproxy.routers.anthropic.uuid.uuid4") as mock_uuid,
         ):
             mock_client = MagicMock()
             mock_client.create_completion = AsyncMock(return_value=mock_claude_response)
@@ -896,15 +824,11 @@ class TestCreateMessage:
         """Test options merging between settings and request."""
         with (
             patch(
-                "claude_code_proxy.routers.anthropic.get_settings",
+                "ccproxy.routers.anthropic.get_settings",
                 return_value=mock_settings,
             ),
-            patch(
-                "claude_code_proxy.routers.anthropic.ClaudeClient"
-            ) as mock_client_class,
-            patch(
-                "claude_code_proxy.routers.anthropic.merge_claude_code_options"
-            ) as mock_merge,
+            patch("ccproxy.routers.anthropic.ClaudeClient") as mock_client_class,
+            patch("ccproxy.routers.anthropic.merge_claude_code_options") as mock_merge,
         ):
             mock_client = MagicMock()
             mock_client.create_completion = AsyncMock(return_value=mock_claude_response)
@@ -933,15 +857,11 @@ class TestCreateMessage:
         """Test messages are properly converted to dict format."""
         with (
             patch(
-                "claude_code_proxy.routers.anthropic.get_settings",
+                "ccproxy.routers.anthropic.get_settings",
                 return_value=mock_settings,
             ),
-            patch(
-                "claude_code_proxy.routers.anthropic.ClaudeClient"
-            ) as mock_client_class,
-            patch(
-                "claude_code_proxy.routers.anthropic.merge_claude_code_options"
-            ) as mock_merge,
+            patch("ccproxy.routers.anthropic.ClaudeClient") as mock_client_class,
+            patch("ccproxy.routers.anthropic.merge_claude_code_options") as mock_merge,
         ):
             mock_client = MagicMock()
             mock_client.create_completion = AsyncMock(return_value=mock_claude_response)
@@ -967,15 +887,11 @@ class TestCreateMessage:
         """Test that auth dependency is properly handled."""
         with (
             patch(
-                "claude_code_proxy.routers.anthropic.get_settings",
+                "ccproxy.routers.anthropic.get_settings",
                 return_value=mock_settings,
             ),
-            patch(
-                "claude_code_proxy.routers.anthropic.ClaudeClient"
-            ) as mock_client_class,
-            patch(
-                "claude_code_proxy.routers.anthropic.merge_claude_code_options"
-            ) as mock_merge,
+            patch("ccproxy.routers.anthropic.ClaudeClient") as mock_client_class,
+            patch("ccproxy.routers.anthropic.merge_claude_code_options") as mock_merge,
         ):
             mock_client = MagicMock()
             mock_client.create_completion = AsyncMock(return_value=mock_claude_response)

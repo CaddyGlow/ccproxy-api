@@ -8,7 +8,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from claude_code_proxy.utils.schema import (
+from ccproxy.utils.schema import (
     generate_json_schema,
     generate_schema_files,
     generate_taplo_config,
@@ -103,7 +103,7 @@ class TestSchemaGeneration:
     def test_generate_schema_files_default_directory(self):
         """Test generating schema files in default directory."""
         with (
-            patch("claude_code_proxy.utils.schema.Path.cwd") as mock_cwd,
+            patch("ccproxy.utils.schema.Path.cwd") as mock_cwd,
             tempfile.TemporaryDirectory() as temp_dir,
         ):
             mock_cwd.return_value = Path(temp_dir)
@@ -187,7 +187,7 @@ class TestSchemaValidationExtended:
     def test_generate_taplo_config_default_directory(self):
         """Test taplo config generation with default directory."""
         with (
-            patch("claude_code_proxy.utils.schema.Path.cwd") as mock_cwd,
+            patch("ccproxy.utils.schema.Path.cwd") as mock_cwd,
             tempfile.TemporaryDirectory() as temp_dir,
         ):
             mock_cwd.return_value = Path(temp_dir)
@@ -243,9 +243,7 @@ port: 8080
             f.flush()
 
             try:
-                with patch(
-                    "claude_code_proxy.utils.schema.generate_json_schema"
-                ) as mock_gen:
+                with patch("ccproxy.utils.schema.generate_json_schema") as mock_gen:
                     mock_gen.return_value = {
                         "type": "object",
                         "properties": {
@@ -380,7 +378,7 @@ class TestSchemaGenerationEdgeCases:
 
     def test_generate_json_schema_missing_properties(self):
         """Test schema generation when properties are missing."""
-        with patch("claude_code_proxy.config.settings.Settings") as mock_settings:
+        with patch("ccproxy.config.settings.Settings") as mock_settings:
             # Mock a schema without properties
             mock_settings.model_json_schema.return_value = {
                 "type": "object",
@@ -396,7 +394,7 @@ class TestSchemaGenerationEdgeCases:
 
     def test_generate_json_schema_partial_properties(self):
         """Test schema generation with partial properties."""
-        with patch("claude_code_proxy.config.settings.Settings") as mock_settings:
+        with patch("ccproxy.config.settings.Settings") as mock_settings:
             # Mock a schema with only some properties
             mock_settings.model_json_schema.return_value = {
                 "type": "object",
@@ -440,7 +438,7 @@ class TestSchemaGenerationEdgeCases:
 
             with (
                 patch(
-                    "claude_code_proxy.utils.schema.Path.open",
+                    "ccproxy.utils.schema.Path.open",
                     side_effect=PermissionError,
                 ),
                 pytest.raises(PermissionError),
@@ -454,7 +452,7 @@ class TestSchemaGenerationEdgeCases:
 
             with (
                 patch(
-                    "claude_code_proxy.utils.schema.save_schema_file",
+                    "ccproxy.utils.schema.save_schema_file",
                     side_effect=OSError("Write error"),
                 ),
                 pytest.raises(OSError),
@@ -468,7 +466,7 @@ class TestSchemaGenerationEdgeCases:
 
             with (
                 patch(
-                    "claude_code_proxy.utils.schema.Path.write_text",
+                    "ccproxy.utils.schema.Path.write_text",
                     side_effect=OSError("Write error"),
                 ),
                 pytest.raises(OSError),
@@ -486,7 +484,7 @@ class TestSchemaValidationComplete:
         # by creating a minimal test case that bypasses the complex import mocking
 
         # Test the ImportError handling by temporarily replacing the import mechanism
-        import claude_code_proxy.utils.schema as schema_module
+        import ccproxy.utils.schema as schema_module
 
         original_function = schema_module.validate_config_with_schema
 
@@ -592,7 +590,7 @@ class TestSchemaValidationComplete:
 
     def test_generate_json_schema_all_property_enhancements(self):
         """Test all property enhancements in JSON schema generation."""
-        with patch("claude_code_proxy.config.settings.Settings") as mock_settings:
+        with patch("ccproxy.config.settings.Settings") as mock_settings:
             # Mock a schema with all enhanced properties
             mock_settings.model_json_schema.return_value = {
                 "type": "object",

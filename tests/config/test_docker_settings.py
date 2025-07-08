@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 import pytest
 
-from claude_code_proxy.config.docker_settings import DockerSettings
+from ccproxy.config.docker_settings import DockerSettings
 
 
 @pytest.mark.unit

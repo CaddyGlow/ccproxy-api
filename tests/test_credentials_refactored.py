@@ -7,14 +7,14 @@ from unittest.mock import AsyncMock, MagicMock, mock_open, patch
 
 import pytest
 
-from claude_code_proxy.services.credentials import (
+from ccproxy.services.credentials import (
     CredentialsConfig,
     CredentialsManager,
     JsonFileStorage,
     OAuthClient,
     OAuthConfig,
 )
-from claude_code_proxy.services.credentials.exceptions import (
+from ccproxy.services.credentials.exceptions import (
     CredentialsExpiredError,
     CredentialsInvalidError,
     CredentialsNotFoundError,
@@ -22,7 +22,7 @@ from claude_code_proxy.services.credentials.exceptions import (
     OAuthLoginError,
     OAuthTokenRefreshError,
 )
-from claude_code_proxy.services.credentials.models import (
+from ccproxy.services.credentials.models import (
     ClaudeCredentials,
     OAuthToken,
 )

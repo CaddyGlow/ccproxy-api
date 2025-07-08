@@ -238,6 +238,108 @@ wheels = [
 ]
 
 [[package]]
+name = "ccproxy"
+source = { editable = "." }
+dependencies = [
+    { name = "anthropic" },
+    { name = "check-jsonschema" },
+    { name = "claude-code-sdk" },
+    { name = "fastapi", extra = ["standard"] },
+    { name = "httpx" },
+    { name = "openai" },
+    { name = "pydantic" },
+    { name = "pydantic-settings" },
+    { name = "rich" },
+    { name = "rich-toolkit" },
+    { name = "tomli", marker = "python_full_version < '3.11'" },
+    { name = "typer" },
+    { name = "typing-extensions" },
+    { name = "uvicorn" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "anthropic" },
+    { name = "mypy" },
+    { name = "pre-commit" },
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+    { name = "pytest-cov" },
+    { name = "pytest-env" },
+    { name = "ruff" },
+    { name = "textual-dev" },
+    { name = "tox" },
+]
+docs = [
+    { name = "mkdocs" },
+    { name = "mkdocs-gen-files" },
+    { name = "mkdocs-glightbox" },
+    { name = "mkdocs-include-markdown-plugin" },
+    { name = "mkdocs-literate-nav" },
+    { name = "mkdocs-material" },
+    { name = "mkdocs-mermaid2-plugin" },
+    { name = "mkdocs-minify-plugin" },
+    { name = "mkdocs-redirects" },
+    { name = "mkdocs-section-index" },
+    { name = "mkdocs-swagger-ui-tag" },
+    { name = "mkdocstrings", extra = ["python"] },
+]
+schema = [
+    { name = "check-jsonschema" },
+    { name = "pydantic" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "anthropic", specifier = ">=0.57.1" },
+    { name = "check-jsonschema", specifier = ">=0.33.2" },
+    { name = "claude-code-sdk", git = "https://github.com/anthropics/claude-code-sdk-python.git" },
+    { name = "fastapi", extras = ["standard"], specifier = ">=0.115.14" },
+    { name = "httpx", specifier = ">=0.28.1" },
+    { name = "openai", specifier = ">=1.93.0" },
+    { name = "pydantic", specifier = ">=2.8.0" },
+    { name = "pydantic-settings", specifier = ">=2.4.0" },
+    { name = "rich", specifier = ">=13.0.0" },
+    { name = "rich-toolkit", specifier = ">=0.14.8" },
+    { name = "tomli", marker = "python_full_version < '3.11'", specifier = ">=2.0.0" },
+    { name = "typer", specifier = ">=0.16.0" },
+    { name = "typing-extensions", specifier = ">=4.0.0" },
+    { name = "uvicorn", specifier = ">=0.34.0" },
+]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "anthropic", specifier = ">=0.57.1" },
+    { name = "mypy", specifier = ">=1.16.1" },
+    { name = "pre-commit", specifier = ">=4.2.0" },
+    { name = "pytest", specifier = ">=7.0.0" },
+    { name = "pytest-asyncio", specifier = ">=0.23.0" },
+    { name = "pytest-cov", specifier = ">=4.0.0" },
+    { name = "pytest-env", specifier = ">=0.8.0" },
+    { name = "ruff", specifier = ">=0.12.2" },
+    { name = "textual-dev", specifier = ">=1.7.0" },
+    { name = "tox", specifier = ">=4.27.0" },
+]
+docs = [
+    { name = "mkdocs", specifier = ">=1.5.3" },
+    { name = "mkdocs-gen-files", specifier = ">=0.5.0" },
+    { name = "mkdocs-glightbox", specifier = ">=0.3.0" },
+    { name = "mkdocs-include-markdown-plugin", specifier = ">=6.0.0" },
+    { name = "mkdocs-literate-nav", specifier = ">=0.6.0" },
+    { name = "mkdocs-material", specifier = ">=9.5.0" },
+    { name = "mkdocs-mermaid2-plugin", specifier = ">=1.1.0" },
+    { name = "mkdocs-minify-plugin", specifier = ">=0.7.0" },
+    { name = "mkdocs-redirects", specifier = ">=1.2.0" },
+    { name = "mkdocs-section-index", specifier = ">=0.3.0" },
+    { name = "mkdocs-swagger-ui-tag", specifier = ">=0.6.0" },
+    { name = "mkdocstrings", extras = ["python"], specifier = ">=0.24.0" },
+]
+schema = [
+    { name = "check-jsonschema", specifier = ">=0.33.2" },
+    { name = "pydantic", specifier = ">=2.8.0" },
+]
+
+[[package]]
 name = "certifi"
 version = "2025.6.15"
 source = { registry = "https://pypi.org/simple" }
@@ -340,108 +442,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/b0/01/b71c19a199d731663b752cf6a50c4c557bd2ebec539f0b6da7d3f3e21126/check_jsonschema-0.33.2.tar.gz", hash = "sha256:20cf97e0a32be7f3652c009ce3538443196677a903b72b3b4cb522fb54ee4588", size = 291418, upload_time = "2025-07-03T21:39:39.021Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/e7/4c/08894ffa831e4d731d4add7e80799d37131fea2d3a6df88ad4d5fa2917d5/check_jsonschema-0.33.2-py3-none-any.whl", hash = "sha256:7200e1c6e29f4db12ee0762fc28f907d16a6dea935d1c5060aec8bef34e9ac2e", size = 277097, upload_time = "2025-07-03T21:39:37.49Z" },
-]
-
-[[package]]
-name = "claude-code-proxy-api"
-source = { editable = "." }
-dependencies = [
-    { name = "anthropic" },
-    { name = "check-jsonschema" },
-    { name = "claude-code-sdk" },
-    { name = "fastapi", extra = ["standard"] },
-    { name = "httpx" },
-    { name = "openai" },
-    { name = "pydantic" },
-    { name = "pydantic-settings" },
-    { name = "rich" },
-    { name = "rich-toolkit" },
-    { name = "tomli", marker = "python_full_version < '3.11'" },
-    { name = "typer" },
-    { name = "typing-extensions" },
-    { name = "uvicorn" },
-]
-
-[package.dev-dependencies]
-dev = [
-    { name = "anthropic" },
-    { name = "mypy" },
-    { name = "pre-commit" },
-    { name = "pytest" },
-    { name = "pytest-asyncio" },
-    { name = "pytest-cov" },
-    { name = "pytest-env" },
-    { name = "ruff" },
-    { name = "textual-dev" },
-    { name = "tox" },
-]
-docs = [
-    { name = "mkdocs" },
-    { name = "mkdocs-gen-files" },
-    { name = "mkdocs-glightbox" },
-    { name = "mkdocs-include-markdown-plugin" },
-    { name = "mkdocs-literate-nav" },
-    { name = "mkdocs-material" },
-    { name = "mkdocs-mermaid2-plugin" },
-    { name = "mkdocs-minify-plugin" },
-    { name = "mkdocs-redirects" },
-    { name = "mkdocs-section-index" },
-    { name = "mkdocs-swagger-ui-tag" },
-    { name = "mkdocstrings", extra = ["python"] },
-]
-schema = [
-    { name = "check-jsonschema" },
-    { name = "pydantic" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "anthropic", specifier = ">=0.57.1" },
-    { name = "check-jsonschema", specifier = ">=0.33.2" },
-    { name = "claude-code-sdk", git = "https://github.com/anthropics/claude-code-sdk-python.git" },
-    { name = "fastapi", extras = ["standard"], specifier = ">=0.115.14" },
-    { name = "httpx", specifier = ">=0.28.1" },
-    { name = "openai", specifier = ">=1.93.0" },
-    { name = "pydantic", specifier = ">=2.8.0" },
-    { name = "pydantic-settings", specifier = ">=2.4.0" },
-    { name = "rich", specifier = ">=13.0.0" },
-    { name = "rich-toolkit", specifier = ">=0.14.8" },
-    { name = "tomli", marker = "python_full_version < '3.11'", specifier = ">=2.0.0" },
-    { name = "typer", specifier = ">=0.16.0" },
-    { name = "typing-extensions", specifier = ">=4.0.0" },
-    { name = "uvicorn", specifier = ">=0.34.0" },
-]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "anthropic", specifier = ">=0.57.1" },
-    { name = "mypy", specifier = ">=1.16.1" },
-    { name = "pre-commit", specifier = ">=4.2.0" },
-    { name = "pytest", specifier = ">=7.0.0" },
-    { name = "pytest-asyncio", specifier = ">=0.23.0" },
-    { name = "pytest-cov", specifier = ">=4.0.0" },
-    { name = "pytest-env", specifier = ">=0.8.0" },
-    { name = "ruff", specifier = ">=0.12.2" },
-    { name = "textual-dev", specifier = ">=1.7.0" },
-    { name = "tox", specifier = ">=4.27.0" },
-]
-docs = [
-    { name = "mkdocs", specifier = ">=1.5.3" },
-    { name = "mkdocs-gen-files", specifier = ">=0.5.0" },
-    { name = "mkdocs-glightbox", specifier = ">=0.3.0" },
-    { name = "mkdocs-include-markdown-plugin", specifier = ">=6.0.0" },
-    { name = "mkdocs-literate-nav", specifier = ">=0.6.0" },
-    { name = "mkdocs-material", specifier = ">=9.5.0" },
-    { name = "mkdocs-mermaid2-plugin", specifier = ">=1.1.0" },
-    { name = "mkdocs-minify-plugin", specifier = ">=0.7.0" },
-    { name = "mkdocs-redirects", specifier = ">=1.2.0" },
-    { name = "mkdocs-section-index", specifier = ">=0.3.0" },
-    { name = "mkdocs-swagger-ui-tag", specifier = ">=0.6.0" },
-    { name = "mkdocstrings", extras = ["python"], specifier = ">=0.24.0" },
-]
-schema = [
-    { name = "check-jsonschema", specifier = ">=0.33.2" },
-    { name = "pydantic", specifier = ">=2.8.0" },
 ]
 
 [[package]]

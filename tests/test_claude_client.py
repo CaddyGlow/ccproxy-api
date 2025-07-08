@@ -5,8 +5,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from claude_code_sdk import ClaudeCodeOptions
 
-from claude_code_proxy.exceptions import ClaudeProxyError, ServiceUnavailableError
-from claude_code_proxy.services.claude_client import ClaudeClient
+from ccproxy.exceptions import ClaudeProxyError, ServiceUnavailableError
+from ccproxy.services.claude_client import ClaudeClient
 
 
 class TestClaudeClient:
@@ -95,7 +95,7 @@ class TestClaudeClient:
 
     @pytest.mark.integration
     @pytest.mark.asyncio
-    @patch("claude_code_proxy.services.claude_client.query")
+    @patch("ccproxy.services.claude_client.query")
     async def test_create_completion_non_streaming(self, mock_query):
         """Test create_completion for non-streaming."""
         from claude_code_sdk import AssistantMessage, ResultMessage, TextBlock
@@ -134,7 +134,7 @@ class TestClaudeClient:
 
     @pytest.mark.integration
     @pytest.mark.asyncio
-    @patch("claude_code_proxy.services.claude_client.query")
+    @patch("ccproxy.services.claude_client.query")
     async def test_create_completion_streaming(self, mock_query):
         """Test create_completion for streaming."""
         from claude_code_sdk import AssistantMessage, ResultMessage, TextBlock
@@ -200,7 +200,7 @@ class TestClaudeClient:
 
     @pytest.mark.integration
     @pytest.mark.asyncio
-    @patch("claude_code_proxy.services.claude_client.query")
+    @patch("ccproxy.services.claude_client.query")
     async def test_cli_not_found_error(self, mock_query):
         """Test handling of CLI not found error."""
         from claude_code_sdk import CLINotFoundError
@@ -221,7 +221,7 @@ class TestClaudeClient:
 
     @pytest.mark.integration
     @pytest.mark.asyncio
-    @patch("claude_code_proxy.services.claude_client.query")
+    @patch("ccproxy.services.claude_client.query")
     async def test_process_error(self, mock_query):
         """Test handling of process error."""
         from claude_code_sdk import ProcessError
@@ -243,7 +243,7 @@ class TestClaudeClient:
 
     @pytest.mark.integration
     @pytest.mark.asyncio
-    @patch("claude_code_proxy.services.claude_client.query")
+    @patch("ccproxy.services.claude_client.query")
     async def test_unexpected_error(self, mock_query):
         """Test handling of unexpected error."""
         mock_query.side_effect = RuntimeError("Unexpected error")
@@ -263,12 +263,12 @@ class TestClaudeClient:
 
     @pytest.mark.integration
     @pytest.mark.asyncio
-    @patch("claude_code_proxy.services.claude_client.query")
+    @patch("ccproxy.services.claude_client.query")
     async def test_no_result_message_error(self, mock_query):
         """Test handling when no result message is received."""
         from claude_code_sdk import AssistantMessage, TextBlock
 
-        from claude_code_proxy.services.claude_client import ClaudeClientError
+        from ccproxy.services.claude_client import ClaudeClientError
 
         # Mock only assistant message, no result message
         text_block = MagicMock(spec=TextBlock)
@@ -296,12 +296,12 @@ class TestClaudeClient:
 
     @pytest.mark.integration
     @pytest.mark.asyncio
-    @patch("claude_code_proxy.services.claude_client.query")
+    @patch("ccproxy.services.claude_client.query")
     async def test_no_assistant_message_error(self, mock_query):
         """Test handling when no assistant message is received."""
         from claude_code_sdk import ResultMessage
 
-        from claude_code_proxy.services.claude_client import ClaudeClientError
+        from ccproxy.services.claude_client import ClaudeClientError
 
         # Mock only result message, no assistant message
         result_msg = MagicMock(spec=ResultMessage)

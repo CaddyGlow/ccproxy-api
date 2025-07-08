@@ -5,8 +5,8 @@ from unittest.mock import Mock, patch
 import pytest
 from typer.testing import CliRunner
 
-from claude_code_proxy.cli.main import app
-from claude_code_proxy.config.settings import Settings
+from ccproxy.cli.main import app
+from ccproxy.config.settings import Settings
 
 
 @pytest.mark.integration
@@ -21,7 +21,7 @@ class TestCLIIntegration:
         """Test version flag works correctly."""
         result = self.runner.invoke(app, ["--version"])
         assert result.exit_code == 0
-        assert "claude-code-proxy-api" in result.stdout
+        assert "ccproxy" in result.stdout
 
     def test_help_flag(self):
         """Test help flag shows usage information."""
@@ -52,7 +52,7 @@ class TestCLIIntegration:
         assert result.exit_code == 0
 
     @patch("uvicorn.run")
-    @patch("claude_code_proxy.cli.commands.api.config_manager.load_settings")
+    @patch("ccproxy.cli.commands.api.config_manager.load_settings")
     def test_api_command_basic(self, mock_load_settings, mock_uvicorn_run):
         """Test api command with mocked dependencies."""
         # Create a comprehensive mock settings object
@@ -81,7 +81,7 @@ class TestCLIIntegration:
         # Should call uvicorn.run
         mock_uvicorn_run.assert_called_once()
 
-    @patch("claude_code_proxy.cli.commands.config.commands.get_settings")
+    @patch("ccproxy.cli.commands.config.commands.get_settings")
     def test_config_list_command(self, mock_get_settings):
         """Test config list command with mocked settings."""
         # Create a comprehensive mock settings object
@@ -118,7 +118,7 @@ class TestCLIIntegration:
         assert "Claude Code Proxy API Configuration" in result.stdout
 
     @patch("os.execvp")
-    @patch("claude_code_proxy.cli.commands.claude.config_manager.load_settings")
+    @patch("ccproxy.cli.commands.claude.config_manager.load_settings")
     def test_claude_command_basic(self, mock_load_settings, mock_execvp):
         """Test claude command with mocked dependencies."""
         # Create a mock settings object
@@ -162,7 +162,7 @@ class TestCLIDefaultBehavior:
         self.runner = CliRunner(env={"NO_COLOR": "1", "TERM": "dumb"})
 
     @patch("uvicorn.run")
-    @patch("claude_code_proxy.cli.commands.api.config_manager.load_settings")
+    @patch("ccproxy.cli.commands.api.config_manager.load_settings")
     def test_no_command_defaults_to_api(self, mock_load_settings, mock_uvicorn_run):
         """Test that running with no command defaults to API server."""
         # Create a mock settings object

@@ -117,7 +117,7 @@ API documentation is automatically generated from Python source code using mkdoc
 docs/gen_ref_pages.py
 ```
 
-This script scans the `claude_code_proxy/` package and generates documentation pages for all modules, classes, and functions.
+This script scans the `ccproxy/` package and generates documentation pages for all modules, classes, and functions.
 
 ## Custom Styling
 

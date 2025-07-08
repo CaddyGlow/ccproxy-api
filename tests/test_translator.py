@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from claude_code_proxy.services.translator import (
+from ccproxy.services.translator import (
     OPENAI_TO_CLAUDE_MODEL_MAPPING,
     OpenAIChoice,
     OpenAIMessage,
@@ -730,7 +730,7 @@ class TestOpenAITranslator:
         """Test content conversion with invalid base64 image URL."""
         content = [{"type": "image_url", "image_url": {"url": "data:invalid-format"}}]
 
-        with patch("claude_code_proxy.services.translator.logger") as mock_logger:
+        with patch("ccproxy.services.translator.logger") as mock_logger:
             result = self.translator._convert_content_to_anthropic(content)
             mock_logger.warning.assert_called_once()
 

@@ -12,7 +12,7 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
-from claude_code_proxy.services.openai_streaming import (
+from ccproxy.services.openai_streaming import (
     OpenAIStreamingFormatter,
     _split_text_for_streaming,
     stream_claude_response_openai,

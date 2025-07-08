@@ -7,9 +7,9 @@ from unittest.mock import patch
 
 import pytest
 
-from claude_code_proxy.config.docker_settings import DockerSettings
-from claude_code_proxy.utils.docker_builder import DockerCommandBuilder
-from claude_code_proxy.utils.docker_validation import (
+from ccproxy.config.docker_settings import DockerSettings
+from ccproxy.utils.docker_builder import DockerCommandBuilder
+from ccproxy.utils.docker_validation import (
     validate_environment_variable,
     validate_host_path,
     validate_volume_format,
