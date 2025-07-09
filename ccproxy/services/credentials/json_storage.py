@@ -4,6 +4,8 @@ import json
 from pathlib import Path
 from typing import Any, Optional
 
+import keyring
+
 from ccproxy.services.credentials.exceptions import (
     CredentialsInvalidError,
     CredentialsStorageError,
@@ -11,16 +13,6 @@ from ccproxy.services.credentials.exceptions import (
 from ccproxy.services.credentials.models import ClaudeCredentials
 from ccproxy.services.credentials.storage import CredentialsStorageBackend
 from ccproxy.utils.logging import get_logger
-
-
-# Try to import keyring, but don't fail if it's not available
-try:
-    import keyring
-
-    KEYRING_AVAILABLE = True
-except ImportError:
-    keyring: Any = None  # type: ignore[no-redef]
-    KEYRING_AVAILABLE = False
 
 
 logger = get_logger(__name__)
@@ -38,7 +30,7 @@ class JsonFileStorage(CredentialsStorageBackend):
         self.file_path = file_path
         self.keyring_service = "ccproxy"
         self.keyring_username = "credentials"
-        self._keyring_available = KEYRING_AVAILABLE
+        self._keyring_available = True
 
         if self._keyring_available:
             logger.debug("Keyring support is available")

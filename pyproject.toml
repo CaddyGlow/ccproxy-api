@@ -7,12 +7,13 @@ readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
   "check-jsonschema>=0.33.2",
-  "claude-code-sdk>=0.0.14",             # Using GitHub version with PR #60 fix
+  "claude-code-sdk>=0.0.14", # Using GitHub version with PR #60 fix
   "fastapi[standard]>=0.115.14",
   "httpx>=0.28.1",
   "httpx-sse>=0.4.1",
   "keyring>=25.6.0",
   "openai>=1.93.0",
+  "prometheus-client>=0.22.1",
   "pydantic>=2.8.0",
   "pydantic-settings>=2.4.0",
   "rich>=13.0.0",

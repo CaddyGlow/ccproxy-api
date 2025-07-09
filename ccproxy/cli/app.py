@@ -43,7 +43,7 @@ def version_callback(value: bool) -> None:
         raise typer.Exit()
 
 
-app = Typer(
+app = typer.Typer(
     rich_markup_mode="rich",
     add_completion=True,
     no_args_is_help=False,
@@ -55,8 +55,7 @@ logger = get_logger(__name__)
 
 
 # Add global --version option
-# @app.callback(invoke_without_command=True)
-# @app.callback(invoke_without_command=True)
+@app.callback()
 def app_main(
     ctx: typer.Context,
     version: bool = typer.Option(
@@ -189,37 +188,42 @@ def app_main(
     ctx.ensure_object(dict)
     ctx.obj["config_path"] = config
 
-    # If no subcommand was invoked, run the api command by default
-    if ctx.invoked_subcommand is None:
-        # Forward all parameters to the api command
-        ctx.invoke(
-            api,
-            config=config,
-            docker=docker,
-            port=port,
-            host=host,
-            reload=reload,
-            log_level=log_level,
-            auth_token=auth_token,
-            claude_cli_path=claude_cli_path,
-            max_thinking_tokens=max_thinking_tokens,
-            allowed_tools=allowed_tools,
-            disallowed_tools=disallowed_tools,
-            append_system_prompt=append_system_prompt,
-            permission_mode=permission_mode,
-            max_turns=max_turns,
-            permission_prompt_tool_name=permission_prompt_tool_name,
-            cwd=cwd,
-            docker_image=docker_image,
-            docker_env=docker_env,
-            docker_volume=docker_volume,
-            docker_arg=docker_arg,
-            docker_home=docker_home,
-            docker_workspace=docker_workspace,
-            user_mapping_enabled=user_mapping_enabled,
-            user_uid=user_uid,
-            user_gid=user_gid,
-        )
+    # Setup logging for all commands
+    if log_level:
+        config_manager.setup_logging(log_level)
+
+    # NOTE: Default command routing commented out because it interferes with subcommand handling
+    # The 'serve' command is registered as default=True which handles this automatically
+    # if ctx.invoked_subcommand is None:
+    #     # Forward all parameters to the api command
+    #     ctx.invoke(
+    #         api,
+    #         config=config,
+    #         docker=docker,
+    #         port=port,
+    #         host=host,
+    #         reload=reload,
+    #         log_level=log_level,
+    #         auth_token=auth_token,
+    #         claude_cli_path=claude_cli_path,
+    #         max_thinking_tokens=max_thinking_tokens,
+    #         allowed_tools=allowed_tools,
+    #         disallowed_tools=disallowed_tools,
+    #         append_system_prompt=append_system_prompt,
+    #         permission_mode=permission_mode,
+    #         max_turns=max_turns,
+    #         permission_prompt_tool_name=permission_prompt_tool_name,
+    #         cwd=cwd,
+    #         docker_image=docker_image,
+    #         docker_env=docker_env,
+    #         docker_volume=docker_volume,
+    #         docker_arg=docker_arg,
+    #         docker_home=docker_home,
+    #         docker_workspace=docker_workspace,
+    #         user_mapping_enabled=user_mapping_enabled,
+    #         user_uid=user_uid,
+    #         user_gid=user_gid,
+    #     )
 
 
 # Register config command
@@ -230,7 +234,8 @@ app.add_typer(auth_app)
 
 
 # Register imported commands
-app.command(default=True, name="serve")(api)
+app.command(name="serve")(api)
+# app.command(default=False, name="serve")(api)
 app.command()(claude)
 
 
