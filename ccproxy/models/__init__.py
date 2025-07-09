@@ -31,6 +31,12 @@ from .openai import (
     OpenAIToolChoice,
     OpenAIUsage,
 )
+from .rate_limit import (
+    OAuthUnifiedRateLimit,
+    RateLimitData,
+    RateLimitStatus,
+    StandardRateLimit,
+)
 from .requests import (
     ImageContent,
     Message,
@@ -142,4 +148,9 @@ __all__ = [
     "OpenAIToolCall",
     "OpenAIToolChoice",
     "OpenAIUsage",
+    # Rate limit models
+    "OAuthUnifiedRateLimit",
+    "RateLimitData",
+    "RateLimitStatus",
+    "StandardRateLimit",
 ]

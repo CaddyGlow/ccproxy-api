@@ -118,6 +118,23 @@ class ClaudeClient:
         self, prompt: str, options: ClaudeCodeOptions
     ) -> AsyncIterator[UserMessage | AssistantMessage | SystemMessage | ResultMessage]:
         """Get query iterator using Claude Code SDK."""
+        # Ensure Claude CLI can be found even when cwd changes
+        # The SDK looks for 'claude' in PATH, so we need to ensure it's available
+        import shutil
+
+        from ccproxy.config import get_settings
+
+        settings = get_settings()
+        if settings.claude_cli_path:
+            # Create a temporary symlink in a system directory if needed
+            claude_in_path = shutil.which("claude")
+            if not claude_in_path:
+                # Add the claude directory to PATH if not already there
+                cli_dir = str(Path(settings.claude_cli_path).parent)
+                current_path = os.environ.get("PATH", "")
+                if cli_dir not in current_path:
+                    os.environ["PATH"] = f"{cli_dir}:{current_path}"
+
         # The Claude CLI path is already set up in PATH by the settings configuration
         # The anyio task scope issue should be fixed in the GitHub version of the SDK
         async for message in query(prompt=prompt, options=options):

@@ -4,6 +4,7 @@ import asyncio
 import logging
 import time
 from collections.abc import Awaitable, Callable
+from datetime import datetime
 from typing import Any
 
 from fastapi import Request, Response
@@ -12,6 +13,13 @@ from starlette.responses import StreamingResponse
 
 from ccproxy.metrics.collector import categorize_user_agent, get_metrics_collector
 from ccproxy.metrics.models import ErrorMetrics, HTTPMetrics, UserAgentCategory
+from ccproxy.models.rate_limit import (
+    OAuthUnifiedRateLimit,
+    RateLimitData,
+    StandardRateLimit,
+)
+from ccproxy.services.rate_limit_tracker import get_rate_limit_tracker
+from ccproxy.utils.rate_limit_extractor import extract_rate_limit_headers
 
 
 logger = logging.getLogger(__name__)
@@ -67,6 +75,7 @@ class MetricsMiddleware(BaseHTTPMiddleware):
         response: Response | None = None
         status_code = 500  # Default to error if something goes wrong
         response_size = 0
+        rate_limit_data: RateLimitData | None = None
 
         try:
             # Process request
@@ -75,6 +84,9 @@ class MetricsMiddleware(BaseHTTPMiddleware):
 
             # Calculate response size
             response_size = await self._calculate_response_size(response)
+
+            # Extract rate limit data from response headers
+            rate_limit_data = self._extract_rate_limit_data(response)
 
         except Exception as exc:
             logger.error(f"Error processing request: {exc}", exc_info=True)
@@ -136,6 +148,12 @@ class MetricsMiddleware(BaseHTTPMiddleware):
                 response_size_bytes=response_size,
                 user_agent=user_agent,
             )
+
+            # Process rate limit data if available
+            if rate_limit_data:
+                self._populate_rate_limit_fields(http_metrics, rate_limit_data)
+                self._track_rate_limit_usage(rate_limit_data)
+
             self.metrics_collector.record_http_request(http_metrics)
 
             # Store metrics in database if available
@@ -288,3 +306,110 @@ class MetricsMiddleware(BaseHTTPMiddleware):
         except Exception as exc:
             logger.warning(f"Failed to calculate response size: {exc}")
             return 0
+
+    def _extract_rate_limit_data(self, response: Response) -> RateLimitData | None:
+        """Extract rate limit data from HTTP response headers.
+
+        Args:
+            response: HTTP response
+
+        Returns:
+            RateLimitData object if rate limit headers are found, None otherwise
+        """
+        try:
+            # Convert headers to dict for processing
+            headers = dict(response.headers)
+
+            # Extract rate limit information
+            rate_limit_info = extract_rate_limit_headers(headers)
+
+            # If no rate limit headers detected, return None
+            if not rate_limit_info["detected_headers"]:
+                return None
+
+            auth_type = rate_limit_info["auth_type"]
+
+            # Create rate limit data objects
+            standard_data = None
+            oauth_unified_data = None
+
+            if auth_type == "api_key" and rate_limit_info["standard"]:
+                standard_data = StandardRateLimit(**rate_limit_info["standard"])
+            elif auth_type == "oauth" and rate_limit_info["oauth_unified"]:
+                oauth_unified_data = OAuthUnifiedRateLimit(
+                    **rate_limit_info["oauth_unified"]
+                )
+
+            # Create RateLimitData object
+            rate_limit_data = RateLimitData(
+                auth_type=auth_type,
+                standard=standard_data,
+                oauth_unified=oauth_unified_data,
+                timestamp=datetime.utcnow(),
+            )
+
+            logger.debug(f"Extracted rate limit data: auth_type={auth_type}")
+            return rate_limit_data
+
+        except Exception as exc:
+            logger.warning(f"Failed to extract rate limit data: {exc}")
+            return None
+
+    def _populate_rate_limit_fields(
+        self, http_metrics: HTTPMetrics, rate_limit_data: RateLimitData
+    ) -> None:
+        """Populate rate limit fields in HTTPMetrics object.
+
+        Args:
+            http_metrics: HTTPMetrics object to populate
+            rate_limit_data: Rate limit data to extract fields from
+        """
+        try:
+            # Set auth type
+            http_metrics.auth_type = rate_limit_data.auth_type
+
+            # Populate standard rate limit fields
+            if rate_limit_data.standard:
+                std = rate_limit_data.standard
+                http_metrics.rate_limit_requests_limit = std.requests_limit
+                http_metrics.rate_limit_requests_remaining = std.requests_remaining
+                http_metrics.rate_limit_tokens_limit = std.tokens_limit
+                http_metrics.rate_limit_tokens_remaining = std.tokens_remaining
+                http_metrics.rate_limit_reset_timestamp = (
+                    std.reset_timestamp.isoformat() if std.reset_timestamp else None
+                )
+                http_metrics.retry_after_seconds = std.retry_after_seconds
+
+            # Populate OAuth unified rate limit fields
+            if rate_limit_data.oauth_unified:
+                oauth = rate_limit_data.oauth_unified
+                http_metrics.oauth_unified_status = oauth.status
+                http_metrics.oauth_unified_claim = oauth.claim
+                http_metrics.oauth_unified_fallback_percentage = (
+                    oauth.fallback_percentage
+                )
+                http_metrics.oauth_unified_reset = (
+                    oauth.reset_time.isoformat() if oauth.reset_time else None
+                )
+
+            logger.debug(
+                f"Populated rate limit fields for auth_type={rate_limit_data.auth_type}"
+            )
+
+        except Exception as exc:
+            logger.warning(f"Failed to populate rate limit fields: {exc}")
+
+    def _track_rate_limit_usage(self, rate_limit_data: RateLimitData) -> None:
+        """Track rate limit usage with RateLimitTracker.
+
+        Args:
+            rate_limit_data: Rate limit data to track
+        """
+        try:
+            rate_limit_tracker = get_rate_limit_tracker()
+            rate_limit_tracker.track_rate_limit(rate_limit_data)
+            logger.debug(
+                f"Tracked rate limit usage for auth_type={rate_limit_data.auth_type}"
+            )
+        except Exception as exc:
+            logger.warning(f"Failed to track rate limit usage: {exc}")

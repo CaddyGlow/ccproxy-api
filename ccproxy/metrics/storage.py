@@ -146,13 +146,45 @@ class MetricsStorage:
             input_tokens=model_metrics.input_tokens if model_metrics else 0,
             output_tokens=model_metrics.output_tokens if model_metrics else 0,
             cost_dollars=model_metrics.estimated_cost if model_metrics else 0.0,
+            user_agent=http_metrics.user_agent,
             user_agent_category=http_metrics.user_agent_category.value,
             error_type=error_metrics.error_type if error_metrics else None,
+            # Rate limit fields
+            rate_limit_requests_limit=http_metrics.rate_limit_requests_limit,
+            rate_limit_requests_remaining=http_metrics.rate_limit_requests_remaining,
+            rate_limit_tokens_limit=http_metrics.rate_limit_tokens_limit,
+            rate_limit_tokens_remaining=http_metrics.rate_limit_tokens_remaining,
+            rate_limit_reset_timestamp=self._parse_datetime(http_metrics.rate_limit_reset_timestamp),
+            retry_after_seconds=http_metrics.retry_after_seconds,
+            oauth_unified_status=http_metrics.oauth_unified_status,
+            oauth_unified_claim=http_metrics.oauth_unified_claim,
+            oauth_unified_fallback_percentage=http_metrics.oauth_unified_fallback_percentage,
+            oauth_unified_reset=self._parse_datetime(http_metrics.oauth_unified_reset),
+            auth_type=http_metrics.auth_type,
         )
 
         async with self.get_session() as session:
             session.add(request_log)
             await session.commit()
+
+    def _parse_datetime(self, datetime_str: str | None) -> datetime | None:
+        """Parse datetime string to datetime object.
+
+        Args:
+            datetime_str: ISO format datetime string
+
+        Returns:
+            datetime object or None if parsing fails
+        """
+        if not datetime_str:
+            return None
+            
+        try:
+            # Parse ISO format datetime string
+            return datetime.fromisoformat(datetime_str.replace('Z', '+00:00'))
+        except (ValueError, AttributeError) as e:
+            logger.warning(f"Failed to parse datetime string '{datetime_str}': {e}")
+            return None
 
     async def get_metrics_snapshots(
         self,

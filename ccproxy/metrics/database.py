@@ -62,6 +62,24 @@ class RequestLog(Base):
     user_agent = Column(Text, nullable=True)
     user_agent_category = Column(String(50), nullable=False, index=True)
     error_type = Column(String(100), nullable=True, index=True)
+
+    # Standard API key rate limit headers
+    rate_limit_requests_limit = Column(Integer, nullable=True)
+    rate_limit_requests_remaining = Column(Integer, nullable=True)
+    rate_limit_tokens_limit = Column(Integer, nullable=True)
+    rate_limit_tokens_remaining = Column(Integer, nullable=True)
+    rate_limit_reset_timestamp = Column(DateTime, nullable=True)
+    retry_after_seconds = Column(Integer, nullable=True)
+
+    # OAuth unified rate limit headers
+    oauth_unified_status = Column(String(50), nullable=True)  # allowed/denied
+    oauth_unified_claim = Column(String(100), nullable=True)  # five_hour, etc
+    oauth_unified_fallback_percentage = Column(Float, nullable=True)
+    oauth_unified_reset = Column(DateTime, nullable=True)
+
+    # Authentication type tracking
+    auth_type = Column(String(20), nullable=True, index=True)  # api_key/oauth
+
     created_at = Column(DateTime, nullable=False, default=func.now())
 
     __table_args__ = (
@@ -71,6 +89,7 @@ class RequestLog(Base):
         Index(
             "idx_request_logs_daily_agg", "timestamp", "endpoint", "api_type", "model"
         ),
+        Index("idx_request_logs_rate_limits", "auth_type", "timestamp"),
     )
 
 

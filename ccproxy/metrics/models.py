@@ -43,6 +43,45 @@ class HTTPMetrics(BaseModel):
         str | None, Field(description="Error type if request failed")
     ] = None
 
+    # Rate limit fields
+    rate_limit_requests_limit: Annotated[
+        int | None, Field(description="API key rate limit for requests")
+    ] = None
+    rate_limit_requests_remaining: Annotated[
+        int | None, Field(description="API key rate limit remaining requests")
+    ] = None
+    rate_limit_tokens_limit: Annotated[
+        int | None, Field(description="API key rate limit for tokens")
+    ] = None
+    rate_limit_tokens_remaining: Annotated[
+        int | None, Field(description="API key rate limit remaining tokens")
+    ] = None
+    rate_limit_reset_timestamp: Annotated[
+        str | None, Field(description="API key rate limit reset timestamp")
+    ] = None
+    retry_after_seconds: Annotated[
+        int | None, Field(description="Retry-after header value in seconds")
+    ] = None
+
+    # OAuth unified rate limit fields
+    oauth_unified_status: Annotated[
+        str | None, Field(description="OAuth unified rate limit status")
+    ] = None
+    oauth_unified_claim: Annotated[
+        str | None, Field(description="OAuth unified rate limit claim")
+    ] = None
+    oauth_unified_fallback_percentage: Annotated[
+        float | None, Field(description="OAuth unified fallback percentage")
+    ] = None
+    oauth_unified_reset: Annotated[
+        str | None, Field(description="OAuth unified rate limit reset time")
+    ] = None
+
+    # Authentication type
+    auth_type: Annotated[
+        str | None, Field(description="Authentication type (api_key/oauth)")
+    ] = None
+
     model_config = ConfigDict(extra="forbid")
 
 

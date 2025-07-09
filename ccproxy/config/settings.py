@@ -331,6 +331,38 @@ class Settings(BaseSettings):
         description="Enable HTTP client metrics collection",
     )
 
+    # Rate Limiting configuration
+    rate_limit_tracking_enabled: bool = Field(
+        default=True,
+        description="Enable rate limit tracking and analytics",
+    )
+
+    rate_limit_alert_threshold: float = Field(
+        default=0.8,
+        description="Rate limit utilization threshold for alerts (0.0-1.0)",
+        ge=0.0,
+        le=1.0,
+    )
+
+    rate_limit_prediction_window: int = Field(
+        default=300,
+        description="Time window in seconds for rate limit prediction",
+        ge=60,
+        le=3600,
+    )
+
+    oauth_rate_limit_monitoring: bool = Field(
+        default=True,
+        description="Enable OAuth unified rate limit monitoring",
+    )
+
+    rate_limit_cache_ttl: int = Field(
+        default=30,
+        description="Rate limit data cache TTL in seconds",
+        ge=5,
+        le=300,
+    )
+
     model_pricing: dict[str, dict[str, float]] = Field(
         default_factory=lambda: {
             # Claude 3.5 Sonnet
@@ -478,6 +510,16 @@ class Settings(BaseSettings):
 
         return v
 
+    @field_validator("rate_limit_alert_threshold")
+    @classmethod
+    def validate_rate_limit_alert_threshold(cls, v: float) -> float:
+        """Validate rate limit alert threshold as a valid percentage."""
+        if not 0.0 <= v <= 1.0:
+            raise ValueError(
+                f"Rate limit alert threshold must be between 0.0 and 1.0, got {v}"
+            )
+        return v
+
     # validate_pool_settings method removed - connection pooling functionality has been removed
 
     @field_validator("metrics_db_path")
@@ -612,18 +654,19 @@ class Settings(BaseSettings):
         if not self.claude_cli_path:
             found_path, found_in_path = self.find_claude_cli()
             if found_path:
-                self.claude_cli_path = found_path
-                # Only add to PATH if it wasn't found via which()
-                if not found_in_path:
-                    cli_dir = str(Path(self.claude_cli_path).parent)
-                    current_path = os.environ.get("PATH", "")
-                    if cli_dir not in current_path:
-                        os.environ["PATH"] = f"{cli_dir}:{current_path}"
+                # Always use absolute path to avoid cwd issues
+                self.claude_cli_path = str(Path(found_path).resolve())
+                # Always add to PATH at the beginning to override relative paths
+                cli_dir = str(Path(self.claude_cli_path).parent)
+                current_path = os.environ.get("PATH", "")
+                if cli_dir not in current_path.split(":"):
+                    os.environ["PATH"] = f"{cli_dir}:{current_path}"
         elif self.claude_cli_path:
-            # If explicitly set, always add to PATH
+            # If explicitly set, ensure it's absolute and add to PATH
+            self.claude_cli_path = str(Path(self.claude_cli_path).resolve())
             cli_dir = str(Path(self.claude_cli_path).parent)
             current_path = os.environ.get("PATH", "")
-            if cli_dir not in current_path:
+            if cli_dir not in current_path.split(":"):
                 os.environ["PATH"] = f"{cli_dir}:{current_path}"
         return self
 
@@ -639,21 +682,26 @@ class Settings(BaseSettings):
         # Try to find claude in PATH
         claude_path = shutil.which("claude")
         if claude_path:
-            return claude_path, True
+            # Ensure we have an absolute path to avoid cwd issues
+            claude_path = str(Path(claude_path).resolve())
+            # Skip if it's a relative node_modules path that might break with cwd changes
+            if "node_modules/.bin" not in claude_path or claude_path.startswith("/"):
+                return claude_path, True
 
         # Common installation paths (in order of preference)
+        # Prioritize absolute paths over relative ones to avoid cwd issues
         common_paths = [
-            # User-specific Claude installation
+            # User-specific Claude installation (absolute path)
             Path.home() / ".claude" / "local" / "claude",
-            # User's global node_modules (npm install -g)
-            Path.home() / "node_modules" / ".bin" / "claude",
-            # Package installation directory node_modules
-            get_package_dir() / "node_modules" / ".bin" / "claude",
-            # Current working directory node_modules
-            Path.cwd() / "node_modules" / ".bin" / "claude",
-            # System-wide installations
+            # System-wide installations (absolute paths)
             Path("/usr/local/bin/claude"),
             Path("/opt/homebrew/bin/claude"),
+            # User's global node_modules (npm install -g) - absolute path
+            Path.home() / "node_modules" / ".bin" / "claude",
+            # Package installation directory node_modules (avoid if possible)
+            (get_package_dir() / "node_modules" / ".bin" / "claude").absolute(),
+            # Current working directory node_modules (avoid - causes cwd issues)
+            (Path.cwd() / "node_modules" / ".bin" / "claude").absolute(),
         ]
 
         for path in common_paths:
@@ -670,18 +718,19 @@ class Settings(BaseSettings):
         paths.append("PATH environment variable")
 
         # Common installation paths (in order of preference)
+        # Prioritize absolute paths over relative ones to avoid cwd issues
         common_paths = [
-            # User-specific Claude installation
+            # User-specific Claude installation (absolute path)
             Path.home() / ".claude" / "local" / "claude",
-            # User's global node_modules (npm install -g)
-            Path.home() / "node_modules" / ".bin" / "claude",
-            # Package installation directory node_modules
-            get_package_dir() / "node_modules" / ".bin" / "claude",
-            # Current working directory node_modules
-            Path.cwd() / "node_modules" / ".bin" / "claude",
-            # System-wide installations
+            # System-wide installations (absolute paths)
             Path("/usr/local/bin/claude"),
             Path("/opt/homebrew/bin/claude"),
+            # User's global node_modules (npm install -g) - absolute path
+            Path.home() / "node_modules" / ".bin" / "claude",
+            # Package installation directory node_modules (avoid if possible)
+            (get_package_dir() / "node_modules" / ".bin" / "claude").absolute(),
+            # Current working directory node_modules (avoid - causes cwd issues)
+            Path.cwd() / "node_modules" / ".bin" / "claude",
         ]
 
         for path in common_paths:
