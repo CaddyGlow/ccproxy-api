@@ -369,9 +369,7 @@ class OAuthClient:
                 raise
             raise OAuthTokenRefreshError(f"Token refresh failed: {e}") from e
 
-    async def fetch_user_profile(
-        self, access_token: str, refresh_token: str
-    ) -> UserProfile:
+    async def fetch_user_profile(self, access_token: str) -> UserProfile:
         """Fetch user profile using OAuth token.
 
         Uses the correct profile API endpoint with the access token.
