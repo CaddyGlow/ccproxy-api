@@ -7,7 +7,7 @@ CCProxy is a reverse proxy to *api.anthropic.com/v1/messages* that leverages you
 ### Access to Your Claude Subscription
 - **Use Your Existing Subscription**: Leverage your Claude Pro or Team subscription instead of paying for API access
 - **OAuth2 Authentication**: Uses your existing Claude account authentication
-- **Local Execution**: Runs securely on your personal computer
+- **Local Execution**: Runs securely on your computer
 - **Docker Isolation**: Optional Docker support for isolated Claude Code execution
 
 ### Developer-Friendly API Access
