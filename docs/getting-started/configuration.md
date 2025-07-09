@@ -1,6 +1,6 @@
 # Configuration
 
-Configure Claude Code Proxy API Server for your personal local setup and preferences.
+Configure Claude Code Proxy API Server for your local setup and preferences.
 
 ## Configuration Methods
 

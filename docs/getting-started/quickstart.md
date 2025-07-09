@@ -560,7 +560,7 @@ aider --model o3-mini
 
 Now that you have the server running locally:
 
-1. **[Configure the server](configuration.md)** with your personal preferences
+1. **[Configure the server](configuration.md)** with your preferences
 2. **[Explore the API](../api-reference/overview.md)** to understand all available endpoints
 3. **[Try examples](../examples/python-client.md)** in different programming languages
 4. **[Set up Docker isolation](../deployment/overview.md)** for enhanced security
