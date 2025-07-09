@@ -307,7 +307,7 @@ def permission_tool(
             return
 
         # Allow the tool call with original input
-        allow_response = PermissionToolAllowResponse(updatedInput=input_data)
+        allow_response = PermissionToolAllowResponse(updated_input=input_data)
         toolkit.print(allow_response.model_dump_json(by_alias=True), tag="result")
 
     except Exception as e:

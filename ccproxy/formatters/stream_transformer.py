@@ -27,7 +27,7 @@ from collections.abc import AsyncGenerator, AsyncIterator
 from dataclasses import dataclass, field
 from typing import Any
 
-from ccproxy.services.openai_streaming_formatter import OpenAIStreamingFormatter
+from ccproxy.formatters.openai_streaming_formatter import OpenAIStreamingFormatter
 from ccproxy.utils.logging import get_logger
 
 
@@ -501,7 +501,7 @@ class AnthropicStreamTransformer:
 
     def _get_formatter(self) -> Any:
         """Get the Anthropic formatter."""
-        from ccproxy.services.anthropic_streaming import StreamingFormatter
+        from ccproxy.formatters.anthropic_streaming import StreamingFormatter
 
         return StreamingFormatter()
 

@@ -274,7 +274,7 @@ async def stream_claude_response_openai(
     Yields:
         Formatted OpenAI-compatible SSE strings
     """
-    from ccproxy.services.stream_transformer import (
+    from ccproxy.formatters.stream_transformer import (
         OpenAIStreamTransformer,
         StreamingConfig,
     )

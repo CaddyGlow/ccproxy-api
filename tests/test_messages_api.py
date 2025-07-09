@@ -27,7 +27,7 @@ from ccproxy.models.messages import (
     ThinkingConfig,
 )
 from ccproxy.models.requests import Message
-from ccproxy.routers.anthropic import create_message
+from ccproxy.routers.claudecode.anthropic import create_message
 
 
 class TestCreateMessage:

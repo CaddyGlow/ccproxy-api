@@ -75,17 +75,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return {"status": "healthy", "service": "claude-proxy"}
 
     # Include API routes
-    from ccproxy.routers import anthropic, oauth, openai
-    from ccproxy.routers.reverse_proxy_factory import (
+    from ccproxy.routers import (
+        anthropic_router,
         create_reverse_proxy_router,
+        oauth_router,
+        openai_router,
     )
 
     # Claude Code SDK endpoints (local execution) - using standard Anthropic format
-    app.include_router(anthropic.router, prefix=f"{settings.claude_code_prefix}/v1")
-    app.include_router(openai.router, prefix=f"{settings.claude_code_prefix}/openai/v1")
+    app.include_router(anthropic_router, prefix=f"{settings.claude_code_prefix}/v1")
+    app.include_router(openai_router, prefix=f"{settings.claude_code_prefix}/openai/v1")
 
     # OAuth authentication endpoints
-    app.include_router(oauth.router)
+    app.include_router(oauth_router)
 
     # Reverse proxy endpoints with different modes
     app.include_router(create_reverse_proxy_router("minimal"), prefix="/min")

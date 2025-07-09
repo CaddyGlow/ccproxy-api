@@ -6,7 +6,7 @@ from typing import Any
 
 import pytest
 
-from ccproxy.services.openai_streaming_formatter import (
+from ccproxy.formatters.openai_streaming_formatter import (
     OpenAIStreamingFormatter,
     stream_claude_response_openai,
     stream_claude_response_openai_simple,

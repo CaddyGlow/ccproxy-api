@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from ccproxy.services.translator import map_openai_model_to_claude
+from ccproxy.formatters.translator import map_openai_model_to_claude
 
 
 @pytest.mark.unit
@@ -39,7 +39,7 @@ class TestModelTranslationRegression:
         )
         assert map_openai_model_to_claude("o3-mini-2024") == "claude-opus-4-20250514"
 
-    @patch("ccproxy.routers.openai.ClaudeClient")
+    @patch("ccproxy.routers.claudecode.openai.ClaudeClient")
     def test_openai_endpoint_uses_translated_model(
         self, mock_claude_client_class, test_client
     ):
@@ -87,14 +87,14 @@ class TestModelTranslationRegression:
         import ast
         import inspect
 
-        from ccproxy.routers import openai
+        from ccproxy.routers.claudecode import openai
 
         # Get the source of the create_chat_completion function
         source = inspect.getsource(openai.create_chat_completion)
 
         # Check that map_openai_model_to_claude is imported and used
         assert (
-            "from ccproxy.services.translator import map_openai_model_to_claude"
+            "from ccproxy.formatters.translator import map_openai_model_to_claude"
             in source
         ), "OpenAI router must import map_openai_model_to_claude"
         assert "map_openai_model_to_claude(request.model)" in source, (

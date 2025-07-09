@@ -106,7 +106,7 @@ class ResponseTransformer:
             OpenAI format response body
         """
         try:
-            from ccproxy.services.translator import OpenAITranslator
+            from ccproxy.formatters.translator import OpenAITranslator
 
             anthropic_data = json.loads(body.decode("utf-8"))
             translator = OpenAITranslator()

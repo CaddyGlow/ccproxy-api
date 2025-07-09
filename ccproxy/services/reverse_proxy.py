@@ -26,7 +26,7 @@ class ReverseProxyService:
     def __init__(
         self,
         target_base_url: str = "https://api.anthropic.com",
-        timeout: float = 120.0,
+        timeout: float = 240.0,
         proxy_mode: str = "full",
         credentials_manager: CredentialsManager | None = None,
     ):
@@ -383,17 +383,16 @@ class ReverseProxyService:
         Yields:
             Transformed OpenAI SSE format chunks
         """
-        from ccproxy.services.stream_transformer import (
+        from ccproxy.formatters.stream_transformer import (
             OpenAIStreamTransformer,
             StreamingConfig,
         )
 
         # Configure streaming for reverse proxy
-        # Note: Tool calls and usage are now supported!
         config = StreamingConfig(
             enable_text_chunking=False,  # Don't chunk text in reverse proxy
-            enable_tool_calls=True,  # Now we support tool calls
-            enable_usage_info=True,  # Now we support usage info
+            enable_tool_calls=True,
+            enable_usage_info=True,
             chunk_delay_ms=0,  # No artificial delays
             chunk_size_words=1,
         )

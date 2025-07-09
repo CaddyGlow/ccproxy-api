@@ -2,8 +2,8 @@
 
 import pytest
 
+from ccproxy.formatters.translator import OpenAITranslator
 from ccproxy.models.openai import OpenAIChatCompletionRequest, OpenAIMessage
-from ccproxy.services.translator import OpenAITranslator
 
 
 @pytest.mark.unit

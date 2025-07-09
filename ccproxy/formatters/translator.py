@@ -330,7 +330,7 @@ class OpenAITranslator:
         import json
         import time
 
-        from ccproxy.services.stream_transformer import (
+        from ccproxy.formatters.stream_transformer import (
             OpenAIStreamTransformer,
             StreamingConfig,
         )

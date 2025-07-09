@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, Mock
 
 import pytest
 
-from ccproxy.services.stream_transformer import (
+from ccproxy.formatters.stream_transformer import (
     ClaudeSDKEventSource,
     OpenAIStreamTransformer,
     SSEEventSource,

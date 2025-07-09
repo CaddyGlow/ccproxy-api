@@ -9,13 +9,13 @@ from fastapi.responses import StreamingResponse
 
 from ccproxy.config.settings import get_settings
 from ccproxy.exceptions import ClaudeProxyError
-from ccproxy.middleware.auth import get_auth_dependency
-from ccproxy.models.errors import create_error_response
-from ccproxy.models.messages import MessageCreateParams, MessageResponse
-from ccproxy.services.anthropic_streaming import (
+from ccproxy.formatters.anthropic_streaming import (
     stream_anthropic_message_response,
     stream_claude_response,
 )
+from ccproxy.middleware.auth import get_auth_dependency
+from ccproxy.models.errors import create_error_response
+from ccproxy.models.messages import MessageCreateParams, MessageResponse
 from ccproxy.services.claude_client import ClaudeClient
 from ccproxy.utils import merge_claude_code_options
 from ccproxy.utils.logging import get_logger

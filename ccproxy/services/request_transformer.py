@@ -338,7 +338,7 @@ class RequestTransformer:
             Anthropic format request body
         """
         try:
-            from ccproxy.services.translator import OpenAITranslator
+            from ccproxy.formatters.translator import OpenAITranslator
 
             openai_data = json.loads(body.decode("utf-8"))
             translator = OpenAITranslator()

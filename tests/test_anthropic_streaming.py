@@ -5,7 +5,7 @@ from typing import Any
 
 import pytest
 
-from ccproxy.services.anthropic_streaming import (
+from ccproxy.formatters.anthropic_streaming import (
     StreamingFormatter,
     stream_claude_response,
 )

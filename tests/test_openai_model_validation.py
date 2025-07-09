@@ -3,12 +3,12 @@
 import pytest
 from pydantic import ValidationError
 
+from ccproxy.formatters.translator import map_openai_model_to_claude
 from ccproxy.models.openai import (
     OpenAIChatCompletionRequest,
     OpenAIMessage,
     OpenAITool,
 )
-from ccproxy.services.translator import map_openai_model_to_claude
 
 
 @pytest.mark.unit
@@ -406,7 +406,7 @@ class TestOpenAIModelMapping:
 
     def test_mapping_in_translator_request(self) -> None:
         """Test model mapping integration in translator."""
-        from ccproxy.services.translator import OpenAITranslator
+        from ccproxy.formatters.translator import OpenAITranslator
 
         translator = OpenAITranslator()
         openai_request = {

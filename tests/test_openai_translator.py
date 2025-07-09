@@ -6,13 +6,13 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from ccproxy.formatters.translator import OpenAITranslator
 from ccproxy.models.openai import (
     OpenAIChatCompletionRequest,
     OpenAIMessage,
     OpenAIResponseFormat,
     OpenAIStreamOptions,
 )
-from ccproxy.services.translator import OpenAITranslator
 
 
 @pytest.mark.unit
@@ -306,7 +306,7 @@ class TestModelMapping:
 
     def test_openai_to_claude_model_mapping(self):
         """Test OpenAI model names map to Claude models."""
-        from ccproxy.services.translator import map_openai_model_to_claude
+        from ccproxy.formatters.translator import map_openai_model_to_claude
 
         mappings = [
             ("gpt-4o-mini", "claude-3-5-haiku-latest"),
@@ -323,7 +323,7 @@ class TestModelMapping:
 
     def test_claude_model_passthrough(self):
         """Test Claude models are passed through unchanged."""
-        from ccproxy.services.translator import map_openai_model_to_claude
+        from ccproxy.formatters.translator import map_openai_model_to_claude
 
         claude_models = [
             "claude-3-5-sonnet-20241022",
@@ -338,7 +338,7 @@ class TestModelMapping:
 
     def test_unknown_model_passthrough(self):
         """Test unknown models are passed through unchanged."""
-        from ccproxy.services.translator import map_openai_model_to_claude
+        from ccproxy.formatters.translator import map_openai_model_to_claude
 
         unknown_model = "some-unknown-model"
         result = map_openai_model_to_claude(unknown_model)

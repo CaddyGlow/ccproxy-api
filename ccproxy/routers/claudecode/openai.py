@@ -12,6 +12,8 @@ from starlette.status import HTTP_500_INTERNAL_SERVER_ERROR
 
 from ccproxy.config.settings import get_settings
 from ccproxy.exceptions import ClaudeProxyError
+from ccproxy.formatters.openai_streaming_formatter import stream_claude_response_openai
+from ccproxy.formatters.translator import OpenAITranslator
 from ccproxy.middleware.auth import get_auth_dependency
 from ccproxy.models.openai import (
     OpenAIChatCompletionRequest,
@@ -20,8 +22,6 @@ from ccproxy.models.openai import (
     OpenAIModelsResponse,
 )
 from ccproxy.services.claude_client import ClaudeClient
-from ccproxy.services.openai_streaming_formatter import stream_claude_response_openai
-from ccproxy.services.translator import OpenAITranslator
 from ccproxy.utils import merge_claude_code_options
 from ccproxy.utils.logging import get_logger
 
@@ -74,7 +74,7 @@ async def create_chat_completion(
 
         # Prepare Claude Code options overrides from request
         # Map OpenAI model to Claude model for the options
-        from ccproxy.services.translator import map_openai_model_to_claude
+        from ccproxy.formatters.translator import map_openai_model_to_claude
 
         mapped_model = map_openai_model_to_claude(request.model)
         overrides: dict[str, Any] = {

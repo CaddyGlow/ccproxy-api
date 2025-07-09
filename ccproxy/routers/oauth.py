@@ -1,4 +1,4 @@
-"""OAuth authentication routes for Claude login."""
+"""OAuth authentication routes for Anthropic OAuth login login."""
 
 import asyncio
 import logging

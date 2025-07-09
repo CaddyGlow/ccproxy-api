@@ -6,13 +6,14 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
+from ccproxy.formatters.translator import map_openai_model_to_claude
+
 # Removed import of global app - using test_client fixture instead
 from ccproxy.models.openai import (
     OpenAIChatCompletionRequest,
     OpenAIMessage,
     OpenAIModelsResponse,
 )
-from ccproxy.services.translator import map_openai_model_to_claude
 
 
 # Removed custom client fixture - using test_client from conftest.py instead

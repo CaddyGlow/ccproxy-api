@@ -1,6 +1,6 @@
 """Message models for Anthropic Messages API endpoint."""
 
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -11,29 +11,28 @@ from .types import ContentBlockType, ServiceTier, StopReason, ToolChoiceType
 class SystemMessage(BaseModel):
     """System message content block."""
 
-    type: Literal["text"] = "text"
-    text: str = Field(..., description="System message text")
+    type: Annotated[Literal["text"], Field(description="Content type")] = "text"
+    text: Annotated[str, Field(description="System message text")]
 
 
 class ThinkingConfig(BaseModel):
     """Configuration for extended thinking process."""
 
-    type: Literal["enabled"] = Field("enabled", description="Enable thinking mode")
-    budget_tokens: int = Field(
-        ...,
-        description="Token budget for thinking process",
-        ge=1024,
+    type: Annotated[Literal["enabled"], Field(description="Enable thinking mode")] = (
+        "enabled"
     )
+    budget_tokens: Annotated[
+        int, Field(description="Token budget for thinking process", ge=1024)
+    ]
 
 
 class MetadataParams(BaseModel):
     """Metadata about the request."""
 
-    user_id: str | None = Field(
-        None,
-        description="External identifier for the user",
-        max_length=256,
-    )
+    user_id: Annotated[
+        str | None,
+        Field(description="External identifier for the user", max_length=256),
+    ] = None
 
     class Config:
         extra = "allow"  # Allow additional fields in metadata
@@ -42,92 +41,101 @@ class MetadataParams(BaseModel):
 class ToolChoiceParams(BaseModel):
     """Tool choice configuration."""
 
-    type: ToolChoiceType = Field(
-        ...,
-        description="How the model should use tools",
-    )
-    name: str | None = Field(
-        None,
-        description="Specific tool name (when type is 'tool')",
-    )
-    disable_parallel_tool_use: bool = Field(
-        False,
-        description="Disable parallel tool use",
-    )
+    type: Annotated[ToolChoiceType, Field(description="How the model should use tools")]
+    name: Annotated[
+        str | None, Field(description="Specific tool name (when type is 'tool')")
+    ] = None
+    disable_parallel_tool_use: Annotated[
+        bool, Field(description="Disable parallel tool use")
+    ] = False
 
 
 class MessageCreateParams(BaseModel):
     """Request parameters for creating messages via Anthropic Messages API."""
 
     # Required fields
-    model: str = Field(
-        ...,
-        description="The model to use for the message",
-        pattern=r"^claude-.*",
-    )
-    messages: list[Message] = Field(
-        ...,
-        description="Array of messages in the conversation",
-        min_length=1,
-    )
-    max_tokens: int = Field(
-        ...,
-        description="Maximum number of tokens to generate",
-        ge=1,
-        le=200000,
-    )
+    model: Annotated[
+        str,
+        Field(
+            description="The model to use for the message",
+            pattern=r"^claude-.*",
+        ),
+    ]
+    messages: Annotated[
+        list[Message],
+        Field(
+            description="Array of messages in the conversation",
+            min_length=1,
+        ),
+    ]
+    max_tokens: Annotated[
+        int,
+        Field(
+            description="Maximum number of tokens to generate",
+            ge=1,
+            le=200000,
+        ),
+    ]
 
     # Optional Anthropic API fields
-    system: str | list[SystemMessage] | None = Field(
-        None,
-        description="System prompt to provide context and instructions",
-    )
-    temperature: float | None = Field(
-        None,
-        description="Sampling temperature between 0.0 and 1.0",
-        ge=0.0,
-        le=1.0,
-    )
-    top_p: float | None = Field(
-        None,
-        description="Nucleus sampling parameter",
-        ge=0.0,
-        le=1.0,
-    )
-    top_k: int | None = Field(
-        None,
-        description="Top-k sampling parameter",
-        ge=0,
-    )
-    stop_sequences: list[str] | None = Field(
-        None,
-        description="Custom sequences where the model should stop generating",
-        max_length=4,
-    )
-    stream: bool | None = Field(
-        False,
-        description="Whether to stream the response",
-    )
-    metadata: MetadataParams | None = Field(
-        None,
-        description="Metadata about the request, including optional user_id",
-    )
-    tools: list[ToolDefinition] | None = Field(
-        None,
-        description="Available tools/functions for the model to use",
-    )
-    tool_choice: ToolChoiceParams | None = Field(
-        None,
-        description="How the model should use the provided tools",
-    )
-    service_tier: ServiceTier | None = Field(
-        None,
-        description="Request priority level",
-    )
-    thinking: ThinkingConfig | None = Field(
-        None,
-        description="Configuration for extended thinking process",
-    )
+    system: Annotated[
+        str | list[SystemMessage] | None,
+        Field(description="System prompt to provide context and instructions"),
+    ] = None
+    temperature: Annotated[
+        float | None,
+        Field(
+            description="Sampling temperature between 0.0 and 1.0",
+            ge=0.0,
+            le=1.0,
+        ),
+    ] = None
+    top_p: Annotated[
+        float | None,
+        Field(
+            description="Nucleus sampling parameter",
+            ge=0.0,
+            le=1.0,
+        ),
+    ] = None
+    top_k: Annotated[
+        int | None,
+        Field(
+            description="Top-k sampling parameter",
+            ge=0,
+        ),
+    ] = None
+    stop_sequences: Annotated[
+        list[str] | None,
+        Field(
+            description="Custom sequences where the model should stop generating",
+            max_length=4,
+        ),
+    ] = None
+    stream: Annotated[
+        bool | None,
+        Field(description="Whether to stream the response"),
+    ] = False
+    metadata: Annotated[
+        MetadataParams | None,
+        Field(description="Metadata about the request, including optional user_id"),
+    ] = None
+    tools: Annotated[
+        list[ToolDefinition] | None,
+        Field(description="Available tools/functions for the model to use"),
+    ] = None
+    tool_choice: Annotated[
+        ToolChoiceParams | None,
+        Field(description="How the model should use the provided tools"),
+    ] = None
+    service_tier: Annotated[
+        ServiceTier | None,
+        Field(description="Request priority level"),
+    ] = None
+    thinking: Annotated[
+        ThinkingConfig | None,
+        Field(description="Configuration for extended thinking process"),
+    ] = None
 
     @field_validator("model")
     @classmethod
@@ -191,39 +199,45 @@ class MessageCreateParams(BaseModel):
 class MessageContentBlock(BaseModel):
     """Content block in a message response."""
 
-    type: ContentBlockType = Field(..., description="Type of content block")
-    text: str | None = Field(
-        None, description="Text content (for text/thinking blocks)"
+    type: Annotated[ContentBlockType, Field(description="Type of content block")]
+    text: Annotated[
+        str | None, Field(description="Text content (for text/thinking blocks)")
+    ] = None
+    id: Annotated[str | None, Field(description="Unique ID (for tool_use blocks)")] = (
+        None
     )
-    id: str | None = Field(None, description="Unique ID (for tool_use blocks)")
-    name: str | None = Field(None, description="Tool name (for tool_use blocks)")
-    input: dict[str, Any] | None = Field(
-        None, description="Tool input (for tool_use blocks)"
-    )
+    name: Annotated[
+        str | None, Field(description="Tool name (for tool_use blocks)")
+    ] = None
+    input: Annotated[
+        dict[str, Any] | None, Field(description="Tool input (for tool_use blocks)")
+    ] = None
 
 
 class MessageResponse(BaseModel):
     """Response model for Anthropic Messages API endpoint."""
 
-    id: str = Field(..., description="Unique identifier for the message")
-    type: Literal["message"] = "message"
-    role: Literal["assistant"] = "assistant"
-    content: list[MessageContentBlock] = Field(
-        ..., description="Array of content blocks in the response"
+    id: Annotated[str, Field(description="Unique identifier for the message")]
+    type: Annotated[Literal["message"], Field(description="Response type")] = "message"
+    role: Annotated[Literal["assistant"], Field(description="Message role")] = (
+        "assistant"
     )
-    model: str = Field(..., description="The model used for the response")
-    stop_reason: StopReason | None = Field(
-        None,
-        description="Reason why the model stopped generating",
-    )
-    stop_sequence: str | None = Field(
-        None,
-        description="The stop sequence that triggered stopping (if applicable)",
-    )
-    usage: Usage = Field(..., description="Token usage information")
-    container: dict[str, Any] | None = Field(
-        None,
-        description="Information about container used in the request",
-    )
+    content: Annotated[
+        list[MessageContentBlock],
+        Field(description="Array of content blocks in the response"),
+    ]
+    model: Annotated[str, Field(description="The model used for the response")]
+    stop_reason: Annotated[
+        StopReason | None, Field(description="Reason why the model stopped generating")
+    ] = None
+    stop_sequence: Annotated[
+        str | None,
+        Field(description="The stop sequence that triggered stopping (if applicable)"),
+    ] = None
+    usage: Annotated[Usage, Field(description="Token usage information")]
+    container: Annotated[
+        dict[str, Any] | None,
+        Field(description="Information about container used in the request"),
+    ] = None
 
     model_config = ConfigDict(extra="forbid", validate_assignment=True)

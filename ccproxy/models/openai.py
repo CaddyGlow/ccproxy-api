@@ -8,7 +8,7 @@ API specification exactly while internally mapping to Claude models.
 import time
 import uuid
 from datetime import datetime
-from typing import Any
+from typing import Annotated, Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -29,9 +29,11 @@ from ccproxy.models.types import (
 class OpenAIMessageContent(BaseModel):
     """Content within an OpenAI message - can be text or image."""
 
-    type: OpenAIContentType
-    text: str | None = None
-    image_url: dict[str, str] | None = None
+    type: Annotated[OpenAIContentType, Field(description="Content type")]
+    text: Annotated[str | None, Field(description="Text content")] = None
+    image_url: Annotated[
+        dict[str, str] | None, Field(description="Image URL information")
+    ] = None
 
     model_config = ConfigDict(extra="forbid")
 
@@ -39,15 +41,22 @@ class OpenAIMessageContent(BaseModel):
 class OpenAIMessage(BaseModel):
     """OpenAI-compatible message model."""
 
-    role: OpenAIMessageRole = Field(..., description="The role of the message sender")
-    content: str | list[OpenAIMessageContent] = Field(
-        ..., description="The content of the message"
-    )
-    name: str | None = Field(None, description="The name of the participant (optional)")
-    tool_calls: list[dict[str, Any]] | None = Field(
-        None,
-        description="Tool calls made by the assistant (only for assistant messages)",
-    )
+    role: Annotated[
+        OpenAIMessageRole, Field(description="The role of the message sender")
+    ]
+    content: Annotated[
+        str | list[OpenAIMessageContent],
+        Field(description="The content of the message"),
+    ]
+    name: Annotated[
+        str | None, Field(description="The name of the participant (optional)")
+    ] = None
+    tool_calls: Annotated[
+        list[dict[str, Any]] | None,
+        Field(
+            description="Tool calls made by the assistant (only for assistant messages)"
+        ),
+    ] = None
     tool_call_id: str | None = Field(
         None,
         description="Tool call this message is responding to (only for tool messages)",
