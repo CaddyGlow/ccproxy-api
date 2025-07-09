@@ -334,6 +334,13 @@ class OAuthClient:
             if response.status_code == 200:
                 result = response.json()
 
+                # Validate required fields in refresh response
+                access_token = result.get("access_token")
+                if not access_token:
+                    raise OAuthTokenRefreshError(
+                        "Invalid refresh response: missing access_token"
+                    )
+
                 # Calculate expires_at from expires_in (seconds)
                 expires_in = result.get("expires_in")
                 expires_at = None
@@ -341,9 +348,15 @@ class OAuthClient:
                     expires_at = int(
                         (datetime.now(UTC).timestamp() + expires_in) * 1000
                     )  # Convert to milliseconds
+                else:
+                    # If no expires_in, set a default expiration (1 hour)
+                    logger.warning(
+                        "No expires_in in refresh response, using 1 hour default"
+                    )
+                    expires_at = int((datetime.now(UTC).timestamp() + 3600) * 1000)
 
                 oauth_data = {
-                    "accessToken": result.get("access_token"),
+                    "accessToken": access_token,
                     "refreshToken": result.get("refresh_token", refresh_token),
                     "expiresAt": expires_at,
                     "scopes": result.get("scope", "").split()

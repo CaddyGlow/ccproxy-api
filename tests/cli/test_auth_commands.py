@@ -135,6 +135,8 @@ class TestAuthCommands:
         """Test info command when credentials not found."""
         mock_manager = MagicMock()
         mock_manager.find_credentials_file = AsyncMock(return_value=None)
+        mock_manager.load = AsyncMock(return_value=None)
+        mock_manager.config = MagicMock(storage_paths=["/home/test/.claude/credentials.json"])
         mock_get_manager.return_value = mock_manager
 
         result = self.runner.invoke(app, ["info"])
@@ -153,9 +155,10 @@ class TestAuthCommands:
             return_value=Path("/home/test/.claude/credentials.json")
         )
         mock_manager.load = AsyncMock(return_value=None)
+        mock_manager.config = MagicMock(storage_paths=["/home/test/.claude/credentials.json"])
         mock_get_manager.return_value = mock_manager
 
         result = self.runner.invoke(app, ["info"])
 
         assert result.exit_code == 1
-        assert "Failed to load credentials" in result.output
+        assert "No credential file found" in result.output
