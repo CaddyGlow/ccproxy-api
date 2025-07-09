@@ -223,7 +223,6 @@ class CredentialsManager:
                 raise RuntimeError("OAuth client not initialized")
             profile = await self._oauth_client.fetch_user_profile(
                 credentials.claude_ai_oauth.access_token,
-                credentials.claude_ai_oauth.refresh_token,
             )
             return profile
         except Exception as e:
