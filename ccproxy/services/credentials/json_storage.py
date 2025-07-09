@@ -1,6 +1,8 @@
 """JSON file storage backend for credentials."""
 
+import contextlib
 import json
+import os
 from pathlib import Path
 from typing import Any, Optional
 
@@ -132,14 +134,29 @@ class JsonFileStorage(CredentialsStorageBackend):
                     # Continue to save to file
 
             # Always save to file as well (for compatibility and backup)
-            with self.file_path.open("w") as f:
-                json.dump(data, f, indent=2)
+            # Use atomic write: write to temp file then rename
+            temp_path = self.file_path.with_suffix(".tmp")
 
-            # Set appropriate file permissions (read/write for owner only)
-            self.file_path.chmod(0o600)
+            try:
+                with temp_path.open("w") as f:
+                    json.dump(data, f, indent=2)
 
-            logger.debug(f"Successfully saved credentials to file: {self.file_path}")
-            return True
+                # Set appropriate file permissions (read/write for owner only)
+                temp_path.chmod(0o600)
+
+                # Atomically replace the original file
+                Path.replace(temp_path, self.file_path)
+
+                logger.debug(
+                    f"Successfully saved credentials to file: {self.file_path}"
+                )
+                return True
+            except Exception:
+                # Clean up temp file if it exists
+                if temp_path.exists():
+                    with contextlib.suppress(Exception):
+                        temp_path.unlink()
+                raise
 
         except Exception as e:
             raise CredentialsStorageError(f"Error saving credentials: {e}") from e
