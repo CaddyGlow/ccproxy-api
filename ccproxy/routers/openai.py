@@ -20,7 +20,7 @@ from ccproxy.models.openai import (
     OpenAIModelsResponse,
 )
 from ccproxy.services.claude_client import ClaudeClient
-from ccproxy.services.openai_streaming import stream_claude_response_openai
+from ccproxy.services.openai_streaming_formatter import stream_claude_response_openai
 from ccproxy.services.translator import OpenAITranslator
 from ccproxy.utils import merge_claude_code_options
 from ccproxy.utils.logging import get_logger

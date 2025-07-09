@@ -1,4 +1,12 @@
-"""Streaming response utilities for Anthropic API compatibility."""
+"""Anthropic-format streaming utilities.
+
+This module handles streaming responses in Anthropic's native SSE (Server-Sent Events) format.
+It is used for converting Claude SDK responses to Anthropic API format for the /v1/messages endpoint.
+
+For OpenAI-format streaming, see:
+- openai_streaming_formatter.py: OpenAI SSE formatting utilities
+- stream_transformer.py: Unified stream transformation framework
+"""
 
 import asyncio
 import json
@@ -33,16 +41,17 @@ class StreamingFormatter:
     @staticmethod
     def format_data_only(data: dict[str, Any]) -> str:
         """
-        Format data-only SSE event.
+        Format SSE event with explicit event type.
 
         Args:
             data: Event data dictionary
 
         Returns:
-            Formatted SSE string
+            Formatted SSE string with event type
         """
         json_data = json.dumps(data, separators=(",", ":"))
-        return f"data: {json_data}\n\n"
+        event_type = data.get("type", "unknown")
+        return f"event: {event_type}\ndata: {json_data}\n\n"
 
     @staticmethod
     def format_message_start(

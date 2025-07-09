@@ -29,7 +29,7 @@ class ChatAgent:
         # Get configuration from environment
         api_key = os.getenv("ANTHROPIC_API_KEY")
         base_url = os.getenv("ANTHROPIC_BASE_URL")
-        base_url_default = "http://127.0.0.1:8000"
+        base_url_default = "http://127.0.0.1:8000/cc"
 
         if not api_key:
             # logger.warning("ANTHROPIC_API_KEY not set, using dummy key")
@@ -39,6 +39,7 @@ class ChatAgent:
             os.environ["ANTHROPIC_BASE_URL"] = base_url_default
 
         # Create client with type-safe parameters
+        # Don't modify the base URL - let the proxy server handle the path routing
         if base_url:
             self.client = AsyncAnthropic(api_key=api_key, base_url=base_url)
         else:
@@ -55,6 +56,10 @@ class ChatAgent:
         self.messages.append({"role": "user", "content": message})
 
         try:
+            yield f"[DEBUG] Starting request to {self.client.base_url or 'https://api.anthropic.com'}"
+            yield f"[DEBUG] Using API key: {self.api_key[:10] + '...' if self.api_key else 'None'}"
+
+            # Process streaming events for real-time response
             async with self.client.messages.stream(
                 model="claude-3-5-sonnet-20241022",
                 max_tokens=1024,
@@ -63,37 +68,62 @@ class ChatAgent:
                 response_content = ""
                 thinking_content = ""
                 in_thinking_block = False
+                event_count = 0
 
-                # Process raw events to capture thinking blocks
-                async for event in stream:
-                    if event.type == "content_block_start":
-                        content_block = event.content_block
-                        if (
-                            content_block.type == "text"
-                            and hasattr(content_block, "thinking")
-                            and content_block.thinking
-                        ):
-                            in_thinking_block = True
-                            yield "[THINKING_START]"
+                # Try to get the accumulated text first
+                try:
+                    final_message = await stream.get_final_message()
+                    yield f"[DEBUG] Final message received: {len(final_message.content)} content blocks"
 
-                    elif event.type == "content_block_delta":
-                        delta = event.delta
-                        if hasattr(delta, "type") and delta.type == "thinking_delta":
-                            thinking_text = getattr(delta, "thinking", "")
-                            thinking_content += thinking_text
-                            yield thinking_text
-                        elif hasattr(delta, "type") and delta.type == "text_delta":
-                            text = getattr(delta, "text", "")
-                            response_content += text
+                    for content_block in final_message.content:
+                        if content_block.type == "text":
+                            response_content = content_block.text
+                            yield f"[DEBUG] Text content: {response_content[:100]}{'...' if len(response_content) > 100 else ''}"
+                            # Yield the full text
+                            yield response_content
+                except Exception as e:
+                    yield f"[DEBUG] Failed to get final message: {e}"
+
+                    # Fall back to processing raw events
+                    async for event in stream:
+                        event_count += 1
+                        yield f"[DEBUG] Event {event_count}: {event.type}"
+
+                        if event.type == "content_block_start":
+                            content_block = event.content_block
+                            yield f"[DEBUG] Content block: {content_block.type}"
+                            if (
+                                content_block.type == "text"
+                                and hasattr(content_block, "thinking")
+                                and content_block.thinking
+                            ):
+                                in_thinking_block = True
+                                yield "[THINKING_START]"
+
+                        elif event.type == "content_block_delta":
+                            delta = event.delta
+                            yield f"[DEBUG] Delta type: {getattr(delta, 'type', 'no type')}"
+                            if (
+                                hasattr(delta, "type")
+                                and delta.type == "thinking_delta"
+                            ):
+                                thinking_text = getattr(delta, "thinking", "")
+                                thinking_content += thinking_text
+                                yield thinking_text
+                            elif hasattr(delta, "type") and delta.type == "text_delta":
+                                text = getattr(delta, "text", "")
+                                response_content += text
+                                if in_thinking_block:
+                                    in_thinking_block = False
+                                    yield "[THINKING_END]"
+                                yield text
+
+                        elif event.type == "content_block_stop":
                             if in_thinking_block:
                                 in_thinking_block = False
                                 yield "[THINKING_END]"
-                            yield text
 
-                    elif event.type == "content_block_stop":
-                        if in_thinking_block:
-                            in_thinking_block = False
-                            yield "[THINKING_END]"
+                yield f"[DEBUG] Stream completed. Total events: {event_count}, Response length: {len(response_content)}"
 
                 # Store the complete response (without thinking content)
                 self.messages.append({"role": "assistant", "content": response_content})
@@ -342,9 +372,17 @@ class ChatApp(App):
             response_content = ""
             thinking_content = ""
             in_thinking = False
+            chunk_count = 0
             self.chat_log.write("[bold blue]Claude:[/bold blue]")
 
             async for chunk in self.chat_agent.send_message(message):
+                chunk_count += 1
+                # Debug: show we're receiving chunks
+                if chunk_count == 1:
+                    self.chat_log.write(
+                        f"[dim]Receiving response... (chunk {chunk_count})[/dim]"
+                    )
+
                 if chunk == "[THINKING_START]":
                     in_thinking = True
                     self.chat_log.write("[dim italic]Thinking...[/dim italic]")
@@ -362,18 +400,26 @@ class ChatApp(App):
                     thinking_content += chunk
                 else:
                     response_content += chunk
+                    # Display chunk immediately (without markdown for real-time)
+                    if chunk.strip():  # Only display non-empty chunks
+                        self.chat_log.write(chunk)
 
-            # Write the complete response with markdown rendering
-            if response_content.strip():
-                # Create markdown object with custom styling
-                markdown = Markdown(response_content, code_theme="monokai")
-                self.chat_log.write(markdown)
-            else:
-                self.chat_log.write("[dim]No response received[/dim]")
+            self.chat_log.write(
+                f"[dim]Stream completed. Total chunks: {chunk_count}, Content length: {len(response_content)}[/dim]"
+            )
+
+            # If no content was received, show a message
+            if not response_content.strip():
+                self.chat_log.write("[dim]No response content received[/dim]")
+
             self.chat_log.write("")
 
         except Exception as e:
             self.chat_log.write(f"[bold red]Error:[/bold red] {str(e)}")
+            # Add more debugging info
+            import traceback
+
+            self.chat_log.write(f"[red]Traceback:[/red] {traceback.format_exc()}")
             self.chat_log.write("")
 
         finally:

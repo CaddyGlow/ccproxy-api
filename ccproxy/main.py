@@ -80,7 +80,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         create_reverse_proxy_router,
     )
 
-    # Claude Code SDK endpoints (local execution)
+    # Claude Code SDK endpoints (local execution) - using standard Anthropic format
     app.include_router(anthropic.router, prefix=f"{settings.claude_code_prefix}/v1")
     app.include_router(openai.router, prefix=f"{settings.claude_code_prefix}/openai/v1")
 

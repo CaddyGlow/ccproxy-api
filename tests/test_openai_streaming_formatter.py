@@ -12,84 +12,11 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
-from ccproxy.services.openai_streaming import (
+from ccproxy.services.openai_streaming_formatter import (
     OpenAIStreamingFormatter,
-    _split_text_for_streaming,
     stream_claude_response_openai,
     stream_claude_response_openai_simple,
 )
-
-
-class TestSplitTextForStreaming:
-    """Test the _split_text_for_streaming helper function."""
-
-    def test_empty_text(self):
-        """Test splitting empty text."""
-        result = _split_text_for_streaming("")
-        assert result == [""]
-
-    def test_none_text(self):
-        """Test splitting None text."""
-        # This should not normally happen but test for robustness
-        # Skip this test since the function expects str type
-        pass
-
-    def test_small_text(self):
-        """Test splitting small text (≤ 10 characters)."""
-        result = _split_text_for_streaming("hello")
-        assert result == ["hello"]
-
-    def test_medium_text(self):
-        """Test splitting medium text without newlines."""
-        text = "hello world this is a test"
-        result = _split_text_for_streaming(text, chunk_size=3)
-        assert len(result) > 1
-        assert "".join(result) == text
-
-    def test_text_with_newlines(self):
-        """Test splitting text with newlines."""
-        text = "hello\nworld\nthis is a test"
-        result = _split_text_for_streaming(text, chunk_size=5)
-        assert len(result) > 1
-        assert "".join(result) == text
-
-    def test_text_with_multiple_spaces(self):
-        """Test splitting text with multiple spaces."""
-        text = "hello    world    test"
-        result = _split_text_for_streaming(text, chunk_size=2)
-        assert "".join(result) == text
-
-    def test_text_with_only_spaces(self):
-        """Test splitting text with only spaces."""
-        text = "   \n   \n   "
-        result = _split_text_for_streaming(text, chunk_size=2)
-        assert "".join(result) == text
-
-    def test_chunk_size_one(self):
-        """Test splitting with chunk size of 1."""
-        text = "hello world"
-        result = _split_text_for_streaming(text, chunk_size=1)
-        assert len(result) >= 2
-        assert "".join(result) == text
-
-    def test_large_chunk_size(self):
-        """Test splitting with very large chunk size."""
-        text = "hello world test"
-        result = _split_text_for_streaming(text, chunk_size=100)
-        assert result == [text]
-
-    def test_single_word(self):
-        """Test splitting single long word."""
-        text = "supercalifragilisticexpialidocious"
-        result = _split_text_for_streaming(text, chunk_size=3)
-        assert result == [text]
-
-    def test_mixed_content(self):
-        """Test splitting mixed content with punctuation."""
-        text = "Hello, world! How are you today? Fine, thanks."
-        result = _split_text_for_streaming(text, chunk_size=3)
-        assert len(result) > 1
-        assert "".join(result) == text
 
 
 class TestOpenAIStreamingFormatter:

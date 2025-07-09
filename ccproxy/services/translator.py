@@ -1,7 +1,7 @@
 """Translation layer for converting between OpenAI and Anthropic formats."""
 
 import uuid
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator, AsyncIterator
 from typing import Any, Literal, cast
 
 from ccproxy.models.openai import (
@@ -310,12 +310,14 @@ class OpenAITranslator:
 
     async def anthropic_to_openai_stream(
         self,
-        anthropic_stream: AsyncIterator[dict[str, Any]],
+        anthropic_stream: AsyncGenerator[dict[str, Any], None],
         original_model: str,
         request_id: str | None = None,
     ) -> AsyncIterator[dict[str, Any]]:
         """
         Convert Anthropic streaming response to OpenAI streaming format.
+
+        This method now uses the unified stream transformer for consistent behavior.
 
         Args:
             anthropic_stream: Anthropic streaming response
@@ -325,184 +327,47 @@ class OpenAITranslator:
         Yields:
             OpenAI format streaming chunks
         """
+        import json
         import time
+
+        from ccproxy.services.stream_transformer import (
+            OpenAIStreamTransformer,
+            StreamingConfig,
+        )
 
         # Generate response ID if not provided
         if request_id is None:
             request_id = f"chatcmpl-{uuid.uuid4().hex[:29]}"
 
-        # Return the original model name as-is
-        response_model = original_model
+        # Configure streaming for translator use
+        config = StreamingConfig(
+            enable_text_chunking=False,  # Keep text as-is for translator
+            enable_tool_calls=True,
+            enable_usage_info=True,
+            chunk_delay_ms=0,  # No artificial delays
+            chunk_size_words=1,
+        )
 
-        created = int(time.time())
-        tool_calls = []
-        current_tool_call_index = 0
+        # Create transformer
+        transformer = OpenAIStreamTransformer.from_claude_sdk(
+            anthropic_stream,
+            message_id=request_id,
+            model=original_model,
+            created=int(time.time()),
+            config=config,
+        )
 
-        async for chunk in anthropic_stream:
-            chunk_type = chunk.get("type")
-
-            if chunk_type == "message_start":
-                # Send initial chunk
-                yield {
-                    "id": request_id,
-                    "object": "chat.completion.chunk",
-                    "created": created,
-                    "model": response_model,
-                    "choices": [
-                        {
-                            "index": 0,
-                            "delta": {"role": "assistant", "content": ""},
-                            "finish_reason": None,
-                        }
-                    ],
-                }
-
-            elif chunk_type == "content_block_start":
-                block = chunk.get("content_block", {})
-                if block.get("type") == "thinking":
-                    # Start of thinking block - send a marker
-                    yield {
-                        "id": request_id,
-                        "object": "chat.completion.chunk",
-                        "created": created,
-                        "model": response_model,
-                        "choices": [
-                            {
-                                "index": 0,
-                                "delta": {"content": "[Thinking]\n"},
-                                "finish_reason": None,
-                            }
-                        ],
-                    }
-                elif block.get("type") == "tool_use":
-                    # Start of tool use
-                    tool_call = {
-                        "index": current_tool_call_index,
-                        "id": block.get("id", f"call_{uuid.uuid4().hex[:24]}"),
-                        "type": "function",
-                        "function": {
-                            "name": block.get("name", ""),
-                            "arguments": "",
-                        },
-                    }
-                    tool_calls.append(tool_call)
-
-                    yield {
-                        "id": request_id,
-                        "object": "chat.completion.chunk",
-                        "created": created,
-                        "model": response_model,
-                        "choices": [
-                            {
-                                "index": 0,
-                                "delta": {"tool_calls": [tool_call]},
-                                "finish_reason": None,
-                            }
-                        ],
-                    }
-
-                    current_tool_call_index += 1
-
-            elif chunk_type == "content_block_delta":
-                delta = chunk.get("delta", {})
-                if delta.get("type") == "text_delta":
-                    # Text content delta
-                    text = delta.get("text", "")
-                    yield {
-                        "id": request_id,
-                        "object": "chat.completion.chunk",
-                        "created": created,
-                        "model": response_model,
-                        "choices": [
-                            {
-                                "index": 0,
-                                "delta": {"content": text},
-                                "finish_reason": None,
-                            }
-                        ],
-                    }
-                elif delta.get("type") == "thinking_delta":
-                    # Thinking content delta
-                    thinking_text = delta.get("thinking", "")
-                    if thinking_text:
-                        yield {
-                            "id": request_id,
-                            "object": "chat.completion.chunk",
-                            "created": created,
-                            "model": response_model,
-                            "choices": [
-                                {
-                                    "index": 0,
-                                    "delta": {"content": thinking_text},
-                                    "finish_reason": None,
-                                }
-                            ],
-                        }
-                elif delta.get("type") == "input_json_delta":
-                    # Tool input delta
-                    if tool_calls:
-                        partial_json = delta.get("partial_json", "")
-                        yield {
-                            "id": request_id,
-                            "object": "chat.completion.chunk",
-                            "created": created,
-                            "model": response_model,
-                            "choices": [
-                                {
-                                    "index": 0,
-                                    "delta": {
-                                        "tool_calls": [
-                                            {
-                                                "index": len(tool_calls) - 1,
-                                                "function": {"arguments": partial_json},
-                                            }
-                                        ]
-                                    },
-                                    "finish_reason": None,
-                                }
-                            ],
-                        }
-
-            elif chunk_type == "content_block_stop":
-                # Check if we were in a thinking block
-                if chunk.get("index") is not None:
-                    # We can't track block types perfectly in streaming,
-                    # but we can add a separator after thinking blocks
-                    # For now, we'll skip this as we don't have state tracking
-                    pass
-
-            elif chunk_type == "message_delta":
-                delta = chunk.get("delta", {})
-                finish_reason = self._convert_stop_reason_to_openai(
-                    delta.get("stop_reason")
-                )
-
-                if finish_reason:
-                    # Final chunk
-                    usage_info = chunk.get("usage", {})
-                    final_chunk = {
-                        "id": request_id,
-                        "object": "chat.completion.chunk",
-                        "created": created,
-                        "model": response_model,
-                        "choices": [
-                            {
-                                "index": 0,
-                                "delta": {},
-                                "finish_reason": finish_reason,
-                            }
-                        ],
-                    }
-
-                    if usage_info:
-                        final_chunk["usage"] = {
-                            "prompt_tokens": usage_info.get("input_tokens", 0),
-                            "completion_tokens": usage_info.get("output_tokens", 0),
-                            "total_tokens": usage_info.get("input_tokens", 0)
-                            + usage_info.get("output_tokens", 0),
-                        }
-
-                    yield final_chunk
+        # Transform and yield as dict objects
+        async for chunk in transformer.transform():
+            # Parse the SSE format string back to dict for compatibility
+            if chunk.startswith("data: "):
+                data_str = chunk[6:].strip()
+                if data_str and data_str != "[DONE]":
+                    try:
+                        yield json.loads(data_str)
+                    except json.JSONDecodeError:
+                        logger.warning(f"Failed to parse chunk: {data_str}")
+                        continue
 
     def _convert_messages_to_anthropic(
         self, openai_messages: list[OpenAIMessage]

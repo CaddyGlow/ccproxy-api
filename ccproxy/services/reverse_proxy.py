@@ -335,7 +335,7 @@ class ReverseProxyService:
                         f"Streaming response for path: {original_path}, is_openai: {is_openai}, mode: {self.proxy_mode}"
                     )
 
-                    if is_openai and self.proxy_mode != "minimal":
+                    if is_openai:
                         # Transform Anthropic SSE to OpenAI SSE format
                         logger.info(
                             f"Transforming Anthropic SSE to OpenAI format for {original_path}"
@@ -373,6 +373,9 @@ class ReverseProxyService:
     ) -> AsyncGenerator[bytes, None]:
         """Transform Anthropic SSE stream to OpenAI SSE format.
 
+        Uses the unified stream transformer for consistent behavior across all OpenAI
+        streaming implementations. Supports tool calls, usage info, and thinking blocks.
+
         Args:
             response: The streaming response from Anthropic
             original_path: Original request path for extracting model info
@@ -380,163 +383,33 @@ class ReverseProxyService:
         Yields:
             Transformed OpenAI SSE format chunks
         """
-        import json
-        import time
-        import uuid
+        from ccproxy.services.stream_transformer import (
+            OpenAIStreamTransformer,
+            StreamingConfig,
+        )
 
-        from ccproxy.services.openai_streaming import OpenAIStreamingFormatter
-
-        # Generate metadata
-        message_id = f"chatcmpl-{uuid.uuid4().hex[:29]}"
-        created = int(time.time())
+        # Configure streaming for reverse proxy
+        # Note: Tool calls and usage are now supported!
+        config = StreamingConfig(
+            enable_text_chunking=False,  # Don't chunk text in reverse proxy
+            enable_tool_calls=True,  # Now we support tool calls
+            enable_usage_info=True,  # Now we support usage info
+            chunk_delay_ms=0,  # No artificial delays
+            chunk_size_words=1,
+        )
 
         # Extract model from request body if possible, otherwise use default
         # For reverse proxy, we might not have access to the original request model
         # So we'll use a generic model name
         model = "gpt-4o"  # Default model name for OpenAI format
 
-        formatter = OpenAIStreamingFormatter()
-        has_sent_role = False
-        has_content = False
-        in_thinking_block = False
+        # Create transformer
+        transformer = OpenAIStreamTransformer.from_sse_stream(
+            response,
+            model=model,
+            config=config,
+        )
 
-        # Parse Anthropic SSE events
-        buffer = b""
-        async for chunk in response.aiter_bytes():
-            buffer += chunk
-
-            # Process complete lines
-            while b"\n" in buffer:
-                line_end = buffer.find(b"\n")
-                line = buffer[:line_end]
-                buffer = buffer[line_end + 1 :]
-
-                # Skip empty lines
-                if not line.strip():
-                    continue
-
-                line_str = line.decode("utf-8", errors="replace").strip()
-
-                # Parse SSE format
-                if line_str.startswith("event:"):
-                    event_type = line_str[6:].strip()
-                elif line_str.startswith("data:"):
-                    data_str = line_str[5:].strip()
-
-                    try:
-                        data = json.loads(data_str)
-
-                        # Transform based on event type
-                        event_type = data.get("type")
-                        logger.debug(f"Processing event type: {event_type}")
-
-                        if event_type == "message_start":
-                            # Send initial role chunk
-                            if not has_sent_role:
-                                first_chunk = formatter.format_first_chunk(
-                                    message_id, model, created
-                                )
-                                logger.debug(
-                                    f"Sending first chunk: {first_chunk[:80]}..."
-                                )
-                                yield first_chunk.encode("utf-8")
-                                has_sent_role = True
-
-                        elif event_type == "content_block_start":
-                            # Check if this is a thinking block
-                            content_block = data.get("content_block", {})
-                            block_type = content_block.get("type")
-                            if block_type == "thinking" or (
-                                block_type == "text"
-                                and content_block.get("thinking", False)
-                            ):
-                                in_thinking_block = True
-                                has_content = True
-                                # Send a marker to indicate thinking start
-                                yield formatter.format_content_chunk(
-                                    message_id, model, created, "[Thinking]\n"
-                                ).encode("utf-8")
-                                logger.debug(
-                                    f"Started thinking block (type: {block_type}, thinking: {content_block.get('thinking')})"
-                                )
-
-                        elif data.get("type") == "content_block_delta":
-                            delta = data.get("delta", {})
-                            delta_type = delta.get("type")
-
-                            if delta_type == "thinking_delta":
-                                # Handle thinking content
-                                thinking_text = delta.get("thinking", "")
-                                if thinking_text:
-                                    has_content = True
-                                    yield formatter.format_content_chunk(
-                                        message_id, model, created, thinking_text
-                                    ).encode("utf-8")
-                                    logger.debug(
-                                        f"Thinking delta: {thinking_text[:50]}..."
-                                    )
-
-                            elif delta_type == "text_delta":
-                                # If we were in thinking mode, end it with a separator
-                                if in_thinking_block:
-                                    in_thinking_block = False
-                                    yield formatter.format_content_chunk(
-                                        message_id, model, created, "\n---\n"
-                                    ).encode("utf-8")
-                                    logger.debug(
-                                        "Ended thinking block, starting regular text"
-                                    )
-
-                                text = delta.get("text", "")
-                                if text:
-                                    has_content = True
-                                    yield formatter.format_content_chunk(
-                                        message_id, model, created, text
-                                    ).encode("utf-8")
-
-                        elif event_type == "content_block_stop":
-                            # If we're ending a thinking block without text following
-                            if in_thinking_block:
-                                in_thinking_block = False
-                                yield formatter.format_content_chunk(
-                                    message_id, model, created, "\n---\n"
-                                ).encode("utf-8")
-                                logger.debug(
-                                    "Ended thinking block at content_block_stop"
-                                )
-
-                        elif data.get("type") == "message_delta":
-                            # Message is ending
-                            delta = data.get("delta", {})
-                            stop_reason = delta.get("stop_reason", "stop")
-
-                            # Map stop reasons
-                            finish_reason_map = {
-                                "end_turn": "stop",
-                                "max_tokens": "length",
-                                "tool_use": "tool_calls",
-                                "stop_sequence": "stop",
-                                "pause_turn": "stop",
-                                "refusal": "content_filter",
-                            }
-                            finish_reason = finish_reason_map.get(stop_reason, "stop")
-
-                            yield formatter.format_final_chunk(
-                                message_id, model, created, finish_reason
-                            ).encode("utf-8")
-
-                    except json.JSONDecodeError:
-                        logger.debug(f"Failed to parse SSE data: {data_str}")
-                    except Exception as e:
-                        logger.error(
-                            f"Error processing SSE event: {e}, data: {data_str[:100]}"
-                        )
-
-        # Ensure we send a final chunk if we haven't already
-        if has_sent_role and not has_content:
-            yield formatter.format_final_chunk(message_id, model, created).encode(
-                "utf-8"
-            )
-
-        # Always send DONE
-        yield formatter.format_done().encode("utf-8")
+        # Transform and yield as bytes
+        async for chunk in transformer.transform():
+            yield chunk.encode("utf-8")

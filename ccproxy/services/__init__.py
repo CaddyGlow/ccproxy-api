@@ -1,7 +1,7 @@
 """Services module for Claude Proxy API Server."""
 
 from .claude_client import ClaudeClient
-from .openai_streaming import (
+from .openai_streaming_formatter import (
     OpenAIStreamingFormatter,
     stream_claude_response_openai,
     stream_claude_response_openai_simple,
