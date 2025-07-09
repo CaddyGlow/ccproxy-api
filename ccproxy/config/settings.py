@@ -248,6 +248,89 @@ class Settings(BaseSettings):
         description="Require authentication for dashboard access",
     )
 
+    # HTTP Client configuration
+    http_client_proxy_url: str | None = Field(
+        default=None,
+        description="HTTP/HTTPS proxy URL for outbound requests",
+    )
+
+    http_client_proxy_username: str | None = Field(
+        default=None,
+        description="Proxy authentication username",
+    )
+
+    http_client_proxy_password: str | None = Field(
+        default=None,
+        description="Proxy authentication password",
+    )
+
+    http_client_ssl_verify: bool = Field(
+        default=True,
+        description="Enable SSL certificate verification",
+    )
+
+    http_client_ssl_ca_bundle: str | None = Field(
+        default=None,
+        description="Path to SSL CA certificate bundle file",
+    )
+
+    http_client_ssl_client_cert: str | None = Field(
+        default=None,
+        description="Path to SSL client certificate file",
+    )
+
+    http_client_ssl_client_key: str | None = Field(
+        default=None,
+        description="Path to SSL client key file",
+    )
+
+    http_client_timeout: float = Field(
+        default=30.0,
+        description="HTTP request timeout in seconds",
+        ge=1.0,
+        le=600.0,
+    )
+
+    http_client_connect_timeout: float = Field(
+        default=10.0,
+        description="HTTP connection timeout in seconds",
+        ge=1.0,
+        le=60.0,
+    )
+
+    http_client_max_connections: int = Field(
+        default=100,
+        description="Maximum number of HTTP connections",
+        ge=1,
+        le=1000,
+    )
+
+    http_client_max_keepalive_connections: int = Field(
+        default=20,
+        description="Maximum number of HTTP keepalive connections",
+        ge=1,
+        le=100,
+    )
+
+    http_client_max_retries: int = Field(
+        default=3,
+        description="Maximum number of HTTP request retries",
+        ge=0,
+        le=10,
+    )
+
+    http_client_retry_backoff: float = Field(
+        default=1.0,
+        description="HTTP retry backoff factor",
+        ge=0.1,
+        le=10.0,
+    )
+
+    http_client_collect_metrics: bool = Field(
+        default=True,
+        description="Enable HTTP client metrics collection",
+    )
+
     model_pricing: dict[str, dict[str, float]] = Field(
         default_factory=lambda: {
             # Claude 3.5 Sonnet
