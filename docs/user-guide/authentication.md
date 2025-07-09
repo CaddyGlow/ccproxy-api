@@ -6,15 +6,35 @@ Claude Code Proxy API handles authentication in two layers:
 1. **Claude Authentication**: Your Claude subscription credentials for accessing Claude AI
 2. **API Authentication**: Optional token authentication for securing access to the proxy endpoints
 
-## Claude Authentication
+## Important: Authentication Methods
 
-CCProxy uses your Claude subscription credentials. Manage them with these commands:
+CCProxy supports two different authentication methods that use separate credential storage:
+
+### Claude CLI Authentication (Claude Code Mode)
+- **Used by**: `claude /login` and `claude /status` commands
+- **Storage locations**:
+  - `~/.claude/credentials.json`
+  - `~/.config/claude/credentials.json`
+- **Purpose**: Authenticates the Claude CLI for Claude Code mode operations
+- **Note**: These credentials are managed by the Claude CLI directly
+
+### CCProxy Authentication (API Mode)
+- **Used by**: `ccproxy auth` commands (login, validate, info)
+- **Storage**:
+  - **Primary**: System keyring (secure, recommended)
+  - **Fallback**: `~/.config/ccproxy/credentials.json`
+- **Purpose**: Authenticates for API mode operations using Anthropic OAuth2
+- **Note**: Separate from Claude CLI credentials to avoid conflicts
+
+## CCProxy Authentication Commands
+
+Manage your CCProxy OAuth2 credentials with these commands:
 
 ### Login
 ```bash
 ccproxy auth login
 ```
-Opens a browser window for Claude authentication. Required for first-time setup.
+Opens a browser window for Anthropic OAuth2 authentication. Required for API mode access.
 
 ### Validate Credentials
 ```bash
@@ -31,12 +51,15 @@ ccproxy auth info
 ```
 Displays detailed credential information and automatically renews the token if expired. Shows:
 - Account email and organization
-- File location of credentials
+- Storage location (keyring or file)
 - Token expiration and time remaining
 - Access token (partially masked)
 
 ### Credential Storage
-Credentials are stored locally at `~/.claude/.credentials.json` and are automatically managed by CCProxy.
+CCProxy credentials are stored securely:
+- **Primary storage**: System keyring (when available)
+- **Fallback storage**: `~/.config/ccproxy/credentials.json`
+- Tokens are automatically managed and renewed by CCProxy
 
 ## API Authentication (Optional)
 

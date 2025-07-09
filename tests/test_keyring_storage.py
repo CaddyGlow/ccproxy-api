@@ -288,11 +288,11 @@ class TestCredentialStoragePaths:
         with patch.dict("os.environ", {"CCPROXY_TEST_MODE": ""}, clear=True):
             paths = _get_default_storage_paths()
 
-            assert "~/.config/ccproxy/credentials.json" in paths
-            assert "~/.claude/.credentials.json" in paths
-            assert "~/.config/claude/.credentials.json" in paths
-            # App config should be first
-            assert paths[0] == "~/.config/ccproxy/credentials.json"
+            # Only app config path should be present now
+            assert paths == ["~/.config/ccproxy/credentials.json"]
+            # Legacy paths have been removed to avoid sharing issues with Claude Code
+            assert "~/.claude/.credentials.json" not in paths
+            assert "~/.config/claude/.credentials.json" not in paths
 
     def test_test_mode_storage_paths(self):
         """Test storage paths in test mode."""

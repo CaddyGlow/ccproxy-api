@@ -250,11 +250,11 @@ wheels = [
 name = "ccproxy"
 source = { editable = "." }
 dependencies = [
-    { name = "anthropic" },
     { name = "check-jsonschema" },
     { name = "claude-code-sdk" },
     { name = "fastapi", extra = ["standard"] },
     { name = "httpx" },
+    { name = "httpx-sse" },
     { name = "keyring" },
     { name = "openai" },
     { name = "pydantic" },
@@ -304,11 +304,11 @@ security = [
 
 [package.metadata]
 requires-dist = [
-    { name = "anthropic", specifier = ">=0.57.1" },
     { name = "check-jsonschema", specifier = ">=0.33.2" },
     { name = "claude-code-sdk", git = "https://github.com/anthropics/claude-code-sdk-python.git" },
     { name = "fastapi", extras = ["standard"], specifier = ">=0.115.14" },
     { name = "httpx", specifier = ">=0.28.1" },
+    { name = "httpx-sse", specifier = ">=0.4.1" },
     { name = "keyring", specifier = ">=25.6.0" },
     { name = "openai", specifier = ">=1.93.0" },
     { name = "pydantic", specifier = ">=2.8.0" },
@@ -952,6 +952,15 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/b1/df/48c586a5fe32a0f01324ee087459e112ebb7224f646c0b5023f5e79e9956/httpx-0.28.1.tar.gz", hash = "sha256:75e98c5f16b0f35b567856f597f06ff2270a374470a5c2392242528e3e3e42fc", size = 141406, upload_time = "2024-12-06T15:37:23.222Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/2a/39/e50c7c3a983047577ee07d2a9e53faf5a69493943ec3f6a384bdc792deb2/httpx-0.28.1-py3-none-any.whl", hash = "sha256:d909fcccc110f8c7faf814ca82a9a4d816bc5a6dbfea25d6591d6985b8ba59ad", size = 73517, upload_time = "2024-12-06T15:37:21.509Z" },
+]
+
+[[package]]
+name = "httpx-sse"
+version = "0.4.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/6e/fa/66bd985dd0b7c109a3bcb89272ee0bfb7e2b4d06309ad7b38ff866734b2a/httpx_sse-0.4.1.tar.gz", hash = "sha256:8f44d34414bc7b21bf3602713005c5df4917884f76072479b21f68befa4ea26e", size = 12998, upload_time = "2025-06-24T13:21:05.71Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/25/0a/6269e3473b09aed2dab8aa1a600c70f31f00ae1349bee30658f7e358a159/httpx_sse-0.4.1-py3-none-any.whl", hash = "sha256:cba42174344c3a5b06f255ce65b350880f962d99ead85e776f23c6618a377a37", size = 8054, upload_time = "2025-06-24T13:21:04.772Z" },
 ]
 
 [[package]]

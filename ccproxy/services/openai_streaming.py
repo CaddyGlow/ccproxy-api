@@ -326,6 +326,7 @@ async def stream_claude_response_openai(
         has_content = False
         tool_calls: dict[str, dict[str, Any]] = {}
         chunk_counter = 0
+        in_thinking_block = False
 
         try:
             async for chunk in claude_response_iterator:
@@ -335,11 +336,62 @@ async def stream_claude_response_openai(
                     f"Processing Claude chunk {chunk_counter} (type: {chunk_type}): {chunk}"
                 )
 
-                if chunk_type == "content_block_delta":
+                if chunk_type == "content_block_start":
+                    # Handle different types of content blocks
+                    content_block = chunk.get("content_block", {})
+                    block_type = content_block.get("type")
+
+                    if block_type == "thinking" or (
+                        block_type == "text" and content_block.get("thinking", False)
+                    ):
+                        # Handle thinking blocks (both standalone and text blocks with thinking=True)
+                        in_thinking_block = True
+                        has_content = True
+                        # Send marker to indicate thinking start
+                        thinking_marker = formatter.format_content_chunk(
+                            message_id, model, created, "[Thinking]\n"
+                        )
+                        logger.debug(
+                            f"Started thinking block (type: {block_type}, thinking: {content_block.get('thinking')})"
+                        )
+                        yield thinking_marker
+                    elif block_type == "tool_use":
+                        # Handle tool use start
+                        tool_call_id = content_block.get("id", str(uuid.uuid4()))
+                        function_name = content_block.get("name", "")
+                        tool_calls[tool_call_id] = {
+                            "id": tool_call_id,
+                            "name": function_name,
+                            "arguments": "",
+                        }
+                        yield formatter.format_tool_call_chunk(
+                            message_id, model, created, tool_call_id, function_name, ""
+                        )
+
+                elif chunk_type == "content_block_delta":
                     delta = chunk.get("delta", {})
                     delta_type = delta.get("type")
 
-                    if delta_type == "text_delta":
+                    if delta_type == "thinking_delta":
+                        # Handle thinking content
+                        thinking_text = delta.get("thinking", "")
+                        if thinking_text:
+                            has_content = True
+                            thinking_chunk = formatter.format_content_chunk(
+                                message_id, model, created, thinking_text
+                            )
+                            logger.debug(f"Thinking delta: {thinking_text[:50]}...")
+                            yield thinking_chunk
+
+                    elif delta_type == "text_delta":
+                        # If we were in thinking mode, end it with separator
+                        if in_thinking_block:
+                            in_thinking_block = False
+                            separator_chunk = formatter.format_content_chunk(
+                                message_id, model, created, "\n---\n"
+                            )
+                            logger.debug("Ended thinking block, starting regular text")
+                            yield separator_chunk
                         # Handle text content
                         text = delta.get("text", "")
                         if text:
@@ -381,20 +433,16 @@ async def stream_claude_response_openai(
                                 partial_json,
                             )
 
-                elif chunk_type == "content_block_start":
-                    # Handle tool use start
-                    content_block = chunk.get("content_block", {})
-                    if content_block.get("type") == "tool_use":
-                        tool_call_id = content_block.get("id", str(uuid.uuid4()))
-                        function_name = content_block.get("name", "")
-                        tool_calls[tool_call_id] = {
-                            "id": tool_call_id,
-                            "name": function_name,
-                            "arguments": "",
-                        }
-                        yield formatter.format_tool_call_chunk(
-                            message_id, model, created, tool_call_id, function_name, ""
+                elif chunk_type == "content_block_stop":
+                    # Handle end of content blocks
+                    if in_thinking_block:
+                        # End thinking block with separator if no text followed
+                        in_thinking_block = False
+                        separator_chunk = formatter.format_content_chunk(
+                            message_id, model, created, "\n---\n"
                         )
+                        logger.debug("Ended thinking block at content_block_stop")
+                        yield separator_chunk
 
                 elif chunk_type == "message_delta":
                     # Message is ending

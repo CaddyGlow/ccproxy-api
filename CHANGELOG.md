@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.1.0] - 2025-07-06
+## [0.1.0] - 2025-01-08
 
 ### Added
 
@@ -16,11 +16,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Schema Validation**: JSON Schema generation for TOML configuration files with editor support
 - **Token Generation**: `generate-token` command with force option for API key management
 - **User Mapping**: Docker user mapping support for better security and file permissions
+- **Keyring Support**: Secure credential storage using system keyring for OAuth tokens and sensitive data
 
 #### API & Integration Features
 - **Anthropic Messages API**: Native Anthropic Messages API endpoint with MCP integration
 - **OpenAI Model Mapping**: Enhanced OpenAI model compatibility with increased token limits
 - **Pre-commit Configuration**: Comprehensive pre-commit hooks for code quality assurance
+- **OpenAI Utils**: Helper utilities for OpenAI API compatibility improvements
+- **Systemd Support**:
+  - Service template for running ccproxy as a system service
+  - Setup script for automatic systemd configuration
+  - Documentation for systemd deployment
 
 #### Personal Claude Access
 - **OAuth2 Authentication**: Use your existing Claude subscription without API costs
@@ -79,6 +85,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+#### Documentation Updates
+- **Streamlined Quick Start**: Concise examples and improved readability
+- **Aider Integration**: Added documentation for Aider AI coding assistant integration
+- **Systemd Setup Guide**: Comprehensive documentation for systemd deployment
+
 #### CLI & Architecture Improvements
 - **Major CLI Restructuring**: Moved CLI to dedicated `ccproxy/cli/` package with modular command structure
 - **Rich CLI Experience**: Replaced basic output with Rich toolkit for colored, structured output
@@ -103,6 +114,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Modular Services**: Extracted credentials, Docker, and CLI utilities to dedicated modules
 - **Removed Connection Pooling**: Simplified architecture by removing connection pooling for better stability
 - **Documentation**: Updated repository references and comprehensive documentation additions
+- **Enhanced Reverse Proxy**:
+  - Improved request and response transformation pipeline
+  - Better separation of concerns with dedicated transformer services
+  - Factory pattern for cleaner proxy instantiation
 
 ### Fixed
 - **Test Reliability**: Improved test stability and reliability across all test suites
@@ -110,6 +125,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Environment Variables**: Resolved nested environment variable handling for configuration
 - **API Response Handling**: Better handling of unexpected API response types
 - **File Standardization**: Consistent file endings and formatting across all files
+- **Proxy Support**: Added proper HTTP/HTTPS proxy support for network requests
+- **OpenAI Compatibility**: Improved compatibility with OpenAI API format and clients
+- **Docker Settings**: Updated Docker image name assertions in tests
 
 ### Removed
 - **Worker Pool Implementation**: Removed Node.js worker pool for simplified architecture
@@ -120,6 +138,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Enhanced GitHub Actions**: Security features added to CI/CD workflows
 - **Docker Security**: Improved Docker isolation and user mapping
 - **Input Validation**: Strengthened request validation and sanitization
+- **Credential Management**: OAuth tokens and sensitive credentials now stored securely in system keyring instead of plain text
 
 ### Authentication & Reverse Proxy Features
 - **OAuth Authentication**: Implemented OAuth2 authentication flow with credentials management

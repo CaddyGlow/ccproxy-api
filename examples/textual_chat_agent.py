@@ -15,11 +15,11 @@ from anthropic import AsyncAnthropic
 from anthropic.types import MessageParam
 from rich.console import Console
 from rich.markdown import Markdown
-from textual.app import App, ComposeResult  # type: ignore
-from textual.containers import Container, Horizontal, Vertical  # type: ignore
-from textual.events import Key  # type: ignore
-from textual.message import Message  # type: ignore
-from textual.widgets import Button, Input, RichLog, Static  # type: ignore
+from textual.app import App, ComposeResult
+from textual.containers import Container, Horizontal, Vertical
+from textual.events import Key
+from textual.message import Message
+from textual.widgets import Button, Input, RichLog, Static
 
 
 class ChatAgent:
@@ -109,7 +109,7 @@ class ChatAgent:
                 yield f"\nUnderlying cause: {type(e.__cause__).__name__}: {str(e.__cause__)}"
 
 
-class VimInput(Input):  # type: ignore
+class VimInput(Input):
     """Input widget with vim mode support."""
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
@@ -117,13 +117,13 @@ class VimInput(Input):  # type: ignore
         self.vim_mode = False
         self.vim_command = ""
 
-    def on_key(self, event: Key) -> None:  # type: ignore
+    def on_key(self, event: Key) -> None:
         """Handle vim mode key presses."""
         # Handle Shift+Enter for new lines in insert mode
         if event.key == "shift+enter" and not self.vim_mode:
             # Insert a newline at cursor position
-            cursor_pos = self.cursor_position  # type: ignore
-            self.value = self.value[:cursor_pos] + "\n" + self.value[cursor_pos:]  # type: ignore
+            cursor_pos = self.cursor_position
+            self.value = self.value[:cursor_pos] + "\n" + self.value[cursor_pos:]
             self.cursor_position = cursor_pos + 1
             return
 
@@ -178,7 +178,7 @@ class VimInput(Input):  # type: ignore
         # Don't call super().on_key() as it doesn't exist
 
 
-class ChatApp(App):  # type: ignore
+class ChatApp(App):
     """Main chat application."""
 
     CSS = """
@@ -231,7 +231,7 @@ class ChatApp(App):  # type: ignore
         self.chat_agent = ChatAgent()
         self.is_sending = False
 
-    def compose(self) -> ComposeResult:  # type: ignore
+    def compose(self) -> ComposeResult:
         """Compose the UI."""
         yield Container(
             RichLog(classes="chat-log", highlight=True, markup=True, wrap=True),
@@ -285,7 +285,7 @@ class ChatApp(App):  # type: ignore
         # Set focus to input
         self.input_field.focus()
 
-    def on_key(self, event: Key) -> None:  # type: ignore
+    def on_key(self, event: Key) -> None:
         """Handle global key events."""
         if event.key == "ctrl+c" or event.key == "ctrl+q":
             self.exit()

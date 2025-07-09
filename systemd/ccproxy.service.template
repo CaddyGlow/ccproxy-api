@@ -1,0 +1,19 @@
+[Unit]
+Description=Claude Code Proxy API Server
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory={{WORKING_DIR}}
+ExecStart={{UV_PATH}} run python {{MAIN_PY_PATH}}
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=ccproxy
+Environment="PATH={{USER_PATH}}"
+Environment="HOME={{USER_HOME}}"
+{{EXTRA_ENV}}
+
+[Install]
+WantedBy=default.target

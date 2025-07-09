@@ -184,11 +184,9 @@ class Settings(BaseSettings):
     )
 
     # Reverse proxy mode configuration
-    default_proxy_mode: Literal["claude_code", "full", "minimal", "passthrough"] = (
-        Field(
-            default="claude_code",
-            description="Default transformation mode for root path reverse proxy, over claude code or auth injection with full",
-        )
+    default_proxy_mode: Literal["claude_code", "full", "minimal"] = Field(
+        default="claude_code",
+        description="Default transformation mode for root path reverse proxy, over claude code or auth injection with full",
     )
 
     # Claude Code SDK endpoint configuration

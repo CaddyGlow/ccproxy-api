@@ -19,7 +19,7 @@ def create_reverse_proxy_router(proxy_mode: str) -> APIRouter:
     """Create a reverse proxy router with specific transformation mode.
 
     Args:
-        proxy_mode: Transformation mode - "minimal", "full", or "passthrough"
+        proxy_mode: Transformation mode - "minimal" or "full"
 
     Returns:
         APIRouter configured for the specified proxy mode
@@ -50,7 +50,6 @@ def create_reverse_proxy_router(proxy_mode: str) -> APIRouter:
         the configured proxy mode:
         - minimal: OAuth + basic headers only
         - full: Complete transformations (system prompt, format conversion, etc.)
-        - passthrough: Future minimal transformation mode
 
         Args:
             request: FastAPI request object

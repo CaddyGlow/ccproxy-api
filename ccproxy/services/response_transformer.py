@@ -4,6 +4,7 @@ import json
 from typing import Any
 
 from ccproxy.utils.logging import get_logger
+from ccproxy.utils.openai import is_openai_request
 
 
 logger = get_logger(__name__)
@@ -20,13 +21,13 @@ class ResponseTransformer:
         Args:
             body: Original response body
             path: Original request path for context
-            mode: Proxy mode - "minimal", "full", or "passthrough"
+            mode: Proxy mode - "minimal" or "full"
 
         Returns:
             Transformed response body
         """
-        # In minimal or passthrough mode, don't transform responses
-        if mode in ("minimal", "passthrough"):
+        # In minimal mode, don't transform responses
+        if mode == "minimal":
             return body
 
         # For claude_code, full, and api modes - transform OpenAI requests
@@ -50,7 +51,7 @@ class ResponseTransformer:
             headers: Original response headers
             path: Request path for context
             body_size: New body size if content was transformed
-            mode: Proxy mode - "minimal", "full", or "passthrough"
+            mode: Proxy mode - "minimal" or "full"
 
         Returns:
             Transformed response headers
@@ -92,7 +93,7 @@ class ResponseTransformer:
         Returns:
             True if this is an OpenAI format request
         """
-        return path.startswith("/openai/") or path.endswith("/chat/completions")
+        return is_openai_request(path)
 
     def _transform_anthropic_to_openai_response(self, body: bytes, path: str) -> bytes:
         """Transform Anthropic response to OpenAI format.

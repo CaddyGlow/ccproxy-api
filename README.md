@@ -199,10 +199,20 @@ All the settings can be override using environment variable
 
 ### Claude Authentication
 
-CCProxy manages Claude authentication through the `ccproxy auth` commands:
+CCProxy uses two separate authentication systems:
 
+#### Claude CLI Authentication (Claude Code Mode)
 ```bash
-# Initial login (opens browser)
+# Authenticate Claude CLI (for Claude Code mode)
+claude /login
+claude /status
+```
+- Credentials stored at: `~/.claude/credentials.json` or `~/.config/claude/credentials.json`
+- Managed by Claude CLI directly
+
+#### CCProxy Authentication (API Mode)
+```bash
+# Initial login (opens browser for Anthropic OAuth2)
 ccproxy auth login
 
 # Validate credentials
@@ -211,8 +221,8 @@ ccproxy auth validate
 # View credential details (auto-renews if expired)
 ccproxy auth info
 ```
-
-- Authentication is cached locally at `~/.claude/.credentials.json`
+- Credentials stored in system keyring (secure)
+- Fallback to: `~/.config/ccproxy/credentials.json`
 - Tokens are automatically renewed when using `ccproxy auth info`
 - Works with all Claude subscription types (Pro, Team, Enterprise)
 

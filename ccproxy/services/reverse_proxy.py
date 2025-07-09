@@ -14,6 +14,7 @@ from ccproxy.services.credentials import CredentialsManager
 from ccproxy.services.request_transformer import RequestTransformer
 from ccproxy.services.response_transformer import ResponseTransformer
 from ccproxy.utils.logging import get_logger
+from ccproxy.utils.openai import is_openai_request
 
 
 logger = get_logger(__name__)
@@ -34,7 +35,7 @@ class ReverseProxyService:
         Args:
             target_base_url: Base URL for the target API
             timeout: Request timeout in seconds
-            proxy_mode: Transformation mode - "minimal", "full", or "passthrough"
+            proxy_mode: Transformation mode - "minimal" or "full"
             credentials_manager: Optional credentials manager instance
         """
         self.target_base_url = target_base_url.rstrip("/")
@@ -334,7 +335,7 @@ class ReverseProxyService:
                         f"Streaming response for path: {original_path}, is_openai: {is_openai}, mode: {self.proxy_mode}"
                     )
 
-                    if is_openai and self.proxy_mode not in ("minimal", "passthrough"):
+                    if is_openai and self.proxy_mode != "minimal":
                         # Transform Anthropic SSE to OpenAI SSE format
                         logger.info(
                             f"Transforming Anthropic SSE to OpenAI format for {original_path}"
@@ -397,6 +398,7 @@ class ReverseProxyService:
         formatter = OpenAIStreamingFormatter()
         has_sent_role = False
         has_content = False
+        in_thinking_block = False
 
         # Parse Anthropic SSE events
         buffer = b""
@@ -440,15 +442,64 @@ class ReverseProxyService:
                                 yield first_chunk.encode("utf-8")
                                 has_sent_role = True
 
+                        elif event_type == "content_block_start":
+                            # Check if this is a thinking block
+                            content_block = data.get("content_block", {})
+                            if content_block.get(
+                                "type"
+                            ) == "text" and content_block.get("thinking", False):
+                                in_thinking_block = True
+                                has_content = True
+                                # Send a marker to indicate thinking start
+                                yield formatter.format_content_chunk(
+                                    message_id, model, created, "[Thinking]\n"
+                                ).encode("utf-8")
+                                logger.debug("Started thinking block")
+
                         elif data.get("type") == "content_block_delta":
                             delta = data.get("delta", {})
-                            if delta.get("type") == "text_delta":
+                            delta_type = delta.get("type")
+
+                            if delta_type == "thinking_delta":
+                                # Handle thinking content
+                                thinking_text = delta.get("thinking", "")
+                                if thinking_text:
+                                    has_content = True
+                                    yield formatter.format_content_chunk(
+                                        message_id, model, created, thinking_text
+                                    ).encode("utf-8")
+                                    logger.debug(
+                                        f"Thinking delta: {thinking_text[:50]}..."
+                                    )
+
+                            elif delta_type == "text_delta":
+                                # If we were in thinking mode, end it with a separator
+                                if in_thinking_block:
+                                    in_thinking_block = False
+                                    yield formatter.format_content_chunk(
+                                        message_id, model, created, "\n---\n"
+                                    ).encode("utf-8")
+                                    logger.debug(
+                                        "Ended thinking block, starting regular text"
+                                    )
+
                                 text = delta.get("text", "")
                                 if text:
                                     has_content = True
                                     yield formatter.format_content_chunk(
                                         message_id, model, created, text
                                     ).encode("utf-8")
+
+                        elif event_type == "content_block_stop":
+                            # If we're ending a thinking block without text following
+                            if in_thinking_block:
+                                in_thinking_block = False
+                                yield formatter.format_content_chunk(
+                                    message_id, model, created, "\n---\n"
+                                ).encode("utf-8")
+                                logger.debug(
+                                    "Ended thinking block at content_block_stop"
+                                )
 
                         elif data.get("type") == "message_delta":
                             # Message is ending

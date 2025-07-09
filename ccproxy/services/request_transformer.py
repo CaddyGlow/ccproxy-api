@@ -4,6 +4,7 @@ import json
 from typing import Any
 
 from ccproxy.utils.logging import get_logger
+from ccproxy.utils.openai import is_openai_request
 
 
 logger = get_logger(__name__)
@@ -125,13 +126,13 @@ class RequestTransformer:
 
         Args:
             path: Original request path
-            mode: Proxy mode - "minimal", "full", or "passthrough"
+            mode: Proxy mode - "minimal" or "full"
 
         Returns:
             Transformed path with proxy prefixes removed and endpoint conversion
         """
-        # In minimal or passthrough mode, don't transform paths
-        if mode in ("minimal", "passthrough"):
+        # In minimal mode, don't transform paths
+        if mode == "minimal":
             return path
 
         # Full mode - current behavior
@@ -162,15 +163,11 @@ class RequestTransformer:
         Args:
             body: Original request body
             path: Request path for context
-            mode: Proxy mode - "minimal", "full", or "passthrough"
+            mode: Proxy mode - "minimal" or "full"
 
         Returns:
             Transformed request body
         """
-        # In passthrough mode, don't transform anything
-        if mode == "passthrough":
-            return body
-
         # In minimal mode, skip most transformations
         if mode == "minimal":
             # Don't do format conversion or system prompt injection
@@ -208,13 +205,13 @@ class RequestTransformer:
         Args:
             original_headers: Original request headers (may contain client API keys)
             access_token: OAuth access token for Anthropic API
-            mode: Proxy mode - "minimal", "full", or "passthrough"
+            mode: Proxy mode - "minimal" or "full"
 
         Returns:
             Headers for the proxied request with OAuth auth and stripped client tokens
         """
         # Mode-specific header creation
-        if mode == "minimal" or mode == "passthrough":
+        if mode == "minimal":
             # Minimal headers - only essentials
             headers = {
                 "Authorization": f"Bearer {access_token}",
@@ -328,8 +325,8 @@ class RequestTransformer:
         Returns:
             True if this is an OpenAI format request based on path
         """
-        # Only check path - all OpenAI requests should go to /unclaude/openai
-        return path.startswith("/openai/") or path.endswith("/chat/completions")
+        # Use shared utility for OpenAI detection
+        return is_openai_request(path)
 
     def _transform_openai_to_anthropic(self, body: bytes) -> bytes:
         """Transform OpenAI format request to Anthropic format.

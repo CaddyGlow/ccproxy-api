@@ -35,18 +35,40 @@ pip install -e .
 
 ## Authentication Setup
 
-After installation, you need to authenticate with Claude:
+After installation, you need to authenticate based on your usage mode:
 
-### Initial Login
+### Claude CLI Authentication (Claude Code Mode)
+
+For using Claude Code features:
 
 ```bash
-# Login to Claude (opens browser)
+# Login to Claude CLI (opens browser)
+claude /login
+
+# Verify authentication
+claude /status
+```
+
+**Credential Storage:**
+- Stored at: `~/.claude/credentials.json` or `~/.config/claude/credentials.json`
+- Managed by Claude CLI directly
+
+### CCProxy Authentication (API Mode)
+
+For using API mode with Anthropic OAuth2:
+
+```bash
+# Login to CCProxy (opens browser)
 ccproxy auth login
 ```
 
-This will open a browser window for Claude authentication. Your credentials are securely stored locally.
+This will open a browser window for Anthropic OAuth2 authentication.
 
-### Verify Authentication
+**Credential Storage:**
+- **Primary**: System keyring (secure, recommended)
+- **Fallback**: `~/.config/ccproxy/credentials.json`
+
+### Verify CCProxy Authentication
 
 ```bash
 # Check credential status
@@ -76,7 +98,7 @@ Example output:
 ccproxy auth info
 ```
 
-This displays full credential details and automatically renews the token if expired.
+This displays full credential details including storage location and automatically renews the token if expired.
 
 ## Configuration
 

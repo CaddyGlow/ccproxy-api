@@ -6,11 +6,11 @@ description = "API server that provides an Anthropic and OpenAI compatible inter
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-  "anthropic>=0.57.1",
   "check-jsonschema>=0.33.2",
-  "claude-code-sdk>=0.0.14", # Using GitHub version with PR #60 fix
+  "claude-code-sdk>=0.0.14",             # Using GitHub version with PR #60 fix
   "fastapi[standard]>=0.115.14",
   "httpx>=0.28.1",
+  "httpx-sse>=0.4.1",
   "keyring>=25.6.0",
   "openai>=1.93.0",
   "pydantic>=2.8.0",
@@ -56,7 +56,7 @@ dev = [
   "textual-dev>=1.7.0",
 ]
 security = [
-  "keyring>=25.0.0",  # Optional keyring support for secure credential storage
+  "keyring>=25.0.0", # Optional keyring support for secure credential storage
 ]
 docs = [
   "mkdocs>=1.5.3",
@@ -195,9 +195,7 @@ asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 
 # Set test mode to prevent pollution of real credential files
-env = [
-    "CCPROXY_TEST_MODE=true",
-]
+env = ["CCPROXY_TEST_MODE=true"]
 
 # Test markers for different test tiers
 markers = [

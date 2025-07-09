@@ -74,25 +74,35 @@ The proxy requires Claude Code CLI to be available, either installed locally or 
 Install Claude Code CLI following the [official instructions](https://docs.anthropic.com/en/docs/claude-code).
 
 **Authentication:**
+
+CCProxy uses two separate authentication systems:
+
+**Claude CLI (for Claude Code mode):**
 ```bash
 # Login to Claude CLI (opens browser)
 claude /login
 
-# For API/raw mode authentication (uses Anthropic OAuth2)
-ccproxy auth login
-
 # Verify Claude CLI status
 claude /status
 ```
+- Credentials stored at: `~/.claude/credentials.json` or `~/.config/claude/credentials.json`
 
-**Verification:**
+**CCProxy (for API mode):**
 ```bash
+# For API/raw mode authentication (uses Anthropic OAuth2)
+ccproxy auth login
+
 # Check ccproxy auth status
 ccproxy auth validate
 
 # Get detailed credential info
 ccproxy auth info
+```
+- Credentials stored in system keyring (secure)
+- Fallback to: `~/.config/ccproxy/credentials.json`
 
+**Verification:**
+```bash
 # Test Claude CLI integration
 ccproxy claude -- /status
 ```
@@ -107,13 +117,21 @@ Docker users don't need to install Claude CLI locally - it's included in the Doc
 - **Custom Path**: Override with environment variables if needed
 
 **Authentication:**
+
+**Claude CLI in Docker (for Claude Code mode):**
 ```bash
 # Authenticate Claude CLI in Docker (first time setup)
 ccproxy claude --docker -- /login
+```
+- Docker uses isolated config at: `~/.config/cc-proxy/home`
 
+**CCProxy (for API mode):**
+```bash
 # For API/raw mode authentication (uses Anthropic OAuth2)
 ccproxy auth login
 ```
+- Credentials stored in system keyring (secure)
+- Fallback to: `~/.config/ccproxy/credentials.json`
 
 **Verification:**
 ```bash
