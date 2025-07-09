@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.1.0] - 2025-01-08
 
+### Recent Updates
+
+#### Code Organization & Architecture
+- **Domain-Based Code Organization**: Reorganized code by domain with modern type annotations for better maintainability
+- **Streaming Utilities Refactoring**: Separated streaming utilities by format with unified transformer architecture
+- **OpenAI Compatibility Modernization**: Enhanced OpenAI compatibility with thinking blocks and improved type safety
+- **Anthropic Messages API Alignment**: Aligned Messages API with official Anthropic specification for better compatibility
+
+#### Enhanced Features
+- **Thinking Blocks Support**: Added support for OpenAI thinking blocks in API responses
+- **Systemd Integration**: Enhanced OpenAI compatibility with systemd setup for production deployments
+- **Proxy Support**: Added comprehensive HTTP/HTTPS proxy support for network requests
+- **Keyring Security**: Implemented secure credential storage using system keyring for enhanced security
+
+#### Package & Documentation
+- **Package Rename**: Renamed package from `claude_code_proxy` to `ccproxy` for better naming consistency
+- **Documentation Consolidation**: Consolidated and streamlined documentation with dual API access modes
+- **Quick Start Improvements**: Streamlined Quick Start guide with concise examples and Aider integration
+- **Docker Testing**: Updated Docker image name assertions in test suite
+
 ### Added
 
 #### Configuration & CLI Enhancements
