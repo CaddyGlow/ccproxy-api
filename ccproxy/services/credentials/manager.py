@@ -1,5 +1,6 @@
 """Credentials manager for coordinating storage and OAuth operations."""
 
+import asyncio
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -44,6 +45,7 @@ class CredentialsManager:
         self._oauth_client = oauth_client
         self._http_client = http_client
         self._owns_http_client = http_client is None
+        self._refresh_lock = asyncio.Lock()
 
         # Initialize OAuth client if not provided
         if self._oauth_client is None:
@@ -171,30 +173,51 @@ class CredentialsManager:
             should_refresh = oauth_token.is_expired
 
         if should_refresh:
-            logger.info("Token expired or expiring soon, refreshing...")
-            try:
-                if self._oauth_client is None:
-                    raise RuntimeError("OAuth client not initialized")
-                new_token = await self._oauth_client.refresh_token(
-                    oauth_token.refresh_token
-                )
+            async with self._refresh_lock:
+                # Re-check if refresh is still needed after acquiring lock
+                # Another request might have already refreshed the token
+                credentials = await self.load()
+                if not credentials:
+                    raise CredentialsNotFoundError(
+                        "No credentials found. Please login first."
+                    )
 
-                # Update credentials with new token
-                new_token.subscription_type = oauth_token.subscription_type
-                credentials.claude_ai_oauth = new_token
+                oauth_token = credentials.claude_ai_oauth
 
-                # Save updated credentials
-                await self.save(credentials)
+                # Re-calculate if we should refresh
+                if self.config.auto_refresh:
+                    buffer = timedelta(seconds=self.config.refresh_buffer_seconds)
+                    should_refresh = (
+                        datetime.now(UTC) + buffer >= oauth_token.expires_at_datetime
+                    )
+                else:
+                    should_refresh = oauth_token.is_expired
 
-                logger.info("Successfully refreshed token")
-            except Exception as e:
-                logger.error(f"Failed to refresh token: {e}")
-                if oauth_token.is_expired:
-                    raise CredentialsExpiredError(
-                        "Token expired and refresh failed. Please login again."
-                    ) from e
-                # If not expired yet but refresh failed, return existing token
-                logger.warning("Using existing token despite failed refresh")
+                if should_refresh:
+                    logger.info("Token expired or expiring soon, refreshing...")
+                    try:
+                        if self._oauth_client is None:
+                            raise RuntimeError("OAuth client not initialized")
+                        new_token = await self._oauth_client.refresh_token(
+                            oauth_token.refresh_token
+                        )
+
+                        # Update credentials with new token
+                        new_token.subscription_type = oauth_token.subscription_type
+                        credentials.claude_ai_oauth = new_token
+
+                        # Save updated credentials
+                        await self.save(credentials)
+
+                        logger.info("Successfully refreshed token")
+                    except Exception as e:
+                        logger.error(f"Failed to refresh token: {e}")
+                        if oauth_token.is_expired:
+                            raise CredentialsExpiredError(
+                                "Token expired and refresh failed. Please login again."
+                            ) from e
+                        # If not expired yet but refresh failed, return existing token
+                        logger.warning("Using existing token despite failed refresh")
 
         return credentials
 

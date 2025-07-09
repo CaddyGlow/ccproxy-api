@@ -96,11 +96,14 @@ class TestJsonFileStorage:
         # Delete non-existent should return False
         assert not await storage.delete()
 
-    def test_get_location(self, tmp_path, disable_keyring):
+    def test_get_location(self, tmp_path):
         """Test getting storage location."""
-        # Create storage with keyring disabled
+        # Create storage (keyring is enabled by default)
         storage = JsonFileStorage(tmp_path / "credentials.json")
-        assert storage.get_location() == str(storage.file_path)
+        location = storage.get_location()
+        # Should include keyring support by default
+        assert str(storage.file_path) in location
+        assert "with keyring support" in location
 
 
 class TestOAuthClient:

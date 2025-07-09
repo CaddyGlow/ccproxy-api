@@ -114,14 +114,17 @@ class TestUserProfile:
 
     def test_account_info_creation(self):
         """Test AccountInfo model creation."""
-        account = AccountInfo(uuid="user-456", email_address="test@example.com")
+        account = AccountInfo(uuid="user-456", email="test@example.com")
         assert account.uuid == "user-456"
-        assert account.email_address == "test@example.com"
+        assert account.email == "test@example.com"
+        assert (
+            account.email_address == "test@example.com"
+        )  # Test compatibility property
 
     def test_user_profile_creation(self):
         """Test UserProfile model creation with all fields."""
         org = OrganizationInfo(uuid="org-123", name="Test Organization")
-        account = AccountInfo(uuid="user-456", email_address="test@example.com")
+        account = AccountInfo(uuid="user-456", email="test@example.com")
         profile = UserProfile(organization=org, account=account)
 
         assert profile.organization == org
