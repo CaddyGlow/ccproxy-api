@@ -21,7 +21,7 @@ from ccproxy.exceptions import (
     ValidationError as ProxyValidationError,
 )
 from ccproxy.models.messages import (
-    MessageRequest,
+    MessageCreateParams,
     MessageResponse,
     SystemMessage,
 )
@@ -40,9 +40,9 @@ class TestCreateMessage:
         return request
 
     @pytest.fixture
-    def basic_message_request(self) -> MessageRequest:
+    def basic_message_request(self) -> MessageCreateParams:
         """Create a basic message request."""
-        return MessageRequest(
+        return MessageCreateParams(
             model="claude-3-5-sonnet-20241022",
             messages=[Message(role="user", content="Hello, how are you?")],
             max_tokens=100,
@@ -50,9 +50,9 @@ class TestCreateMessage:
         )
 
     @pytest.fixture
-    def streaming_message_request(self) -> MessageRequest:
+    def streaming_message_request(self) -> MessageCreateParams:
         """Create a streaming message request."""
-        return MessageRequest(
+        return MessageCreateParams(
             model="claude-3-5-sonnet-20241022",
             messages=[Message(role="user", content="Tell me a story")],
             max_tokens=200,
@@ -60,9 +60,9 @@ class TestCreateMessage:
         )
 
     @pytest.fixture
-    def system_message_request(self) -> MessageRequest:
+    def system_message_request(self) -> MessageCreateParams:
         """Create a message request with system message."""
-        return MessageRequest(
+        return MessageCreateParams(
             model="claude-3-5-sonnet-20241022",
             messages=[Message(role="user", content="What is the weather like?")],
             system="You are a helpful weather assistant.",
@@ -71,9 +71,9 @@ class TestCreateMessage:
         )
 
     @pytest.fixture
-    def system_message_blocks_request(self) -> MessageRequest:
+    def system_message_blocks_request(self) -> MessageCreateParams:
         """Create a message request with system message blocks."""
-        return MessageRequest(
+        return MessageCreateParams(
             model="claude-3-5-sonnet-20241022",
             messages=[Message(role="user", content="Help me with coding")],
             system=[
@@ -85,9 +85,9 @@ class TestCreateMessage:
         )
 
     @pytest.fixture
-    def max_thinking_tokens_request(self) -> MessageRequest:
+    def max_thinking_tokens_request(self) -> MessageCreateParams:
         """Create a message request with max_thinking_tokens."""
-        return MessageRequest(
+        return MessageCreateParams(
             model="claude-3-5-sonnet-20241022",
             messages=[Message(role="user", content="Solve this complex problem")],
             max_thinking_tokens=5000,
@@ -117,7 +117,7 @@ class TestCreateMessage:
     @pytest.mark.asyncio
     async def test_create_message_non_streaming_success(
         self,
-        basic_message_request: MessageRequest,
+        basic_message_request: MessageCreateParams,
         mock_request: Request,
         mock_claude_response: dict[str, Any],
         mock_settings: MagicMock,
@@ -172,7 +172,7 @@ class TestCreateMessage:
     @pytest.mark.asyncio
     async def test_create_message_with_system_string(
         self,
-        system_message_request: MessageRequest,
+        system_message_request: MessageCreateParams,
         mock_request: Request,
         mock_claude_response: dict[str, Any],
         mock_settings: MagicMock,
@@ -210,7 +210,7 @@ class TestCreateMessage:
     @pytest.mark.asyncio
     async def test_create_message_with_system_blocks(
         self,
-        system_message_blocks_request: MessageRequest,
+        system_message_blocks_request: MessageCreateParams,
         mock_request: Request,
         mock_claude_response: dict[str, Any],
         mock_settings: MagicMock,
@@ -250,7 +250,7 @@ class TestCreateMessage:
     @pytest.mark.asyncio
     async def test_create_message_with_max_thinking_tokens(
         self,
-        max_thinking_tokens_request: MessageRequest,
+        max_thinking_tokens_request: MessageCreateParams,
         mock_request: Request,
         mock_claude_response: dict[str, Any],
         mock_settings: MagicMock,
@@ -290,7 +290,7 @@ class TestCreateMessage:
     @pytest.mark.asyncio
     async def test_create_message_streaming_success(
         self,
-        streaming_message_request: MessageRequest,
+        streaming_message_request: MessageCreateParams,
         mock_request: Request,
         mock_settings: MagicMock,
     ):
@@ -362,7 +362,7 @@ class TestCreateMessage:
     @pytest.mark.asyncio
     async def test_create_message_streaming_invalid_iterator(
         self,
-        streaming_message_request: MessageRequest,
+        streaming_message_request: MessageCreateParams,
         mock_request: Request,
         mock_settings: MagicMock,
     ):
@@ -399,7 +399,7 @@ class TestCreateMessage:
     @pytest.mark.asyncio
     async def test_create_message_non_streaming_invalid_response_type(
         self,
-        basic_message_request: MessageRequest,
+        basic_message_request: MessageCreateParams,
         mock_request: Request,
         mock_settings: MagicMock,
     ):
@@ -427,7 +427,7 @@ class TestCreateMessage:
     @pytest.mark.asyncio
     async def test_create_message_claude_proxy_error(
         self,
-        basic_message_request: MessageRequest,
+        basic_message_request: MessageCreateParams,
         mock_request: Request,
         mock_settings: MagicMock,
     ):
@@ -459,7 +459,7 @@ class TestCreateMessage:
     @pytest.mark.asyncio
     async def test_create_message_model_not_found_error(
         self,
-        basic_message_request: MessageRequest,
+        basic_message_request: MessageCreateParams,
         mock_request: Request,
         mock_settings: MagicMock,
     ):
@@ -490,7 +490,7 @@ class TestCreateMessage:
     @pytest.mark.asyncio
     async def test_create_message_service_unavailable_error(
         self,
-        basic_message_request: MessageRequest,
+        basic_message_request: MessageCreateParams,
         mock_request: Request,
         mock_settings: MagicMock,
     ):
@@ -521,7 +521,7 @@ class TestCreateMessage:
     @pytest.mark.asyncio
     async def test_create_message_timeout_error(
         self,
-        basic_message_request: MessageRequest,
+        basic_message_request: MessageCreateParams,
         mock_request: Request,
         mock_settings: MagicMock,
     ):
@@ -552,7 +552,7 @@ class TestCreateMessage:
     @pytest.mark.asyncio
     async def test_create_message_validation_error(
         self,
-        basic_message_request: MessageRequest,
+        basic_message_request: MessageCreateParams,
         mock_request: Request,
         mock_settings: MagicMock,
     ):
@@ -583,7 +583,7 @@ class TestCreateMessage:
     @pytest.mark.asyncio
     async def test_create_message_value_error(
         self,
-        basic_message_request: MessageRequest,
+        basic_message_request: MessageCreateParams,
         mock_request: Request,
         mock_settings: MagicMock,
     ):
@@ -617,7 +617,7 @@ class TestCreateMessage:
     @pytest.mark.asyncio
     async def test_create_message_generic_exception(
         self,
-        basic_message_request: MessageRequest,
+        basic_message_request: MessageCreateParams,
         mock_request: Request,
         mock_settings: MagicMock,
     ):
@@ -651,7 +651,7 @@ class TestCreateMessage:
     @pytest.mark.asyncio
     async def test_create_message_streaming_claude_proxy_error(
         self,
-        streaming_message_request: MessageRequest,
+        streaming_message_request: MessageCreateParams,
         mock_request: Request,
         mock_settings: MagicMock,
     ):
@@ -691,7 +691,7 @@ class TestCreateMessage:
     @pytest.mark.asyncio
     async def test_create_message_streaming_generic_exception(
         self,
-        streaming_message_request: MessageRequest,
+        streaming_message_request: MessageCreateParams,
         mock_request: Request,
         mock_settings: MagicMock,
     ):
@@ -731,7 +731,7 @@ class TestCreateMessage:
     @pytest.mark.asyncio
     async def test_create_message_streaming_with_valid_async_iterator(
         self,
-        streaming_message_request: MessageRequest,
+        streaming_message_request: MessageCreateParams,
         mock_request: Request,
         mock_settings: MagicMock,
     ):
@@ -784,7 +784,7 @@ class TestCreateMessage:
     @pytest.mark.asyncio
     async def test_create_message_message_id_generation(
         self,
-        basic_message_request: MessageRequest,
+        basic_message_request: MessageCreateParams,
         mock_request: Request,
         mock_claude_response: dict[str, Any],
         mock_settings: MagicMock,
@@ -816,7 +816,7 @@ class TestCreateMessage:
     @pytest.mark.asyncio
     async def test_create_message_options_merging(
         self,
-        basic_message_request: MessageRequest,
+        basic_message_request: MessageCreateParams,
         mock_request: Request,
         mock_claude_response: dict[str, Any],
         mock_settings: MagicMock,
@@ -849,7 +849,7 @@ class TestCreateMessage:
     @pytest.mark.asyncio
     async def test_create_message_messages_conversion(
         self,
-        basic_message_request: MessageRequest,
+        basic_message_request: MessageCreateParams,
         mock_request: Request,
         mock_claude_response: dict[str, Any],
         mock_settings: MagicMock,
@@ -879,7 +879,7 @@ class TestCreateMessage:
     @pytest.mark.asyncio
     async def test_create_message_auth_dependency_called(
         self,
-        basic_message_request: MessageRequest,
+        basic_message_request: MessageCreateParams,
         mock_request: Request,
         mock_claude_response: dict[str, Any],
         mock_settings: MagicMock,

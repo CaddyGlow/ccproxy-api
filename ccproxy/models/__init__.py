@@ -1,5 +1,6 @@
 """Pydantic models for Claude Proxy API Server."""
 
+from .messages import MessageCreateParams, MessageResponse, SystemMessage
 from .openai import (
     OpenAIChatCompletionRequest,
     OpenAIChatCompletionResponse,
@@ -23,7 +24,6 @@ from .openai import (
     OpenAIUsage,
 )
 from .requests import (
-    ChatCompletionRequest,
     ImageContent,
     Message,
     MessageContent,
@@ -52,8 +52,11 @@ from .responses import (
 
 
 __all__ = [
+    # Message models
+    "MessageCreateParams",
+    "MessageResponse",
+    "SystemMessage",
     # Request models
-    "ChatCompletionRequest",
     "ImageContent",
     "Message",
     "MessageContent",

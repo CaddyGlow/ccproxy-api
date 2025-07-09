@@ -4,7 +4,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from .requests import ClaudeCodeOptionsMixin, Message, MessageContent, Usage
+from .requests import Message, ToolDefinition, Usage
 
 
 class SystemMessage(BaseModel):
@@ -14,13 +14,19 @@ class SystemMessage(BaseModel):
     text: str = Field(..., description="System message text")
 
 
-class MessageRequest(ClaudeCodeOptionsMixin):
-    """Request model for Anthropic Messages API endpoint."""
+class MessageCreateParams(BaseModel):
+    """Request parameters for creating messages via Anthropic Messages API."""
 
+    # Required fields
     model: str = Field(
         ...,
         description="The model to use for the message",
         pattern=r"^claude-.*",
+    )
+    messages: list[Message] = Field(
+        ...,
+        description="Array of messages in the conversation",
+        min_length=1,
     )
     max_tokens: int = Field(
         ...,
@@ -28,11 +34,8 @@ class MessageRequest(ClaudeCodeOptionsMixin):
         ge=1,
         le=200000,
     )
-    messages: list[Message] = Field(
-        ...,
-        description="Array of messages in the conversation",
-        min_length=1,
-    )
+
+    # Optional Anthropic API fields
     system: str | list[SystemMessage] | None = Field(
         None,
         description="System prompt to provide context and instructions",
@@ -54,14 +57,34 @@ class MessageRequest(ClaudeCodeOptionsMixin):
         description="Top-k sampling parameter",
         ge=0,
     )
-    stream: bool | None = Field(
-        False,
-        description="Whether to stream the response",
-    )
     stop_sequences: list[str] | None = Field(
         None,
         description="Custom sequences where the model should stop generating",
         max_length=4,
+    )
+    stream: bool | None = Field(
+        False,
+        description="Whether to stream the response",
+    )
+    metadata: dict[str, Any] | None = Field(
+        None,
+        description="Metadata about the request, including optional user_id",
+    )
+    tools: list[ToolDefinition] | None = Field(
+        None,
+        description="Available tools/functions for the model to use",
+    )
+    tool_choice: dict[str, Any] | None = Field(
+        None,
+        description="How the model should use the provided tools",
+    )
+    service_tier: Literal["auto", "standard_only"] | None = Field(
+        None,
+        description="Request priority level",
+    )
+    thinking: dict[str, Any] | None = Field(
+        None,
+        description="Configuration for extended thinking process",
     )
 
     @field_validator("model")
@@ -75,8 +98,14 @@ class MessageRequest(ClaudeCodeOptionsMixin):
             "claude-3-5-sonnet-20241022",
             "claude-3-5-sonnet-20240620",
             "claude-3-5-haiku-20241022",
+            "claude-3-opus-20240229",
+            "claude-3-sonnet-20240229",
+            "claude-3-haiku-20240307",
             "claude-3-5-sonnet",
             "claude-3-5-haiku",
+            "claude-3-opus",
+            "claude-3-sonnet",
+            "claude-3-haiku",
         }
 
         if v not in supported_models and not v.startswith("claude-"):
@@ -112,6 +141,16 @@ class MessageRequest(ClaudeCodeOptionsMixin):
             for seq in v:
                 if len(seq) > 100:
                     raise ValueError("Stop sequences must be 100 characters or less")
+        return v
+
+    @field_validator("metadata")
+    @classmethod
+    def validate_metadata(cls, v: dict[str, Any] | None) -> dict[str, Any] | None:
+        """Validate metadata structure."""
+        if v is not None and "user_id" in v:
+            user_id = v["user_id"]
+            if not isinstance(user_id, str) or len(user_id) > 256:
+                raise ValueError("user_id must be a string with max 256 characters")
         return v
 
     model_config = ConfigDict(extra="forbid", validate_assignment=True)

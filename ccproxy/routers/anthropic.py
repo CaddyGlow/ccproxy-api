@@ -11,9 +11,7 @@ from ccproxy.config.settings import get_settings
 from ccproxy.exceptions import ClaudeProxyError
 from ccproxy.middleware.auth import get_auth_dependency
 from ccproxy.models.errors import create_error_response
-from ccproxy.models.messages import MessageRequest, MessageResponse
-from ccproxy.models.requests import ChatCompletionRequest
-from ccproxy.models.responses import ChatCompletionResponse
+from ccproxy.models.messages import MessageCreateParams, MessageResponse
 from ccproxy.services.claude_client import ClaudeClient
 from ccproxy.services.streaming import (
     stream_anthropic_message_response,
@@ -25,133 +23,6 @@ from ccproxy.utils.logging import get_logger
 
 logger = get_logger(__name__)
 router = APIRouter()
-
-
-@router.post("/chat/completions", response_model=None)
-async def create_chat_completion(
-    request: ChatCompletionRequest,
-    http_request: Request,
-    _: None = Depends(get_auth_dependency()),
-) -> ChatCompletionResponse | StreamingResponse:
-    """
-    Create a chat completion using Claude AI models.
-
-    This endpoint provides Anthropic API-compatible chat completions,
-    forwarding requests to Claude using the official SDK.
-
-    Args:
-        request: Chat completion request matching Anthropic's API format
-        http_request: FastAPI request object for headers/metadata
-
-    Returns:
-        Chat completion response or streaming response
-
-    Raises:
-        HTTPException: For validation errors, API errors, or service failures
-    """
-    try:
-        settings = get_settings()
-
-        # Initialize Claude client
-        claude_client = ClaudeClient()
-
-        # Prepare Claude Code options overrides from request
-        overrides: dict[str, Any] = {
-            "model": request.model,
-        }
-
-        if request.max_thinking_tokens:
-            overrides["max_thinking_tokens"] = request.max_thinking_tokens
-
-        # Merge base options with request-specific overrides
-        options = merge_claude_code_options(settings.claude_code_options, **overrides)
-
-        # Convert request to messages format
-        messages = [msg.model_dump() for msg in request.messages]
-
-        # Generate unique message ID
-        message_id = f"msg_{uuid.uuid4().hex[:12]}"
-
-        # Handle streaming vs non-streaming responses
-        if request.stream:
-            # Return streaming response
-            async def generate_stream() -> AsyncGenerator[str, None]:
-                try:
-                    response_iter = await claude_client.create_completion(
-                        messages, options=options, stream=True
-                    )
-
-                    # Ensure we have an async iterator for streaming
-                    if not hasattr(response_iter, "__aiter__"):
-                        logger.error(
-                            f"Expected async iterator from Claude client, got {type(response_iter)}"
-                        )
-                        yield "data: {'error': {'type': 'internal_server_error', 'message': 'Invalid response type from Claude client'}}\n\n"
-                        yield "data: [DONE]\n\n"
-                        return
-
-                    # Use enhanced streaming formatter
-                    async for chunk in stream_claude_response(
-                        response_iter,
-                        message_id,
-                        request.model,
-                    ):
-                        yield chunk
-
-                except ClaudeProxyError as e:
-                    logger.error(f"Claude proxy error in streaming: {e}")
-                    error_response, _ = create_error_response(e.error_type, e.message)
-                    yield f"data: {error_response}\n\n"
-                except Exception as e:
-                    logger.error(f"Unexpected error in streaming: {e}", exc_info=True)
-                    error_response, _ = create_error_response(
-                        "internal_server_error", "An unexpected error occurred"
-                    )
-                    yield f"data: {error_response}\n\n"
-
-            return StreamingResponse(
-                generate_stream(),
-                media_type="text/event-stream",
-                headers={
-                    "Cache-Control": "no-cache",
-                    "Connection": "keep-alive",
-                    "Content-Type": "text/event-stream",
-                    "Access-Control-Allow-Origin": "*",
-                    "Access-Control-Allow-Headers": "*",
-                },
-            )
-        else:
-            # Return regular response
-            response = await claude_client.create_completion(
-                messages=messages,
-                options=options,
-                stream=False,
-            )
-
-            # Add message ID to response
-            if isinstance(response, dict):
-                response["id"] = message_id
-
-            return ChatCompletionResponse(**response)  # type: ignore
-
-    except ClaudeProxyError as e:
-        logger.error(f"Claude proxy error: {e}")
-        error_response, _status_code = create_error_response(e.error_type, e.message)
-        raise HTTPException(status_code=e.status_code, detail=error_response) from e
-
-    except ValueError as e:
-        logger.error(f"Validation error: {e}")
-        error_response, status_code = create_error_response(
-            "invalid_request_error", str(e)
-        )
-        raise HTTPException(status_code=400, detail=error_response) from e
-
-    except Exception as e:
-        logger.error(f"Unexpected error in chat completion: {e}", exc_info=True)
-        error_response, status_code = create_error_response(
-            "internal_server_error", "An unexpected error occurred"
-        )
-        raise HTTPException(status_code=500, detail=error_response) from e
 
 
 @router.get("/models")
@@ -181,7 +52,7 @@ async def list_models(_: None = Depends(get_auth_dependency())) -> dict[str, Any
 
 @router.post("/messages", response_model=None)
 async def create_message(
-    request: MessageRequest,
+    request: MessageCreateParams,
     http_request: Request,
     _: None = Depends(get_auth_dependency()),
 ) -> MessageResponse | StreamingResponse:
@@ -208,15 +79,12 @@ async def create_message(
         logger.info("[API] Creating Claude client for message request")
         claude_client = ClaudeClient()
 
-        # Prepare Claude Code options overrides from request
+        # Extract Anthropic API fields and Claude Code specific fields
         overrides: dict[str, Any] = {
             "model": request.model,
         }
 
-        if request.max_thinking_tokens:
-            overrides["max_thinking_tokens"] = request.max_thinking_tokens
-
-        # Add system message if provided - handle through system_prompt instead
+        # Handle system message if provided
         if request.system:
             if isinstance(request.system, str):
                 overrides["system_prompt"] = request.system
@@ -224,6 +92,24 @@ async def create_message(
                 # Handle system message blocks by converting to string
                 system_text = "\n".join([block.text for block in request.system])
                 overrides["system_prompt"] = system_text
+
+        # Add other Anthropic API fields that may be relevant to Claude Code
+        if request.temperature is not None:
+            overrides["temperature"] = request.temperature
+        if request.top_p is not None:
+            overrides["top_p"] = request.top_p
+        if request.top_k is not None:
+            overrides["top_k"] = request.top_k
+        if request.stop_sequences:
+            overrides["stop_sequences"] = request.stop_sequences
+        if request.tools:
+            overrides["tools"] = request.tools
+        if request.metadata:
+            overrides["metadata"] = request.metadata
+        if request.service_tier:
+            overrides["service_tier"] = request.service_tier
+        if request.thinking:
+            overrides["thinking"] = request.thinking
 
         # Merge base options with request-specific overrides
         options = merge_claude_code_options(settings.claude_code_options, **overrides)
