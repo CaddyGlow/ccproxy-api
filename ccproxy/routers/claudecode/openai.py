@@ -4,10 +4,11 @@ import json
 import time
 import uuid
 from collections.abc import AsyncGenerator, AsyncIterator
-from typing import Any, cast
+from typing import Annotated, Any, cast
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
+from pydantic import ConfigDict, Field
 from starlette.status import HTTP_500_INTERNAL_SERVER_ERROR
 
 from ccproxy.config.settings import get_settings
@@ -23,7 +24,59 @@ from ccproxy.models.openai import (
 )
 from ccproxy.services.claude_client import ClaudeClient
 from ccproxy.utils import merge_claude_code_options
+from ccproxy.utils.helper import patched_typing
 from ccproxy.utils.logging import get_logger
+
+
+# Import ClaudeCodeOptions with patched typing
+with patched_typing():
+    from claude_code_sdk import ClaudeCodeOptions
+
+
+class ClaudeCodeChatCompletionRequest(OpenAIChatCompletionRequest):
+    """Extended OpenAIChatCompletionRequest with ClaudeCodeOptions fields."""
+
+    # Add ClaudeCodeOptions fields explicitly to avoid conflicts
+    max_thinking_tokens: Annotated[
+        int | None, Field(None, description="Maximum number of thinking tokens")
+    ] = None
+    max_turns: Annotated[
+        int | None, Field(None, description="Maximum number of turns")
+    ] = None
+    cwd: Annotated[str | None, Field(None, description="Current working directory")] = (
+        None
+    )
+    system_prompt: Annotated[str | None, Field(None, description="System prompt")] = (
+        None
+    )
+    append_system_prompt: Annotated[
+        bool | None, Field(None, description="Whether to append system prompt")
+    ] = None
+    permission_mode: Annotated[
+        str | None, Field(None, description="Permission mode")
+    ] = None
+    permission_prompt_tool_name: Annotated[
+        str | None, Field(None, description="Permission prompt tool name")
+    ] = None
+    continue_conversation: Annotated[
+        bool | None, Field(None, description="Whether to continue conversation")
+    ] = None
+    resume: Annotated[bool | None, Field(None, description="Whether to resume")] = None
+    allowed_tools: Annotated[
+        list[str] | None, Field(None, description="List of allowed tools")
+    ] = None
+    disallowed_tools: Annotated[
+        list[str] | None, Field(None, description="List of disallowed tools")
+    ] = None
+    mcp_servers: Annotated[
+        list[str] | None, Field(None, description="List of MCP servers")
+    ] = None
+    mcp_tools: Annotated[
+        list[str] | None, Field(None, description="List of MCP tools")
+    ] = None
+
+    # Override model config to allow extra fields (for backwards compatibility)
+    model_config = ConfigDict(extra="allow")
 
 
 logger = get_logger(__name__)
@@ -32,7 +85,7 @@ router = APIRouter()
 
 @router.post("/chat/completions", response_model=None)
 async def create_chat_completion(
-    request: OpenAIChatCompletionRequest,
+    request: ClaudeCodeChatCompletionRequest,
     http_request: Request,
     _: None = Depends(get_auth_dependency()),
 ) -> OpenAIChatCompletionResponse | StreamingResponse:
@@ -72,54 +125,57 @@ async def create_chat_completion(
         claude_client = ClaudeClient()
         translator = OpenAITranslator()
 
-        # Prepare Claude Code options overrides from request
+        # Create a new ClaudeCodeOptions instance based on the request
+        # Start with base options from settings
+        options = merge_claude_code_options(settings.claude_code_options)
+
         # Map OpenAI model to Claude model for the options
         from ccproxy.formatters.translator import map_openai_model_to_claude
 
         mapped_model = map_openai_model_to_claude(request.model)
-        overrides: dict[str, Any] = {
-            "model": mapped_model,
-        }
+        options.model = mapped_model
 
-        # Check for Claude Code specific options in the request
-        if hasattr(request, "max_thinking_tokens") and request.max_thinking_tokens:
-            overrides["max_thinking_tokens"] = request.max_thinking_tokens
-        if hasattr(request, "allowed_tools") and request.allowed_tools:
-            overrides["allowed_tools"] = request.allowed_tools
-        if hasattr(request, "disallowed_tools") and request.disallowed_tools:
-            overrides["disallowed_tools"] = request.disallowed_tools
-        if hasattr(request, "append_system_prompt") and request.append_system_prompt:
-            overrides["append_system_prompt"] = request.append_system_prompt
-        if hasattr(request, "permission_mode") and request.permission_mode:
-            overrides["permission_mode"] = request.permission_mode
-        if (
-            hasattr(request, "continue_conversation")
-            and request.continue_conversation is not None
-        ):
-            overrides["continue_conversation"] = request.continue_conversation
-        if hasattr(request, "resume") and request.resume:
-            overrides["resume"] = request.resume
-        if hasattr(request, "max_turns") and request.max_turns:
-            overrides["max_turns"] = request.max_turns
-        if (
-            hasattr(request, "permission_prompt_tool_name")
-            and request.permission_prompt_tool_name
-        ):
-            overrides["permission_prompt_tool_name"] = (
-                request.permission_prompt_tool_name
-            )
-        if hasattr(request, "cwd") and request.cwd:
-            overrides["cwd"] = request.cwd
-        if hasattr(request, "mcp_tools") and request.mcp_tools:
-            overrides["mcp_tools"] = request.mcp_tools
-        if hasattr(request, "mcp_servers") and request.mcp_servers:
-            overrides["mcp_servers"] = request.mcp_servers
-
-        # Merge base options with request-specific overrides
-        options = merge_claude_code_options(settings.claude_code_options, **overrides)
+        # Claude Code specific fields (now available directly from request)
+        if request.max_thinking_tokens is not None:
+            options.max_thinking_tokens = request.max_thinking_tokens
+        if request.max_turns is not None:
+            options.max_turns = request.max_turns
+        if request.cwd is not None:
+            options.cwd = request.cwd
+        if request.system_prompt is not None:
+            options.system_prompt = request.system_prompt
+        if request.append_system_prompt is not None:
+            options.append_system_prompt = request.append_system_prompt
+        if request.permission_mode is not None:
+            options.permission_mode = request.permission_mode
+        if request.permission_prompt_tool_name is not None:
+            options.permission_prompt_tool_name = request.permission_prompt_tool_name
+        if request.continue_conversation is not None:
+            options.continue_conversation = request.continue_conversation
+        if request.resume is not None:
+            options.resume = request.resume
+        if request.allowed_tools is not None:
+            options.allowed_tools = request.allowed_tools
+        if request.disallowed_tools is not None:
+            options.disallowed_tools = request.disallowed_tools
+        if request.mcp_servers is not None:
+            options.mcp_servers = request.mcp_servers
+        if request.mcp_tools is not None:
+            options.mcp_tools = request.mcp_tools
 
         # Convert OpenAI request to Anthropic format
-        anthropic_request = translator.openai_to_anthropic_request(request.model_dump())
+        # Only pass base OpenAI fields to avoid validation errors in translator
+        base_request_dict = {}
+        base_model = OpenAIChatCompletionRequest
+
+        # Copy only fields that exist in the base model
+        for field_name, _field_info in base_model.model_fields.items():
+            if hasattr(request, field_name):
+                value = getattr(request, field_name)
+                if value is not None:  # Only include non-None values
+                    base_request_dict[field_name] = value
+
+        anthropic_request = translator.openai_to_anthropic_request(base_request_dict)
 
         # Generate request metadata
         request_id = f"chatcmpl-{uuid.uuid4().hex[:29]}"

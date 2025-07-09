@@ -19,7 +19,7 @@ class TestNewURLStructure:
         assert response.status_code == 200
         assert response.json()["status"] == "healthy"
 
-    @patch("ccproxy.routers.anthropic.ClaudeClient")
+    @patch("ccproxy.routers.claudecode.anthropic.ClaudeClient")
     def test_new_claude_code_path(
         self, mock_client_class, test_client: TestClient, sample_claude_response
     ):
@@ -44,7 +44,7 @@ class TestNewURLStructure:
         assert response.status_code == 200
         assert response.json()["type"] == "message"
 
-    @patch("ccproxy.routers.openai.ClaudeClient")
+    @patch("ccproxy.routers.claudecode.openai.ClaudeClient")
     def test_new_openai_path(
         self, mock_client_class, test_client: TestClient, sample_claude_response
     ):

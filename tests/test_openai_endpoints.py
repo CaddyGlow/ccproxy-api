@@ -49,7 +49,9 @@ class TestOpenAIChatCompletionsEndpoint:
     @pytest.fixture
     def mock_claude_client(self):
         """Mock Claude client directly."""
-        with patch("ccproxy.routers.openai.ClaudeClient") as mock_client_class:
+        with patch(
+            "ccproxy.routers.claudecode.openai.ClaudeClient"
+        ) as mock_client_class:
             mock_client = MagicMock()
             mock_client_class.return_value = mock_client
             yield mock_client
@@ -637,7 +639,9 @@ class TestOpenAIToolsValidation:
     @pytest.fixture
     def mock_claude_client(self):
         """Mock Claude client directly."""
-        with patch("ccproxy.routers.openai.ClaudeClient") as mock_client_class:
+        with patch(
+            "ccproxy.routers.claudecode.openai.ClaudeClient"
+        ) as mock_client_class:
             mock_client = MagicMock()
             mock_client_class.return_value = mock_client
             yield mock_client
@@ -665,7 +669,7 @@ class TestOpenAIToolsValidation:
             ],
         }
 
-    @patch("ccproxy.routers.openai.get_settings")
+    @patch("ccproxy.routers.claudecode.openai.get_settings")
     def test_tools_validation_error_mode(
         self, mock_get_settings, test_client, sample_request_with_tools
     ):
@@ -688,7 +692,7 @@ class TestOpenAIToolsValidation:
         )
         assert data["detail"]["error"]["type"] == "unsupported_parameter"
 
-    @patch("ccproxy.routers.openai.get_settings")
+    @patch("ccproxy.routers.claudecode.openai.get_settings")
     def test_tools_validation_warning_mode(
         self,
         mock_get_settings,
@@ -715,7 +719,7 @@ class TestOpenAIToolsValidation:
             }
         )
 
-        with patch("ccproxy.routers.openai.logger") as mock_logger:
+        with patch("ccproxy.routers.claudecode.openai.logger") as mock_logger:
             response = test_client.post(
                 "/cc/openai/v1/chat/completions", json=sample_request_with_tools
             )
@@ -726,7 +730,7 @@ class TestOpenAIToolsValidation:
             assert "Tools ignored" in warning_call
             assert "1 tools" in warning_call
 
-    @patch("ccproxy.routers.openai.get_settings")
+    @patch("ccproxy.routers.claudecode.openai.get_settings")
     def test_tools_validation_ignore_mode(
         self,
         mock_get_settings,
@@ -753,7 +757,7 @@ class TestOpenAIToolsValidation:
             }
         )
 
-        with patch("ccproxy.routers.openai.logger") as mock_logger:
+        with patch("ccproxy.routers.claudecode.openai.logger") as mock_logger:
             response = test_client.post(
                 "/cc/openai/v1/chat/completions", json=sample_request_with_tools
             )
@@ -763,7 +767,7 @@ class TestOpenAIToolsValidation:
             mock_logger.warning.assert_not_called()
             mock_logger.error.assert_not_called()
 
-    @patch("ccproxy.routers.openai.get_settings")
+    @patch("ccproxy.routers.claudecode.openai.get_settings")
     def test_request_without_tools_continues_normally(
         self, mock_get_settings, test_client, mock_claude_client
     ):

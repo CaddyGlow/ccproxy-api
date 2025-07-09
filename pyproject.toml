@@ -40,7 +40,8 @@ version-file = "ccproxy/_version.py"
 packages = ["ccproxy"]
 
 [project.scripts]
-ccproxy = "ccproxy.cli:app"
+# ccproxy = "ccproxy.cli:app"
+ccproxy = "ccproxy.cli:main"
 
 [dependency-groups]
 dev = [

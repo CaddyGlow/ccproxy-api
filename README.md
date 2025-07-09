@@ -58,6 +58,10 @@ npm install -g @anthropic-ai/claude-code
 
 # Install ccproxy
 pipx install git+https://github.com/caddyglow/claude-code-proxy-api.git@dev
+
+# Optional: Enable shell completion
+eval "$(ccproxy --show-completion zsh)"  # For zsh
+eval "$(ccproxy --show-completion bash)" # For bash
 ```
 
 ### Authenticate

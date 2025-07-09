@@ -1,5 +1,5 @@
+from .app import app, app_main, main, version_callback
 from .commands.claude import claude
-from .main import app, main, version_callback
 
 
-__all__ = ["app", "main", "version_callback", "claude"]
+__all__ = ["app", "main", "version_callback", "claude", "app_main"]

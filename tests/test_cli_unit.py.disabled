@@ -11,7 +11,7 @@ import typer
 from typer.testing import CliRunner
 
 from ccproxy._version import __version__
-from ccproxy.cli.main import (
+from ccproxy.cli.app import (
     app,
     # get_default_path_hook,
     main,

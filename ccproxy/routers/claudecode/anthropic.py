@@ -2,10 +2,11 @@
 
 import uuid
 from collections.abc import AsyncGenerator
-from typing import Any
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
+from pydantic import ConfigDict, Field
 
 from ccproxy.config.settings import get_settings
 from ccproxy.exceptions import ClaudeProxyError
@@ -18,7 +19,59 @@ from ccproxy.models.errors import create_error_response
 from ccproxy.models.messages import MessageCreateParams, MessageResponse
 from ccproxy.services.claude_client import ClaudeClient
 from ccproxy.utils import merge_claude_code_options
+from ccproxy.utils.helper import patched_typing
 from ccproxy.utils.logging import get_logger
+
+
+# Import ClaudeCodeOptions with patched typing
+with patched_typing():
+    from claude_code_sdk import ClaudeCodeOptions
+
+
+class ClaudeCodeMessageCreateParams(MessageCreateParams):
+    """Extended MessageCreateParams with ClaudeCodeOptions fields."""
+
+    # Add ClaudeCodeOptions fields explicitly to avoid conflicts
+    max_thinking_tokens: Annotated[
+        int | None, Field(None, description="Maximum number of thinking tokens")
+    ] = None
+    max_turns: Annotated[
+        int | None, Field(None, description="Maximum number of turns")
+    ] = None
+    cwd: Annotated[str | None, Field(None, description="Current working directory")] = (
+        None
+    )
+    system_prompt: Annotated[str | None, Field(None, description="System prompt")] = (
+        None
+    )
+    append_system_prompt: Annotated[
+        bool | None, Field(None, description="Whether to append system prompt")
+    ] = None
+    permission_mode: Annotated[
+        str | None, Field(None, description="Permission mode")
+    ] = None
+    permission_prompt_tool_name: Annotated[
+        str | None, Field(None, description="Permission prompt tool name")
+    ] = None
+    continue_conversation: Annotated[
+        bool | None, Field(None, description="Whether to continue conversation")
+    ] = None
+    resume: Annotated[bool | None, Field(None, description="Whether to resume")] = None
+    allowed_tools: Annotated[
+        list[str] | None, Field(None, description="List of allowed tools")
+    ] = None
+    disallowed_tools: Annotated[
+        list[str] | None, Field(None, description="List of disallowed tools")
+    ] = None
+    mcp_servers: Annotated[
+        list[str] | None, Field(None, description="List of MCP servers")
+    ] = None
+    mcp_tools: Annotated[
+        list[str] | None, Field(None, description="List of MCP tools")
+    ] = None
+
+    # Override model config to allow extra fields (for backwards compatibility)
+    model_config = ConfigDict(extra="allow")
 
 
 logger = get_logger(__name__)
@@ -52,7 +105,7 @@ async def list_models(_: None = Depends(get_auth_dependency())) -> dict[str, Any
 
 @router.post("/messages", response_model=None)
 async def create_message(
-    request: MessageCreateParams,
+    request: ClaudeCodeMessageCreateParams,
     http_request: Request,
     _: None = Depends(get_auth_dependency()),
 ) -> MessageResponse | StreamingResponse:
@@ -79,41 +132,70 @@ async def create_message(
         logger.info("[API] Creating Claude client for message request")
         claude_client = ClaudeClient()
 
-        # Extract Anthropic API fields and Claude Code specific fields
-        overrides: dict[str, Any] = {
-            "model": request.model,
-        }
+        # Create a new ClaudeCodeOptions instance based on the request
+        # Start with base options from settings
+        options = merge_claude_code_options(settings.claude_code_options)
+
+        # Override with request-specific values
+        # Model from Anthropic API
+        if request.model:
+            options.model = request.model
 
         # Handle system message if provided
         if request.system:
             if isinstance(request.system, str):
-                overrides["system_prompt"] = request.system
+                options.system_prompt = request.system
             elif isinstance(request.system, list):
                 # Handle system message blocks by converting to string
                 system_text = "\n".join([block.text for block in request.system])
-                overrides["system_prompt"] = system_text
+                options.system_prompt = system_text
 
-        # Add other Anthropic API fields that may be relevant to Claude Code
+        # Anthropic API fields
         if request.temperature is not None:
-            overrides["temperature"] = request.temperature
+            options.temperature = request.temperature
         if request.top_p is not None:
-            overrides["top_p"] = request.top_p
+            options.top_p = request.top_p
         if request.top_k is not None:
-            overrides["top_k"] = request.top_k
+            options.top_k = request.top_k
         if request.stop_sequences:
-            overrides["stop_sequences"] = request.stop_sequences
+            options.stop_sequences = request.stop_sequences
         if request.tools:
-            overrides["tools"] = request.tools
+            options.tools = request.tools
         if request.metadata:
-            overrides["metadata"] = request.metadata
+            options.metadata = request.metadata
         if request.service_tier:
-            overrides["service_tier"] = request.service_tier
+            options.service_tier = request.service_tier
         if request.thinking:
             # Convert ThinkingConfig to max_thinking_tokens for Claude Code SDK
-            overrides["max_thinking_tokens"] = request.thinking.budget_tokens
+            options.max_thinking_tokens = request.thinking.budget_tokens
 
-        # Merge base options with request-specific overrides
-        options = merge_claude_code_options(settings.claude_code_options, **overrides)
+        # Claude Code specific fields (now available directly from request)
+        if request.max_thinking_tokens is not None:
+            options.max_thinking_tokens = request.max_thinking_tokens
+        if request.max_turns is not None:
+            options.max_turns = request.max_turns
+        if request.cwd is not None:
+            options.cwd = request.cwd
+        if request.system_prompt is not None:
+            options.system_prompt = request.system_prompt
+        if request.append_system_prompt is not None:
+            options.append_system_prompt = request.append_system_prompt
+        if request.permission_mode is not None:
+            options.permission_mode = request.permission_mode
+        if request.permission_prompt_tool_name is not None:
+            options.permission_prompt_tool_name = request.permission_prompt_tool_name
+        if request.continue_conversation is not None:
+            options.continue_conversation = request.continue_conversation
+        if request.resume is not None:
+            options.resume = request.resume
+        if request.allowed_tools is not None:
+            options.allowed_tools = request.allowed_tools
+        if request.disallowed_tools is not None:
+            options.disallowed_tools = request.disallowed_tools
+        if request.mcp_servers is not None:
+            options.mcp_servers = request.mcp_servers
+        if request.mcp_tools is not None:
+            options.mcp_tools = request.mcp_tools
 
         # Convert request to messages format
         messages = [msg.model_dump() for msg in request.messages]

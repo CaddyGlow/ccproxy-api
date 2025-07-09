@@ -28,7 +28,7 @@ class TestRoutersInit:
         content = init_path.read_text()
 
         # Verify the import statement exists (line 3)
-        assert "from .anthropic import router as anthropic_router" in content
+        assert "from .claudecode.anthropic import router as anthropic_router" in content
 
     def test_all_definition(self) -> None:
         """Test that __all__ is defined with the expected content."""
@@ -36,8 +36,11 @@ class TestRoutersInit:
         init_path = Path(__file__).parent.parent / "ccproxy" / "routers" / "__init__.py"
         content = init_path.read_text()
 
-        # Verify __all__ is defined (line 6)
-        assert '__all__ = ["anthropic_router", "openai_router"]' in content
+        # Verify __all__ is defined (line 9-14)
+        assert '"anthropic_router"' in content
+        assert '"openai_router"' in content
+        assert '"oauth_router"' in content
+        assert '"create_reverse_proxy_router"' in content
 
     def test_module_import_with_mocked_routers(self) -> None:
         """Test that the module can be imported when routers are mocked."""
@@ -53,8 +56,16 @@ class TestRoutersInit:
         with patch.dict(
             "sys.modules",
             {
-                "ccproxy.routers.anthropic": MagicMock(router=mock_anthropic_router),
-                "ccproxy.routers.openai": MagicMock(router=mock_openai_router),
+                "ccproxy.routers.claudecode.anthropic": MagicMock(
+                    router=mock_anthropic_router
+                ),
+                "ccproxy.routers.claudecode.openai": MagicMock(
+                    router=mock_openai_router
+                ),
+                "ccproxy.routers.oauth": MagicMock(router=MagicMock()),
+                "ccproxy.routers.reverse_proxy_factory": MagicMock(
+                    create_reverse_proxy_router=MagicMock()
+                ),
             },
         ):
             # Now we can safely import the routers module
@@ -71,11 +82,19 @@ class TestRoutersInit:
 
             # Test that __all__ is correctly defined
             assert hasattr(module, "__all__")
-            assert module.__all__ == ["anthropic_router", "openai_router"]
+            expected_all = [
+                "anthropic_router",
+                "openai_router",
+                "oauth_router",
+                "create_reverse_proxy_router",
+            ]
+            assert module.__all__ == expected_all
 
-            # Test that both routers are available
+            # Test that all expected exports are available
             assert hasattr(module, "anthropic_router")
             assert hasattr(module, "openai_router")
+            assert hasattr(module, "oauth_router")
+            assert hasattr(module, "create_reverse_proxy_router")
             assert module.anthropic_router is mock_anthropic_router
             assert module.openai_router is mock_openai_router
 
@@ -92,7 +111,11 @@ class TestRoutersInit:
         assert lines[0].startswith('"""')
 
         # Line 3: import statement (after blank line 2)
-        assert "from .anthropic import router as anthropic_router" in lines[2]
+        assert (
+            "from .claudecode.anthropic import router as anthropic_router" in lines[2]
+        )
 
-        # Line 7: __all__ definition (after blank lines)
-        assert '__all__ = ["anthropic_router", "openai_router"]' in lines[6]
+        # Check __all__ definition is present (not exact line match due to formatting)
+        content = "\n".join(lines)
+        assert '"anthropic_router"' in content
+        assert '"openai_router"' in content

@@ -27,6 +27,7 @@ from ccproxy.utils.cli import (
 )
 from ccproxy.utils.helper import get_package_dir, get_root_package_name
 from ccproxy.utils.logging import get_logger
+from ccproxy.utils.typer import Typer
 
 from .commands.api import api, get_config_path_from_context
 from .commands.auth import app as auth_app
@@ -42,9 +43,9 @@ def version_callback(value: bool) -> None:
         raise typer.Exit()
 
 
-app = typer.Typer(
+app = Typer(
     rich_markup_mode="rich",
-    add_completion=False,
+    add_completion=True,
     no_args_is_help=False,
     pretty_exceptions_enable=False,
 )
@@ -54,8 +55,9 @@ logger = get_logger(__name__)
 
 
 # Add global --version option
-@app.callback(invoke_without_command=True)
-def main(
+# @app.callback(invoke_without_command=True)
+# @app.callback(invoke_without_command=True)
+def app_main(
     ctx: typer.Context,
     version: bool = typer.Option(
         False,
@@ -228,7 +230,7 @@ app.add_typer(auth_app)
 
 
 # Register imported commands
-app.command(hidden=True)(api)
+app.command(default=True, name="serve")(api)
 app.command()(claude)
 
 
@@ -318,34 +320,41 @@ def permission_tool(
         raise typer.Exit(1) from e
 
 
+def main() -> None:
+    #     import sys
+    #
+    #     # Enhanced default command handling
+    #     if len(sys.argv) == 1:
+    #         # No arguments provided, run api command
+    #         sys.argv.append("api")
+    #     elif len(sys.argv) > 1:
+    #         # Check if any argument is a known command
+    #         known_commands = {"api", "claude", "config", "permission_tool"}
+    #
+    #         # Find the first non-option argument that could be a command
+    #         has_command = False
+    #         for arg in sys.argv[1:]:
+    #             if not arg.startswith("-") and arg in known_commands:
+    #                 has_command = True
+    #                 break
+    #
+    #         # If no known command found, but there are arguments,
+    #         # assume they are for the api command
+    #         if (
+    #             not has_command
+    #             and "--help" not in sys.argv
+    #             and "-h" not in sys.argv
+    #             and "--version" not in sys.argv
+    #             and "-V" not in sys.argv
+    #             and "--show-completion" not in sys.argv
+    #             and "--install-completion" not in sys.argv
+    #         ):
+    #             sys.argv.insert(1, "api")
+
+    app()
+
+
 if __name__ == "__main__":
     import sys
 
-    # Enhanced default command handling
-    if len(sys.argv) == 1:
-        # No arguments provided, run api command
-        sys.argv.append("api")
-    elif len(sys.argv) > 1:
-        # Check if any argument is a known command
-        known_commands = {"api", "claude", "config", "permission_tool"}
-
-        # Find the first non-option argument that could be a command
-        has_command = False
-        for arg in sys.argv[1:]:
-            if not arg.startswith("-") and arg in known_commands:
-                has_command = True
-                break
-
-        # If no known command found, but there are arguments,
-        # assume they are for the api command
-        if (
-            not has_command
-            and "--help" not in sys.argv
-            and "-h" not in sys.argv
-            and "--version" not in sys.argv
-            and "-V" not in sys.argv
-        ):
-            sys.argv.insert(1, "api")
-
-    app()
-__all__ = ["app", "main", "version_callback", "claude"]
+    sys.exit(app())
