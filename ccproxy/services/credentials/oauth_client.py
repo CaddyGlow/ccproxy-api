@@ -374,12 +374,11 @@ class OAuthClient:
     ) -> UserProfile:
         """Fetch user profile using OAuth token.
 
-        This makes a call to refresh the token which also returns
-        organization and account information.
+        Uses the correct profile API endpoint with the access token.
 
         Args:
-            access_token: Current access token (not used, kept for compatibility)
-            refresh_token: Refresh token to use
+            access_token: Current access token to use for authentication
+            refresh_token: Refresh token (not used, kept for compatibility)
 
         Returns:
             UserProfile with organization and account info
@@ -389,21 +388,15 @@ class OAuthClient:
         """
         try:
             headers = {
+                "Authorization": f"Bearer {access_token}",
                 "Content-Type": "application/json",
                 "anthropic-beta": self.config.beta_version,
                 "User-Agent": self.config.user_agent,
             }
 
-            data = {
-                "grant_type": "refresh_token",
-                "refresh_token": refresh_token,
-                "client_id": self.config.client_id,
-            }
-
-            response = await self.http_client.post(
-                self.config.token_url,
+            response = await self.http_client.get(
+                "https://api.anthropic.com/api/oauth/profile",
                 headers=headers,
-                json=data,
                 timeout=30.0,
             )
 

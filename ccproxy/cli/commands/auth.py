@@ -196,21 +196,15 @@ def credential_info(
         elif docker:
             custom_paths = get_docker_credential_paths()
 
-        # Get credentials manager and find credential file
+        # Get credentials manager and try to load credentials
         manager = get_credentials_manager(custom_paths)
-        cred_file = asyncio.run(manager.find_credentials_file())
+        credentials = asyncio.run(manager.load())
 
-        if not cred_file:
+        if not credentials:
             toolkit.print("No credential file found", tag="error")
             console.print("\n[dim]Expected locations:[/dim]")
             for path in manager.config.storage_paths:
                 console.print(f"  - {path}")
-            raise typer.Exit(1)
-
-        # Load and display credentials
-        credentials = asyncio.run(manager.load())
-        if not credentials:
-            toolkit.print("Failed to load credentials", tag="error")
             raise typer.Exit(1)
 
         # Display account section
@@ -264,8 +258,12 @@ def credential_info(
         table.add_column("Property", style="cyan")
         table.add_column("Value", style="white")
 
-        # File location
-        table.add_row("File Location", str(cred_file))
+        # File location - check if there's a credentials file or if using keyring
+        cred_file = asyncio.run(manager.find_credentials_file())
+        if cred_file:
+            table.add_row("File Location", str(cred_file))
+        else:
+            table.add_row("File Location", "Keyring storage")
 
         # Token info
         table.add_row("Subscription Type", oauth.subscription_type or "Unknown")

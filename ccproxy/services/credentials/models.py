@@ -31,13 +31,25 @@ class OrganizationInfo(BaseModel):
 
     uuid: str
     name: str
+    organization_type: str | None = None
+    billing_type: str | None = None
+    rate_limit_tier: str | None = None
 
 
 class AccountInfo(BaseModel):
     """Account information from OAuth API."""
 
     uuid: str
-    email_address: str
+    email: str
+    full_name: str | None = None
+    display_name: str | None = None
+    has_claude_max: bool | None = None
+    has_claude_pro: bool | None = None
+
+    @property
+    def email_address(self) -> str:
+        """Compatibility property for email_address."""
+        return self.email
 
 
 class UserProfile(BaseModel):
