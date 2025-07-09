@@ -78,12 +78,3 @@ class Usage(BaseModel):
     cache_read_input_tokens: int | None = Field(
         None, description="Number of tokens read from cache"
     )
-
-
-class ToolChoice(BaseModel):
-    """Tool choice specification."""
-
-    type: Literal["auto", "any", "tool"] = Field(..., description="How to use tools")
-    name: str | None = Field(None, description="Specific tool name to use")
-
-    model_config = ConfigDict(extra="forbid")

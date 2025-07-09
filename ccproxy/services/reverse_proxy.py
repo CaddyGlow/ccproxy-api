@@ -445,16 +445,20 @@ class ReverseProxyService:
                         elif event_type == "content_block_start":
                             # Check if this is a thinking block
                             content_block = data.get("content_block", {})
-                            if content_block.get(
-                                "type"
-                            ) == "text" and content_block.get("thinking", False):
+                            block_type = content_block.get("type")
+                            if block_type == "thinking" or (
+                                block_type == "text"
+                                and content_block.get("thinking", False)
+                            ):
                                 in_thinking_block = True
                                 has_content = True
                                 # Send a marker to indicate thinking start
                                 yield formatter.format_content_chunk(
                                     message_id, model, created, "[Thinking]\n"
                                 ).encode("utf-8")
-                                logger.debug("Started thinking block")
+                                logger.debug(
+                                    f"Started thinking block (type: {block_type}, thinking: {content_block.get('thinking')})"
+                                )
 
                         elif data.get("type") == "content_block_delta":
                             delta = data.get("delta", {})
@@ -512,6 +516,8 @@ class ReverseProxyService:
                                 "max_tokens": "length",
                                 "tool_use": "tool_calls",
                                 "stop_sequence": "stop",
+                                "pause_turn": "stop",
+                                "refusal": "content_filter",
                             }
                             finish_reason = finish_reason_map.get(stop_reason, "stop")
 

@@ -29,7 +29,7 @@ class TestNewURLStructure:
         mock_client_class.return_value = mock_client
 
         response = test_client.post(
-            "/cc/v1/chat/completions",
+            "/cc/v1/messages",
             json={
                 "model": "claude-3-5-sonnet-20241022",
                 "messages": [{"role": "user", "content": "Hi"}],

@@ -109,7 +109,8 @@ async def create_message(
         if request.service_tier:
             overrides["service_tier"] = request.service_tier
         if request.thinking:
-            overrides["thinking"] = request.thinking
+            # Convert ThinkingConfig to max_thinking_tokens for Claude Code SDK
+            overrides["max_thinking_tokens"] = request.thinking.budget_tokens
 
         # Merge base options with request-specific overrides
         options = merge_claude_code_options(settings.claude_code_options, **overrides)
@@ -188,6 +189,7 @@ async def create_message(
                     stop_reason=response.get("stop_reason"),
                     stop_sequence=response.get("stop_sequence"),
                     usage=response.get("usage", {}),
+                    container=response.get("container"),
                 )
                 return message_response
             else:

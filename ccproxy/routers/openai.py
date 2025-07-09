@@ -151,11 +151,17 @@ async def create_chat_completion(
                         AsyncIterator[dict[str, Any]], claude_stream
                     )
 
+                    # Check if usage should be included based on stream_options
+                    include_usage = bool(
+                        request.stream_options and request.stream_options.include_usage
+                    )
+
                     async for chunk in stream_claude_response_openai(
                         claude_stream_iter,  # type: ignore[arg-type]
                         request_id,
                         request.model,
                         created,
+                        include_usage=include_usage,
                     ):
                         chunk_count += 1
                         logger.debug(

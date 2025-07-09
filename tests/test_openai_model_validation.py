@@ -161,6 +161,117 @@ class TestOpenAIRequestValidation:
         )
         assert request.tools is None
 
+    def test_deprecated_function_fields(self) -> None:
+        """Test that deprecated function fields are accepted for backward compatibility."""
+        request = OpenAIChatCompletionRequest.model_validate(
+            {
+                "model": "claude-opus-4-20250514",
+                "messages": [{"role": "user", "content": "Hello"}],
+                "functions": [
+                    {
+                        "name": "get_weather",
+                        "description": "Get weather info",
+                        "parameters": {"type": "object", "properties": {}},
+                    }
+                ],
+                "function_call": "auto",
+            }
+        )
+        assert request.functions is not None
+        assert len(request.functions) == 1
+        assert request.function_call == "auto"
+
+    def test_response_format_json_schema(self) -> None:
+        """Test response_format with json_schema type."""
+        from ccproxy.models.openai import OpenAIResponseFormat
+
+        # Test valid json_schema format
+        response_format = OpenAIResponseFormat.model_validate(
+            {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "weather_response",
+                    "schema": {
+                        "type": "object",
+                        "properties": {
+                            "temperature": {"type": "number"},
+                            "unit": {"type": "string"},
+                        },
+                        "required": ["temperature", "unit"],
+                    },
+                },
+            }
+        )
+        assert response_format.type == "json_schema"
+        assert response_format.json_schema is not None
+        assert response_format.json_schema["name"] == "weather_response"
+
+    def test_response_format_json_schema_validation_error(self) -> None:
+        """Test that json_schema type without schema raises validation error."""
+        from ccproxy.models.openai import OpenAIResponseFormat
+
+        with pytest.raises(ValidationError) as exc_info:
+            OpenAIResponseFormat.model_validate(
+                {
+                    "type": "json_schema",
+                    # Missing json_schema field
+                }
+            )
+        assert "json_schema must be provided when type is 'json_schema'" in str(
+            exc_info.value
+        )
+
+    def test_response_format_json_object_with_schema_error(self) -> None:
+        """Test that json_object type with schema raises validation error."""
+        from ccproxy.models.openai import OpenAIResponseFormat
+
+        with pytest.raises(ValidationError) as exc_info:
+            OpenAIResponseFormat.model_validate(
+                {
+                    "type": "json_object",
+                    "json_schema": {"some": "schema"},  # Should not be allowed
+                }
+            )
+        assert "json_schema should only be provided when type is 'json_schema'" in str(
+            exc_info.value
+        )
+
+    def test_multimodal_fields(self) -> None:
+        """Test multimodal fields in request."""
+        request = OpenAIChatCompletionRequest.model_validate(
+            {
+                "model": "claude-opus-4-20250514",
+                "messages": [{"role": "user", "content": "Hello"}],
+                "modalities": ["text", "audio"],
+                "audio": {
+                    "voice": "alloy",
+                    "format": "mp3",
+                },
+            }
+        )
+        assert request.modalities == ["text", "audio"]
+        assert request.audio is not None
+        assert request.audio["voice"] == "alloy"
+
+    def test_store_and_metadata_fields(self) -> None:
+        """Test store and metadata fields."""
+        request = OpenAIChatCompletionRequest.model_validate(
+            {
+                "model": "claude-opus-4-20250514",
+                "messages": [{"role": "user", "content": "Hello"}],
+                "store": True,
+                "metadata": {
+                    "user_id": "12345",
+                    "session_id": "abc-def-ghi",
+                    "custom_field": "value",
+                },
+            }
+        )
+        assert request.store is True
+        assert request.metadata is not None
+        assert request.metadata["user_id"] == "12345"
+        assert request.metadata["session_id"] == "abc-def-ghi"
+
 
 @pytest.mark.unit
 class TestOpenAIResponseGeneration:

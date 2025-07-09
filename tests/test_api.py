@@ -37,7 +37,7 @@ class TestChatCompletionsEndpoint:
         mock_client.create_completion.return_value = sample_claude_response
         mock_claude_client_class.return_value = mock_client
 
-        response = test_client.post("/cc/v1/chat/completions", json=sample_chat_request)
+        response = test_client.post("/cc/v1/messages", json=sample_chat_request)
 
         assert response.status_code == 200
         data = response.json()
@@ -69,7 +69,7 @@ class TestChatCompletionsEndpoint:
             "max_tokens": 100,
         }
 
-        response = test_client.post("/cc/v1/chat/completions", json=request_data)
+        response = test_client.post("/cc/v1/messages", json=request_data)
 
         assert response.status_code == 422  # Validation error for pattern mismatch
         data = response.json()
@@ -84,7 +84,7 @@ class TestChatCompletionsEndpoint:
             "max_tokens": 100,
         }
 
-        response = test_client.post("/cc/v1/chat/completions", json=request_data)
+        response = test_client.post("/cc/v1/messages", json=request_data)
 
         assert response.status_code == 422  # Validation error
 
@@ -95,7 +95,7 @@ class TestChatCompletionsEndpoint:
             # Missing model and max_tokens
         }
 
-        response = test_client.post("/cc/v1/chat/completions", json=request_data)
+        response = test_client.post("/cc/v1/messages", json=request_data)
 
         assert response.status_code == 422  # Validation error
 
@@ -129,9 +129,7 @@ class TestChatCompletionsEndpoint:
         mock_client.create_completion.return_value = mock_streaming_response()
         mock_claude_client_class.return_value = mock_client
 
-        response = test_client.post(
-            "/cc/v1/chat/completions", json=sample_streaming_request
-        )
+        response = test_client.post("/cc/v1/messages", json=sample_streaming_request)
 
         assert response.status_code == 200
         assert response.headers["content-type"] == "text/event-stream"
@@ -176,7 +174,7 @@ class TestChatCompletionsEndpoint:
         )
         mock_claude_client_class.return_value = mock_client
 
-        response = test_client.post("/cc/v1/chat/completions", json=sample_chat_request)
+        response = test_client.post("/cc/v1/messages", json=sample_chat_request)
 
         assert response.status_code == 503
         data = response.json()
@@ -201,10 +199,10 @@ class TestChatCompletionsEndpoint:
             "model": "claude-3-5-sonnet-20241022",
             "messages": [{"role": "user", "content": "Think about this carefully"}],
             "max_tokens": 100,
-            "max_thinking_tokens": 50000,
+            "thinking": {"type": "enabled", "budget_tokens": 50000},
         }
 
-        response = test_client.post("/cc/v1/chat/completions", json=request_data)
+        response = test_client.post("/cc/v1/messages", json=request_data)
 
         assert response.status_code == 200
 
@@ -303,14 +301,15 @@ class TestErrorHandling:
 
     def test_method_not_allowed(self, test_client: TestClient):
         """Test method not allowed."""
-        response = test_client.delete("/cc/v1/chat/completions")
+        response = test_client.delete("/cc/v1/messages")
 
-        assert response.status_code == 405
+        # FastAPI returns 404 for undefined routes/methods
+        assert response.status_code == 404
 
     def test_malformed_json(self, test_client: TestClient):
         """Test malformed JSON request."""
         response = test_client.post(
-            "/cc/v1/chat/completions",
+            "/cc/v1/messages",
             content="invalid json",
             headers={"Content-Type": "application/json"},
         )
@@ -342,7 +341,7 @@ class TestCORSHeaders:
         }
         mock_claude_client_class.return_value = mock_client
 
-        response = test_client.post("/cc/v1/chat/completions", json=sample_chat_request)
+        response = test_client.post("/cc/v1/messages", json=sample_chat_request)
 
         # CORS middleware is configured if the endpoint responds successfully
         # (TestClient doesn't trigger CORS headers for same-origin requests)
@@ -364,9 +363,7 @@ class TestCORSHeaders:
         mock_client.create_completion.return_value = iter([])
         mock_claude_client_class.return_value = mock_client
 
-        response = test_client.post(
-            "/cc/v1/chat/completions", json=sample_streaming_request
-        )
+        response = test_client.post("/cc/v1/messages", json=sample_streaming_request)
 
         assert response.status_code == 200
         assert "access-control-allow-origin" in response.headers

@@ -5,6 +5,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from .requests import Message, ToolDefinition, Usage
+from .types import ContentBlockType, ServiceTier, StopReason, ToolChoiceType
 
 
 class SystemMessage(BaseModel):
@@ -12,6 +13,47 @@ class SystemMessage(BaseModel):
 
     type: Literal["text"] = "text"
     text: str = Field(..., description="System message text")
+
+
+class ThinkingConfig(BaseModel):
+    """Configuration for extended thinking process."""
+
+    type: Literal["enabled"] = Field("enabled", description="Enable thinking mode")
+    budget_tokens: int = Field(
+        ...,
+        description="Token budget for thinking process",
+        ge=1024,
+    )
+
+
+class MetadataParams(BaseModel):
+    """Metadata about the request."""
+
+    user_id: str | None = Field(
+        None,
+        description="External identifier for the user",
+        max_length=256,
+    )
+
+    class Config:
+        extra = "allow"  # Allow additional fields in metadata
+
+
+class ToolChoiceParams(BaseModel):
+    """Tool choice configuration."""
+
+    type: ToolChoiceType = Field(
+        ...,
+        description="How the model should use tools",
+    )
+    name: str | None = Field(
+        None,
+        description="Specific tool name (when type is 'tool')",
+    )
+    disable_parallel_tool_use: bool = Field(
+        False,
+        description="Disable parallel tool use",
+    )
 
 
 class MessageCreateParams(BaseModel):
@@ -66,7 +108,7 @@ class MessageCreateParams(BaseModel):
         False,
         description="Whether to stream the response",
     )
-    metadata: dict[str, Any] | None = Field(
+    metadata: MetadataParams | None = Field(
         None,
         description="Metadata about the request, including optional user_id",
     )
@@ -74,15 +116,15 @@ class MessageCreateParams(BaseModel):
         None,
         description="Available tools/functions for the model to use",
     )
-    tool_choice: dict[str, Any] | None = Field(
+    tool_choice: ToolChoiceParams | None = Field(
         None,
         description="How the model should use the provided tools",
     )
-    service_tier: Literal["auto", "standard_only"] | None = Field(
+    service_tier: ServiceTier | None = Field(
         None,
         description="Request priority level",
     )
-    thinking: dict[str, Any] | None = Field(
+    thinking: ThinkingConfig | None = Field(
         None,
         description="Configuration for extended thinking process",
     )
@@ -143,24 +185,16 @@ class MessageCreateParams(BaseModel):
                     raise ValueError("Stop sequences must be 100 characters or less")
         return v
 
-    @field_validator("metadata")
-    @classmethod
-    def validate_metadata(cls, v: dict[str, Any] | None) -> dict[str, Any] | None:
-        """Validate metadata structure."""
-        if v is not None and "user_id" in v:
-            user_id = v["user_id"]
-            if not isinstance(user_id, str) or len(user_id) > 256:
-                raise ValueError("user_id must be a string with max 256 characters")
-        return v
-
     model_config = ConfigDict(extra="forbid", validate_assignment=True)
 
 
 class MessageContentBlock(BaseModel):
     """Content block in a message response."""
 
-    type: Literal["text", "tool_use"] = Field(..., description="Type of content block")
-    text: str | None = Field(None, description="Text content (for text blocks)")
+    type: ContentBlockType = Field(..., description="Type of content block")
+    text: str | None = Field(
+        None, description="Text content (for text/thinking blocks)"
+    )
     id: str | None = Field(None, description="Unique ID (for tool_use blocks)")
     name: str | None = Field(None, description="Tool name (for tool_use blocks)")
     input: dict[str, Any] | None = Field(
@@ -178,7 +212,7 @@ class MessageResponse(BaseModel):
         ..., description="Array of content blocks in the response"
     )
     model: str = Field(..., description="The model used for the response")
-    stop_reason: str | None = Field(
+    stop_reason: StopReason | None = Field(
         None,
         description="Reason why the model stopped generating",
     )
@@ -187,5 +221,9 @@ class MessageResponse(BaseModel):
         description="The stop sequence that triggered stopping (if applicable)",
     )
     usage: Usage = Field(..., description="Token usage information")
+    container: dict[str, Any] | None = Field(
+        None,
+        description="Information about container used in the request",
+    )
 
     model_config = ConfigDict(extra="forbid", validate_assignment=True)

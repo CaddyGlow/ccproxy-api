@@ -2,10 +2,22 @@
 
 import uuid
 from collections.abc import AsyncIterator
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
-from pydantic import BaseModel, Field
-
+from ccproxy.models.openai import (
+    OpenAIChatCompletionRequest,
+    OpenAIChatCompletionResponse,
+    OpenAIChoice,
+    OpenAIMessage,
+    OpenAIMessageContent,
+    OpenAIResponseMessage,
+    OpenAIStreamingChatCompletionResponse,
+    OpenAIStreamingChoice,
+    OpenAIStreamingDelta,
+    OpenAITool,
+    OpenAIToolCall,
+    OpenAIUsage,
+)
 from ccproxy.utils.logging import get_logger
 
 
@@ -48,99 +60,6 @@ def map_openai_model_to_claude(model: str) -> str:
     return model
 
 
-class OpenAIMessage(BaseModel):
-    """OpenAI message format."""
-
-    role: Literal["system", "user", "assistant", "tool"] = Field(
-        ..., description="The role of the message sender"
-    )
-    content: str | list[dict[str, Any]] | None = Field(
-        None, description="The content of the message"
-    )
-    name: str | None = Field(None, description="Name of the message sender")
-    tool_calls: list[dict[str, Any]] | None = Field(
-        None, description="Tool calls made by the assistant"
-    )
-    tool_call_id: str | None = Field(None, description="ID of the tool call")
-
-
-class OpenAIRequest(BaseModel):
-    """OpenAI chat completion request format."""
-
-    model: str = Field(..., description="The model to use")
-    messages: list[OpenAIMessage] = Field(
-        ..., description="List of messages in the conversation"
-    )
-    max_tokens: int | None = Field(None, description="Maximum tokens to generate")
-    temperature: float | None = Field(None, description="Sampling temperature")
-    top_p: float | None = Field(None, description="Nucleus sampling parameter")
-    n: int | None = Field(None, description="Number of completions to generate")
-    stream: bool | None = Field(False, description="Whether to stream responses")
-    stop: str | list[str] | None = Field(None, description="Stop sequences")
-    presence_penalty: float | None = Field(None, description="Presence penalty")
-    frequency_penalty: float | None = Field(None, description="Frequency penalty")
-    logit_bias: dict[str, float] | None = Field(None, description="Logit bias")
-    user: str | None = Field(None, description="User identifier")
-    functions: list[dict[str, Any]] | None = Field(
-        None, description="Available functions (deprecated)"
-    )
-    function_call: str | dict[str, Any] | None = Field(
-        None, description="Function call preference (deprecated)"
-    )
-    tools: list[dict[str, Any]] | None = Field(None, description="Available tools")
-    tool_choice: str | dict[str, Any] | None = Field(
-        None, description="Tool choice preference"
-    )
-
-
-class OpenAIChoice(BaseModel):
-    """OpenAI choice format."""
-
-    index: int = Field(..., description="Choice index")
-    message: OpenAIMessage = Field(..., description="The message")
-    finish_reason: str | None = Field(None, description="Reason for finishing")
-
-
-class OpenAIUsage(BaseModel):
-    """OpenAI usage format."""
-
-    prompt_tokens: int = Field(..., description="Number of prompt tokens")
-    completion_tokens: int = Field(..., description="Number of completion tokens")
-    total_tokens: int = Field(..., description="Total number of tokens")
-
-
-class OpenAIResponse(BaseModel):
-    """OpenAI chat completion response format."""
-
-    id: str = Field(..., description="Response ID")
-    object: Literal["chat.completion"] = "chat.completion"
-    created: int = Field(..., description="Creation timestamp")
-    model: str = Field(..., description="Model used")
-    choices: list[OpenAIChoice] = Field(..., description="List of choices")
-    usage: OpenAIUsage = Field(..., description="Usage information")
-    system_fingerprint: str | None = Field(None, description="System fingerprint")
-
-
-class OpenAIStreamChoice(BaseModel):
-    """OpenAI streaming choice format."""
-
-    index: int = Field(..., description="Choice index")
-    delta: dict[str, Any] = Field(..., description="Delta content")
-    finish_reason: str | None = Field(None, description="Reason for finishing")
-
-
-class OpenAIStreamResponse(BaseModel):
-    """OpenAI streaming response format."""
-
-    id: str = Field(..., description="Response ID")
-    object: Literal["chat.completion.chunk"] = "chat.completion.chunk"
-    created: int = Field(..., description="Creation timestamp")
-    model: str = Field(..., description="Model used")
-    choices: list[OpenAIStreamChoice] = Field(..., description="List of choices")
-    usage: OpenAIUsage | None = Field(None, description="Usage information")
-    system_fingerprint: str | None = Field(None, description="System fingerprint")
-
-
 class OpenAITranslator:
     """Translator for converting between OpenAI and Anthropic formats."""
 
@@ -161,7 +80,7 @@ class OpenAITranslator:
             Anthropic format request
         """
         # Parse OpenAI request
-        openai_req = OpenAIRequest(**openai_request)
+        openai_req = OpenAIChatCompletionRequest(**openai_request)
 
         # Map OpenAI model to Claude model
         model = map_openai_model_to_claude(openai_req.model)
@@ -198,6 +117,62 @@ class OpenAITranslator:
             else:
                 anthropic_request["stop_sequences"] = openai_req.stop
 
+        # Handle metadata - combine user field and metadata
+        metadata = {}
+        if openai_req.user:
+            metadata["user_id"] = openai_req.user
+        if openai_req.metadata:
+            metadata.update(openai_req.metadata)
+        if metadata:
+            anthropic_request["metadata"] = metadata
+
+        # Handle response format - add to system prompt for JSON mode
+        if openai_req.response_format:
+            # response_format is OpenAIResponseFormat object, not a dict
+            format_type = (
+                openai_req.response_format.type if openai_req.response_format else None
+            )
+
+            if format_type == "json_object" and system_prompt is not None:
+                system_prompt += "\nYou must respond with valid JSON only."
+                anthropic_request["system"] = system_prompt
+            elif format_type == "json_schema" and system_prompt is not None:
+                # For JSON schema, we can add more specific instructions
+                if openai_req.response_format and hasattr(
+                    openai_req.response_format, "json_schema"
+                ):
+                    system_prompt += f"\nYou must respond with valid JSON that conforms to this schema: {openai_req.response_format.json_schema}"
+                anthropic_request["system"] = system_prompt
+
+        # Handle reasoning_effort (o1 models) -> thinking configuration
+        if openai_req.reasoning_effort:
+            # Map reasoning effort to thinking tokens
+            # These are approximate mappings
+            thinking_tokens_map = {
+                "low": 1000,
+                "medium": 5000,
+                "high": 10000,
+            }
+            thinking_tokens = thinking_tokens_map.get(openai_req.reasoning_effort, 5000)
+            anthropic_request["thinking"] = {
+                "type": "enabled",
+                "budget_tokens": thinking_tokens,
+            }
+            logger.debug(
+                f"Converted reasoning_effort '{openai_req.reasoning_effort}' to thinking budget {thinking_tokens}"
+            )
+
+        # Note: seed, logprobs, top_logprobs, and store don't have direct Anthropic equivalents
+        # We'll log if these are requested
+        if openai_req.seed is not None:
+            logger.debug(
+                f"Seed parameter ({openai_req.seed}) requested but not supported by Anthropic"
+            )
+        if openai_req.logprobs or openai_req.top_logprobs:
+            logger.debug("Log probabilities requested but not supported by Anthropic")
+        if openai_req.store:
+            logger.debug("Store parameter requested but not supported by Anthropic")
+
         # Handle tools/functions
         if openai_req.tools:
             anthropic_request["tools"] = self._convert_tools_to_anthropic(
@@ -210,9 +185,20 @@ class OpenAITranslator:
             )
 
         if openai_req.tool_choice:
-            anthropic_request["tool_choice"] = self._convert_tool_choice_to_anthropic(
-                openai_req.tool_choice
-            )
+            # Convert tool choice - can be string or OpenAIToolChoice object
+            if isinstance(openai_req.tool_choice, str):
+                anthropic_request["tool_choice"] = (
+                    self._convert_tool_choice_to_anthropic(openai_req.tool_choice)
+                )
+            else:
+                # Convert OpenAIToolChoice object to dict
+                tool_choice_dict = {
+                    "type": openai_req.tool_choice.type,
+                    "function": openai_req.tool_choice.function,
+                }
+                anthropic_request["tool_choice"] = (
+                    self._convert_tool_choice_to_anthropic(tool_choice_dict)
+                )
         elif openai_req.function_call:
             # Convert deprecated function_call to tool_choice
             anthropic_request["tool_choice"] = self._convert_function_call_to_anthropic(
@@ -256,51 +242,71 @@ class OpenAITranslator:
             for block in anthropic_response["content"]:
                 if block.get("type") == "text":
                     content += block.get("text", "")
+                elif block.get("type") == "thinking":
+                    # Handle thinking blocks - we can include them with a marker
+                    # or skip them entirely. For now, let's include with a marker
+                    thinking_text = block.get("text", "")
+                    if thinking_text:
+                        content += f"[Thinking]\n{thinking_text}\n---\n"
                 elif block.get("type") == "tool_use":
                     tool_calls.append(self._convert_tool_use_to_openai(block))
 
-        # Create OpenAI message
-        message: dict[str, Any] = {
-            "role": "assistant",
-            "content": content or None,
-        }
-
-        if tool_calls:
-            message["tool_calls"] = tool_calls
+        # Create OpenAI message using the proper model
+        message = OpenAIResponseMessage(
+            role="assistant",
+            content=content or None,
+            tool_calls=[OpenAIToolCall(**tc) for tc in tool_calls]
+            if tool_calls
+            else None,
+        )
 
         # Map stop reason
         finish_reason = self._convert_stop_reason_to_openai(
             anthropic_response.get("stop_reason")
         )
 
-        # Create choice
-        choice = {
-            "index": 0,
-            "message": message,
-            "finish_reason": finish_reason,
-        }
+        # Create choice using the proper model
+        # Ensure finish_reason is a valid literal type
+        if finish_reason not in ["stop", "length", "tool_calls", "content_filter"]:
+            finish_reason = "stop"
 
-        # Create usage
+        # Cast to proper literal type
+        valid_finish_reason = cast(
+            Literal["stop", "length", "tool_calls", "content_filter"], finish_reason
+        )
+
+        choice = OpenAIChoice(
+            index=0,
+            message=message,
+            finish_reason=valid_finish_reason,
+            logprobs=None,  # Anthropic doesn't support logprobs
+        )
+
+        # Create usage using the proper model
         usage_info = anthropic_response.get("usage", {})
-        usage = {
-            "prompt_tokens": usage_info.get("input_tokens", 0),
-            "completion_tokens": usage_info.get("output_tokens", 0),
-            "total_tokens": usage_info.get("input_tokens", 0)
+        usage = OpenAIUsage(
+            prompt_tokens=usage_info.get("input_tokens", 0),
+            completion_tokens=usage_info.get("output_tokens", 0),
+            total_tokens=usage_info.get("input_tokens", 0)
             + usage_info.get("output_tokens", 0),
-        }
+        )
 
-        # Create OpenAI response
-        openai_response = {
-            "id": request_id,
-            "object": "chat.completion",
-            "created": int(time.time()),
-            "model": response_model,
-            "choices": [choice],
-            "usage": usage,
-        }
+        # Generate system fingerprint
+        system_fingerprint = f"fp_{uuid.uuid4().hex[:8]}"
+
+        # Create OpenAI response using the proper model
+        openai_response = OpenAIChatCompletionResponse(
+            id=request_id,
+            object="chat.completion",
+            created=int(time.time()),
+            model=response_model,
+            choices=[choice],
+            usage=usage,
+            system_fingerprint=system_fingerprint,
+        )
 
         logger.debug(f"Converted Anthropic response to OpenAI: {openai_response}")
-        return openai_response
+        return openai_response.model_dump()
 
     async def anthropic_to_openai_stream(
         self,
@@ -353,7 +359,22 @@ class OpenAITranslator:
 
             elif chunk_type == "content_block_start":
                 block = chunk.get("content_block", {})
-                if block.get("type") == "tool_use":
+                if block.get("type") == "thinking":
+                    # Start of thinking block - send a marker
+                    yield {
+                        "id": request_id,
+                        "object": "chat.completion.chunk",
+                        "created": created,
+                        "model": response_model,
+                        "choices": [
+                            {
+                                "index": 0,
+                                "delta": {"content": "[Thinking]\n"},
+                                "finish_reason": None,
+                            }
+                        ],
+                    }
+                elif block.get("type") == "tool_use":
                     # Start of tool use
                     tool_call = {
                         "index": current_tool_call_index,
@@ -400,6 +421,23 @@ class OpenAITranslator:
                             }
                         ],
                     }
+                elif delta.get("type") == "thinking_delta":
+                    # Thinking content delta
+                    thinking_text = delta.get("thinking", "")
+                    if thinking_text:
+                        yield {
+                            "id": request_id,
+                            "object": "chat.completion.chunk",
+                            "created": created,
+                            "model": response_model,
+                            "choices": [
+                                {
+                                    "index": 0,
+                                    "delta": {"content": thinking_text},
+                                    "finish_reason": None,
+                                }
+                            ],
+                        }
                 elif delta.get("type") == "input_json_delta":
                     # Tool input delta
                     if tool_calls:
@@ -424,6 +462,14 @@ class OpenAITranslator:
                                 }
                             ],
                         }
+
+            elif chunk_type == "content_block_stop":
+                # Check if we were in a thinking block
+                if chunk.get("index") is not None:
+                    # We can't track block types perfectly in streaming,
+                    # but we can add a separator after thinking blocks
+                    # For now, we'll skip this as we don't have state tracking
+                    pass
 
             elif chunk_type == "message_delta":
                 delta = chunk.get("delta", {})
@@ -466,17 +512,31 @@ class OpenAITranslator:
         system_prompt = None
 
         for msg in openai_messages:
-            if msg.role == "system":
-                # System messages become system prompt
+            if msg.role in ["system", "developer"]:
+                # System and developer messages become system prompt
+                # Developer messages are o1-specific but treated the same as system
                 if isinstance(msg.content, str):
-                    system_prompt = msg.content
+                    if system_prompt:
+                        system_prompt += "\n" + msg.content
+                    else:
+                        system_prompt = msg.content
                 elif isinstance(msg.content, list):
                     # Extract text from content blocks
-                    text_parts = []
+                    text_parts: list[str] = []
                     for block in msg.content:
-                        if isinstance(block, dict) and block.get("type") == "text":
-                            text_parts.append(block.get("text", ""))
-                    system_prompt = " ".join(text_parts)
+                        # OpenAIMessageContent objects only
+                        if (
+                            hasattr(block, "type")
+                            and block.type == "text"
+                            and hasattr(block, "text")
+                            and block.text
+                        ):
+                            text_parts.append(block.text)
+                    text_content = " ".join(text_parts)
+                    if system_prompt:
+                        system_prompt += "\n" + text_content
+                    else:
+                        system_prompt = text_content
 
             elif msg.role in ["user", "assistant"]:
                 # Convert user/assistant messages
@@ -541,7 +601,7 @@ class OpenAITranslator:
         return messages, system_prompt
 
     def _convert_content_to_anthropic(
-        self, content: str | list[dict[str, Any]] | None
+        self, content: str | list[Any] | None
     ) -> str | list[dict[str, Any]]:
         """Convert OpenAI content to Anthropic format."""
         if content is None:
@@ -553,7 +613,60 @@ class OpenAITranslator:
         # content must be a list at this point
         anthropic_content = []
         for block in content:
-            if isinstance(block, dict):
+            # Handle both OpenAIMessageContent objects and dicts
+            if hasattr(block, "type"):
+                # This is an OpenAIMessageContent object
+                block_type = getattr(block, "type", None)
+                if (
+                    block_type == "text"
+                    and hasattr(block, "text")
+                    and block.text is not None
+                ):
+                    anthropic_content.append(
+                        {
+                            "type": "text",
+                            "text": block.text,
+                        }
+                    )
+                elif (
+                    block_type == "image_url"
+                    and hasattr(block, "image_url")
+                    and block.image_url is not None
+                ):
+                    # Get URL from image_url
+                    if hasattr(block.image_url, "url"):
+                        url = block.image_url.url
+                    elif isinstance(block.image_url, dict):
+                        url = block.image_url.get("url", "")
+                    else:
+                        url = ""
+
+                    if url.startswith("data:"):
+                        # Base64 encoded image
+                        try:
+                            media_type, data = url.split(";base64,")
+                            media_type = media_type.split(":")[1]
+                            anthropic_content.append(
+                                {
+                                    "type": "image",
+                                    "source": {
+                                        "type": "base64",
+                                        "media_type": media_type,
+                                        "data": data,
+                                    },
+                                }
+                            )
+                        except ValueError:
+                            logger.warning(f"Invalid base64 image URL: {url}")
+                    else:
+                        # URL-based image (not directly supported by Anthropic)
+                        anthropic_content.append(
+                            {
+                                "type": "text",
+                                "text": f"[Image: {url}]",
+                            }
+                        )
+            elif isinstance(block, dict):
                 if block.get("type") == "text":
                     anthropic_content.append(
                         {
@@ -595,19 +708,30 @@ class OpenAITranslator:
         return anthropic_content if anthropic_content else ""
 
     def _convert_tools_to_anthropic(
-        self, tools: list[dict[str, Any]]
+        self, tools: list[dict[str, Any]] | list[OpenAITool]
     ) -> list[dict[str, Any]]:
         """Convert OpenAI tools to Anthropic format."""
         anthropic_tools = []
 
         for tool in tools:
-            if tool.get("type") == "function":
-                func = tool.get("function", {})
+            # Handle both dict and Pydantic model cases
+            if isinstance(tool, dict):
+                if tool.get("type") == "function":
+                    func = tool.get("function", {})
+                    anthropic_tools.append(
+                        {
+                            "name": func.get("name", ""),
+                            "description": func.get("description", ""),
+                            "input_schema": func.get("parameters", {}),
+                        }
+                    )
+            elif hasattr(tool, "type") and tool.type == "function":
+                # Handle Pydantic OpenAITool model
                 anthropic_tools.append(
                     {
-                        "name": func.get("name", ""),
-                        "description": func.get("description", ""),
-                        "input_schema": func.get("parameters", {}),
+                        "name": tool.function.name,
+                        "description": tool.function.description or "",
+                        "input_schema": tool.function.parameters,
                     }
                 )
 
@@ -725,6 +849,8 @@ class OpenAITranslator:
             "max_tokens": "length",
             "stop_sequence": "stop",
             "tool_use": "tool_calls",
+            "pause_turn": "stop",
+            "refusal": "content_filter",
         }
 
         return mapping.get(stop_reason, "stop")

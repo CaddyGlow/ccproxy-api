@@ -24,6 +24,7 @@ from ccproxy.models.messages import (
     MessageCreateParams,
     MessageResponse,
     SystemMessage,
+    ThinkingConfig,
 )
 from ccproxy.models.requests import Message
 from ccproxy.routers.anthropic import create_message
@@ -86,11 +87,11 @@ class TestCreateMessage:
 
     @pytest.fixture
     def max_thinking_tokens_request(self) -> MessageCreateParams:
-        """Create a message request with max_thinking_tokens."""
+        """Create a message request with thinking config."""
         return MessageCreateParams(
             model="claude-3-5-sonnet-20241022",
             messages=[Message(role="user", content="Solve this complex problem")],
-            max_thinking_tokens=5000,
+            thinking=ThinkingConfig(type="enabled", budget_tokens=5000),
             max_tokens=100,
             stream=False,
         )
@@ -255,7 +256,7 @@ class TestCreateMessage:
         mock_claude_response: dict[str, Any],
         mock_settings: MagicMock,
     ):
-        """Test message creation with max_thinking_tokens."""
+        """Test message creation with thinking config."""
         with (
             patch(
                 "ccproxy.routers.anthropic.get_settings",
@@ -270,7 +271,7 @@ class TestCreateMessage:
 
             expected_options = {
                 "model": "claude-3-5-sonnet-20241022",
-                "max_thinking_tokens": 5000,
+                "thinking": max_thinking_tokens_request.thinking,
                 "temperature": 0.7,
             }
             mock_merge.return_value = expected_options
@@ -280,11 +281,13 @@ class TestCreateMessage:
             )
 
             assert isinstance(result, MessageResponse)
-            # Verify merge was called with max_thinking_tokens
+            # Verify merge was called with thinking config
             mock_merge.assert_called_once_with(
                 mock_settings.claude_code_options,
                 model="claude-3-5-sonnet-20241022",
-                max_thinking_tokens=5000,
+                max_thinking_tokens=max_thinking_tokens_request.thinking.budget_tokens
+                if max_thinking_tokens_request.thinking
+                else None,
             )
 
     @pytest.mark.asyncio

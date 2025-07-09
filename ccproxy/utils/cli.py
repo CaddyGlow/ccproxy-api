@@ -169,7 +169,6 @@ def merge_claude_code_options(base_options: Any, **overrides: Any) -> Any:
             "tools",
             "metadata",
             "service_tier",
-            "thinking",
         ]:
             if hasattr(base_options, attr):
                 base_value = getattr(base_options, attr)

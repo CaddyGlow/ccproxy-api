@@ -352,6 +352,105 @@ class TestOpenAIChatCompletionsEndpoint:
             # Last chunk should be [DONE]
             assert chunks[-1] == "data: [DONE]"
 
+    def test_streaming_with_usage_option(self, test_client, mock_claude_client):
+        """Test streaming with stream_options.include_usage."""
+
+        # Mock streaming response with usage
+        async def mock_stream():
+            yield {"type": "message_start", "message": {"role": "assistant"}}
+            yield {
+                "type": "content_block_delta",
+                "delta": {"type": "text_delta", "text": "Hello there!"},
+            }
+            yield {
+                "type": "message_delta",
+                "delta": {"stop_reason": "end_turn"},
+                "usage": {"input_tokens": 25, "output_tokens": 50},
+            }
+
+        mock_claude_client.create_completion = AsyncMock(return_value=mock_stream())
+
+        request_data = {
+            "model": "claude-3-5-sonnet-20241022",
+            "messages": [{"role": "user", "content": "Hi"}],
+            "stream": True,
+            "stream_options": {"include_usage": True},
+        }
+
+        # Send request to OpenAI endpoint
+        with test_client.stream(
+            "POST", "/cc/openai/v1/chat/completions", json=request_data
+        ) as response:
+            assert response.status_code == 200
+
+            # Collect all chunks
+            chunks = []
+            for line in response.iter_lines():
+                if line and line.startswith("data: "):
+                    chunks.append(line)
+
+            # Find the final chunk before [DONE]
+            final_chunk_data = None
+            for i in range(len(chunks) - 1, -1, -1):
+                if chunks[i] != "data: [DONE]":
+                    final_chunk_data = json.loads(chunks[i][6:])
+                    break
+
+            # Verify usage is included in final chunk
+            assert final_chunk_data is not None
+            assert "usage" in final_chunk_data
+            assert final_chunk_data["usage"]["prompt_tokens"] == 25
+            assert final_chunk_data["usage"]["completion_tokens"] == 50
+            assert final_chunk_data["usage"]["total_tokens"] == 75
+
+    def test_streaming_without_usage_option(self, test_client, mock_claude_client):
+        """Test streaming without stream_options.include_usage."""
+
+        # Mock streaming response with usage
+        async def mock_stream():
+            yield {"type": "message_start", "message": {"role": "assistant"}}
+            yield {
+                "type": "content_block_delta",
+                "delta": {"type": "text_delta", "text": "Hello!"},
+            }
+            yield {
+                "type": "message_delta",
+                "delta": {"stop_reason": "end_turn"},
+                "usage": {"input_tokens": 25, "output_tokens": 50},
+            }
+
+        mock_claude_client.create_completion = AsyncMock(return_value=mock_stream())
+
+        request_data = {
+            "model": "claude-3-5-sonnet-20241022",
+            "messages": [{"role": "user", "content": "Hi"}],
+            "stream": True,
+            # No stream_options or include_usage=false
+        }
+
+        # Send request to OpenAI endpoint
+        with test_client.stream(
+            "POST", "/cc/openai/v1/chat/completions", json=request_data
+        ) as response:
+            assert response.status_code == 200
+
+            # Collect all chunks
+            chunks = []
+            for line in response.iter_lines():
+                if line and line.startswith("data: "):
+                    chunks.append(line)
+
+            # Find the final chunk before [DONE]
+            final_chunk_data = None
+            for i in range(len(chunks) - 1, -1, -1):
+                if chunks[i] != "data: [DONE]":
+                    final_chunk_data = json.loads(chunks[i][6:])
+                    break
+
+            # Verify usage is NOT included (default behavior)
+            assert final_chunk_data is not None
+            assert "usage" not in final_chunk_data
+
 
 @pytest.mark.unit
 class TestOpenAIRequestValidation:

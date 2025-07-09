@@ -1,44 +1,58 @@
-"""Tests for message models."""
+"""Legacy tests for message models - kept for backward compatibility.
+
+Note: Most comprehensive tests are now in test_message_models.py
+This file contains only specific edge case tests not covered elsewhere.
+"""
 
 import pytest
 from pydantic import ValidationError
 
 from ccproxy.models.messages import MessageCreateParams
+from ccproxy.models.requests import Message
 
 
-class TestMessageCreateParams:
-    """Test MessageCreateParams model validation."""
+@pytest.mark.unit
+class TestMessageCreateParamsEdgeCases:
+    """Test MessageCreateParams edge cases not covered in main tests."""
 
-    def test_max_tokens_validation(self):
-        """Test max_tokens validation allows large values."""
-        # Test that large values like 64000 are accepted
-        request = MessageCreateParams(  # type: ignore[call-arg]
+    def test_large_max_tokens_values(self):
+        """Test that large max_tokens values like 64000 are accepted."""
+        # This tests a specific edge case for large token values
+        request = MessageCreateParams(
             model="claude-3-5-sonnet-20241022",
             max_tokens=64000,
-            messages=[{"role": "user", "content": "Hello"}],  # type: ignore[list-item]
+            messages=[Message(role="user", content="Hello")],
         )
         assert request.max_tokens == 64000
 
-        # Test maximum allowed value
-        request = MessageCreateParams(  # type: ignore[call-arg]
+    def test_temperature_edge_values(self):
+        """Test temperature at boundary values."""
+        # Test at 0.0
+        request = MessageCreateParams(
             model="claude-3-5-sonnet-20241022",
-            max_tokens=200000,
-            messages=[{"role": "user", "content": "Hello"}],  # type: ignore[list-item]
+            messages=[Message(role="user", content="Hello")],
+            max_tokens=100,
+            temperature=0.0,
         )
-        assert request.max_tokens == 200000
+        assert request.temperature == 0.0
 
-        # Test exceeding maximum should fail
-        with pytest.raises(ValidationError):
-            MessageCreateParams(  # type: ignore[call-arg]
-                model="claude-3-5-sonnet-20241022",
-                max_tokens=200001,
-                messages=[{"role": "user", "content": "Hello"}],  # type: ignore[list-item]
-            )
+        # Test at 1.0
+        request = MessageCreateParams(
+            model="claude-3-5-sonnet-20241022",
+            messages=[Message(role="user", content="Hello")],
+            max_tokens=100,
+            temperature=1.0,
+        )
+        assert request.temperature == 1.0
 
-        # Test minimum value validation (should fail)
-        with pytest.raises(ValidationError):
-            MessageCreateParams(  # type: ignore[call-arg]
-                model="claude-3-5-sonnet-20241022",
-                max_tokens=0,
-                messages=[{"role": "user", "content": "Hello"}],  # type: ignore[list-item]
-            )
+    def test_top_p_and_top_k_edge_values(self):
+        """Test top_p and top_k at boundary values."""
+        request = MessageCreateParams(
+            model="claude-3-5-sonnet-20241022",
+            messages=[Message(role="user", content="Hello")],
+            max_tokens=100,
+            top_p=0.0,
+            top_k=0,
+        )
+        assert request.top_p == 0.0
+        assert request.top_k == 0

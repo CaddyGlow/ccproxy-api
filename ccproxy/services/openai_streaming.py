@@ -217,6 +217,7 @@ class OpenAIStreamingFormatter:
         created: int,
         finish_reason: str = "stop",
         choice_index: int = 0,
+        usage: dict[str, int] | None = None,
     ) -> str:
         """
         Format the final chunk with finish_reason.
@@ -227,6 +228,7 @@ class OpenAIStreamingFormatter:
             created: Unix timestamp when the completion was created
             finish_reason: Reason for completion (stop, length, tool_calls, etc.)
             choice_index: Index of the choice (usually 0)
+            usage: Optional usage information to include
 
         Returns:
             Formatted SSE string
@@ -245,6 +247,11 @@ class OpenAIStreamingFormatter:
                 }
             ],
         }
+
+        # Add usage if provided
+        if usage:
+            data["usage"] = usage
+
         return OpenAIStreamingFormatter.format_data_event(data)
 
     @staticmethod
@@ -292,6 +299,7 @@ async def stream_claude_response_openai(
     message_id: str,
     model: str,
     created: int | None = None,
+    include_usage: bool = False,
 ) -> AsyncGenerator[str, None]:
     """
     Convert Claude SDK response to OpenAI-compatible streaming format.
@@ -455,11 +463,24 @@ async def stream_claude_response_openai(
                         "max_tokens": "length",
                         "tool_use": "tool_calls",
                         "stop_sequence": "stop",
+                        "pause_turn": "stop",
+                        "refusal": "content_filter",
                     }
                     finish_reason = finish_reason_map.get(stop_reason, "stop")
 
+                    # Check if we should include usage
+                    usage_data = None
+                    if include_usage and "usage" in chunk:
+                        usage_info = chunk.get("usage", {})
+                        usage_data = {
+                            "prompt_tokens": usage_info.get("input_tokens", 0),
+                            "completion_tokens": usage_info.get("output_tokens", 0),
+                            "total_tokens": usage_info.get("input_tokens", 0)
+                            + usage_info.get("output_tokens", 0),
+                        }
+
                     yield formatter.format_final_chunk(
-                        message_id, model, created, finish_reason
+                        message_id, model, created, finish_reason, usage=usage_data
                     )
                     break
 
@@ -498,6 +519,7 @@ async def stream_claude_response_openai_simple(
     message_id: str,
     model: str,
     created: int | None = None,
+    include_usage: bool = False,
 ) -> AsyncGenerator[str, None]:
     """
     Convert Claude SDK response to OpenAI-compatible streaming format (simplified).
@@ -510,6 +532,7 @@ async def stream_claude_response_openai_simple(
         message_id: Unique message identifier
         model: Model name being used
         created: Unix timestamp when the completion was created
+        include_usage: Whether to include usage information in streaming responses
 
     Yields:
         Formatted OpenAI-compatible SSE strings
@@ -552,17 +575,32 @@ async def stream_claude_response_openai_simple(
                         "max_tokens": "length",
                         "tool_use": "tool_calls",
                         "stop_sequence": "stop",
+                        "pause_turn": "stop",
+                        "refusal": "content_filter",
                     }
                     finish_reason = finish_reason_map.get(stop_reason, "stop")
 
+                    # Check if we should include usage
+                    usage_data = None
+                    if include_usage and "usage" in chunk:
+                        usage_info = chunk.get("usage", {})
+                        usage_data = {
+                            "prompt_tokens": usage_info.get("input_tokens", 0),
+                            "completion_tokens": usage_info.get("output_tokens", 0),
+                            "total_tokens": usage_info.get("input_tokens", 0)
+                            + usage_info.get("output_tokens", 0),
+                        }
+
                     yield formatter.format_final_chunk(
-                        message_id, model, created, finish_reason
+                        message_id, model, created, finish_reason, usage=usage_data
                     )
                     break
 
             # If we never got content, still need to send final chunk
             if not has_content:
-                yield formatter.format_final_chunk(message_id, model, created)
+                yield formatter.format_final_chunk(
+                    message_id, model, created, usage=None
+                )
 
         except asyncio.CancelledError:
             # Handle stream cancellation gracefully

@@ -8,16 +8,28 @@ API specification exactly while internally mapping to Claude models.
 import time
 import uuid
 from datetime import datetime
-from typing import Any, Literal
+from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+from ccproxy.models.types import (
+    ModalityType,
+    OpenAIContentType,
+    OpenAIFinishReason,
+    OpenAIMessageRole,
+    OpenAIObjectType,
+    OpenAIToolChoiceType,
+    ReasoningEffort,
+    ResponseFormatType,
+    ToolType,
+)
 
 
 # OpenAI Message Models
 class OpenAIMessageContent(BaseModel):
     """Content within an OpenAI message - can be text or image."""
 
-    type: Literal["text", "image_url"]
+    type: OpenAIContentType
     text: str | None = None
     image_url: dict[str, str] | None = None
 
@@ -27,9 +39,7 @@ class OpenAIMessageContent(BaseModel):
 class OpenAIMessage(BaseModel):
     """OpenAI-compatible message model."""
 
-    role: Literal["system", "user", "assistant", "tool"] = Field(
-        ..., description="The role of the message sender"
-    )
+    role: OpenAIMessageRole = Field(..., description="The role of the message sender")
     content: str | list[OpenAIMessageContent] = Field(
         ..., description="The content of the message"
     )
@@ -65,7 +75,7 @@ class OpenAIFunction(BaseModel):
 class OpenAITool(BaseModel):
     """OpenAI tool definition."""
 
-    type: Literal["function"] = Field("function", description="The type of tool")
+    type: ToolType = Field("function", description="The type of tool")
     function: OpenAIFunction = Field(..., description="The function definition")
 
     model_config = ConfigDict(extra="forbid")
@@ -74,7 +84,7 @@ class OpenAITool(BaseModel):
 class OpenAIToolChoice(BaseModel):
     """OpenAI tool choice specification."""
 
-    type: Literal["function"] = Field("function", description="The type of tool")
+    type: ToolType = Field("function", description="The type of tool")
     function: dict[str, str] = Field(..., description="The function name to call")
 
     model_config = ConfigDict(extra="forbid")
@@ -84,11 +94,31 @@ class OpenAIToolChoice(BaseModel):
 class OpenAIResponseFormat(BaseModel):
     """OpenAI response format specification."""
 
-    type: Literal["text", "json_object"] = Field(
-        "text", description="The type of response format"
+    type: ResponseFormatType = Field("text", description="The type of response format")
+    json_schema: dict[str, Any] | None = Field(
+        None, description="JSON schema definition when type is 'json_schema'"
     )
 
     model_config = ConfigDict(extra="forbid")
+
+    @field_validator("json_schema")
+    @classmethod
+    def validate_json_schema(
+        cls, v: dict[str, Any] | None, info: Any
+    ) -> dict[str, Any] | None:
+        """Validate json_schema is provided when type is json_schema."""
+        if info.data.get("type") != "json_schema" and v is not None:
+            raise ValueError(
+                "json_schema should only be provided when type is 'json_schema'"
+            )
+        return v
+
+    @model_validator(mode="after")
+    def validate_json_schema_required(self) -> "OpenAIResponseFormat":
+        """Validate json_schema is provided when type is json_schema."""
+        if self.type == "json_schema" and self.json_schema is None:
+            raise ValueError("json_schema must be provided when type is 'json_schema'")
+        return self
 
 
 class OpenAIStreamOptions(BaseModel):
@@ -151,22 +181,42 @@ class OpenAIChatCompletionRequest(BaseModel):
     user: str | None = Field(
         None, description="A unique identifier representing your end-user"
     )
+
+    # Tool-related fields (new format)
     tools: list[OpenAITool] | None = Field(
         None, description="A list of tools the model may call"
     )
-    tool_choice: Literal["none", "auto", "required"] | OpenAIToolChoice | None = Field(
+    tool_choice: OpenAIToolChoiceType | OpenAIToolChoice | None = Field(
         None, description="Controls which (if any) tool is called by the model"
     )
     parallel_tool_calls: bool | None = Field(
         True, description="Whether to enable parallel function calling during tool use"
     )
+
+    # Deprecated function calling fields (for backward compatibility)
+    functions: list[dict[str, Any]] | None = Field(
+        None,
+        description="Deprecated. Use 'tools' instead. List of functions the model may generate JSON inputs for",
+        deprecated=True,
+    )
+    function_call: str | dict[str, Any] | None = Field(
+        None,
+        description="Deprecated. Use 'tool_choice' instead. Controls how the model responds to function calls",
+        deprecated=True,
+    )
+
+    # Response format
     response_format: OpenAIResponseFormat | None = Field(
         None, description="An object specifying the format that the model must output"
     )
+
+    # Deterministic sampling
     seed: int | None = Field(
         None,
         description="This feature is in Beta. If specified, system will make a best effort to sample deterministically",
     )
+
+    # Log probabilities
     logprobs: bool | None = Field(
         None, description="Whether to return log probabilities of the output tokens"
     )
@@ -175,6 +225,33 @@ class OpenAIChatCompletionRequest(BaseModel):
         description="An integer between 0 and 20 specifying the number of most likely tokens to return at each token position",
         ge=0,
         le=20,
+    )
+
+    # Store/retrieval
+    store: bool | None = Field(
+        None,
+        description="Whether to store the output for use with the Assistants API or Threads API",
+    )
+
+    # Metadata
+    metadata: dict[str, Any] | None = Field(
+        None, description="Additional metadata about the request"
+    )
+
+    # Reasoning effort (for o1 models)
+    reasoning_effort: ReasoningEffort | None = Field(
+        None,
+        description="Controls how long o1 models spend thinking (only applicable to o1 models)",
+    )
+
+    # Multimodal fields
+    modalities: list[ModalityType] | None = Field(
+        None, description='List of modalities to use. Defaults to ["text"]'
+    )
+
+    # Audio configuration
+    audio: dict[str, Any] | None = Field(
+        None, description="Audio input/output configuration for multimodal models"
     )
 
     model_config = ConfigDict(extra="forbid")
@@ -259,7 +336,7 @@ class OpenAIToolCall(BaseModel):
     """OpenAI tool call in response."""
 
     id: str = Field(..., description="The ID of the tool call")
-    type: Literal["function"] = Field("function", description="The type of tool call")
+    type: ToolType = Field("function", description="The type of tool call")
     function: OpenAIFunctionCall = Field(
         ..., description="The function that was called"
     )
@@ -270,7 +347,7 @@ class OpenAIToolCall(BaseModel):
 class OpenAIResponseMessage(BaseModel):
     """OpenAI response message model."""
 
-    role: Literal["assistant"] = Field(
+    role: OpenAIMessageRole = Field(
         "assistant", description="The role of the message sender"
     )
     content: str | None = Field(None, description="The content of the message")
@@ -291,7 +368,7 @@ class OpenAIChoice(BaseModel):
     logprobs: OpenAILogprobs | None = Field(
         None, description="Log probability information for the choice"
     )
-    finish_reason: Literal["stop", "length", "tool_calls", "content_filter"] = Field(
+    finish_reason: OpenAIFinishReason = Field(
         ..., description="The reason the model stopped generating tokens"
     )
 
@@ -302,9 +379,7 @@ class OpenAIChatCompletionResponse(BaseModel):
     """OpenAI-compatible chat completion response model."""
 
     id: str = Field(..., description="A unique identifier for the chat completion")
-    object: Literal["chat.completion"] = Field(
-        "chat.completion", description="The object type"
-    )
+    object: OpenAIObjectType = Field("chat.completion", description="The object type")
     created: int = Field(
         ..., description="The Unix timestamp of when the chat completion was created"
     )
@@ -328,9 +403,7 @@ class OpenAIChatCompletionResponse(BaseModel):
         content: str,
         prompt_tokens: int,
         completion_tokens: int,
-        finish_reason: Literal[
-            "stop", "length", "tool_calls", "content_filter"
-        ] = "stop",
+        finish_reason: OpenAIFinishReason = "stop",
         tool_calls: list[OpenAIToolCall] | None = None,
     ) -> "OpenAIChatCompletionResponse":
         """Create a chat completion response."""
@@ -364,7 +437,7 @@ class OpenAIChatCompletionResponse(BaseModel):
 class OpenAIStreamingDelta(BaseModel):
     """OpenAI streaming delta message."""
 
-    role: Literal["assistant"] | None = Field(
+    role: OpenAIMessageRole | None = Field(
         None, description="The role of the message sender"
     )
     content: str | None = Field(None, description="The content delta")
@@ -383,8 +456,8 @@ class OpenAIStreamingChoice(BaseModel):
     logprobs: OpenAILogprobs | None = Field(
         None, description="Log probability information for the choice"
     )
-    finish_reason: Literal["stop", "length", "tool_calls", "content_filter"] | None = (
-        Field(None, description="The reason the model stopped generating tokens")
+    finish_reason: OpenAIFinishReason | None = Field(
+        None, description="The reason the model stopped generating tokens"
     )
 
     model_config = ConfigDict(extra="forbid")
@@ -394,7 +467,7 @@ class OpenAIStreamingChatCompletionResponse(BaseModel):
     """OpenAI-compatible streaming chat completion response model."""
 
     id: str = Field(..., description="A unique identifier for the chat completion")
-    object: Literal["chat.completion.chunk"] = Field(
+    object: OpenAIObjectType = Field(
         "chat.completion.chunk", description="The object type"
     )
     created: int = Field(
@@ -420,7 +493,7 @@ class OpenAIModelInfo(BaseModel):
     """OpenAI model information."""
 
     id: str = Field(..., description="The model identifier")
-    object: Literal["model"] = Field("model", description="The object type")
+    object: OpenAIObjectType = Field("model", description="The object type")
     created: int = Field(
         ..., description="The Unix timestamp of when the model was created"
     )
@@ -432,7 +505,7 @@ class OpenAIModelInfo(BaseModel):
 class OpenAIModelsResponse(BaseModel):
     """OpenAI models list response."""
 
-    object: Literal["list"] = Field("list", description="The object type")
+    object: OpenAIObjectType = Field("list", description="The object type")
     data: list[OpenAIModelInfo] = Field(..., description="List of model objects")
 
     model_config = ConfigDict(extra="forbid")

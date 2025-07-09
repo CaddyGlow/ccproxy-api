@@ -1,6 +1,14 @@
 """Pydantic models for Claude Proxy API Server."""
 
-from .messages import MessageCreateParams, MessageResponse, SystemMessage
+from .messages import (
+    MessageContentBlock,
+    MessageCreateParams,
+    MessageResponse,
+    MetadataParams,
+    SystemMessage,
+    ThinkingConfig,
+    ToolChoiceParams,
+)
 from .openai import (
     OpenAIChatCompletionRequest,
     OpenAIChatCompletionResponse,
@@ -49,13 +57,46 @@ from .responses import (
     ToolCall,
     ToolUse,
 )
+from .types import (
+    ContentBlockType,
+    ErrorType,
+    ImageSourceType,
+    MessageRole,
+    ModalityType,
+    OpenAIFinishReason,
+    PermissionBehavior,
+    ResponseFormatType,
+    ServiceTier,
+    StopReason,
+    StreamEventType,
+    ToolChoiceType,
+    ToolType,
+)
 
 
 __all__ = [
+    # Type aliases
+    "ContentBlockType",
+    "ErrorType",
+    "ImageSourceType",
+    "MessageRole",
+    "ModalityType",
+    "OpenAIFinishReason",
+    "PermissionBehavior",
+    "ResponseFormatType",
+    "ServiceTier",
+    "StopReason",
+    "StreamEventType",
+    "ToolChoiceType",
+    "ToolType",
     # Message models
+    "MessageContentBlock",
     "MessageCreateParams",
     "MessageResponse",
+    "MetadataParams",
     "SystemMessage",
+    "ThinkingConfig",
+    "ToolChoiceParams",
     # Request models
     "ImageContent",
     "Message",
