@@ -40,6 +40,7 @@ class TestRoutersInit:
         assert '"anthropic_router"' in content
         assert '"openai_router"' in content
         assert '"oauth_router"' in content
+        assert '"metrics_router"' in content
         assert '"create_reverse_proxy_router"' in content
 
     def test_module_import_with_mocked_routers(self) -> None:
@@ -63,6 +64,7 @@ class TestRoutersInit:
                     router=mock_openai_router
                 ),
                 "ccproxy.routers.oauth": MagicMock(router=MagicMock()),
+                "ccproxy.routers.metrics": MagicMock(router=MagicMock()),
                 "ccproxy.routers.reverse_proxy_factory": MagicMock(
                     create_reverse_proxy_router=MagicMock()
                 ),
@@ -86,6 +88,7 @@ class TestRoutersInit:
                 "anthropic_router",
                 "openai_router",
                 "oauth_router",
+                "metrics_router",
                 "create_reverse_proxy_router",
             ]
             assert module.__all__ == expected_all
@@ -94,6 +97,7 @@ class TestRoutersInit:
             assert hasattr(module, "anthropic_router")
             assert hasattr(module, "openai_router")
             assert hasattr(module, "oauth_router")
+            assert hasattr(module, "metrics_router")
             assert hasattr(module, "create_reverse_proxy_router")
             assert module.anthropic_router is mock_anthropic_router
             assert module.openai_router is mock_openai_router
@@ -119,3 +123,4 @@ class TestRoutersInit:
         content = "\n".join(lines)
         assert '"anthropic_router"' in content
         assert '"openai_router"' in content
+        assert '"metrics_router"' in content

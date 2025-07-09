@@ -1,4 +1,4 @@
-"""Authentication middleware for Claude Proxy API."""
+"""Middleware for Claude Proxy API."""
 
 from .auth import get_auth_dependency
 

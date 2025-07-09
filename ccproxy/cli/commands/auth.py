@@ -55,6 +55,16 @@ def validate_credentials(
         "--credential-file",
         help="Path to specific credential file to validate",
     ),
+    renew: bool = typer.Option(
+        False,
+        "--renew",
+        help="Automatically refresh token if expired or expiring soon",
+    ),
+    renew_force: bool = typer.Option(
+        False,
+        "--renew-force",
+        help="Force token refresh regardless of expiration time",
+    ),
 ) -> None:
     """Validate Claude CLI credentials.
 
@@ -68,10 +78,15 @@ def validate_credentials(
 
     With --credential-file, validates the specified file directly.
 
+    With --renew flag, automatically refreshes expired or expiring tokens.
+    With --renew-force flag, forces token refresh regardless of expiration.
+
     Examples:
         ccproxy auth validate
         ccproxy auth validate --docker
         ccproxy auth validate --credential-file /path/to/credentials.json
+        ccproxy auth validate --renew
+        ccproxy auth validate --renew-force
     """
     toolkit = get_rich_toolkit()
     toolkit.print("[bold cyan]Claude Credentials Validation[/bold cyan]", centered=True)
@@ -88,6 +103,78 @@ def validate_credentials(
         # Validate credentials
         manager = get_credentials_manager(custom_paths)
         validation_result = asyncio.run(manager.validate())
+
+        # Handle renewal if requested
+        if (renew or renew_force) and validation_result.get("valid"):
+            if renew_force:
+                # Force refresh regardless of expiration
+                needs_refresh = True
+                toolkit.print("Forcing token refresh...", tag="info")
+                credentials = asyncio.run(manager.load())
+                if credentials:
+                    asyncio.run(manager.refresh_token(credentials))
+            else:
+                expired = validation_result.get("expired", False)
+
+                # Check if token needs refresh (expired or expiring soon)
+                needs_refresh = expired
+                if not expired and validation_result.get("expires_at"):
+                    exp_dt = datetime.fromisoformat(validation_result["expires_at"])
+                    now = datetime.now(UTC)
+                    time_diff = exp_dt - now
+                    # Refresh if less than 1 hour remaining
+                    needs_refresh = time_diff.total_seconds() < 3600
+
+            refreshed_creds = asyncio.run(manager.get_valid_credentials())
+            if needs_refresh:
+                if not renew_force:
+                    toolkit.print(
+                        "Token expired or expiring soon, refreshing...", tag="info"
+                    )
+                try:
+                    # Use get_valid_credentials which handles refresh automatically
+                    refreshed_creds = asyncio.run(manager.get_valid_credentials())
+                    if refreshed_creds:
+                        # Check if token was actually refreshed by comparing expiration times
+                        new_validation = asyncio.run(manager.validate())
+                        new_expires_at = new_validation.get("expires_at")
+                        if new_expires_at and new_expires_at != validation_result.get(
+                            "expires_at"
+                        ):
+                            toolkit.print(
+                                "[green]✓[/green] Token refreshed successfully",
+                                tag="success",
+                            )
+                            validation_result = new_validation
+                        else:
+                            toolkit.print(
+                                "[yellow]![/yellow] Token refresh attempted but expiration unchanged",
+                                tag="warning",
+                            )
+                            toolkit.print(
+                                "Possible causes:",
+                                tag="info",
+                            )
+                            toolkit.print(
+                                "  • The refresh token may have expired",
+                                tag="info",
+                            )
+                            toolkit.print(
+                                "  • The OAuth server returned the same token",
+                                tag="info",
+                            )
+                            toolkit.print(
+                                "  • There was an issue saving the refreshed token",
+                                tag="info",
+                            )
+                            toolkit.print(
+                                "\nTry logging in again with: ccproxy auth login",
+                                tag="info",
+                            )
+                except Exception as e:
+                    toolkit.print(
+                        f"[red]✗[/red] Failed to refresh token: {e}", tag="error"
+                    )
 
         if validation_result.get("valid"):
             # Create a status table
@@ -120,9 +207,13 @@ def validate_credentials(
                 if time_diff.total_seconds() > 0:
                     days = time_diff.days
                     hours = time_diff.seconds // 3600
-                    exp_str = f"{exp_dt.strftime('%Y-%m-%d %H:%M:%S UTC')} ({days}d {hours}h remaining)"
+                    minutes = (time_diff.seconds % 3600) // 60
+                    # Show timezone info if available
+                    tz_info = " UTC" if exp_dt.tzinfo else ""
+                    exp_str = f"{exp_dt.strftime(f'%Y-%m-%d %H:%M:%S{tz_info}')} ({days}d {hours}h {minutes}m remaining)"
                 else:
-                    exp_str = f"{exp_dt.strftime('%Y-%m-%d %H:%M:%S UTC')} [red](Expired)[/red]"
+                    tz_info = " UTC" if exp_dt.tzinfo else ""
+                    exp_str = f"{exp_dt.strftime(f'%Y-%m-%d %H:%M:%S{tz_info}')} [red](Expired)[/red]"
 
                 table.add_row("Expires", exp_str)
 
@@ -143,10 +234,15 @@ def validate_credentials(
                     "[yellow]![/yellow] Claude credentials found but expired",
                     tag="warning",
                 )
-                toolkit.print(
-                    "\nPlease refresh your credentials by logging into Claude CLI",
-                    tag="info",
-                )
+                if not renew:
+                    toolkit.print(
+                        "\nUse --renew flag to automatically refresh the token",
+                        tag="info",
+                    )
+                    toolkit.print(
+                        "Or refresh your credentials by logging into Claude CLI",
+                        tag="info",
+                    )
 
         else:
             # No valid credentials

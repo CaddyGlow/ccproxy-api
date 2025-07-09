@@ -38,6 +38,24 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         for path in settings.get_searched_paths():
             logger.info(f"  - {path}")
 
+    # Initialize metrics storage if enabled
+    if settings.metrics_enabled:
+        from pathlib import Path
+
+        from ccproxy.metrics.sync_storage import get_sync_metrics_storage
+
+        # Create metrics database directory if it doesn't exist
+        metrics_db_path = Path(settings.metrics_db_path)
+        metrics_db_path.parent.mkdir(parents=True, exist_ok=True)
+
+        # Initialize storage
+        storage = get_sync_metrics_storage(f"sqlite:///{metrics_db_path}")
+        storage.initialize()
+        logger.info(f"Metrics storage initialized at: {metrics_db_path}")
+
+        # Store storage instance for later use
+        app.state.metrics_storage = storage
+
     yield
 
     # Shutdown
@@ -68,6 +86,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         max_age=settings.cors_max_age,
     )
 
+    # Add metrics middleware (if enabled)
+    if settings.metrics_enabled:
+        from ccproxy.metrics.middleware import MetricsMiddleware
+
+        app.add_middleware(MetricsMiddleware)
+        logger.info("Metrics collection enabled")
+
     # Health check endpoint
     @app.get("/health")
     async def health_check() -> dict[str, str]:
@@ -78,6 +103,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     from ccproxy.routers import (
         anthropic_router,
         create_reverse_proxy_router,
+        metrics_router,
         oauth_router,
         openai_router,
     )
@@ -89,11 +115,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # OAuth authentication endpoints
     app.include_router(oauth_router)
 
+    # Metrics endpoints (if enabled) - MUST be before reverse proxy
+    if settings.metrics_enabled:
+        app.include_router(metrics_router, prefix="/metrics")
+        logger.info("Metrics API endpoints enabled")
+
     # Reverse proxy endpoints with different modes
     app.include_router(create_reverse_proxy_router("minimal"), prefix="/min")
     app.include_router(create_reverse_proxy_router("full"), prefix="/api")
 
-    # Default reverse proxy for root path
+    # Default reverse proxy for root path - MUST be last as it has empty prefix
     app.include_router(
         create_reverse_proxy_router(settings.default_proxy_mode), prefix=""
     )

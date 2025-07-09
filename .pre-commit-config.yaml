@@ -43,6 +43,8 @@ repos:
           # Claude SDK (from git source)
           - claude-code-sdk @ git+https://github.com/anthropics/claude-code-sdk-python.git
           - keyring>=24.0.0
+          - sqlalchemy[asyncio]>=2.0.0
+          - prometheus-client>=0.22.1
         args: [--config-file=pyproject.toml]
         exclude: ^(docs/|examples/)
 

@@ -105,6 +105,28 @@ class TestJsonFileStorage:
         assert str(storage.file_path) in location
         assert "with keyring support" in location
 
+    @pytest.mark.asyncio
+    async def test_atomic_file_write(
+        self, tmp_path, valid_credentials, mock_empty_keyring
+    ):
+        """Test that file writes are atomic and don't leave temp files."""
+        storage = JsonFileStorage(tmp_path / "credentials.json")
+
+        # Save credentials
+        assert await storage.save(valid_credentials)
+
+        # Ensure no temp file exists
+        temp_file = storage.file_path.with_suffix(".tmp")
+        assert not temp_file.exists()
+
+        # Ensure main file exists and is valid
+        assert storage.file_path.exists()
+        loaded = await storage.load()
+        assert (
+            loaded.claude_ai_oauth.access_token
+            == valid_credentials.claude_ai_oauth.access_token
+        )
+
 
 class TestOAuthClient:
     """Test OAuth client."""

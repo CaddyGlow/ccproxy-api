@@ -58,6 +58,58 @@ def generate_json_schema() -> dict[str, Any]:
                 "'error' raises an error, 'warning' logs a warning, 'ignore' silently ignores."
             )
 
+        # Enhance metrics properties
+        if "metrics_db_path" in schema["properties"]:
+            schema["properties"]["metrics_db_path"]["examples"] = [
+                "./data/metrics.db",
+                "/var/lib/ccproxy/metrics.db",
+                "~/ccproxy/metrics.db",
+            ]
+
+        if "metrics_export_path" in schema["properties"]:
+            schema["properties"]["metrics_export_path"]["examples"] = [
+                "/metrics/prometheus",
+                "/metrics",
+                "/api/metrics",
+            ]
+
+        if "dashboard_update_interval" in schema["properties"]:
+            schema["properties"]["dashboard_update_interval"]["examples"] = [
+                5,
+                10,
+                15,
+                30,
+            ]
+
+        if "metrics_retention_days" in schema["properties"]:
+            schema["properties"]["metrics_retention_days"]["examples"] = [
+                7,
+                30,
+                90,
+                365,
+            ]
+
+        if "metrics_snapshot_interval" in schema["properties"]:
+            schema["properties"]["metrics_snapshot_interval"]["examples"] = [
+                60,
+                300,
+                900,
+                3600,
+            ]
+
+        if "model_pricing" in schema["properties"]:
+            schema["properties"]["model_pricing"]["examples"] = [
+                {
+                    "claude-3-opus": {"input": 15.0, "output": 75.0},
+                    "claude-3-sonnet": {"input": 3.0, "output": 15.0},
+                    "claude-3-haiku": {"input": 0.25, "output": 1.25},
+                }
+            ]
+            schema["properties"]["model_pricing"]["description"] = (
+                "Model pricing configuration per 1K tokens (USD). "
+                "Each model should have 'input' and 'output' pricing rates."
+            )
+
     return schema
 
 

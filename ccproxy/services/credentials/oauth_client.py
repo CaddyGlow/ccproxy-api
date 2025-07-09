@@ -324,6 +324,10 @@ class OAuthClient:
                 "client_id": self.config.client_id,
             }
 
+            logger.debug(f"Refresh token request URL: {self.config.token_url}")
+            logger.debug(f"Refresh token request headers: {headers}")
+            logger.debug(f"Refresh token request data: {data}")
+
             response = await self.http_client.post(
                 self.config.token_url,
                 headers=headers,
@@ -331,8 +335,12 @@ class OAuthClient:
                 timeout=30.0,
             )
 
+            logger.debug(f"Refresh token response status: {response.status_code}")
+            logger.debug(f"Refresh token response headers: {dict(response.headers)}")
+
             if response.status_code == 200:
                 result = response.json()
+                logger.debug(f"Refresh token response body: {result}")
 
                 # Validate required fields in refresh response
                 access_token = result.get("access_token")
@@ -369,8 +377,10 @@ class OAuthClient:
                 return OAuthToken(**oauth_data)
 
             else:
+                error_body = response.text
+                logger.debug(f"Refresh token error response body: {error_body}")
                 raise OAuthTokenRefreshError(
-                    f"Failed to refresh token: {response.status_code} - {response.text}"
+                    f"Failed to refresh token: {response.status_code} - {error_body}"
                 )
 
         except httpx.RequestError as e:

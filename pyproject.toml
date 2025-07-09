@@ -6,6 +6,8 @@ description = "API server that provides an Anthropic and OpenAI compatible inter
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
+  "aiosqlite>=0.20.0",
+  "greenlet>=3.0.0",
   "check-jsonschema>=0.33.2",
   "claude-code-sdk>=0.0.14", # Using GitHub version with PR #60 fix
   "fastapi[standard]>=0.115.14",
@@ -18,6 +20,7 @@ dependencies = [
   "pydantic-settings>=2.4.0",
   "rich>=13.0.0",
   "rich-toolkit>=0.14.8",
+  "sqlalchemy[asyncio]>=2.0.0",
   "tomli>=2.0.0; python_version<'3.11'",
   "typer>=0.16.0",
   "typing-extensions>=4.0.0",

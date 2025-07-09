@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Claude Code Proxy Dashboard</title>
+    <link rel="stylesheet" href="css/dashboard.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+</head>
+<body>
+    <div class="dashboard-container">
+        <!-- Header -->
+        <header class="dashboard-header">
+            <div class="header-content">
+                <h1>Claude Code Proxy Dashboard</h1>
+                <div class="header-controls">
+                    <div class="connection-status">
+                        <span class="status-indicator" id="connectionStatus"></span>
+                        <span id="connectionText">Connecting...</span>
+                    </div>
+                    <div class="theme-toggle">
+                        <button id="themeToggle" class="theme-btn" title="Toggle Theme">
+                            <span class="theme-icon">🌙</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- Controls Panel -->
+        <div class="controls-panel">
+            <div class="controls-content">
+                <div class="control-group">
+                    <label for="timeRange">Time Range:</label>
+                    <select id="timeRange">
+                        <option value="1h">Last Hour</option>
+                        <option value="6h">Last 6 Hours</option>
+                        <option value="24h" selected>Last 24 Hours</option>
+                        <option value="7d">Last 7 Days</option>
+                    </select>
+                </div>
+
+                <div class="control-group">
+                    <label for="apiFilter">API Type:</label>
+                    <select id="apiFilter">
+                        <option value="all">All APIs</option>
+                        <option value="anthropic">Anthropic</option>
+                        <option value="openai">OpenAI</option>
+                    </select>
+                </div>
+
+                <div class="control-group">
+                    <label for="endpointFilter">Endpoint:</label>
+                    <select id="endpointFilter">
+                        <option value="all">All Endpoints</option>
+                        <option value="/v1/messages">/v1/messages</option>
+                        <option value="/v1/chat/completions">/v1/chat/completions</option>
+                        <option value="/openai/v1/chat/completions">/openai/v1/chat/completions</option>
+                    </select>
+                </div>
+
+                <div class="control-group">
+                    <label class="toggle-label">
+                        <input type="checkbox" id="autoRefresh" checked>
+                        <span class="toggle-slider"></span>
+                        Auto-refresh
+                    </label>
+                </div>
+            </div>
+        </div>
+
+        <!-- Live Metrics Cards -->
+        <div class="metrics-grid">
+            <div class="metric-card">
+                <div class="metric-header">
+                    <h3>Active Requests</h3>
+                    <span class="metric-icon">⚡</span>
+                </div>
+                <div class="metric-value" id="activeRequests">-</div>
+                <div class="metric-change" id="activeRequestsChange">-</div>
+            </div>
+
+            <div class="metric-card">
+                <div class="metric-header">
+                    <h3>Total Requests (24h)</h3>
+                    <span class="metric-icon">📊</span>
+                </div>
+                <div class="metric-value" id="totalRequests">-</div>
+                <div class="metric-change" id="totalRequestsChange">-</div>
+            </div>
+
+            <div class="metric-card">
+                <div class="metric-header">
+                    <h3>Error Rate</h3>
+                    <span class="metric-icon">⚠️</span>
+                </div>
+                <div class="metric-value" id="errorRate">-</div>
+                <div class="metric-change" id="errorRateChange">-</div>
+            </div>
+
+            <div class="metric-card">
+                <div class="metric-header">
+                    <h3>Avg Response Time</h3>
+                    <span class="metric-icon">⏱️</span>
+                </div>
+                <div class="metric-value" id="avgResponseTime">-</div>
+                <div class="metric-change" id="avgResponseTimeChange">-</div>
+            </div>
+        </div>
+
+        <!-- Charts Grid -->
+        <div class="charts-grid">
+            <div class="chart-container">
+                <div class="chart-header">
+                    <h3>Request Rate Over Time</h3>
+                    <div class="chart-controls">
+                        <button class="chart-btn" id="requestRateExport">Export</button>
+                    </div>
+                </div>
+                <div class="chart-wrapper">
+                    <canvas id="requestRateChart"></canvas>
+                </div>
+            </div>
+
+            <div class="chart-container">
+                <div class="chart-header">
+                    <h3>Response Time Percentiles</h3>
+                    <div class="chart-controls">
+                        <button class="chart-btn" id="responseTimeExport">Export</button>
+                    </div>
+                </div>
+                <div class="chart-wrapper">
+                    <canvas id="responseTimeChart"></canvas>
+                </div>
+            </div>
+
+            <div class="chart-container">
+                <div class="chart-header">
+                    <h3>API Type Distribution</h3>
+                    <div class="chart-controls">
+                        <button class="chart-btn" id="apiDistributionExport">Export</button>
+                    </div>
+                </div>
+                <div class="chart-wrapper">
+                    <canvas id="apiDistributionChart"></canvas>
+                </div>
+            </div>
+
+            <div class="chart-container">
+                <div class="chart-header">
+                    <h3>Error Rate Over Time</h3>
+                    <div class="chart-controls">
+                        <button class="chart-btn" id="errorRateExport">Export</button>
+                    </div>
+                </div>
+                <div class="chart-wrapper">
+                    <canvas id="errorRateChart"></canvas>
+                </div>
+            </div>
+
+            <div class="chart-container chart-wide">
+                <div class="chart-header">
+                    <h3>Cost Breakdown by Model</h3>
+                    <div class="chart-controls">
+                        <button class="chart-btn" id="costBreakdownExport">Export</button>
+                    </div>
+                </div>
+                <div class="chart-wrapper">
+                    <canvas id="costBreakdownChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <footer class="dashboard-footer">
+            <div class="footer-content">
+                <p>&copy; 2024 Claude Code Proxy Dashboard</p>
+                <div class="footer-links">
+                    <a href="#" id="resetData">Reset Data</a>
+                    <a href="#" id="exportData">Export All Data</a>
+                </div>
+            </div>
+        </footer>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div class="loading-overlay" id="loadingOverlay">
+        <div class="loading-spinner"></div>
+        <p>Loading dashboard...</p>
+    </div>
+
+    <!-- Error Modal -->
+    <div class="modal" id="errorModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Error</h3>
+                <button class="modal-close" id="errorModalClose">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p id="errorMessage"></p>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-primary" id="errorRetry">Retry</button>
+                <button class="btn-secondary" id="errorDismiss">Dismiss</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/dashboard.js"></script>
+</body>
+</html>

@@ -201,6 +201,133 @@ class Settings(BaseSettings):
         description="Credentials management configuration",
     )
 
+    # Metrics configuration
+    metrics_enabled: bool = Field(
+        default=True,
+        description="Enable metrics collection and tracking",
+    )
+
+    metrics_db_path: str = Field(
+        default="./data/metrics.db",
+        description="Path to metrics database file",
+    )
+
+    metrics_retention_days: int = Field(
+        default=30,
+        description="Number of days to retain metrics data",
+        ge=1,
+        le=365,
+    )
+
+    metrics_snapshot_interval: int = Field(
+        default=60,
+        description="Interval in seconds for metrics snapshots",
+        ge=1,
+        le=3600,
+    )
+
+    metrics_export_path: str = Field(
+        default="/metrics/prometheus",
+        description="URL path for Prometheus metrics export",
+    )
+
+    dashboard_enabled: bool = Field(
+        default=True,
+        description="Enable metrics dashboard interface",
+    )
+
+    dashboard_update_interval: int = Field(
+        default=5,
+        description="Dashboard update interval in seconds",
+        ge=1,
+        le=60,
+    )
+
+    dashboard_auth_required: bool = Field(
+        default=False,
+        description="Require authentication for dashboard access",
+    )
+
+    model_pricing: dict[str, dict[str, float]] = Field(
+        default_factory=lambda: {
+            # Claude 3.5 Sonnet
+            "claude-3-5-sonnet-20241022": {
+                "input": 3.0,
+                "output": 15.0,
+                "cache_creation": 3.75,
+                "cache_read": 0.30,
+            },
+            "claude-3-5-sonnet-20240620": {
+                "input": 3.0,
+                "output": 15.0,
+                "cache_creation": 3.75,
+                "cache_read": 0.30,
+            },
+            "claude-3-5-sonnet": {
+                "input": 3.0,
+                "output": 15.0,
+                "cache_creation": 3.75,
+                "cache_read": 0.30,
+            },
+            # Claude 3.5 Haiku
+            "claude-3-5-haiku-20241022": {
+                "input": 1.0,
+                "output": 5.0,
+                "cache_creation": 1.25,
+                "cache_read": 0.10,
+            },
+            "claude-3-5-haiku": {
+                "input": 1.0,
+                "output": 5.0,
+                "cache_creation": 1.25,
+                "cache_read": 0.10,
+            },
+            # Claude 3 Opus
+            "claude-3-opus-20240229": {
+                "input": 15.0,
+                "output": 75.0,
+                "cache_creation": 18.75,
+                "cache_read": 1.50,
+            },
+            "claude-3-opus": {
+                "input": 15.0,
+                "output": 75.0,
+                "cache_creation": 18.75,
+                "cache_read": 1.50,
+            },
+            # Claude 3 Sonnet
+            "claude-3-sonnet-20240229": {
+                "input": 3.0,
+                "output": 15.0,
+                "cache_creation": 3.75,
+                "cache_read": 0.30,
+            },
+            "claude-3-sonnet": {
+                "input": 3.0,
+                "output": 15.0,
+                "cache_creation": 3.75,
+                "cache_read": 0.30,
+            },
+            # Claude 3 Haiku
+            "claude-3-haiku-20240307": {
+                "input": 0.25,
+                "output": 1.25,
+                "cache_creation": 0.30,
+                "cache_read": 0.03,
+            },
+            "claude-3-haiku": {
+                "input": 0.25,
+                "output": 1.25,
+                "cache_creation": 0.30,
+                "cache_read": 0.03,
+            },
+            # Common OpenAI models (for compatibility)
+            "gpt-4": {"input": 10.0, "output": 30.0},
+            "gpt-3.5-turbo": {"input": 0.5, "output": 1.5},
+        },
+        description="Model pricing per 1K tokens (input/output/cache_creation/cache_read rates in USD)",
+    )
+
     # Pool settings removed - connection pooling functionality has been removed
 
     @field_validator("claude_code_options", mode="before")
@@ -269,6 +396,61 @@ class Settings(BaseSettings):
         return v
 
     # validate_pool_settings method removed - connection pooling functionality has been removed
+
+    @field_validator("metrics_db_path")
+    @classmethod
+    def validate_metrics_db_path(cls, v: str) -> str:
+        """Validate and normalize metrics database path."""
+        path = Path(v)
+        # Ensure parent directory exists or can be created
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+        except OSError as e:
+            raise ValueError(f"Cannot create metrics database directory: {e}") from e
+        return str(path)
+
+    @field_validator("metrics_export_path")
+    @classmethod
+    def validate_metrics_export_path(cls, v: str) -> str:
+        """Validate metrics export path format."""
+        if not v.startswith("/"):
+            raise ValueError("Metrics export path must start with '/'")
+        return v
+
+    @field_validator("model_pricing")
+    @classmethod
+    def validate_model_pricing(
+        cls, v: dict[str, dict[str, float]]
+    ) -> dict[str, dict[str, float]]:
+        """Validate model pricing configuration."""
+        for model_name, pricing in v.items():
+            if not isinstance(pricing, dict):
+                raise ValueError(
+                    f"Model pricing for '{model_name}' must be a dictionary"
+                )
+
+            required_keys = {"input", "output"}
+            if not required_keys.issubset(pricing.keys()):
+                raise ValueError(
+                    f"Model pricing for '{model_name}' must contain 'input' and 'output' keys"
+                )
+
+            # Optional cache pricing keys
+            optional_keys = {"cache_creation", "cache_read"}
+            all_valid_keys = required_keys | optional_keys
+
+            for key, value in pricing.items():
+                if key not in all_valid_keys:
+                    raise ValueError(
+                        f"Model pricing for '{model_name}' contains invalid key '{key}'. "
+                        f"Valid keys are: {', '.join(sorted(all_valid_keys))}"
+                    )
+                if not isinstance(value, int | float) or value < 0:
+                    raise ValueError(
+                        f"Model pricing for '{model_name}.{key}' must be a non-negative number"
+                    )
+
+        return v
 
     @field_validator("log_level")
     @classmethod

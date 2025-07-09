@@ -195,6 +195,10 @@ class CredentialsManager:
 
                 if should_refresh:
                     logger.info("Token expired or expiring soon, refreshing...")
+                    logger.debug(
+                        f"Current token expires at: {oauth_token.expires_at_datetime}"
+                    )
+                    logger.debug(f"Refresh token: {oauth_token.refresh_token[:20]}...")
                     try:
                         if self._oauth_client is None:
                             raise RuntimeError("OAuth client not initialized")
@@ -218,6 +222,36 @@ class CredentialsManager:
                             ) from e
                         # If not expired yet but refresh failed, return existing token
                         logger.warning("Using existing token despite failed refresh")
+
+        return credentials
+
+    async def refresh_token(self, credentials: ClaudeCredentials) -> ClaudeCredentials:
+        oauth_token = credentials.claude_ai_oauth
+        logger.debug(f"Current token expires at: {oauth_token.expires_at_datetime}")
+        logger.debug(f"Refresh token: {oauth_token.refresh_token[:20]}...")
+        try:
+            if self._oauth_client is None:
+                raise RuntimeError("OAuth client not initialized")
+            new_token = await self._oauth_client.refresh_token(
+                oauth_token.refresh_token
+            )
+
+            # Update credentials with new token
+            new_token.subscription_type = oauth_token.subscription_type
+            credentials.claude_ai_oauth = new_token
+
+            # Save updated credentials
+            await self.save(credentials)
+
+            logger.info("Successfully refreshed token")
+        except Exception as e:
+            logger.error(f"Failed to refresh token: {e}")
+            if oauth_token.is_expired:
+                raise CredentialsExpiredError(
+                    "Token expired and refresh failed. Please login again."
+                ) from e
+            # If not expired yet but refresh failed, return existing token
+            logger.warning("Using existing token despite failed refresh")
 
         return credentials
 

@@ -136,7 +136,9 @@ class TestAuthCommands:
         mock_manager = MagicMock()
         mock_manager.find_credentials_file = AsyncMock(return_value=None)
         mock_manager.load = AsyncMock(return_value=None)
-        mock_manager.config = MagicMock(storage_paths=["/home/test/.claude/credentials.json"])
+        mock_manager.config = MagicMock(
+            storage_paths=["/home/test/.claude/credentials.json"]
+        )
         mock_get_manager.return_value = mock_manager
 
         result = self.runner.invoke(app, ["info"])
@@ -155,7 +157,9 @@ class TestAuthCommands:
             return_value=Path("/home/test/.claude/credentials.json")
         )
         mock_manager.load = AsyncMock(return_value=None)
-        mock_manager.config = MagicMock(storage_paths=["/home/test/.claude/credentials.json"])
+        mock_manager.config = MagicMock(
+            storage_paths=["/home/test/.claude/credentials.json"]
+        )
         mock_get_manager.return_value = mock_manager
 
         result = self.runner.invoke(app, ["info"])
