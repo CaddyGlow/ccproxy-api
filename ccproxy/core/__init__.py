@@ -81,6 +81,7 @@ from ccproxy.core.http import (
     HTTPConnectionError,
     HTTPError,
     HTTPTimeoutError,
+    HTTPXClient,
 )
 from ccproxy.core.interfaces import (
     APIAdapter,
@@ -164,6 +165,7 @@ __all__ = [
     "HTTPError",
     "HTTPTimeoutError",
     "HTTPConnectionError",
+    "HTTPXClient",
     # Interface abstractions
     "APIAdapter",
     "MetricExporter",
