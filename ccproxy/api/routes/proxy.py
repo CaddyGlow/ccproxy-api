@@ -2,6 +2,7 @@
 
 from fastapi import APIRouter
 
+
 # Create the router for proxy endpoints
 router = APIRouter(prefix="/proxy", tags=["proxy"])
 

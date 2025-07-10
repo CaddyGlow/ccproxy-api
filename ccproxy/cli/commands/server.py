@@ -9,7 +9,7 @@ from ccproxy.config.settings import (
     Settings,
     config_manager,
 )
-from ccproxy.utils.logging import get_logger
+from ccproxy.core.logging import get_logger
 
 
 logger = get_logger(__name__)

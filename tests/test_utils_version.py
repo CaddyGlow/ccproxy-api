@@ -2,7 +2,7 @@
 
 import pytest
 
-from ccproxy.utils.version import (
+from ccproxy.core.async_utils import (
     format_version,
     get_next_major_version,
     get_next_minor_version,

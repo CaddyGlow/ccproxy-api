@@ -6,18 +6,20 @@ metrics data in Prometheus format for monitoring and alerting.
 """
 
 import logging
+from collections.abc import Generator
 from datetime import datetime, timedelta
-from typing import Any, Dict, Generator, List, Optional
+from typing import Any, Dict, List, Optional
+
 
 try:
     from prometheus_client import (
+        CONTENT_TYPE_LATEST,
         CollectorRegistry,
         Counter,
         Gauge,
         Histogram,
         Info,
         generate_latest,
-        CONTENT_TYPE_LATEST,
     )
     from prometheus_client.core import MetricWrapperBase
 
@@ -25,8 +27,9 @@ try:
 except ImportError:
     PROMETHEUS_AVAILABLE = False
 
-from ..models import MetricRecord, MetricType, MetricsSummary
+from ..models import MetricRecord, MetricsSummary, MetricType
 from ..storage.base import MetricsStorage
+
 
 logger = logging.getLogger(__name__)
 
@@ -44,9 +47,9 @@ class PrometheusExporter:
     def __init__(
         self,
         storage: MetricsStorage,
-        registry: Optional[CollectorRegistry] = None,
+        registry: CollectorRegistry | None = None,
         namespace: str = "ccproxy",
-        include_labels: Optional[List[str]] = None,
+        include_labels: list[str] | None = None,
     ):
         """
         Initialize the Prometheus exporter.
@@ -192,7 +195,7 @@ class PrometheusExporter:
         except Exception as e:
             logger.error(f"Failed to update Prometheus metrics: {e}")
 
-    async def _process_metrics(self, metrics: List[MetricRecord]) -> None:
+    async def _process_metrics(self, metrics: list[MetricRecord]) -> None:
         """Process individual metrics and update counters."""
         for metric in metrics:
             try:
@@ -405,7 +408,7 @@ class PrometheusExporter:
         except Exception as e:
             logger.error(f"Failed to reset metrics: {e}")
 
-    async def get_health_metrics(self) -> Dict[str, Any]:
+    async def get_health_metrics(self) -> dict[str, Any]:
         """
         Get health metrics for the exporter.
 

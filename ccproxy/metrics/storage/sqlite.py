@@ -21,13 +21,19 @@ from ..models import (
     ErrorMetric,
     LatencyMetric,
     MetricRecord,
-    MetricType,
     MetricsSummary,
+    MetricType,
     RequestMetric,
     ResponseMetric,
     UsageMetric,
 )
-from .base import MetricsStorage, StorageError, StorageInitializationError, StorageOperationError
+from .base import (
+    MetricsStorage,
+    StorageError,
+    StorageInitializationError,
+    StorageOperationError,
+)
+
 
 logger = logging.getLogger(__name__)
 
@@ -35,20 +41,20 @@ logger = logging.getLogger(__name__)
 class SQLiteMetricsStorage(MetricsStorage):
     """
     SQLite storage implementation for metrics.
-    
+
     This storage backend uses SQLite for persistent storage with
     good performance and ACID properties.
     """
-    
+
     SCHEMA_VERSION = "1.0.0"
-    
+
     # SQL schema
     CREATE_TABLES_SQL = """
     CREATE TABLE IF NOT EXISTS schema_info (
         version TEXT PRIMARY KEY,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
-    
+
     CREATE TABLE IF NOT EXISTS metrics (
         id TEXT PRIMARY KEY,
         timestamp TIMESTAMP NOT NULL,
@@ -57,7 +63,7 @@ class SQLiteMetricsStorage(MetricsStorage):
         user_id TEXT,
         session_id TEXT,
         metadata TEXT,  -- JSON
-        
+
         -- Request fields
         method TEXT,
         path TEXT,
@@ -72,7 +78,7 @@ class SQLiteMetricsStorage(MetricsStorage):
         max_tokens INTEGER,
         temperature REAL,
         streaming BOOLEAN,
-        
+
         -- Response fields
         status_code INTEGER,
         response_time_ms REAL,
@@ -84,7 +90,7 @@ class SQLiteMetricsStorage(MetricsStorage):
         stream_completion_time_ms REAL,
         completion_reason TEXT,
         safety_filtered BOOLEAN,
-        
+
         -- Error fields
         error_type TEXT,
         error_code TEXT,
@@ -92,7 +98,7 @@ class SQLiteMetricsStorage(MetricsStorage):
         stack_trace TEXT,
         retry_count INTEGER,
         recoverable BOOLEAN,
-        
+
         -- Cost fields
         input_cost REAL,
         output_cost REAL,
@@ -101,7 +107,7 @@ class SQLiteMetricsStorage(MetricsStorage):
         total_cost REAL,
         pricing_tier TEXT,
         currency TEXT,
-        
+
         -- Latency fields
         request_processing_ms REAL,
         claude_api_call_ms REAL,
@@ -111,7 +117,7 @@ class SQLiteMetricsStorage(MetricsStorage):
         wait_time_ms REAL,
         first_token_latency_ms REAL,
         token_generation_rate REAL,
-        
+
         -- Usage fields
         request_count INTEGER,
         token_count INTEGER,
@@ -119,10 +125,10 @@ class SQLiteMetricsStorage(MetricsStorage):
         window_end TIMESTAMP,
         window_duration_seconds REAL,
         aggregation_level TEXT,
-        
+
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
-    
+
     CREATE INDEX IF NOT EXISTS idx_metrics_timestamp ON metrics(timestamp);
     CREATE INDEX IF NOT EXISTS idx_metrics_type ON metrics(metric_type);
     CREATE INDEX IF NOT EXISTS idx_metrics_user_id ON metrics(user_id);
@@ -132,17 +138,17 @@ class SQLiteMetricsStorage(MetricsStorage):
     CREATE INDEX IF NOT EXISTS idx_metrics_provider ON metrics(provider);
     CREATE INDEX IF NOT EXISTS idx_metrics_composite ON metrics(timestamp, metric_type, user_id);
     """
-    
+
     def __init__(
         self,
         database_path: str = "metrics.db",
         connection_timeout: float = 30.0,
         enable_wal: bool = True,
-        pragmas: Optional[Dict[str, Any]] = None
+        pragmas: dict[str, Any] | None = None,
     ):
         """
         Initialize the SQLite storage.
-        
+
         Args:
             database_path: Path to the SQLite database file
             connection_timeout: Connection timeout in seconds
@@ -153,59 +159,58 @@ class SQLiteMetricsStorage(MetricsStorage):
         self.connection_timeout = connection_timeout
         self.enable_wal = enable_wal
         self.pragmas = pragmas or {}
-        
+
         # Connection management
-        self._connection: Optional[aiosqlite.Connection] = None
+        self._connection: aiosqlite.Connection | None = None
         self._lock = asyncio.Lock()
-        
+
         # Performance tracking
         self._total_operations = 0
         self._failed_operations = 0
-    
+
     async def initialize(self) -> None:
         """Initialize the SQLite storage."""
         try:
             # Create database directory if it doesn't exist
             self.database_path.parent.mkdir(parents=True, exist_ok=True)
-            
+
             # Open connection
             self._connection = await aiosqlite.connect(
-                str(self.database_path),
-                timeout=self.connection_timeout
+                str(self.database_path), timeout=self.connection_timeout
             )
-            
+
             # Set pragmas
             if self.enable_wal:
                 await self._connection.execute("PRAGMA journal_mode=WAL")
-            
+
             # Apply custom pragmas
             for pragma, value in self.pragmas.items():
                 await self._connection.execute(f"PRAGMA {pragma}={value}")
-            
+
             # Create tables
             await self._connection.executescript(self.CREATE_TABLES_SQL)
-            
+
             # Initialize schema version
             await self._ensure_schema_version()
-            
+
             # Commit changes
             await self._connection.commit()
-            
+
             logger.info(f"Initialized SQLite metrics storage at {self.database_path}")
-            
+
         except Exception as e:
             error_msg = f"Failed to initialize SQLite storage: {e}"
             logger.error(error_msg)
             raise StorageInitializationError(error_msg) from e
-    
+
     async def close(self) -> None:
         """Close the SQLite storage."""
         if self._connection:
             await self._connection.close()
             self._connection = None
-        
+
         logger.info("Closed SQLite metrics storage")
-    
+
     async def store_metric(self, metric: MetricRecord) -> bool:
         """Store a single metric record."""
         try:
@@ -214,19 +219,19 @@ class SQLiteMetricsStorage(MetricsStorage):
                 await self._connection.commit()
                 self._total_operations += 1
             return True
-            
+
         except Exception as e:
             self._failed_operations += 1
             logger.error(f"Failed to store metric: {e}")
             return False
-    
-    async def store_metrics(self, metrics: List[MetricRecord]) -> int:
+
+    async def store_metrics(self, metrics: list[MetricRecord]) -> int:
         """Store multiple metric records."""
         if not metrics:
             return 0
-        
+
         stored_count = 0
-        
+
         try:
             async with self._lock:
                 for metric in metrics:
@@ -236,125 +241,143 @@ class SQLiteMetricsStorage(MetricsStorage):
                     except Exception as e:
                         logger.error(f"Failed to store individual metric: {e}")
                         continue
-                
+
                 await self._connection.commit()
                 self._total_operations += stored_count
-            
+
             return stored_count
-            
+
         except Exception as e:
             self._failed_operations += 1
             logger.error(f"Failed to store metrics batch: {e}")
             return stored_count
-    
-    async def get_metric(self, metric_id: UUID) -> Optional[MetricRecord]:
+
+    async def get_metric(self, metric_id: UUID) -> MetricRecord | None:
         """Retrieve a single metric record by ID."""
         try:
             async with self._connection.execute(
-                "SELECT * FROM metrics WHERE id = ?",
-                (str(metric_id),)
+                "SELECT * FROM metrics WHERE id = ?", (str(metric_id),)
             ) as cursor:
                 row = await cursor.fetchone()
                 if row:
                     return self._row_to_metric(row)
                 return None
-                
+
         except Exception as e:
             logger.error(f"Failed to get metric {metric_id}: {e}")
             return None
-    
+
     async def get_metrics(
         self,
-        start_time: Optional[datetime] = None,
-        end_time: Optional[datetime] = None,
-        metric_type: Optional[MetricType] = None,
-        user_id: Optional[str] = None,
-        session_id: Optional[str] = None,
-        request_id: Optional[str] = None,
-        limit: Optional[int] = None,
-        offset: Optional[int] = None,
-        order_by: Optional[str] = None,
+        start_time: datetime | None = None,
+        end_time: datetime | None = None,
+        metric_type: MetricType | None = None,
+        user_id: str | None = None,
+        session_id: str | None = None,
+        request_id: str | None = None,
+        limit: int | None = None,
+        offset: int | None = None,
+        order_by: str | None = None,
         order_desc: bool = True,
-        filters: Optional[Dict[str, Any]] = None
-    ) -> List[MetricRecord]:
+        filters: dict[str, Any] | None = None,
+    ) -> list[MetricRecord]:
         """Retrieve multiple metric records with filtering."""
         try:
             # Build query
             query, params = self._build_select_query(
-                start_time, end_time, metric_type, user_id, session_id,
-                request_id, limit, offset, order_by, order_desc, filters
+                start_time,
+                end_time,
+                metric_type,
+                user_id,
+                session_id,
+                request_id,
+                limit,
+                offset,
+                order_by,
+                order_desc,
+                filters,
             )
-            
+
             async with self._connection.execute(query, params) as cursor:
                 rows = await cursor.fetchall()
                 return [self._row_to_metric(row) for row in rows]
-                
+
         except Exception as e:
             logger.error(f"Failed to get metrics: {e}")
             return []
-    
+
     async def count_metrics(
         self,
-        start_time: Optional[datetime] = None,
-        end_time: Optional[datetime] = None,
-        metric_type: Optional[MetricType] = None,
-        user_id: Optional[str] = None,
-        session_id: Optional[str] = None,
-        request_id: Optional[str] = None,
-        filters: Optional[Dict[str, Any]] = None
+        start_time: datetime | None = None,
+        end_time: datetime | None = None,
+        metric_type: MetricType | None = None,
+        user_id: str | None = None,
+        session_id: str | None = None,
+        request_id: str | None = None,
+        filters: dict[str, Any] | None = None,
     ) -> int:
         """Count metric records matching the criteria."""
         try:
             # Build count query
             query, params = self._build_count_query(
-                start_time, end_time, metric_type, user_id, session_id,
-                request_id, filters
+                start_time,
+                end_time,
+                metric_type,
+                user_id,
+                session_id,
+                request_id,
+                filters,
             )
-            
+
             async with self._connection.execute(query, params) as cursor:
                 row = await cursor.fetchone()
                 return row[0] if row else 0
-                
+
         except Exception as e:
             logger.error(f"Failed to count metrics: {e}")
             return 0
-    
+
     async def delete_metrics(
         self,
-        start_time: Optional[datetime] = None,
-        end_time: Optional[datetime] = None,
-        metric_type: Optional[MetricType] = None,
-        user_id: Optional[str] = None,
-        session_id: Optional[str] = None,
-        request_id: Optional[str] = None,
-        filters: Optional[Dict[str, Any]] = None
+        start_time: datetime | None = None,
+        end_time: datetime | None = None,
+        metric_type: MetricType | None = None,
+        user_id: str | None = None,
+        session_id: str | None = None,
+        request_id: str | None = None,
+        filters: dict[str, Any] | None = None,
     ) -> int:
         """Delete metric records matching the criteria."""
         try:
             # Build delete query
             query, params = self._build_delete_query(
-                start_time, end_time, metric_type, user_id, session_id,
-                request_id, filters
+                start_time,
+                end_time,
+                metric_type,
+                user_id,
+                session_id,
+                request_id,
+                filters,
             )
-            
+
             async with self._lock:
                 cursor = await self._connection.execute(query, params)
                 deleted_count = cursor.rowcount
                 await self._connection.commit()
-                
+
             return deleted_count
-            
+
         except Exception as e:
             logger.error(f"Failed to delete metrics: {e}")
             return 0
-    
+
     async def get_metrics_summary(
         self,
         start_time: datetime,
         end_time: datetime,
-        user_id: Optional[str] = None,
-        session_id: Optional[str] = None,
-        group_by: Optional[str] = None
+        user_id: str | None = None,
+        session_id: str | None = None,
+        group_by: str | None = None,
     ) -> MetricsSummary:
         """Get aggregated metrics summary."""
         try:
@@ -362,20 +385,27 @@ class SQLiteMetricsStorage(MetricsStorage):
             summary_query = self._build_summary_query(
                 start_time, end_time, user_id, session_id
             )
-            
-            async with self._connection.execute(summary_query[0], summary_query[1]) as cursor:
+
+            async with self._connection.execute(
+                summary_query[0], summary_query[1]
+            ) as cursor:
                 row = await cursor.fetchone()
-                
+
                 if not row:
                     return MetricsSummary(start_time=start_time, end_time=end_time)
-                
+
                 # Extract summary data
                 (
-                    total_requests, successful_requests, failed_requests,
-                    avg_response_time, total_input_tokens, total_output_tokens,
-                    total_cost, unique_users
+                    total_requests,
+                    successful_requests,
+                    failed_requests,
+                    avg_response_time,
+                    total_input_tokens,
+                    total_output_tokens,
+                    total_cost,
+                    unique_users,
                 ) = row
-                
+
                 summary = MetricsSummary(
                     start_time=start_time,
                     end_time=end_time,
@@ -388,66 +418,79 @@ class SQLiteMetricsStorage(MetricsStorage):
                     total_cost=total_cost or 0.0,
                     unique_users=unique_users or 0,
                 )
-                
+
                 # Calculate derived metrics
                 if summary.total_requests > 0:
-                    summary.error_rate = summary.failed_requests / summary.total_requests
-                    summary.avg_cost_per_request = summary.total_cost / summary.total_requests
-                
-                summary.total_tokens = summary.total_input_tokens + summary.total_output_tokens
-                
+                    summary.error_rate = (
+                        summary.failed_requests / summary.total_requests
+                    )
+                    summary.avg_cost_per_request = (
+                        summary.total_cost / summary.total_requests
+                    )
+
+                summary.total_tokens = (
+                    summary.total_input_tokens + summary.total_output_tokens
+                )
+
                 return summary
-                
+
         except Exception as e:
             logger.error(f"Failed to get metrics summary: {e}")
             return MetricsSummary(start_time=start_time, end_time=end_time)
-    
+
     async def get_time_series(
         self,
         start_time: datetime,
         end_time: datetime,
         interval: str = "1h",
-        metric_type: Optional[MetricType] = None,
+        metric_type: MetricType | None = None,
         aggregation: str = "count",
-        user_id: Optional[str] = None,
-        session_id: Optional[str] = None
-    ) -> List[Dict[str, Any]]:
+        user_id: str | None = None,
+        session_id: str | None = None,
+    ) -> list[dict[str, Any]]:
         """Get time series data for metrics."""
         try:
             # Build time series query
             query, params = self._build_time_series_query(
-                start_time, end_time, interval, metric_type,
-                aggregation, user_id, session_id
+                start_time,
+                end_time,
+                interval,
+                metric_type,
+                aggregation,
+                user_id,
+                session_id,
             )
-            
+
             async with self._connection.execute(query, params) as cursor:
                 rows = await cursor.fetchall()
-                
+
                 return [
                     {
                         "timestamp": row[0],
                         "value": row[1],
-                        "count": row[2] if len(row) > 2 else row[1]
+                        "count": row[2] if len(row) > 2 else row[1],
                     }
                     for row in rows
                 ]
-                
+
         except Exception as e:
             logger.error(f"Failed to get time series: {e}")
             return []
-    
-    async def health_check(self) -> Dict[str, Any]:
+
+    async def health_check(self) -> dict[str, Any]:
         """Perform health check."""
         try:
             # Test connection
             async with self._connection.execute("SELECT 1") as cursor:
                 await cursor.fetchone()
-            
+
             # Get database info
-            async with self._connection.execute("SELECT COUNT(*) FROM metrics") as cursor:
+            async with self._connection.execute(
+                "SELECT COUNT(*) FROM metrics"
+            ) as cursor:
                 row = await cursor.fetchone()
                 total_metrics = row[0] if row else 0
-            
+
             return {
                 "status": "healthy",
                 "database_path": str(self.database_path),
@@ -455,37 +498,41 @@ class SQLiteMetricsStorage(MetricsStorage):
                 "total_operations": self._total_operations,
                 "failed_operations": self._failed_operations,
                 "success_rate": (
-                    (self._total_operations - self._failed_operations) / self._total_operations
-                    if self._total_operations > 0 else 1.0
-                )
+                    (self._total_operations - self._failed_operations)
+                    / self._total_operations
+                    if self._total_operations > 0
+                    else 1.0
+                ),
             }
-            
+
         except Exception as e:
             return {
                 "status": "unhealthy",
                 "error": str(e),
-                "database_path": str(self.database_path)
+                "database_path": str(self.database_path),
             }
-    
-    async def get_storage_info(self) -> Dict[str, Any]:
+
+    async def get_storage_info(self) -> dict[str, Any]:
         """Get storage information."""
         try:
             # Get database size
-            db_size = self.database_path.stat().st_size if self.database_path.exists() else 0
-            
+            db_size = (
+                self.database_path.stat().st_size if self.database_path.exists() else 0
+            )
+
             # Get table info
             async with self._connection.execute(
                 "SELECT COUNT(*) FROM metrics"
             ) as cursor:
                 row = await cursor.fetchone()
                 total_metrics = row[0] if row else 0
-            
+
             # Get metrics by type
             async with self._connection.execute(
                 "SELECT metric_type, COUNT(*) FROM metrics GROUP BY metric_type"
             ) as cursor:
                 type_counts = {row[0]: row[1] for row in await cursor.fetchall()}
-            
+
             return {
                 "backend": "sqlite",
                 "database_path": str(self.database_path),
@@ -495,16 +542,13 @@ class SQLiteMetricsStorage(MetricsStorage):
                 "schema_version": self.SCHEMA_VERSION,
                 "wal_enabled": self.enable_wal,
                 "total_operations": self._total_operations,
-                "failed_operations": self._failed_operations
+                "failed_operations": self._failed_operations,
             }
-            
+
         except Exception as e:
             logger.error(f"Failed to get storage info: {e}")
-            return {
-                "backend": "sqlite",
-                "error": str(e)
-            }
-    
+            return {"backend": "sqlite", "error": str(e)}
+
     async def vacuum(self) -> None:
         """Perform database maintenance."""
         try:
@@ -512,29 +556,29 @@ class SQLiteMetricsStorage(MetricsStorage):
                 await self._connection.execute("VACUUM")
                 await self._connection.execute("ANALYZE")
                 await self._connection.commit()
-            
+
             logger.info("Database vacuum and analyze completed")
-            
+
         except Exception as e:
             logger.error(f"Failed to vacuum database: {e}")
-    
+
     async def backup(self, backup_path: str) -> bool:
         """Create a backup of the database."""
         try:
             backup_path_obj = Path(backup_path)
             backup_path_obj.parent.mkdir(parents=True, exist_ok=True)
-            
+
             # SQLite backup using the backup API
             async with aiosqlite.connect(str(backup_path_obj)) as backup_conn:
                 await self._connection.backup(backup_conn)
-            
+
             logger.info(f"Database backed up to {backup_path}")
             return True
-            
+
         except Exception as e:
             logger.error(f"Failed to backup database: {e}")
             return False
-    
+
     async def get_schema_version(self) -> str:
         """Get the current schema version."""
         try:
@@ -543,51 +587,96 @@ class SQLiteMetricsStorage(MetricsStorage):
             ) as cursor:
                 row = await cursor.fetchone()
                 return row[0] if row else "unknown"
-                
+
         except Exception:
             return "unknown"
-    
+
     # Helper methods
-    
+
     async def _ensure_schema_version(self) -> None:
         """Ensure schema version is recorded."""
         try:
             async with self._connection.execute(
                 "INSERT OR IGNORE INTO schema_info (version) VALUES (?)",
-                (self.SCHEMA_VERSION,)
+                (self.SCHEMA_VERSION,),
             ):
                 pass
         except Exception as e:
             logger.warning(f"Failed to record schema version: {e}")
-    
+
     async def _insert_metric(self, metric: MetricRecord) -> None:
         """Insert a metric record into the database."""
         # Convert metric to database row
         values = self._metric_to_values(metric)
-        
+
         # Build insert query
         placeholders = ", ".join(["?" for _ in values])
-        columns = ", ".join([
-            "id", "timestamp", "metric_type", "request_id", "user_id", "session_id", "metadata",
-            "method", "path", "endpoint", "api_version", "client_ip", "user_agent",
-            "content_length", "content_type", "model", "provider", "max_tokens",
-            "temperature", "streaming", "status_code", "response_time_ms",
-            "input_tokens", "output_tokens", "cache_read_tokens", "cache_write_tokens",
-            "first_token_time_ms", "stream_completion_time_ms", "completion_reason",
-            "safety_filtered", "error_type", "error_code", "error_message",
-            "stack_trace", "retry_count", "recoverable", "input_cost", "output_cost",
-            "cache_read_cost", "cache_write_cost", "total_cost", "pricing_tier",
-            "currency", "request_processing_ms", "claude_api_call_ms",
-            "response_processing_ms", "total_latency_ms", "queue_time_ms",
-            "wait_time_ms", "first_token_latency_ms", "token_generation_rate",
-            "request_count", "token_count", "window_start", "window_end",
-            "window_duration_seconds", "aggregation_level"
-        ])
-        
+        columns = ", ".join(
+            [
+                "id",
+                "timestamp",
+                "metric_type",
+                "request_id",
+                "user_id",
+                "session_id",
+                "metadata",
+                "method",
+                "path",
+                "endpoint",
+                "api_version",
+                "client_ip",
+                "user_agent",
+                "content_length",
+                "content_type",
+                "model",
+                "provider",
+                "max_tokens",
+                "temperature",
+                "streaming",
+                "status_code",
+                "response_time_ms",
+                "input_tokens",
+                "output_tokens",
+                "cache_read_tokens",
+                "cache_write_tokens",
+                "first_token_time_ms",
+                "stream_completion_time_ms",
+                "completion_reason",
+                "safety_filtered",
+                "error_type",
+                "error_code",
+                "error_message",
+                "stack_trace",
+                "retry_count",
+                "recoverable",
+                "input_cost",
+                "output_cost",
+                "cache_read_cost",
+                "cache_write_cost",
+                "total_cost",
+                "pricing_tier",
+                "currency",
+                "request_processing_ms",
+                "claude_api_call_ms",
+                "response_processing_ms",
+                "total_latency_ms",
+                "queue_time_ms",
+                "wait_time_ms",
+                "first_token_latency_ms",
+                "token_generation_rate",
+                "request_count",
+                "token_count",
+                "window_start",
+                "window_end",
+                "window_duration_seconds",
+                "aggregation_level",
+            ]
+        )
+
         query = f"INSERT INTO metrics ({columns}) VALUES ({placeholders})"
-        
+
         await self._connection.execute(query, values)
-    
+
     def _metric_to_values(self, metric: MetricRecord) -> tuple:
         """Convert a metric record to database values."""
         # Base values
@@ -600,53 +689,84 @@ class SQLiteMetricsStorage(MetricsStorage):
             metric.session_id,
             json.dumps(metric.metadata) if metric.metadata else None,
         ]
-        
+
         # Initialize all field values to None
         field_values = [None] * 52  # Total number of optional fields
-        
+
         # Fill in values based on metric type
         if isinstance(metric, RequestMetric):
             field_values[0:13] = [
-                metric.method, metric.path, metric.endpoint, metric.api_version,
-                metric.client_ip, metric.user_agent, metric.content_length,
-                metric.content_type, metric.model, metric.provider,
-                metric.max_tokens, metric.temperature, metric.streaming
+                metric.method,
+                metric.path,
+                metric.endpoint,
+                metric.api_version,
+                metric.client_ip,
+                metric.user_agent,
+                metric.content_length,
+                metric.content_type,
+                metric.model,
+                metric.provider,
+                metric.max_tokens,
+                metric.temperature,
+                metric.streaming,
             ]
         elif isinstance(metric, ResponseMetric):
             field_values[13:23] = [
-                metric.status_code, metric.response_time_ms, metric.input_tokens,
-                metric.output_tokens, metric.cache_read_tokens, metric.cache_write_tokens,
-                metric.first_token_time_ms, metric.stream_completion_time_ms,
-                metric.completion_reason, metric.safety_filtered
+                metric.status_code,
+                metric.response_time_ms,
+                metric.input_tokens,
+                metric.output_tokens,
+                metric.cache_read_tokens,
+                metric.cache_write_tokens,
+                metric.first_token_time_ms,
+                metric.stream_completion_time_ms,
+                metric.completion_reason,
+                metric.safety_filtered,
             ]
         elif isinstance(metric, ErrorMetric):
             field_values[23:29] = [
-                metric.error_type, metric.error_code, metric.error_message,
-                metric.stack_trace, metric.retry_count, metric.recoverable
+                metric.error_type,
+                metric.error_code,
+                metric.error_message,
+                metric.stack_trace,
+                metric.retry_count,
+                metric.recoverable,
             ]
         elif isinstance(metric, CostMetric):
             field_values[29:36] = [
-                metric.input_cost, metric.output_cost, metric.cache_read_cost,
-                metric.cache_write_cost, metric.total_cost, metric.pricing_tier,
-                metric.currency
+                metric.input_cost,
+                metric.output_cost,
+                metric.cache_read_cost,
+                metric.cache_write_cost,
+                metric.total_cost,
+                metric.pricing_tier,
+                metric.currency,
             ]
         elif isinstance(metric, LatencyMetric):
             field_values[36:44] = [
-                metric.request_processing_ms, metric.claude_api_call_ms,
-                metric.response_processing_ms, metric.total_latency_ms,
-                metric.queue_time_ms, metric.wait_time_ms,
-                metric.first_token_latency_ms, metric.token_generation_rate
+                metric.request_processing_ms,
+                metric.claude_api_call_ms,
+                metric.response_processing_ms,
+                metric.total_latency_ms,
+                metric.queue_time_ms,
+                metric.wait_time_ms,
+                metric.first_token_latency_ms,
+                metric.token_generation_rate,
             ]
         elif isinstance(metric, UsageMetric):
             field_values[44:52] = [
-                metric.request_count, metric.token_count,
-                metric.window_start.isoformat(), metric.window_end.isoformat(),
-                metric.window_duration_seconds, metric.aggregation_level,
-                None, None  # Padding
+                metric.request_count,
+                metric.token_count,
+                metric.window_start.isoformat(),
+                metric.window_end.isoformat(),
+                metric.window_duration_seconds,
+                metric.aggregation_level,
+                None,
+                None,  # Padding
             ]
-        
+
         return tuple(values + field_values)
-    
+
     def _row_to_metric(self, row: sqlite3.Row) -> MetricRecord:
         """Convert a database row to a metric record."""
         # Extract base fields
@@ -658,9 +778,9 @@ class SQLiteMetricsStorage(MetricsStorage):
             "session_id": row["session_id"],
             "metadata": json.loads(row["metadata"]) if row["metadata"] else {},
         }
-        
+
         metric_type = MetricType(row["metric_type"])
-        
+
         # Create appropriate metric type based on type
         if metric_type == MetricType.REQUEST:
             return RequestMetric(
@@ -677,7 +797,9 @@ class SQLiteMetricsStorage(MetricsStorage):
                 provider=row["provider"],
                 max_tokens=row["max_tokens"],
                 temperature=row["temperature"],
-                streaming=bool(row["streaming"]) if row["streaming"] is not None else False,
+                streaming=bool(row["streaming"])
+                if row["streaming"] is not None
+                else False,
             )
         elif metric_type == MetricType.RESPONSE:
             return ResponseMetric(
@@ -690,11 +812,15 @@ class SQLiteMetricsStorage(MetricsStorage):
                 output_tokens=row["output_tokens"],
                 cache_read_tokens=row["cache_read_tokens"],
                 cache_write_tokens=row["cache_write_tokens"],
-                streaming=bool(row["streaming"]) if row["streaming"] is not None else False,
+                streaming=bool(row["streaming"])
+                if row["streaming"] is not None
+                else False,
                 first_token_time_ms=row["first_token_time_ms"],
                 stream_completion_time_ms=row["stream_completion_time_ms"],
                 completion_reason=row["completion_reason"],
-                safety_filtered=bool(row["safety_filtered"]) if row["safety_filtered"] is not None else False,
+                safety_filtered=bool(row["safety_filtered"])
+                if row["safety_filtered"] is not None
+                else False,
             )
         elif metric_type == MetricType.ERROR:
             return ErrorMetric(
@@ -707,7 +833,9 @@ class SQLiteMetricsStorage(MetricsStorage):
                 method=row["method"],
                 status_code=row["status_code"],
                 retry_count=row["retry_count"] or 0,
-                recoverable=bool(row["recoverable"]) if row["recoverable"] is not None else False,
+                recoverable=bool(row["recoverable"])
+                if row["recoverable"] is not None
+                else False,
             )
         elif metric_type == MetricType.COST:
             return CostMetric(
@@ -753,26 +881,26 @@ class SQLiteMetricsStorage(MetricsStorage):
                 **base_data,
                 metric_type=metric_type,
             )
-    
+
     def _build_select_query(
         self,
-        start_time: Optional[datetime],
-        end_time: Optional[datetime],
-        metric_type: Optional[MetricType],
-        user_id: Optional[str],
-        session_id: Optional[str],
-        request_id: Optional[str],
-        limit: Optional[int],
-        offset: Optional[int],
-        order_by: Optional[str],
+        start_time: datetime | None,
+        end_time: datetime | None,
+        metric_type: MetricType | None,
+        user_id: str | None,
+        session_id: str | None,
+        request_id: str | None,
+        limit: int | None,
+        offset: int | None,
+        order_by: str | None,
         order_desc: bool,
-        filters: Optional[Dict[str, Any]]
+        filters: dict[str, Any] | None,
     ) -> tuple[str, list]:
         """Build SELECT query with filters."""
         query = "SELECT * FROM metrics"
         params = []
         conditions = []
-        
+
         # Add time filters
         if start_time:
             conditions.append("timestamp >= ?")
@@ -780,12 +908,12 @@ class SQLiteMetricsStorage(MetricsStorage):
         if end_time:
             conditions.append("timestamp < ?")
             params.append(end_time.isoformat())
-        
+
         # Add type filter
         if metric_type:
             conditions.append("metric_type = ?")
             params.append(metric_type.value)
-        
+
         # Add ID filters
         if user_id:
             conditions.append("user_id = ?")
@@ -796,45 +924,45 @@ class SQLiteMetricsStorage(MetricsStorage):
         if request_id:
             conditions.append("request_id = ?")
             params.append(request_id)
-        
+
         # Add custom filters
         if filters:
             for key, value in filters.items():
                 conditions.append(f"{key} = ?")
                 params.append(value)
-        
+
         # Add WHERE clause
         if conditions:
             query += " WHERE " + " AND ".join(conditions)
-        
+
         # Add ORDER BY
         order_field = order_by or "timestamp"
         order_direction = "DESC" if order_desc else "ASC"
         query += f" ORDER BY {order_field} {order_direction}"
-        
+
         # Add LIMIT and OFFSET
         if limit:
             query += f" LIMIT {limit}"
         if offset:
             query += f" OFFSET {offset}"
-        
+
         return query, params
-    
+
     def _build_count_query(
         self,
-        start_time: Optional[datetime],
-        end_time: Optional[datetime],
-        metric_type: Optional[MetricType],
-        user_id: Optional[str],
-        session_id: Optional[str],
-        request_id: Optional[str],
-        filters: Optional[Dict[str, Any]]
+        start_time: datetime | None,
+        end_time: datetime | None,
+        metric_type: MetricType | None,
+        user_id: str | None,
+        session_id: str | None,
+        request_id: str | None,
+        filters: dict[str, Any] | None,
     ) -> tuple[str, list]:
         """Build COUNT query with filters."""
         query = "SELECT COUNT(*) FROM metrics"
         params = []
         conditions = []
-        
+
         # Add time filters
         if start_time:
             conditions.append("timestamp >= ?")
@@ -842,12 +970,12 @@ class SQLiteMetricsStorage(MetricsStorage):
         if end_time:
             conditions.append("timestamp < ?")
             params.append(end_time.isoformat())
-        
+
         # Add type filter
         if metric_type:
             conditions.append("metric_type = ?")
             params.append(metric_type.value)
-        
+
         # Add ID filters
         if user_id:
             conditions.append("user_id = ?")
@@ -858,34 +986,34 @@ class SQLiteMetricsStorage(MetricsStorage):
         if request_id:
             conditions.append("request_id = ?")
             params.append(request_id)
-        
+
         # Add custom filters
         if filters:
             for key, value in filters.items():
                 conditions.append(f"{key} = ?")
                 params.append(value)
-        
+
         # Add WHERE clause
         if conditions:
             query += " WHERE " + " AND ".join(conditions)
-        
+
         return query, params
-    
+
     def _build_delete_query(
         self,
-        start_time: Optional[datetime],
-        end_time: Optional[datetime],
-        metric_type: Optional[MetricType],
-        user_id: Optional[str],
-        session_id: Optional[str],
-        request_id: Optional[str],
-        filters: Optional[Dict[str, Any]]
+        start_time: datetime | None,
+        end_time: datetime | None,
+        metric_type: MetricType | None,
+        user_id: str | None,
+        session_id: str | None,
+        request_id: str | None,
+        filters: dict[str, Any] | None,
     ) -> tuple[str, list]:
         """Build DELETE query with filters."""
         query = "DELETE FROM metrics"
         params = []
         conditions = []
-        
+
         # Add time filters
         if start_time:
             conditions.append("timestamp >= ?")
@@ -893,12 +1021,12 @@ class SQLiteMetricsStorage(MetricsStorage):
         if end_time:
             conditions.append("timestamp < ?")
             params.append(end_time.isoformat())
-        
+
         # Add type filter
         if metric_type:
             conditions.append("metric_type = ?")
             params.append(metric_type.value)
-        
+
         # Add ID filters
         if user_id:
             conditions.append("user_id = ?")
@@ -909,25 +1037,25 @@ class SQLiteMetricsStorage(MetricsStorage):
         if request_id:
             conditions.append("request_id = ?")
             params.append(request_id)
-        
+
         # Add custom filters
         if filters:
             for key, value in filters.items():
                 conditions.append(f"{key} = ?")
                 params.append(value)
-        
+
         # Add WHERE clause
         if conditions:
             query += " WHERE " + " AND ".join(conditions)
-        
+
         return query, params
-    
+
     def _build_summary_query(
         self,
         start_time: datetime,
         end_time: datetime,
-        user_id: Optional[str],
-        session_id: Optional[str]
+        user_id: str | None,
+        session_id: str | None,
     ) -> tuple[str, list]:
         """Build summary aggregation query."""
         query = """
@@ -943,32 +1071,32 @@ class SQLiteMetricsStorage(MetricsStorage):
         FROM metrics
         WHERE timestamp >= ? AND timestamp < ?
         """
-        
+
         params = [start_time.isoformat(), end_time.isoformat()]
-        
+
         if user_id:
             query += " AND user_id = ?"
             params.append(user_id)
         if session_id:
             query += " AND session_id = ?"
             params.append(session_id)
-        
+
         return query, params
-    
+
     def _build_time_series_query(
         self,
         start_time: datetime,
         end_time: datetime,
         interval: str,
-        metric_type: Optional[MetricType],
+        metric_type: MetricType | None,
         aggregation: str,
-        user_id: Optional[str],
-        session_id: Optional[str]
+        user_id: str | None,
+        session_id: str | None,
     ) -> tuple[str, list]:
         """Build time series query."""
         # Simple time series implementation
         # For more advanced time series, consider using SQLite's datetime functions
-        
+
         if aggregation == "count":
             select_clause = "COUNT(*)"
         elif aggregation == "sum":
@@ -977,7 +1105,7 @@ class SQLiteMetricsStorage(MetricsStorage):
             select_clause = "AVG(COALESCE(response_time_ms, 0))"  # Default avg field
         else:
             select_clause = "COUNT(*)"
-        
+
         # Use simple bucketing for now
         query = f"""
         SELECT
@@ -987,9 +1115,9 @@ class SQLiteMetricsStorage(MetricsStorage):
         FROM metrics
         WHERE timestamp >= ? AND timestamp < ?
         """
-        
+
         params = [start_time.isoformat(), end_time.isoformat()]
-        
+
         if metric_type:
             query += " AND metric_type = ?"
             params.append(metric_type.value)
@@ -999,7 +1127,7 @@ class SQLiteMetricsStorage(MetricsStorage):
         if session_id:
             query += " AND session_id = ?"
             params.append(session_id)
-        
+
         query += " GROUP BY time_bucket ORDER BY time_bucket"
-        
+
         return query, params

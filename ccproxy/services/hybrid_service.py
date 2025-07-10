@@ -29,7 +29,7 @@ class HybridService:
         self,
         claude_sdk_service: ClaudeSDKService,
         proxy_service: ProxyService,
-        default_proxy_mode: str = "hybrid",
+        default_proxy_mode: str = "proxy",
     ):
         """Initialize the hybrid service.
 
@@ -159,16 +159,9 @@ class HybridService:
             and len(request_body["tools"]) > 0
         ):
             return True
-        
+
         # Check for Claude Code specific tools field
-        if (
-            "allowed_tools" in request_body
-            and isinstance(request_body["allowed_tools"], list)
-            and len(request_body["allowed_tools"]) > 0
-        ):
-            return True
-            
-        return False
+        return bool("allowed_tools" in request_body and isinstance(request_body["allowed_tools"], list) and len(request_body["allowed_tools"]) > 0)
 
     def _has_streaming(self, request_body: dict[str, Any]) -> bool:
         """Check if the request is for streaming.
@@ -239,7 +232,7 @@ class HybridService:
 
         # Create default options - this needs to be properly implemented
         # For now, we'll create a basic options dict
-        from ccproxy.utils.helper import patched_typing
+        from ccproxy.core.async_utils import patched_typing
 
         with patched_typing():
             from claude_code_sdk import ClaudeCodeOptions

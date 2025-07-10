@@ -1,7 +1,8 @@
 """Tests for HybridService."""
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock
+
+import pytest
 
 from ccproxy.services.hybrid_service import HybridService
 
@@ -44,7 +45,7 @@ class TestHybridService:
         """Test parsing valid JSON request body."""
         body = b'{"messages": ["hello"], "stream": false}'
         result = hybrid_service._parse_request_body(body)
-        
+
         expected = {"messages": ["hello"], "stream": False}
         assert result == expected
 
@@ -52,7 +53,7 @@ class TestHybridService:
         """Test parsing invalid JSON request body."""
         body = b'{"invalid": json}'
         result = hybrid_service._parse_request_body(body)
-        
+
         assert result == {}
 
     def test_parse_request_body_empty(self, hybrid_service):
@@ -109,9 +110,9 @@ class TestHybridService:
         """Test health check functionality."""
         # Configure mock to succeed
         mock_claude_client.validate_health.return_value = None
-        
+
         result = await hybrid_service.health_check()
-        
+
         assert "hybrid_service" in result
         assert result["hybrid_service"]["status"] == "healthy"
         assert result["hybrid_service"]["sdk"]["status"] == "healthy"
@@ -122,9 +123,9 @@ class TestHybridService:
         """Test health check with SDK failure."""
         # Configure mock to fail
         mock_claude_client.validate_health.side_effect = Exception("SDK error")
-        
+
         result = await hybrid_service.health_check()
-        
+
         assert result["hybrid_service"]["sdk"]["status"] == "unhealthy"
         assert result["hybrid_service"]["sdk"]["error"] == "SDK error"
 

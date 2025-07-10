@@ -8,7 +8,7 @@ from rich_toolkit import RichToolkit, RichToolkitTheme
 from rich_toolkit.styles import TaggedStyle
 from uvicorn.logging import DefaultFormatter
 
-from ccproxy.utils.helper import patched_typing
+from ccproxy.core.async_utils import patched_typing
 
 
 class CustomFormatter(DefaultFormatter):

@@ -25,7 +25,14 @@ class HTTPRequestTransformer:
 
     def transform_path(self, path: str, proxy_mode: str = "full") -> str:
         """Transform request path."""
-        # Basic path transformation - pass through for now
+        # Remove /openai prefix if present
+        if path.startswith("/openai"):
+            path = path[7:]  # Remove "/openai" prefix
+
+        # Convert OpenAI chat completions to Anthropic messages
+        if path == "/v1/chat/completions":
+            return "/v1/messages"
+
         return path
 
     def create_proxy_headers(
@@ -34,18 +41,34 @@ class HTTPRequestTransformer:
         """Create proxy headers from original headers with Claude CLI identity."""
         proxy_headers = {}
 
-        # Copy important headers
+        # Strip potentially problematic headers
+        excluded_headers = {
+            "host",
+            "x-forwarded-for",
+            "x-forwarded-proto",
+            "x-forwarded-host",
+            "forwarded",
+            # Authentication headers to be replaced
+            "authorization",
+            "x-api-key",
+        }
+
+        # Copy important headers (excluding problematic ones)
         for key, value in headers.items():
             lower_key = key.lower()
-            if lower_key not in ["host", "authorization"]:
+            if lower_key not in excluded_headers:
                 proxy_headers[key] = value
 
-        # Add authentication
+        # Set authentication with OAuth token
         proxy_headers["Authorization"] = f"Bearer {access_token}"
 
-        # Set content type if not present
-        if "content-type" not in proxy_headers:
+        # Set defaults for essential headers
+        if "content-type" not in [k.lower() for k in proxy_headers]:
             proxy_headers["Content-Type"] = "application/json"
+        if "accept" not in [k.lower() for k in proxy_headers]:
+            proxy_headers["Accept"] = "application/json"
+        if "connection" not in [k.lower() for k in proxy_headers]:
+            proxy_headers["Connection"] = "keep-alive"
 
         # Critical Claude/Anthropic headers for tools and beta features
         proxy_headers["anthropic-beta"] = (
@@ -60,9 +83,9 @@ class HTTPRequestTransformer:
         proxy_headers["User-Agent"] = "claude-cli/1.0.43 (external, cli)"
 
         # Stainless SDK compatibility headers
+        proxy_headers["X-Stainless-Lang"] = "js"
         proxy_headers["X-Stainless-Retry-Count"] = "0"
         proxy_headers["X-Stainless-Timeout"] = "60"
-        proxy_headers["X-Stainless-Lang"] = "js"
         proxy_headers["X-Stainless-Package-Version"] = "0.55.1"
         proxy_headers["X-Stainless-OS"] = "Linux"
         proxy_headers["X-Stainless-Arch"] = "x64"
@@ -70,7 +93,6 @@ class HTTPRequestTransformer:
         proxy_headers["X-Stainless-Runtime-Version"] = "v22.14.0"
 
         # Standard HTTP headers for proper API interaction
-        proxy_headers["Connection"] = "keep-alive"
         proxy_headers["accept-language"] = "*"
         proxy_headers["sec-fetch-mode"] = "cors"
         proxy_headers["accept-encoding"] = "gzip, deflate"
@@ -81,6 +103,14 @@ class HTTPRequestTransformer:
         self, body: bytes, path: str, proxy_mode: str = "full"
     ) -> bytes:
         """Transform request body."""
+        if not body:
+            return body
+
+        # Check if this is an OpenAI request and transform it
+        if self._is_openai_request(path, body):
+            # Transform OpenAI format to Anthropic format
+            body = self._transform_openai_to_anthropic(body)
+
         # Apply system prompt transformation for Claude Code identity
         return self.transform_system_prompt(body)
 
@@ -131,11 +161,50 @@ class HTTPRequestTransformer:
                     # Already has Claude Code first, ensure it has cache_control
                     data["system"][0] = get_claude_code_prompt()
                     return json.dumps(data).encode("utf-8")
-            
+
             # Prepend Claude Code prompt
             data["system"] = [get_claude_code_prompt()] + system
 
         return json.dumps(data).encode("utf-8")
+
+    def _is_openai_request(self, path: str, body: bytes) -> bool:
+        """Check if this is an OpenAI API request."""
+        # Check path-based indicators
+        if "/openai/" in path or "/chat/completions" in path:
+            return True
+
+        # Check body-based indicators
+        if body:
+            try:
+                data = json.loads(body.decode("utf-8"))
+                # Look for OpenAI-specific patterns
+                model = data.get("model", "")
+                if model.startswith(("gpt-", "o1-", "text-davinci")):
+                    return True
+                # Check for OpenAI message format with system in messages
+                messages = data.get("messages", [])
+                if messages and any(msg.get("role") == "system" for msg in messages):
+                    return True
+            except (json.JSONDecodeError, UnicodeDecodeError):
+                pass
+
+        return False
+
+    def _transform_openai_to_anthropic(self, body: bytes) -> bytes:
+        """Transform OpenAI request format to Anthropic format."""
+        try:
+            # Use the OpenAI adapter for transformation
+            from ccproxy.adapters.openai.adapter import OpenAIAdapter
+
+            adapter = OpenAIAdapter()
+            openai_data = json.loads(body.decode("utf-8"))
+            anthropic_data = adapter.adapt_request(openai_data)
+            return json.dumps(anthropic_data).encode("utf-8")
+
+        except Exception as e:
+            logger.warning(f"Failed to transform OpenAI request: {e}")
+            # Return original body if transformation fails
+            return body
 
 
 class HTTPResponseTransformer:

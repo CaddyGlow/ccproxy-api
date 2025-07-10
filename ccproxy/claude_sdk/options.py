@@ -2,7 +2,7 @@
 
 from typing import Any
 
-from ccproxy.utils.helper import patched_typing
+from ccproxy.core.async_utils import patched_typing
 
 
 with patched_typing():

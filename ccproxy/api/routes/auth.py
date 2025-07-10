@@ -2,6 +2,7 @@
 
 from fastapi import APIRouter
 
+
 # Create the router for auth endpoints
 router = APIRouter(prefix="/auth", tags=["authentication"])
 

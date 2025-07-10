@@ -12,7 +12,7 @@ This directory contains examples demonstrating how to use the Claude Code Proxy 
 ```
 Demonstrates using `response_format: {"type": "json_object"}` to get structured JSON responses.
 
-#### JSON Schema 
+#### JSON Schema
 ```bash
 ./openai_json_schema_example.sh
 ```

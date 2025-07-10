@@ -8,7 +8,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from ccproxy.utils.schema import (
+from ccproxy.core.async_utils import (
     generate_json_schema,
     generate_schema_files,
     generate_taplo_config,

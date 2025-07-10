@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 from ccproxy import __version__
-from ccproxy.utils.version import format_version
+from ccproxy.core.async_utils import format_version
 
 
 try:
@@ -22,9 +22,9 @@ except ImportError:
 from pydantic import BaseModel, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from ccproxy.core.async_utils import get_package_dir, patched_typing
 from ccproxy.services.credentials import CredentialsConfig
 from ccproxy.utils import find_toml_config_file, get_claude_cli_config_dir
-from ccproxy.utils.helper import get_package_dir, patched_typing
 
 from .docker_settings import DockerSettings
 

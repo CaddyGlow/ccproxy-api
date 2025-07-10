@@ -281,11 +281,17 @@ class MetricsService:
             try:
                 if await exporter.export_metrics(metrics_to_export):
                     success_count += 1
-                    logger.debug(f"Successfully exported metrics to {type(exporter).__name__}")
+                    logger.debug(
+                        f"Successfully exported metrics to {type(exporter).__name__}"
+                    )
                 else:
-                    logger.warning(f"Failed to export metrics to {type(exporter).__name__}")
+                    logger.warning(
+                        f"Failed to export metrics to {type(exporter).__name__}"
+                    )
             except Exception as e:
-                logger.error(f"Error exporting metrics to {type(exporter).__name__}: {e}")
+                logger.error(
+                    f"Error exporting metrics to {type(exporter).__name__}: {e}"
+                )
 
         if success_count > 0:
             self._last_export_time = datetime.now()
@@ -356,8 +362,8 @@ class MetricsService:
 
             if total_requests > 0:
                 self._request_metrics["average_response_time"] = (
-                    (current_avg * (total_requests - 1) + response_time) / total_requests
-                )
+                    current_avg * (total_requests - 1) + response_time
+                ) / total_requests
 
     def _update_service_metrics(self, metric: dict[str, Any]) -> None:
         """Update service-related metrics.
@@ -401,4 +407,3 @@ class MetricsService:
                 if status_code not in self._error_metrics["errors_by_status_code"]:
                     self._error_metrics["errors_by_status_code"][status_code] = 0
                 self._error_metrics["errors_by_status_code"][status_code] += 1
-
