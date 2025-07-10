@@ -10,8 +10,8 @@ from collections.abc import AsyncIterator
 from typing import Any, Optional, Union
 
 from ccproxy.core.types import ProxyRequest, ProxyResponse
-from ccproxy.services.claude_client import ClaudeClient
-from ccproxy.services.reverse_proxy import ReverseProxyService
+from ccproxy.services.claude_sdk_service import ClaudeSDKService
+from ccproxy.services.proxy_service import ProxyService
 
 
 logger = logging.getLogger(__name__)
@@ -27,19 +27,19 @@ class HybridService:
 
     def __init__(
         self,
-        claude_client: ClaudeClient,
-        reverse_proxy_service: ReverseProxyService,
+        claude_sdk_service: ClaudeSDKService,
+        proxy_service: ProxyService,
         default_proxy_mode: str = "hybrid",
     ):
         """Initialize the hybrid service.
 
         Args:
-            claude_client: Claude SDK client instance
-            reverse_proxy_service: Reverse proxy service instance
+            claude_sdk_service: Claude SDK client instance
+            proxy_service: Reverse proxy service instance
             default_proxy_mode: Default proxy mode setting
         """
-        self.claude_client = claude_client
-        self.reverse_proxy_service = reverse_proxy_service
+        self.claude_sdk_service = claude_sdk_service
+        self.proxy_service = proxy_service
         self.default_proxy_mode = default_proxy_mode
 
         # Service selection strategy
@@ -227,7 +227,7 @@ class HybridService:
         options = ClaudeCodeOptions()
 
         # Create completion using SDK
-        sdk_response = await self.claude_client.create_completion(
+        sdk_response = await self.claude_sdk_service.create_completion(
             messages=messages,
             options=options,
             stream=stream,
@@ -271,7 +271,7 @@ class HybridService:
         logger.debug(f"Handling request with proxy: {path}")
 
         # Forward request to reverse proxy
-        proxy_response = await self.reverse_proxy_service.proxy_request(
+        proxy_response = await self.proxy_service.proxy_request(
             method=method,
             path=path,
             headers=headers,
@@ -311,7 +311,7 @@ class HybridService:
         sdk_health = True
         sdk_error = None
         try:
-            await self.claude_client.validate_health()
+            await self.claude_sdk_service.validate_health()
         except Exception as e:
             sdk_health = False
             sdk_error = str(e)
@@ -343,7 +343,7 @@ class HybridService:
 
     async def close(self) -> None:
         """Close the hybrid service and its underlying services."""
-        await self.claude_client.close()
+        await self.claude_sdk_service.close()
         # Reverse proxy service doesn't have a close method in the current implementation
         logger.info("Hybrid service closed")
 
