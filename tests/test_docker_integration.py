@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+from ccproxy.core.errors import DockerError
 from ccproxy.docker import (
     DockerAdapter,
     DockerPath,
@@ -12,7 +13,6 @@ from ccproxy.docker import (
     create_docker_error,
     validate_port_spec,
 )
-from ccproxy.core.errors import DockerError
 
 
 class TestDockerPath:

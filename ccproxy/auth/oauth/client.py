@@ -7,8 +7,8 @@ from typing import Optional
 import httpx
 
 from ccproxy.auth.oauth.models import OAuthTokenRequest, OAuthTokenResponse
-from ccproxy.services.credentials.config import OAuthConfig
 from ccproxy.core.logging import get_logger
+from ccproxy.services.credentials.config import OAuthConfig
 
 
 logger = get_logger(__name__)

@@ -15,6 +15,7 @@ from urllib.parse import parse_qs, urlparse
 
 import httpx
 
+from ccproxy.core.logging import get_logger
 from ccproxy.services.credentials.config import OAuthConfig
 from ccproxy.services.credentials.exceptions import (
     OAuthCallbackError,
@@ -28,7 +29,6 @@ from ccproxy.services.credentials.models import (
     OrganizationInfo,
     UserProfile,
 )
-from ccproxy.core.logging import get_logger
 
 
 logger = get_logger(__name__)

@@ -7,6 +7,7 @@ from typing import Any
 
 import httpx
 
+from ccproxy.core.logging import get_logger
 from ccproxy.services.credentials.config import CredentialsConfig
 from ccproxy.services.credentials.exceptions import (
     CredentialsExpiredError,
@@ -16,7 +17,6 @@ from ccproxy.services.credentials.json_storage import JsonFileStorage
 from ccproxy.services.credentials.models import ClaudeCredentials, UserProfile
 from ccproxy.services.credentials.oauth_client import OAuthClient
 from ccproxy.services.credentials.storage import CredentialsStorageBackend
-from ccproxy.core.logging import get_logger
 
 
 logger = get_logger(__name__)

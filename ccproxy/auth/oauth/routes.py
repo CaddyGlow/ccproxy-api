@@ -8,6 +8,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse
 
+from ccproxy.core.logging import get_logger
 from ccproxy.services.credentials import (
     ClaudeCredentials,
     CredentialsManager,
@@ -15,7 +16,6 @@ from ccproxy.services.credentials import (
     OAuthToken,
 )
 from ccproxy.services.credentials.config import OAuthConfig
-from ccproxy.core.logging import get_logger
 
 
 logger = get_logger(__name__)

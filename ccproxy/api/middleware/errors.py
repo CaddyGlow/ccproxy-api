@@ -7,26 +7,24 @@ from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from ccproxy.core.errors import (
+    AuthenticationError,
+    ClaudeProxyError,
+    DockerError,
     MiddlewareError,
+    ModelNotFoundError,
+    NotFoundError,
+    PermissionError,
     ProxyAuthenticationError,
     ProxyConnectionError,
     ProxyError,
     ProxyTimeoutError,
-    TransformationError,
-)
-from ccproxy.core.logging import get_logger
-from ccproxy.core.errors import (
-    AuthenticationError,
-    ClaudeProxyError,
-    DockerError,
-    ModelNotFoundError,
-    NotFoundError,
-    PermissionError,
     RateLimitError,
     ServiceUnavailableError,
     TimeoutError,
+    TransformationError,
     ValidationError,
 )
+from ccproxy.core.logging import get_logger
 
 
 logger = get_logger(__name__)
