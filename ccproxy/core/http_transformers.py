@@ -7,6 +7,18 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
+# Claude Code system prompt constants
+claude_code_prompt = "You are Claude Code, Anthropic's official CLI for Claude."
+
+
+def get_claude_code_prompt() -> dict[str, Any]:
+    """Get the Claude Code system prompt with cache control."""
+    return {
+        "type": "text",
+        "text": claude_code_prompt,
+        "cache_control": {"type": "ephemeral"},
+    }
+
 
 class HTTPRequestTransformer:
     """Basic HTTP request transformer for proxy service."""
@@ -69,8 +81,61 @@ class HTTPRequestTransformer:
         self, body: bytes, path: str, proxy_mode: str = "full"
     ) -> bytes:
         """Transform request body."""
-        # Basic body transformation - pass through for now
-        return body
+        # Apply system prompt transformation for Claude Code identity
+        return self.transform_system_prompt(body)
+
+    def transform_system_prompt(self, body: bytes) -> bytes:
+        """Transform system prompt to ensure Claude Code identification comes first.
+
+        Args:
+            body: Original request body as bytes
+
+        Returns:
+            Transformed request body as bytes with Claude Code system prompt
+        """
+        try:
+            data = json.loads(body.decode("utf-8"))
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            # Return original if not valid JSON
+            return body
+
+        # Check if request has a system prompt
+        if "system" not in data or (
+            isinstance(data["system"], str) and data["system"] == claude_code_prompt
+        ):
+            # No system prompt, inject Claude Code identification
+            data["system"] = [get_claude_code_prompt()]
+            return json.dumps(data).encode("utf-8")
+
+        system = data["system"]
+
+        if isinstance(system, str):
+            # Handle string system prompt
+            if system == claude_code_prompt:
+                # Already correct, convert to proper array format
+                data["system"] = [get_claude_code_prompt()]
+                return json.dumps(data).encode("utf-8")
+
+            # Prepend Claude Code prompt to existing string
+            data["system"] = [
+                get_claude_code_prompt(),
+                {"type": "text", "text": system},
+            ]
+
+        elif isinstance(system, list):
+            # Handle array system prompt
+            if len(system) > 0:
+                # Check if first element has correct text
+                first = system[0]
+                if isinstance(first, dict) and first.get("text") == claude_code_prompt:
+                    # Already has Claude Code first, ensure it has cache_control
+                    data["system"][0] = get_claude_code_prompt()
+                    return json.dumps(data).encode("utf-8")
+            
+            # Prepend Claude Code prompt
+            data["system"] = [get_claude_code_prompt()] + system
+
+        return json.dumps(data).encode("utf-8")
 
 
 class HTTPResponseTransformer:
