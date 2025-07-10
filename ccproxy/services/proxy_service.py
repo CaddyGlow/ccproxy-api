@@ -9,9 +9,8 @@ from fastapi import HTTPException
 from fastapi.responses import StreamingResponse
 
 from ccproxy.core.http import BaseProxyClient, HTTPClient
+from ccproxy.core.http_transformers import HTTPRequestTransformer, HTTPResponseTransformer
 from ccproxy.services.credentials.manager import CredentialsManager
-from ccproxy.services.request_transformer import RequestTransformer
-from ccproxy.services.response_transformer import ResponseTransformer
 
 
 logger = logging.getLogger(__name__)
@@ -50,8 +49,8 @@ class ProxyService:
         self.target_base_url = target_base_url.rstrip("/")
 
         # Create concrete transformers
-        self.request_transformer = RequestTransformer()
-        self.response_transformer = ResponseTransformer()
+        self.request_transformer = HTTPRequestTransformer()
+        self.response_transformer = HTTPResponseTransformer()
 
     async def handle_request(
         self,
@@ -419,33 +418,14 @@ class ProxyService:
         Yields:
             Transformed OpenAI SSE format chunks
         """
-        from ccproxy.formatters.stream_transformer import (
-            OpenAIStreamTransformer,
-            StreamingConfig,
-        )
-
-        # Configure streaming for proxy service
-        config = StreamingConfig(
-            enable_text_chunking=False,  # Don't chunk text in proxy
-            enable_tool_calls=True,
-            enable_usage_info=True,
-            chunk_delay_ms=0,  # No artificial delays
-            chunk_size_words=1,
-        )
-
-        # Use default model name for OpenAI format
-        model = "gpt-4o"
-
-        # Create transformer
-        transformer = OpenAIStreamTransformer.from_sse_stream(
-            response,
-            model=model,
-            config=config,
-        )
-
-        # Transform and yield as bytes
-        async for chunk in transformer.transform():
-            yield chunk.encode("utf-8")
+        # Use OpenAI streaming formatter from adapters
+        from ccproxy.adapters.openai.streaming import OpenAISSEFormatter
+        
+        # Simple streaming transformation for now
+        # TODO: Implement proper stream transformation using adapters
+        async for chunk in response.aiter_bytes():
+            if chunk:
+                yield chunk
 
     async def _collect_metrics(
         self,
