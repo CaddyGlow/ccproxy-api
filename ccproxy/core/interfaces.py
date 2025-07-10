@@ -9,7 +9,7 @@ from collections.abc import AsyncIterator
 from typing import Any, Optional, Protocol, TypeVar, runtime_checkable
 
 from ccproxy.core.types import ProxyRequest, ProxyResponse, TransformContext
-from ccproxy.services.credentials.models import ClaudeCredentials
+from ccproxy.auth.models import ClaudeCredentials
 
 
 __all__ = [

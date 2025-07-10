@@ -12,7 +12,7 @@ from ccproxy.services.credentials.exceptions import (
     CredentialsInvalidError,
     CredentialsStorageError,
 )
-from ccproxy.services.credentials.models import ClaudeCredentials, OAuthToken
+from ccproxy.auth.models import ClaudeCredentials, OAuthToken
 
 
 class TestKeyringStorage:

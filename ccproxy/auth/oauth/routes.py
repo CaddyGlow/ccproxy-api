@@ -1,4 +1,4 @@
-"""OAuth authentication routes for Anthropic OAuth login login."""
+"""OAuth authentication routes for Anthropic OAuth login."""
 
 import asyncio
 import logging
@@ -12,10 +12,9 @@ from ccproxy.services.credentials import (
     ClaudeCredentials,
     CredentialsManager,
     JsonFileStorage,
-    OAuthClient,
-    OAuthConfig,
     OAuthToken,
 )
+from ccproxy.services.credentials.config import OAuthConfig
 from ccproxy.utils.logging import get_logger
 
 
