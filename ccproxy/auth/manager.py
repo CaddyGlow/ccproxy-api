@@ -3,7 +3,7 @@
 from abc import ABC, abstractmethod
 from typing import Any, Protocol
 
-from ccproxy.services.credentials.models import ClaudeCredentials, UserProfile
+from ccproxy.auth.models import ClaudeCredentials, UserProfile
 
 
 class AuthManager(Protocol):

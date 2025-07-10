@@ -22,9 +22,9 @@ except ImportError:
 from pydantic import BaseModel, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from ccproxy.config.discovery import find_toml_config_file, get_claude_cli_config_dir
 from ccproxy.core.async_utils import get_package_dir, patched_typing
 from ccproxy.services.credentials import CredentialsConfig
-from ccproxy.utils import find_toml_config_file, get_claude_cli_config_dir
 
 from .docker_settings import DockerSettings
 

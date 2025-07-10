@@ -8,13 +8,14 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse
 
-from ccproxy.core.logging import get_logger
-from ccproxy.services.credentials import (
+from ccproxy.auth.models import (
     ClaudeCredentials,
-    CredentialsManager,
-    JsonFileStorage,
     OAuthToken,
 )
+from ccproxy.auth.storage import JsonFileTokenStorage as JsonFileStorage
+from ccproxy.core.logging import get_logger
+
+# Import CredentialsManager locally to avoid circular import
 from ccproxy.services.credentials.config import OAuthConfig
 
 
@@ -289,7 +290,9 @@ async def _exchange_code_for_tokens(
 
                 credentials = ClaudeCredentials(claudeAiOauth=OAuthToken(**oauth_data))
 
-                # Save credentials using CredentialsManager
+                # Save credentials using CredentialsManager (lazy import to avoid circular import)
+                from ccproxy.services.credentials.manager import CredentialsManager
+
                 if custom_paths:
                     # Use the first custom path for storage
                     storage = JsonFileStorage(custom_paths[0])

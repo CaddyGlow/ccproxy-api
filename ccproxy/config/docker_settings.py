@@ -7,17 +7,58 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 from ccproxy import __version__
 from ccproxy.core.async_utils import format_version, get_claude_docker_home_dir
-from ccproxy.utils.docker_validation import (
-    validate_docker_volumes as validate_volumes_list,
-)
-from ccproxy.utils.docker_validation import validate_host_path
+
+
+# Docker validation functions moved here to avoid utils dependency
+
+
+def validate_host_path(path: str) -> str:
+    """Validate host path for Docker volume mounting."""
+    from pathlib import Path
+
+    if not path:
+        raise ValueError("Path cannot be empty")
+
+    # Convert to absolute path and normalize
+    abs_path = Path(path).resolve()
+    return str(abs_path)
+
+
+def validate_volumes_list(volumes: list[str]) -> list[str]:
+    """Validate Docker volumes list format."""
+    validated = []
+
+    for volume in volumes:
+        if not volume:
+            continue
+
+        # Expected format: "host_path:container_path" or "host_path:container_path:options"
+        parts = volume.split(":")
+        if len(parts) < 2:
+            raise ValueError(
+                f"Invalid volume format: {volume}. Expected 'host:container' or 'host:container:options'"
+            )
+
+        host_path = parts[0]
+        container_path = parts[1]
+
+        # Validate host path
+        validate_host_path(host_path)
+
+        # Validate container path (should be absolute)
+        if not container_path.startswith("/"):
+            raise ValueError(f"Container path must be absolute: {container_path}")
+
+        validated.append(volume)
+
+    return validated
 
 
 class DockerSettings(BaseModel):
     """Docker configuration settings for running Claude commands in containers."""
 
     docker_image: str = Field(
-        default=f"ghcr.io/caddyglow/ccproxy:{format_version(__version__, 'docker')}",
+        default=f"ghcr.io/caddyglow/ccproxy:{format_version(__version__)}",
         description="Docker image to use for Claude commands",
     )
 

@@ -260,3 +260,50 @@ async def async_cache_result(
     _cache[cache_key] = (current_time, result)
 
     return result
+
+
+def format_version(version: str) -> str:
+    """Format version string for display.
+
+    Args:
+        version: Version string to format
+
+    Returns:
+        Formatted version string
+    """
+    import re
+
+    # Clean up version string
+    version = version.strip()
+
+    # Remove 'v' prefix if present
+    if version.startswith("v"):
+        version = version[1:]
+
+    # Ensure it follows semantic versioning pattern
+    if not re.match(r"^\d+\.\d+\.\d+", version):
+        return f"1.0.0-{version}"
+
+    return version
+
+
+def get_claude_docker_home_dir() -> str:
+    """Get the Claude Docker home directory path.
+
+    Returns:
+        Path to Claude Docker home directory
+    """
+    import os
+    from pathlib import Path
+
+    # Use XDG_DATA_HOME if available, otherwise default to ~/.local/share
+    xdg_data_home = os.environ.get("XDG_DATA_HOME")
+    if xdg_data_home:
+        base_dir = Path(xdg_data_home)
+    else:
+        base_dir = Path.home() / ".local" / "share"
+
+    claude_dir = base_dir / "claude"
+    claude_dir.mkdir(parents=True, exist_ok=True)
+
+    return str(claude_dir)

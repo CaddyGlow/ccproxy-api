@@ -5,11 +5,14 @@ from pathlib import Path
 import typer
 
 from ccproxy.cli.helpers import get_rich_toolkit
-from ccproxy.core.async_utils import (
-    generate_schema_files,
-    generate_taplo_config,
-    validate_config_with_schema,
-)
+
+
+# TODO: Implement these schema utility functions
+# from ccproxy.core.async_utils import (
+#     generate_schema_files,
+#     generate_taplo_config,
+#     validate_config_with_schema,
+# )
 
 
 def config_schema(
