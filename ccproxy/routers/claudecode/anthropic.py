@@ -10,9 +10,8 @@ from pydantic import ConfigDict, Field
 
 from ccproxy.config.settings import get_settings
 from ccproxy.exceptions import ClaudeProxyError
-from ccproxy.formatters.anthropic_streaming import (
-    stream_anthropic_message_response,
-    stream_claude_response,
+from ccproxy.adapters.anthropic.streaming import (
+    AnthropicStreamingFormatter,
 )
 from ccproxy.middleware.auth import get_auth_dependency
 from ccproxy.models.errors import create_error_response
@@ -222,7 +221,9 @@ async def create_message(
                         return
 
                     # Use enhanced streaming formatter for Messages API
-                    async for chunk in stream_anthropic_message_response(
+                    from ccproxy.adapters.anthropic.streaming import AnthropicStreamProcessor
+                    processor = AnthropicStreamProcessor()
+                    async for chunk in processor.process_stream(
                         response_iter,
                         message_id,
                         request.model,

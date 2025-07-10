@@ -13,7 +13,7 @@ from starlette.status import HTTP_500_INTERNAL_SERVER_ERROR
 
 from ccproxy.config.settings import get_settings
 from ccproxy.exceptions import ClaudeProxyError
-from ccproxy.formatters.openai_streaming_formatter import stream_claude_response_openai
+from ccproxy.adapters.openai.streaming import OpenAISSEFormatter
 from ccproxy.adapters.openai import OpenAIAdapter
 from ccproxy.middleware.auth import get_auth_dependency
 from ccproxy.models.openai import (
@@ -212,7 +212,8 @@ async def create_chat_completion(
                         request.stream_options and request.stream_options.include_usage
                     )
 
-                    async for chunk in stream_claude_response_openai(
+                    formatter = OpenAISSEFormatter()
+                    async for chunk in formatter.format_claude_stream(
                         claude_stream_iter,  # type: ignore[arg-type]
                         request_id,
                         request.model,
