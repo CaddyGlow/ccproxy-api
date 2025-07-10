@@ -119,6 +119,18 @@ class DashboardManager {
             this.exportChart('costBreakdownChart');
         });
 
+        document.getElementById('tokenUsageExport').addEventListener('click', () => {
+            this.exportChart('tokenUsageChart');
+        });
+
+        document.getElementById('tokenByModelExport').addEventListener('click', () => {
+            this.exportChart('tokenByModelChart');
+        });
+
+        document.getElementById('cacheTokenExport').addEventListener('click', () => {
+            this.exportChart('cacheTokenChart');
+        });
+
         // Footer actions
         document.getElementById('resetData').addEventListener('click', () => {
             this.resetDashboard();
@@ -217,6 +229,8 @@ class DashboardManager {
                 if (data.charts) {
                     this.updateChartData(data.charts);
                 }
+                // Update last update time
+                document.getElementById('connectionText').textContent = `Last updated: ${new Date().toLocaleTimeString()}`;
                 break;
             case 'chart_data':
                 this.updateChartData(data.payload);
@@ -300,6 +314,9 @@ class DashboardManager {
         this.initApiDistributionChart();
         this.initErrorRateChart();
         this.initCostBreakdownChart();
+        this.initTokenUsageChart();
+        this.initTokenByModelChart();
+        this.initCacheTokenChart();
     }
 
     initRequestRateChart() {
@@ -549,15 +566,194 @@ class DashboardManager {
         });
     }
 
+    initTokenUsageChart() {
+        const ctx = document.getElementById('tokenUsageChart').getContext('2d');
+        this.charts.tokenUsage = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [
+                    {
+                        label: 'Input Tokens',
+                        data: [],
+                        borderColor: '#007bff',
+                        backgroundColor: 'rgba(0, 123, 255, 0.1)',
+                        fill: true,
+                        tension: 0.4
+                    },
+                    {
+                        label: 'Output Tokens',
+                        data: [],
+                        borderColor: '#28a745',
+                        backgroundColor: 'rgba(40, 167, 69, 0.1)',
+                        fill: true,
+                        tension: 0.4
+                    },
+                    {
+                        label: 'Cache Tokens',
+                        data: [],
+                        borderColor: '#ffc107',
+                        backgroundColor: 'rgba(255, 193, 7, 0.1)',
+                        fill: true,
+                        tension: 0.4
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    x: {
+                        type: 'time',
+                        time: {
+                            unit: 'minute'
+                        },
+                        title: {
+                            display: true,
+                            text: 'Time'
+                        }
+                    },
+                    y: {
+                        beginAtZero: true,
+                        title: {
+                            display: true,
+                            text: 'Tokens'
+                        }
+                    }
+                },
+                plugins: {
+                    legend: {
+                        display: true,
+                        position: 'top'
+                    }
+                },
+                animation: {
+                    duration: 300
+                }
+            }
+        });
+    }
+
+    initTokenByModelChart() {
+        const ctx = document.getElementById('tokenByModelChart').getContext('2d');
+        this.charts.tokenByModel = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: [],
+                datasets: [
+                    {
+                        label: 'Input Tokens',
+                        data: [],
+                        backgroundColor: '#007bff',
+                        stack: 'tokens'
+                    },
+                    {
+                        label: 'Output Tokens',
+                        data: [],
+                        backgroundColor: '#28a745',
+                        stack: 'tokens'
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    x: {
+                        title: {
+                            display: true,
+                            text: 'Model'
+                        }
+                    },
+                    y: {
+                        beginAtZero: true,
+                        stacked: true,
+                        title: {
+                            display: true,
+                            text: 'Tokens'
+                        }
+                    }
+                },
+                plugins: {
+                    legend: {
+                        display: true,
+                        position: 'top'
+                    }
+                },
+                animation: {
+                    duration: 300
+                }
+            }
+        });
+    }
+
+    initCacheTokenChart() {
+        const ctx = document.getElementById('cacheTokenChart').getContext('2d');
+        this.charts.cacheToken = new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+                labels: ['Cache Read', 'Cache Creation', 'No Cache'],
+                datasets: [{
+                    data: [0, 0, 0],
+                    backgroundColor: [
+                        '#28a745',
+                        '#ffc107',
+                        '#6c757d'
+                    ],
+                    borderWidth: 2
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        display: true,
+                        position: 'bottom'
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                const label = context.label || '';
+                                const value = context.parsed || 0;
+                                const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                const percentage = total > 0 ? ((value / total) * 100).toFixed(1) : 0;
+                                return `${label}: ${value.toLocaleString()} (${percentage}%)`;
+                            }
+                        }
+                    }
+                },
+                animation: {
+                    duration: 300
+                }
+            }
+        });
+    }
+
     // Data Updates
     updateMetrics(metrics) {
         this.metrics = metrics;
 
-        // Update metric cards
-        this.updateMetricCard('activeRequests', metrics.activeRequests, metrics.activeRequestsChange);
-        this.updateMetricCard('totalRequests', metrics.totalRequests, metrics.totalRequestsChange);
-        this.updateMetricCard('errorRate', `${metrics.errorRate.toFixed(1)}%`, metrics.errorRateChange);
-        this.updateMetricCard('avgResponseTime', `${metrics.avgResponseTime.toFixed(0)}ms`, metrics.avgResponseTimeChange);
+        // Update metric cards with safe defaults
+        this.updateMetricCard('activeRequests', metrics.active_requests || 0, metrics.activeRequestsChange);
+        this.updateMetricCard('totalRequests', metrics.total_requests || 0, metrics.totalRequestsChange);
+        
+        // Calculate error rate safely
+        const errorRate = metrics.total_requests > 0 ? 
+            ((metrics.total_errors || 0) / metrics.total_requests * 100) : 0;
+        this.updateMetricCard('errorRate', `${errorRate.toFixed(1)}%`, metrics.errorRateChange);
+        
+        // Handle response time safely
+        const avgResponseTime = metrics.avg_response_time || 0;
+        this.updateMetricCard('avgResponseTime', `${(avgResponseTime * 1000).toFixed(0)}ms`, metrics.avgResponseTimeChange);
+
+        // Update token metric cards
+        if (metrics.tokenUsage) {
+            this.updateMetricCard('totalTokens', this.formatNumber(metrics.tokenUsage.totalTokens), metrics.tokenUsage.totalTokensChange);
+            this.updateMetricCard('inputTokens', this.formatNumber(metrics.tokenUsage.inputTokens), metrics.tokenUsage.inputTokensChange);
+            this.updateMetricCard('outputTokens', this.formatNumber(metrics.tokenUsage.outputTokens), metrics.tokenUsage.outputTokensChange);
+            this.updateMetricCard('cacheHitRate', `${(metrics.tokenUsage.cacheHitRate || 0).toFixed(1)}%`, metrics.tokenUsage.cacheHitRateChange);
+        }
     }
 
     updateMetricCard(id, value, change) {
@@ -581,6 +777,17 @@ class DashboardManager {
                 this.updateChart(chart, chartData[chartName]);
             }
         });
+        
+        // Special handling for token charts
+        if (chartData.tokenUsageChart && this.charts.tokenUsage) {
+            this.updateChart(this.charts.tokenUsage, chartData.tokenUsageChart);
+        }
+        if (chartData.tokenByModelChart && this.charts.tokenByModel) {
+            this.updateChart(this.charts.tokenByModel, chartData.tokenByModelChart);
+        }
+        if (chartData.cacheTokenChart && this.charts.cacheToken) {
+            this.updateChart(this.charts.cacheToken, chartData.cacheTokenChart);
+        }
     }
 
     updateChart(chart, data) {
@@ -624,6 +831,17 @@ class DashboardManager {
 
         // Update chart with animation disabled for smoother updates
         chart.update('none');
+    }
+
+    // Helper Functions
+    formatNumber(num) {
+        if (num === undefined || num === null) return '-';
+        if (num >= 1000000) {
+            return (num / 1000000).toFixed(1) + 'M';
+        } else if (num >= 1000) {
+            return (num / 1000).toFixed(1) + 'K';
+        }
+        return num.toFixed(0);
     }
 
     // Export Functions

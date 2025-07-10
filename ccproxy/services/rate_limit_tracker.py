@@ -8,7 +8,7 @@ import asyncio
 import logging
 import threading
 from collections import defaultdict, deque
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any, Optional
 
 from ccproxy.config.settings import Settings
@@ -62,7 +62,7 @@ class RateLimitTracker:
         # In-memory storage with TTL
         self._data_cache: dict[str, deque[RateLimitDataPoint]] = defaultdict(deque)
         self._current_status: dict[str, RateLimitStatus] = {}
-        self._last_cleanup = datetime.now()
+        self._last_cleanup = datetime.now(UTC)
 
         # Configuration
         self._cache_ttl = self.settings.rate_limit_cache_ttl
@@ -197,7 +197,7 @@ class RateLimitTracker:
             if len(data_points) < 2:
                 return None
 
-            now = datetime.now()
+            now = datetime.now(UTC)
             cutoff_time = now - timedelta(seconds=self._prediction_window)
 
             # Filter recent data points
@@ -264,7 +264,7 @@ class RateLimitTracker:
             if not data_points:
                 return {}
 
-            now = datetime.now()
+            now = datetime.now(UTC)
             recent_points = [
                 p
                 for p in data_points
@@ -358,7 +358,7 @@ class RateLimitTracker:
 
         time_until_reset = None
         if data_point.reset_timestamp:
-            time_delta = data_point.reset_timestamp - datetime.now()
+            time_delta = data_point.reset_timestamp - datetime.now(UTC)
             time_until_reset = max(0, int(time_delta.total_seconds()))
 
         self._current_status[auth_type] = RateLimitStatus(
@@ -376,7 +376,7 @@ class RateLimitTracker:
         if auth_type not in self._usage_trends:
             self._usage_trends[auth_type] = {}
 
-        now = datetime.now()
+        now = datetime.now(UTC)
         trends = self._usage_trends[auth_type]
 
         # Calculate recent usage rate
@@ -415,7 +415,7 @@ class RateLimitTracker:
 
     def _cleanup_expired_data(self) -> None:
         """Clean up expired data points."""
-        now = datetime.now()
+        now = datetime.now(UTC)
 
         # Only cleanup periodically to avoid performance impact
         if (now - self._last_cleanup).total_seconds() < 60:

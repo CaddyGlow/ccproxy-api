@@ -8,6 +8,7 @@ from ccproxy.exceptions import (
     ServiceUnavailableError,
     TimeoutError,
 )
+from ccproxy.utils import request_context
 from ccproxy.utils.helper import patched_typing
 from ccproxy.utils.logging import get_logger
 
@@ -120,7 +121,9 @@ class ClaudeClient:
         """Get query iterator using Claude Code SDK."""
         # Ensure Claude CLI can be found even when cwd changes
         # The SDK looks for 'claude' in PATH, so we need to ensure it's available
+        import os
         import shutil
+        from pathlib import Path
 
         from ccproxy.config import get_settings
 
@@ -144,6 +147,8 @@ class ClaudeClient:
         self, prompt: str, options: ClaudeCodeOptions
     ) -> dict[str, Any]:
         """Complete a non-streaming request."""
+        from ccproxy.utils.token_extractor import extract_claude_sdk_usage
+
         messages = []
         result_message = None
 
@@ -164,8 +169,38 @@ class ClaudeClient:
 
         last_assistant_message = assistant_messages[-1]
 
+        # Extract token usage from ResultMessage
+        token_usage = extract_claude_sdk_usage(result_message)
+        
+        # Set token usage in request context for metrics collection
+        if token_usage:
+            request_context.set_token_usage(token_usage)
+            logger.debug(f"Set token usage in context (non-streaming): {token_usage}")
+
+        # Build usage dict
+        usage_dict = {
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+        }
+
+        if token_usage:
+            usage_dict = {
+                "input_tokens": token_usage.input_tokens,
+                "output_tokens": token_usage.output_tokens,
+                "total_tokens": token_usage.total_tokens,
+                # Include cache tokens if present
+                "cache_creation_input_tokens": token_usage.cache_creation_input_tokens,
+                "cache_read_input_tokens": token_usage.cache_read_input_tokens,
+            }
+            # Remove cache fields if they're zero to match Anthropic format
+            if usage_dict["cache_creation_input_tokens"] == 0:
+                del usage_dict["cache_creation_input_tokens"]
+            if usage_dict["cache_read_input_tokens"] == 0:
+                del usage_dict["cache_read_input_tokens"]
+
         # Convert to Anthropic format
-        return {
+        response = {
             "id": f"msg_{result_message.session_id}",
             "type": "message",
             "role": "assistant",
@@ -180,12 +215,14 @@ class ClaudeClient:
             "model": options.model,
             "stop_reason": "end_turn",
             "stop_sequence": None,
-            "usage": {
-                "input_tokens": 0,  # Claude Code SDK doesn't provide token counts
-                "output_tokens": 0,
-                "total_tokens": 0,
-            },
+            "usage": usage_dict,
         }
+
+        # Add cost metadata if available
+        if token_usage and token_usage.total_cost_usd is not None:
+            response["_metadata"] = {"total_cost_usd": token_usage.total_cost_usd}
+
+        return response
 
     async def _stream_completion(
         self, prompt: str, options: ClaudeCodeOptions
@@ -193,8 +230,11 @@ class ClaudeClient:
         """Stream completion responses."""
         import asyncio
 
+        from ccproxy.utils.token_extractor import extract_claude_sdk_usage
+
         first_chunk = True
         query_iterator = None
+        result_message = None
 
         try:
             query_iterator = self._get_query_iterator(prompt, options)
@@ -237,12 +277,49 @@ class ClaudeClient:
                         }
 
                 elif isinstance(message, ResultMessage):
-                    # Send final chunk
-                    yield {
+                    result_message = message
+
+                    # Extract token usage from ResultMessage
+                    token_usage = extract_claude_sdk_usage(result_message)
+                    
+                    # Set token usage in request context for metrics collection
+                    if token_usage:
+                        request_context.set_token_usage(token_usage)
+                        request_context.set_streaming(True)
+                        logger.debug(f"Set token usage in context (streaming): {token_usage}")
+
+                    # Build usage dict for final chunk
+                    usage_dict = {"output_tokens": 0}
+                    if token_usage:
+                        usage_dict = {
+                            "input_tokens": token_usage.input_tokens,
+                            "output_tokens": token_usage.output_tokens,
+                            "total_tokens": token_usage.total_tokens,
+                        }
+                        # Include cache tokens if present
+                        if token_usage.cache_creation_input_tokens > 0:
+                            usage_dict["cache_creation_input_tokens"] = (
+                                token_usage.cache_creation_input_tokens
+                            )
+                        if token_usage.cache_read_input_tokens > 0:
+                            usage_dict["cache_read_input_tokens"] = (
+                                token_usage.cache_read_input_tokens
+                            )
+
+                    # Send final chunk with usage data
+                    final_chunk = {
                         "type": "message_delta",
                         "delta": {"stop_reason": "end_turn"},
-                        "usage": {"output_tokens": 0},
+                        "usage": usage_dict,
                     }
+
+                    # Add cost metadata if available
+                    if token_usage and token_usage.total_cost_usd is not None:
+                        final_chunk["_metadata"] = {
+                            "total_cost_usd": token_usage.total_cost_usd
+                        }
+
+                    yield final_chunk
                     break
 
         except asyncio.CancelledError:

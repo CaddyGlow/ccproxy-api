@@ -13,8 +13,10 @@ from fastapi.responses import StreamingResponse
 from ccproxy.services.credentials import CredentialsManager
 from ccproxy.services.request_transformer import RequestTransformer
 from ccproxy.services.response_transformer import ResponseTransformer
+from ccproxy.utils import request_context
 from ccproxy.utils.logging import get_logger
 from ccproxy.utils.openai import is_openai_request
+from ccproxy.utils.token_extractor import TokenUsageAccumulator, extract_anthropic_usage
 
 
 logger = get_logger(__name__)
@@ -252,6 +254,23 @@ class ReverseProxyService:
                 dict(response.headers), path, len(response_body), self.proxy_mode
             )
 
+            # Extract token usage from response for metrics
+            try:
+                import json
+
+                response_json = json.loads(response.content)
+                token_usage = extract_anthropic_usage(response_json)
+                if token_usage:
+                    request_context.set_token_usage(token_usage)
+                    logger.debug(f"Extracted token usage: {token_usage}")
+            except Exception as e:
+                logger.debug(f"Could not extract token usage from response: {e}")
+
+            # Preserve rate limit headers from Anthropic API
+            response_headers = self._preserve_rate_limit_headers(
+                dict(response.headers), response_headers
+            )
+
             return response.status_code, response_headers, response_body
 
         except httpx.TimeoutException as e:
@@ -301,7 +320,12 @@ class ReverseProxyService:
             StreamingResponse
         """
 
+        # Capture response headers for rate limit preservation
+        captured_headers = {}
+
         async def stream_generator() -> AsyncGenerator[bytes, None]:
+            nonlocal captured_headers
+            token_accumulator = TokenUsageAccumulator()
             try:
                 proxy_url = self._get_proxy_url()
                 verify = self._get_ssl_context()
@@ -317,6 +341,9 @@ class ReverseProxyService:
                         params=params,
                     ) as response,
                 ):
+                    # Capture response headers for rate limit preservation
+                    captured_headers = dict(response.headers)
+
                     # Check for errors
                     if response.status_code >= 400:
                         error_content = await response.aread()
@@ -348,25 +375,61 @@ class ReverseProxyService:
                             yield transformed_chunk
                     else:
                         # Stream the response as-is for Anthropic endpoints
+                        # But extract token usage from SSE events
                         async for chunk in response.aiter_bytes():
                             if chunk:
                                 yield chunk
+                                # Try to extract usage from SSE chunk
+                                try:
+                                    chunk_str = chunk.decode("utf-8")
+                                    if "data:" in chunk_str and "usage" in chunk_str:
+                                        # Parse SSE event
+                                        for line in chunk_str.split("\n"):
+                                            if line.startswith("data:"):
+                                                event_data = line[5:].strip()
+                                                if (
+                                                    event_data
+                                                    and event_data != "[DONE]"
+                                                ):
+                                                    import json
+
+                                                    event = json.loads(event_data)
+                                                    token_accumulator.add_event(event)
+                                except Exception:
+                                    pass  # Ignore parsing errors in streaming
 
             except Exception as e:
                 logger.exception("Error in streaming response")
                 error_message = f'data: {{"error": "Streaming error: {str(e)}"}}\n\n'
                 yield error_message.encode("utf-8")
+            finally:
+                # Set accumulated token usage in context
+                final_usage = token_accumulator.get_usage()
+                if final_usage:
+                    request_context.set_token_usage(final_usage)
+                    request_context.set_streaming(True)
+                    logger.debug(f"Accumulated streaming token usage: {final_usage}")
 
-        return StreamingResponse(
+        # Build streaming response headers
+        streaming_headers = {
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Headers": "*",
+        }
+
+        # Create streaming response
+        streaming_response = StreamingResponse(
             stream_generator(),
             media_type="text/event-stream",
-            headers={
-                "Cache-Control": "no-cache",
-                "Connection": "keep-alive",
-                "Access-Control-Allow-Origin": "*",
-                "Access-Control-Allow-Headers": "*",
-            },
+            headers=streaming_headers,
         )
+
+        # Note: Rate limit headers will be preserved when they become available
+        # during streaming. FastAPI StreamingResponse doesn't support dynamic
+        # header updates, but the middleware will capture them for tracking.
+
+        return streaming_response
 
     async def _transform_anthropic_to_openai_stream(
         self, response: httpx.Response, original_path: str
@@ -410,5 +473,83 @@ class ReverseProxyService:
         )
 
         # Transform and yield as bytes
+        token_accumulator = TokenUsageAccumulator()
         async for chunk in transformer.transform():
             yield chunk.encode("utf-8")
+            # Try to extract usage from transformed chunk
+            try:
+                chunk_str = chunk
+                if "data:" in chunk_str and "usage" in chunk_str:
+                    # Parse SSE event
+                    for line in chunk_str.split("\n"):
+                        if line.startswith("data:"):
+                            event_data = line[5:].strip()
+                            if event_data and event_data != "[DONE]":
+                                import json
+
+                                event = json.loads(event_data)
+                                if "usage" in event:
+                                    # OpenAI format usage
+                                    from ccproxy.utils.token_extractor import (
+                                        extract_openai_usage,
+                                    )
+
+                                    usage = extract_openai_usage(event)
+                                    if usage:
+                                        token_accumulator.add_usage(usage)
+            except Exception:
+                pass  # Ignore parsing errors
+
+        # Set accumulated token usage in context
+        final_usage = token_accumulator.get_usage()
+        if final_usage:
+            request_context.set_token_usage(final_usage)
+            request_context.set_streaming(True)
+            logger.debug(f"Accumulated OpenAI streaming token usage: {final_usage}")
+
+    def _preserve_rate_limit_headers(
+        self, anthropic_headers: dict[str, str], transformed_headers: dict[str, str]
+    ) -> dict[str, str]:
+        """Preserve rate limit headers from Anthropic API response.
+
+        This method ensures that all rate limit headers from Anthropic's API
+        are preserved in the proxy response, enabling clients to track their
+        rate limit usage for both API key and OAuth authentication scenarios.
+
+        Args:
+            anthropic_headers: Original headers from Anthropic API
+            transformed_headers: Headers after transformation
+
+        Returns:
+            Updated headers dict with preserved rate limit headers
+        """
+        # Define all rate limit headers to preserve
+        rate_limit_headers = {
+            # Standard API key rate limit headers
+            "x-ratelimit-limit-requests",
+            "x-ratelimit-remaining-requests",
+            "x-ratelimit-limit-tokens",
+            "x-ratelimit-remaining-tokens",
+            "x-ratelimit-reset-requests",
+            "x-ratelimit-reset-tokens",
+            "retry-after",
+            # OAuth unified rate limit headers
+            "anthropic-ratelimit-unified-status",
+            "anthropic-ratelimit-unified-representative-claim",
+            "anthropic-ratelimit-unified-fallback-percentage",
+            "anthropic-ratelimit-unified-reset",
+        }
+
+        # Preserve rate limit headers (case-insensitive matching)
+        for header_name, header_value in anthropic_headers.items():
+            header_lower = header_name.lower()
+
+            # Check if this is a rate limit header
+            if header_lower in rate_limit_headers:
+                # Preserve original case for the header name
+                transformed_headers[header_name] = header_value
+                logger.debug(
+                    f"Preserved rate limit header: {header_name}: {header_value}"
+                )
+
+        return transformed_headers

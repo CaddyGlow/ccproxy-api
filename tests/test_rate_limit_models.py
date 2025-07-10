@@ -224,7 +224,7 @@ class TestRateLimitData:
 
         with pytest.raises(ValidationError):
             RateLimitData(
-                auth_type="invalid_type",
+                auth_type="invalid_type",  # type: ignore
                 timestamp=timestamp,
             )
 

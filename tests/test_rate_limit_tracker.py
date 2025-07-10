@@ -349,7 +349,7 @@ class TestRateLimitTracker:
         for auth_type in ["api_key", "oauth"]:
             if auth_type == "api_key":
                 data = RateLimitData(
-                    auth_type=auth_type,
+                    auth_type=auth_type,  # type: ignore
                     standard=StandardRateLimit(
                         requests_limit=1000, requests_remaining=500
                     ),
@@ -357,7 +357,7 @@ class TestRateLimitTracker:
                 )
             else:
                 data = RateLimitData(
-                    auth_type=auth_type,
+                    auth_type=auth_type,  # type: ignore
                     oauth_unified=OAuthUnifiedRateLimit(fallback_percentage=50.0),
                     timestamp=timestamp,
                 )

@@ -4,7 +4,7 @@ import asyncio
 import logging
 import time
 from collections.abc import Awaitable, Callable
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import Request, Response
@@ -12,14 +12,21 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import StreamingResponse
 
 from ccproxy.metrics.collector import categorize_user_agent, get_metrics_collector
-from ccproxy.metrics.models import ErrorMetrics, HTTPMetrics, UserAgentCategory
+from ccproxy.metrics.models import (
+    ErrorMetrics,
+    HTTPMetrics,
+    ModelMetrics,
+    UserAgentCategory,
+)
 from ccproxy.models.rate_limit import (
     OAuthUnifiedRateLimit,
     RateLimitData,
     StandardRateLimit,
 )
 from ccproxy.services.rate_limit_tracker import get_rate_limit_tracker
+from ccproxy.utils import request_context
 from ccproxy.utils.rate_limit_extractor import extract_rate_limit_headers
+from ccproxy.utils.token_extractor import TokenUsage
 
 
 logger = logging.getLogger(__name__)
@@ -68,6 +75,13 @@ class MetricsMiddleware(BaseHTTPMiddleware):
 
         # Calculate request size
         request_size = await self._calculate_request_size(request)
+
+        # Extract model from request if applicable
+        model_name = await self._extract_model_from_request(request)
+        if model_name:
+            request_context.set_model(model_name)
+        request_context.set_endpoint(endpoint)
+        request_context.set_streaming(False)  # Will be updated if streaming detected
 
         # Increment active requests
         self.metrics_collector.increment_active_requests(api_type)
@@ -156,15 +170,69 @@ class MetricsMiddleware(BaseHTTPMiddleware):
 
             self.metrics_collector.record_http_request(http_metrics)
 
-            # Store metrics in database if available
-            if (
-                hasattr(request.app.state, "metrics_storage")
-                and request.app.state.metrics_storage
-            ):
-                try:
-                    request.app.state.metrics_storage.store_request_log(http_metrics)
-                except Exception as e:
-                    logger.warning(f"Failed to store HTTP metrics: {e}")
+            # Extract and record model usage if available
+            token_usage = request_context.get_token_usage()
+            model_name = request_context.get_model()
+            
+            # Debug logging
+            logger.debug(f"Token extraction - Model: {model_name}, Token usage: {token_usage}")
+
+            if token_usage and model_name and status_code < 400:
+                # Calculate cost if not already provided
+                estimated_cost = token_usage.total_cost_usd
+                if estimated_cost is None:
+                    from ccproxy.metrics.calculator import get_cost_calculator
+
+                    cost_calculator = get_cost_calculator()
+                    estimated_cost = cost_calculator.calculate_cost(
+                        model=model_name,
+                        input_tokens=token_usage.input_tokens,
+                        output_tokens=token_usage.output_tokens,
+                        cache_creation_tokens=token_usage.cache_creation_input_tokens,
+                        cache_read_tokens=token_usage.cache_read_input_tokens,
+                    )
+
+                # Create and record model metrics
+                model_metrics = ModelMetrics(
+                    model=model_name,
+                    api_type=api_type,
+                    endpoint=endpoint,
+                    streaming=request_context.is_streaming(),
+                    input_tokens=token_usage.input_tokens,
+                    output_tokens=token_usage.output_tokens,
+                    cache_creation_input_tokens=token_usage.cache_creation_input_tokens,
+                    cache_read_input_tokens=token_usage.cache_read_input_tokens,
+                    estimated_cost=estimated_cost,
+                )
+
+                self.metrics_collector.record_model_usage(model_metrics)
+
+                # Store in database along with HTTP metrics
+                if (
+                    hasattr(request.app.state, "metrics_storage")
+                    and request.app.state.metrics_storage
+                ):
+                    try:
+                        request.app.state.metrics_storage.store_request_log(
+                            http_metrics, model_metrics
+                        )
+                    except Exception as e:
+                        logger.warning(f"Failed to store model metrics: {e}")
+            else:
+                # Store only HTTP metrics if no model usage
+                if (
+                    hasattr(request.app.state, "metrics_storage")
+                    and request.app.state.metrics_storage
+                ):
+                    try:
+                        request.app.state.metrics_storage.store_request_log(
+                            http_metrics
+                        )
+                    except Exception as e:
+                        logger.warning(f"Failed to store HTTP metrics: {e}")
+
+            # Clear request context
+            request_context.clear_context()
 
         # This should never happen in practice since FastAPI middleware guarantees a response
         # The type checker doesn't understand that call_next always returns a response
@@ -334,10 +402,24 @@ class MetricsMiddleware(BaseHTTPMiddleware):
             oauth_unified_data = None
 
             if auth_type == "api_key" and rate_limit_info["standard"]:
-                standard_data = StandardRateLimit(**rate_limit_info["standard"])
+                # Map the fields from extractor to model fields
+                std_info = rate_limit_info["standard"]
+                standard_data = StandardRateLimit(
+                    requests_limit=std_info.get("limit"),
+                    requests_remaining=std_info.get("remaining"),
+                    tokens_limit=None,  # Not provided in headers
+                    tokens_remaining=None,  # Not provided in headers
+                    reset_timestamp=std_info.get("reset"),
+                    retry_after_seconds=std_info.get("retry_after")
+                )
             elif auth_type == "oauth" and rate_limit_info["oauth_unified"]:
+                # Map the fields from extractor to model fields
+                oauth_info = rate_limit_info["oauth_unified"]
                 oauth_unified_data = OAuthUnifiedRateLimit(
-                    **rate_limit_info["oauth_unified"]
+                    status=oauth_info.get("status"),
+                    representative_claim=oauth_info.get("representative_claim"),
+                    fallback_percentage=oauth_info.get("fallback_percentage"),
+                    reset_timestamp=oauth_info.get("reset")
                 )
 
             # Create RateLimitData object
@@ -345,7 +427,7 @@ class MetricsMiddleware(BaseHTTPMiddleware):
                 auth_type=auth_type,
                 standard=standard_data,
                 oauth_unified=oauth_unified_data,
-                timestamp=datetime.utcnow(),
+                timestamp=datetime.now(UTC),
             )
 
             logger.debug(f"Extracted rate limit data: auth_type={auth_type}")
@@ -384,12 +466,12 @@ class MetricsMiddleware(BaseHTTPMiddleware):
             if rate_limit_data.oauth_unified:
                 oauth = rate_limit_data.oauth_unified
                 http_metrics.oauth_unified_status = oauth.status
-                http_metrics.oauth_unified_claim = oauth.claim
+                http_metrics.oauth_unified_claim = oauth.representative_claim
                 http_metrics.oauth_unified_fallback_percentage = (
                     oauth.fallback_percentage
                 )
                 http_metrics.oauth_unified_reset = (
-                    oauth.reset_time.isoformat() if oauth.reset_time else None
+                    oauth.reset_timestamp.isoformat() if oauth.reset_timestamp else None
                 )
 
             logger.debug(
@@ -413,3 +495,43 @@ class MetricsMiddleware(BaseHTTPMiddleware):
             )
         except Exception as exc:
             logger.warning(f"Failed to track rate limit usage: {exc}")
+
+    async def _extract_model_from_request(self, request: Request) -> str | None:
+        """Extract model name from request body.
+
+        Args:
+            request: HTTP request
+
+        Returns:
+            Model name if found, None otherwise
+        """
+        try:
+            # Only process POST requests with JSON bodies
+            if (
+                request.method != "POST"
+                or request.headers.get("content-type") != "application/json"
+            ):
+                return None
+
+            # Get request body
+            body = await request.body()
+            if not body:
+                return None
+
+            # Parse JSON
+            import json
+
+            data = json.loads(body)
+
+            # Extract model based on API type
+            path = request.url.path
+            if "/openai/" in path:
+                # OpenAI format
+                return data.get("model")
+            else:
+                # Anthropic format
+                return data.get("model")
+
+        except Exception as e:
+            logger.debug(f"Failed to extract model from request: {e}")
+            return None

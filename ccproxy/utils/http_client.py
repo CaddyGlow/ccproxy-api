@@ -3,9 +3,11 @@
 import asyncio
 import ssl
 import time
+from abc import ABC, abstractmethod
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any, AsyncGenerator, Optional
+from typing import Any, Generic, Optional, TypeVar
 from urllib.parse import urlparse
 
 import httpx
@@ -14,7 +16,12 @@ from pydantic import BaseModel, Field
 from ccproxy.config import get_settings
 from ccproxy.utils.logging import get_logger
 
+
 logger = get_logger(__name__)
+
+
+# Type variable for middleware return types
+T = TypeVar("T")
 
 
 class HttpMetrics(BaseModel):
@@ -26,7 +33,7 @@ class HttpMetrics(BaseModel):
     duration_ms: float = Field(description="Request duration in milliseconds")
     request_size: int = Field(description="Request body size in bytes", default=0)
     response_size: int = Field(description="Response body size in bytes", default=0)
-    error: Optional[str] = Field(
+    error: str | None = Field(
         description="Error message if request failed", default=None
     )
     host: str = Field(description="Request host")
@@ -37,9 +44,9 @@ class HttpMetrics(BaseModel):
     def from_request(
         cls,
         request: httpx.Request,
-        response: Optional[httpx.Response] = None,
+        response: httpx.Response | None = None,
         duration_ms: float = 0,
-        error: Optional[str] = None,
+        error: str | None = None,
     ) -> "HttpMetrics":
         """Create metrics from httpx request and response objects."""
         parsed_url = urlparse(str(request.url))
@@ -74,21 +81,23 @@ class HttpMetrics(BaseModel):
 class HttpClientConfig(BaseModel):
     """HTTP client configuration."""
 
+    model_config = {"arbitrary_types_allowed": True}
+
     # Proxy settings
-    proxy_url: Optional[str] = Field(default=None, description="HTTP/HTTPS proxy URL")
-    proxy_auth: Optional[tuple[str, str]] = Field(
+    proxy_url: str | None = Field(default=None, description="HTTP/HTTPS proxy URL")
+    proxy_auth: tuple[str, str] | None = Field(
         default=None, description="Proxy authentication (username, password)"
     )
 
     # SSL/TLS settings
     ssl_verify: bool = Field(default=True, description="Enable SSL verification")
-    ssl_ca_bundle: Optional[str] = Field(
+    ssl_ca_bundle: str | None = Field(
         default=None, description="Path to CA bundle file"
     )
-    ssl_client_cert: Optional[str] = Field(
+    ssl_client_cert: str | None = Field(
         default=None, description="Path to client certificate file"
     )
-    ssl_client_key: Optional[str] = Field(
+    ssl_client_key: str | None = Field(
         default=None, description="Path to client key file"
     )
 
@@ -112,19 +121,164 @@ class HttpClientConfig(BaseModel):
 
     # Metrics settings
     collect_metrics: bool = Field(default=True, description="Enable metrics collection")
-    metrics_callback: Optional[Any] = Field(
+    metrics_callback: Any | None = Field(
         default=None, description="Metrics callback function"
     )
+
+    # Middleware settings
+    middleware: list["HttpMiddleware[Any]"] = Field(
+        default_factory=list,
+        description="List of middleware to apply to requests",
+        exclude=True,  # Exclude from serialization
+    )
+
+
+class HttpMiddleware(ABC, Generic[T]):
+    """Base class for HTTP request/response middleware.
+
+    Middleware can intercept and process HTTP requests before they are sent
+    and responses after they are received. This allows for features like
+    authentication, retry logic, logging, and more.
+
+    Type parameter T represents the return type of the process methods,
+    allowing middleware to transform requests/responses if needed.
+    """
+
+    @abstractmethod
+    async def process_request(self, request: httpx.Request) -> httpx.Request:
+        """Process an HTTP request before it is sent.
+
+        Args:
+            request: The HTTP request to process
+
+        Returns:
+            The processed request (can be modified or a new instance)
+        """
+        raise NotImplementedError()
+
+    @abstractmethod
+    async def process_response(
+        self, response: httpx.Response, request: httpx.Request
+    ) -> httpx.Response:
+        """Process an HTTP response after it is received.
+
+        Args:
+            response: The HTTP response to process
+            request: The original HTTP request
+
+        Returns:
+            The processed response (can be modified or a new instance)
+        """
+        raise NotImplementedError()
+
+    async def process_error(
+        self, error: Exception, request: httpx.Request
+    ) -> Exception:
+        """Process an error that occurred during the request.
+
+        Args:
+            error: The exception that occurred
+            request: The original HTTP request
+
+        Returns:
+            The processed error (can be modified or a new instance)
+        """
+        # Default implementation just returns the error unchanged
+        return error
+
+
+class ChainedHttpMiddleware(HttpMiddleware[T]):
+    """Middleware that chains multiple middleware components together.
+
+    Processes requests and responses through a sequence of middleware components.
+    For requests, middleware is applied in order (first to last).
+    For responses, middleware is applied in reverse order (last to first).
+    For errors, middleware is applied in reverse order (last to first).
+    """
+
+    def __init__(self, middleware_chain: list[HttpMiddleware[Any]]) -> None:
+        """Initialize chained middleware.
+
+        Args:
+            middleware_chain: List of middleware components to chain together.
+
+        Raises:
+            ValueError: If middleware_chain is empty
+        """
+        if not middleware_chain:
+            raise ValueError("Middleware chain cannot be empty")
+
+        self.middleware_chain = middleware_chain
+
+    async def process_request(self, request: httpx.Request) -> httpx.Request:
+        """Process request through the middleware chain.
+
+        Args:
+            request: The HTTP request to process
+
+        Returns:
+            The processed request after passing through all middleware
+        """
+        current_request = request
+
+        # Process through each middleware in order
+        for middleware in self.middleware_chain:
+            current_request = await middleware.process_request(current_request)
+
+        return current_request
+
+    async def process_response(
+        self, response: httpx.Response, request: httpx.Request
+    ) -> httpx.Response:
+        """Process response through the middleware chain.
+
+        Args:
+            response: The HTTP response to process
+            request: The original HTTP request
+
+        Returns:
+            The processed response after passing through all middleware
+        """
+        current_response = response
+
+        # Process through each middleware in reverse order
+        for middleware in reversed(self.middleware_chain):
+            current_response = await middleware.process_response(
+                current_response, request
+            )
+
+        return current_response
+
+    async def process_error(
+        self, error: Exception, request: httpx.Request
+    ) -> Exception:
+        """Process error through the middleware chain.
+
+        Args:
+            error: The exception that occurred
+            request: The original HTTP request
+
+        Returns:
+            The processed error after passing through all middleware
+        """
+        current_error = error
+
+        # Process through each middleware in reverse order
+        for middleware in reversed(self.middleware_chain):
+            current_error = await middleware.process_error(current_error, request)
+
+        return current_error
 
 
 class InstrumentedHttpClient:
     """HTTP client with integrated metrics and configuration."""
 
-    def __init__(self, config: Optional[HttpClientConfig] = None):
+    def __init__(self, config: HttpClientConfig | None = None):
         """Initialize the HTTP client with configuration."""
         self.config = config or HttpClientConfig()
-        self._client: Optional[httpx.AsyncClient] = None
+        self._client: httpx.AsyncClient | None = None
         self._metrics: list[HttpMetrics] = []
+        self._middleware: HttpMiddleware[Any] | None = self._setup_middleware()
 
     def _create_ssl_context(self) -> ssl.SSLContext | bool:
         """Create SSL context from configuration."""
@@ -160,6 +314,20 @@ class InstrumentedHttpClient:
                 )
 
         return context
+
+    def _setup_middleware(self) -> HttpMiddleware[Any] | None:
+        """Set up middleware chain from configuration.
+
+        Returns:
+            Chained middleware or None if no middleware configured
+        """
+        if not self.config.middleware:
+            return None
+
+        if len(self.config.middleware) == 1:
+            return self.config.middleware[0]
+
+        return ChainedHttpMiddleware(self.config.middleware)
 
     def _create_client(self) -> httpx.AsyncClient:
         """Create configured httpx client."""
@@ -220,8 +388,8 @@ class InstrumentedHttpClient:
 
         # Integrate with existing metrics system
         try:
-            from ccproxy.metrics.sync_storage import get_sync_metrics_storage
             from ccproxy.metrics.database import RequestLog
+            from ccproxy.metrics.sync_storage import get_sync_metrics_storage
 
             settings = get_settings()
             if hasattr(settings, "metrics_enabled") and settings.metrics_enabled:
@@ -267,19 +435,19 @@ class InstrumentedHttpClient:
         method: str,
         url: str,
         *,
-        params: Optional[dict[str, Any]] = None,
-        headers: Optional[dict[str, str]] = None,
-        data: Optional[Any] = None,
-        json: Optional[Any] = None,
-        files: Optional[dict[str, Any]] = None,
-        timeout: Optional[float] = None,
+        params: dict[str, Any] | None = None,
+        headers: dict[str, str] | None = None,
+        data: Any | None = None,
+        json: Any | None = None,
+        files: dict[str, Any] | None = None,
+        timeout: float | None = None,
         **kwargs: Any,
     ) -> httpx.Response:
         """Make an HTTP request with metrics collection."""
         start_time = time.time()
-        request: Optional[httpx.Request] = None
-        response: Optional[httpx.Response] = None
-        error: Optional[str] = None
+        request: httpx.Request | None = None
+        response: httpx.Response | None = None
+        error: str | None = None
 
         try:
             async with self._client_context() as client:
@@ -296,6 +464,10 @@ class InstrumentedHttpClient:
                     **kwargs,
                 )
 
+                # Apply request middleware
+                if self._middleware:
+                    request = await self._middleware.process_request(request)
+
                 # Make request with retries
                 for attempt in range(self.config.max_retries + 1):
                     try:
@@ -303,13 +475,22 @@ class InstrumentedHttpClient:
                         break
                     except Exception as e:
                         if attempt == self.config.max_retries:
-                            raise
+                            # Apply error middleware before re-raising
+                            if self._middleware:
+                                e = await self._middleware.process_error(e, request)
+                            raise e
 
                         wait_time = self.config.retry_backoff * (2**attempt)
                         logger.debug(
                             f"Request failed (attempt {attempt + 1}), retrying in {wait_time}s: {e}"
                         )
                         await asyncio.sleep(wait_time)
+
+                # Apply response middleware
+                if response and self._middleware:
+                    response = await self._middleware.process_response(
+                        response, request
+                    )
 
                 # Check for HTTP errors
                 if response:
@@ -379,30 +560,81 @@ class InstrumentedHttpClient:
             await self._client.aclose()
             self._client = None
 
+    def add_middleware(self, middleware: HttpMiddleware[Any]) -> None:
+        """Add middleware to the client.
+
+        Args:
+            middleware: Middleware to add to the chain
+        """
+        self.config.middleware.append(middleware)
+        self._middleware = self._setup_middleware()
+
+    def remove_middleware(self, middleware: HttpMiddleware[Any]) -> None:
+        """Remove middleware from the client.
+
+        Args:
+            middleware: Middleware to remove from the chain
+        """
+        if middleware in self.config.middleware:
+            self.config.middleware.remove(middleware)
+            self._middleware = self._setup_middleware()
+
 
 # Factory function for easy creation
 def create_http_client(
-    proxy_url: Optional[str] = None,
+    proxy_url: str | None = None,
     ssl_verify: bool = True,
-    ssl_ca_bundle: Optional[str] = None,
+    ssl_ca_bundle: str | None = None,
     timeout: float = 30.0,
     collect_metrics: bool = True,
+    middleware: list[HttpMiddleware[Any]] | None = None,
     **kwargs: Any,
 ) -> InstrumentedHttpClient:
-    """Create a configured HTTP client."""
+    """Create a configured HTTP client.
+
+    Args:
+        proxy_url: HTTP/HTTPS proxy URL
+        ssl_verify: Enable SSL verification
+        ssl_ca_bundle: Path to CA bundle file
+        timeout: Request timeout in seconds
+        collect_metrics: Enable metrics collection
+        middleware: List of middleware to apply to requests
+        **kwargs: Additional configuration options
+
+    Returns:
+        Configured InstrumentedHttpClient instance
+    """
     config = HttpClientConfig(
         proxy_url=proxy_url,
         ssl_verify=ssl_verify,
         ssl_ca_bundle=ssl_ca_bundle,
         timeout=timeout,
         collect_metrics=collect_metrics,
+        middleware=middleware or [],
         **kwargs,
     )
     return InstrumentedHttpClient(config)
 
 
+def create_chained_middleware(
+    middleware_chain: list[HttpMiddleware[Any]],
+) -> ChainedHttpMiddleware[Any]:
+    """Factory function to create chained middleware.
+
+    Args:
+        middleware_chain: List of middleware components to chain together
+
+    Returns:
+        ChainedHttpMiddleware instance
+
+    Raises:
+        ValueError: If middleware_chain is empty
+    """
+    return ChainedHttpMiddleware(middleware_chain)
+
+
 # Global client instance for convenience
-_global_client: Optional[InstrumentedHttpClient] = None
+_global_client: InstrumentedHttpClient | None = None
 
 
 async def get_global_client() -> InstrumentedHttpClient:

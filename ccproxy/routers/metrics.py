@@ -209,44 +209,6 @@ def get_time_series_data(
     ]
 
 
-def generate_mock_time_series_data(
-    metric_name: str, duration_minutes: int = 60
-) -> list[tuple[datetime, float]]:
-    """Generate realistic mock time series data for demonstration purposes."""
-    import math
-    import random
-
-    current_time = datetime.utcnow()
-    mock_data = []
-
-    # Generate data points every 5 minutes
-    for i in range(duration_minutes // 5):
-        timestamp = current_time - timedelta(minutes=(duration_minutes - i * 5))
-
-        # Generate realistic values based on metric type
-        if metric_name == "request_rate":
-            # Simulate varying request rates with some randomness
-            base_rate = 2.0 + 3.0 * math.sin(i * 0.2) + random.uniform(-0.5, 0.5)
-            value = max(0.0, base_rate)
-        elif metric_name == "response_time":
-            # Simulate response times in ms (100-500ms range)
-            base_time = 250 + 150 * math.sin(i * 0.15) + random.uniform(-50, 50)
-            value = max(50.0, base_time)
-        elif metric_name == "error_rate":
-            # Simulate low error rates (0-5%)
-            base_error = 1.0 + 2.0 * math.sin(i * 0.1) + random.uniform(-0.5, 0.5)
-            value = max(0.0, min(5.0, base_error))
-        elif metric_name == "active_requests":
-            # Simulate active requests (0-10)
-            base_active = 3 + 4 * math.sin(i * 0.3) + random.uniform(-1, 1)
-            value = max(0.0, int(base_active))
-        else:
-            # Default fallback
-            value = random.uniform(0.1, 1.0)
-
-        mock_data.append((timestamp, value))
-
-    return mock_data
 
 
 def convert_metrics_to_chart_data(metrics_data: dict[str, Any]) -> dict[str, Any]:
@@ -278,18 +240,10 @@ def convert_metrics_to_chart_data(metrics_data: dict[str, Any]) -> dict[str, Any
         time_labels.append(time_point.strftime("%H:%M"))
         time_points.append(time_point)
 
-    # Get historical data for charts with fallback to mock data
-    request_rate_history = get_time_series_data("request_rate", 60)
-    if not request_rate_history:
-        request_rate_history = generate_mock_time_series_data("request_rate", 60)
-
-    response_time_history = get_time_series_data("response_time", 60)
-    if not response_time_history:
-        response_time_history = generate_mock_time_series_data("response_time", 60)
-
-    error_rate_history = get_time_series_data("error_rate", 60)
-    if not error_rate_history:
-        error_rate_history = generate_mock_time_series_data("error_rate", 60)
+    # Get historical data for charts (no mock data)
+    request_rate_history = get_time_series_data("request_rate", 60) or []
+    response_time_history = get_time_series_data("response_time", 60) or []
+    error_rate_history = get_time_series_data("error_rate", 60) or []
 
     # Fill in data points for each time label with better interpolation
     def fill_time_series(
@@ -435,18 +389,91 @@ def convert_metrics_to_chart_data(metrics_data: dict[str, Any]) -> dict[str, Any
         ],
     }
 
+    # Token usage over time chart
+    token_usage_data = {
+        "labels": time_labels,
+        "datasets": [
+            {
+                "label": "Input Tokens",
+                "data": [metrics_data.get("tokenUsage", {}).get("inputTokens", 0)] * len(time_labels),
+                "borderColor": "#007bff",
+                "backgroundColor": "rgba(0, 123, 255, 0.1)",
+                "fill": True,
+                "spanGaps": True,
+            },
+            {
+                "label": "Output Tokens",
+                "data": [metrics_data.get("tokenUsage", {}).get("outputTokens", 0)] * len(time_labels),
+                "borderColor": "#28a745",
+                "backgroundColor": "rgba(40, 167, 69, 0.1)",
+                "fill": True,
+                "spanGaps": True,
+            },
+            {
+                "label": "Cache Tokens",
+                "data": [(metrics_data.get("tokenUsage", {}).get("cacheReadTokens", 0) + 
+                         metrics_data.get("tokenUsage", {}).get("cacheCreationTokens", 0))] * len(time_labels),
+                "borderColor": "#ffc107",
+                "backgroundColor": "rgba(255, 193, 7, 0.1)",
+                "fill": True,
+                "spanGaps": True,
+            }
+        ],
+    }
+
+    # Token usage by model chart
+    token_by_model_data = {
+        "labels": list(model_usage.keys()) if model_usage else ["No Data"],
+        "datasets": [
+            {
+                "label": "Input Tokens",
+                "data": [usage.get("input_tokens", 0) for usage in model_usage.values()]
+                if model_usage else [0],
+                "backgroundColor": "#007bff",
+                "stack": "tokens"
+            },
+            {
+                "label": "Output Tokens",
+                "data": [usage.get("output_tokens", 0) for usage in model_usage.values()]
+                if model_usage else [0],
+                "backgroundColor": "#28a745",
+                "stack": "tokens"
+            }
+        ],
+    }
+
+    # Cache token usage chart
+    token_usage_stats = metrics_data.get("tokenUsage", {})
+    cache_read = token_usage_stats.get("cacheReadTokens", 0)
+    cache_creation = token_usage_stats.get("cacheCreationTokens", 0)
+    regular_tokens = token_usage_stats.get("totalTokens", 0) - cache_read - cache_creation
+    
+    cache_token_data = {
+        "labels": ["Cache Read", "Cache Creation", "No Cache"],
+        "datasets": [{
+            "data": [cache_read, cache_creation, max(0, regular_tokens)],
+            "backgroundColor": ["#28a745", "#ffc107", "#6c757d"],
+        }],
+    }
+
     return {
         "requestRateChart": request_rate_data,
         "responseTimeChart": response_time_data,
         "apiDistributionChart": api_distribution_data,
         "errorRateChart": error_rate_data,
         "costBreakdownChart": cost_breakdown_data,
+        "tokenUsageChart": token_usage_data,
+        "tokenByModelChart": token_by_model_data,
+        "cacheTokenChart": cache_token_data,
     }
 
 
 async def get_current_metrics_data() -> dict[str, Any]:
     """Get current metrics data for API responses and WebSocket broadcasts."""
     settings = get_settings()
+    
+    # Get the metrics collector to access Prometheus metrics
+    metrics_collector = get_metrics_collector()
 
     # Get metrics storage if available
     storage = None
@@ -456,41 +483,42 @@ async def get_current_metrics_data() -> dict[str, Any]:
         except Exception as e:
             logger.warning(f"Failed to get metrics storage: {e}")
 
-    # Default values with some baseline activity for demonstration
-    import random
-
-    # Add some realistic baseline values when there's no actual activity
-    baseline_active = random.randint(1, 5)
-    baseline_requests = random.randint(50, 200)
-    baseline_errors = random.randint(0, 5)
-    baseline_response_time = random.uniform(0.15, 0.35)  # 150-350ms
-    baseline_cost = random.uniform(0.01, 0.05)
-
+    # Get active requests from Prometheus metrics
+    active_requests_count = 0
+    try:
+        # Access the Prometheus registry to get current gauge values
+        from prometheus_client import REGISTRY
+        
+        for metric in REGISTRY.collect():
+            if metric.name == "ccproxy_active_requests":
+                for sample in metric.samples:
+                    # Sum all active requests across different API types
+                    if sample.name == "ccproxy_active_requests":
+                        active_requests_count += int(sample.value)
+    except Exception as e:
+        logger.debug(f"Failed to get active requests from Prometheus: {e}")
+    
+    # Default values when no data is available
     metrics_data = {
         "timestamp": datetime.utcnow().isoformat(),
-        "active_requests": baseline_active,
-        "total_requests": baseline_requests,
-        "total_errors": baseline_errors,
-        "avg_response_time": baseline_response_time,
-        "total_cost": baseline_cost,
-        "request_rates": {
-            "anthropic": random.uniform(0.8, 2.5),
-            "openai": random.uniform(0.5, 1.8),
-            "claude_code": random.uniform(0.3, 1.2),
-        },
-        "model_usage": {
-            "claude-3-5-sonnet-20241022": {
-                "requests": random.randint(20, 80),
-                "input_tokens": random.randint(10000, 50000),
-                "output_tokens": random.randint(5000, 25000),
-                "cost": random.uniform(0.01, 0.03),
-            },
-            "claude-3-5-haiku-20241022": {
-                "requests": random.randint(10, 40),
-                "input_tokens": random.randint(5000, 20000),
-                "output_tokens": random.randint(2000, 10000),
-                "cost": random.uniform(0.005, 0.015),
-            },
+        "active_requests": active_requests_count,
+        "total_requests": 0,
+        "total_errors": 0,
+        "avg_response_time": 0,
+        "total_cost": 0,
+        "request_rates": {},
+        "model_usage": {},
+        "tokenUsage": {
+            "totalTokens": 0,
+            "inputTokens": 0,
+            "outputTokens": 0,
+            "cacheReadTokens": 0,
+            "cacheCreationTokens": 0,
+            "cacheHitRate": 0,
+            "totalTokensChange": 0,
+            "inputTokensChange": 0,
+            "outputTokensChange": 0,
+            "cacheHitRateChange": 0,
         },
     }
 
@@ -528,6 +556,11 @@ async def get_current_metrics_data() -> dict[str, Any]:
 
                 # Model usage statistics
                 model_usage = {}
+                total_input_tokens = 0
+                total_output_tokens = 0
+                total_cache_read_tokens = 0
+                total_cache_creation_tokens = 0
+                
                 for log in recent_logs:
                     if log.model:
                         if log.model not in model_usage:
@@ -535,23 +568,91 @@ async def get_current_metrics_data() -> dict[str, Any]:
                                 "requests": 0,
                                 "input_tokens": 0,
                                 "output_tokens": 0,
+                                "cache_read_tokens": 0,
+                                "cache_creation_tokens": 0,
                                 "cost": 0.0,
                             }
                         model_usage[log.model]["requests"] += 1
                         model_usage[log.model]["input_tokens"] += int(log.input_tokens)
-                        model_usage[log.model]["output_tokens"] += int(
-                            log.output_tokens
-                        )
+                        model_usage[log.model]["output_tokens"] += int(log.output_tokens)
+                        model_usage[log.model]["cache_read_tokens"] += int(log.cache_read_input_tokens)
+                        model_usage[log.model]["cache_creation_tokens"] += int(log.cache_creation_input_tokens)
                         model_usage[log.model]["cost"] += float(log.cost_dollars)
+                        
+                        # Accumulate totals
+                        total_input_tokens += int(log.input_tokens)
+                        total_output_tokens += int(log.output_tokens)
+                        total_cache_read_tokens += int(log.cache_read_input_tokens)
+                        total_cache_creation_tokens += int(log.cache_creation_input_tokens)
+
+                # Calculate cache hit rate
+                total_cache_tokens = total_cache_read_tokens + total_cache_creation_tokens
+                total_all_tokens = total_input_tokens + total_output_tokens
+                cache_hit_rate = (total_cache_tokens / total_all_tokens * 100) if total_all_tokens > 0 else 0
+                
+                # Calculate change values by comparing with previous period
+                # Get logs from previous hour for comparison
+                prev_end_time = start_time
+                prev_start_time = prev_end_time - timedelta(hours=1)
+                
+                prev_input_tokens = 0
+                prev_output_tokens = 0
+                prev_cache_tokens = 0
+                
+                try:
+                    prev_logs = storage.get_request_logs(
+                        start_time=prev_start_time, 
+                        end_time=prev_end_time, 
+                        limit=1000
+                    )
+                    
+                    if prev_logs:
+                        for log in prev_logs:
+                            if log.model:
+                                prev_input_tokens += int(log.input_tokens)
+                                prev_output_tokens += int(log.output_tokens)
+                                prev_cache_tokens += int(log.cache_read_input_tokens) + int(log.cache_creation_input_tokens)
+                    
+                    # Calculate changes
+                    prev_total = prev_input_tokens + prev_output_tokens
+                    prev_cache_rate = (prev_cache_tokens / prev_total * 100) if prev_total > 0 else 0
+                    
+                    total_tokens_change = (total_input_tokens + total_output_tokens) - prev_total
+                    input_tokens_change = total_input_tokens - prev_input_tokens
+                    output_tokens_change = total_output_tokens - prev_output_tokens
+                    cache_hit_rate_change = cache_hit_rate - prev_cache_rate
+                    
+                except Exception:
+                    # If we can't get previous data, show 0 change
+                    total_tokens_change = 0
+                    input_tokens_change = 0
+                    output_tokens_change = 0
+                    cache_hit_rate_change = 0
+                
+                # Token usage statistics
+                token_usage = {
+                    "totalTokens": total_input_tokens + total_output_tokens,
+                    "inputTokens": total_input_tokens,
+                    "outputTokens": total_output_tokens,
+                    "cacheReadTokens": total_cache_read_tokens,
+                    "cacheCreationTokens": total_cache_creation_tokens,
+                    "cacheHitRate": cache_hit_rate,
+                    "totalTokensChange": total_tokens_change,
+                    "inputTokensChange": input_tokens_change,
+                    "outputTokensChange": output_tokens_change,
+                    "cacheHitRateChange": cache_hit_rate_change,
+                }
 
                 metrics_data.update(
                     {
+                        "active_requests": active_requests_count,  # Keep the real-time active requests
                         "total_requests": total_requests,
                         "total_errors": total_errors,
                         "avg_response_time": avg_response_time,
                         "total_cost": total_cost,
                         "request_rates": request_rates,
                         "model_usage": model_usage,
+                        "tokenUsage": token_usage,
                     }
                 )
 
@@ -572,9 +673,33 @@ async def get_dashboard(
     if not getattr(settings, "metrics_enabled", False):
         raise HTTPException(status_code=404, detail="Metrics not enabled")
 
+    # Serve the static dashboard HTML file
+    from pathlib import Path
+    dashboard_path = Path(__file__).parent.parent / "static" / "dashboard.html"
+    
+    if not dashboard_path.exists():
+        raise HTTPException(status_code=500, detail="Dashboard file not found")
+    
+    with open(dashboard_path, "r") as f:
+        html_content = f.read()
+    
+    return HTMLResponse(content=html_content)
+
+
+@router.get("/dashboard_old", response_class=HTMLResponse)
+async def get_dashboard_old(
+    request: Request, auth_user: Any = Depends(get_auth_dependency)
+) -> HTMLResponse:
+    """Serve the old inline metrics dashboard HTML page."""
+    settings = get_settings()
+
+    # Check if metrics are enabled
+    if not getattr(settings, "metrics_enabled", False):
+        raise HTTPException(status_code=404, detail="Metrics not enabled")
+
     # Get WebSocket URL for live updates
     ws_url = str(request.url).replace("http://", "ws://").replace("https://", "wss://")
-    ws_url = ws_url.replace("/metrics/dashboard", "/metrics/ws")
+    ws_url = ws_url.replace("/metrics/dashboard_old", "/metrics/ws")
 
     html_content = f"""
     <!DOCTYPE html>

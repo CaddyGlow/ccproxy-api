@@ -154,7 +154,9 @@ class MetricsStorage:
             rate_limit_requests_remaining=http_metrics.rate_limit_requests_remaining,
             rate_limit_tokens_limit=http_metrics.rate_limit_tokens_limit,
             rate_limit_tokens_remaining=http_metrics.rate_limit_tokens_remaining,
-            rate_limit_reset_timestamp=self._parse_datetime(http_metrics.rate_limit_reset_timestamp),
+            rate_limit_reset_timestamp=self._parse_datetime(
+                http_metrics.rate_limit_reset_timestamp
+            ),
             retry_after_seconds=http_metrics.retry_after_seconds,
             oauth_unified_status=http_metrics.oauth_unified_status,
             oauth_unified_claim=http_metrics.oauth_unified_claim,
@@ -178,10 +180,10 @@ class MetricsStorage:
         """
         if not datetime_str:
             return None
-            
+
         try:
             # Parse ISO format datetime string
-            return datetime.fromisoformat(datetime_str.replace('Z', '+00:00'))
+            return datetime.fromisoformat(datetime_str.replace("Z", "+00:00"))
         except (ValueError, AttributeError) as e:
             logger.warning(f"Failed to parse datetime string '{datetime_str}': {e}")
             return None

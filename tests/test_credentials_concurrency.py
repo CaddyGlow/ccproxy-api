@@ -193,9 +193,11 @@ class TestAtomicFileOperations:
         )
 
         # Mock json.dump to fail
-        with patch("json.dump", side_effect=Exception("Write failed")):
-            with pytest.raises(Exception):
-                await storage.save(creds)
+        with (
+            patch("json.dump", side_effect=Exception("Write failed")),
+            pytest.raises(Exception),  # noqa: B017
+        ):
+            await storage.save(creds)
 
         # Check that temp file was cleaned up
         temp_path = storage_path.with_suffix(".tmp")

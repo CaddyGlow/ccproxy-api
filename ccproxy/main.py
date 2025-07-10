@@ -8,6 +8,7 @@ from typing import Any
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 from ccproxy.config.settings import Settings, get_settings
 from ccproxy.utils.logging import get_logger, setup_rich_logging
@@ -119,6 +120,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     if settings.metrics_enabled:
         app.include_router(metrics_router, prefix="/metrics")
         logger.info("Metrics API endpoints enabled")
+        
+        # Mount static files for dashboard CSS and JS
+        from pathlib import Path
+        static_path = Path(__file__).parent / "static"
+        if static_path.exists():
+            app.mount("/static", StaticFiles(directory=str(static_path)), name="static")
+            logger.info(f"Static files mounted from: {static_path}")
 
     # Reverse proxy endpoints with different modes
     app.include_router(create_reverse_proxy_router("minimal"), prefix="/min")

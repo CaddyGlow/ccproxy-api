@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Claude Code Proxy Dashboard</title>
-    <link rel="stylesheet" href="css/dashboard.css">
+    <link rel="stylesheet" href="/static/css/dashboard.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
 </head>
@@ -109,6 +109,45 @@
             </div>
         </div>
 
+        <!-- Token Usage Metrics Cards -->
+        <div class="metrics-grid">
+            <div class="metric-card">
+                <div class="metric-header">
+                    <h3>Total Tokens (24h)</h3>
+                    <span class="metric-icon">📊</span>
+                </div>
+                <div class="metric-value" id="totalTokens">-</div>
+                <div class="metric-change" id="totalTokensChange">-</div>
+            </div>
+
+            <div class="metric-card">
+                <div class="metric-header">
+                    <h3>Input Tokens</h3>
+                    <span class="metric-icon">📥</span>
+                </div>
+                <div class="metric-value" id="inputTokens">-</div>
+                <div class="metric-change" id="inputTokensChange">-</div>
+            </div>
+
+            <div class="metric-card">
+                <div class="metric-header">
+                    <h3>Output Tokens</h3>
+                    <span class="metric-icon">📤</span>
+                </div>
+                <div class="metric-value" id="outputTokens">-</div>
+                <div class="metric-change" id="outputTokensChange">-</div>
+            </div>
+
+            <div class="metric-card">
+                <div class="metric-header">
+                    <h3>Cache Hit Rate</h3>
+                    <span class="metric-icon">💾</span>
+                </div>
+                <div class="metric-value" id="cacheHitRate">-</div>
+                <div class="metric-change" id="cacheHitRateChange">-</div>
+            </div>
+        </div>
+
         <!-- Charts Grid -->
         <div class="charts-grid">
             <div class="chart-container">
@@ -170,6 +209,42 @@
                     <canvas id="costBreakdownChart"></canvas>
                 </div>
             </div>
+
+            <div class="chart-container chart-wide">
+                <div class="chart-header">
+                    <h3>Token Usage Over Time</h3>
+                    <div class="chart-controls">
+                        <button class="chart-btn" id="tokenUsageExport">Export</button>
+                    </div>
+                </div>
+                <div class="chart-wrapper">
+                    <canvas id="tokenUsageChart"></canvas>
+                </div>
+            </div>
+
+            <div class="chart-container">
+                <div class="chart-header">
+                    <h3>Token Usage by Model</h3>
+                    <div class="chart-controls">
+                        <button class="chart-btn" id="tokenByModelExport">Export</button>
+                    </div>
+                </div>
+                <div class="chart-wrapper">
+                    <canvas id="tokenByModelChart"></canvas>
+                </div>
+            </div>
+
+            <div class="chart-container">
+                <div class="chart-header">
+                    <h3>Cache Token Usage</h3>
+                    <div class="chart-controls">
+                        <button class="chart-btn" id="cacheTokenExport">Export</button>
+                    </div>
+                </div>
+                <div class="chart-wrapper">
+                    <canvas id="cacheTokenChart"></canvas>
+                </div>
+            </div>
         </div>
 
         <!-- Footer -->
@@ -207,6 +282,6 @@
         </div>
     </div>
 
-    <script src="js/dashboard.js"></script>
+    <script src="/static/js/dashboard.js"></script>
 </body>
 </html>
