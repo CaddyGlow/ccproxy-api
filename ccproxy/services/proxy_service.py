@@ -9,7 +9,10 @@ from fastapi import HTTPException
 from fastapi.responses import StreamingResponse
 
 from ccproxy.core.http import BaseProxyClient, HTTPClient
-from ccproxy.core.http_transformers import HTTPRequestTransformer, HTTPResponseTransformer
+from ccproxy.core.http_transformers import (
+    HTTPRequestTransformer,
+    HTTPResponseTransformer,
+)
 from ccproxy.services.credentials.manager import CredentialsManager
 
 
@@ -93,10 +96,16 @@ class ProxyService:
 
             # Check if this will be a streaming response
             if self._should_stream_response(transformed_request["headers"]):
-                return await self._handle_streaming_request(transformed_request, path, timeout)
+                return await self._handle_streaming_request(
+                    transformed_request, path, timeout
+                )
 
             # Handle regular request
-            status_code, response_headers, response_body = await self.proxy_client.forward(
+            (
+                status_code,
+                response_headers,
+                response_body,
+            ) = await self.proxy_client.forward(
                 method=transformed_request["method"],
                 url=transformed_request["url"],
                 headers=transformed_request["headers"],
@@ -142,7 +151,9 @@ class ProxyService:
                 try:
                     validation = await self.credentials_manager.validate()
                     if validation.get("valid"):
-                        logger.debug("Found credentials but access token is invalid/expired")
+                        logger.debug(
+                            "Found credentials but access token is invalid/expired"
+                        )
                         logger.debug(f"Expired: {validation.get('expired')}")
                         logger.debug(f"Expires at: {validation.get('expires_at')}")
                     else:
@@ -190,7 +201,9 @@ class ProxyService:
             Transformed request data
         """
         # Transform path
-        transformed_path = self.request_transformer.transform_path(path, self.proxy_mode)
+        transformed_path = self.request_transformer.transform_path(
+            path, self.proxy_mode
+        )
         target_url = f"{self.target_base_url}{transformed_path}"
 
         # Add beta=true query parameter for /v1/messages requests if not already present
@@ -219,6 +232,7 @@ class ProxyService:
         # Add query parameters to URL if present
         if query_params:
             import urllib.parse
+
             query_string = urllib.parse.urlencode(query_params)
             target_url = f"{target_url}?{query_string}"
 
@@ -290,6 +304,7 @@ class ProxyService:
         Returns:
             StreamingResponse
         """
+
         async def stream_generator() -> AsyncGenerator[bytes, None]:
             try:
                 # Use httpx directly for streaming since we need the stream context manager
@@ -313,31 +328,37 @@ class ProxyService:
                         content=request_data["body"],
                     ) as response,
                 ):
-                        # Check for errors
-                        if response.status_code >= 400:
-                            error_content = await response.aread()
-                            logger.info(f"Streaming error {response.status_code}")
-                            logger.debug(
-                                f"Streaming error detail: {error_content.decode('utf-8', errors='replace')}"
-                            )
-                            yield error_content
-                            return
+                    # Check for errors
+                    if response.status_code >= 400:
+                        error_content = await response.aread()
+                        logger.info(f"Streaming error {response.status_code}")
+                        logger.debug(
+                            f"Streaming error detail: {error_content.decode('utf-8', errors='replace')}"
+                        )
+                        yield error_content
+                        return
 
-                        # Transform streaming response
-                        is_openai = self.response_transformer._is_openai_request(original_path)
+                    # Transform streaming response
+                    is_openai = self.response_transformer._is_openai_request(
+                        original_path
+                    )
 
-                        if is_openai:
-                            # Transform Anthropic SSE to OpenAI SSE format
-                            logger.info(f"Transforming Anthropic SSE to OpenAI format for {original_path}")
-                            async for transformed_chunk in self._transform_anthropic_to_openai_stream(
-                                response, original_path
-                            ):
-                                yield transformed_chunk
-                        else:
-                            # Stream as-is for Anthropic endpoints
-                            async for chunk in response.aiter_bytes():
-                                if chunk:
-                                    yield chunk
+                    if is_openai:
+                        # Transform Anthropic SSE to OpenAI SSE format
+                        logger.info(
+                            f"Transforming Anthropic SSE to OpenAI format for {original_path}"
+                        )
+                        async for (
+                            transformed_chunk
+                        ) in self._transform_anthropic_to_openai_stream(
+                            response, original_path
+                        ):
+                            yield transformed_chunk
+                    else:
+                        # Stream as-is for Anthropic endpoints
+                        async for chunk in response.aiter_bytes():
+                            if chunk:
+                                yield chunk
 
             except Exception as e:
                 logger.exception("Error in streaming response")
@@ -420,7 +441,7 @@ class ProxyService:
         """
         # Use OpenAI streaming formatter from adapters
         from ccproxy.adapters.openai.streaming import OpenAISSEFormatter
-        
+
         # Simple streaming transformation for now
         # TODO: Implement proper stream transformation using adapters
         async for chunk in response.aiter_bytes():
@@ -467,7 +488,9 @@ class ProxyService:
             raise
         else:
             # Generic server error
-            raise HTTPException(status_code=500, detail="Internal server error") from error
+            raise HTTPException(
+                status_code=500, detail="Internal server error"
+            ) from error
 
     async def close(self) -> None:
         """Close any resources held by the proxy service."""

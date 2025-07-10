@@ -81,9 +81,13 @@ class HybridService:
         should_use_sdk = await self._should_use_sdk(request_body, path)
 
         if should_use_sdk:
-            return await self._handle_with_sdk(method, path, headers, request_body, query_params, user_id)
+            return await self._handle_with_sdk(
+                method, path, headers, request_body, query_params, user_id
+            )
         else:
-            return await self._handle_with_proxy(method, path, headers, body, query_params, user_id)
+            return await self._handle_with_proxy(
+                method, path, headers, body, query_params, user_id
+            )
 
     def _parse_request_body(self, body: bytes | None) -> dict[str, Any]:
         """Parse request body from bytes to dict.
@@ -98,7 +102,7 @@ class HybridService:
             return {}
 
         try:
-            result = json.loads(body.decode('utf-8'))
+            result = json.loads(body.decode("utf-8"))
             return result if isinstance(result, dict) else {}
         except (json.JSONDecodeError, UnicodeDecodeError):
             return {}
@@ -129,7 +133,9 @@ class HybridService:
             return True
 
         # Use proxy for simple requests if configured
-        if self._use_proxy_for_simple_requests and self._is_simple_request(request_body):
+        if self._use_proxy_for_simple_requests and self._is_simple_request(
+            request_body
+        ):
             logger.debug("Using proxy for simple request")
             return False
 
@@ -147,9 +153,9 @@ class HybridService:
             True if tools are present in the request
         """
         return (
-            "tools" in request_body and
-            isinstance(request_body["tools"], list) and
-            len(request_body["tools"]) > 0
+            "tools" in request_body
+            and isinstance(request_body["tools"], list)
+            and len(request_body["tools"]) > 0
         )
 
     def _has_streaming(self, request_body: dict[str, Any]) -> bool:
@@ -184,10 +190,11 @@ class HybridService:
         """
         # Simple requests are those without tools, function calling, or complex features
         return (
-            not self._has_tools(request_body) and
-            not request_body.get("function_call") and
-            not request_body.get("functions") and
-            len(request_body.get("messages", [])) < 10  # Arbitrary complexity threshold
+            not self._has_tools(request_body)
+            and not request_body.get("function_call")
+            and not request_body.get("functions")
+            and len(request_body.get("messages", []))
+            < 10  # Arbitrary complexity threshold
         )
 
     async def _handle_with_sdk(
@@ -221,6 +228,7 @@ class HybridService:
         # Create default options - this needs to be properly implemented
         # For now, we'll create a basic options dict
         from ccproxy.utils.helper import patched_typing
+
         with patched_typing():
             from claude_code_sdk import ClaudeCodeOptions
 
@@ -239,7 +247,7 @@ class HybridService:
             return sdk_response  # type: ignore[return-value]
         else:
             # For non-streaming, convert to proxy response format
-            response_body = json.dumps(sdk_response).encode('utf-8')
+            response_body = json.dumps(sdk_response).encode("utf-8")
             response_headers = {
                 "content-type": "application/json",
                 "content-length": str(len(response_body)),
@@ -281,6 +289,7 @@ class HybridService:
 
         # Handle different response types from reverse proxy
         from fastapi.responses import StreamingResponse
+
         if isinstance(proxy_response, StreamingResponse):
             # Convert StreamingResponse to AsyncIterator for consistency
             async def stream_generator() -> AsyncIterator[dict[str, Any]]:
@@ -288,7 +297,7 @@ class HybridService:
                     if isinstance(chunk, bytes):
                         try:
                             # Try to parse as JSON
-                            chunk_str = chunk.decode('utf-8')
+                            chunk_str = chunk.decode("utf-8")
                             if chunk_str.strip():
                                 yield {"data": chunk_str}
                         except UnicodeDecodeError:
@@ -346,4 +355,3 @@ class HybridService:
         await self.claude_sdk_service.close()
         # Reverse proxy service doesn't have a close method in the current implementation
         logger.info("Hybrid service closed")
-
