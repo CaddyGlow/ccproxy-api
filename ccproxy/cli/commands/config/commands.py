@@ -10,7 +10,7 @@ from click import get_current_context
 
 from ccproxy._version import __version__
 from ccproxy.config.settings import get_settings
-from ccproxy.utils.cli import get_rich_toolkit
+from ccproxy.cli.helpers import get_rich_toolkit
 
 
 def get_config_path_from_context() -> Path | None:

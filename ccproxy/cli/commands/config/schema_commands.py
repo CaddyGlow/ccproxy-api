@@ -4,7 +4,7 @@ from pathlib import Path
 
 import typer
 
-from ccproxy.utils.cli import get_rich_toolkit
+from ccproxy.cli.helpers import get_rich_toolkit
 from ccproxy.utils.schema import (
     generate_schema_files,
     generate_taplo_config,

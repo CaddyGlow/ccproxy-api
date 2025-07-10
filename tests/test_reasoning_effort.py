@@ -2,7 +2,7 @@
 
 import pytest
 
-from ccproxy.formatters.translator import OpenAITranslator
+from ccproxy.adapters.openai import OpenAIAdapter
 from ccproxy.models.openai import OpenAIChatCompletionRequest, OpenAIMessage
 
 
@@ -12,7 +12,7 @@ class TestReasoningEffort:
 
     def test_reasoning_effort_low(self):
         """Test low reasoning effort converts to thinking tokens."""
-        translator = OpenAITranslator()
+        translator = OpenAIAdapter()
 
         request = {
             "model": "o1-mini",
@@ -20,7 +20,7 @@ class TestReasoningEffort:
             "reasoning_effort": "low",
         }
 
-        result = translator.openai_to_anthropic_request(request)
+        result = translator.adapt_request(request)
 
         assert "thinking" in result
         assert result["thinking"]["type"] == "enabled"
@@ -28,7 +28,7 @@ class TestReasoningEffort:
 
     def test_reasoning_effort_medium(self):
         """Test medium reasoning effort converts to thinking tokens."""
-        translator = OpenAITranslator()
+        translator = OpenAIAdapter()
 
         request = {
             "model": "o1-mini",
@@ -36,7 +36,7 @@ class TestReasoningEffort:
             "reasoning_effort": "medium",
         }
 
-        result = translator.openai_to_anthropic_request(request)
+        result = translator.adapt_request(request)
 
         assert "thinking" in result
         assert result["thinking"]["type"] == "enabled"
@@ -44,7 +44,7 @@ class TestReasoningEffort:
 
     def test_reasoning_effort_high(self):
         """Test high reasoning effort converts to thinking tokens."""
-        translator = OpenAITranslator()
+        translator = OpenAIAdapter()
 
         request = {
             "model": "o1-mini",
@@ -52,7 +52,7 @@ class TestReasoningEffort:
             "reasoning_effort": "high",
         }
 
-        result = translator.openai_to_anthropic_request(request)
+        result = translator.adapt_request(request)
 
         assert "thinking" in result
         assert result["thinking"]["type"] == "enabled"
@@ -60,14 +60,14 @@ class TestReasoningEffort:
 
     def test_no_reasoning_effort(self):
         """Test that no reasoning effort means no thinking configuration."""
-        translator = OpenAITranslator()
+        translator = OpenAIAdapter()
 
         request = {
             "model": "claude-3-5-sonnet-20241022",
             "messages": [{"role": "user", "content": "Hello"}],
         }
 
-        result = translator.openai_to_anthropic_request(request)
+        result = translator.adapt_request(request)
 
         assert "thinking" not in result
 
@@ -78,7 +78,7 @@ class TestDeveloperRole:
 
     def test_developer_role_becomes_system(self):
         """Test developer role messages become system prompts."""
-        translator = OpenAITranslator()
+        translator = OpenAIAdapter()
 
         request = {
             "model": "o1-mini",
@@ -88,7 +88,7 @@ class TestDeveloperRole:
             ],
         }
 
-        result = translator.openai_to_anthropic_request(request)
+        result = translator.adapt_request(request)
 
         assert result["system"] == "You are a helpful assistant."
         assert len(result["messages"]) == 1
@@ -96,7 +96,7 @@ class TestDeveloperRole:
 
     def test_developer_and_system_roles_combined(self):
         """Test developer and system roles are combined."""
-        translator = OpenAITranslator()
+        translator = OpenAIAdapter()
 
         request = {
             "model": "o1-mini",
@@ -107,7 +107,7 @@ class TestDeveloperRole:
             ],
         }
 
-        result = translator.openai_to_anthropic_request(request)
+        result = translator.adapt_request(request)
 
         assert result["system"] == "You are helpful.\nAlways be concise."
         assert len(result["messages"]) == 1
@@ -115,7 +115,7 @@ class TestDeveloperRole:
 
     def test_multiple_developer_messages(self):
         """Test multiple developer messages are concatenated."""
-        translator = OpenAITranslator()
+        translator = OpenAIAdapter()
 
         request = {
             "model": "o1-mini",
@@ -126,7 +126,7 @@ class TestDeveloperRole:
             ],
         }
 
-        result = translator.openai_to_anthropic_request(request)
+        result = translator.adapt_request(request)
 
         assert result["system"] == "Rule 1: Be helpful.\nRule 2: Be concise."
         assert len(result["messages"]) == 1

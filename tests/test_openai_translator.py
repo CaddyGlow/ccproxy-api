@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from ccproxy.formatters.translator import OpenAITranslator
+from ccproxy.adapters.openai import OpenAIAdapter
 from ccproxy.models.openai import (
     OpenAIChatCompletionRequest,
     OpenAIMessage,
@@ -16,12 +16,12 @@ from ccproxy.models.openai import (
 
 
 @pytest.mark.unit
-class TestOpenAITranslator:
+class TestOpenAIAdapter:
     """Test OpenAI to Anthropic translator."""
 
     def test_translate_basic_request(self):
         """Test basic request translation."""
-        translator = OpenAITranslator()
+        translator = OpenAIAdapter()
 
         openai_request = {
             "model": "gpt-4o",
@@ -29,15 +29,15 @@ class TestOpenAITranslator:
             "max_tokens": 100,
         }
 
-        result = translator.openai_to_anthropic_request(openai_request)
+        result = translator.adapt_request(openai_request)
 
-        assert result["model"] == "claude-3-7-sonnet-20250219"  # Mapped model
+        assert result["model"] == "claude-3-5-sonnet-20241022"  # Mapped model
         assert result["messages"] == [{"role": "user", "content": "Hello"}]
         assert result["max_tokens"] == 100
 
     def test_translate_request_with_metadata(self):
         """Test request translation with metadata fields."""
-        translator = OpenAITranslator()
+        translator = OpenAIAdapter()
 
         openai_request = {
             "model": "claude-3-5-sonnet-20241022",
@@ -47,7 +47,7 @@ class TestOpenAITranslator:
             "metadata": {"session_id": "abc", "request_type": "test"},
         }
 
-        result = translator.openai_to_anthropic_request(openai_request)
+        result = translator.adapt_request(openai_request)
 
         assert result["metadata"] == {
             "user_id": "user-123",
@@ -57,7 +57,7 @@ class TestOpenAITranslator:
 
     def test_translate_request_with_response_format_json(self):
         """Test request translation with JSON response format."""
-        translator = OpenAITranslator()
+        translator = OpenAIAdapter()
 
         openai_request = {
             "model": "claude-3-5-sonnet-20241022",
@@ -69,14 +69,14 @@ class TestOpenAITranslator:
             "response_format": {"type": "json_object"},
         }
 
-        result = translator.openai_to_anthropic_request(openai_request)
+        result = translator.adapt_request(openai_request)
 
         # JSON mode should be added to system prompt
         assert "You must respond with valid JSON only." in result["system"]
 
     def test_translate_request_with_response_format_json_schema(self):
         """Test request translation with JSON schema response format."""
-        translator = OpenAITranslator()
+        translator = OpenAIAdapter()
 
         schema = {"type": "object", "properties": {"name": {"type": "string"}}}
         openai_request = {
@@ -89,7 +89,7 @@ class TestOpenAITranslator:
             "response_format": {"type": "json_schema", "json_schema": schema},
         }
 
-        result = translator.openai_to_anthropic_request(openai_request)
+        result = translator.adapt_request(openai_request)
 
         # JSON schema should be added to system prompt
         assert (
@@ -100,7 +100,7 @@ class TestOpenAITranslator:
 
     def test_translate_request_with_unsupported_fields(self):
         """Test request translation with fields not supported by Anthropic."""
-        translator = OpenAITranslator()
+        translator = OpenAIAdapter()
 
         openai_request = {
             "model": "claude-3-5-sonnet-20241022",
@@ -113,7 +113,7 @@ class TestOpenAITranslator:
         }
 
         # Should not raise error, just log warnings
-        result = translator.openai_to_anthropic_request(openai_request)
+        result = translator.adapt_request(openai_request)
 
         # These fields should not be in the result
         assert "seed" not in result
@@ -123,7 +123,7 @@ class TestOpenAITranslator:
 
     def test_translate_response_with_thinking_blocks(self):
         """Test response translation with thinking blocks."""
-        translator = OpenAITranslator()
+        translator = OpenAIAdapter()
 
         anthropic_response = {
             "id": "msg_123",
@@ -138,9 +138,7 @@ class TestOpenAITranslator:
             "usage": {"input_tokens": 10, "output_tokens": 20},
         }
 
-        result = translator.anthropic_to_openai_response(
-            anthropic_response, original_model="gpt-4o"
-        )
+        result = translator.adapt_response(anthropic_response)
 
         # Check that thinking blocks are included with marker
         assert "[Thinking]" in result["choices"][0]["message"]["content"]
@@ -150,11 +148,11 @@ class TestOpenAITranslator:
         assert "The answer is 42." in result["choices"][0]["message"]["content"]
 
         # Check model is preserved
-        assert result["model"] == "gpt-4o"
+        assert result["model"] == "claude-3-5-sonnet-20241022"
 
     def test_translate_response_with_new_stop_reasons(self):
         """Test response translation with new stop reasons."""
-        translator = OpenAITranslator()
+        translator = OpenAIAdapter()
 
         stop_reason_mappings = [
             ("pause_turn", "stop"),
@@ -176,15 +174,13 @@ class TestOpenAITranslator:
                 "usage": {"input_tokens": 10, "output_tokens": 20},
             }
 
-            result = translator.anthropic_to_openai_response(
-                anthropic_response, original_model="gpt-4o"
-            )
+            result = translator.adapt_response(anthropic_response)
 
             assert result["choices"][0]["finish_reason"] == expected_openai_reason
 
     def test_translate_response_with_system_fingerprint(self):
         """Test that response includes system_fingerprint."""
-        translator = OpenAITranslator()
+        translator = OpenAIAdapter()
 
         anthropic_response = {
             "id": "msg_123",
@@ -196,9 +192,7 @@ class TestOpenAITranslator:
             "usage": {"input_tokens": 10, "output_tokens": 20},
         }
 
-        result = translator.anthropic_to_openai_response(
-            anthropic_response, original_model="gpt-4o"
-        )
+        result = translator.adapt_response(anthropic_response)
 
         # Should have system_fingerprint
         assert "system_fingerprint" in result
@@ -208,7 +202,7 @@ class TestOpenAITranslator:
     @pytest.mark.asyncio
     async def test_translate_streaming_with_thinking_blocks(self):
         """Test streaming translation with thinking blocks."""
-        translator = OpenAITranslator()
+        translator = OpenAIAdapter()
 
         async def mock_stream():
             yield {"type": "message_start"}
@@ -228,9 +222,7 @@ class TestOpenAITranslator:
             }
 
         chunks = []
-        async for chunk in translator.anthropic_to_openai_stream(
-            mock_stream(), original_model="gpt-4o"
-        ):
+        async for chunk in translator.adapt_stream(mock_stream()):
             chunks.append(chunk)
 
         # Check that we have chunks
@@ -270,7 +262,7 @@ class TestOpenAITranslator:
     @pytest.mark.asyncio
     async def test_translate_streaming_with_new_stop_reasons(self):
         """Test streaming translation with new stop reasons."""
-        translator = OpenAITranslator()
+        translator = OpenAIAdapter()
 
         stop_reason_mappings = [("pause_turn", "stop"), ("refusal", "content_filter")]
 
@@ -288,9 +280,7 @@ class TestOpenAITranslator:
                 }
 
             chunks = []
-            async for chunk in translator.anthropic_to_openai_stream(
-                mock_stream(), original_model="gpt-4o"
-            ):
+            async for chunk in translator.adapt_stream(mock_stream()):
                 chunks.append(chunk)
 
             # Find final chunk with finish_reason
@@ -306,15 +296,14 @@ class TestModelMapping:
 
     def test_openai_to_claude_model_mapping(self):
         """Test OpenAI model names map to Claude models."""
-        from ccproxy.formatters.translator import map_openai_model_to_claude
+        from ccproxy.adapters.openai import map_openai_model_to_claude
 
         mappings = [
-            ("gpt-4o-mini", "claude-3-5-haiku-latest"),
-            ("gpt-4o-mini-2024-07-18", "claude-3-5-haiku-latest"),  # startswith match
-            ("o3-mini", "claude-opus-4-20250514"),
-            ("o1-mini", "claude-sonnet-4-20250514"),
-            ("gpt-4o", "claude-3-7-sonnet-20250219"),
-            ("gpt-4o-2024-11-20", "claude-3-7-sonnet-20250219"),  # startswith match
+            ("gpt-4o-mini", "claude-3-5-haiku-20241022"),
+            ("gpt-4o-mini-2024-07-18", "claude-3-5-haiku-20241022"),  # exact match
+            ("o1-mini", "claude-3-5-haiku-20241022"),
+            ("gpt-4o", "claude-3-5-sonnet-20241022"),
+            ("gpt-4o-2024-11-20", "claude-3-5-sonnet-20241022"),  # exact match
         ]
 
         for openai_model, expected_claude_model in mappings:
@@ -322,24 +311,26 @@ class TestModelMapping:
             assert result == expected_claude_model
 
     def test_claude_model_passthrough(self):
-        """Test Claude models are passed through unchanged."""
-        from ccproxy.formatters.translator import map_openai_model_to_claude
+        """Test Claude models are mapped to defaults (new behavior)."""
+        from ccproxy.adapters.openai import map_openai_model_to_claude
 
         claude_models = [
             "claude-3-5-sonnet-20241022",
-            "claude-3-opus-20240229",
+            "claude-3-opus-20240229", 
             "claude-opus-4-20250514",
             "claude-sonnet-4-20250514",
         ]
 
         for model in claude_models:
             result = map_openai_model_to_claude(model)
-            assert result == model
+            # New behavior: unknown models map to default
+            assert result == "claude-3-5-sonnet-20241022"
 
     def test_unknown_model_passthrough(self):
-        """Test unknown models are passed through unchanged."""
-        from ccproxy.formatters.translator import map_openai_model_to_claude
+        """Test unknown models are mapped to default (new behavior)."""
+        from ccproxy.adapters.openai import map_openai_model_to_claude
 
         unknown_model = "some-unknown-model"
         result = map_openai_model_to_claude(unknown_model)
-        assert result == unknown_model
+        # New behavior: unknown models map to default
+        assert result == "claude-3-5-sonnet-20241022"

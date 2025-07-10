@@ -106,19 +106,17 @@ class ResponseTransformer:
             OpenAI format response body
         """
         try:
-            from ccproxy.formatters.translator import OpenAITranslator
+            from ccproxy.adapters.openai import OpenAIAdapter
 
             anthropic_data = json.loads(body.decode("utf-8"))
-            translator = OpenAITranslator()
+            translator = OpenAIAdapter()
 
             # Extract model from original request if possible
             # For now, use a default model name
             original_model = "gpt-4o"  # Default fallback
 
             # Convert Anthropic response to OpenAI format
-            openai_data = translator.anthropic_to_openai_response(
-                anthropic_data, original_model
-            )
+            openai_data = translator.adapt_response(anthropic_data)
 
             logger.debug(
                 f"Converted Anthropic response to OpenAI format: {openai_data}"

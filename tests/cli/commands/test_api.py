@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from typer.testing import CliRunner
 
-from ccproxy.cli.commands.api import api, get_config_path_from_context
+from ccproxy.cli.commands.serve import api, get_config_path_from_context
 from ccproxy.config.settings import Settings
 
 

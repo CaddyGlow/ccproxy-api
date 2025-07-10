@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from ccproxy.formatters.translator import map_openai_model_to_claude
+from ccproxy.adapters.openai import map_openai_model_to_claude
 
 
 @pytest.mark.unit
@@ -94,7 +94,7 @@ class TestModelTranslationRegression:
 
         # Check that map_openai_model_to_claude is imported and used
         assert (
-            "from ccproxy.formatters.translator import map_openai_model_to_claude"
+            "from ccproxy.adapters.openai import map_openai_model_to_claude"
             in source
         ), "OpenAI router must import map_openai_model_to_claude"
         assert "map_openai_model_to_claude(request.model)" in source, (
