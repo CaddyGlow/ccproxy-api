@@ -158,9 +158,12 @@ class TestOAuthClient:
 
         mock_client = AsyncMock()
         mock_client.post = AsyncMock(return_value=mock_response)
-        oauth_client._http_client = mock_client
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
 
-        result = await oauth_client.refresh_token("old-refresh-token")
+        with patch("ccproxy.services.credentials.oauth_client.create_oauth_client") as mock_create:
+            mock_create.return_value = mock_client
+            result = await oauth_client.refresh_token("old-refresh-token")
 
         assert result.access_token == "new-access-token"
         assert result.refresh_token == "new-refresh-token"
@@ -175,10 +178,13 @@ class TestOAuthClient:
 
         mock_client = AsyncMock()
         mock_client.post = AsyncMock(return_value=mock_response)
-        oauth_client._http_client = mock_client
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
 
-        with pytest.raises(OAuthTokenRefreshError):
-            await oauth_client.refresh_token("bad-refresh-token")
+        with patch("ccproxy.services.credentials.oauth_client.create_oauth_client") as mock_create:
+            mock_create.return_value = mock_client
+            with pytest.raises(OAuthTokenRefreshError):
+                await oauth_client.refresh_token("bad-refresh-token")
 
 
 class TestCredentialsManager:

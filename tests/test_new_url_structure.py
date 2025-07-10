@@ -1,12 +1,14 @@
 """Simple verification that new URL structure works correctly."""
 
 import json
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, patch, Mock
 
 import pytest
+import httpx
 from fastapi.testclient import TestClient
 
 from ccproxy.services.credentials import CredentialsManager
+from ccproxy.utils.http_client import InstrumentedHttpClient
 
 
 @pytest.mark.integration
@@ -64,8 +66,7 @@ class TestNewURLStructure:
         assert response.status_code == 200
         assert response.json()["object"] == "chat.completion"
 
-    @patch("httpx.AsyncClient.request")
-    async def test_minimal_proxy_mode(self, mock_request, test_client: TestClient):
+    def test_minimal_proxy_mode(self, test_client: TestClient):
         """Test /min/* proxy with minimal transformations."""
         # Mock the credentials manager's get_access_token to return our test token
         with patch.object(
@@ -73,9 +74,10 @@ class TestNewURLStructure:
             "get_access_token",
             AsyncMock(return_value="test-oauth-token"),
         ):
-            mock_response = AsyncMock()
+            # Mock httpx response
+            mock_response = Mock(spec=httpx.Response)
             mock_response.status_code = 200
-            mock_response.headers = {"content-type": "application/json"}
+            mock_response.headers = httpx.Headers({"content-type": "application/json"})
             mock_response.content = json.dumps(
                 {
                     "id": "msg_123",
@@ -84,26 +86,32 @@ class TestNewURLStructure:
                     "content": [{"type": "text", "text": "Hello!"}],
                 }
             ).encode()
-            mock_request.return_value = mock_response
+            mock_response.reason_phrase = "OK"
+            mock_response.extensions = {}
 
-            response = test_client.post(
-                "/min/v1/messages",
-                json={
-                    "model": "claude-3-5-sonnet-20241022",
-                    "messages": [{"role": "user", "content": "Hi"}],
-                },
-            )
+            # Mock InstrumentedHttpClient
+            with patch("ccproxy.utils.http_client.InstrumentedHttpClient.request") as mock_request:
+                mock_request.return_value = mock_response
 
-            assert response.status_code == 200
+                response = test_client.post(
+                    "/min/v1/messages",
+                    json={
+                        "model": "claude-3-5-sonnet-20241022",
+                        "messages": [{"role": "user", "content": "Hi"}],
+                    },
+                )
 
-            # Verify minimal headers
-            assert mock_request.called
-            headers = mock_request.call_args.kwargs["headers"]
-            assert headers["Authorization"] == "Bearer test-oauth-token"
-            assert "x-app" not in headers
+                assert response.status_code == 200
 
-    @patch("httpx.AsyncClient.request")
-    async def test_full_proxy_mode(self, mock_request, test_client: TestClient):
+                # Verify minimal headers
+                assert mock_request.called
+                # Get the headers from the call arguments
+                call_args = mock_request.call_args
+                headers = call_args.kwargs.get("headers", {})
+                assert headers["Authorization"] == "Bearer test-oauth-token"
+                assert "x-app" not in headers
+
+    def test_full_proxy_mode(self, test_client: TestClient):
         """Test /full/* proxy with full transformations."""
         # Mock the credentials manager's get_access_token to return our test token
         with patch.object(
@@ -111,9 +119,10 @@ class TestNewURLStructure:
             "get_access_token",
             AsyncMock(return_value="test-oauth-token"),
         ):
-            mock_response = AsyncMock()
+            # Mock httpx response
+            mock_response = Mock(spec=httpx.Response)
             mock_response.status_code = 200
-            mock_response.headers = {"content-type": "application/json"}
+            mock_response.headers = httpx.Headers({"content-type": "application/json"})
             mock_response.content = json.dumps(
                 {
                     "id": "msg_123",
@@ -122,39 +131,67 @@ class TestNewURLStructure:
                     "content": [{"type": "text", "text": "Hello!"}],
                 }
             ).encode()
-            mock_request.return_value = mock_response
+            mock_response.reason_phrase = "OK"
+            mock_response.extensions = {}
 
-            response = test_client.post(
-                "/full/v1/messages",
-                json={
-                    "model": "claude-3-5-sonnet-20241022",
-                    "messages": [{"role": "user", "content": "Hi"}],
-                },
-            )
+            # Mock InstrumentedHttpClient
+            with patch("ccproxy.utils.http_client.InstrumentedHttpClient.request") as mock_request:
+                mock_request.return_value = mock_response
 
-            assert response.status_code == 200
+                response = test_client.post(
+                    "/full/v1/messages",
+                    json={
+                        "model": "claude-3-5-sonnet-20241022",
+                        "messages": [{"role": "user", "content": "Hi"}],
+                    },
+                )
 
-            # Verify full headers
-            headers = mock_request.call_args.kwargs["headers"]
-            assert headers["Authorization"] == "Bearer test-oauth-token"
-            assert headers["x-app"] == "cli"
+                assert response.status_code == 200
+
+                # Verify full headers
+                call_args = mock_request.call_args
+                headers = call_args.kwargs.get("headers", {})
+                assert headers["Authorization"] == "Bearer test-oauth-token"
+                assert headers["x-app"] == "cli"
 
     def test_legacy_paths_exist(self, test_client: TestClient):
         """Test legacy paths exist for backward compatibility."""
-        # Just verify the endpoints exist and are reachable
-        # We've already tested the functionality in other tests
+        # Mock the credentials manager's get_access_token to return our test token
+        with patch.object(
+            CredentialsManager,
+            "get_access_token",
+            AsyncMock(return_value="test-oauth-token"),
+        ):
+            # Mock httpx response
+            mock_response = Mock(spec=httpx.Response)
+            mock_response.status_code = 200
+            mock_response.headers = httpx.Headers({"content-type": "application/json"})
+            mock_response.content = json.dumps(
+                {
+                    "id": "msg_123",
+                    "type": "message",
+                    "role": "assistant",
+                    "content": [{"type": "text", "text": "Hello!"}],
+                }
+            ).encode()
+            mock_response.reason_phrase = "OK"
+            mock_response.extensions = {}
 
-        # Test that legacy paths don't return 404
-        legacy_endpoints = [
-            (
-                "/v1/chat/completions",
-                {"model": "claude-3-5-sonnet-20241022", "messages": []},
-            ),
-            ("/openai/v1/chat/completions", {"model": "gpt-4", "messages": []}),
-        ]
+            # Mock InstrumentedHttpClient
+            with patch("ccproxy.utils.http_client.InstrumentedHttpClient.request") as mock_request:
+                mock_request.return_value = mock_response
 
-        for path, minimal_data in legacy_endpoints:
-            response = test_client.post(path, json=minimal_data)
-            # Should not be 404 (endpoint not found)
-            # May be 422 (validation) or 401 (auth) or other errors, but not 404
-            assert response.status_code != 404, f"Legacy endpoint {path} returned 404"
+                # Test that legacy paths don't return 404
+                legacy_endpoints = [
+                    (
+                        "/v1/chat/completions",
+                        {"model": "claude-3-5-sonnet-20241022", "messages": []},
+                    ),
+                    ("/openai/v1/chat/completions", {"model": "gpt-4", "messages": []}),
+                ]
+
+                for path, minimal_data in legacy_endpoints:
+                    response = test_client.post(path, json=minimal_data)
+                    # Should not be 404 (endpoint not found)
+                    # May be 422 (validation) or 401 (auth) or other errors, but not 404
+                    assert response.status_code != 404, f"Legacy endpoint {path} returned 404"

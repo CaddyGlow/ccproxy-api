@@ -3,8 +3,9 @@
 import asyncio
 import os
 from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any, Union
+from typing import Any
 
 import httpx
 from fastapi import HTTPException
@@ -14,12 +15,62 @@ from ccproxy.services.credentials import CredentialsManager
 from ccproxy.services.request_transformer import RequestTransformer
 from ccproxy.services.response_transformer import ResponseTransformer
 from ccproxy.utils import request_context
+from ccproxy.utils.http_client import HttpMiddleware, InstrumentedHttpClient
+from ccproxy.utils.http_factory import create_anthropic_client
 from ccproxy.utils.logging import get_logger
 from ccproxy.utils.openai import is_openai_request
+
+# StreamingResponseAdapter no longer needed - stream() now returns proper response object
 from ccproxy.utils.token_extractor import TokenUsageAccumulator, extract_anthropic_usage
 
 
 logger = get_logger(__name__)
+
+
+class RateLimitHeaderPreservationMiddleware(HttpMiddleware[Any]):
+    """Middleware that preserves rate limit headers from responses."""
+
+    def __init__(self) -> None:
+        """Initialize the rate limit header preservation middleware."""
+        # Define all rate limit headers to preserve
+        self.rate_limit_headers = {
+            # Standard API key rate limit headers
+            "x-ratelimit-limit-requests",
+            "x-ratelimit-remaining-requests",
+            "x-ratelimit-limit-tokens",
+            "x-ratelimit-remaining-tokens",
+            "x-ratelimit-reset-requests",
+            "x-ratelimit-reset-tokens",
+            "retry-after",
+            # OAuth unified rate limit headers
+            "anthropic-ratelimit-unified-status",
+            "anthropic-ratelimit-unified-representative-claim",
+            "anthropic-ratelimit-unified-fallback-percentage",
+            "anthropic-ratelimit-unified-reset",
+        }
+
+    async def process_request(self, request: httpx.Request) -> httpx.Request:
+        """Pass through the request unchanged."""
+        return request
+
+    async def process_response(
+        self, response: httpx.Response, request: httpx.Request
+    ) -> httpx.Response:
+        """Store rate limit headers in request context for later use."""
+        # Extract rate limit headers from response
+        rate_limit_headers = {}
+        for header_name, header_value in response.headers.items():
+            if header_name.lower() in self.rate_limit_headers:
+                rate_limit_headers[header_name] = header_value
+                logger.debug(
+                    f"Captured rate limit header: {header_name}: {header_value}"
+                )
+
+        # Store in request extensions for access later
+        if rate_limit_headers:
+            response.extensions["rate_limit_headers"] = rate_limit_headers
+
+        return response
 
 
 class ReverseProxyService:
@@ -92,6 +143,66 @@ class ReverseProxyService:
         else:
             logger.debug("Using default SSL verification")
             return True
+
+    @asynccontextmanager
+    async def _get_http_client(self) -> AsyncGenerator[InstrumentedHttpClient | httpx.AsyncClient, None]:
+        """Create and provide the instrumented HTTP client as a context manager.
+
+        Yields:
+            Configured InstrumentedHttpClient or httpx.AsyncClient instance
+        """
+        # Get proxy and SSL settings
+        proxy_url = self._get_proxy_url()
+        ssl_verify = self._get_ssl_context()
+
+        # Convert SSL context to appropriate format for http_client
+        ssl_ca_bundle = None
+        if isinstance(ssl_verify, str):
+            ssl_ca_bundle = ssl_verify
+            ssl_verify = True
+
+        # Create custom middleware
+        middleware: list[HttpMiddleware[Any]] = [
+            RateLimitHeaderPreservationMiddleware(),
+        ]
+
+        # Create the client using factory
+        client = create_anthropic_client(
+            api_key=None,  # We'll set the auth header per request
+            base_url=self.target_base_url,
+            timeout=self.timeout,
+            max_retries=0,  # We handle retries at a higher level
+        )
+
+        # Only override config if it's an InstrumentedHttpClient
+        if isinstance(client, InstrumentedHttpClient):
+            # Override with our custom configuration
+            from ccproxy.utils.http_client import HttpClientConfig
+
+            client.config = HttpClientConfig(
+                proxy_url=proxy_url,
+                ssl_verify=ssl_verify,
+                ssl_ca_bundle=ssl_ca_bundle,
+                timeout=self.timeout,
+                connect_timeout=30.0,
+                max_retries=0,
+                collect_metrics=True,
+                middleware=middleware,
+            )
+
+            # Recreate the internal client with new config
+            client._client = None
+
+        # Use the client as a context manager if it supports it
+        if isinstance(client, InstrumentedHttpClient):
+            async with client as instrumented_client:
+                yield instrumented_client
+        else:
+            # For regular httpx.AsyncClient, handle lifecycle manually
+            try:
+                yield client
+            finally:
+                await client.aclose()
 
     async def proxy_request(
         self,
@@ -202,15 +313,8 @@ class ReverseProxyService:
                 f"Request body size: {len(proxy_body) if proxy_body else 0} bytes"
             )
 
-            # Make the request
-            proxy_url = self._get_proxy_url()
-            verify = self._get_ssl_context()
-
-            logger.debug(f"HTTP client config - proxy: {proxy_url}, verify: {verify}")
-
-            async with httpx.AsyncClient(
-                timeout=self.timeout, proxy=proxy_url, verify=verify
-            ) as client:
+            # Make the request using instrumented client
+            async with self._get_http_client() as client:
                 logger.debug(f"Sending {method} request to Anthropic API...")
                 response = await client.request(
                     method=method,
@@ -220,58 +324,56 @@ class ReverseProxyService:
                     params=query_params,
                 )
 
-                # Log response status
-                logger.debug(
-                    f"Anthropic API response: {response.status_code} {response.reason_phrase}"
+            # Log response status
+            logger.debug(
+                f"Anthropic API response: {response.status_code} {response.reason_phrase}"
+            )
+            if response.status_code >= 400:
+                logger.info(
+                    f"API error: {response.status_code} {response.reason_phrase}"
                 )
-                if response.status_code >= 400:
-                    logger.info(
-                        f"API error: {response.status_code} {response.reason_phrase}"
-                    )
+                logger.debug(f"API error response headers: {dict(response.headers)}")
+                # Log first part of error response for debugging
+                try:
+                    error_content = response.content[:500]  # First 500 bytes
                     logger.debug(
-                        f"API error response headers: {dict(response.headers)}"
+                        f"Error response preview: {error_content.decode('utf-8', errors='replace')}"
                     )
-                    # Log first part of error response for debugging
-                    try:
-                        error_content = response.content[:500]  # First 500 bytes
-                        logger.debug(
-                            f"Error response preview: {error_content.decode('utf-8', errors='replace')}"
-                        )
-                    except Exception:
-                        logger.debug("Could not read error response content")
+                except Exception:
+                    logger.debug("Could not read error response content")
 
-            # Handle streaming responses
-            if self._is_streaming_response(response):
-                return await self._handle_streaming_response(
-                    method, target_url, proxy_headers, proxy_body, query_params, path
+                # Handle streaming responses
+                if self._is_streaming_response(response):
+                    return await self._handle_streaming_response(
+                        method, target_url, proxy_headers, proxy_body, query_params, path
+                    )
+
+                # Handle regular responses
+                response_body = self.response_transformer.transform_response_body(
+                    response.content, path, self.proxy_mode
+                )
+                response_headers = self.response_transformer.transform_response_headers(
+                    dict(response.headers), path, len(response_body), self.proxy_mode
                 )
 
-            # Handle regular responses
-            response_body = self.response_transformer.transform_response_body(
-                response.content, path, self.proxy_mode
-            )
-            response_headers = self.response_transformer.transform_response_headers(
-                dict(response.headers), path, len(response_body), self.proxy_mode
-            )
+                # Extract token usage from response for metrics
+                try:
+                    import json
 
-            # Extract token usage from response for metrics
-            try:
-                import json
+                    response_json = json.loads(response.content)
+                    token_usage = extract_anthropic_usage(response_json)
+                    if token_usage:
+                        request_context.set_token_usage(token_usage)
+                        logger.debug(f"Extracted token usage: {token_usage}")
+                except Exception as e:
+                    logger.debug(f"Could not extract token usage from response: {e}")
 
-                response_json = json.loads(response.content)
-                token_usage = extract_anthropic_usage(response_json)
-                if token_usage:
-                    request_context.set_token_usage(token_usage)
-                    logger.debug(f"Extracted token usage: {token_usage}")
-            except Exception as e:
-                logger.debug(f"Could not extract token usage from response: {e}")
+                # Preserve rate limit headers from Anthropic API
+                response_headers = self._preserve_rate_limit_headers(
+                    dict(response.headers), response_headers
+                )
 
-            # Preserve rate limit headers from Anthropic API
-            response_headers = self._preserve_rate_limit_headers(
-                dict(response.headers), response_headers
-            )
-
-            return response.status_code, response_headers, response_body
+                return response.status_code, response_headers, response_body
 
         except httpx.TimeoutException as e:
             logger.error(f"Timeout proxying {method} {path}")
@@ -326,27 +428,27 @@ class ReverseProxyService:
         async def stream_generator() -> AsyncGenerator[bytes, None]:
             nonlocal captured_headers
             token_accumulator = TokenUsageAccumulator()
+            response = None
             try:
-                proxy_url = self._get_proxy_url()
-                verify = self._get_ssl_context()
-                async with (
-                    httpx.AsyncClient(
-                        timeout=self.timeout, proxy=proxy_url, verify=verify
-                    ) as client,
-                    client.stream(
+                # Use the instrumented client for streaming
+                # Keep the client context open for the entire streaming operation
+                async with self._get_http_client() as client:
+                    response = await client.stream(
                         method=method,
                         url=url,
                         headers=headers,
                         content=body,
                         params=params,
-                    ) as response,
-                ):
+                    )
+
                     # Capture response headers for rate limit preservation
                     captured_headers = dict(response.headers)
 
                     # Check for errors
                     if response.status_code >= 400:
-                        error_content = await response.aread()
+                        error_content = b""
+                        async for chunk in response.aiter_bytes():
+                            error_content += chunk
                         logger.info(f"Streaming error {response.status_code}")
                         logger.debug(
                             f"Streaming error detail: {error_content.decode('utf-8', errors='replace')}"
@@ -355,9 +457,7 @@ class ReverseProxyService:
                         return
 
                     # Check if this is an OpenAI endpoint that needs transformation
-                    is_openai = self.response_transformer._is_openai_request(
-                        original_path
-                    )
+                    is_openai = self.response_transformer._is_openai_request(original_path)
                     logger.debug(
                         f"Streaming response for path: {original_path}, is_openai: {is_openai}, mode: {self.proxy_mode}"
                     )
@@ -387,10 +487,7 @@ class ReverseProxyService:
                                         for line in chunk_str.split("\n"):
                                             if line.startswith("data:"):
                                                 event_data = line[5:].strip()
-                                                if (
-                                                    event_data
-                                                    and event_data != "[DONE]"
-                                                ):
+                                                if event_data and event_data != "[DONE]":
                                                     import json
 
                                                     event = json.loads(event_data)
@@ -403,6 +500,10 @@ class ReverseProxyService:
                 error_message = f'data: {{"error": "Streaming error: {str(e)}"}}\n\n'
                 yield error_message.encode("utf-8")
             finally:
+                # Ensure response is closed
+                if response:
+                    await response.aclose()
+
                 # Set accumulated token usage in context
                 final_usage = token_accumulator.get_usage()
                 if final_usage:

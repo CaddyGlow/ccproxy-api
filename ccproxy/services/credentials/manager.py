@@ -1,11 +1,10 @@
 """Credentials manager for coordinating storage and OAuth operations."""
 
 import asyncio
+import os
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
-
-import httpx
 
 from ccproxy.services.credentials.config import CredentialsConfig
 from ccproxy.services.credentials.exceptions import (
@@ -30,7 +29,6 @@ class CredentialsManager:
         config: CredentialsConfig | None = None,
         storage: CredentialsStorageBackend | None = None,
         oauth_client: OAuthClient | None = None,
-        http_client: httpx.AsyncClient | None = None,
     ):
         """Initialize credentials manager.
 
@@ -38,34 +36,17 @@ class CredentialsManager:
             config: Credentials configuration (uses defaults if not provided)
             storage: Storage backend (uses JSON file storage if not provided)
             oauth_client: OAuth client (creates one if not provided)
-            http_client: HTTP client for OAuth operations
         """
         self.config = config or CredentialsConfig()
         self._storage = storage
         self._oauth_client = oauth_client
-        self._http_client = http_client
-        self._owns_http_client = http_client is None
         self._refresh_lock = asyncio.Lock()
 
         # Initialize OAuth client if not provided
         if self._oauth_client is None:
             self._oauth_client = OAuthClient(
                 config=self.config.oauth,
-                http_client=self._http_client,
             )
-
-    async def __aenter__(self) -> "CredentialsManager":
-        """Async context manager entry."""
-        if self._http_client is None:
-            self._http_client = httpx.AsyncClient()
-            if self._oauth_client:
-                self._oauth_client._http_client = self._http_client
-        return self
-
-    async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
-        """Async context manager exit."""
-        if self._owns_http_client and self._http_client:
-            await self._http_client.aclose()
 
     @property
     def storage(self) -> CredentialsStorageBackend:

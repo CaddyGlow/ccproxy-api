@@ -173,9 +173,11 @@ class MetricsMiddleware(BaseHTTPMiddleware):
             # Extract and record model usage if available
             token_usage = request_context.get_token_usage()
             model_name = request_context.get_model()
-            
+
             # Debug logging
-            logger.debug(f"Token extraction - Model: {model_name}, Token usage: {token_usage}")
+            logger.debug(
+                f"Token extraction - Model: {model_name}, Token usage: {token_usage}"
+            )
 
             if token_usage and model_name and status_code < 400:
                 # Calculate cost if not already provided
@@ -410,7 +412,7 @@ class MetricsMiddleware(BaseHTTPMiddleware):
                     tokens_limit=None,  # Not provided in headers
                     tokens_remaining=None,  # Not provided in headers
                     reset_timestamp=std_info.get("reset"),
-                    retry_after_seconds=std_info.get("retry_after")
+                    retry_after_seconds=std_info.get("retry_after"),
                 )
             elif auth_type == "oauth" and rate_limit_info["oauth_unified"]:
                 # Map the fields from extractor to model fields
@@ -419,7 +421,7 @@ class MetricsMiddleware(BaseHTTPMiddleware):
                     status=oauth_info.get("status"),
                     representative_claim=oauth_info.get("representative_claim"),
                     fallback_percentage=oauth_info.get("fallback_percentage"),
-                    reset_timestamp=oauth_info.get("reset")
+                    reset_timestamp=oauth_info.get("reset"),
                 )
 
             # Create RateLimitData object

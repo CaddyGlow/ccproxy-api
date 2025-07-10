@@ -263,6 +263,7 @@ def _run_local_server(settings: Settings, cli_overrides: dict[str, Any]) -> None
         reload=settings.reload,
         workers=None,  # ,settings.workers,
         log_config=None,
+        reload_includes=["ccproxy", "pyproject.yaml", "uv.lock"],
         # log_config=get_uvicorn_log_config(),
     )
 

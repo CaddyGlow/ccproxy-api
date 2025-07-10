@@ -331,6 +331,11 @@ class Settings(BaseSettings):
         description="Enable HTTP client metrics collection",
     )
 
+    use_instrumented_http_client: bool = Field(
+        default=True,
+        description="Use instrumented HTTP client with metrics and middleware support. Set to False to use regular httpx client",
+    )
+
     # Rate Limiting configuration
     rate_limit_tracking_enabled: bool = Field(
         default=True,

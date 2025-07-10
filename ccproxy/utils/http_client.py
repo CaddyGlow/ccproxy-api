@@ -1,10 +1,12 @@
 """HTTP client utilities with integrated metrics and configuration support."""
 
 import asyncio
+import contextlib
+import json
 import ssl
 import time
 from abc import ABC, abstractmethod
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, Generic, Optional, TypeVar
@@ -13,7 +15,7 @@ from urllib.parse import urlparse
 import httpx
 from pydantic import BaseModel, Field
 
-from ccproxy.config import get_settings
+# Removed to avoid circular import - imported locally where needed
 from ccproxy.utils.logging import get_logger
 
 
@@ -39,6 +41,10 @@ class HttpMetrics(BaseModel):
     host: str = Field(description="Request host")
     path: str = Field(description="Request path")
     user_agent: str = Field(description="User agent used", default="")
+    is_streaming: bool = Field(
+        description="Whether this was a streaming request", default=False
+    )
+    bytes_streamed: int = Field(description="Total bytes streamed", default=0)
 
     @classmethod
     def from_request(
@@ -61,8 +67,19 @@ class HttpMetrics(BaseModel):
 
         # Calculate response size
         response_size = 0
-        if response and hasattr(response, "content"):
-            response_size = len(response.content)
+        if response:
+            # For streaming responses, content is not available
+            # Try to get size from Content-Length header if available
+            if hasattr(response, "headers") and "content-length" in response.headers:
+                try:
+                    response_size = int(response.headers["content-length"])
+                except (ValueError, TypeError):
+                    response_size = 0
+            elif hasattr(response, "_content"):
+                # For non-streaming responses, content is already loaded
+                response_size = len(response._content)
+            # For streaming responses without Content-Length, size will be 0
+            # The actual size should be set by the caller if tracked during streaming
 
         return cls(
             url=str(request.url),
@@ -279,6 +296,7 @@ class InstrumentedHttpClient:
         self._client: httpx.AsyncClient | None = None
         self._metrics: list[HttpMetrics] = []
         self._middleware: HttpMiddleware[Any] | None = self._setup_middleware()
+        self._entered = False
 
     def _create_ssl_context(self) -> ssl.SSLContext | bool:
         """Create SSL context from configuration."""
@@ -388,6 +406,7 @@ class InstrumentedHttpClient:
 
         # Integrate with existing metrics system
         try:
+            from ccproxy.config import get_settings
             from ccproxy.metrics.database import RequestLog
             from ccproxy.metrics.sync_storage import get_sync_metrics_storage
 
@@ -546,6 +565,308 @@ class InstrumentedHttpClient:
         """Make an OPTIONS request."""
         return await self.request("OPTIONS", url, **kwargs)
 
+    async def stream(
+        self,
+        method: str,
+        url: str,
+        *,
+        params: dict[str, Any] | None = None,
+        headers: dict[str, str] | None = None,
+        data: Any | None = None,
+        json: Any | None = None,
+        files: dict[str, Any] | None = None,
+        timeout: float | None = None,
+        chunk_size: int = 8192,
+        **kwargs: Any,
+    ) -> httpx.Response:
+        """Make a streaming HTTP request with metrics collection.
+
+        This method returns an httpx.Response object with stream=True, allowing
+        access to headers, status code, and streaming content via aiter_bytes().
+        Middleware is applied to the initial request and the final response after
+        streaming completes.
+
+        Args:
+            method: HTTP method (GET, POST, etc.)
+            url: Target URL
+            params: Query parameters
+            headers: Request headers
+            data: Request body data
+            json: JSON request body
+            files: Files to upload
+            timeout: Request timeout in seconds
+            chunk_size: Size of chunks to yield (default 8192)
+            **kwargs: Additional request parameters
+
+        Returns:
+            httpx.Response: Response object with streaming enabled
+
+        Raises:
+            Exception: If the request fails or streaming encounters an error
+        """
+        start_time = time.time()
+        request: httpx.Request | None = None
+        response: httpx.Response | None = None
+        error: str | None = None
+        bytes_streamed = 0
+
+        try:
+            async with self._client_context() as client:
+                # Create request
+                request = client.build_request(
+                    method=method,
+                    url=url,
+                    params=params,
+                    headers=headers,
+                    data=data,
+                    json=json,
+                    files=files,
+                    timeout=timeout or self.config.timeout,
+                    **kwargs,
+                )
+
+                # Apply request middleware
+                if self._middleware:
+                    request = await self._middleware.process_request(request)
+
+                # Make request with retries
+                for attempt in range(self.config.max_retries + 1):
+                    try:
+                        response = await client.send(request, stream=True)
+                        break
+                    except Exception as e:
+                        if attempt == self.config.max_retries:
+                            # Apply error middleware before re-raising
+                            if self._middleware:
+                                e = await self._middleware.process_error(e, request)
+                            raise e
+
+                        wait_time = self.config.retry_backoff * (2**attempt)
+                        logger.debug(
+                            f"Stream request failed (attempt {attempt + 1}), retrying in {wait_time}s: {e}"
+                        )
+                        await asyncio.sleep(wait_time)
+
+                if response is None:
+                    raise RuntimeError("No response received")
+
+                # Check for HTTP errors before streaming
+                response.raise_for_status()
+
+                # Create a wrapped response that tracks metrics during streaming
+                class MetricsTrackingResponse:
+                    """Wrapper that tracks metrics during streaming."""
+
+                    def __init__(
+                        self, resp: httpx.Response, parent: InstrumentedHttpClient
+                    ):
+                        self._response = resp
+                        self._parent = parent
+                        self._bytes_streamed = 0
+                        self._closed = False
+
+                    def __getattr__(self, name: str) -> Any:
+                        """Delegate attribute access to wrapped response."""
+                        return getattr(self._response, name)
+
+                    @property
+                    def status_code(self) -> int:
+                        """Get response status code."""
+                        return self._response.status_code
+
+                    @property
+                    def headers(self) -> httpx.Headers:
+                        """Get response headers."""
+                        return self._response.headers
+
+                    @property
+                    def extensions(self) -> dict[str, Any]:
+                        """Get response extensions."""
+                        return self._response.extensions
+
+                    async def aiter_bytes(
+                        self, chunk_size: int | None = None
+                    ) -> AsyncIterator[bytes]:
+                        """Stream response content as bytes."""
+                        if chunk_size is None:
+                            chunk_size = 8192
+
+                        error = None
+                        try:
+                            async for chunk in self._response.aiter_bytes(
+                                chunk_size=chunk_size
+                            ):
+                                self._bytes_streamed += len(chunk)
+                                yield chunk
+                        except Exception as e:
+                            error = e
+                            raise
+                        finally:
+                            # Record metrics when streaming completes (success or failure)
+                            if not self._closed:
+                                await self._finalize(error=error)
+
+                    async def aclose(self) -> None:
+                        """Close the response and record final metrics."""
+                        if not self._closed:
+                            await self._response.aclose()
+                            await self._finalize()
+                            self._closed = True
+
+                    async def _finalize(self, error: Exception | None = None) -> None:
+                        """Finalize metrics recording."""
+                        nonlocal bytes_streamed, response, request, start_time
+                        bytes_streamed = self._bytes_streamed
+
+                        # Apply response middleware after streaming completes
+                        if self._parent._middleware and not error:
+                            # Note: middleware can't modify streamed content, but can process metadata
+                            await self._parent._middleware.process_response(
+                                self._response, request
+                            )
+
+                        # Record metrics when streaming completes
+                        if not hasattr(self, "_metrics_recorded"):
+                            self._metrics_recorded = True
+                            duration_ms = (time.time() - start_time) * 1000
+
+                            metrics = HttpMetrics.from_request(
+                                request=request,
+                                response=self._response,
+                                duration_ms=duration_ms,
+                                error=str(error) if error else None,
+                            )
+                            metrics.is_streaming = True
+                            metrics.bytes_streamed = self._bytes_streamed
+                            metrics.response_size = self._bytes_streamed
+                            await self._parent._record_metrics(metrics)
+
+                # Return the wrapped response
+                return MetricsTrackingResponse(response, self)
+
+        except Exception as e:
+            error = str(e)
+            logger.error(f"HTTP stream request failed: {method} {url} - {error}")
+
+            # Record metrics for failed requests
+            duration_ms = (time.time() - start_time) * 1000
+            if request:
+                metrics = HttpMetrics.from_request(
+                    request=request,
+                    response=response,
+                    duration_ms=duration_ms,
+                    error=error,
+                )
+                metrics.is_streaming = True
+                metrics.bytes_streamed = bytes_streamed
+                metrics.response_size = bytes_streamed
+                await self._record_metrics(metrics)
+
+            raise
+
+    async def stream_sse(
+        self,
+        url: str,
+        *,
+        params: dict[str, Any] | None = None,
+        headers: dict[str, str] | None = None,
+        data: Any | None = None,
+        json: Any | None = None,
+        timeout: float | None = None,
+        **kwargs: Any,
+    ) -> AsyncIterator[dict[str, Any]]:
+        """Make a Server-Sent Events (SSE) streaming request.
+
+        This method parses SSE format and yields parsed events as dictionaries.
+
+        Args:
+            url: Target URL for SSE endpoint
+            params: Query parameters
+            headers: Request headers (will add Accept: text/event-stream)
+            data: Request body data
+            json: JSON request body
+            timeout: Request timeout in seconds
+            **kwargs: Additional request parameters
+
+        Yields:
+            dict: Parsed SSE events with 'event', 'data', and optional 'id' fields
+
+        Raises:
+            Exception: If the request fails or SSE parsing encounters an error
+        """
+        # Ensure correct headers for SSE
+        if headers is None:
+            headers = {}
+        headers["Accept"] = "text/event-stream"
+        headers["Cache-Control"] = "no-cache"
+
+        # Buffer for incomplete SSE messages
+        buffer = ""
+
+        response = await self.stream(
+            "GET",
+            url,
+            params=params,
+            headers=headers,
+            data=data,
+            json=json,
+            timeout=timeout,
+            **kwargs,
+        )
+
+        try:
+            async for chunk in response.aiter_bytes():
+                # Decode chunk and add to buffer
+                buffer += chunk.decode("utf-8", errors="ignore")
+
+                # Process complete events in buffer
+                while "\n\n" in buffer:
+                    event_data, buffer = buffer.split("\n\n", 1)
+
+                    # Parse SSE event
+                    event = self._parse_sse_event(event_data)
+                    if event:
+                        yield event
+        finally:
+            # Ensure response is closed
+            await response.aclose()
+
+    def _parse_sse_event(self, event_data: str) -> dict[str, Any] | None:
+        """Parse a single SSE event from raw data.
+
+        Args:
+            event_data: Raw SSE event data
+
+        Returns:
+            Parsed event dict or None if event is empty/comment
+        """
+        event: dict[str, Any] = {}
+
+        for line in event_data.strip().split("\n"):
+            if not line or line.startswith(":"):
+                # Empty line or comment
+                continue
+
+            if ":" in line:
+                field, value = line.split(":", 1)
+                value = value.lstrip()
+
+                if field == "data":
+                    # Concatenate multiple data fields
+                    if "data" in event:
+                        event["data"] += "\n" + value
+                    else:
+                        event["data"] = value
+                elif field in ("event", "id", "retry"):
+                    event[field] = value
+
+        # Parse JSON data if possible
+        if "data" in event:
+            with contextlib.suppress(json.JSONDecodeError, TypeError):
+                event["parsed_data"] = json.loads(event["data"])
+
+        return event if event else None
+
     def get_metrics(self) -> list[HttpMetrics]:
         """Get collected metrics."""
         return self._metrics.copy()
@@ -579,6 +900,18 @@ class InstrumentedHttpClient:
             self.config.middleware.remove(middleware)
             self._middleware = self._setup_middleware()
 
+    async def __aenter__(self) -> "InstrumentedHttpClient":
+        """Async context manager entry."""
+        self._entered = True
+        if self._client is None:
+            self._client = self._create_client()
+        return self
+
+    async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
+        """Async context manager exit."""
+        await self.close()
+        self._entered = False
+
 
 # Factory function for easy creation
 def create_http_client(
@@ -589,7 +922,7 @@ def create_http_client(
     collect_metrics: bool = True,
     middleware: list[HttpMiddleware[Any]] | None = None,
     **kwargs: Any,
-) -> InstrumentedHttpClient:
+) -> InstrumentedHttpClient | httpx.AsyncClient:
     """Create a configured HTTP client.
 
     Args:
@@ -602,8 +935,62 @@ def create_http_client(
         **kwargs: Additional configuration options
 
     Returns:
-        Configured InstrumentedHttpClient instance
+        Configured InstrumentedHttpClient instance or regular httpx.AsyncClient
     """
+    # Check feature flag
+    try:
+        from ccproxy.config import get_settings
+
+        settings = get_settings()
+        use_instrumented = getattr(settings, "use_instrumented_http_client", True)
+    except Exception:
+        # Default to True if settings not available
+        use_instrumented = True
+
+    # Fall back to regular httpx client if feature flag is disabled
+    if not use_instrumented:
+        logger.info("Instrumented HTTP client disabled, using regular httpx client")
+
+        # Create timeout configuration
+        timeout_config = httpx.Timeout(
+            connect=kwargs.get("connect_timeout", 10.0),
+            read=timeout,
+            write=timeout,
+            pool=timeout,
+        )
+
+        # Create limits configuration
+        limits = httpx.Limits(
+            max_connections=kwargs.get("max_connections", 100),
+            max_keepalive_connections=kwargs.get("max_keepalive_connections", 20),
+        )
+
+        # Configure SSL
+        if not ssl_verify:
+            verify = False
+        elif ssl_ca_bundle:
+            verify = ssl_ca_bundle
+        else:
+            verify = True
+
+        # Configure proxy
+        proxy = None
+        if proxy_url:
+            proxy_auth = kwargs.get("proxy_auth")
+            if proxy_auth:
+                username, password = proxy_auth
+                proxy = proxy_url.replace("://", f"://{username}:{password}@")
+            else:
+                proxy = proxy_url
+
+        return httpx.AsyncClient(
+            verify=verify,
+            timeout=timeout_config,
+            limits=limits,
+            proxy=proxy,
+        )
+
+    # Use instrumented client
     config = HttpClientConfig(
         proxy_url=proxy_url,
         ssl_verify=ssl_verify,
@@ -634,10 +1021,10 @@ def create_chained_middleware(
 
 
 # Global client instance for convenience
-_global_client: InstrumentedHttpClient | None = None
+_global_client: InstrumentedHttpClient | httpx.AsyncClient | None = None
 
 
-async def get_global_client() -> InstrumentedHttpClient:
+async def get_global_client() -> InstrumentedHttpClient | httpx.AsyncClient:
     """Get or create the global HTTP client."""
     global _global_client
     if _global_client is None:

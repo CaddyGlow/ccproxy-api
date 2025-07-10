@@ -737,12 +737,12 @@ class DashboardManager {
         // Update metric cards with safe defaults
         this.updateMetricCard('activeRequests', metrics.active_requests || 0, metrics.activeRequestsChange);
         this.updateMetricCard('totalRequests', metrics.total_requests || 0, metrics.totalRequestsChange);
-        
+
         // Calculate error rate safely
-        const errorRate = metrics.total_requests > 0 ? 
+        const errorRate = metrics.total_requests > 0 ?
             ((metrics.total_errors || 0) / metrics.total_requests * 100) : 0;
         this.updateMetricCard('errorRate', `${errorRate.toFixed(1)}%`, metrics.errorRateChange);
-        
+
         // Handle response time safely
         const avgResponseTime = metrics.avg_response_time || 0;
         this.updateMetricCard('avgResponseTime', `${(avgResponseTime * 1000).toFixed(0)}ms`, metrics.avgResponseTimeChange);
@@ -777,7 +777,7 @@ class DashboardManager {
                 this.updateChart(chart, chartData[chartName]);
             }
         });
-        
+
         // Special handling for token charts
         if (chartData.tokenUsageChart && this.charts.tokenUsage) {
             this.updateChart(this.charts.tokenUsage, chartData.tokenUsageChart);

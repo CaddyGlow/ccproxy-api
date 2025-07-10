@@ -264,19 +264,23 @@ async def create_message(
                 # Extract token usage and set in context for metrics
                 usage_data = response.get("usage", {})
                 if usage_data:
-                    from ccproxy.utils.token_extractor import TokenUsage
                     from ccproxy.utils import request_context
-                    
+                    from ccproxy.utils.token_extractor import TokenUsage
+
                     token_usage = TokenUsage(
                         input_tokens=usage_data.get("input_tokens", 0),
                         output_tokens=usage_data.get("output_tokens", 0),
-                        cache_creation_input_tokens=usage_data.get("cache_creation_input_tokens", 0),
-                        cache_read_input_tokens=usage_data.get("cache_read_input_tokens", 0),
+                        cache_creation_input_tokens=usage_data.get(
+                            "cache_creation_input_tokens", 0
+                        ),
+                        cache_read_input_tokens=usage_data.get(
+                            "cache_read_input_tokens", 0
+                        ),
                     )
                     request_context.set_token_usage(token_usage)
                     request_context.set_model(request.model)
                     logger.debug(f"Set token usage in endpoint context: {token_usage}")
-                
+
                 # Extract the response content and create proper MessageResponse
                 message_response = MessageResponse(
                     id=message_id,

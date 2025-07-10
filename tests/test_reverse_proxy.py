@@ -1,10 +1,11 @@
 """Tests for reverse proxy functionality."""
 
 import json
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 from fastapi.testclient import TestClient
+import httpx
 
 from ccproxy.services.request_transformer import RequestTransformer
 
@@ -589,28 +590,28 @@ class TestReverseProxyAuthentication:
 
         test_creds_file.write_text(json.dumps(test_creds))
 
-        # Mock httpx to avoid actual API calls
-        mock_response = Mock()
+        # Mock InstrumentedHttpClient to avoid actual API calls
+        mock_response = Mock(spec=httpx.Response)
         mock_response.status_code = 200
         mock_response.content = b'{"message": "success"}'
-        mock_response.headers = {"content-type": "application/json"}
+        mock_response.headers = httpx.Headers({"content-type": "application/json"})
         mock_response.reason_phrase = "OK"
+        mock_response.extensions = {}
 
-        async def mock_request(*args, **kwargs):
-            return mock_response
+        # Mock the InstrumentedHttpClient.request method
+        with patch("ccproxy.utils.http_client.InstrumentedHttpClient.request") as mock_request:
+            mock_request.return_value = mock_response
 
-        monkeypatch.setattr("httpx.AsyncClient.request", mock_request)
+            client = TestClient(app_with_auth)
 
-        client = TestClient(app_with_auth)
+            # Request with valid x-api-key should succeed
+            response = client.post(
+                "/unclaude/v1/messages",
+                json={"model": "claude-3-5-sonnet", "messages": []},
+                headers={"x-api-key": "test-auth-token-123"},
+            )
 
-        # Request with valid x-api-key should succeed
-        response = client.post(
-            "/unclaude/v1/messages",
-            json={"model": "claude-3-5-sonnet", "messages": []},
-            headers={"x-api-key": "test-auth-token-123"},
-        )
-
-        assert response.status_code == 200
+            assert response.status_code == 200
 
     def test_reverse_proxy_accepts_valid_auth_bearer(self, app_with_auth, monkeypatch):
         """Test that reverse proxy accepts valid Authorization Bearer authentication."""
@@ -641,28 +642,28 @@ class TestReverseProxyAuthentication:
 
         test_creds_file.write_text(json.dumps(test_creds))
 
-        # Mock httpx to avoid actual API calls
-        mock_response = Mock()
+        # Mock InstrumentedHttpClient to avoid actual API calls
+        mock_response = Mock(spec=httpx.Response)
         mock_response.status_code = 200
         mock_response.content = b'{"message": "success"}'
-        mock_response.headers = {"content-type": "application/json"}
+        mock_response.headers = httpx.Headers({"content-type": "application/json"})
         mock_response.reason_phrase = "OK"
+        mock_response.extensions = {}
 
-        async def mock_request(*args, **kwargs):
-            return mock_response
+        # Mock the InstrumentedHttpClient.request method
+        with patch("ccproxy.utils.http_client.InstrumentedHttpClient.request") as mock_request:
+            mock_request.return_value = mock_response
 
-        monkeypatch.setattr("httpx.AsyncClient.request", mock_request)
+            client = TestClient(app_with_auth)
 
-        client = TestClient(app_with_auth)
+            # Request with valid Authorization Bearer should succeed
+            response = client.post(
+                "/unclaude/v1/messages",
+                json={"model": "claude-3-5-sonnet", "messages": []},
+                headers={"Authorization": "Bearer test-auth-token-123"},
+            )
 
-        # Request with valid Authorization Bearer should succeed
-        response = client.post(
-            "/unclaude/v1/messages",
-            json={"model": "claude-3-5-sonnet", "messages": []},
-            headers={"Authorization": "Bearer test-auth-token-123"},
-        )
-
-        assert response.status_code == 200
+            assert response.status_code == 200
 
     def test_reverse_proxy_rejects_invalid_auth(self, app_with_auth, monkeypatch):
         """Test that reverse proxy rejects invalid authentication."""
@@ -723,23 +724,23 @@ class TestReverseProxyAuthentication:
 
         test_creds_file.write_text(json.dumps(test_creds))
 
-        # Mock httpx to avoid actual API calls
-        mock_response = Mock()
+        # Mock InstrumentedHttpClient to avoid actual API calls
+        mock_response = Mock(spec=httpx.Response)
         mock_response.status_code = 200
         mock_response.content = b'{"message": "success"}'
-        mock_response.headers = {"content-type": "application/json"}
+        mock_response.headers = httpx.Headers({"content-type": "application/json"})
         mock_response.reason_phrase = "OK"
+        mock_response.extensions = {}
 
-        async def mock_request(*args, **kwargs):
-            return mock_response
+        # Mock the InstrumentedHttpClient.request method
+        with patch("ccproxy.utils.http_client.InstrumentedHttpClient.request") as mock_request:
+            mock_request.return_value = mock_response
 
-        monkeypatch.setattr("httpx.AsyncClient.request", mock_request)
+            client = TestClient(app_no_auth)
 
-        client = TestClient(app_no_auth)
+            # Request without authentication should succeed when auth is disabled
+            response = client.post(
+                "/unclaude/v1/messages", json={"model": "claude-3-5-sonnet", "messages": []}
+            )
 
-        # Request without authentication should succeed when auth is disabled
-        response = client.post(
-            "/unclaude/v1/messages", json={"model": "claude-3-5-sonnet", "messages": []}
-        )
-
-        assert response.status_code == 200
+            assert response.status_code == 200

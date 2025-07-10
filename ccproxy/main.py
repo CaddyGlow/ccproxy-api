@@ -120,9 +120,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     if settings.metrics_enabled:
         app.include_router(metrics_router, prefix="/metrics")
         logger.info("Metrics API endpoints enabled")
-        
+
         # Mount static files for dashboard CSS and JS
         from pathlib import Path
+
         static_path = Path(__file__).parent / "static"
         if static_path.exists():
             app.mount("/static", StaticFiles(directory=str(static_path)), name="static")

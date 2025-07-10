@@ -171,7 +171,7 @@ class ClaudeClient:
 
         # Extract token usage from ResultMessage
         token_usage = extract_claude_sdk_usage(result_message)
-        
+
         # Set token usage in request context for metrics collection
         if token_usage:
             request_context.set_token_usage(token_usage)
@@ -281,12 +281,14 @@ class ClaudeClient:
 
                     # Extract token usage from ResultMessage
                     token_usage = extract_claude_sdk_usage(result_message)
-                    
+
                     # Set token usage in request context for metrics collection
                     if token_usage:
                         request_context.set_token_usage(token_usage)
                         request_context.set_streaming(True)
-                        logger.debug(f"Set token usage in context (streaming): {token_usage}")
+                        logger.debug(
+                            f"Set token usage in context (streaming): {token_usage}"
+                        )
 
                     # Build usage dict for final chunk
                     usage_dict = {"output_tokens": 0}

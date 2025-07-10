@@ -1,13 +1,14 @@
 """Tests for reverse proxy rate limit header preservation."""
 
 import asyncio
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import AsyncMock, Mock, patch, MagicMock
 
 import httpx
 import pytest
 from fastapi.responses import StreamingResponse
 
 from ccproxy.services.reverse_proxy import ReverseProxyService
+from ccproxy.utils.http_client import InstrumentedHttpClient
 
 
 @pytest.mark.unit
@@ -168,15 +169,17 @@ class TestReverseProxyRateLimitHeaders:
         proxy_service._credentials_manager = mock_credentials_manager
 
         # Mock httpx response
-        mock_response = Mock()
+        mock_response = Mock(spec=httpx.Response)
         mock_response.status_code = 200
         mock_response.content = b'{"result": "success"}'
-        mock_response.headers = {
+        mock_response.headers = httpx.Headers({
             "content-type": "application/json",
             "x-ratelimit-limit-requests": "1000",
             "x-ratelimit-remaining-requests": "750",
             "anthropic-ratelimit-unified-status": "allowed",
-        }
+        })
+        mock_response.reason_phrase = "OK"
+        mock_response.extensions = {}
 
         # Mock the request transformer
         proxy_service.request_transformer.transform_path = Mock(
@@ -197,11 +200,11 @@ class TestReverseProxyRateLimitHeaders:
             return_value={"content-type": "application/json", "content-length": "20"}
         )
 
-        # Mock httpx.AsyncClient
-        with patch("httpx.AsyncClient") as mock_client_class:
-            mock_client = AsyncMock()
-            mock_client.request.return_value = mock_response
-            mock_client_class.return_value.__aenter__.return_value = mock_client
+        # Mock InstrumentedHttpClient
+        with patch.object(proxy_service, "_get_http_client") as mock_get_client:
+            mock_client = Mock(spec=InstrumentedHttpClient)
+            mock_client.request = AsyncMock(return_value=mock_response)
+            mock_get_client.return_value = mock_client
 
             # Make request
             status, headers, body = await proxy_service.proxy_request(
@@ -315,15 +318,17 @@ class TestReverseProxyRateLimitHeaders:
         proxy_service._credentials_manager = mock_credentials_manager
 
         # Mock error response with rate limit headers
-        mock_response = Mock()
+        mock_response = Mock(spec=httpx.Response)
         mock_response.status_code = 429  # Rate limited
         mock_response.content = b'{"error": "rate_limit_exceeded"}'
-        mock_response.headers = {
+        mock_response.headers = httpx.Headers({
             "content-type": "application/json",
             "x-ratelimit-limit-requests": "1000",
             "x-ratelimit-remaining-requests": "0",
             "retry-after": "60",
-        }
+        })
+        mock_response.reason_phrase = "Too Many Requests"
+        mock_response.extensions = {}
 
         # Mock transformers
         proxy_service.request_transformer.transform_path = Mock(
@@ -342,11 +347,11 @@ class TestReverseProxyRateLimitHeaders:
             return_value={"content-type": "application/json"}
         )
 
-        # Mock httpx.AsyncClient
-        with patch("httpx.AsyncClient") as mock_client_class:
-            mock_client = AsyncMock()
-            mock_client.request.return_value = mock_response
-            mock_client_class.return_value.__aenter__.return_value = mock_client
+        # Mock InstrumentedHttpClient
+        with patch.object(proxy_service, "_get_http_client") as mock_get_client:
+            mock_client = Mock(spec=InstrumentedHttpClient)
+            mock_client.request = AsyncMock(return_value=mock_response)
+            mock_get_client.return_value = mock_client
 
             # Make request
             status, headers, body = await proxy_service.proxy_request(

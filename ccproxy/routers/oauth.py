@@ -238,7 +238,7 @@ async def _exchange_code_for_tokens(
     try:
         from datetime import UTC, datetime
 
-        import httpx
+        from ccproxy.utils.http_client import create_http_client
 
         # Create OAuth config with default values
         oauth_config = OAuthConfig()
@@ -258,12 +258,12 @@ async def _exchange_code_for_tokens(
             "User-Agent": oauth_config.user_agent,
         }
 
-        async with httpx.AsyncClient() as client:
+        # Create instrumented HTTP client for OAuth
+        async with create_http_client(timeout=30.0, collect_metrics=True) as client:
             response = await client.post(
                 oauth_config.token_url,
                 headers=headers,
                 json=token_data,
-                timeout=30.0,
             )
 
             if response.status_code == 200:
@@ -312,5 +312,5 @@ async def _exchange_code_for_tokens(
                 return False
 
     except Exception as e:
-        logger.exception("Error during token exchange")
+        logger.exception("Error in token exchange setup")
         return False

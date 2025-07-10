@@ -1,16 +1,17 @@
 """Tests for HTTP client middleware functionality."""
 
-import pytest
-import httpx
 from unittest.mock import AsyncMock, Mock, patch
 
+import httpx
+import pytest
+
 from ccproxy.utils.http_client import (
-    HttpMiddleware,
     ChainedHttpMiddleware,
-    InstrumentedHttpClient,
     HttpClientConfig,
-    create_http_client,
+    HttpMiddleware,
+    InstrumentedHttpClient,
     create_chained_middleware,
+    create_http_client,
 )
 
 

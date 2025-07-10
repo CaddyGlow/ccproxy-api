@@ -13,8 +13,6 @@ from threading import Thread
 from typing import Any, Union
 from urllib.parse import parse_qs, urlparse
 
-import httpx
-
 from ccproxy.services.credentials.config import OAuthConfig
 from ccproxy.services.credentials.exceptions import (
     OAuthCallbackError,
@@ -28,6 +26,7 @@ from ccproxy.services.credentials.models import (
     OrganizationInfo,
     UserProfile,
 )
+from ccproxy.utils.http_factory import create_oauth_client
 from ccproxy.utils.logging import get_logger
 
 
@@ -40,17 +39,13 @@ class OAuthClient:
     def __init__(
         self,
         config: OAuthConfig | None = None,
-        http_client: httpx.AsyncClient | None = None,
     ):
         """Initialize OAuth client.
 
         Args:
             config: OAuth configuration (uses defaults if not provided)
-            http_client: HTTP client for making requests (creates one if not provided)
         """
         self.config = config or OAuthConfig()
-        self._http_client = http_client
-        self._owns_http_client = http_client is None
 
     def _get_proxy_url(self) -> str | None:
         """Get proxy URL from environment variables.
@@ -96,28 +91,6 @@ class OAuthClient:
             return False
         else:
             return True
-
-    async def __aenter__(self) -> "OAuthClient":
-        """Async context manager entry."""
-        if self._http_client is None:
-            proxy_url = self._get_proxy_url()
-            verify = self._get_ssl_context()
-            self._http_client = httpx.AsyncClient(proxy=proxy_url, verify=verify)
-        return self
-
-    async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
-        """Async context manager exit."""
-        if self._owns_http_client and self._http_client:
-            await self._http_client.aclose()
-
-    @property
-    def http_client(self) -> httpx.AsyncClient:
-        """Get the HTTP client, creating one if needed."""
-        if self._http_client is None:
-            proxy_url = self._get_proxy_url()
-            verify = self._get_ssl_context()
-            self._http_client = httpx.AsyncClient(proxy=proxy_url, verify=verify)
-        return self._http_client
 
     async def login(self) -> ClaudeCredentials:
         """Perform OAuth login flow.
@@ -250,12 +223,16 @@ class OAuthClient:
                 "User-Agent": self.config.user_agent,
             }
 
-            response = await self.http_client.post(
-                self.config.token_url,
-                headers=headers,
-                json=token_data,
-                timeout=30.0,
-            )
+            async with create_oauth_client(
+                client_id=self.config.client_id,
+                client_secret=None,
+            ) as http_client:
+                response = await http_client.post(
+                    self.config.token_url,
+                    headers=headers,
+                    json=token_data,
+                    timeout=30.0,
+                )
 
             if response.status_code == 200:
                 result = response.json()
@@ -328,12 +305,16 @@ class OAuthClient:
             logger.debug(f"Refresh token request headers: {headers}")
             logger.debug(f"Refresh token request data: {data}")
 
-            response = await self.http_client.post(
-                self.config.token_url,
-                headers=headers,
-                json=data,
-                timeout=30.0,
-            )
+            async with create_oauth_client(
+                client_id=self.config.client_id,
+                client_secret=None,
+            ) as http_client:
+                response = await http_client.post(
+                    self.config.token_url,
+                    headers=headers,
+                    json=data,
+                    timeout=30.0,
+                )
 
             logger.debug(f"Refresh token response status: {response.status_code}")
             logger.debug(f"Refresh token response headers: {dict(response.headers)}")
@@ -383,10 +364,6 @@ class OAuthClient:
                     f"Failed to refresh token: {response.status_code} - {error_body}"
                 )
 
-        except httpx.RequestError as e:
-            raise OAuthTokenRefreshError(
-                f"Network error during token refresh: {e}"
-            ) from e
         except Exception as e:
             if isinstance(e, OAuthTokenRefreshError):
                 raise
@@ -415,11 +392,15 @@ class OAuthClient:
                 "User-Agent": self.config.user_agent,
             }
 
-            response = await self.http_client.get(
-                "https://api.anthropic.com/api/oauth/profile",
-                headers=headers,
-                timeout=30.0,
-            )
+            async with create_oauth_client(
+                client_id=self.config.client_id,
+                client_secret=None,
+            ) as http_client:
+                response = await http_client.get(
+                    "https://api.anthropic.com/api/oauth/profile",
+                    headers=headers,
+                    timeout=30.0,
+                )
 
             if response.status_code == 200:
                 result = response.json()

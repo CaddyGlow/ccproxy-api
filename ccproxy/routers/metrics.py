@@ -209,8 +209,6 @@ def get_time_series_data(
     ]
 
 
-
-
 def convert_metrics_to_chart_data(metrics_data: dict[str, Any]) -> dict[str, Any]:
     """Convert metrics data to Chart.js format."""
     current_time = datetime.utcnow()
@@ -395,7 +393,8 @@ def convert_metrics_to_chart_data(metrics_data: dict[str, Any]) -> dict[str, Any
         "datasets": [
             {
                 "label": "Input Tokens",
-                "data": [metrics_data.get("tokenUsage", {}).get("inputTokens", 0)] * len(time_labels),
+                "data": [metrics_data.get("tokenUsage", {}).get("inputTokens", 0)]
+                * len(time_labels),
                 "borderColor": "#007bff",
                 "backgroundColor": "rgba(0, 123, 255, 0.1)",
                 "fill": True,
@@ -403,7 +402,8 @@ def convert_metrics_to_chart_data(metrics_data: dict[str, Any]) -> dict[str, Any
             },
             {
                 "label": "Output Tokens",
-                "data": [metrics_data.get("tokenUsage", {}).get("outputTokens", 0)] * len(time_labels),
+                "data": [metrics_data.get("tokenUsage", {}).get("outputTokens", 0)]
+                * len(time_labels),
                 "borderColor": "#28a745",
                 "backgroundColor": "rgba(40, 167, 69, 0.1)",
                 "fill": True,
@@ -411,13 +411,20 @@ def convert_metrics_to_chart_data(metrics_data: dict[str, Any]) -> dict[str, Any
             },
             {
                 "label": "Cache Tokens",
-                "data": [(metrics_data.get("tokenUsage", {}).get("cacheReadTokens", 0) + 
-                         metrics_data.get("tokenUsage", {}).get("cacheCreationTokens", 0))] * len(time_labels),
+                "data": [
+                    (
+                        metrics_data.get("tokenUsage", {}).get("cacheReadTokens", 0)
+                        + metrics_data.get("tokenUsage", {}).get(
+                            "cacheCreationTokens", 0
+                        )
+                    )
+                ]
+                * len(time_labels),
                 "borderColor": "#ffc107",
                 "backgroundColor": "rgba(255, 193, 7, 0.1)",
                 "fill": True,
                 "spanGaps": True,
-            }
+            },
         ],
     }
 
@@ -428,17 +435,21 @@ def convert_metrics_to_chart_data(metrics_data: dict[str, Any]) -> dict[str, Any
             {
                 "label": "Input Tokens",
                 "data": [usage.get("input_tokens", 0) for usage in model_usage.values()]
-                if model_usage else [0],
+                if model_usage
+                else [0],
                 "backgroundColor": "#007bff",
-                "stack": "tokens"
+                "stack": "tokens",
             },
             {
                 "label": "Output Tokens",
-                "data": [usage.get("output_tokens", 0) for usage in model_usage.values()]
-                if model_usage else [0],
+                "data": [
+                    usage.get("output_tokens", 0) for usage in model_usage.values()
+                ]
+                if model_usage
+                else [0],
                 "backgroundColor": "#28a745",
-                "stack": "tokens"
-            }
+                "stack": "tokens",
+            },
         ],
     }
 
@@ -446,14 +457,18 @@ def convert_metrics_to_chart_data(metrics_data: dict[str, Any]) -> dict[str, Any
     token_usage_stats = metrics_data.get("tokenUsage", {})
     cache_read = token_usage_stats.get("cacheReadTokens", 0)
     cache_creation = token_usage_stats.get("cacheCreationTokens", 0)
-    regular_tokens = token_usage_stats.get("totalTokens", 0) - cache_read - cache_creation
-    
+    regular_tokens = (
+        token_usage_stats.get("totalTokens", 0) - cache_read - cache_creation
+    )
+
     cache_token_data = {
         "labels": ["Cache Read", "Cache Creation", "No Cache"],
-        "datasets": [{
-            "data": [cache_read, cache_creation, max(0, regular_tokens)],
-            "backgroundColor": ["#28a745", "#ffc107", "#6c757d"],
-        }],
+        "datasets": [
+            {
+                "data": [cache_read, cache_creation, max(0, regular_tokens)],
+                "backgroundColor": ["#28a745", "#ffc107", "#6c757d"],
+            }
+        ],
     }
 
     return {
@@ -471,7 +486,7 @@ def convert_metrics_to_chart_data(metrics_data: dict[str, Any]) -> dict[str, Any
 async def get_current_metrics_data() -> dict[str, Any]:
     """Get current metrics data for API responses and WebSocket broadcasts."""
     settings = get_settings()
-    
+
     # Get the metrics collector to access Prometheus metrics
     metrics_collector = get_metrics_collector()
 
@@ -488,7 +503,7 @@ async def get_current_metrics_data() -> dict[str, Any]:
     try:
         # Access the Prometheus registry to get current gauge values
         from prometheus_client import REGISTRY
-        
+
         for metric in REGISTRY.collect():
             if metric.name == "ccproxy_active_requests":
                 for sample in metric.samples:
@@ -497,7 +512,7 @@ async def get_current_metrics_data() -> dict[str, Any]:
                         active_requests_count += int(sample.value)
     except Exception as e:
         logger.debug(f"Failed to get active requests from Prometheus: {e}")
-    
+
     # Default values when no data is available
     metrics_data = {
         "timestamp": datetime.utcnow().isoformat(),
@@ -560,7 +575,7 @@ async def get_current_metrics_data() -> dict[str, Any]:
                 total_output_tokens = 0
                 total_cache_read_tokens = 0
                 total_cache_creation_tokens = 0
-                
+
                 for log in recent_logs:
                     if log.model:
                         if log.model not in model_usage:
@@ -574,61 +589,79 @@ async def get_current_metrics_data() -> dict[str, Any]:
                             }
                         model_usage[log.model]["requests"] += 1
                         model_usage[log.model]["input_tokens"] += int(log.input_tokens)
-                        model_usage[log.model]["output_tokens"] += int(log.output_tokens)
-                        model_usage[log.model]["cache_read_tokens"] += int(log.cache_read_input_tokens)
-                        model_usage[log.model]["cache_creation_tokens"] += int(log.cache_creation_input_tokens)
+                        model_usage[log.model]["output_tokens"] += int(
+                            log.output_tokens
+                        )
+                        model_usage[log.model]["cache_read_tokens"] += int(
+                            log.cache_read_input_tokens
+                        )
+                        model_usage[log.model]["cache_creation_tokens"] += int(
+                            log.cache_creation_input_tokens
+                        )
                         model_usage[log.model]["cost"] += float(log.cost_dollars)
-                        
+
                         # Accumulate totals
                         total_input_tokens += int(log.input_tokens)
                         total_output_tokens += int(log.output_tokens)
                         total_cache_read_tokens += int(log.cache_read_input_tokens)
-                        total_cache_creation_tokens += int(log.cache_creation_input_tokens)
+                        total_cache_creation_tokens += int(
+                            log.cache_creation_input_tokens
+                        )
 
                 # Calculate cache hit rate
-                total_cache_tokens = total_cache_read_tokens + total_cache_creation_tokens
+                total_cache_tokens = (
+                    total_cache_read_tokens + total_cache_creation_tokens
+                )
                 total_all_tokens = total_input_tokens + total_output_tokens
-                cache_hit_rate = (total_cache_tokens / total_all_tokens * 100) if total_all_tokens > 0 else 0
-                
+                cache_hit_rate = (
+                    (total_cache_tokens / total_all_tokens * 100)
+                    if total_all_tokens > 0
+                    else 0
+                )
+
                 # Calculate change values by comparing with previous period
                 # Get logs from previous hour for comparison
                 prev_end_time = start_time
                 prev_start_time = prev_end_time - timedelta(hours=1)
-                
+
                 prev_input_tokens = 0
                 prev_output_tokens = 0
                 prev_cache_tokens = 0
-                
+
                 try:
                     prev_logs = storage.get_request_logs(
-                        start_time=prev_start_time, 
-                        end_time=prev_end_time, 
-                        limit=1000
+                        start_time=prev_start_time, end_time=prev_end_time, limit=1000
                     )
-                    
+
                     if prev_logs:
                         for log in prev_logs:
                             if log.model:
                                 prev_input_tokens += int(log.input_tokens)
                                 prev_output_tokens += int(log.output_tokens)
-                                prev_cache_tokens += int(log.cache_read_input_tokens) + int(log.cache_creation_input_tokens)
-                    
+                                prev_cache_tokens += int(
+                                    log.cache_read_input_tokens
+                                ) + int(log.cache_creation_input_tokens)
+
                     # Calculate changes
                     prev_total = prev_input_tokens + prev_output_tokens
-                    prev_cache_rate = (prev_cache_tokens / prev_total * 100) if prev_total > 0 else 0
-                    
-                    total_tokens_change = (total_input_tokens + total_output_tokens) - prev_total
+                    prev_cache_rate = (
+                        (prev_cache_tokens / prev_total * 100) if prev_total > 0 else 0
+                    )
+
+                    total_tokens_change = (
+                        total_input_tokens + total_output_tokens
+                    ) - prev_total
                     input_tokens_change = total_input_tokens - prev_input_tokens
                     output_tokens_change = total_output_tokens - prev_output_tokens
                     cache_hit_rate_change = cache_hit_rate - prev_cache_rate
-                    
+
                 except Exception:
                     # If we can't get previous data, show 0 change
                     total_tokens_change = 0
                     input_tokens_change = 0
                     output_tokens_change = 0
                     cache_hit_rate_change = 0
-                
+
                 # Token usage statistics
                 token_usage = {
                     "totalTokens": total_input_tokens + total_output_tokens,
@@ -675,14 +708,15 @@ async def get_dashboard(
 
     # Serve the static dashboard HTML file
     from pathlib import Path
+
     dashboard_path = Path(__file__).parent.parent / "static" / "dashboard.html"
-    
+
     if not dashboard_path.exists():
         raise HTTPException(status_code=500, detail="Dashboard file not found")
-    
-    with open(dashboard_path, "r") as f:
+
+    with open(dashboard_path) as f:
         html_content = f.read()
-    
+
     return HTMLResponse(content=html_content)
 
 
