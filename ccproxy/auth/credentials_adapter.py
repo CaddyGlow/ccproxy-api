@@ -4,13 +4,13 @@ from typing import Any
 
 from ccproxy.auth.exceptions import AuthenticationError
 from ccproxy.auth.manager import BaseAuthManager
+from ccproxy.auth.models import ClaudeCredentials, UserProfile
 from ccproxy.services.credentials.exceptions import (
     CredentialsError,
     CredentialsExpiredError,
     CredentialsNotFoundError,
 )
 from ccproxy.services.credentials.manager import CredentialsManager
-from ccproxy.auth.models import ClaudeCredentials, UserProfile
 
 
 class CredentialsAuthManager(BaseAuthManager):

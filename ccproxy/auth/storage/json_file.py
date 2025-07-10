@@ -149,4 +149,3 @@ class JsonFileTokenStorage(TokenStorage):
             Path to the JSON file
         """
         return str(self.file_path)
-

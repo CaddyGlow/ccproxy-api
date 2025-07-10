@@ -8,8 +8,8 @@ from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator
 from typing import Any, Optional, Protocol, TypeVar, runtime_checkable
 
-from ccproxy.core.types import ProxyRequest, ProxyResponse, TransformContext
 from ccproxy.auth.models import ClaudeCredentials
+from ccproxy.core.types import ProxyRequest, ProxyResponse, TransformContext
 
 
 __all__ = [
@@ -130,7 +130,7 @@ class APIAdapter(ABC):
         pass
 
     @abstractmethod
-    async def adapt_stream(
+    def adapt_stream(
         self, stream: AsyncIterator[dict[str, Any]]
     ) -> AsyncIterator[dict[str, Any]]:
         """Convert a streaming response from one API format to another.
@@ -144,7 +144,11 @@ class APIAdapter(ABC):
         Raises:
             ValueError: If the stream format is invalid or unsupported
         """
-        pass
+        # This should be implemented as an async generator
+        # async def adapt_stream(self, stream): ...
+        #     async for item in stream:
+        #         yield transformed_item
+        raise NotImplementedError
 
 
 @runtime_checkable

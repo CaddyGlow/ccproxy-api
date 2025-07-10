@@ -7,12 +7,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from ccproxy.auth.models import ClaudeCredentials, OAuthToken
 from ccproxy.services.credentials import JsonFileStorage
 from ccproxy.services.credentials.exceptions import (
     CredentialsInvalidError,
     CredentialsStorageError,
 )
-from ccproxy.auth.models import ClaudeCredentials, OAuthToken
 
 
 class TestKeyringStorage:

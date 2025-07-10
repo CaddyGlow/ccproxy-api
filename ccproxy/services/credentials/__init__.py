@@ -1,5 +1,12 @@
 """Credentials management package."""
 
+from ccproxy.auth.models import (
+    AccountInfo,
+    ClaudeCredentials,
+    OAuthToken,
+    OrganizationInfo,
+    UserProfile,
+)
 from ccproxy.services.credentials.config import CredentialsConfig, OAuthConfig
 from ccproxy.services.credentials.exceptions import (
     CredentialsError,
@@ -14,13 +21,6 @@ from ccproxy.services.credentials.exceptions import (
 )
 from ccproxy.services.credentials.json_storage import JsonFileStorage
 from ccproxy.services.credentials.manager import CredentialsManager
-from ccproxy.auth.models import (
-    AccountInfo,
-    ClaudeCredentials,
-    OAuthToken,
-    OrganizationInfo,
-    UserProfile,
-)
 from ccproxy.services.credentials.oauth_client import OAuthClient
 from ccproxy.services.credentials.storage import CredentialsStorageBackend
 
