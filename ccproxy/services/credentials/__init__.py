@@ -14,7 +14,7 @@ from ccproxy.services.credentials.exceptions import (
 )
 from ccproxy.services.credentials.json_storage import JsonFileStorage
 from ccproxy.services.credentials.manager import CredentialsManager
-from ccproxy.services.credentials.models import (
+from ccproxy.auth.models import (
     AccountInfo,
     ClaudeCredentials,
     OAuthToken,

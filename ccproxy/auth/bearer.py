@@ -4,7 +4,7 @@ from typing import Any
 
 from ccproxy.auth.exceptions import AuthenticationError
 from ccproxy.auth.manager import BaseAuthManager
-from ccproxy.services.credentials.models import ClaudeCredentials, UserProfile
+from ccproxy.auth.models import ClaudeCredentials, UserProfile
 
 
 class BearerTokenAuthManager(BaseAuthManager):

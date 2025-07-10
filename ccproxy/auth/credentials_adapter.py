@@ -10,7 +10,7 @@ from ccproxy.services.credentials.exceptions import (
     CredentialsNotFoundError,
 )
 from ccproxy.services.credentials.manager import CredentialsManager
-from ccproxy.services.credentials.models import ClaudeCredentials, UserProfile
+from ccproxy.auth.models import ClaudeCredentials, UserProfile
 
 
 class CredentialsAuthManager(BaseAuthManager):

@@ -1,0 +1,649 @@
+{
+  "$defs": {
+    "ClaudeCodeOptions": {
+      "properties": {
+        "allowed_tools": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Allowed Tools",
+          "type": "array"
+        },
+        "max_thinking_tokens": {
+          "default": 8000,
+          "title": "Max Thinking Tokens",
+          "type": "integer"
+        },
+        "system_prompt": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "System Prompt"
+        },
+        "append_system_prompt": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Append System Prompt"
+        },
+        "mcp_tools": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Mcp Tools",
+          "type": "array"
+        },
+        "mcp_servers": {
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/McpStdioServerConfig"
+              },
+              {
+                "$ref": "#/$defs/McpSSEServerConfig"
+              },
+              {
+                "$ref": "#/$defs/McpHttpServerConfig"
+              }
+            ]
+          },
+          "title": "Mcp Servers",
+          "type": "object"
+        },
+        "permission_mode": {
+          "anyOf": [
+            {
+              "enum": [
+                "default",
+                "acceptEdits",
+                "bypassPermissions"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Permission Mode"
+        },
+        "continue_conversation": {
+          "default": false,
+          "title": "Continue Conversation",
+          "type": "boolean"
+        },
+        "resume": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Resume"
+        },
+        "max_turns": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Turns"
+        },
+        "disallowed_tools": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Disallowed Tools",
+          "type": "array"
+        },
+        "model": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Model"
+        },
+        "permission_prompt_tool_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Permission Prompt Tool Name"
+        },
+        "cwd": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "format": "path",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Cwd"
+        }
+      },
+      "title": "ClaudeCodeOptions",
+      "type": "object"
+    },
+    "CredentialsConfig": {
+      "description": "Configuration for credentials management.",
+      "properties": {
+        "storage_paths": {
+          "description": "Paths to search for credentials files",
+          "items": {
+            "type": "string"
+          },
+          "title": "Storage Paths",
+          "type": "array"
+        },
+        "oauth": {
+          "$ref": "#/$defs/OAuthConfig",
+          "description": "OAuth configuration"
+        },
+        "auto_refresh": {
+          "default": true,
+          "description": "Automatically refresh expired tokens",
+          "title": "Auto Refresh",
+          "type": "boolean"
+        },
+        "refresh_buffer_seconds": {
+          "default": 300,
+          "description": "Refresh token this many seconds before expiry",
+          "minimum": 0,
+          "title": "Refresh Buffer Seconds",
+          "type": "integer"
+        }
+      },
+      "title": "CredentialsConfig",
+      "type": "object"
+    },
+    "DockerSettings": {
+      "description": "Docker configuration settings for running Claude commands in containers.",
+      "properties": {
+        "docker_image": {
+          "default": "ghcr.io/caddyglow/ccproxy:0.1.0-dev",
+          "description": "Docker image to use for Claude commands",
+          "title": "Docker Image",
+          "type": "string"
+        },
+        "docker_volumes": {
+          "description": "List of volume mounts in 'host:container[:options]' format",
+          "items": {
+            "type": "string"
+          },
+          "title": "Docker Volumes",
+          "type": "array"
+        },
+        "docker_environment": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Environment variables to pass to Docker container",
+          "title": "Docker Environment",
+          "type": "object"
+        },
+        "docker_additional_args": {
+          "description": "Additional arguments to pass to docker run command",
+          "items": {
+            "type": "string"
+          },
+          "title": "Docker Additional Args",
+          "type": "array"
+        },
+        "docker_home_directory": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Local host directory to mount as the home directory in container",
+          "title": "Docker Home Directory"
+        },
+        "docker_workspace_directory": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Local host directory to mount as the workspace directory in container",
+          "title": "Docker Workspace Directory"
+        },
+        "user_mapping_enabled": {
+          "default": true,
+          "description": "Enable/disable UID/GID mapping for container user",
+          "title": "User Mapping Enabled",
+          "type": "boolean"
+        },
+        "user_uid": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "User ID to run container as (auto-detect current user if None)",
+          "title": "User Uid"
+        },
+        "user_gid": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Group ID to run container as (auto-detect current user if None)",
+          "title": "User Gid"
+        }
+      },
+      "title": "DockerSettings",
+      "type": "object"
+    },
+    "McpHttpServerConfig": {
+      "description": "MCP HTTP server configuration.",
+      "properties": {
+        "type": {
+          "const": "http",
+          "title": "Type",
+          "type": "string"
+        },
+        "url": {
+          "title": "Url",
+          "type": "string"
+        },
+        "headers": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Headers",
+          "type": "object"
+        }
+      },
+      "required": [
+        "type",
+        "url"
+      ],
+      "title": "McpHttpServerConfig",
+      "type": "object"
+    },
+    "McpSSEServerConfig": {
+      "description": "MCP SSE server configuration.",
+      "properties": {
+        "type": {
+          "const": "sse",
+          "title": "Type",
+          "type": "string"
+        },
+        "url": {
+          "title": "Url",
+          "type": "string"
+        },
+        "headers": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Headers",
+          "type": "object"
+        }
+      },
+      "required": [
+        "type",
+        "url"
+      ],
+      "title": "McpSSEServerConfig",
+      "type": "object"
+    },
+    "McpStdioServerConfig": {
+      "description": "MCP stdio server configuration.",
+      "properties": {
+        "type": {
+          "const": "stdio",
+          "title": "Type",
+          "type": "string"
+        },
+        "command": {
+          "title": "Command",
+          "type": "string"
+        },
+        "args": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Args",
+          "type": "array"
+        },
+        "env": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Env",
+          "type": "object"
+        }
+      },
+      "required": [
+        "command"
+      ],
+      "title": "McpStdioServerConfig",
+      "type": "object"
+    },
+    "OAuthConfig": {
+      "description": "OAuth configuration settings.",
+      "properties": {
+        "beta_version": {
+          "default": "oauth-2025-04-20",
+          "description": "OAuth beta version header",
+          "title": "Beta Version",
+          "type": "string"
+        },
+        "token_url": {
+          "default": "https://console.anthropic.com/v1/oauth/token",
+          "description": "OAuth token endpoint URL",
+          "title": "Token Url",
+          "type": "string"
+        },
+        "authorize_url": {
+          "default": "https://claude.ai/oauth/authorize",
+          "description": "OAuth authorization endpoint URL",
+          "title": "Authorize Url",
+          "type": "string"
+        },
+        "client_id": {
+          "default": "9d1c250a-e61b-44d9-88ed-5944d1962f5e",
+          "description": "OAuth client ID",
+          "title": "Client Id",
+          "type": "string"
+        },
+        "redirect_uri": {
+          "default": "http://localhost:54545/callback",
+          "description": "OAuth redirect URI",
+          "title": "Redirect Uri",
+          "type": "string"
+        },
+        "scopes": {
+          "description": "OAuth scopes to request",
+          "items": {
+            "type": "string"
+          },
+          "title": "Scopes",
+          "type": "array"
+        },
+        "user_agent": {
+          "default": "Claude-Code/1.0.43",
+          "description": "User agent string for OAuth requests",
+          "title": "User Agent",
+          "type": "string"
+        },
+        "callback_timeout": {
+          "default": 300,
+          "description": "Timeout in seconds for OAuth callback",
+          "maximum": 600,
+          "minimum": 60,
+          "title": "Callback Timeout",
+          "type": "integer"
+        },
+        "callback_port": {
+          "default": 54545,
+          "description": "Port for OAuth callback server",
+          "maximum": 65535,
+          "minimum": 1024,
+          "title": "Callback Port",
+          "type": "integer"
+        }
+      },
+      "title": "OAuthConfig",
+      "type": "object"
+    }
+  },
+  "description": "Configuration schema for ccproxy TOML files",
+  "properties": {
+    "host": {
+      "default": "127.0.0.1",
+      "description": "Server host address",
+      "title": "Host",
+      "type": "string",
+      "examples": [
+        "0.0.0.0",
+        "127.0.0.1",
+        "localhost"
+      ]
+    },
+    "port": {
+      "default": 8000,
+      "description": "Server port number",
+      "maximum": 65535,
+      "minimum": 1,
+      "title": "Port",
+      "type": "integer",
+      "examples": [
+        8000,
+        8080,
+        3000
+      ]
+    },
+    "log_level": {
+      "default": "INFO",
+      "description": "Logging level",
+      "title": "Log Level",
+      "type": "string",
+      "examples": [
+        "DEBUG",
+        "INFO",
+        "WARNING",
+        "ERROR"
+      ]
+    },
+    "workers": {
+      "default": 1,
+      "description": "Number of worker processes",
+      "maximum": 32,
+      "minimum": 1,
+      "title": "Workers",
+      "type": "integer"
+    },
+    "reload": {
+      "default": false,
+      "description": "Enable auto-reload for development",
+      "title": "Reload",
+      "type": "boolean"
+    },
+    "cors_origins": {
+      "description": "CORS allowed origins",
+      "items": {
+        "type": "string"
+      },
+      "title": "Cors Origins",
+      "type": "array",
+      "examples": [
+        [
+          "*"
+        ],
+        [
+          "http://localhost:3000",
+          "https://example.com"
+        ]
+      ]
+    },
+    "cors_credentials": {
+      "default": true,
+      "description": "CORS allow credentials",
+      "title": "Cors Credentials",
+      "type": "boolean"
+    },
+    "cors_methods": {
+      "description": "CORS allowed methods",
+      "items": {
+        "type": "string"
+      },
+      "title": "Cors Methods",
+      "type": "array"
+    },
+    "cors_headers": {
+      "description": "CORS allowed headers",
+      "items": {
+        "type": "string"
+      },
+      "title": "Cors Headers",
+      "type": "array"
+    },
+    "cors_origin_regex": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "CORS origin regex pattern",
+      "title": "Cors Origin Regex"
+    },
+    "cors_expose_headers": {
+      "description": "CORS exposed headers",
+      "items": {
+        "type": "string"
+      },
+      "title": "Cors Expose Headers",
+      "type": "array"
+    },
+    "cors_max_age": {
+      "default": 600,
+      "description": "CORS preflight max age in seconds",
+      "minimum": 0,
+      "title": "Cors Max Age",
+      "type": "integer"
+    },
+    "auth_token": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Bearer token for API authentication (optional)",
+      "title": "Auth Token"
+    },
+    "api_tools_handling": {
+      "default": "warning",
+      "description": "How to handle tools definitions in requests: error, warning, or ignore",
+      "enum": [
+        "error",
+        "warning",
+        "ignore"
+      ],
+      "title": "Api Tools Handling",
+      "type": "string"
+    },
+    "claude_cli_path": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Path to Claude CLI executable",
+      "title": "Claude Cli Path"
+    },
+    "claude_code_options": {
+      "$ref": "#/$defs/ClaudeCodeOptions",
+      "description": "Claude Code SDK options configuration"
+    },
+    "docker_settings": {
+      "$ref": "#/$defs/DockerSettings",
+      "description": "Docker configuration for running Claude commands in containers"
+    },
+    "reverse_proxy_target_url": {
+      "default": "https://api.anthropic.com",
+      "description": "Target URL for reverse proxy requests",
+      "title": "Reverse Proxy Target Url",
+      "type": "string"
+    },
+    "reverse_proxy_timeout": {
+      "default": 120.0,
+      "description": "Timeout for reverse proxy requests in seconds",
+      "maximum": 600.0,
+      "minimum": 1.0,
+      "title": "Reverse Proxy Timeout",
+      "type": "number"
+    },
+    "default_proxy_mode": {
+      "default": "claude_code",
+      "description": "Default transformation mode for root path reverse proxy, over claude code or auth injection with full",
+      "enum": [
+        "claude_code",
+        "full",
+        "minimal"
+      ],
+      "title": "Default Proxy Mode",
+      "type": "string"
+    },
+    "claude_code_prefix": {
+      "default": "/cc",
+      "description": "URL prefix for Claude Code SDK endpoints",
+      "title": "Claude Code Prefix",
+      "type": "string"
+    },
+    "credentials": {
+      "$ref": "#/$defs/CredentialsConfig",
+      "description": "Credentials management configuration"
+    }
+  },
+  "title": "Claude Code Proxy API Configuration",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema"
+}
