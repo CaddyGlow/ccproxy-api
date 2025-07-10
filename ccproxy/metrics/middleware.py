@@ -6,9 +6,11 @@ all requests processed by the FastAPI application.
 """
 
 import asyncio
+import contextlib
 import logging
 import time
-from typing import Any, Callable, Dict, Optional
+from collections.abc import Callable
+from typing import Any, Dict, Optional
 from uuid import uuid4
 
 from fastapi import Request, Response
@@ -17,29 +19,30 @@ from starlette.types import ASGIApp
 
 from .collector import MetricsCollector
 
+
 logger = logging.getLogger(__name__)
 
 
 class MetricsMiddleware(BaseHTTPMiddleware):
     """
     FastAPI middleware for automatic metrics collection.
-    
+
     This middleware automatically collects request and response metrics
     for all API endpoints.
     """
-    
+
     def __init__(
         self,
         app: ASGIApp,
         collector: MetricsCollector,
         capture_request_body: bool = False,
         capture_response_body: bool = False,
-        excluded_paths: Optional[list[str]] = None,
-        sample_rate: float = 1.0
+        excluded_paths: list[str] | None = None,
+        sample_rate: float = 1.0,
     ):
         """
         Initialize the metrics middleware.
-        
+
         Args:
             app: FastAPI application
             collector: Metrics collector instance
@@ -52,36 +55,42 @@ class MetricsMiddleware(BaseHTTPMiddleware):
         self.collector = collector
         self.capture_request_body = capture_request_body
         self.capture_response_body = capture_response_body
-        self.excluded_paths = excluded_paths or ["/health", "/metrics", "/docs", "/openapi.json"]
+        self.excluded_paths = excluded_paths or [
+            "/health",
+            "/metrics",
+            "/docs",
+            "/openapi.json",
+        ]
         self.sample_rate = sample_rate
-        
+
         # Internal state
-        self._request_contexts: Dict[str, Dict[str, Any]] = {}
-    
+        self._request_contexts: dict[str, dict[str, Any]] = {}
+
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
         """
         Process request and collect metrics.
-        
+
         Args:
             request: FastAPI request object
             call_next: Next middleware/route handler
-            
+
         Returns:
             Response object
         """
         # Check if path should be excluded
         if self._should_exclude_path(request.url.path):
             return await call_next(request)
-        
+
         # Check sampling rate
         if self.sample_rate < 1.0:
             import random
+
             if random.random() > self.sample_rate:
                 return await call_next(request)
-        
+
         # Generate unique request ID
         request_id = str(uuid4())
-        
+
         # Store request context
         start_time = time.time()
         request_context = {
@@ -92,11 +101,11 @@ class MetricsMiddleware(BaseHTTPMiddleware):
             "query_params": dict(request.query_params),
             "headers": dict(request.headers),
         }
-        
+
         # Extract user information if available
         user_id = self._extract_user_id(request)
         session_id = self._extract_session_id(request)
-        
+
         # Collect request start metrics
         try:
             await self.collector.collect_request_start(
@@ -114,15 +123,15 @@ class MetricsMiddleware(BaseHTTPMiddleware):
                 model=self._extract_model(request),
                 provider=self._extract_provider(request),
                 streaming=self._is_streaming_request(request),
-                **self._extract_request_params(request)
+                **self._extract_request_params(request),
             )
         except Exception as e:
             logger.error(f"Failed to collect request start metrics: {e}")
-        
+
         # Process request
         response = None
         error = None
-        
+
         try:
             response = await call_next(request)
         except Exception as e:
@@ -131,13 +140,13 @@ class MetricsMiddleware(BaseHTTPMiddleware):
             response = Response(
                 content=f"Internal server error: {str(e)}",
                 status_code=500,
-                media_type="text/plain"
+                media_type="text/plain",
             )
-        
+
         # Calculate response time
         end_time = time.time()
         response_time_ms = (end_time - start_time) * 1000
-        
+
         # Collect response metrics
         try:
             await self.collector.collect_response(
@@ -146,11 +155,11 @@ class MetricsMiddleware(BaseHTTPMiddleware):
                 response_time_ms=response_time_ms,
                 content_length=self._get_content_length(response),
                 content_type=response.headers.get("content-type"),
-                **self._extract_response_tokens(response)
+                **self._extract_response_tokens(response),
             )
         except Exception as e:
             logger.error(f"Failed to collect response metrics: {e}")
-        
+
         # Collect error metrics if there was an error
         if error:
             try:
@@ -160,11 +169,11 @@ class MetricsMiddleware(BaseHTTPMiddleware):
                     error_message=str(error),
                     endpoint=self._get_endpoint_name(request),
                     method=request.method,
-                    status_code=response.status_code
+                    status_code=response.status_code,
                 )
             except Exception as e:
                 logger.error(f"Failed to collect error metrics: {e}")
-        
+
         # Collect latency metrics
         try:
             await self.collector.collect_latency(
@@ -174,20 +183,20 @@ class MetricsMiddleware(BaseHTTPMiddleware):
             )
         except Exception as e:
             logger.error(f"Failed to collect latency metrics: {e}")
-        
+
         # Clean up request context
         try:
             await self.collector.finish_request(request_id)
         except Exception as e:
             logger.error(f"Failed to finish request context: {e}")
-        
+
         return response
-    
+
     def _should_exclude_path(self, path: str) -> bool:
         """Check if a path should be excluded from metrics."""
         return any(path.startswith(excluded) for excluded in self.excluded_paths)
-    
-    def _extract_user_id(self, request: Request) -> Optional[str]:
+
+    def _extract_user_id(self, request: Request) -> str | None:
         """Extract user ID from request."""
         # Check for user in request state (set by auth middleware)
         if hasattr(request.state, "user"):
@@ -196,39 +205,39 @@ class MetricsMiddleware(BaseHTTPMiddleware):
                 return str(user.id)
             elif hasattr(user, "user_id"):
                 return str(user.user_id)
-        
+
         # Check for user ID in headers
         user_id = request.headers.get("x-user-id")
         if user_id:
             return user_id
-        
+
         # Check for bearer token and extract user info
         auth_header = request.headers.get("authorization")
         if auth_header and auth_header.startswith("Bearer "):
             # Could decode JWT token here to extract user info
             # For now, just return None
             pass
-        
+
         return None
-    
-    def _extract_session_id(self, request: Request) -> Optional[str]:
+
+    def _extract_session_id(self, request: Request) -> str | None:
         """Extract session ID from request."""
         # Check for session in request state
         if hasattr(request.state, "session_id"):
             return request.state.session_id
-        
+
         # Check for session ID in headers
         session_id = request.headers.get("x-session-id")
         if session_id:
             return session_id
-        
+
         # Check for session cookie
         session_cookie = request.cookies.get("session_id")
         if session_cookie:
             return session_cookie
-        
+
         return None
-    
+
     def _get_endpoint_name(self, request: Request) -> str:
         """Get the endpoint name for the request."""
         # Try to get from route
@@ -237,10 +246,10 @@ class MetricsMiddleware(BaseHTTPMiddleware):
                 return request.route.path
             elif hasattr(request.route, "name"):
                 return request.route.name
-        
+
         # Fall back to path
         return request.url.path
-    
+
     def _get_api_version(self, request: Request) -> str:
         """Get API version from request."""
         # Check for version in path
@@ -249,68 +258,68 @@ class MetricsMiddleware(BaseHTTPMiddleware):
             return "v1"
         elif path.startswith("/openai/v1/"):
             return "openai-v1"
-        
+
         # Check for version in headers
         version = request.headers.get("x-api-version")
         if version:
             return version
-        
+
         # Default version
         return "v1"
-    
-    def _get_client_ip(self, request: Request) -> Optional[str]:
+
+    def _get_client_ip(self, request: Request) -> str | None:
         """Get client IP address."""
         # Check for forwarded headers
         forwarded_for = request.headers.get("x-forwarded-for")
         if forwarded_for:
             return forwarded_for.split(",")[0].strip()
-        
+
         # Check for real IP header
         real_ip = request.headers.get("x-real-ip")
         if real_ip:
             return real_ip
-        
+
         # Fall back to client host
         if hasattr(request, "client") and request.client:
             return request.client.host
-        
+
         return None
-    
-    def _extract_model(self, request: Request) -> Optional[str]:
+
+    def _extract_model(self, request: Request) -> str | None:
         """Extract model name from request."""
         # This would need to be implemented based on request body parsing
         # For now, return None - could be enhanced to parse JSON body
         return None
-    
-    def _extract_provider(self, request: Request) -> Optional[str]:
+
+    def _extract_provider(self, request: Request) -> str | None:
         """Extract provider from request path."""
         path = request.url.path
         if path.startswith("/openai/"):
             return "openai"
         elif path.startswith("/v1/"):
             return "anthropic"
-        
+
         return None
-    
+
     def _is_streaming_request(self, request: Request) -> bool:
         """Check if request is for streaming response."""
         # This would need to be implemented based on request body parsing
         # For now, return False - could be enhanced to parse JSON body
         return False
-    
-    def _extract_request_params(self, request: Request) -> Dict[str, Any]:
+
+    def _extract_request_params(self, request: Request) -> dict[str, Any]:
         """Extract request parameters for metrics."""
         params = {}
-        
+
         # Add query parameters
         if request.query_params:
             params["query_params"] = dict(request.query_params)
-        
+
         # Could add parsed body parameters here
         # For now, return empty dict
         return params
-    
-    def _get_content_length(self, response: Response) -> Optional[int]:
+
+    def _get_content_length(self, response: Response) -> int | None:
         """Get content length from response."""
         content_length = response.headers.get("content-length")
         if content_length:
@@ -318,46 +327,38 @@ class MetricsMiddleware(BaseHTTPMiddleware):
                 return int(content_length)
             except ValueError:
                 pass
-        
+
         # Try to get from body if available
         if hasattr(response, "body") and response.body:
             return len(response.body)
-        
+
         return None
-    
-    def _extract_response_tokens(self, response: Response) -> Dict[str, Any]:
+
+    def _extract_response_tokens(self, response: Response) -> dict[str, Any]:
         """Extract token information from response."""
         tokens = {}
-        
+
         # Try to parse from response headers
         input_tokens = response.headers.get("x-input-tokens")
         if input_tokens:
-            try:
+            with contextlib.suppress(ValueError):
                 tokens["input_tokens"] = int(input_tokens)
-            except ValueError:
-                pass
-        
+
         output_tokens = response.headers.get("x-output-tokens")
         if output_tokens:
-            try:
+            with contextlib.suppress(ValueError):
                 tokens["output_tokens"] = int(output_tokens)
-            except ValueError:
-                pass
-        
+
         cache_read_tokens = response.headers.get("x-cache-read-tokens")
         if cache_read_tokens:
-            try:
+            with contextlib.suppress(ValueError):
                 tokens["cache_read_tokens"] = int(cache_read_tokens)
-            except ValueError:
-                pass
-        
+
         cache_write_tokens = response.headers.get("x-cache-write-tokens")
         if cache_write_tokens:
-            try:
+            with contextlib.suppress(ValueError):
                 tokens["cache_write_tokens"] = int(cache_write_tokens)
-            except ValueError:
-                pass
-        
+
         # Could parse from response body JSON here
         # For now, return what we found in headers
         return tokens
@@ -367,63 +368,57 @@ class AsyncMetricsMiddleware:
     """
     Alternative async metrics middleware for more advanced use cases.
     """
-    
-    def __init__(
-        self,
-        collector: MetricsCollector,
-        **kwargs: Any
-    ):
+
+    def __init__(self, collector: MetricsCollector, **kwargs: Any):
         """
         Initialize the async metrics middleware.
-        
+
         Args:
             collector: Metrics collector instance
             **kwargs: Additional configuration options
         """
         self.collector = collector
         self.config = kwargs
-    
+
     async def __call__(self, request: Request, call_next: Callable) -> Response:
         """
         Process request with async metrics collection.
-        
+
         Args:
             request: FastAPI request object
             call_next: Next middleware/route handler
-            
+
         Returns:
             Response object
         """
         # Generate unique request ID
         request_id = str(uuid4())
-        
+
         # Use the collector's request context manager
         async with self.collector.request_context(
             request_id=request_id,
             method=request.method,
             path=request.url.path,
             endpoint=request.url.path,
-            api_version="v1"
+            api_version="v1",
         ) as request_metric:
-            
             # Process request
             try:
                 response = await call_next(request)
-                
+
                 # Collect response metrics
                 await self.collector.collect_response(
-                    request_id=request_id,
-                    status_code=response.status_code
+                    request_id=request_id, status_code=response.status_code
                 )
-                
+
                 return response
-                
+
             except Exception as e:
                 # Collect error metrics
                 await self.collector.collect_error(
                     request_id=request_id,
                     error_type=type(e).__name__,
-                    error_message=str(e)
+                    error_message=str(e),
                 )
-                
+
                 raise

@@ -11,9 +11,9 @@ from rich.console import Console
 from rich.table import Table
 
 from ccproxy.cli.helpers import get_rich_toolkit
+from ccproxy.core.async_utils import get_claude_docker_home_dir
 from ccproxy.core.logging import get_logger
 from ccproxy.services.credentials import CredentialsConfig, CredentialsManager
-from ccproxy.utils.xdg import get_claude_docker_home_dir
 
 
 app = typer.Typer(name="auth", help="Authentication and credential management")
@@ -221,6 +221,7 @@ def credential_info(
         # Use refresh-enabled token method to ensure we have a valid token
         try:
             # First try to get a valid access token (with refresh if needed)
+            profile = asyncio.run(manager.fetch_user_profile())
             valid_token = asyncio.run(manager.get_access_token())
             if valid_token:
                 profile = asyncio.run(manager.fetch_user_profile())

@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # OpenAI JSON Object Response Format Example
-# 
+#
 # This example demonstrates using the Claude Code Proxy API with OpenAI format
 # and simple JSON object response formatting.
 
@@ -27,7 +27,7 @@ curl -X POST http://localhost:8000/v1/chat/completions \
 # Expected Response:
 # {
 #   "id": "msg_...",
-#   "type": "message", 
+#   "type": "message",
 #   "role": "assistant",
 #   "content": [
 #     {

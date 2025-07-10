@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # OpenAI JSON Schema Response Format Example
-# 
+#
 # This example demonstrates how to use the Claude Code Proxy API with OpenAI format
 # and JSON schema response formatting. The API converts OpenAI requests to Anthropic
 # format while maintaining Claude Code identity and behavior.

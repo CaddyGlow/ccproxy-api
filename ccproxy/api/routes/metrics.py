@@ -2,6 +2,7 @@
 
 from fastapi import APIRouter
 
+
 # Create the router for metrics endpoints
 router = APIRouter(prefix="/metrics", tags=["metrics"])
 

@@ -9,8 +9,8 @@ import typer
 from click import get_current_context
 
 from ccproxy._version import __version__
-from ccproxy.config.settings import get_settings
 from ccproxy.cli.helpers import get_rich_toolkit
+from ccproxy.config.settings import get_settings
 
 
 def get_config_path_from_context() -> Path | None:
@@ -277,7 +277,7 @@ def config_init(
     toolkit = get_rich_toolkit()
 
     try:
-        from ccproxy.utils.xdg import get_ccproxy_config_dir
+        from ccproxy.core.async_utils import get_ccproxy_config_dir
 
         # Determine output directory
         if output_dir is None:

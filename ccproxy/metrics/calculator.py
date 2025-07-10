@@ -345,7 +345,4 @@ class CostCalculator:
             return False
 
         # Cache read tokens should not exceed input tokens
-        if cache_read_tokens > input_tokens:
-            return False
-
-        return True
+        return not cache_read_tokens > input_tokens

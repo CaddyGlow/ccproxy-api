@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, Mock
 import pytest
 from fastapi.testclient import TestClient
 
-from ccproxy.services.request_transformer import RequestTransformer
+from ccproxy.core.http_transformers import HTTPRequestTransformer as RequestTransformer
 
 
 class TestRequestTransformer:
@@ -373,9 +373,7 @@ class TestRequestTransformer:
 
     def test_get_claude_code_prompt_helper(self):
         """Test the helper function for Claude Code prompt."""
-        from ccproxy.services.request_transformer import (
-            get_claude_code_prompt,
-        )
+        from ccproxy.core.http_transformers import get_claude_code_prompt
 
         prompt = get_claude_code_prompt()
 

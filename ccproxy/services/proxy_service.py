@@ -8,7 +8,12 @@ import httpx
 from fastapi import HTTPException
 from fastapi.responses import StreamingResponse
 
-from ccproxy.core.http import BaseProxyClient, HTTPClient
+from ccproxy.core.http import (
+    BaseProxyClient,
+    HTTPClient,
+    get_proxy_url,
+    get_ssl_context,
+)
 from ccproxy.core.http_transformers import (
     HTTPRequestTransformer,
     HTTPResponseTransformer,
@@ -228,12 +233,13 @@ class ProxyService:
         proxy_headers = self.request_transformer.create_proxy_headers(
             headers, access_token, self.proxy_mode
         )
-        
+
         # Update Content-Length if body was transformed and size changed
         if proxy_body and body and len(proxy_body) != len(body):
             # Remove any existing content-length headers (case-insensitive)
-            proxy_headers = {k: v for k, v in proxy_headers.items() 
-                           if k.lower() != 'content-length'}
+            proxy_headers = {
+                k: v for k, v in proxy_headers.items() if k.lower() != "content-length"
+            }
             proxy_headers["Content-Length"] = str(len(proxy_body))
         elif proxy_body and not body:
             # New body was created where none existed
@@ -323,9 +329,9 @@ class ProxyService:
 
                 import httpx
 
-                # Get proxy and SSL settings similar to ReverseProxyService
-                proxy_url = self._get_proxy_url()
-                verify = self._get_ssl_context()
+                # Get proxy and SSL settings
+                proxy_url = get_proxy_url()
+                verify = get_ssl_context()
 
                 async with (
                     httpx.AsyncClient(
@@ -354,10 +360,11 @@ class ProxyService:
                     )
 
                     if is_openai:
-                        # Transform Anthropic SSE to OpenAI SSE format
+                        # Transform Anthropic SSE to OpenAI SSE format using adapter
                         logger.info(
                             f"Transforming Anthropic SSE to OpenAI format for {original_path}"
                         )
+
                         async for (
                             transformed_chunk
                         ) in self._transform_anthropic_to_openai_stream(
@@ -437,27 +444,6 @@ class ProxyService:
             logger.debug("Using default SSL verification")
             return True
 
-    async def _transform_anthropic_to_openai_stream(
-        self, response: httpx.Response, original_path: str
-    ) -> AsyncGenerator[bytes, None]:
-        """Transform Anthropic SSE stream to OpenAI SSE format.
-
-        Args:
-            response: Streaming response from Anthropic
-            original_path: Original request path for context
-
-        Yields:
-            Transformed OpenAI SSE format chunks
-        """
-        # Use OpenAI streaming formatter from adapters
-        from ccproxy.adapters.openai.streaming import OpenAISSEFormatter
-
-        # Simple streaming transformation for now
-        # TODO: Implement proper stream transformation using adapters
-        async for chunk in response.aiter_bytes():
-            if chunk:
-                yield chunk
-
     async def _collect_metrics(
         self,
         request_data: dict[str, Any],
@@ -501,6 +487,27 @@ class ProxyService:
             raise HTTPException(
                 status_code=500, detail="Internal server error"
             ) from error
+
+    async def _transform_anthropic_to_openai_stream(
+        self, response: httpx.Response, original_path: str
+    ) -> AsyncGenerator[bytes, None]:
+        """Transform Anthropic SSE stream to OpenAI SSE format.
+
+        Args:
+            response: Streaming response from Anthropic
+            original_path: Original request path for context
+
+        Yields:
+            Transformed OpenAI SSE format chunks
+        """
+        # Use OpenAI streaming formatter from adapters
+        from ccproxy.adapters.openai.streaming import OpenAISSEFormatter
+
+        # Simple streaming transformation for now
+        # TODO: Implement proper stream transformation using adapters
+        async for chunk in response.aiter_bytes():
+            if chunk:
+                yield chunk
 
     async def close(self) -> None:
         """Close any resources held by the proxy service."""

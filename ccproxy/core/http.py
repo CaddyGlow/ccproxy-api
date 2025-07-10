@@ -1,7 +1,13 @@
 """Generic HTTP client abstractions for pure forwarding without business logic."""
 
+import logging
+import os
 from abc import ABC, abstractmethod
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
+
+
+logger = logging.getLogger(__name__)
 
 
 if TYPE_CHECKING:
@@ -149,6 +155,7 @@ class HTTPXClient(HTTPClient):
         """Get or create the HTTPX client."""
         if self._client is None:
             import httpx
+
             self._client = httpx.AsyncClient(
                 timeout=self.timeout,
                 proxy=self.proxy,
@@ -188,6 +195,7 @@ class HTTPXClient(HTTPClient):
             if timeout is not None:
                 # Create a new client with different timeout if needed
                 import httpx
+
                 client = httpx.AsyncClient(
                     timeout=timeout,
                     proxy=self.proxy,
@@ -250,3 +258,49 @@ class HTTPXClient(HTTPClient):
         if self._client is not None:
             await self._client.aclose()
             self._client = None
+
+
+def get_proxy_url() -> str | None:
+    """Get proxy URL from environment variables.
+
+    Returns:
+        str or None: Proxy URL if any proxy is set
+    """
+    # Check for standard proxy environment variables
+    # For HTTPS requests, prioritize HTTPS_PROXY
+    https_proxy = os.environ.get("HTTPS_PROXY") or os.environ.get("https_proxy")
+    all_proxy = os.environ.get("ALL_PROXY")
+    http_proxy = os.environ.get("HTTP_PROXY") or os.environ.get("http_proxy")
+
+    proxy_url = https_proxy or all_proxy or http_proxy
+
+    if proxy_url:
+        logger.debug(f"Using proxy: {proxy_url}")
+
+    return proxy_url
+
+
+def get_ssl_context() -> str | bool:
+    """Get SSL context configuration from environment variables.
+
+    Returns:
+        SSL verification configuration:
+        - Path to CA bundle file
+        - True for default verification
+        - False to disable verification (insecure)
+    """
+    # Check for custom CA bundle
+    ca_bundle = os.environ.get("REQUESTS_CA_BUNDLE") or os.environ.get("SSL_CERT_FILE")
+
+    # Check if SSL verification should be disabled (NOT RECOMMENDED)
+    ssl_verify = os.environ.get("SSL_VERIFY", "true").lower()
+
+    if ca_bundle and Path(ca_bundle).exists():
+        logger.info(f"Using custom CA bundle: {ca_bundle}")
+        return ca_bundle
+    elif ssl_verify in ("false", "0", "no"):
+        logger.warning("SSL verification disabled - this is insecure!")
+        return False
+    else:
+        logger.debug("Using default SSL verification")
+        return True

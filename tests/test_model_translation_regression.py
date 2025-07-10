@@ -94,8 +94,7 @@ class TestModelTranslationRegression:
 
         # Check that map_openai_model_to_claude is imported and used
         assert (
-            "from ccproxy.adapters.openai import map_openai_model_to_claude"
-            in source
+            "from ccproxy.adapters.openai import map_openai_model_to_claude" in source
         ), "OpenAI router must import map_openai_model_to_claude"
         assert "map_openai_model_to_claude(request.model)" in source, (
             "OpenAI router must use map_openai_model_to_claude for model translation"

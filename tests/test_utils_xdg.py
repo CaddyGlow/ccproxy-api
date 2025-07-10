@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 import pytest
 
-from ccproxy.utils.xdg import (
+from ccproxy.core.async_utils import (
     get_ccproxy_config_dir,
     get_claude_cli_config_dir,
     get_claude_docker_home_dir,

@@ -5,7 +5,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from ccproxy.utils.helper import get_package_dir
+from ccproxy.core.async_utils import get_package_dir
 
 
 @pytest.mark.unit
@@ -36,7 +36,7 @@ class TestGetPackageDir:
 
             # Should fall back to helper.py path calculation
             # Use actual file path instead of hardcoded path
-            from ccproxy.utils.helper import __file__ as helper_file
+            from ccproxy.core.async_utils import __file__ as helper_file
 
             expected = Path(helper_file).parent.parent.parent.resolve()
             assert result == expected
@@ -50,7 +50,7 @@ class TestGetPackageDir:
 
             # Should fall back to helper.py path calculation
             # Use actual file path instead of hardcoded path
-            from ccproxy.utils.helper import __file__ as helper_file
+            from ccproxy.core.async_utils import __file__ as helper_file
 
             expected = Path(helper_file).parent.parent.parent.resolve()
             assert result == expected
@@ -64,7 +64,7 @@ class TestGetPackageDir:
 
             # Should fall back to helper.py path calculation in exception handler
             # Use actual file path instead of hardcoded path
-            from ccproxy.utils.helper import __file__ as helper_file
+            from ccproxy.core.async_utils import __file__ as helper_file
 
             expected = Path(helper_file).parent.parent.parent.resolve()
             assert result == expected

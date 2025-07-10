@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # OpenAI Format with Claude Code Options Example
-# 
+#
 # This example demonstrates using the standard OpenAI /v1/chat/completions endpoint
 # with Claude Code specific options like allowed_tools, permission_mode, and cwd.
 
@@ -29,7 +29,7 @@ curl -X POST http://localhost:8000/v1/chat/completions \
 # {
 #   "id": "msg_...",
 #   "type": "message",
-#   "role": "assistant", 
+#   "role": "assistant",
 #   "content": [
 #     {
 #       "type": "text",
@@ -44,7 +44,7 @@ curl -X POST http://localhost:8000/v1/chat/completions \
 echo ""
 echo "Claude Code specific options supported:"
 echo "- allowed_tools: List of tools Claude can use"
-echo "- permission_mode: How Claude handles edit permissions"  
+echo "- permission_mode: How Claude handles edit permissions"
 echo "- append_system_prompt: Additional system prompt text"
 echo "- cwd: Working directory context"
 echo "- max_thinking_tokens: Tokens for reasoning (Claude Code feature)"

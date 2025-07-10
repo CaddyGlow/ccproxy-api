@@ -6,12 +6,11 @@ from typing import Any
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from ccproxy import __version__
+from ccproxy.core.async_utils import format_version, get_claude_docker_home_dir
 from ccproxy.utils.docker_validation import (
     validate_docker_volumes as validate_volumes_list,
 )
 from ccproxy.utils.docker_validation import validate_host_path
-from ccproxy.utils.version import format_version
-from ccproxy.utils.xdg import get_claude_docker_home_dir
 
 
 class DockerSettings(BaseModel):

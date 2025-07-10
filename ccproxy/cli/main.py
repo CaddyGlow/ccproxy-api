@@ -9,6 +9,7 @@ from typing import Any, Optional, cast
 
 import typer
 from click import get_current_context
+from typer import Typer
 
 from ccproxy._version import __version__
 from ccproxy.cli.helpers import (
@@ -21,13 +22,12 @@ from ccproxy.config.settings import (
     Settings,
     config_manager,
 )
+from ccproxy.core.async_utils import get_package_dir, get_root_package_name
 from ccproxy.core.logging import get_logger
 from ccproxy.models.responses import (
     PermissionToolAllowResponse,
     PermissionToolDenyResponse,
 )
-from ccproxy.utils.helper import get_package_dir, get_root_package_name
-from ccproxy.utils.typer import Typer
 
 from .commands.auth import app as auth_app
 from .commands.config import app as config_app
