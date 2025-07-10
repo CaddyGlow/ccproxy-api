@@ -145,7 +145,9 @@ class ReverseProxyService:
             return True
 
     @asynccontextmanager
-    async def _get_http_client(self) -> AsyncGenerator[InstrumentedHttpClient | httpx.AsyncClient, None]:
+    async def _get_http_client(
+        self,
+    ) -> AsyncGenerator[InstrumentedHttpClient | httpx.AsyncClient, None]:
         """Create and provide the instrumented HTTP client as a context manager.
 
         Yields:
@@ -345,7 +347,12 @@ class ReverseProxyService:
                 # Handle streaming responses
                 if self._is_streaming_response(response):
                     return await self._handle_streaming_response(
-                        method, target_url, proxy_headers, proxy_body, query_params, path
+                        method,
+                        target_url,
+                        proxy_headers,
+                        proxy_body,
+                        query_params,
+                        path,
                     )
 
                 # Handle regular responses
@@ -457,7 +464,9 @@ class ReverseProxyService:
                         return
 
                     # Check if this is an OpenAI endpoint that needs transformation
-                    is_openai = self.response_transformer._is_openai_request(original_path)
+                    is_openai = self.response_transformer._is_openai_request(
+                        original_path
+                    )
                     logger.debug(
                         f"Streaming response for path: {original_path}, is_openai: {is_openai}, mode: {self.proxy_mode}"
                     )
@@ -487,7 +496,10 @@ class ReverseProxyService:
                                         for line in chunk_str.split("\n"):
                                             if line.startswith("data:"):
                                                 event_data = line[5:].strip()
-                                                if event_data and event_data != "[DONE]":
+                                                if (
+                                                    event_data
+                                                    and event_data != "[DONE]"
+                                                ):
                                                     import json
 
                                                     event = json.loads(event_data)

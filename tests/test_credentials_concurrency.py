@@ -231,7 +231,9 @@ class TestOAuthTokenValidation:
         mock_http_client.__aenter__ = AsyncMock(return_value=mock_http_client)
         mock_http_client.__aexit__ = AsyncMock(return_value=None)
 
-        with patch("ccproxy.services.credentials.oauth_client.create_oauth_client") as mock_create:
+        with patch(
+            "ccproxy.services.credentials.oauth_client.create_oauth_client"
+        ) as mock_create:
             mock_create.return_value = mock_http_client
             with pytest.raises(OAuthTokenRefreshError, match="missing access_token"):
                 await oauth_client.refresh_token("old-refresh-token")
@@ -252,9 +254,13 @@ class TestOAuthTokenValidation:
         mock_http_client.__aenter__ = AsyncMock(return_value=mock_http_client)
         mock_http_client.__aexit__ = AsyncMock(return_value=None)
 
-        with patch("ccproxy.services.credentials.oauth_client.create_oauth_client") as mock_create:
+        with patch(
+            "ccproxy.services.credentials.oauth_client.create_oauth_client"
+        ) as mock_create:
             mock_create.return_value = mock_http_client
-            with patch("ccproxy.services.credentials.oauth_client.logger") as mock_logger:
+            with patch(
+                "ccproxy.services.credentials.oauth_client.logger"
+            ) as mock_logger:
                 result = await oauth_client.refresh_token("old-refresh-token")
 
             # Should use default 1 hour expiration
@@ -284,7 +290,9 @@ class TestOAuthTokenValidation:
         mock_http_client.__aenter__ = AsyncMock(return_value=mock_http_client)
         mock_http_client.__aexit__ = AsyncMock(return_value=None)
 
-        with patch("ccproxy.services.credentials.oauth_client.create_oauth_client") as mock_create:
+        with patch(
+            "ccproxy.services.credentials.oauth_client.create_oauth_client"
+        ) as mock_create:
             mock_create.return_value = mock_http_client
             result = await oauth_client.refresh_token("old-refresh-token")
 

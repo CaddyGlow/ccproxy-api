@@ -91,11 +91,11 @@ async def test_stream_basic(http_client, mock_httpx_client):
 
     # Get the response object
     response = await http_client.stream("GET", "https://example.com/stream")
-    
+
     # Verify we got a response object with proper attributes
     assert response.status_code == 200
     assert response.headers == httpx.Headers({})
-    
+
     # Collect streamed chunks
     chunks = []
     async for chunk in response.aiter_bytes():
@@ -149,12 +149,12 @@ async def test_stream_with_middleware(http_client, mock_httpx_client):
 
     # Get the response object
     response = await http_client.stream("GET", "https://example.com/stream")
-    
+
     # Collect streamed chunks
     chunks = []
     async for chunk in response.aiter_bytes():
         chunks.append(chunk)
-    
+
     # Close the response after streaming
     await response.aclose()
 
@@ -228,11 +228,11 @@ async def test_stream_with_retries(http_client, mock_httpx_client):
 
     # Stream should succeed after retries
     response = await http_client.stream("GET", "https://example.com/stream")
-    
+
     chunks = []
     async for chunk in response.aiter_bytes():
         chunks.append(chunk)
-    
+
     await response.aclose()
 
     assert chunks == [b"success"]
@@ -264,11 +264,11 @@ async def test_stream_sse():
             self.data = data
             self.status_code = 200
             self.headers = httpx.Headers({"content-type": "text/event-stream"})
-        
+
         async def aiter_bytes(self):
             for chunk in self.data:
                 yield chunk
-        
+
         async def aclose(self):
             pass
 
@@ -325,11 +325,11 @@ async def test_stream_sse_with_multiline_data():
             self.data = data
             self.status_code = 200
             self.headers = httpx.Headers({"content-type": "text/event-stream"})
-        
+
         async def aiter_bytes(self):
             for chunk in self.data:
                 yield chunk
-        
+
         async def aclose(self):
             pass
 
@@ -360,10 +360,10 @@ async def test_stream_sse_headers():
         def __init__(self):
             self.status_code = 200
             self.headers = httpx.Headers({"content-type": "text/event-stream"})
-        
+
         async def aiter_bytes(self):
             yield b"data: test\n\n"
-        
+
         async def aclose(self):
             pass
 
@@ -456,11 +456,11 @@ async def test_stream_metrics_collection():
 
     # Stream and collect all data
     response = await client.stream("POST", "https://example.com/large-stream")
-    
+
     total_bytes = 0
     async for chunk in response.aiter_bytes():
         total_bytes += len(chunk)
-    
+
     await response.aclose()
 
     # Verify total bytes

@@ -1,7 +1,7 @@
 """Tests for reverse proxy rate limit header preservation."""
 
 import asyncio
-from unittest.mock import AsyncMock, Mock, patch, MagicMock
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import httpx
 import pytest
@@ -172,12 +172,14 @@ class TestReverseProxyRateLimitHeaders:
         mock_response = Mock(spec=httpx.Response)
         mock_response.status_code = 200
         mock_response.content = b'{"result": "success"}'
-        mock_response.headers = httpx.Headers({
-            "content-type": "application/json",
-            "x-ratelimit-limit-requests": "1000",
-            "x-ratelimit-remaining-requests": "750",
-            "anthropic-ratelimit-unified-status": "allowed",
-        })
+        mock_response.headers = httpx.Headers(
+            {
+                "content-type": "application/json",
+                "x-ratelimit-limit-requests": "1000",
+                "x-ratelimit-remaining-requests": "750",
+                "anthropic-ratelimit-unified-status": "allowed",
+            }
+        )
         mock_response.reason_phrase = "OK"
         mock_response.extensions = {}
 
@@ -321,12 +323,14 @@ class TestReverseProxyRateLimitHeaders:
         mock_response = Mock(spec=httpx.Response)
         mock_response.status_code = 429  # Rate limited
         mock_response.content = b'{"error": "rate_limit_exceeded"}'
-        mock_response.headers = httpx.Headers({
-            "content-type": "application/json",
-            "x-ratelimit-limit-requests": "1000",
-            "x-ratelimit-remaining-requests": "0",
-            "retry-after": "60",
-        })
+        mock_response.headers = httpx.Headers(
+            {
+                "content-type": "application/json",
+                "x-ratelimit-limit-requests": "1000",
+                "x-ratelimit-remaining-requests": "0",
+                "retry-after": "60",
+            }
+        )
         mock_response.reason_phrase = "Too Many Requests"
         mock_response.extensions = {}
 

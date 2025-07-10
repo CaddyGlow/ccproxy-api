@@ -2,7 +2,7 @@
 
 from typing import Any
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import Response, StreamingResponse
 
 from ccproxy.config.settings import get_settings
@@ -75,20 +75,28 @@ def create_reverse_proxy_router(proxy_mode: str) -> APIRouter:
         logger.debug(f"Proxying {method} {path} in {proxy_mode} mode")
 
         # Proxy the request
-        result = await proxy_service.proxy_request(
-            method=method,
-            path=path,
-            headers=headers,
-            body=body,
-            query_params=query_params,
-        )
+        try:
+            result = await proxy_service.proxy_request(
+                method=method,
+                path=path,
+                headers=headers,
+                body=body,
+                query_params=query_params,
+            )
 
-        # Handle streaming response
-        if isinstance(result, StreamingResponse):
-            return result
+            # Handle streaming response
+            if isinstance(result, StreamingResponse):
+                return result
 
-        # Handle regular response
-        status_code, response_headers, response_body = result
+            # Handle regular response
+            status_code, response_headers, response_body = result
+        except HTTPException:
+            # Re-raise HTTPException as-is
+            raise
+        except Exception as e:
+            # Log unexpected errors and convert to HTTPException
+            logger.error(f"Unexpected error in proxy request: {e}")
+            raise HTTPException(status_code=500, detail="Internal server error") from e
 
         return Response(
             content=response_body,

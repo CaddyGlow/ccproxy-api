@@ -3,9 +3,9 @@
 import json
 from unittest.mock import AsyncMock, Mock, patch
 
+import httpx
 import pytest
 from fastapi.testclient import TestClient
-import httpx
 
 from ccproxy.services.request_transformer import RequestTransformer
 
@@ -599,7 +599,9 @@ class TestReverseProxyAuthentication:
         mock_response.extensions = {}
 
         # Mock the InstrumentedHttpClient.request method
-        with patch("ccproxy.utils.http_client.InstrumentedHttpClient.request") as mock_request:
+        with patch(
+            "ccproxy.utils.http_client.InstrumentedHttpClient.request"
+        ) as mock_request:
             mock_request.return_value = mock_response
 
             client = TestClient(app_with_auth)
@@ -651,7 +653,9 @@ class TestReverseProxyAuthentication:
         mock_response.extensions = {}
 
         # Mock the InstrumentedHttpClient.request method
-        with patch("ccproxy.utils.http_client.InstrumentedHttpClient.request") as mock_request:
+        with patch(
+            "ccproxy.utils.http_client.InstrumentedHttpClient.request"
+        ) as mock_request:
             mock_request.return_value = mock_response
 
             client = TestClient(app_with_auth)
@@ -733,14 +737,17 @@ class TestReverseProxyAuthentication:
         mock_response.extensions = {}
 
         # Mock the InstrumentedHttpClient.request method
-        with patch("ccproxy.utils.http_client.InstrumentedHttpClient.request") as mock_request:
+        with patch(
+            "ccproxy.utils.http_client.InstrumentedHttpClient.request"
+        ) as mock_request:
             mock_request.return_value = mock_response
 
             client = TestClient(app_no_auth)
 
             # Request without authentication should succeed when auth is disabled
             response = client.post(
-                "/unclaude/v1/messages", json={"model": "claude-3-5-sonnet", "messages": []}
+                "/unclaude/v1/messages",
+                json={"model": "claude-3-5-sonnet", "messages": []},
             )
 
             assert response.status_code == 200

@@ -1,10 +1,10 @@
 """Simple verification that new URL structure works correctly."""
 
 import json
-from unittest.mock import AsyncMock, patch, Mock
+from unittest.mock import AsyncMock, Mock, patch
 
-import pytest
 import httpx
+import pytest
 from fastapi.testclient import TestClient
 
 from ccproxy.services.credentials import CredentialsManager
@@ -90,7 +90,9 @@ class TestNewURLStructure:
             mock_response.extensions = {}
 
             # Mock InstrumentedHttpClient
-            with patch("ccproxy.utils.http_client.InstrumentedHttpClient.request") as mock_request:
+            with patch(
+                "ccproxy.utils.http_client.InstrumentedHttpClient.request"
+            ) as mock_request:
                 mock_request.return_value = mock_response
 
                 response = test_client.post(
@@ -135,7 +137,9 @@ class TestNewURLStructure:
             mock_response.extensions = {}
 
             # Mock InstrumentedHttpClient
-            with patch("ccproxy.utils.http_client.InstrumentedHttpClient.request") as mock_request:
+            with patch(
+                "ccproxy.utils.http_client.InstrumentedHttpClient.request"
+            ) as mock_request:
                 mock_request.return_value = mock_response
 
                 response = test_client.post(
@@ -178,7 +182,9 @@ class TestNewURLStructure:
             mock_response.extensions = {}
 
             # Mock InstrumentedHttpClient
-            with patch("ccproxy.utils.http_client.InstrumentedHttpClient.request") as mock_request:
+            with patch(
+                "ccproxy.utils.http_client.InstrumentedHttpClient.request"
+            ) as mock_request:
                 mock_request.return_value = mock_response
 
                 # Test that legacy paths don't return 404
@@ -194,4 +200,6 @@ class TestNewURLStructure:
                     response = test_client.post(path, json=minimal_data)
                     # Should not be 404 (endpoint not found)
                     # May be 422 (validation) or 401 (auth) or other errors, but not 404
-                    assert response.status_code != 404, f"Legacy endpoint {path} returned 404"
+                    assert response.status_code != 404, (
+                        f"Legacy endpoint {path} returned 404"
+                    )
