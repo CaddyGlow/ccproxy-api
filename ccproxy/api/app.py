@@ -74,11 +74,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(health_router, tags=["health"])
     app.include_router(metrics_router, prefix="/metrics", tags=["metrics"])
 
-    # Anthropic API endpoints (default)
-    app.include_router(anthropic_router, prefix="/v1", tags=["anthropic"])
-
-    # OpenAI-compatible API endpoints
+    # OpenAI-compatible API endpoints (both standard and prefixed paths)
+    app.include_router(openai_router, prefix="/v1", tags=["openai-standard"])
     app.include_router(openai_router, prefix="/openai/v1", tags=["openai"])
+
+    # Anthropic API endpoints (for non-OpenAI paths under /v1)
+    app.include_router(anthropic_router, prefix="/v1", tags=["anthropic"])
 
     # Claude SDK direct endpoints
     app.include_router(

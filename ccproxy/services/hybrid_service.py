@@ -152,11 +152,23 @@ class HybridService:
         Returns:
             True if tools are present in the request
         """
-        return (
+        # Check for standard OpenAI tools field
+        if (
             "tools" in request_body
             and isinstance(request_body["tools"], list)
             and len(request_body["tools"]) > 0
-        )
+        ):
+            return True
+        
+        # Check for Claude Code specific tools field
+        if (
+            "allowed_tools" in request_body
+            and isinstance(request_body["allowed_tools"], list)
+            and len(request_body["allowed_tools"]) > 0
+        ):
+            return True
+            
+        return False
 
     def _has_streaming(self, request_body: dict[str, Any]) -> bool:
         """Check if the request is for streaming.
