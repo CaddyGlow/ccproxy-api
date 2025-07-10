@@ -3,7 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
-from ccproxy.formatters.translator import map_openai_model_to_claude
+from ccproxy.adapters.openai import map_openai_model_to_claude
 from ccproxy.models.openai import (
     OpenAIChatCompletionRequest,
     OpenAIMessage,
@@ -406,14 +406,14 @@ class TestOpenAIModelMapping:
 
     def test_mapping_in_translator_request(self) -> None:
         """Test model mapping integration in translator."""
-        from ccproxy.formatters.translator import OpenAITranslator
+        from ccproxy.adapters.openai import OpenAIAdapter
 
-        translator = OpenAITranslator()
+        translator = OpenAIAdapter()
         openai_request = {
             "model": "gpt-4o-mini",
             "messages": [{"role": "user", "content": "Hello"}],
             "max_tokens": 100,
         }
 
-        anthropic_request = translator.openai_to_anthropic_request(openai_request)
+        anthropic_request = translator.adapt_request(openai_request)
         assert anthropic_request["model"] == "claude-3-5-haiku-latest"

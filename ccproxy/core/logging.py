@@ -108,7 +108,7 @@ class CustomFormatter(DefaultFormatter):
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
-        from ccproxy.utils.cli import get_rich_toolkit
+        from ccproxy.cli.helpers import get_rich_toolkit
 
         self.toolkit = get_rich_toolkit()
 

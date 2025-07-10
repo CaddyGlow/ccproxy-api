@@ -14,7 +14,7 @@ from starlette.status import HTTP_500_INTERNAL_SERVER_ERROR
 from ccproxy.config.settings import get_settings
 from ccproxy.exceptions import ClaudeProxyError
 from ccproxy.formatters.openai_streaming_formatter import stream_claude_response_openai
-from ccproxy.formatters.translator import OpenAITranslator
+from ccproxy.adapters.openai import OpenAIAdapter
 from ccproxy.middleware.auth import get_auth_dependency
 from ccproxy.models.openai import (
     OpenAIChatCompletionRequest,
@@ -123,14 +123,14 @@ async def create_chat_completion(
         # Create Claude client directly
         logger.info("[API] Creating Claude client for OpenAI chat completion request")
         claude_client = ClaudeClient()
-        translator = OpenAITranslator()
+        translator = OpenAIAdapter()
 
         # Create a new ClaudeCodeOptions instance based on the request
         # Start with base options from settings
         options = merge_claude_code_options(settings.claude_code_options)
 
         # Map OpenAI model to Claude model for the options
-        from ccproxy.formatters.translator import map_openai_model_to_claude
+        from ccproxy.adapters.openai import map_openai_model_to_claude
 
         mapped_model = map_openai_model_to_claude(request.model)
         options.model = mapped_model
@@ -175,7 +175,7 @@ async def create_chat_completion(
                 if value is not None:  # Only include non-None values
                     base_request_dict[field_name] = value
 
-        anthropic_request = translator.openai_to_anthropic_request(base_request_dict)
+        anthropic_request = translator.adapt_request(base_request_dict)
 
         # Generate request metadata
         request_id = f"chatcmpl-{uuid.uuid4().hex[:29]}"
@@ -264,9 +264,7 @@ async def create_chat_completion(
             # Convert to OpenAI format
             # Type assertion: when stream=False, create_completion returns dict[str, Any]
             response_dict = cast(dict[str, Any], anthropic_response)
-            openai_response = translator.anthropic_to_openai_response(
-                response_dict, request.model, request_id
-            )
+            openai_response = translator.adapt_response(response_dict)
 
             return OpenAIChatCompletionResponse(**openai_response)
 
