@@ -173,4 +173,3 @@ class KeyringTokenStorage(TokenStorage):
             Description of the keyring storage location
         """
         return f"OS keyring (service: {self.service_name}, user: {self.username})"
-

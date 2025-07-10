@@ -55,4 +55,3 @@ class TokenStorage(ABC):
             Human-readable description of where credentials are stored
         """
         pass
-

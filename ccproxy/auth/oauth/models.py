@@ -10,9 +10,7 @@ class OAuthState(BaseModel):
     """OAuth state information for pending flows."""
 
     code_verifier: str = Field(..., description="PKCE code verifier")
-    custom_paths: list[str] | None = Field(
-        None, description="Custom credential paths"
-    )
+    custom_paths: list[str] | None = Field(None, description="Custom credential paths")
     completed: bool = Field(default=False, description="Whether the flow is completed")
     success: bool = Field(default=False, description="Whether the flow was successful")
     error: str | None = Field(None, description="Error message if failed")
@@ -27,9 +25,7 @@ class OAuthCallbackRequest(BaseModel):
     code: str | None = Field(None, description="Authorization code")
     state: str | None = Field(None, description="State parameter")
     error: str | None = Field(None, description="OAuth error")
-    error_description: str | None = Field(
-        None, description="OAuth error description"
-    )
+    error_description: str | None = Field(None, description="OAuth error description")
 
 
 class OAuthTokenRequest(BaseModel):
