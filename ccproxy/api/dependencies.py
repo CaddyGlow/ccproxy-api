@@ -72,7 +72,7 @@ def get_proxy_service(
     """
     logger.debug("Creating proxy service instance")
     # Create HTTP client for proxy
-    from ccproxy.core.http import HTTPXClient, BaseProxyClient
+    from ccproxy.core.http import HTTPXClient
 
     http_client = HTTPXClient()
     proxy_client = BaseProxyClient(http_client)
