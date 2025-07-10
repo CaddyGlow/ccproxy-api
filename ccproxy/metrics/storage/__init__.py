@@ -12,11 +12,11 @@ from .memory import InMemoryMetricsStorage
 
 # Optional SQLite support
 try:
-    from .sqlite import SQLiteMetricStorage
+    from .sqlite import SQLiteMetricsStorage
     _SQLITE_AVAILABLE = True
 except ImportError:
     _SQLITE_AVAILABLE = False
-    SQLiteMetricStorage = None  # type: ignore
+    SQLiteMetricsStorage = None  # type: ignore
 
 # Optional PostgreSQL support
 try:
@@ -40,9 +40,9 @@ __all__ = [
 ]
 
 # Add SQLite storage if available
-if _SQLITE_AVAILABLE and SQLiteMetricStorage:
-    __all__.append("SQLiteMetricStorage")
+if _SQLITE_AVAILABLE and SQLiteMetricsStorage is not None:
+    __all__.append("SQLiteMetricsStorage")
 
 # Add PostgreSQL storage if available
-if _POSTGRES_AVAILABLE and PostgreSQLMetricStorage:
+if _POSTGRES_AVAILABLE and PostgreSQLMetricStorage is not None:
     __all__.append("PostgreSQLMetricStorage")

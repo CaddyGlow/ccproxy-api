@@ -616,7 +616,7 @@ class ConfigurationManager:
             return
 
         # Import here to avoid circular import
-        from ccproxy.utils.logging import setup_rich_logging
+        from ccproxy.core.logging import setup_rich_logging
 
         effective_level = log_level or (
             self._settings.log_level if self._settings else "INFO"

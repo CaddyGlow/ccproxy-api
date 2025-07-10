@@ -14,7 +14,7 @@ from ccproxy.services.credentials.exceptions import (
 )
 from ccproxy.services.credentials.models import ClaudeCredentials
 from ccproxy.services.credentials.storage import CredentialsStorageBackend
-from ccproxy.utils.logging import get_logger
+from ccproxy.core.logging import get_logger
 
 
 logger = get_logger(__name__)

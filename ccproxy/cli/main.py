@@ -26,7 +26,7 @@ from ccproxy.models.responses import (
     PermissionToolDenyResponse,
 )
 from ccproxy.utils.helper import get_package_dir, get_root_package_name
-from ccproxy.utils.logging import get_logger
+from ccproxy.core.logging import get_logger
 from ccproxy.utils.typer import Typer
 
 from .commands.auth import app as auth_app

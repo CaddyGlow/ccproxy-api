@@ -16,7 +16,7 @@ from ccproxy.services.credentials.json_storage import JsonFileStorage
 from ccproxy.services.credentials.models import ClaudeCredentials, UserProfile
 from ccproxy.services.credentials.oauth_client import OAuthClient
 from ccproxy.services.credentials.storage import CredentialsStorageBackend
-from ccproxy.utils.logging import get_logger
+from ccproxy.core.logging import get_logger
 
 
 logger = get_logger(__name__)

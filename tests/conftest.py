@@ -11,7 +11,7 @@ from fastapi.testclient import TestClient
 
 from ccproxy.config.settings import Settings
 from ccproxy.main import create_app
-from ccproxy.services.claude_client import ClaudeClient
+from ccproxy.services.claude_sdk_service import ClaudeSDKService
 
 
 @pytest.fixture(scope="session")
@@ -48,7 +48,7 @@ def test_client(test_settings: Settings) -> TestClient:
 @pytest.fixture
 def mock_claude_client() -> MagicMock:
     """Create a mock Claude client."""
-    mock_client = MagicMock(spec=ClaudeClient)
+    mock_client = MagicMock(spec=ClaudeSDKService)
     mock_client.create_completion = AsyncMock()
     mock_client.list_models = AsyncMock()
     return mock_client

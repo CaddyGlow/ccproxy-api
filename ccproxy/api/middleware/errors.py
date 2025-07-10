@@ -15,7 +15,7 @@ from ccproxy.core.errors import (
     TransformationError,
 )
 from ccproxy.core.logging import get_logger
-from ccproxy.exceptions import (
+from ccproxy.core.errors import (
     AuthenticationError,
     ClaudeProxyError,
     DockerError,

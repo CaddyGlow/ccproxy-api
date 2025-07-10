@@ -12,7 +12,7 @@ from rich.table import Table
 
 from ccproxy.services.credentials import CredentialsConfig, CredentialsManager
 from ccproxy.cli.helpers import get_rich_toolkit
-from ccproxy.utils.logging import get_logger
+from ccproxy.core.logging import get_logger
 from ccproxy.utils.xdg import get_claude_docker_home_dir
 
 

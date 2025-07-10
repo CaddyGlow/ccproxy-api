@@ -2,7 +2,7 @@
 
 import pytest
 
-from ccproxy.exceptions import (
+from ccproxy.core.errors import (
     AuthenticationError,
     ClaudeProxyError,
     ModelNotFoundError,

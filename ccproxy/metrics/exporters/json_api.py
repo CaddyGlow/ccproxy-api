@@ -7,7 +7,7 @@ data through REST endpoints for monitoring dashboards and analytics.
 
 import logging
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, cast
 
 from ..models import MetricRecord, MetricType, MetricsSummary
 from ..storage.base import MetricsStorage
@@ -188,7 +188,7 @@ class JsonApiExporter:
             if cache_key in self._cache:
                 cached_data = self._cache[cache_key]
                 if (datetime.utcnow() - cached_data["timestamp"]).seconds < self.cache_ttl:
-                    return cached_data["data"]
+                    return cast(Dict[str, Any], cached_data["data"])
             
             # Get summary from storage
             summary = await self.storage.get_metrics_summary(
@@ -483,7 +483,7 @@ class JsonApiExporter:
             Dictionary representation of the metric
         """
         # Base metric data
-        data = {
+        data: Dict[str, Any] = {
             "id": str(metric.id),
             "timestamp": metric.timestamp.isoformat(),
             "metric_type": metric.metric_type.value,

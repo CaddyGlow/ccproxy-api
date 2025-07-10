@@ -3,7 +3,7 @@
 from collections.abc import AsyncIterator
 from typing import Any
 
-from ccproxy.exceptions import ClaudeProxyError, ServiceUnavailableError
+from ccproxy.core.errors import ClaudeProxyError, ServiceUnavailableError
 from ccproxy.utils.helper import patched_typing
 from ccproxy.utils.logging import get_logger
 

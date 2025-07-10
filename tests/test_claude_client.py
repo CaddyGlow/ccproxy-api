@@ -5,23 +5,23 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from claude_code_sdk import ClaudeCodeOptions
 
-from ccproxy.exceptions import ClaudeProxyError, ServiceUnavailableError
-from ccproxy.services.claude_client import ClaudeClient
+from ccproxy.core.errors import ClaudeProxyError, ServiceUnavailableError
+from ccproxy.services.claude_sdk_service import ClaudeSDKService
 
 
-class TestClaudeClient:
-    """Test ClaudeClient class."""
+class TestClaudeSDKService:
+    """Test ClaudeSDKService class."""
 
     @pytest.mark.unit
     def test_init(self):
         """Test client initialization."""
-        client = ClaudeClient()
-        assert isinstance(client, ClaudeClient)
+        client = ClaudeSDKService()
+        assert isinstance(client, ClaudeSDKService)
 
     @pytest.mark.unit
     def test_format_messages_to_prompt(self):
         """Test _format_messages_to_prompt method."""
-        client = ClaudeClient()
+        client = ClaudeSDKService()
 
         messages = [
             {"role": "user", "content": "Hello"},
@@ -37,7 +37,7 @@ class TestClaudeClient:
     @pytest.mark.unit
     def test_format_messages_with_content_blocks(self):
         """Test _format_messages_to_prompt with content blocks."""
-        client = ClaudeClient()
+        client = ClaudeSDKService()
 
         messages = [
             {
@@ -57,7 +57,7 @@ class TestClaudeClient:
     @pytest.mark.unit
     def test_format_messages_with_system(self):
         """Test _format_messages_to_prompt skips system messages."""
-        client = ClaudeClient()
+        client = ClaudeSDKService()
 
         messages = [
             {"role": "system", "content": "You are helpful"},
@@ -74,7 +74,7 @@ class TestClaudeClient:
         """Test _extract_text_from_content method."""
         from claude_code_sdk import TextBlock, ToolResultBlock, ToolUseBlock
 
-        client = ClaudeClient()
+        client = ClaudeSDKService()
 
         # Mock content blocks
         text_block = MagicMock(spec=TextBlock)
@@ -95,7 +95,7 @@ class TestClaudeClient:
 
     @pytest.mark.integration
     @pytest.mark.asyncio
-    @patch("ccproxy.services.claude_client.query")
+    @patch("ccproxy.services.claude_sdk_service.query")
     async def test_create_completion_non_streaming(self, mock_query):
         """Test create_completion for non-streaming."""
         from claude_code_sdk import AssistantMessage, ResultMessage, TextBlock
@@ -116,7 +116,7 @@ class TestClaudeClient:
 
         mock_query.return_value = mock_async_iter()
 
-        client = ClaudeClient()
+        client = ClaudeSDKService()
         options = ClaudeCodeOptions(
             model="claude-3-5-sonnet-20241022", permission_mode="default"
         )
@@ -134,7 +134,7 @@ class TestClaudeClient:
 
     @pytest.mark.integration
     @pytest.mark.asyncio
-    @patch("ccproxy.services.claude_client.query")
+    @patch("ccproxy.services.claude_sdk_service.query")
     async def test_create_completion_streaming(self, mock_query):
         """Test create_completion for streaming."""
         from claude_code_sdk import AssistantMessage, ResultMessage, TextBlock
@@ -161,7 +161,7 @@ class TestClaudeClient:
 
         mock_query.return_value = mock_async_query()
 
-        client = ClaudeClient()
+        client = ClaudeSDKService()
         options = ClaudeCodeOptions(
             model="claude-3-5-sonnet-20241022", permission_mode="default"
         )
@@ -181,7 +181,7 @@ class TestClaudeClient:
     @pytest.mark.asyncio
     async def test_list_models(self):
         """Test list_models method."""
-        client = ClaudeClient()
+        client = ClaudeSDKService()
 
         models = await client.list_models()
 
@@ -193,21 +193,21 @@ class TestClaudeClient:
     @pytest.mark.asyncio
     async def test_context_manager(self):
         """Test async context manager."""
-        async with ClaudeClient() as client:
-            assert isinstance(client, ClaudeClient)
+        async with ClaudeSDKService() as client:
+            assert isinstance(client, ClaudeSDKService)
 
         # Should not raise any errors
 
     @pytest.mark.integration
     @pytest.mark.asyncio
-    @patch("ccproxy.services.claude_client.query")
+    @patch("ccproxy.services.claude_sdk_service.query")
     async def test_cli_not_found_error(self, mock_query):
         """Test handling of CLI not found error."""
         from claude_code_sdk import CLINotFoundError
 
         mock_query.side_effect = CLINotFoundError("Claude CLI not found")
 
-        client = ClaudeClient()
+        client = ClaudeSDKService()
         options = ClaudeCodeOptions(
             model="claude-3-5-sonnet-20241022", permission_mode="default"
         )
@@ -221,14 +221,14 @@ class TestClaudeClient:
 
     @pytest.mark.integration
     @pytest.mark.asyncio
-    @patch("ccproxy.services.claude_client.query")
+    @patch("ccproxy.services.claude_sdk_service.query")
     async def test_process_error(self, mock_query):
         """Test handling of process error."""
         from claude_code_sdk import ProcessError
 
         mock_query.side_effect = ProcessError("Process failed")
 
-        client = ClaudeClient()
+        client = ClaudeSDKService()
         options = ClaudeCodeOptions(
             model="claude-3-5-sonnet-20241022", permission_mode="default"
         )
@@ -243,12 +243,12 @@ class TestClaudeClient:
 
     @pytest.mark.integration
     @pytest.mark.asyncio
-    @patch("ccproxy.services.claude_client.query")
+    @patch("ccproxy.services.claude_sdk_service.query")
     async def test_unexpected_error(self, mock_query):
         """Test handling of unexpected error."""
         mock_query.side_effect = RuntimeError("Unexpected error")
 
-        client = ClaudeClient()
+        client = ClaudeSDKService()
         options = ClaudeCodeOptions(
             model="claude-3-5-sonnet-20241022", permission_mode="default"
         )
@@ -263,12 +263,12 @@ class TestClaudeClient:
 
     @pytest.mark.integration
     @pytest.mark.asyncio
-    @patch("ccproxy.services.claude_client.query")
+    @patch("ccproxy.services.claude_sdk_service.query")
     async def test_no_result_message_error(self, mock_query):
         """Test handling when no result message is received."""
         from claude_code_sdk import AssistantMessage, TextBlock
 
-        from ccproxy.services.claude_client import ClaudeClientError
+        from ccproxy.services.claude_sdk_service import ClaudeSDKServiceError
 
         # Mock only assistant message, no result message
         text_block = MagicMock(spec=TextBlock)
@@ -282,12 +282,12 @@ class TestClaudeClient:
 
         mock_query.return_value = mock_async_iter()
 
-        client = ClaudeClient()
+        client = ClaudeSDKService()
         options = ClaudeCodeOptions(
             model="claude-3-5-sonnet-20241022", permission_mode="default"
         )
 
-        with pytest.raises(ClaudeClientError) as exc_info:
+        with pytest.raises(ClaudeSDKServiceError) as exc_info:
             await client.create_completion(
                 [{"role": "user", "content": "test"}], options
             )
@@ -296,12 +296,12 @@ class TestClaudeClient:
 
     @pytest.mark.integration
     @pytest.mark.asyncio
-    @patch("ccproxy.services.claude_client.query")
+    @patch("ccproxy.services.claude_sdk_service.query")
     async def test_no_assistant_message_error(self, mock_query):
         """Test handling when no assistant message is received."""
         from claude_code_sdk import ResultMessage
 
-        from ccproxy.services.claude_client import ClaudeClientError
+        from ccproxy.services.claude_sdk_service import ClaudeSDKServiceError
 
         # Mock only result message, no assistant message
         result_msg = MagicMock(spec=ResultMessage)
@@ -312,12 +312,12 @@ class TestClaudeClient:
 
         mock_query.return_value = mock_async_iter()
 
-        client = ClaudeClient()
+        client = ClaudeSDKService()
         options = ClaudeCodeOptions(
             model="claude-3-5-sonnet-20241022", permission_mode="default"
         )
 
-        with pytest.raises(ClaudeClientError) as exc_info:
+        with pytest.raises(ClaudeSDKServiceError) as exc_info:
             await client.create_completion(
                 [{"role": "user", "content": "test"}], options
             )

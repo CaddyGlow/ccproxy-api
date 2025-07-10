@@ -59,7 +59,7 @@ class CostCalculator:
         "cache_write": Decimal("3.75"),
     }
     
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the cost calculator."""
         self._custom_pricing: Dict[str, Dict[str, Decimal]] = {}
     
