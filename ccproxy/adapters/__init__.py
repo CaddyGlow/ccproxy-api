@@ -1,11 +1,11 @@
 """Adapter modules for API format conversion."""
 
-from ccproxy.core.interfaces import APIAdapter
-
+from .base import APIAdapter, BaseAPIAdapter
 from .openai import OpenAIAdapter
 
 
 __all__ = [
     "APIAdapter",
+    "BaseAPIAdapter", 
     "OpenAIAdapter",
 ]

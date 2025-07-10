@@ -11,7 +11,7 @@ from ccproxy.services.credentials.exceptions import (
     CredentialsInvalidError,
     CredentialsStorageError,
 )
-from ccproxy.utils.logging import get_logger
+from ccproxy.core.logging import get_logger
 
 
 logger = get_logger(__name__)

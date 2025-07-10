@@ -15,7 +15,7 @@ from ccproxy.services.credentials import (
     OAuthToken,
 )
 from ccproxy.services.credentials.config import OAuthConfig
-from ccproxy.utils.logging import get_logger
+from ccproxy.core.logging import get_logger
 
 
 logger = get_logger(__name__)

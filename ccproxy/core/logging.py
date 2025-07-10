@@ -104,7 +104,7 @@ def get_logger(name: str) -> logging.Logger:
 
 
 class CustomFormatter(DefaultFormatter):
-    """Custom formatter for uvicorn logs."""
+    """Custom formatter for uvicorn logs with rich toolkit integration."""
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)

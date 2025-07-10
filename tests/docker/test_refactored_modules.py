@@ -24,7 +24,7 @@ from ccproxy.docker.validators import (
 from ccproxy.docker.validators import (
     validate_port_spec as validators_validate_port_spec,
 )
-from ccproxy.exceptions import DockerError
+from ccproxy.core.errors import DockerError
 
 
 class TestModuleImports:

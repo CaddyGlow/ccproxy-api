@@ -7,11 +7,11 @@ from ccproxy.auth.manager import AuthManager
 from ccproxy.claude_sdk.client import ClaudeSDKClient
 from ccproxy.claude_sdk.converter import MessageConverter
 from ccproxy.claude_sdk.options import OptionsHandler
-from ccproxy.exceptions import (
+from ccproxy.core.errors import (
     ClaudeProxyError,
     ServiceUnavailableError,
 )
-from ccproxy.utils.logging import get_logger
+from ccproxy.core.logging import get_logger
 
 
 logger = get_logger(__name__)

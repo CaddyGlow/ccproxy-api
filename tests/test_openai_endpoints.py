@@ -216,7 +216,7 @@ class TestOpenAIChatCompletionsEndpoint:
         self, test_client, mock_claude_client, sample_request
     ):
         """Test chat completion with Claude client error."""
-        from ccproxy.exceptions import ClaudeProxyError
+        from ccproxy.core.errors import ClaudeProxyError
 
         mock_claude_client.create_completion = AsyncMock(
             side_effect=ClaudeProxyError("API rate limit exceeded")

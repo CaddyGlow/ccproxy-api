@@ -3,7 +3,7 @@
 import logging
 from typing import Any
 
-from ccproxy.utils.logging import get_logger
+from ccproxy.core.logging import get_logger
 
 from .stream_process import OutputMiddleware, create_chained_middleware
 

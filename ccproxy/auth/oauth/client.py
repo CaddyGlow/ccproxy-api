@@ -8,7 +8,7 @@ import httpx
 
 from ccproxy.auth.oauth.models import OAuthTokenRequest, OAuthTokenResponse
 from ccproxy.services.credentials.config import OAuthConfig
-from ccproxy.utils.logging import get_logger
+from ccproxy.core.logging import get_logger
 
 
 logger = get_logger(__name__)

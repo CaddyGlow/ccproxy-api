@@ -235,9 +235,10 @@ class HybridService:
         options = ClaudeCodeOptions()
 
         # Create completion using SDK
+        model = request_body.get("model", "claude-3-5-sonnet-20241022")  # Default model
         sdk_response = await self.claude_sdk_service.create_completion(
             messages=messages,
-            options=options,
+            model=model,
             stream=stream,
         )
 
@@ -279,7 +280,7 @@ class HybridService:
         logger.debug(f"Handling request with proxy: {path}")
 
         # Forward request to reverse proxy
-        proxy_response = await self.proxy_service.proxy_request(
+        proxy_response = await self.proxy_service.handle_request(
             method=method,
             path=path,
             headers=headers,

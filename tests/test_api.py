@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
-from ccproxy.exceptions import ModelNotFoundError, ServiceUnavailableError
+from ccproxy.core.errors import ModelNotFoundError, ServiceUnavailableError
 
 
 @pytest.mark.integration
@@ -164,7 +164,7 @@ class TestChatCompletionsEndpoint:
         sample_chat_request: dict[str, Any],
     ):
         """Test handling of Claude client errors."""
-        from ccproxy.exceptions import ClaudeProxyError
+        from ccproxy.core.errors import ClaudeProxyError
 
         mock_client = AsyncMock()
         mock_client.create_completion.side_effect = ClaudeProxyError(
@@ -246,7 +246,7 @@ class TestModelsEndpoint:
     @patch("ccproxy.routers.claudecode.anthropic.ClaudeClient")
     def test_list_models_error(self, mock_claude_client_class, test_client: TestClient):
         """Test models listing with error."""
-        from ccproxy.exceptions import ClaudeProxyError
+        from ccproxy.core.errors import ClaudeProxyError
 
         mock_client = AsyncMock()
         mock_client.list_models.side_effect = ClaudeProxyError(

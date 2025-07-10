@@ -11,13 +11,13 @@ from fastapi import HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import ValidationError
 
-from ccproxy.exceptions import (
+from ccproxy.core.errors import (
     ClaudeProxyError,
     ModelNotFoundError,
     ServiceUnavailableError,
     TimeoutError,
 )
-from ccproxy.exceptions import (
+from ccproxy.core.errors import (
     ValidationError as ProxyValidationError,
 )
 from ccproxy.models.messages import (

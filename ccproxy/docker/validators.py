@@ -2,7 +2,7 @@
 
 from typing import Any
 
-from ccproxy.exceptions import DockerError
+from ccproxy.core.errors import DockerError
 
 
 def validate_port_spec(port_spec: str) -> str:

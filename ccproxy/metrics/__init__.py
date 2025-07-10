@@ -13,11 +13,11 @@ from .storage import (
 
 # Optional storage backends
 try:
-    from .storage import SQLiteMetricStorage
+    from .storage import SQLiteMetricsStorage
     _SQLITE_AVAILABLE = True
 except ImportError:
     _SQLITE_AVAILABLE = False
-    SQLiteMetricStorage = None  # type: ignore
+    SQLiteMetricsStorage = None  # type: ignore
 
 try:
     from .storage import PostgreSQLMetricStorage
@@ -63,8 +63,8 @@ __all__ = [
 ]
 
 # Add optional storage backends if available
-if _SQLITE_AVAILABLE and SQLiteMetricStorage:
-    __all__.append("SQLiteMetricStorage")
+if _SQLITE_AVAILABLE and SQLiteMetricsStorage is not None:
+    __all__.append("SQLiteMetricsStorage")
 
-if _POSTGRES_AVAILABLE and PostgreSQLMetricStorage:
+if _POSTGRES_AVAILABLE and PostgreSQLMetricStorage is not None:
     __all__.append("PostgreSQLMetricStorage")

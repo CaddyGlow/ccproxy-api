@@ -12,7 +12,7 @@ from ccproxy.docker import (
     create_docker_error,
     validate_port_spec,
 )
-from ccproxy.exceptions import DockerError
+from ccproxy.core.errors import DockerError
 
 
 class TestDockerPath:
