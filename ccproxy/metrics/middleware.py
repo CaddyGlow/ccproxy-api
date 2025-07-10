@@ -138,7 +138,10 @@ class MetricsMiddleware(BaseHTTPMiddleware):
                         error_http_metrics
                     )
                 except Exception as e:
-                    logger.warning(f"Failed to store error metrics: {e}")
+                    logger.warning(
+                        f"Failed to store error metrics: {e}",
+                        exc_info=logger.isEnabledFor(logging.DEBUG),
+                    )
 
             # Re-raise the exception
             raise
@@ -170,14 +173,21 @@ class MetricsMiddleware(BaseHTTPMiddleware):
 
             self.metrics_collector.record_http_request(http_metrics)
 
-            # Extract and record model usage if available
-            token_usage = request_context.get_token_usage()
-            model_name = request_context.get_model()
+            # Get token usage and model from request state
+            # Note: We use request.state instead of context variables because the reverse proxy
+            # and middleware run in different async contexts where context variables don't propagate
+            token_usage = None
+            model_name = None
 
-            # Debug logging
-            logger.debug(
-                f"Token extraction - Model: {model_name}, Token usage: {token_usage}"
-            )
+            if hasattr(request, "state"):
+                token_usage = getattr(request.state, "token_usage", None)
+                model_name = getattr(request.state, "model", None)
+
+            # Fall back to request context if not in state
+            if not token_usage:
+                token_usage = request_context.get_token_usage()
+            if not model_name:
+                model_name = request_context.get_model()
 
             if token_usage and model_name and status_code < 400:
                 # Calculate cost if not already provided
@@ -219,7 +229,10 @@ class MetricsMiddleware(BaseHTTPMiddleware):
                             http_metrics, model_metrics
                         )
                     except Exception as e:
-                        logger.warning(f"Failed to store model metrics: {e}")
+                        logger.warning(
+                            f"Failed to store error metrics: {e}",
+                            exc_info=logger.isEnabledFor(logging.DEBUG),
+                        )
             else:
                 # Store only HTTP metrics if no model usage
                 if (
@@ -231,7 +244,10 @@ class MetricsMiddleware(BaseHTTPMiddleware):
                             http_metrics
                         )
                     except Exception as e:
-                        logger.warning(f"Failed to store HTTP metrics: {e}")
+                        logger.warning(
+                            f"Failed to store HTTP metrics: {e}",
+                            exc_info=logger.isEnabledFor(logging.DEBUG),
+                        )
 
             # Clear request context
             request_context.clear_context()

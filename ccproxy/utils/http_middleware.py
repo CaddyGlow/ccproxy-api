@@ -12,6 +12,9 @@ from ccproxy.utils.http_client import HttpMiddleware
 from ccproxy.utils.logging import get_logger
 
 
+# Token extraction imports removed - handled at application level
+
+
 logger = get_logger(__name__)
 
 
@@ -515,3 +518,182 @@ class RequestIdMiddleware(HttpMiddleware[Any]):
             )
 
         return error
+
+
+class HttpMetricsMiddleware(HttpMiddleware[Any]):
+    """Middleware that collects HTTP request/response metrics.
+
+    This middleware collects comprehensive metrics for HTTP requests including:
+    - Request/response sizes
+    - Duration
+    - Status codes
+    - Error tracking
+    - Streaming support
+
+    Metrics can be stored via:
+    - Custom async callback function
+    - Built-in ccproxy metrics storage (if available)
+    - In-memory storage for later retrieval
+    """
+
+    def __init__(
+        self,
+        metrics_callback: Any | None = None,
+        store_in_memory: bool = True,
+        max_memory_metrics: int = 1000,
+        use_ccproxy_storage: bool = True,
+    ):
+        """Initialize HTTP metrics middleware.
+
+        Args:
+            metrics_callback: Optional async callback function for metrics
+            store_in_memory: Whether to store metrics in memory
+            max_memory_metrics: Maximum number of metrics to keep in memory
+            use_ccproxy_storage: Whether to use ccproxy's metrics storage if available
+        """
+        self.metrics_callback = metrics_callback
+        self.store_in_memory = store_in_memory
+        self.max_memory_metrics = max_memory_metrics
+        self.use_ccproxy_storage = use_ccproxy_storage
+        self._metrics: list[Any] = []
+
+        # Try to import ccproxy storage if enabled
+        self._ccproxy_available = False
+        if self.use_ccproxy_storage:
+            try:
+                # Import locally to avoid circular dependencies
+                from ccproxy.config import get_settings
+
+                settings = get_settings()
+                self._ccproxy_available = hasattr(settings, "metrics_enabled")
+            except Exception:
+                logger.debug("ccproxy metrics storage not available")
+
+    async def process_request(self, request: httpx.Request) -> httpx.Request:
+        """Record request start time."""
+        request.extensions["metrics_start_time"] = time.time()
+        return request
+
+    async def process_response(
+        self, response: httpx.Response, request: httpx.Request
+    ) -> httpx.Response:
+        """Record metrics for successful response."""
+        # Calculate duration
+        start_time = request.extensions.get("metrics_start_time", time.time())
+        duration_ms = (time.time() - start_time) * 1000
+
+        # Check if this is a streaming response (set by streaming wrapper)
+        is_streaming = request.extensions.get("is_streaming", False)
+        bytes_streamed = request.extensions.get("bytes_streamed", 0)
+
+        # Create metrics
+        try:
+            # Import locally to avoid circular dependencies
+            from ccproxy.utils.http_client import HttpMetrics
+
+            metrics = HttpMetrics.from_request(
+                request=request,
+                response=response,
+                duration_ms=duration_ms,
+                error=None,
+            )
+
+            # Update streaming metrics if applicable
+            if is_streaming:
+                metrics.is_streaming = True
+                metrics.bytes_streamed = bytes_streamed
+                metrics.response_size = bytes_streamed
+
+            await self._record_metrics(metrics)
+
+        except Exception as e:
+            logger.error(f"Failed to record metrics: {e}", exc_info=True)
+
+        return response
+
+    async def process_error(
+        self, error: Exception, request: httpx.Request
+    ) -> Exception:
+        """Record metrics for failed request."""
+        # Calculate duration
+        start_time = request.extensions.get("metrics_start_time", time.time())
+        duration_ms = (time.time() - start_time) * 1000
+
+        # Create metrics
+        try:
+            # Import locally to avoid circular dependencies
+            from ccproxy.utils.http_client import HttpMetrics
+
+            metrics = HttpMetrics.from_request(
+                request=request,
+                response=None,
+                duration_ms=duration_ms,
+                error=str(error),
+            )
+
+            await self._record_metrics(metrics)
+
+        except Exception as e:
+            logger.error(f"Failed to record error metrics: {e}", exc_info=True)
+
+        return error
+
+    async def _record_metrics(self, metrics: Any) -> None:
+        """Record metrics using configured storage options."""
+        # Store in memory if enabled
+        if self.store_in_memory:
+            self._metrics.append(metrics)
+            # Keep only last N metrics to prevent memory issues
+            if len(self._metrics) > self.max_memory_metrics:
+                self._metrics = self._metrics[-self.max_memory_metrics :]
+
+        # Call custom callback if provided
+        if self.metrics_callback:
+            try:
+                await self.metrics_callback(metrics)
+            except Exception as e:
+                logger.error(f"Error in metrics callback: {e}")
+
+        # Store in ccproxy storage if available
+        if self.use_ccproxy_storage and self._ccproxy_available:
+            try:
+                from datetime import UTC, datetime
+
+                from ccproxy.config import get_settings
+                from ccproxy.metrics.database import RequestLog
+                from ccproxy.metrics.sync_storage import get_sync_metrics_storage
+
+                settings = get_settings()
+                if settings.metrics_enabled:
+                    storage = get_sync_metrics_storage(
+                        f"sqlite:///{settings.metrics_db_path}"
+                    )
+
+                    # Create request log entry
+                    request_log = RequestLog(
+                        method=metrics.method,
+                        endpoint=metrics.path,
+                        api_type="http_client",
+                        status_code=metrics.status_code,
+                        duration_ms=metrics.duration_ms,
+                        request_size=metrics.request_size,
+                        response_size=metrics.response_size,
+                        user_agent_category="http_client",
+                        error_type=metrics.error,
+                        timestamp=datetime.now(UTC),
+                    )
+
+                    storage.store_request_log_(request_log)
+                    logger.debug(
+                        f"Recorded HTTP client metrics for {metrics.method} {metrics.url}"
+                    )
+            except Exception as e:
+                logger.error(f"Failed to record metrics to ccproxy storage: {e}")
+
+    def get_metrics(self) -> list[Any]:
+        """Get collected metrics from memory."""
+        return self._metrics.copy()
+
+    def clear_metrics(self) -> None:
+        """Clear collected metrics from memory."""
+        self._metrics.clear()

@@ -15,7 +15,6 @@ from urllib.parse import urlparse
 import httpx
 from pydantic import BaseModel, Field
 
-# Removed to avoid circular import - imported locally where needed
 from ccproxy.utils.logging import get_logger
 
 
@@ -136,11 +135,7 @@ class HttpClientConfig(BaseModel):
     max_retries: int = Field(default=3, description="Maximum number of retries")
     retry_backoff: float = Field(default=1.0, description="Retry backoff factor")
 
-    # Metrics settings
-    collect_metrics: bool = Field(default=True, description="Enable metrics collection")
-    metrics_callback: Any | None = Field(
-        default=None, description="Metrics callback function"
-    )
+    # Metrics settings removed - use HttpMetricsMiddleware instead
 
     # Middleware settings
     middleware: list["HttpMiddleware[Any]"] = Field(
@@ -294,7 +289,6 @@ class InstrumentedHttpClient:
         """Initialize the HTTP client with configuration."""
         self.config = config or HttpClientConfig()
         self._client: httpx.AsyncClient | None = None
-        self._metrics: list[HttpMetrics] = []
         self._middleware: HttpMiddleware[Any] | None = self._setup_middleware()
         self._entered = False
 
@@ -385,58 +379,6 @@ class InstrumentedHttpClient:
             proxy=proxy_url,
         )
 
-    async def _record_metrics(self, metrics: HttpMetrics) -> None:
-        """Record metrics for the request."""
-        if not self.config.collect_metrics:
-            return
-
-        # Store metrics locally
-        self._metrics.append(metrics)
-
-        # Keep only last 1000 metrics to prevent memory issues
-        if len(self._metrics) > 1000:
-            self._metrics = self._metrics[-1000:]
-
-        # Call custom metrics callback if provided
-        if self.config.metrics_callback:
-            try:
-                await self.config.metrics_callback(metrics)
-            except Exception as e:
-                logger.error(f"Error in metrics callback: {e}")
-
-        # Integrate with existing metrics system
-        try:
-            from ccproxy.config import get_settings
-            from ccproxy.metrics.database import RequestLog
-            from ccproxy.metrics.sync_storage import get_sync_metrics_storage
-
-            settings = get_settings()
-            if hasattr(settings, "metrics_enabled") and settings.metrics_enabled:
-                storage = get_sync_metrics_storage(
-                    f"sqlite:///{settings.metrics_db_path}"
-                )
-
-                # Create request log entry
-                request_log = RequestLog(
-                    method=metrics.method,
-                    endpoint=metrics.path,
-                    api_type="http_client",
-                    status_code=metrics.status_code,
-                    duration_ms=metrics.duration_ms,
-                    request_size=metrics.request_size,
-                    response_size=metrics.response_size,
-                    user_agent_category="http_client",
-                    error_type=metrics.error,
-                    host=metrics.host,
-                )
-
-                storage.store_request_log(request_log)
-                logger.debug(
-                    f"Recorded HTTP client metrics for {metrics.method} {metrics.url}"
-                )
-        except Exception as e:
-            logger.debug(f"Failed to record metrics to storage: {e}")
-
     @asynccontextmanager
     async def _client_context(self) -> AsyncGenerator[httpx.AsyncClient, None]:
         """Context manager for HTTP client."""
@@ -521,17 +463,8 @@ class InstrumentedHttpClient:
             raise
 
         finally:
-            # Record metrics
-            duration_ms = (time.time() - start_time) * 1000
-
-            if request:
-                metrics = HttpMetrics.from_request(
-                    request=request,
-                    response=response,
-                    duration_ms=duration_ms,
-                    error=error,
-                )
-                await self._record_metrics(metrics)
+            # Metrics are now handled by HttpMetricsMiddleware
+            pass
 
         if response is None:
             raise RuntimeError("No response received")
@@ -719,48 +652,28 @@ class InstrumentedHttpClient:
                         bytes_streamed = self._bytes_streamed
 
                         # Apply response middleware after streaming completes
-                        if self._parent._middleware and not error:
+                        if self._parent._middleware and not error and request:
                             # Note: middleware can't modify streamed content, but can process metadata
                             await self._parent._middleware.process_response(
                                 self._response, request
                             )
 
-                        # Record metrics when streaming completes
-                        if not hasattr(self, "_metrics_recorded"):
+                        # Metrics are now handled by HttpMetricsMiddleware
+                        # Store streaming info in request extensions for middleware
+                        if not hasattr(self, "_metrics_recorded") and request:
                             self._metrics_recorded = True
-                            duration_ms = (time.time() - start_time) * 1000
-
-                            metrics = HttpMetrics.from_request(
-                                request=request,
-                                response=self._response,
-                                duration_ms=duration_ms,
-                                error=str(error) if error else None,
-                            )
-                            metrics.is_streaming = True
-                            metrics.bytes_streamed = self._bytes_streamed
-                            metrics.response_size = self._bytes_streamed
-                            await self._parent._record_metrics(metrics)
+                            request.extensions["is_streaming"] = True
+                            request.extensions["bytes_streamed"] = self._bytes_streamed
 
                 # Return the wrapped response
-                return MetricsTrackingResponse(response, self)
+                return MetricsTrackingResponse(response, self)  # type: ignore[return-value]
 
         except Exception as e:
             error = str(e)
             logger.error(f"HTTP stream request failed: {method} {url} - {error}")
 
-            # Record metrics for failed requests
-            duration_ms = (time.time() - start_time) * 1000
-            if request:
-                metrics = HttpMetrics.from_request(
-                    request=request,
-                    response=response,
-                    duration_ms=duration_ms,
-                    error=error,
-                )
-                metrics.is_streaming = True
-                metrics.bytes_streamed = bytes_streamed
-                metrics.response_size = bytes_streamed
-                await self._record_metrics(metrics)
+            # Metrics are now handled by HttpMetricsMiddleware
+            pass
 
             raise
 
@@ -867,14 +780,6 @@ class InstrumentedHttpClient:
 
         return event if event else None
 
-    def get_metrics(self) -> list[HttpMetrics]:
-        """Get collected metrics."""
-        return self._metrics.copy()
-
-    def clear_metrics(self) -> None:
-        """Clear collected metrics."""
-        self._metrics.clear()
-
     async def close(self) -> None:
         """Close the HTTP client."""
         if self._client:
@@ -919,7 +824,6 @@ def create_http_client(
     ssl_verify: bool = True,
     ssl_ca_bundle: str | None = None,
     timeout: float = 30.0,
-    collect_metrics: bool = True,
     middleware: list[HttpMiddleware[Any]] | None = None,
     **kwargs: Any,
 ) -> InstrumentedHttpClient | httpx.AsyncClient:
@@ -930,8 +834,7 @@ def create_http_client(
         ssl_verify: Enable SSL verification
         ssl_ca_bundle: Path to CA bundle file
         timeout: Request timeout in seconds
-        collect_metrics: Enable metrics collection
-        middleware: List of middleware to apply to requests
+        middleware: List of middleware to apply to requests (use HttpMetricsMiddleware for metrics)
         **kwargs: Additional configuration options
 
     Returns:
@@ -966,6 +869,7 @@ def create_http_client(
         )
 
         # Configure SSL
+        verify: ssl.SSLContext | str | bool
         if not ssl_verify:
             verify = False
         elif ssl_ca_bundle:
@@ -996,7 +900,6 @@ def create_http_client(
         ssl_verify=ssl_verify,
         ssl_ca_bundle=ssl_ca_bundle,
         timeout=timeout,
-        collect_metrics=collect_metrics,
         middleware=middleware or [],
         **kwargs,
     )

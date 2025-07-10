@@ -10,6 +10,7 @@ from ccproxy.utils.http_client import (
     HttpMiddleware,
     InstrumentedHttpClient,
 )
+from ccproxy.utils.http_middleware import HttpMetricsMiddleware
 from ccproxy.utils.logging import get_logger
 
 
@@ -88,39 +89,7 @@ class RetryMiddleware(HttpMiddleware[Any]):
         return error
 
 
-class MetricsMiddleware(HttpMiddleware[Any]):
-    """Middleware for automatic metrics collection."""
-
-    def __init__(self, service_name: str):
-        """Initialize metrics middleware.
-
-        Args:
-            service_name: Name of the service for metrics tagging
-        """
-        self.service_name = service_name
-
-    async def process_request(self, request: httpx.Request) -> httpx.Request:
-        """Add service name to request headers for tracking."""
-
-        headers = dict(request.headers)
-        headers["X-Service-Name"] = self.service_name
-
-        return httpx.Request(
-            method=request.method,
-            url=request.url,
-            headers=headers,
-            content=request.content,
-            params=dict(request.url.params) if request.url.params else None,
-        )
-
-    async def process_response(
-        self, response: httpx.Response, request: httpx.Request
-    ) -> httpx.Response:
-        """Log response metrics."""
-        logger.debug(
-            f"[{self.service_name}] {request.method} {request.url} -> {response.status_code}"
-        )
-        return response
+# Removed MetricsMiddleware class - now using HttpMetricsMiddleware from http_middleware
 
 
 def create_anthropic_client(
@@ -208,7 +177,7 @@ def create_anthropic_client(
     middleware.append(RetryMiddleware(max_retries=max_retries, backoff_factor=2.0))
 
     # Add metrics
-    middleware.append(MetricsMiddleware("anthropic_api"))
+    middleware.append(HttpMetricsMiddleware())
 
     # Create client configuration
     config = HttpClientConfig(
@@ -217,7 +186,6 @@ def create_anthropic_client(
         connect_timeout=30.0,
         max_retries=max_retries,
         retry_backoff=1.0,
-        collect_metrics=True,
         middleware=middleware,
     )
 
@@ -259,7 +227,7 @@ def create_oauth_client(
     middleware.append(RetryMiddleware(max_retries=2, backoff_factor=1.5))
 
     # Add metrics
-    middleware.append(MetricsMiddleware("oauth"))
+    middleware.append(HttpMetricsMiddleware())
 
     # Get proxy settings
     proxy_url = os.environ.get("HTTPS_PROXY") or os.environ.get("HTTP_PROXY")
@@ -278,7 +246,6 @@ def create_oauth_client(
         connect_timeout=10.0,
         max_retries=2,
         retry_backoff=1.5,
-        collect_metrics=True,
         middleware=middleware,
     )
 
@@ -307,8 +274,9 @@ def create_internal_client(
     """
     middleware: list[HttpMiddleware[Any]] = []
 
-    # Add service identification
-    middleware.append(MetricsMiddleware(service_name))
+    # Add metrics if enabled
+    if collect_metrics:
+        middleware.append(HttpMetricsMiddleware())
 
     # Minimal retry logic for internal services
     middleware.append(RetryMiddleware(max_retries=1, backoff_factor=1.0))
@@ -321,7 +289,6 @@ def create_internal_client(
         connect_timeout=5.0,
         max_retries=1,
         retry_backoff=1.0,
-        collect_metrics=collect_metrics,
         middleware=middleware,
         # Higher connection limits for internal services
         max_connections=200,
@@ -365,11 +332,10 @@ def create_metrics_client(
     if api_key:
         middleware.append(AuthorizationMiddleware("Authorization", f"Bearer {api_key}"))
 
-    # Add service identification
-    middleware.append(MetricsMiddleware("metrics_collector"))
-
     # No retries for metrics to avoid blocking
     middleware.append(RetryMiddleware(max_retries=0, backoff_factor=0))
+
+    # Note: Don't add HttpMetricsMiddleware to avoid circular metrics
 
     # Create client configuration optimized for metrics
     config = HttpClientConfig(
@@ -379,7 +345,6 @@ def create_metrics_client(
         connect_timeout=2.0,  # Fast connection timeout
         max_retries=0,  # No retries to avoid blocking
         retry_backoff=0,
-        collect_metrics=False,  # Don't collect metrics on metrics client
         middleware=middleware,
         # High connection limits for metrics throughput
         max_connections=100,
@@ -417,7 +382,12 @@ def create_client(name: str = "default", **kwargs: Any) -> InstrumentedHttpClien
     # Default middleware
     middleware = kwargs.get("middleware", [])
     if not middleware:
-        middleware = [MetricsMiddleware(name)]
+        # Add metrics middleware by default if collect_metrics is True
+        collect_metrics = kwargs.get("collect_metrics", True)
+        if collect_metrics:
+            middleware = [HttpMetricsMiddleware()]
+        else:
+            middleware = []
 
     # Create configuration
     config = HttpClientConfig(

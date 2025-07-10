@@ -58,6 +58,8 @@ class RequestLog(Base):
     response_size = Column(Integer, nullable=False, default=0)
     input_tokens = Column(Integer, nullable=False, default=0)
     output_tokens = Column(Integer, nullable=False, default=0)
+    cache_read_input_tokens = Column(Integer, nullable=False, default=0)
+    cache_creation_input_tokens = Column(Integer, nullable=False, default=0)
     cost_dollars = Column(Float, nullable=False, default=0.0)
     user_agent = Column(Text, nullable=True)
     user_agent_category = Column(String(50), nullable=False, index=True)

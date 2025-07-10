@@ -2,7 +2,7 @@
 
 import asyncio
 import json
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta, timezone
 from typing import Any, Optional
 
 from fastapi import (
@@ -515,7 +515,7 @@ async def get_current_metrics_data() -> dict[str, Any]:
 
     # Default values when no data is available
     metrics_data = {
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(UTC).isoformat(),
         "active_requests": active_requests_count,
         "total_requests": 0,
         "total_errors": 0,
@@ -714,7 +714,7 @@ async def get_dashboard(
     if not dashboard_path.exists():
         raise HTTPException(status_code=500, detail="Dashboard file not found")
 
-    with open(dashboard_path) as f:
+    with dashboard_path.open() as f:
         html_content = f.read()
 
     return HTMLResponse(content=html_content)

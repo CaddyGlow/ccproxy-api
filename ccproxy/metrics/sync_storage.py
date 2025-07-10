@@ -1,7 +1,7 @@
 """Synchronous storage layer for metrics persistence (fallback for environments without greenlet)."""
 
 import logging
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, Optional
 
@@ -95,6 +95,11 @@ class SyncMetricsStorage:
             session.add(snapshot)
             session.commit()
 
+    def store_request_log_(self, request_log: RequestLog) -> None:
+        with self.session_factory() as session:
+            session.add(request_log)
+            session.commit()
+
     def store_request_log(
         self,
         http_metrics: HTTPMetrics,
@@ -109,7 +114,7 @@ class SyncMetricsStorage:
             error_metrics: Error metrics (optional)
         """
         request_log = RequestLog(
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(UTC),
             method=http_metrics.method,
             endpoint=http_metrics.endpoint,
             api_type=http_metrics.api_type,
@@ -120,6 +125,12 @@ class SyncMetricsStorage:
             response_size=http_metrics.response_size_bytes,
             input_tokens=model_metrics.input_tokens if model_metrics else 0,
             output_tokens=model_metrics.output_tokens if model_metrics else 0,
+            cache_read_input_tokens=model_metrics.cache_read_input_tokens
+            if model_metrics
+            else 0,
+            cache_creation_input_tokens=model_metrics.cache_creation_input_tokens
+            if model_metrics
+            else 0,
             cost_dollars=model_metrics.estimated_cost if model_metrics else 0.0,
             user_agent_category=http_metrics.user_agent_category.value,
             error_type=error_metrics.error_type if error_metrics else None,

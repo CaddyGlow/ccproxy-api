@@ -145,6 +145,12 @@ class MetricsStorage:
             response_size=http_metrics.response_size_bytes,
             input_tokens=model_metrics.input_tokens if model_metrics else 0,
             output_tokens=model_metrics.output_tokens if model_metrics else 0,
+            cache_read_input_tokens=model_metrics.cache_read_input_tokens
+            if model_metrics
+            else 0,
+            cache_creation_input_tokens=model_metrics.cache_creation_input_tokens
+            if model_metrics
+            else 0,
             cost_dollars=model_metrics.estimated_cost if model_metrics else 0.0,
             user_agent=http_metrics.user_agent,
             user_agent_category=http_metrics.user_agent_category.value,

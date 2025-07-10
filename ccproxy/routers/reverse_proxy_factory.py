@@ -9,6 +9,7 @@ from ccproxy.config.settings import get_settings
 from ccproxy.middleware.auth import get_auth_dependency
 from ccproxy.services.credentials import CredentialsManager
 from ccproxy.services.reverse_proxy import ReverseProxyService
+from ccproxy.utils import request_context
 from ccproxy.utils.logging import get_logger
 
 
@@ -90,12 +91,25 @@ def create_reverse_proxy_router(proxy_mode: str) -> APIRouter:
 
             # Handle regular response
             status_code, response_headers, response_body = result
+
+            # Store token usage and model in request state for metrics middleware
+            # We use request.state to pass data to the middleware because they run in different async contexts
+            try:
+                token_usage = request_context.get_token_usage()
+                if token_usage:
+                    request.state.token_usage = token_usage
+
+                model_name = request_context.get_model()
+                if model_name:
+                    request.state.model = model_name
+            except Exception as e:
+                logger.warning(f"Could not transfer token usage to request state: {e}")
         except HTTPException:
             # Re-raise HTTPException as-is
             raise
         except Exception as e:
             # Log unexpected errors and convert to HTTPException
-            logger.error(f"Unexpected error in proxy request: {e}")
+            logger.error(f"Unexpected error in proxy request: {e}", exc_info=True)
             raise HTTPException(status_code=500, detail="Internal server error") from e
 
         return Response(

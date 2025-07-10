@@ -364,10 +364,15 @@ async def test_middleware_with_retry():
 @pytest.mark.asyncio
 async def test_middleware_with_metrics():
     """Test middleware with metrics collection."""
-    middleware = TestHttpMiddleware("metrics-test")
+    from ccproxy.utils.http_middleware import HttpMetricsMiddleware
+
+    test_middleware = TestHttpMiddleware("metrics-test")
+    metrics_middleware = HttpMetricsMiddleware(
+        store_in_memory=True, use_ccproxy_storage=False
+    )
+
     client = create_http_client(
-        middleware=[middleware],
-        collect_metrics=True,
+        middleware=[test_middleware, metrics_middleware],
     )
 
     # Mock the httpx client
@@ -380,6 +385,7 @@ async def test_middleware_with_metrics():
         mock_response.raise_for_status = Mock()
 
         mock_request = httpx.Request("GET", "https://example.com", content=b"")
+        mock_request.extensions = {}
 
         mock_client.build_request = Mock(return_value=mock_request)
         mock_client.send = AsyncMock(return_value=mock_response)
@@ -388,15 +394,15 @@ async def test_middleware_with_metrics():
         # Make request
         await client.get("https://example.com")
 
-        # Verify metrics were collected
-        metrics = client.get_metrics()
+        # Verify metrics were collected by the middleware
+        metrics = metrics_middleware.get_metrics()
         assert len(metrics) == 1
         assert metrics[0].method == "GET"
         assert metrics[0].status_code == 200
         assert metrics[0].url == "https://example.com"
 
-        # Middleware should have been called
-        assert middleware.request_count == 1
-        assert middleware.response_count == 1
+        # Test middleware should have been called
+        assert test_middleware.request_count == 1
+        assert test_middleware.response_count == 1
 
     await client.close()
