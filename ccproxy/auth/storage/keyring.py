@@ -7,11 +7,11 @@ import keyring
 
 from ccproxy.auth.models import ClaudeCredentials
 from ccproxy.auth.storage.base import TokenStorage
+from ccproxy.core.logging import get_logger
 from ccproxy.services.credentials.exceptions import (
     CredentialsInvalidError,
     CredentialsStorageError,
 )
-from ccproxy.core.logging import get_logger
 
 
 logger = get_logger(__name__)

@@ -21,12 +21,12 @@ from ccproxy.config.settings import (
     Settings,
     config_manager,
 )
+from ccproxy.core.logging import get_logger
 from ccproxy.models.responses import (
     PermissionToolAllowResponse,
     PermissionToolDenyResponse,
 )
 from ccproxy.utils.helper import get_package_dir, get_root_package_name
-from ccproxy.core.logging import get_logger
 from ccproxy.utils.typer import Typer
 
 from .commands.auth import app as auth_app

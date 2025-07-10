@@ -6,6 +6,6 @@ from .openai import OpenAIAdapter
 
 __all__ = [
     "APIAdapter",
-    "BaseAPIAdapter", 
+    "BaseAPIAdapter",
     "OpenAIAdapter",
 ]

@@ -5,6 +5,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 
+from ccproxy.core.errors import DockerError
 from ccproxy.docker import (
     DockerAdapter,
     LoggerOutputMiddleware,
@@ -24,7 +25,6 @@ from ccproxy.docker.validators import (
 from ccproxy.docker.validators import (
     validate_port_spec as validators_validate_port_spec,
 )
-from ccproxy.core.errors import DockerError
 
 
 class TestModuleImports:

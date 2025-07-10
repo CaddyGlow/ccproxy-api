@@ -8,13 +8,13 @@ from typing import Any, Optional
 
 import keyring
 
+from ccproxy.core.logging import get_logger
 from ccproxy.services.credentials.exceptions import (
     CredentialsInvalidError,
     CredentialsStorageError,
 )
 from ccproxy.services.credentials.models import ClaudeCredentials
 from ccproxy.services.credentials.storage import CredentialsStorageBackend
-from ccproxy.core.logging import get_logger
 
 
 logger = get_logger(__name__)

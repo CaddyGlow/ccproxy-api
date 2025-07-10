@@ -8,6 +8,7 @@ from fastapi.responses import StreamingResponse
 from ccproxy.api.dependencies import get_hybrid_service
 from ccproxy.services.hybrid_service import HybridService
 
+
 # Create the router for OpenAI-compatible API endpoints
 router = APIRouter(tags=["openai"])
 
@@ -18,18 +19,18 @@ async def create_chat_completion(
     hybrid_service: HybridService = Depends(get_hybrid_service),
 ):
     """Create a chat completion using Claude AI with OpenAI-compatible format.
-    
+
     This endpoint handles OpenAI API format requests and converts them
     to Anthropic format before forwarding to the appropriate service.
     """
     try:
         # Get request body
         body = await request.body()
-        
+
         # Get headers and query params
         headers = dict(request.headers)
         query_params = dict(request.query_params) if request.query_params else None
-        
+
         # Handle the request using hybrid service
         response = await hybrid_service.handle_request(
             method=request.method,
@@ -38,9 +39,9 @@ async def create_chat_completion(
             body=body,
             query_params=query_params,
         )
-        
+
         # Return appropriate response type
-        if hasattr(response, '__aiter__'):
+        if hasattr(response, "__aiter__"):
             # Streaming response
             async def stream_generator():
                 async for chunk in response:
@@ -48,25 +49,28 @@ async def create_chat_completion(
                         yield f"data: {chunk.get('data', '')}\n\n".encode()
                     else:
                         yield str(chunk).encode()
-            
+
             return StreamingResponse(
                 stream_generator(),
                 media_type="text/event-stream",
                 headers={
                     "Cache-Control": "no-cache",
                     "Connection": "keep-alive",
-                }
+                },
             )
         else:
             # Regular response
             status_code, response_headers, response_body = response
             if status_code >= 400:
-                raise HTTPException(status_code=status_code, detail=response_body.decode())
-            
+                raise HTTPException(
+                    status_code=status_code, detail=response_body.decode()
+                )
+
             # Parse JSON response
             import json
+
             return json.loads(response_body.decode())
-            
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
@@ -79,7 +83,7 @@ async def list_models() -> dict[str, Any]:
         "data": [
             {
                 "id": "gpt-4o",
-                "object": "model", 
+                "object": "model",
                 "created": 1677652288,
                 "owned_by": "anthropic",
             },
@@ -89,7 +93,7 @@ async def list_models() -> dict[str, Any]:
                 "created": 1677652288,
                 "owned_by": "anthropic",
             },
-        ]
+        ],
     }
 
 
