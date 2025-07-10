@@ -257,7 +257,7 @@ def _run_local_server(settings: Settings, cli_overrides: dict[str, Any]) -> None
 
     # Run uvicorn with our already configured logging
     uvicorn.run(
-        app=f"{get_root_package_name()}:app",
+        app=f"{get_root_package_name()}.main:app",
         host=settings.host,
         port=settings.port,
         reload=settings.reload,
