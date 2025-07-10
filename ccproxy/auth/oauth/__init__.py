@@ -1,6 +1,5 @@
 """OAuth authentication module for Anthropic OAuth login."""
 
-from ccproxy.auth.oauth.client import OAuthClient
 from ccproxy.auth.oauth.models import (
     OAuthCallbackRequest,
     OAuthState,
@@ -19,8 +18,6 @@ __all__ = [
     "router",
     "register_oauth_flow",
     "get_oauth_flow_result",
-    # Client
-    "OAuthClient",
     # Models
     "OAuthState",
     "OAuthCallbackRequest",

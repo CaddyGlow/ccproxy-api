@@ -7,8 +7,8 @@ from typing import Any, Dict, Optional
 
 from pydantic import BaseModel
 
+from ccproxy.config.discovery import find_toml_config_file
 from ccproxy.config.settings import Settings
-from ccproxy.core.async_utils import find_toml_config_file
 
 
 class ConfigurationError(Exception):

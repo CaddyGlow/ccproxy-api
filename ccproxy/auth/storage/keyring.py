@@ -5,13 +5,13 @@ from typing import Optional
 
 import keyring
 
-from ccproxy.auth.models import ClaudeCredentials
-from ccproxy.auth.storage.base import TokenStorage
-from ccproxy.core.logging import get_logger
-from ccproxy.services.credentials.exceptions import (
+from ccproxy.auth.exceptions import (
     CredentialsInvalidError,
     CredentialsStorageError,
 )
+from ccproxy.auth.models import ClaudeCredentials
+from ccproxy.auth.storage.base import TokenStorage
+from ccproxy.core.logging import get_logger
 
 
 logger = get_logger(__name__)
@@ -39,7 +39,7 @@ class KeyringTokenStorage(TokenStorage):
             Parsed credentials if found and valid, None otherwise
 
         Raises:
-            CredentialsInvalidError: If the stored data is invalid
+            CredentialsStorageError: If the stored data is invalid
             CredentialsStorageError: If there's an error reading from keyring
         """
         try:
@@ -66,7 +66,7 @@ class KeyringTokenStorage(TokenStorage):
             return credentials
 
         except json.JSONDecodeError as e:
-            raise CredentialsInvalidError(
+            raise CredentialsStorageError(
                 f"Failed to parse credentials from keyring: {e}"
             ) from e
         except Exception as e:

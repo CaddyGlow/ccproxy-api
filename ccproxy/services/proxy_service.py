@@ -60,6 +60,11 @@ class ProxyService:
         self.request_transformer = HTTPRequestTransformer()
         self.response_transformer = HTTPResponseTransformer()
 
+        # Create OpenAI adapter for stream transformation
+        from ccproxy.adapters.openai.adapter import OpenAIAdapter
+
+        self.openai_adapter = OpenAIAdapter()
+
     async def handle_request(
         self,
         method: str,
@@ -491,7 +496,7 @@ class ProxyService:
     async def _transform_anthropic_to_openai_stream(
         self, response: httpx.Response, original_path: str
     ) -> AsyncGenerator[bytes, None]:
-        """Transform Anthropic SSE stream to OpenAI SSE format.
+        """Transform Anthropic SSE stream to OpenAI SSE format using adapter.
 
         Args:
             response: Streaming response from Anthropic
@@ -500,14 +505,29 @@ class ProxyService:
         Yields:
             Transformed OpenAI SSE format chunks
         """
-        # Use OpenAI streaming formatter from adapters
-        from ccproxy.adapters.openai.streaming import OpenAISSEFormatter
 
-        # Simple streaming transformation for now
-        # TODO: Implement proper stream transformation using adapters
-        async for chunk in response.aiter_bytes():
-            if chunk:
-                yield chunk
+        # Parse SSE chunks from response into dict stream
+        async def sse_to_dict_stream() -> AsyncGenerator[dict[str, Any], None]:
+            async for line in response.aiter_lines():
+                if line.startswith("data: "):
+                    data_str = line[6:].strip()
+                    if data_str and data_str != "[DONE]":
+                        try:
+                            import json
+
+                            yield json.loads(data_str)
+                        except json.JSONDecodeError:
+                            logger.warning(f"Failed to parse SSE chunk: {data_str}")
+                            continue
+
+        # Transform using OpenAI adapter and format back to SSE
+        async for openai_chunk in self.openai_adapter.adapt_stream(
+            sse_to_dict_stream()
+        ):
+            import json
+
+            sse_line = f"data: {json.dumps(openai_chunk)}\n\n"
+            yield sse_line.encode("utf-8")
 
     async def close(self) -> None:
         """Close any resources held by the proxy service."""

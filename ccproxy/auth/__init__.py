@@ -15,8 +15,17 @@ from ccproxy.auth.dependencies import (
 from ccproxy.auth.exceptions import (
     AuthenticationError,
     AuthenticationRequiredError,
+    CredentialsError,
+    CredentialsExpiredError,
+    CredentialsInvalidError,
+    CredentialsNotFoundError,
+    CredentialsStorageError,
     InsufficientPermissionsError,
     InvalidTokenError,
+    OAuthCallbackError,
+    OAuthError,
+    OAuthLoginError,
+    OAuthTokenRefreshError,
 )
 from ccproxy.auth.manager import AuthManager, BaseAuthManager
 from ccproxy.auth.storage import (
@@ -24,6 +33,7 @@ from ccproxy.auth.storage import (
     KeyringTokenStorage,
     TokenStorage,
 )
+from ccproxy.services.credentials.manager import CredentialsManager
 
 
 __all__ = [
@@ -33,6 +43,7 @@ __all__ = [
     # Implementations
     "BearerTokenAuthManager",
     "CredentialsAuthManager",
+    "CredentialsManager",
     # Storage interfaces and implementations
     "TokenStorage",
     "JsonFileTokenStorage",
@@ -40,8 +51,17 @@ __all__ = [
     # Exceptions
     "AuthenticationError",
     "AuthenticationRequiredError",
+    "CredentialsError",
+    "CredentialsExpiredError",
+    "CredentialsInvalidError",
+    "CredentialsNotFoundError",
+    "CredentialsStorageError",
     "InvalidTokenError",
     "InsufficientPermissionsError",
+    "OAuthCallbackError",
+    "OAuthError",
+    "OAuthLoginError",
+    "OAuthTokenRefreshError",
     # Dependencies
     "get_auth_manager",
     "get_bearer_auth_manager",
