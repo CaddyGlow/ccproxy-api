@@ -217,17 +217,27 @@ class ProxyService:
                 query_params["beta"] = "true"
                 logger.debug("Added beta=true query parameter to /v1/messages request")
 
-        # Transform headers
-        proxy_headers = self.request_transformer.create_proxy_headers(
-            headers, access_token, self.proxy_mode
-        )
-
-        # Transform body
+        # Transform body first (as it might change size)
         proxy_body = None
         if body:
             proxy_body = self.request_transformer.transform_request_body(
                 body, path, self.proxy_mode
             )
+
+        # Transform headers (and update Content-Length if body changed)
+        proxy_headers = self.request_transformer.create_proxy_headers(
+            headers, access_token, self.proxy_mode
+        )
+        
+        # Update Content-Length if body was transformed and size changed
+        if proxy_body and body and len(proxy_body) != len(body):
+            # Remove any existing content-length headers (case-insensitive)
+            proxy_headers = {k: v for k, v in proxy_headers.items() 
+                           if k.lower() != 'content-length'}
+            proxy_headers["Content-Length"] = str(len(proxy_body))
+        elif proxy_body and not body:
+            # New body was created where none existed
+            proxy_headers["Content-Length"] = str(len(proxy_body))
 
         # Add query parameters to URL if present
         if query_params:
