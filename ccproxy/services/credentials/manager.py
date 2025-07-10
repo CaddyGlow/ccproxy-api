@@ -51,7 +51,6 @@ class CredentialsManager:
         if self._oauth_client is None:
             self._oauth_client = OAuthClient(
                 config=self.config.oauth,
-                http_client=self._http_client,
             )
 
     async def __aenter__(self) -> "CredentialsManager":
