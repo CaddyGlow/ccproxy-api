@@ -29,6 +29,7 @@ from ..models import (
 )
 from .base import (
     MetricsStorage,
+    StorageConnectionError,
     StorageError,
     StorageInitializationError,
     StorageOperationError,
@@ -211,8 +212,17 @@ class SQLiteMetricsStorage(MetricsStorage):
 
         logger.info("Closed SQLite metrics storage")
 
+    def _ensure_connection(self) -> None:
+        """Ensure connection is available."""
+        if self._connection is None:
+            raise StorageConnectionError(
+                "Database connection not initialized. Call initialize() first."
+            )
+
     async def store_metric(self, metric: MetricRecord) -> bool:
         """Store a single metric record."""
+        self._ensure_connection()
+        assert self._connection is not None  # guaranteed by _ensure_connection()
         try:
             async with self._lock:
                 await self._insert_metric(metric)
@@ -230,6 +240,8 @@ class SQLiteMetricsStorage(MetricsStorage):
         if not metrics:
             return 0
 
+        self._ensure_connection()
+        assert self._connection is not None  # guaranteed by _ensure_connection()
         stored_count = 0
 
         try:
@@ -254,6 +266,8 @@ class SQLiteMetricsStorage(MetricsStorage):
 
     async def get_metric(self, metric_id: UUID) -> MetricRecord | None:
         """Retrieve a single metric record by ID."""
+        self._ensure_connection()
+        assert self._connection is not None  # guaranteed by _ensure_connection()
         try:
             async with self._connection.execute(
                 "SELECT * FROM metrics WHERE id = ?", (str(metric_id),)
@@ -282,6 +296,8 @@ class SQLiteMetricsStorage(MetricsStorage):
         filters: dict[str, Any] | None = None,
     ) -> list[MetricRecord]:
         """Retrieve multiple metric records with filtering."""
+        self._ensure_connection()
+        assert self._connection is not None  # guaranteed by _ensure_connection()
         try:
             # Build query
             query, params = self._build_select_query(
@@ -317,6 +333,8 @@ class SQLiteMetricsStorage(MetricsStorage):
         filters: dict[str, Any] | None = None,
     ) -> int:
         """Count metric records matching the criteria."""
+        self._ensure_connection()
+        assert self._connection is not None  # guaranteed by _ensure_connection()
         try:
             # Build count query
             query, params = self._build_count_query(
@@ -348,6 +366,8 @@ class SQLiteMetricsStorage(MetricsStorage):
         filters: dict[str, Any] | None = None,
     ) -> int:
         """Delete metric records matching the criteria."""
+        self._ensure_connection()
+        assert self._connection is not None  # guaranteed by _ensure_connection()
         try:
             # Build delete query
             query, params = self._build_delete_query(
@@ -380,6 +400,8 @@ class SQLiteMetricsStorage(MetricsStorage):
         group_by: str | None = None,
     ) -> MetricsSummary:
         """Get aggregated metrics summary."""
+        self._ensure_connection()
+        assert self._connection is not None  # guaranteed by _ensure_connection()
         try:
             # Build summary query
             summary_query = self._build_summary_query(
@@ -449,6 +471,8 @@ class SQLiteMetricsStorage(MetricsStorage):
         session_id: str | None = None,
     ) -> list[dict[str, Any]]:
         """Get time series data for metrics."""
+        self._ensure_connection()
+        assert self._connection is not None  # guaranteed by _ensure_connection()
         try:
             # Build time series query
             query, params = self._build_time_series_query(
@@ -479,6 +503,8 @@ class SQLiteMetricsStorage(MetricsStorage):
 
     async def health_check(self) -> dict[str, Any]:
         """Perform health check."""
+        self._ensure_connection()
+        assert self._connection is not None  # guaranteed by _ensure_connection()
         try:
             # Test connection
             async with self._connection.execute("SELECT 1") as cursor:
@@ -514,6 +540,8 @@ class SQLiteMetricsStorage(MetricsStorage):
 
     async def get_storage_info(self) -> dict[str, Any]:
         """Get storage information."""
+        self._ensure_connection()
+        assert self._connection is not None  # guaranteed by _ensure_connection()
         try:
             # Get database size
             db_size = (
@@ -551,6 +579,8 @@ class SQLiteMetricsStorage(MetricsStorage):
 
     async def vacuum(self) -> None:
         """Perform database maintenance."""
+        self._ensure_connection()
+        assert self._connection is not None  # guaranteed by _ensure_connection()
         try:
             async with self._lock:
                 await self._connection.execute("VACUUM")
@@ -564,6 +594,8 @@ class SQLiteMetricsStorage(MetricsStorage):
 
     async def backup(self, backup_path: str) -> bool:
         """Create a backup of the database."""
+        self._ensure_connection()
+        assert self._connection is not None  # guaranteed by _ensure_connection()
         try:
             backup_path_obj = Path(backup_path)
             backup_path_obj.parent.mkdir(parents=True, exist_ok=True)
@@ -581,6 +613,8 @@ class SQLiteMetricsStorage(MetricsStorage):
 
     async def get_schema_version(self) -> str:
         """Get the current schema version."""
+        self._ensure_connection()
+        assert self._connection is not None  # guaranteed by _ensure_connection()
         try:
             async with self._connection.execute(
                 "SELECT version FROM schema_info ORDER BY created_at DESC LIMIT 1"
@@ -595,6 +629,8 @@ class SQLiteMetricsStorage(MetricsStorage):
 
     async def _ensure_schema_version(self) -> None:
         """Ensure schema version is recorded."""
+        self._ensure_connection()
+        assert self._connection is not None  # guaranteed by _ensure_connection()
         try:
             async with self._connection.execute(
                 "INSERT OR IGNORE INTO schema_info (version) VALUES (?)",
@@ -606,6 +642,8 @@ class SQLiteMetricsStorage(MetricsStorage):
 
     async def _insert_metric(self, metric: MetricRecord) -> None:
         """Insert a metric record into the database."""
+        self._ensure_connection()
+        assert self._connection is not None  # guaranteed by _ensure_connection()
         # Convert metric to database row
         values = self._metric_to_values(metric)
 
@@ -677,7 +715,7 @@ class SQLiteMetricsStorage(MetricsStorage):
 
         await self._connection.execute(query, values)
 
-    def _metric_to_values(self, metric: MetricRecord) -> tuple:
+    def _metric_to_values(self, metric: MetricRecord) -> tuple[Any, ...]:
         """Convert a metric record to database values."""
         # Base values
         values = [
@@ -691,7 +729,7 @@ class SQLiteMetricsStorage(MetricsStorage):
         ]
 
         # Initialize all field values to None
-        field_values = [None] * 52  # Total number of optional fields
+        field_values: list[Any] = [None] * 52  # Total number of optional fields
 
         # Fill in values based on metric type
         if isinstance(metric, RequestMetric):
@@ -876,11 +914,9 @@ class SQLiteMetricsStorage(MetricsStorage):
                 aggregation_level=row["aggregation_level"] or "hourly",
             )
         else:
-            # Return base metric record for unknown types
-            return MetricRecord(
-                **base_data,
-                metric_type=metric_type,
-            )
+            # This should never happen since we handle all MetricType enum values above
+            # If we reach here, it means a new MetricType was added but not handled
+            raise ValueError(f"Unknown metric type: {metric_type}")
 
     def _build_select_query(
         self,
@@ -895,7 +931,7 @@ class SQLiteMetricsStorage(MetricsStorage):
         order_by: str | None,
         order_desc: bool,
         filters: dict[str, Any] | None,
-    ) -> tuple[str, list]:
+    ) -> tuple[str, list[Any]]:
         """Build SELECT query with filters."""
         query = "SELECT * FROM metrics"
         params = []
@@ -957,7 +993,7 @@ class SQLiteMetricsStorage(MetricsStorage):
         session_id: str | None,
         request_id: str | None,
         filters: dict[str, Any] | None,
-    ) -> tuple[str, list]:
+    ) -> tuple[str, list[Any]]:
         """Build COUNT query with filters."""
         query = "SELECT COUNT(*) FROM metrics"
         params = []
@@ -1008,7 +1044,7 @@ class SQLiteMetricsStorage(MetricsStorage):
         session_id: str | None,
         request_id: str | None,
         filters: dict[str, Any] | None,
-    ) -> tuple[str, list]:
+    ) -> tuple[str, list[Any]]:
         """Build DELETE query with filters."""
         query = "DELETE FROM metrics"
         params = []
@@ -1056,7 +1092,7 @@ class SQLiteMetricsStorage(MetricsStorage):
         end_time: datetime,
         user_id: str | None,
         session_id: str | None,
-    ) -> tuple[str, list]:
+    ) -> tuple[str, list[Any]]:
         """Build summary aggregation query."""
         query = """
         SELECT
@@ -1092,7 +1128,7 @@ class SQLiteMetricsStorage(MetricsStorage):
         aggregation: str,
         user_id: str | None,
         session_id: str | None,
-    ) -> tuple[str, list]:
+    ) -> tuple[str, list[Any]]:
         """Build time series query."""
         # Simple time series implementation
         # For more advanced time series, consider using SQLite's datetime functions

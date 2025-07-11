@@ -21,7 +21,6 @@ try:
         Info,
         generate_latest,
     )
-    from prometheus_client.core import MetricWrapperBase
 
     PROMETHEUS_AVAILABLE = True
 except ImportError:
@@ -456,7 +455,8 @@ class PrometheusCollector:
 
     def describe(self) -> Generator[Any, None, None]:
         """Describe the metrics this collector provides."""
-        return []  # Return empty for now, could be enhanced
+        # Return empty generator for now, could be enhanced
+        yield from []  # pragma: no cover
 
     def collect(self) -> Generator[Any, None, None]:
         """Collect metrics on-demand."""
@@ -468,7 +468,8 @@ class PrometheusCollector:
         except Exception as e:
             logger.error(f"Failed to collect metrics: {e}")
 
-        return []
+        # Return empty generator
+        yield from []  # pragma: no cover
 
 
 # Utility functions for FastAPI integration
@@ -492,7 +493,7 @@ async def create_prometheus_exporter(
     return exporter
 
 
-def create_metrics_handler(exporter: PrometheusExporter):
+def create_metrics_handler(exporter: PrometheusExporter) -> Any:
     """
     Create a FastAPI handler function for the /metrics endpoint.
 
@@ -503,7 +504,7 @@ def create_metrics_handler(exporter: PrometheusExporter):
         FastAPI handler function
     """
 
-    async def metrics_handler():
+    async def metrics_handler() -> Any:
         """Handle Prometheus metrics scraping."""
         try:
             metrics_data = await exporter.collect_and_generate()

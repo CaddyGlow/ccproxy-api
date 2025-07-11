@@ -249,7 +249,12 @@ class AggregatedMetrics(BaseModel):
 
 
 # Type aliases for convenience
-AnyMetric = Union[
-    RequestMetric, ResponseMetric, ErrorMetric, CostMetric, LatencyMetric, UsageMetric
-]
+AnyMetric = (
+    RequestMetric
+    | ResponseMetric
+    | ErrorMetric
+    | CostMetric
+    | LatencyMetric
+    | UsageMetric
+)
 MetricData = dict[str, Any]

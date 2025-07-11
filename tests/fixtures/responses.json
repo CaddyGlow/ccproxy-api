@@ -1,0 +1,177 @@
+{
+  "standard_completion": {
+    "id": "msg_01234567890",
+    "type": "message",
+    "role": "assistant",
+    "content": [
+      {
+        "type": "text",
+        "text": "Hello! How can I help you?"
+      }
+    ],
+    "model": "claude-3-5-sonnet-20241022",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "usage": {
+      "input_tokens": 10,
+      "output_tokens": 8
+    }
+  },
+  "long_completion": {
+    "id": "msg_long_12345",
+    "type": "message",
+    "role": "assistant",
+    "content": [
+      {
+        "type": "text",
+        "text": "This is a longer response that demonstrates how the assistant can provide detailed explanations. It includes multiple sentences and covers various aspects of the topic at hand."
+      }
+    ],
+    "model": "claude-3-5-sonnet-20241022",
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "usage": {
+      "input_tokens": 15,
+      "output_tokens": 35
+    }
+  },
+  "with_tool_use": {
+    "id": "msg_tool_67890",
+    "type": "message",
+    "role": "assistant",
+    "content": [
+      {
+        "type": "text",
+        "text": "I'll help you with that calculation."
+      },
+      {
+        "type": "tool_use",
+        "id": "tool_call_123",
+        "name": "calculator",
+        "input": {
+          "expression": "2 + 2"
+        }
+      }
+    ],
+    "model": "claude-3-5-sonnet-20241022",
+    "stop_reason": "tool_use",
+    "stop_sequence": null,
+    "usage": {
+      "input_tokens": 25,
+      "output_tokens": 20
+    }
+  },
+  "error_response": {
+    "type": "error",
+    "error": {
+      "type": "invalid_request_error",
+      "message": "Invalid model specified"
+    }
+  },
+  "rate_limit_error": {
+    "type": "error",
+    "error": {
+      "type": "rate_limit_error",
+      "message": "Rate limit exceeded. Please try again later."
+    }
+  },
+  "models_list": {
+    "data": [
+      {
+        "id": "claude-3-5-sonnet-20241022",
+        "object": "model",
+        "created": 1729555200,
+        "owned_by": "anthropic"
+      },
+      {
+        "id": "claude-3-5-haiku-20241022",
+        "object": "model",
+        "created": 1729555200,
+        "owned_by": "anthropic"
+      },
+      {
+        "id": "claude-3-opus-20240229",
+        "object": "model",
+        "created": 1709251200,
+        "owned_by": "anthropic"
+      }
+    ]
+  },
+  "streaming_events": [
+    {
+      "type": "message_start",
+      "message": {
+        "id": "msg_stream_123",
+        "type": "message",
+        "role": "assistant",
+        "content": [],
+        "model": "claude-3-5-sonnet-20241022",
+        "usage": {
+          "input_tokens": 10,
+          "output_tokens": 0
+        }
+      }
+    },
+    {
+      "type": "content_block_start",
+      "index": 0,
+      "content_block": {
+        "type": "text",
+        "text": ""
+      }
+    },
+    {
+      "type": "content_block_delta",
+      "index": 0,
+      "delta": {
+        "type": "text_delta",
+        "text": "Hello"
+      }
+    },
+    {
+      "type": "content_block_delta",
+      "index": 0,
+      "delta": {
+        "type": "text_delta",
+        "text": " from"
+      }
+    },
+    {
+      "type": "content_block_delta",
+      "index": 0,
+      "delta": {
+        "type": "text_delta",
+        "text": " Claude!"
+      }
+    },
+    {
+      "type": "content_block_stop",
+      "index": 0
+    },
+    {
+      "type": "message_delta",
+      "delta": {
+        "stop_reason": "end_turn",
+        "stop_sequence": null
+      },
+      "usage": {
+        "output_tokens": 4
+      }
+    },
+    {
+      "type": "message_stop"
+    }
+  ],
+  "oauth_token_response": {
+    "access_token": "test_access_token_abc123",
+    "refresh_token": "test_refresh_token_xyz789",
+    "expires_in": 3600,
+    "token_type": "Bearer",
+    "scope": "read write"
+  },
+  "oauth_refresh_response": {
+    "access_token": "new_test_access_token_def456",
+    "expires_in": 3600,
+    "token_type": "Bearer"
+  }
+}

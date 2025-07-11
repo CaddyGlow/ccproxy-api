@@ -389,14 +389,14 @@ class InMemoryMetricsStorage(MetricsStorage):
         summary.unique_users = len(unique_users)
 
         # Model distribution
-        model_usage = {}
+        model_usage: dict[str, int] = {}
         for request in requests:
             if request.model:
                 model_usage[request.model] = model_usage.get(request.model, 0) + 1
         summary.model_usage = model_usage
 
         # Error breakdown
-        error_types = {}
+        error_types: dict[str, int] = {}
         for error in errors:
             error_types[error.error_type] = error_types.get(error.error_type, 0) + 1
         summary.error_types = error_types

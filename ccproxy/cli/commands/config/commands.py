@@ -70,7 +70,7 @@ def config_list() -> None:
             "reload", str(settings.server.reload), "Auto-reload for development"
         )
         server_table.add_row(
-            "server_url", settings.server.server_url, "Complete server URL (computed)"
+            "server_url", settings.server_url, "Complete server URL (computed)"
         )
 
         # Claude CLI configuration table
@@ -393,7 +393,7 @@ def config_init(
 
         elif format == "yaml":
             try:
-                import yaml  # type: ignore[import-untyped]
+                import yaml
             except ImportError as e:
                 toolkit.print(
                     "Error: YAML support is not available. Install with: pip install pyyaml",
