@@ -17,7 +17,7 @@ router = APIRouter(tags=["openai"])
 async def create_chat_completion(
     request: Request,
     hybrid_service: HybridService = Depends(get_hybrid_service),
-) -> Any:
+):
     """Create a chat completion using Claude AI with OpenAI-compatible format.
 
     This endpoint handles OpenAI API format requests and converts them
@@ -41,10 +41,10 @@ async def create_chat_completion(
         )
 
         # Return appropriate response type
-        if hasattr(response, "__aiter__") and hasattr(response, "__anext__"):
+        if hasattr(response, "__aiter__"):
             # Streaming response
-            async def stream_generator() -> Any:
-                async for chunk in response:  # type: ignore[union-attr]
+            async def stream_generator():
+                async for chunk in response:
                     if isinstance(chunk, dict):
                         yield f"data: {chunk.get('data', '')}\n\n".encode()
                     else:
@@ -72,9 +72,7 @@ async def create_chat_completion(
             return json.loads(response_body.decode())
 
     except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Internal server error: {str(e)}"
-        ) from e
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 
 @router.get("/models")
@@ -100,6 +98,6 @@ async def list_models() -> dict[str, Any]:
 
 
 @router.get("/status")
-async def openai_status() -> dict[str, str]:
+async def openai_status():
     """Get OpenAI API status."""
     return {"status": "openai endpoint available"}

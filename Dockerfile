@@ -61,7 +61,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 # more realiable
 COPY --from=node-deps /usr/local /usr/local
 
-COPY entrypoint.sh /usr/local/bin/entrypoint.sh
+COPY scripts/entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 
 # Copy Python application from builder
