@@ -1,6 +1,7 @@
 """Async utilities for the Claude Code Proxy API."""
 
 import asyncio
+import re
 from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
 from contextlib import asynccontextmanager, contextmanager
 from pathlib import Path
@@ -262,29 +263,75 @@ async def async_cache_result(
     return result
 
 
-def format_version(version: str) -> str:
-    """Format version string for display.
-
-    Args:
-        version: Version string to format
-
-    Returns:
-        Formatted version string
+def parse_version(version_string: str) -> tuple[int, int, int, str]:
     """
-    import re
+    Parse version string into components.
 
-    # Clean up version string
-    version = version.strip()
+    Handles various formats:
+    - 1.2.3
+    - 1.2.3-dev
+    - 1.2.3.dev59+g1624e1e.d19800101
+    - 0.1.dev59+g1624e1e.d19800101
+    """
+    # Clean up setuptools-scm dev versions
+    clean_version = re.sub(r"\.dev\d+\+.*", "", version_string)
 
-    # Remove 'v' prefix if present
-    if version.startswith("v"):
-        version = version[1:]
+    # Handle dev versions without patch number
+    if ".dev" in version_string:
+        base_version = version_string.split(".dev")[0]
+        parts = base_version.split(".")
+        if len(parts) == 2:
+            # 0.1.dev59 -> 0.1.0-dev
+            major, minor = int(parts[0]), int(parts[1])
+            patch = 0
+            suffix = "dev"
+        else:
+            # 1.2.3.dev59 -> 1.2.3-dev
+            major, minor, patch = int(parts[0]), int(parts[1]), int(parts[2])
+            suffix = "dev"
+    else:
+        # Regular version
+        parts = clean_version.split(".")
+        if len(parts) < 3:
+            parts.extend(["0"] * (3 - len(parts)))
 
-    # Ensure it follows semantic versioning pattern
-    if not re.match(r"^\d+\.\d+\.\d+", version):
-        return f"1.0.0-{version}"
+        major, minor, patch = int(parts[0]), int(parts[1]), int(parts[2])
+        suffix = ""
 
-    return version
+    return major, minor, patch, suffix
+
+
+def format_version(version: str, level: str) -> str:
+    major, minor, patch, suffix = parse_version(version)
+
+    """Format version according to specified level."""
+    base_version = f"{major}.{minor}.{patch}"
+
+    if level == "major":
+        return str(major)
+    elif level == "minor":
+        return f"{major}.{minor}"
+    elif level == "patch" or level == "full":
+        if suffix:
+            return f"{base_version}-{suffix}"
+        return base_version
+    elif level == "docker":
+        # Docker-compatible version (no + characters)
+        if suffix:
+            return f"{base_version}-{suffix}"
+        return base_version
+    elif level == "npm":
+        # NPM-compatible version
+        if suffix:
+            return f"{base_version}-{suffix}.0"
+        return base_version
+    elif level == "python":
+        # Python-compatible version
+        if suffix:
+            return f"{base_version}.{suffix}0"
+        return base_version
+    else:
+        raise ValueError(f"Unknown version level: {level}")
 
 
 def get_claude_docker_home_dir() -> str:
@@ -605,6 +652,7 @@ def validate_config_with_schema(
         raise ValueError(f"Unsupported config file format: {suffix}")
 
 
+# TODO: Remove this function or update this function
 def generate_json_schema() -> dict[str, Any]:
     """Generate JSON Schema from Settings model.
 

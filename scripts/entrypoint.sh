@@ -29,7 +29,7 @@
 set -e
 
 CLAUDE_HOME=${CLAUDE_HOME:-"/data/home"}
-CLAUDE_WORKSPACE=${CLAUDE_WORKSPACE:$CLAUDE_HOME}
+CLAUDE_WORKSPACE=${CLAUDE_WORKSPACE:-$CLAUDE_HOME}
 
 # Check if running as root
 if [[ $EUID -ne 0 ]]; then
