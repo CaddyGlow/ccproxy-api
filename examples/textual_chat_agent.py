@@ -29,7 +29,7 @@ class ChatAgent:
         # Get configuration from environment
         api_key = os.getenv("ANTHROPIC_API_KEY")
         base_url = os.getenv("ANTHROPIC_BASE_URL")
-        base_url_default = "http://127.0.0.1:8000/cc"
+        base_url_default = "http://127.0.0.1:8000/sdk"
 
         if not api_key:
             # logger.warning("ANTHROPIC_API_KEY not set, using dummy key")
