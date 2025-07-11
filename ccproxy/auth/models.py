@@ -15,6 +15,28 @@ class OAuthToken(BaseModel):
     subscription_type: str | None = Field(None, alias="subscriptionType")
     token_type: str = Field(default="Bearer", alias="tokenType")
 
+    def __repr__(self) -> str:
+        """Safe string representation that masks sensitive tokens."""
+        access_preview = (
+            f"{self.access_token[:8]}...{self.access_token[-8:]}"
+            if len(self.access_token) > 16
+            else "***"
+        )
+        refresh_preview = (
+            f"{self.refresh_token[:8]}...{self.refresh_token[-8:]}"
+            if len(self.refresh_token) > 16
+            else "***"
+        )
+
+        return (
+            f"OAuthToken(access_token='{access_preview}', "
+            f"refresh_token='{refresh_preview}', "
+            f"expires_at={self.expires_at}, "
+            f"scopes={self.scopes}, "
+            f"subscription_type='{self.subscription_type}', "
+            f"token_type='{self.token_type}')"
+        )
+
     @property
     def is_expired(self) -> bool:
         """Check if the token is expired."""
@@ -70,6 +92,10 @@ class ClaudeCredentials(BaseModel):
     """Claude credentials from the credentials file."""
 
     claude_ai_oauth: OAuthToken = Field(..., alias="claudeAiOauth")
+
+    def __repr__(self) -> str:
+        """Safe string representation that masks sensitive tokens."""
+        return f"ClaudeCredentials(claude_ai_oauth={repr(self.claude_ai_oauth)})"
 
 
 class ValidationResult(BaseModel):
