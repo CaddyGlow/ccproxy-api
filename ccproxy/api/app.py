@@ -7,6 +7,7 @@ from typing import Any
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse
 
+from ccproxy._version import __version__
 from ccproxy.api.middleware.cors import setup_cors_middleware
 from ccproxy.api.middleware.errors import setup_error_handlers
 from ccproxy.api.routes.anthropic import router as anthropic_router
@@ -62,7 +63,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app = FastAPI(
         title="Claude Code Proxy API Server",
         description="High-performance API server providing Anthropic and OpenAI-compatible interfaces for Claude AI models",
-        version="0.1.0",
+        version=__version__,
         lifespan=lifespan,
     )
 
@@ -86,8 +87,32 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         claude_router, prefix=f"{settings.claude_code_prefix}/v1", tags=["claude"]
     )
 
+    # OpenAI endpoints under Claude prefix (for compatibility with tests)
+    app.include_router(
+        openai_router,
+        prefix=f"{settings.claude_code_prefix}/openai/v1",
+        tags=["claude-openai"],
+    )
+
     # Internal proxy endpoints
     app.include_router(proxy_router, prefix="/proxy", tags=["proxy"])
+
+    # Reverse proxy endpoints (without prefix for direct /unclaude access)
+    from fastapi import APIRouter
+
+    unclaude_router = APIRouter()
+
+    # Import the reverse proxy handler
+    from ccproxy.api.routes.proxy import reverse_proxy_handler
+
+    # Add the unclaude route at root level
+    unclaude_router.api_route(
+        "/unclaude/{path:path}",
+        methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"],
+        response_model=None,
+    )(reverse_proxy_handler)
+
+    app.include_router(unclaude_router, tags=["reverse-proxy"])
 
     return app
 

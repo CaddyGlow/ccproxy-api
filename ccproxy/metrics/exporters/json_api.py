@@ -7,7 +7,7 @@ data through REST endpoints for monitoring dashboards and analytics.
 
 import logging
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional, cast
+from typing import Any, Optional, cast
 
 from ..models import MetricRecord, MetricsSummary, MetricType
 from ..storage.base import MetricsStorage

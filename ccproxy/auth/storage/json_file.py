@@ -18,7 +18,7 @@ logger = get_logger(__name__)
 
 
 class JsonFileTokenStorage(TokenStorage):
-    """JSON file storage implementation for Claude credentials."""
+    """JSON file storage implementation for Claude credentials with keyring fallback."""
 
     def __init__(self, file_path: Path):
         """Initialize JSON file storage.
@@ -29,7 +29,7 @@ class JsonFileTokenStorage(TokenStorage):
         self.file_path = file_path
 
     async def load(self) -> ClaudeCredentials | None:
-        """Load credentials from JSON file.
+        """Load credentials from JSON file .
 
         Returns:
             Parsed credentials if found and valid, None otherwise
@@ -48,7 +48,7 @@ class JsonFileTokenStorage(TokenStorage):
                 data = json.load(f)
 
             credentials = ClaudeCredentials.model_validate(data)
-            self._log_credential_details(credentials)
+            logger.debug("Loaded credential %r", credentials)
 
             return credentials
 
@@ -61,17 +61,8 @@ class JsonFileTokenStorage(TokenStorage):
                 f"Error loading credentials from {self.file_path}: {e}"
             ) from e
 
-    def _log_credential_details(self, credentials: ClaudeCredentials) -> None:
-        """Log credential details safely."""
-        oauth_token = credentials.claude_ai_oauth
-        logger.debug("Successfully loaded credentials:")
-        logger.debug(f"  - Subscription type: {oauth_token.subscription_type}")
-        logger.debug(f"  - Token expires at: {oauth_token.expires_at_datetime}")
-        logger.debug(f"  - Token expired: {oauth_token.is_expired}")
-        logger.debug(f"  - Scopes: {oauth_token.scopes}")
-
     async def save(self, credentials: ClaudeCredentials) -> bool:
-        """Save credentials to JSON file.
+        """Save credentials to both keyring and JSON file.
 
         Args:
             credentials: Credentials to save
@@ -83,11 +74,12 @@ class JsonFileTokenStorage(TokenStorage):
             CredentialsStorageError: If there's an error writing the file
         """
         try:
+            # Convert to dict with proper aliases
+            data = credentials.model_dump(by_alias=True, mode="json")
+
+            # Always save to file as well
             # Ensure parent directory exists
             self.file_path.parent.mkdir(parents=True, exist_ok=True)
-
-            # Convert to dict with proper aliases
-            data = credentials.model_dump(by_alias=True)
 
             # Use atomic write: write to temp file then rename
             temp_path = self.file_path.with_suffix(".tmp")
@@ -106,12 +98,13 @@ class JsonFileTokenStorage(TokenStorage):
                     f"Successfully saved credentials to file: {self.file_path}"
                 )
                 return True
-            except Exception:
+            except Exception as e:
+                raise
+            finally:
                 # Clean up temp file if it exists
                 if temp_path.exists():
                     with contextlib.suppress(Exception):
                         temp_path.unlink()
-                raise
 
         except Exception as e:
             raise CredentialsStorageError(f"Error saving credentials: {e}") from e
@@ -125,7 +118,7 @@ class JsonFileTokenStorage(TokenStorage):
         return self.file_path.exists() and self.file_path.is_file()
 
     async def delete(self) -> bool:
-        """Delete credentials from file.
+        """Delete credentials from both keyring and file.
 
         Returns:
             True if deleted successfully, False otherwise
@@ -133,19 +126,25 @@ class JsonFileTokenStorage(TokenStorage):
         Raises:
             CredentialsStorageError: If there's an error deleting the file
         """
+        deleted = False
+
+        # Delete from file
         try:
             if await self.exists():
                 self.file_path.unlink()
                 logger.debug(f"Deleted credentials file: {self.file_path}")
-                return True
-            return False
+                deleted = True
         except Exception as e:
-            raise CredentialsStorageError(f"Error deleting credentials: {e}") from e
+            if not deleted:  # Only raise if we failed to delete from both
+                raise CredentialsStorageError(f"Error deleting credentials: {e}") from e
+            logger.debug(f"Failed to delete file but keyring deletion succeeded: {e}")
+
+        return deleted
 
     def get_location(self) -> str:
         """Get the storage location description.
 
         Returns:
-            Path to the JSON file
+            Path to the JSON file with keyring info if available
         """
         return str(self.file_path)

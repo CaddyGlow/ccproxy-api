@@ -45,8 +45,8 @@ def mock_settings():
 class TestApiCommand:
     """Test cases for the API command."""
 
-    @patch("ccproxy.cli.commands.api.config_manager")
-    @patch("ccproxy.cli.commands.api.uvicorn.run")
+    @patch("ccproxy.cli.commands.serve.config_manager")
+    @patch("ccproxy.cli.commands.serve.uvicorn.run")
     def test_api_local_server(self, mock_uvicorn, mock_config_manager, mock_settings):
         """Test running API server locally."""
         mock_config_manager.load_settings.return_value = mock_settings
@@ -70,8 +70,8 @@ class TestApiCommand:
         mock_config_manager.load_settings.assert_called_once()
         mock_uvicorn.assert_called_once()
 
-    @patch("ccproxy.cli.commands.api.config_manager")
-    @patch("ccproxy.cli.commands.api.create_docker_adapter")
+    @patch("ccproxy.cli.commands.serve.config_manager")
+    @patch("ccproxy.cli.commands.serve.create_docker_adapter")
     def test_api_docker_server(
         self, mock_docker_adapter, mock_config_manager, mock_settings
     ):
@@ -97,7 +97,7 @@ class TestApiCommand:
         mock_docker_adapter.assert_called_once()
         mock_adapter.exec_container.assert_called_once()
 
-    @patch("ccproxy.cli.commands.api.config_manager")
+    @patch("ccproxy.cli.commands.serve.config_manager")
     def test_api_with_cli_overrides(self, mock_config_manager, mock_settings):
         """Test API command with CLI overrides."""
         mock_config_manager.load_settings.return_value = mock_settings
@@ -114,7 +114,7 @@ class TestApiCommand:
         app.command()(api)
 
         runner = CliRunner()
-        with patch("ccproxy.cli.commands.api.uvicorn.run"):
+        with patch("ccproxy.cli.commands.serve.uvicorn.run"):
             result = runner.invoke(
                 app,
                 [
@@ -130,7 +130,7 @@ class TestApiCommand:
         assert result.exit_code == 0
         mock_config_manager.get_cli_overrides_from_args.assert_called_once()
 
-    @patch("ccproxy.cli.commands.api.config_manager")
+    @patch("ccproxy.cli.commands.serve.config_manager")
     def test_api_configuration_error(self, mock_config_manager):
         """Test API command with configuration error."""
         from ccproxy.config.settings import ConfigurationError
@@ -153,7 +153,7 @@ class TestApiCommand:
 
     def test_get_config_path_from_context_with_path(self):
         """Test get_config_path_from_context with a valid path."""
-        with patch("ccproxy.cli.commands.api.get_current_context") as mock_context:
+        with patch("ccproxy.cli.commands.serve.get_current_context") as mock_context:
             mock_ctx = MagicMock()
             mock_ctx.obj = {"config_path": "/path/to/config.toml"}
             mock_context.return_value = mock_ctx
@@ -163,7 +163,7 @@ class TestApiCommand:
 
     def test_get_config_path_from_context_none(self):
         """Test get_config_path_from_context with None."""
-        with patch("ccproxy.cli.commands.api.get_current_context") as mock_context:
+        with patch("ccproxy.cli.commands.serve.get_current_context") as mock_context:
             mock_ctx = MagicMock()
             mock_ctx.obj = {"config_path": None}
             mock_context.return_value = mock_ctx
@@ -173,14 +173,14 @@ class TestApiCommand:
 
     def test_get_config_path_from_context_no_context(self):
         """Test get_config_path_from_context with no active context."""
-        with patch("ccproxy.cli.commands.api.get_current_context") as mock_context:
+        with patch("ccproxy.cli.commands.serve.get_current_context") as mock_context:
             mock_context.side_effect = RuntimeError("No active context")
 
             result = get_config_path_from_context()
             assert result is None
 
-    @patch("ccproxy.cli.commands.api.config_manager")
-    @patch("ccproxy.cli.commands.api.create_docker_adapter")
+    @patch("ccproxy.cli.commands.serve.config_manager")
+    @patch("ccproxy.cli.commands.serve.create_docker_adapter")
     def test_api_docker_with_volumes(
         self, mock_docker_adapter, mock_config_manager, mock_settings, tmp_path
     ):
@@ -227,8 +227,8 @@ class TestApiCommand:
         assert any(v[1] == "/container/data" for v in volumes)
         assert any(v[1] == "/container/config" for v in volumes)
 
-    @patch("ccproxy.cli.commands.api.config_manager")
-    @patch("ccproxy.cli.commands.api.create_docker_adapter")
+    @patch("ccproxy.cli.commands.serve.config_manager")
+    @patch("ccproxy.cli.commands.serve.create_docker_adapter")
     def test_api_docker_with_env_vars(
         self, mock_docker_adapter, mock_config_manager, mock_settings
     ):

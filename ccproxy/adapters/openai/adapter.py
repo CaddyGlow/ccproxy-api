@@ -43,16 +43,18 @@ OPENAI_TO_CLAUDE_MODEL_MAPPING: dict[str, str] = {
     "gpt-4-1106-preview": "claude-3-5-sonnet-20241022",
     "gpt-4-0125-preview": "claude-3-5-sonnet-20241022",
     "gpt-4-turbo-2024-04-09": "claude-3-5-sonnet-20241022",
-    "gpt-4o": "claude-3-5-sonnet-20241022",
-    "gpt-4o-2024-05-13": "claude-3-5-sonnet-20241022",
-    "gpt-4o-2024-08-06": "claude-3-5-sonnet-20241022",
-    "gpt-4o-2024-11-20": "claude-3-5-sonnet-20241022",
-    "gpt-4o-mini": "claude-3-5-haiku-20241022",
-    "gpt-4o-mini-2024-07-18": "claude-3-5-haiku-20241022",
+    "gpt-4o": "claude-3-7-sonnet-20250219",
+    "gpt-4o-2024-05-13": "claude-3-7-sonnet-20250219",
+    "gpt-4o-2024-08-06": "claude-3-7-sonnet-20250219",
+    "gpt-4o-2024-11-20": "claude-3-7-sonnet-20250219",
+    "gpt-4o-mini": "claude-3-5-haiku-latest",
+    "gpt-4o-mini-2024-07-18": "claude-3-5-haiku-latest",
     # o1 models -> Claude 3.5 Sonnet with thinking
     "o1": "claude-3-5-sonnet-20241022",
     "o1-preview": "claude-3-5-sonnet-20241022",
-    "o1-mini": "claude-3-5-haiku-20241022",
+    "o1-mini": "claude-sonnet-4-20250514",
+    # o3 models -> Claude Opus 4
+    "o3-mini": "claude-opus-4-20250514",
     # GPT-3.5 models -> Claude 3.5 Haiku (faster, cheaper)
     "gpt-3.5-turbo": "claude-3-5-haiku-20241022",
     "gpt-3.5-turbo-16k": "claude-3-5-haiku-20241022",
@@ -79,16 +81,23 @@ def map_openai_model_to_claude(openai_model: str) -> str:
         return claude_model
 
     # Pattern matching for versioned models
-    if openai_model.startswith("gpt-4o") or openai_model.startswith("gpt-4"):
-        return "claude-3-5-sonnet-20241022"
+    if openai_model.startswith("gpt-4o-mini"):
+        return "claude-3-5-haiku-latest"
+    elif openai_model.startswith("gpt-4o") or openai_model.startswith("gpt-4"):
+        return "claude-3-7-sonnet-20250219"
     elif openai_model.startswith("gpt-3.5"):
-        return "claude-3-5-haiku-20241022"
+        return "claude-3-5-haiku-latest"
     elif openai_model.startswith("o1"):
-        return "claude-3-5-sonnet-20241022"
+        return "claude-sonnet-4-20250514"
+    elif openai_model.startswith("o3"):
+        return "claude-opus-4-20250514"
 
-    # Default fallback
-    logger.warning(f"Unknown OpenAI model '{openai_model}', using default Claude model")
-    return "claude-3-5-sonnet-20241022"
+    # If it's already a Claude model, pass through unchanged
+    if openai_model.startswith("claude-"):
+        return openai_model
+
+    # For unknown models, pass through unchanged (don't translate)
+    return openai_model
 
 
 class OpenAIAdapter(APIAdapter):

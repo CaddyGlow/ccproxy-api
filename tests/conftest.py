@@ -9,8 +9,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
+from ccproxy.api import create_app
 from ccproxy.config.settings import Settings
-from ccproxy.main import create_app
 from ccproxy.services.claude_sdk_service import ClaudeSDKService
 
 
@@ -345,7 +345,7 @@ def mock_claude_empty_streaming_response():
 @pytest.fixture
 def disable_keyring():
     """Disable keyring for tests that need to ensure file-only behavior."""
-    with patch("ccproxy.services.credentials.json_storage.keyring", None):
+    with patch("ccproxy.auth.storage.json_file.keyring", None):
         yield
 
 
@@ -356,5 +356,5 @@ def mock_empty_keyring():
     mock_keyring.get_password.return_value = None
     mock_keyring.delete_password.return_value = None
 
-    with patch("ccproxy.services.credentials.json_storage.keyring", mock_keyring):
+    with patch("ccproxy.auth.storage.json_file.keyring", mock_keyring):
         yield mock_keyring

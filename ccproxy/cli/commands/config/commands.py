@@ -277,7 +277,7 @@ def config_init(
     toolkit = get_rich_toolkit()
 
     try:
-        from ccproxy.core.async_utils import get_ccproxy_config_dir
+        from ccproxy.config.discovery import get_ccproxy_config_dir
 
         # Determine output directory
         if output_dir is None:
