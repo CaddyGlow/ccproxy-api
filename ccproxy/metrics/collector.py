@@ -64,7 +64,7 @@ class MetricsCollector:
         # Internal state
         self._buffer: list[MetricRecord] = []
         self._buffer_lock = asyncio.Lock()
-        self._flush_task: asyncio.Task | None = None
+        self._flush_task: asyncio.Task[None] | None = None
         self._active_requests: dict[str, RequestMetric] = {}
         self._request_start_times: dict[str, datetime] = {}
         self._is_running = False

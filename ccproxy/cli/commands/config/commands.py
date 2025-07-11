@@ -58,17 +58,19 @@ def config_list() -> None:
         server_table.add_column("Value", style="green")
         server_table.add_column("Description", style="dim")
 
-        server_table.add_row("host", settings.host, "Server host address")
-        server_table.add_row("port", str(settings.port), "Server port number")
-        server_table.add_row("log_level", settings.log_level, "Logging verbosity level")
+        server_table.add_row("host", settings.server.host, "Server host address")
+        server_table.add_row("port", str(settings.server.port), "Server port number")
         server_table.add_row(
-            "workers", str(settings.workers), "Number of worker processes"
+            "log_level", settings.server.log_level, "Logging verbosity level"
         )
         server_table.add_row(
-            "reload", str(settings.reload), "Auto-reload for development"
+            "workers", str(settings.server.workers), "Number of worker processes"
         )
         server_table.add_row(
-            "server_url", settings.server_url, "Complete server URL (computed)"
+            "reload", str(settings.server.reload), "Auto-reload for development"
+        )
+        server_table.add_row(
+            "server_url", settings.server.server_url, "Complete server URL (computed)"
         )
 
         # Claude CLI configuration table
@@ -81,7 +83,7 @@ def config_list() -> None:
         claude_table.add_column("Value", style="green")
         claude_table.add_column("Description", style="dim")
 
-        claude_path_display = settings.claude_cli_path or "[dim]Auto-detect[/dim]"
+        claude_path_display = settings.claude.cli_path or "[dim]Auto-detect[/dim]"
         claude_table.add_row(
             "claude_cli_path", claude_path_display, "Path to Claude CLI executable"
         )
@@ -97,16 +99,18 @@ def config_list() -> None:
         security_table.add_column("Description", style="dim")
 
         auth_token_display = (
-            "[dim]Not set[/dim]" if not settings.auth_token else "[green]Set[/green]"
+            "[dim]Not set[/dim]"
+            if not settings.security.auth_token
+            else "[green]Set[/green]"
         )
         cors_origins_display = (
-            ", ".join(settings.cors_origins)
-            if settings.cors_origins
+            ", ".join(settings.cors.origins)
+            if settings.cors.origins
             else "[dim]None[/dim]"
         )
         security_table.add_row(
             "tools_handling",
-            settings.api_tools_handling,
+            settings.security.api_tools_handling,
             "How to handle tools in requests",
         )
         security_table.add_row(
@@ -126,24 +130,23 @@ def config_list() -> None:
 
         docker_table.add_row(
             "docker_image",
-            settings.docker_settings.docker_image,
+            settings.docker.docker_image,
             "Docker image for Claude commands",
         )
         docker_table.add_row(
             "docker_home_directory",
-            settings.docker_settings.docker_home_directory or "[dim]Auto-detect[/dim]",
+            settings.docker.docker_home_directory or "[dim]Auto-detect[/dim]",
             "Host directory for container home",
         )
         docker_table.add_row(
             "docker_workspace_directory",
-            settings.docker_settings.docker_workspace_directory
-            or "[dim]Auto-detect[/dim]",
+            settings.docker.docker_workspace_directory or "[dim]Auto-detect[/dim]",
             "Host directory for workspace",
         )
 
         # Docker volumes
-        if settings.docker_settings.docker_volumes:
-            volumes_text = "\n".join(settings.docker_settings.docker_volumes)
+        if settings.docker.docker_volumes:
+            volumes_text = "\n".join(settings.docker.docker_volumes)
             docker_table.add_row("docker_volumes", volumes_text, "Docker volume mounts")
         else:
             docker_table.add_row(
@@ -151,12 +154,9 @@ def config_list() -> None:
             )
 
         # Docker environment variables
-        if settings.docker_settings.docker_environment:
+        if settings.docker.docker_environment:
             env_text = "\n".join(
-                [
-                    f"{k}={v}"
-                    for k, v in settings.docker_settings.docker_environment.items()
-                ]
+                [f"{k}={v}" for k, v in settings.docker.docker_environment.items()]
             )
             docker_table.add_row(
                 "docker_environment", env_text, "Docker environment variables"
@@ -167,8 +167,8 @@ def config_list() -> None:
             )
 
         # Additional docker args
-        if settings.docker_settings.docker_additional_args:
-            args_text = " ".join(settings.docker_settings.docker_additional_args)
+        if settings.docker.docker_additional_args:
+            args_text = " ".join(settings.docker.docker_additional_args)
             docker_table.add_row(
                 "docker_additional_args", args_text, "Extra Docker run arguments"
             )
@@ -182,20 +182,20 @@ def config_list() -> None:
         # User mapping settings
         docker_table.add_row(
             "user_mapping_enabled",
-            str(settings.docker_settings.user_mapping_enabled),
+            str(settings.docker.user_mapping_enabled),
             "Enable/disable UID/GID mapping",
         )
 
         uid_display = (
-            str(settings.docker_settings.user_uid)
-            if settings.docker_settings.user_uid is not None
+            str(settings.docker.user_uid)
+            if settings.docker.user_uid is not None
             else "[dim]Auto-detect[/dim]"
         )
         docker_table.add_row("user_uid", uid_display, "User ID for container")
 
         gid_display = (
-            str(settings.docker_settings.user_gid)
-            if settings.docker_settings.user_gid is not None
+            str(settings.docker.user_gid)
+            if settings.docker.user_gid is not None
             else "[dim]Auto-detect[/dim]"
         )
         docker_table.add_row("user_gid", gid_display, "Group ID for container")
@@ -297,7 +297,7 @@ def config_init(
             # "auth_token": None,
             # "tools_handling": "warning",
             # "claude_cli_path": None,
-            # "docker_settings": {
+            # "docker": {
             #     "docker_image": "claude-code-proxy",
             #     "docker_volumes": [],
             #     "docker_environment": {},
@@ -348,7 +348,7 @@ def config_init(
                 )
 
                 f.write("# Docker configuration\n")
-                f.write("[docker_settings]\n")
+                f.write("[docker]\n")
                 f.write(
                     'docker_image = "claude-code-proxy"  # Docker image for Claude commands\n'
                 )
@@ -716,10 +716,10 @@ def _write_toml_config(config_file: Path, config_data: dict[str, Any]) -> None:
                 f.write("\n")
 
             # Write Docker settings
-            if "docker_settings" in config_data:
-                docker_settings = config_data["docker_settings"]
+            if "docker" in config_data:
+                docker_settings = config_data["docker"]
                 f.write("# Docker configuration\n")
-                f.write("[docker_settings]\n")
+                f.write("[docker]\n")
 
                 for key, value in docker_settings.items():
                     if isinstance(value, str):
@@ -757,7 +757,7 @@ def _write_toml_config(config_file: Path, config_data: dict[str, Any]) -> None:
                 "cors_origins",
                 "tools_handling",
                 "claude_cli_path",
-                "docker_settings",
+                "docker",
             }
             remaining_keys = set(config_data.keys()) - written_keys
 

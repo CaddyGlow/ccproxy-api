@@ -164,16 +164,23 @@ class ProxyService:
                 # Try to get more details about credential status
                 try:
                     validation = await self.credentials_manager.validate()
-                    if validation.get("valid"):
+
+                    if (
+                        validation.valid
+                        and validation.expired
+                        and validation.credentials
+                    ):
                         logger.debug(
                             "Found credentials but access token is invalid/expired"
                         )
-                        logger.debug(f"Expired: {validation.get('expired')}")
-                        logger.debug(f"Expires at: {validation.get('expires_at')}")
-                    else:
-                        logger.debug(f"Credentials invalid: {validation.get('error')}")
+                        logger.debug(
+                            f"Expired at: {validation.credentials.claude_ai_oauth.expires_at}"
+                        )
                 except Exception as e:
-                    logger.debug(f"Could not check credential details: {e}")
+                    logger.debug(
+                        f"Could not check credential details: {e}",
+                        exc_info=logger.isEnabledFor(logging.DEBUG),
+                    )
 
                 raise HTTPException(
                     status_code=401,

@@ -295,25 +295,16 @@ class CredentialsManager:
         Returns:
             ValidationResult with credentials status and details
         """
-        try:
-            credentials = await self.load()
-            if not credentials:
-                return ValidationResult(
-                    valid=False, expired=None, credentials=None, path=None
-                )
+        credentials = await self.load()
+        if not credentials:
+            raise CredentialsNotFoundError()
 
-            return ValidationResult(
-                valid=True,
-                expired=credentials.claude_ai_oauth.is_expired,
-                credentials=credentials,
-                path=self.storage.get_location(),
-            )
-
-        except Exception as e:
-            logger.exception("Error validating credentials")
-            return ValidationResult(
-                valid=False, expired=None, credentials=None, path=None
-            )
+        return ValidationResult(
+            valid=True,
+            expired=credentials.claude_ai_oauth.is_expired,
+            credentials=credentials,
+            path=self.storage.get_location(),
+        )
 
     async def logout(self) -> bool:
         """Delete stored credentials.
