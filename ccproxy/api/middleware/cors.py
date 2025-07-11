@@ -21,16 +21,16 @@ def setup_cors_middleware(app: FastAPI, settings: Settings) -> None:
 
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=settings.cors_origins,
-        allow_credentials=settings.cors_credentials,
-        allow_methods=settings.cors_methods,
-        allow_headers=settings.cors_headers,
-        allow_origin_regex=settings.cors_origin_regex,
-        expose_headers=settings.cors_expose_headers,
-        max_age=settings.cors_max_age,
+        allow_origins=settings.cors.origins,
+        allow_credentials=settings.cors.credentials,
+        allow_methods=settings.cors.methods,
+        allow_headers=settings.cors.headers,
+        allow_origin_regex=settings.cors.origin_regex,
+        expose_headers=settings.cors.expose_headers,
+        max_age=settings.cors.max_age,
     )
 
-    logger.info(f"CORS middleware configured: origins={settings.cors_origins}")
+    logger.info(f"CORS middleware configured: origins={settings.cors.origins}")
 
 
 def get_cors_config(settings: Settings) -> dict:
@@ -43,11 +43,11 @@ def get_cors_config(settings: Settings) -> dict:
         Dictionary containing CORS configuration
     """
     return {
-        "allow_origins": settings.cors_origins,
-        "allow_credentials": settings.cors_credentials,
-        "allow_methods": settings.cors_methods,
-        "allow_headers": settings.cors_headers,
-        "allow_origin_regex": settings.cors_origin_regex,
-        "expose_headers": settings.cors_expose_headers,
-        "max_age": settings.cors_max_age,
+        "allow_origins": settings.cors.origins,
+        "allow_credentials": settings.cors.credentials,
+        "allow_methods": settings.cors.methods,
+        "allow_headers": settings.cors.headers,
+        "allow_origin_regex": settings.cors.origin_regex,
+        "expose_headers": settings.cors.expose_headers,
+        "max_age": settings.cors.max_age,
     }

@@ -24,9 +24,14 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from ccproxy.config.discovery import find_toml_config_file, get_claude_cli_config_dir
 from ccproxy.core.async_utils import get_package_dir, patched_typing
-from ccproxy.services.credentials import CredentialsConfig
 
+from .auth import AuthSettings
+from .claude import ClaudeSettings
+from .cors import CORSSettings
 from .docker_settings import DockerSettings
+from .reverse_proxy import ReverseProxySettings
+from .security import SecuritySettings
+from .server import ServerSettings
 
 
 __all__ = [
@@ -42,11 +47,6 @@ class ConfigurationError(Exception):
     """Raised when configuration loading or validation fails."""
 
     pass
-
-
-# For further information visit https://errors.pydantic.dev/2.11/u/typed-dict-version
-with patched_typing():
-    from claude_code_sdk import ClaudeCodeOptions  # noqa: E402
 
 
 # PoolSettings class removed - connection pooling functionality has been removed
@@ -72,157 +72,118 @@ class Settings(BaseSettings):
         env_nested_delimiter="__",
     )
 
-    # Server settings
-    host: str = Field(
-        default="127.0.0.1",
-        description="Server host address",
+    # Core application settings
+    server: ServerSettings = Field(
+        default_factory=ServerSettings,
+        description="Server configuration settings",
     )
 
-    port: int = Field(
-        default=8000,
-        description="Server port number",
-        ge=1,
-        le=65535,
+    security: SecuritySettings = Field(
+        default_factory=SecuritySettings,
+        description="Security configuration settings",
     )
 
-    # Logging settings
-    log_level: str = Field(
-        default="INFO",
-        description="Logging level",
+    cors: CORSSettings = Field(
+        default_factory=CORSSettings,
+        description="CORS configuration settings",
     )
 
-    # Optional server settings
-    workers: int = Field(
-        default=1,
-        description="Number of worker processes",
-        ge=1,
-        le=32,
+    # Claude-specific settings
+    claude: ClaudeSettings = Field(
+        default_factory=ClaudeSettings,
+        description="Claude-specific configuration settings",
     )
 
-    reload: bool = Field(
-        default=False,
-        description="Enable auto-reload for development",
+    # Proxy and authentication
+    reverse_proxy: ReverseProxySettings = Field(
+        default_factory=ReverseProxySettings,
+        description="Reverse proxy configuration settings",
     )
 
-    # Security settings
-    cors_origins: list[str] = Field(
-        default_factory=lambda: ["*"],
-        description="CORS allowed origins",
+    auth: AuthSettings = Field(
+        default_factory=AuthSettings,
+        description="Authentication and credentials configuration",
     )
 
-    cors_credentials: bool = Field(
-        default=True,
-        description="CORS allow credentials",
-    )
-
-    cors_methods: list[str] = Field(
-        default_factory=lambda: ["*"],
-        description="CORS allowed methods",
-    )
-
-    cors_headers: list[str] = Field(
-        default_factory=lambda: ["*"],
-        description="CORS allowed headers",
-    )
-
-    cors_origin_regex: str | None = Field(
-        default=None,
-        description="CORS origin regex pattern",
-    )
-
-    cors_expose_headers: list[str] = Field(
-        default_factory=list,
-        description="CORS exposed headers",
-    )
-
-    cors_max_age: int = Field(
-        default=600,
-        description="CORS preflight max age in seconds",
-        ge=0,
-    )
-
-    auth_token: str | None = Field(
-        default=None,
-        description="Bearer token for API authentication (optional)",
-    )
-
-    # Tools handling behavior
-    api_tools_handling: Literal["error", "warning", "ignore"] = Field(
-        default="warning",
-        description="How to handle tools definitions in requests: error, warning, or ignore",
-    )
-
-    # Claude CLI path
-    claude_cli_path: str | None = Field(
-        default=None,
-        description="Path to Claude CLI executable",
-    )
-
-    # Claude Code SDK Options
-    claude_code_options: ClaudeCodeOptions = Field(
-        default_factory=lambda: ClaudeCodeOptions(),
-        description="Claude Code SDK options configuration",
-    )
-
-    # Docker settings
-    docker_settings: DockerSettings = Field(
+    # Container settings
+    docker: DockerSettings = Field(
         default_factory=DockerSettings,
         description="Docker configuration for running Claude commands in containers",
     )
 
-    # Reverse Proxy settings
-    reverse_proxy_target_url: str = Field(
-        default="https://api.anthropic.com",
-        description="Target URL for reverse proxy requests",
-    )
-
-    reverse_proxy_timeout: float = Field(
-        default=120.0,
-        description="Timeout for reverse proxy requests in seconds",
-        ge=1.0,
-        le=600.0,
-    )
-
-    # Reverse proxy mode configuration
-    default_proxy_mode: Literal["claude_code", "full", "minimal"] = Field(
-        default="claude_code",
-        description="Default transformation mode for root path reverse proxy, over claude code or auth injection with full",
-    )
-
-    # Claude Code SDK endpoint configuration
-    claude_code_prefix: str = Field(
-        default="/cc",
-        description="URL prefix for Claude Code SDK endpoints",
-    )
-
-    # Credentials configuration
-    credentials: CredentialsConfig = Field(
-        default_factory=CredentialsConfig,
-        description="Credentials management configuration",
-    )
-
-    # Pool settings removed - connection pooling functionality has been removed
-
-    @field_validator("claude_code_options", mode="before")
+    @field_validator("server", mode="before")
     @classmethod
-    def validate_claude_code_options(cls, v: Any) -> Any:
-        """Validate and convert Claude Code options."""
+    def validate_server(cls, v: Any) -> Any:
+        """Validate and convert server settings."""
         if v is None:
-            return ClaudeCodeOptions()
-
-        # If it's already a ClaudeCodeOptions instance, return as-is
-        if isinstance(v, ClaudeCodeOptions):
+            return ServerSettings()
+        if isinstance(v, ServerSettings):
             return v
-
-        # Try to convert to dict if possible
-        if hasattr(v, "model_dump"):
-            return v.model_dump()
-        elif hasattr(v, "__dict__"):
-            return v.__dict__
-
+        if isinstance(v, dict):
+            return ServerSettings(**v)
         return v
 
-    @field_validator("docker_settings", mode="before")
+    @field_validator("security", mode="before")
+    @classmethod
+    def validate_security(cls, v: Any) -> Any:
+        """Validate and convert security settings."""
+        if v is None:
+            return SecuritySettings()
+        if isinstance(v, SecuritySettings):
+            return v
+        if isinstance(v, dict):
+            return SecuritySettings(**v)
+        return v
+
+    @field_validator("cors", mode="before")
+    @classmethod
+    def validate_cors(cls, v: Any) -> Any:
+        """Validate and convert CORS settings."""
+        if v is None:
+            return CORSSettings()
+        if isinstance(v, CORSSettings):
+            return v
+        if isinstance(v, dict):
+            return CORSSettings(**v)
+        return v
+
+    @field_validator("claude", mode="before")
+    @classmethod
+    def validate_claude(cls, v: Any) -> Any:
+        """Validate and convert Claude settings."""
+        if v is None:
+            return ClaudeSettings()
+        if isinstance(v, ClaudeSettings):
+            return v
+        if isinstance(v, dict):
+            return ClaudeSettings(**v)
+        return v
+
+    @field_validator("reverse_proxy", mode="before")
+    @classmethod
+    def validate_reverse_proxy(cls, v: Any) -> Any:
+        """Validate and convert reverse proxy settings."""
+        if v is None:
+            return ReverseProxySettings()
+        if isinstance(v, ReverseProxySettings):
+            return v
+        if isinstance(v, dict):
+            return ReverseProxySettings(**v)
+        return v
+
+    @field_validator("auth", mode="before")
+    @classmethod
+    def validate_auth(cls, v: Any) -> Any:
+        """Validate and convert auth settings."""
+        if v is None:
+            return AuthSettings()
+        if isinstance(v, AuthSettings):
+            return v
+        if isinstance(v, dict):
+            return AuthSettings(**v)
+        return v
+
+    @field_validator("docker", mode="before")
     @classmethod
     def validate_docker_settings(cls, v: Any) -> Any:
         """Validate and convert Docker settings."""
@@ -245,184 +206,39 @@ class Settings(BaseSettings):
 
         return v
 
-    @field_validator("credentials", mode="before")
-    @classmethod
-    def validate_credentials(cls, v: Any) -> Any:
-        """Validate and convert credentials configuration."""
-        if v is None:
-            return CredentialsConfig()
-
-        # If it's already a CredentialsConfig instance, return as-is
-        if isinstance(v, CredentialsConfig):
-            return v
-
-        # If it's a dict, create CredentialsConfig from it
-        if isinstance(v, dict):
-            return CredentialsConfig(**v)
-
-        # Try to convert to dict if possible
-        if hasattr(v, "model_dump"):
-            return CredentialsConfig(**v.model_dump())
-        elif hasattr(v, "__dict__"):
-            return CredentialsConfig(**v.__dict__)
-
-        return v
-
     # validate_pool_settings method removed - connection pooling functionality has been removed
-
-    @field_validator("log_level")
-    @classmethod
-    def validate_log_level(cls, v: str) -> str:
-        """Validate and normalize log level."""
-        upper_v = v.upper()
-        valid_levels = ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
-        if upper_v not in valid_levels:
-            raise ValueError(f"Invalid log level: {v}. Must be one of {valid_levels}")
-        return upper_v
-
-    @field_validator("cors_origins", mode="before")
-    @classmethod
-    def validate_cors_origins(cls, v: str | list[str]) -> list[str]:
-        """Parse CORS origins from string or list."""
-        if isinstance(v, str):
-            # Split comma-separated string
-            return [origin.strip() for origin in v.split(",") if origin.strip()]
-        return v
-
-    @field_validator("cors_methods", mode="before")
-    @classmethod
-    def validate_cors_methods(cls, v: str | list[str]) -> list[str]:
-        """Parse CORS methods from string or list."""
-        if isinstance(v, str):
-            # Split comma-separated string
-            return [method.strip().upper() for method in v.split(",") if method.strip()]
-        return [method.upper() for method in v]
-
-    @field_validator("cors_headers", mode="before")
-    @classmethod
-    def validate_cors_headers(cls, v: str | list[str]) -> list[str]:
-        """Parse CORS headers from string or list."""
-        if isinstance(v, str):
-            # Split comma-separated string
-            return [header.strip() for header in v.split(",") if header.strip()]
-        return v
-
-    @field_validator("cors_expose_headers", mode="before")
-    @classmethod
-    def validate_cors_expose_headers(cls, v: str | list[str]) -> list[str]:
-        """Parse CORS expose headers from string or list."""
-        if isinstance(v, str):
-            # Split comma-separated string
-            return [header.strip() for header in v.split(",") if header.strip()]
-        return v
 
     @property
     def server_url(self) -> str:
         """Get the complete server URL."""
-        return f"http://{self.host}:{self.port}"
+        return f"http://{self.server.host}:{self.server.port}"
 
     @property
     def is_development(self) -> bool:
         """Check if running in development mode."""
-        return self.reload or self.log_level == "DEBUG"
-
-    @field_validator("claude_cli_path")
-    @classmethod
-    def validate_claude_cli_path(cls, v: str | None) -> str | None:
-        """Validate Claude CLI path if provided."""
-        if v is not None:
-            path = Path(v)
-            if not path.exists():
-                raise ValueError(f"Claude CLI path does not exist: {v}")
-            if not path.is_file():
-                raise ValueError(f"Claude CLI path is not a file: {v}")
-            if not os.access(path, os.X_OK):
-                raise ValueError(f"Claude CLI path is not executable: {v}")
-        return v
+        return self.server.reload or self.server.log_level == "DEBUG"
 
     @model_validator(mode="after")
     def setup_claude_cli_path(self) -> "Settings":
         """Set up Claude CLI path in environment if provided or found."""
         # If not explicitly set, try to find it
-        if not self.claude_cli_path:
-            found_path, found_in_path = self.find_claude_cli()
+        if not self.claude.cli_path:
+            found_path, found_in_path = self.claude.find_claude_cli()
             if found_path:
-                self.claude_cli_path = found_path
+                self.claude.cli_path = found_path
                 # Only add to PATH if it wasn't found via which()
                 if not found_in_path:
-                    cli_dir = str(Path(self.claude_cli_path).parent)
+                    cli_dir = str(Path(self.claude.cli_path).parent)
                     current_path = os.environ.get("PATH", "")
                     if cli_dir not in current_path:
                         os.environ["PATH"] = f"{cli_dir}:{current_path}"
-        elif self.claude_cli_path:
+        elif self.claude.cli_path:
             # If explicitly set, always add to PATH
-            cli_dir = str(Path(self.claude_cli_path).parent)
+            cli_dir = str(Path(self.claude.cli_path).parent)
             current_path = os.environ.get("PATH", "")
             if cli_dir not in current_path:
                 os.environ["PATH"] = f"{cli_dir}:{current_path}"
         return self
-
-    def find_claude_cli(self) -> tuple[str | None, bool]:
-        """Find Claude CLI executable in PATH or specified location.
-
-        Returns:
-            tuple: (path_to_claude, found_in_path)
-        """
-        if self.claude_cli_path:
-            return self.claude_cli_path, False
-
-        # Try to find claude in PATH
-        claude_path = shutil.which("claude")
-        if claude_path:
-            return claude_path, True
-
-        # Common installation paths (in order of preference)
-        common_paths = [
-            # User-specific Claude installation
-            Path.home() / ".claude" / "local" / "claude",
-            # User's global node_modules (npm install -g)
-            Path.home() / "node_modules" / ".bin" / "claude",
-            # Package installation directory node_modules
-            get_package_dir() / "node_modules" / ".bin" / "claude",
-            # Current working directory node_modules
-            Path.cwd() / "node_modules" / ".bin" / "claude",
-            # System-wide installations
-            Path("/usr/local/bin/claude"),
-            Path("/opt/homebrew/bin/claude"),
-        ]
-
-        for path in common_paths:
-            if path.exists() and path.is_file() and os.access(path, os.X_OK):
-                return str(path), False
-
-        return None, False
-
-    def get_searched_paths(self) -> list[str]:
-        """Get list of paths that would be searched for Claude CLI auto-detection."""
-        paths = []
-
-        # PATH search
-        paths.append("PATH environment variable")
-
-        # Common installation paths (in order of preference)
-        common_paths = [
-            # User-specific Claude installation
-            Path.home() / ".claude" / "local" / "claude",
-            # User's global node_modules (npm install -g)
-            Path.home() / "node_modules" / ".bin" / "claude",
-            # Package installation directory node_modules
-            get_package_dir() / "node_modules" / ".bin" / "claude",
-            # Current working directory node_modules
-            Path.cwd() / "node_modules" / ".bin" / "claude",
-            # System-wide installations
-            Path("/usr/local/bin/claude"),
-            Path("/opt/homebrew/bin/claude"),
-        ]
-
-        for path in common_paths:
-            paths.append(str(path))
-
-        return paths
 
     def model_dump_safe(self) -> dict[str, Any]:
         """
@@ -619,7 +435,7 @@ class ConfigurationManager:
         from ccproxy.core.logging import setup_rich_logging
 
         effective_level = log_level or (
-            self._settings.log_level if self._settings else "INFO"
+            self._settings.server.log_level if self._settings else "INFO"
         )
 
         setup_rich_logging(level=effective_level)
@@ -630,16 +446,21 @@ class ConfigurationManager:
         overrides = {}
 
         # Server settings
-        for key in [
-            "host",
-            "port",
-            "reload",
-            "log_level",
-            "auth_token",
-            "claude_cli_path",
-        ]:
+        server_settings = {}
+        for key in ["host", "port", "reload", "log_level"]:
             if cli_args.get(key) is not None:
-                overrides[key] = cli_args[key]
+                server_settings[key] = cli_args[key]
+        if server_settings:
+            overrides["server"] = server_settings
+
+        # Security settings
+        if cli_args.get("auth_token") is not None:
+            overrides["security"] = {"auth_token": cli_args["auth_token"]}
+
+        # Claude settings
+        claude_settings = {}
+        if cli_args.get("claude_cli_path") is not None:
+            claude_settings["cli_path"] = cli_args["claude_cli_path"]
 
         # Claude Code options
         claude_opts = {}
@@ -656,23 +477,23 @@ class ConfigurationManager:
                 claude_opts[key] = cli_args[key]
 
         # Handle comma-separated lists
-        for key, target_key in [
-            ("allowed_tools", "allowed_tools"),
-            ("disallowed_tools", "disallowed_tools"),
-            ("cors_origins", "cors_origins"),
-        ]:
+        for key in ["allowed_tools", "disallowed_tools"]:
             if cli_args.get(key):
-                if key == "cors_origins":
-                    overrides["cors_origins"] = [
-                        origin.strip() for origin in cli_args[key].split(",")
-                    ]
-                else:
-                    claude_opts[target_key] = [
-                        tool.strip() for tool in cli_args[key].split(",")
-                    ]
+                claude_opts[key] = [tool.strip() for tool in cli_args[key].split(",")]
 
         if claude_opts:
-            overrides["claude_code_options"] = claude_opts
+            claude_settings["code_options"] = claude_opts
+
+        if claude_settings:
+            overrides["claude"] = claude_settings
+
+        # CORS settings
+        if cli_args.get("cors_origins"):
+            overrides["cors"] = {
+                "origins": [
+                    origin.strip() for origin in cli_args["cors_origins"].split(",")
+                ]
+            }
 
         return overrides
 

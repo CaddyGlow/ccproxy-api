@@ -44,15 +44,21 @@ clean:
 	rm -rf node_modules/
 	rm -f pnpm-lock.yaml
 
-# Testing
+# Run all tests with coverage
 test:
-	uv run pytest -v --cov=ccproxy --cov-report=xml --cov-report=term-missing
+	$(UV_RUN) pytest tests/ -v --cov=ccproxy --cov-report=term-missing
 
-test-unit:
-	uv run pytest -v -m unit
+# Quick test run (no coverage)
+test-fast:
+	$(UV_RUN) pytest tests/ -v --tb=short
 
-test-integration:
-	uv run pytest -v -m integration
+# Run specific test file
+test-file:
+	$(UV_RUN) pytest tests/$(FILE) -v
+
+# Run tests matching a pattern
+test-match:
+	$(UV_RUN) pytest tests/ -k "$(MATCH)" -v
 
 # Code quality
 lint:

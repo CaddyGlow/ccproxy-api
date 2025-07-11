@@ -6,8 +6,9 @@ description = "API server that provides an Anthropic and OpenAI compatible inter
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
+  "aiosqlite>=0.21.0",
   "check-jsonschema>=0.33.2",
-  "claude-code-sdk>=0.0.14", # Using GitHub version with PR #60 fix
+  "claude-code-sdk>=0.0.14",             # Using GitHub version with PR #60 fix
   "fastapi[standard]>=0.115.14",
   "httpx>=0.28.1",
   "httpx-sse>=0.4.1",
@@ -143,7 +144,7 @@ lines-after-imports = 2
 python_version = "3.12"
 show_column_numbers = true
 follow_imports = "normal"
-exclude = ["docs/", "site/"]
+exclude = ["docs/", "site/", "tests.depracted/", "examples/"]
 
 # Enable all strict mode flags
 strict = true
@@ -201,14 +202,10 @@ env = ["CCPROXY_TEST_MODE=true"]
 
 # Test markers for different test tiers
 markers = [
-  "unit: Fast unit tests that don't require external dependencies (< 1s each)",
-  "integration: Integration tests that may use Docker or external services (< 30s each)",
-  "slow: Slow tests that take significant time or resources (> 30s each)",
-  "docker: Tests that require Docker to be available",
+  "slow: Tests that take > 5 seconds",
   "network: Tests that require network access",
-  "regression: Regression tests for specific bug fixes",
-  "smoke: Basic smoke tests for critical functionality",
-  "asyncio: Tests that use asyncio",
+  "auth: Authentication-related tests",
+  "streaming: SSE/streaming response tests",
 ]
 
 [tool.pytest_timeout]

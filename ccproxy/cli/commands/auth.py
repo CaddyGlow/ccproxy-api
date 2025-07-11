@@ -37,7 +37,7 @@ def get_credentials_manager(
 
 def get_docker_credential_paths() -> list[Path]:
     """Get credential file paths for Docker environment."""
-    docker_home = get_claude_docker_home_dir()
+    docker_home = Path(get_claude_docker_home_dir())
     return [
         docker_home / ".claude" / ".credentials.json",
         docker_home / ".config" / "claude" / ".credentials.json",

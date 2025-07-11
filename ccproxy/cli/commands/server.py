@@ -25,25 +25,25 @@ def validate_server_settings(settings: Settings) -> None:
         ConfigurationError: If settings are invalid
     """
     # Validate port range
-    if not 1 <= settings.port <= 65535:
+    if not 1 <= settings.server.port <= 65535:
         raise ConfigurationError(
-            f"Port must be between 1 and 65535, got {settings.port}"
+            f"Port must be between 1 and 65535, got {settings.server.port}"
         )
 
     # Validate host
-    if not settings.host:
+    if not settings.server.host:
         raise ConfigurationError("Host cannot be empty")
 
     # Validate log level
     valid_log_levels = ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
-    if settings.log_level.upper() not in valid_log_levels:
+    if settings.server.log_level.upper() not in valid_log_levels:
         raise ConfigurationError(
-            f"Invalid log level: {settings.log_level}. "
+            f"Invalid log level: {settings.server.log_level}. "
             f"Must be one of: {', '.join(valid_log_levels)}"
         )
 
     # Validate workers
-    if settings.workers and settings.workers < 1:
+    if settings.server.workers and settings.server.workers < 1:
         raise ConfigurationError("Workers must be at least 1")
 
 

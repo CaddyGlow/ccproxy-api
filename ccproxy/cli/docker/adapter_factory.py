@@ -59,7 +59,7 @@ def _create_docker_adapter_from_settings(
     Returns:
         Tuple of (image, volumes, environment, command, user_context, additional_args)
     """
-    docker_settings = settings.docker_settings
+    docker_settings = settings.docker
 
     # Determine effective image
     image = docker_image or docker_settings.docker_image
