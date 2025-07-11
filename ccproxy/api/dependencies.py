@@ -23,13 +23,27 @@ logger = get_logger(__name__)
 SettingsDep = Annotated[Settings, Depends(get_settings)]
 
 
+def get_metrics_collector() -> MetricsCollector:
+    """Get metrics collector instance.
+
+    Returns:
+        Metrics collector instance
+    """
+    logger.debug("Creating metrics collector instance")
+    # Use in-memory storage for now
+    storage = InMemoryMetricsStorage()
+    return MetricsCollector(storage=storage)
+
+
 def get_claude_service(
     auth_manager: AuthManagerDep,
+    metrics_collector: Annotated[MetricsCollector, Depends(get_metrics_collector)],
 ) -> ClaudeSDKService:
     """Get Claude SDK service instance.
 
     Args:
         auth_manager: Authentication manager dependency
+        metrics_collector: Metrics collector dependency
 
     Returns:
         Claude SDK service instance
@@ -37,6 +51,7 @@ def get_claude_service(
     logger.debug("Creating Claude SDK service instance")
     return ClaudeSDKService(
         auth_manager=auth_manager,
+        metrics_collector=metrics_collector,
     )
 
 
@@ -60,12 +75,14 @@ def get_proxy_service(
     credentials_manager: Annotated[
         CredentialsManager, Depends(get_credentials_manager)
     ],
+    metrics_collector: Annotated[MetricsCollector, Depends(get_metrics_collector)],
 ) -> ProxyService:
     """Get proxy service instance.
 
     Args:
         settings: Application settings dependency
         credentials_manager: Credentials manager dependency
+        metrics_collector: Metrics collector dependency
 
     Returns:
         Proxy service instance
@@ -82,19 +99,8 @@ def get_proxy_service(
         credentials_manager=credentials_manager,
         proxy_mode="full",
         target_base_url=settings.reverse_proxy_target_url,
+        metrics_collector=metrics_collector,
     )
-
-
-def get_metrics_collector() -> MetricsCollector:
-    """Get metrics collector instance.
-
-    Returns:
-        Metrics collector instance
-    """
-    logger.debug("Creating metrics collector instance")
-    # Use in-memory storage for now
-    storage = InMemoryMetricsStorage()
-    return MetricsCollector(storage=storage)
 
 
 def get_metrics_service() -> MetricsService:

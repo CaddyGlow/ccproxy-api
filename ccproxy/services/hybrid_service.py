@@ -161,7 +161,11 @@ class HybridService:
             return True
 
         # Check for Claude Code specific tools field
-        return bool("allowed_tools" in request_body and isinstance(request_body["allowed_tools"], list) and len(request_body["allowed_tools"]) > 0)
+        return bool(
+            "allowed_tools" in request_body
+            and isinstance(request_body["allowed_tools"], list)
+            and len(request_body["allowed_tools"]) > 0
+        )
 
     def _has_streaming(self, request_body: dict[str, Any]) -> bool:
         """Check if the request is for streaming.
