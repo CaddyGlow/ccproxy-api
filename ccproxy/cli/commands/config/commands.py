@@ -538,7 +538,7 @@ def generate_token(
             # Determine config file path
             if config_file is None:
                 # Try to find existing config file or create default
-                from ccproxy.utils import find_toml_config_file
+                from ccproxy.config.discovery import find_toml_config_file
 
                 config_file = find_toml_config_file()
 

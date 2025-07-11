@@ -568,3 +568,78 @@ def validate_config_with_schema(config_path: Path) -> bool:
         except Exception as e:
             Path(schema_path).unlink(missing_ok=True)
             raise ValueError(f"Validation error: {e}") from e
+
+
+def generate_json_schema() -> dict[str, Any]:
+    """Generate JSON Schema from Settings model.
+    
+    Returns:
+        JSON Schema dictionary
+        
+    Raises:
+        ImportError: If required dependencies are not available
+    """
+    try:
+        from ccproxy.config.settings import Settings
+    except ImportError as e:
+        raise ImportError(f"Required dependencies not available: {e}") from e
+    
+    schema = Settings.model_json_schema()
+    
+    # Add schema metadata
+    schema["$schema"] = "https://json-schema.org/draft/2020-12/schema"
+    schema["title"] = "Claude Code Proxy API Configuration"
+    
+    # Add examples for common properties
+    properties = schema.get("properties", {})
+    if "host" in properties:
+        properties["host"]["examples"] = ["127.0.0.1", "0.0.0.0", "localhost"]
+    if "port" in properties:
+        properties["port"]["examples"] = [8000, 8080, 3000]
+    if "log_level" in properties:
+        properties["log_level"]["examples"] = ["DEBUG", "INFO", "WARNING", "ERROR"]
+    
+    return schema
+
+
+def save_schema_file(schema: dict[str, Any], output_path: Path) -> None:
+    """Save JSON Schema to a file.
+    
+    Args:
+        schema: JSON Schema dictionary to save
+        output_path: Path to write schema file to
+        
+    Raises:
+        OSError: If unable to write file
+    """
+    import json
+    
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    
+    with output_path.open("w", encoding="utf-8") as f:
+        json.dump(schema, f, indent=2, ensure_ascii=False)
+
+
+def validate_toml_with_schema(config_path: Path, schema_path: Path | None = None) -> bool:
+    """Validate a TOML config file against JSON Schema.
+    
+    Args:
+        config_path: Path to TOML configuration file
+        schema_path: Optional path to schema file. If None, generates schema from Settings
+        
+    Returns:
+        True if validation passes, False otherwise
+        
+    Raises:
+        ImportError: If check-jsonschema is not available
+        FileNotFoundError: If config file doesn't exist
+        ValueError: If unable to parse or validate file
+    """
+    # This is a thin wrapper around validate_config_with_schema for TOML files
+    config_path = Path(config_path)
+    
+    if config_path.suffix.lower() != ".toml":
+        raise ValueError(f"Expected TOML file, got: {config_path.suffix}")
+    
+    return validate_config_with_schema(config_path)

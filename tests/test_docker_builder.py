@@ -1,4 +1,9 @@
-"""Test Docker command builder utility."""
+"""DEPRECATED: Test Docker command builder utility.
+
+This test file is for the old DockerCommandBuilder which was replaced
+with the new DockerAdapter architecture. This file should be deleted
+or rewritten to test the new DockerAdapter.
+"""
 
 import os
 import tempfile
@@ -8,12 +13,16 @@ from unittest.mock import patch
 import pytest
 
 from ccproxy.config.docker_settings import DockerSettings
-from ccproxy.utils.docker_builder import DockerCommandBuilder
-from ccproxy.utils.docker_validation import (
-    validate_environment_variable,
-    validate_host_path,
-    validate_volume_format,
-)
+# NOTE: DockerCommandBuilder was removed - replaced with DockerAdapter
+# from ccproxy.utils.docker_builder import DockerCommandBuilder
+# NOTE: Docker validation functions were refactored or removed
+from ccproxy.config.docker_settings import validate_host_path
+# validate_environment_variable and validate_volume_format were removed
+# from ccproxy.utils.docker_validation import (
+#     validate_environment_variable,
+#     validate_host_path,
+#     validate_volume_format,
+# )
 
 
 @pytest.mark.unit

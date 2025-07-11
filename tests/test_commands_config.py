@@ -232,7 +232,7 @@ class TestConfigInitCommand:
             output_dir = Path(temp_dir)
 
             with patch(
-                "ccproxy.utils.xdg.get_ccproxy_config_dir",
+                "ccproxy.config.discovery.get_ccproxy_config_dir",
                 return_value=output_dir,
             ):
                 result = self.runner.invoke(app, ["init"])
@@ -254,7 +254,7 @@ class TestConfigInitCommand:
             output_dir = Path(temp_dir)
 
             with patch(
-                "ccproxy.utils.xdg.get_ccproxy_config_dir",
+                "ccproxy.config.discovery.get_ccproxy_config_dir",
                 return_value=output_dir,
             ):
                 result = self.runner.invoke(app, ["init", "--format", "json"])
@@ -275,7 +275,7 @@ class TestConfigInitCommand:
             output_dir = Path(temp_dir)
 
             with patch(
-                "ccproxy.utils.xdg.get_ccproxy_config_dir",
+                "ccproxy.config.discovery.get_ccproxy_config_dir",
                 return_value=output_dir,
             ):
                 result = self.runner.invoke(app, ["init", "--format", "yaml"])
@@ -292,7 +292,7 @@ class TestConfigInitCommand:
 
             with (
                 patch(
-                    "ccproxy.utils.xdg.get_ccproxy_config_dir",
+                    "ccproxy.config.discovery.get_ccproxy_config_dir",
                     return_value=output_dir,
                 ),
                 patch(
@@ -345,7 +345,7 @@ class TestConfigInitCommand:
             config_file.write_text("existing content")
 
             with patch(
-                "ccproxy.utils.xdg.get_ccproxy_config_dir",
+                "ccproxy.config.discovery.get_ccproxy_config_dir",
                 return_value=output_dir,
             ):
                 result = self.runner.invoke(app, ["init"])
@@ -361,7 +361,7 @@ class TestConfigInitCommand:
             config_file.write_text("existing content")
 
             with patch(
-                "ccproxy.utils.xdg.get_ccproxy_config_dir",
+                "ccproxy.config.discovery.get_ccproxy_config_dir",
                 return_value=output_dir,
             ):
                 result = self.runner.invoke(app, ["init", "--force"])
@@ -371,7 +371,7 @@ class TestConfigInitCommand:
 
     def test_config_init_exception_handling(self):
         """Test config init with exception during execution."""
-        with patch("ccproxy.utils.xdg.get_ccproxy_config_dir") as mock_get_dir:
+        with patch("ccproxy.config.discovery.get_ccproxy_config_dir") as mock_get_dir:
             mock_get_dir.side_effect = PermissionError("Permission denied")
 
             result = self.runner.invoke(app, ["init"])

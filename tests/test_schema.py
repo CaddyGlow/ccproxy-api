@@ -103,7 +103,7 @@ class TestSchemaGeneration:
     def test_generate_schema_files_default_directory(self):
         """Test generating schema files in default directory."""
         with (
-            patch("ccproxy.utils.schema.Path.cwd") as mock_cwd,
+            patch("ccproxy.core.async_utils.Path.cwd") as mock_cwd,
             tempfile.TemporaryDirectory() as temp_dir,
         ):
             mock_cwd.return_value = Path(temp_dir)
@@ -187,7 +187,7 @@ class TestSchemaValidationExtended:
     def test_generate_taplo_config_default_directory(self):
         """Test taplo config generation with default directory."""
         with (
-            patch("ccproxy.utils.schema.Path.cwd") as mock_cwd,
+            patch("ccproxy.core.async_utils.Path.cwd") as mock_cwd,
             tempfile.TemporaryDirectory() as temp_dir,
         ):
             mock_cwd.return_value = Path(temp_dir)
@@ -243,7 +243,7 @@ port: 8080
             f.flush()
 
             try:
-                with patch("ccproxy.utils.schema.generate_json_schema") as mock_gen:
+                with patch("ccproxy.core.async_utils.generate_json_schema") as mock_gen:
                     mock_gen.return_value = {
                         "type": "object",
                         "properties": {
@@ -438,7 +438,7 @@ class TestSchemaGenerationEdgeCases:
 
             with (
                 patch(
-                    "ccproxy.utils.schema.Path.open",
+                    "ccproxy.core.async_utils.Path.open",
                     side_effect=PermissionError,
                 ),
                 pytest.raises(PermissionError),
@@ -452,7 +452,7 @@ class TestSchemaGenerationEdgeCases:
 
             with (
                 patch(
-                    "ccproxy.utils.schema.save_schema_file",
+                    "ccproxy.core.async_utils.save_schema_file",
                     side_effect=OSError("Write error"),
                 ),
                 pytest.raises(OSError),
@@ -466,7 +466,7 @@ class TestSchemaGenerationEdgeCases:
 
             with (
                 patch(
-                    "ccproxy.utils.schema.Path.write_text",
+                    "ccproxy.core.async_utils.Path.write_text",
                     side_effect=OSError("Write error"),
                 ),
                 pytest.raises(OSError),
@@ -484,7 +484,7 @@ class TestSchemaValidationComplete:
         # by creating a minimal test case that bypasses the complex import mocking
 
         # Test the ImportError handling by temporarily replacing the import mechanism
-        import ccproxy.utils.schema as schema_module
+        import ccproxy.core.async_utils as schema_module
 
         original_function = schema_module.validate_config_with_schema
 
