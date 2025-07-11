@@ -17,7 +17,7 @@ router = APIRouter(tags=["anthropic"])
 async def create_message(
     request: Request,
     hybrid_service: HybridService = Depends(get_hybrid_service),
-) -> Any:
+):
     """Create a message using Claude AI.
 
     This endpoint handles Anthropic API format requests and forwards them
@@ -41,10 +41,10 @@ async def create_message(
         )
 
         # Return appropriate response type
-        if hasattr(response, "__aiter__") and hasattr(response, "__anext__"):
+        if hasattr(response, "__aiter__"):
             # Streaming response
-            async def stream_generator() -> Any:
-                async for chunk in response:  # type: ignore[union-attr]
+            async def stream_generator():
+                async for chunk in response:
                     if isinstance(chunk, dict):
                         yield f"data: {chunk.get('data', '')}\n\n".encode()
                     else:
@@ -72,9 +72,7 @@ async def create_message(
             return json.loads(response_body.decode())
 
     except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Internal server error: {str(e)}"
-        ) from e
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 
 @router.get("/models")
@@ -100,6 +98,6 @@ async def list_models() -> dict[str, Any]:
 
 
 @router.get("/status")
-async def anthropic_status() -> dict[str, str]:
+async def anthropic_status():
     """Get Anthropic API status."""
     return {"status": "anthropic endpoint available"}

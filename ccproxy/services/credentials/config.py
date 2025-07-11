@@ -16,10 +16,9 @@ def _get_default_storage_paths() -> list[str]:
         ]
 
     return [
-        "~/.config/ccproxy/credentials.json",  # Primary location in app config
-        # We stop sharing with Claude Code that create issue
-        # "~/.claude/.credentials.json",  # Legacy location
-        # "~/.config/claude/.credentials.json",  # Alternative legacy location
+        "~/.claude/.credentials.json",  # Legacy location
+        "~/.config/claude/.credentials.json",  # Alternative legacy location
+        "~/.config/ccproxy/credentials.json",  # location in app config
     ]
 
 

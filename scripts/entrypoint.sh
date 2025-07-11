@@ -1,8 +1,35 @@
-#!/bin/bash
+#!/usr/bin/env bash
+#
+# Docker Entrypoint Script for Claude Application Container
+#
+# This script manages user/group creation and privilege dropping for a containerized
+# Claude application. It supports both rootless and root execution modes.
+#
+# USAGE:
+#   - When running as root: Creates 'claude' user/group with specified PUID/PGID,
+#     sets up directory structure, and drops privileges before executing the main command
+#   - When running as non-root: Executes the command directly without user management
+#
+# ENVIRONMENT VARIABLES:
+#   CLAUDE_HOME      - Claude user home directory (default: /data/home)
+#   CLAUDE_WORKSPACE - Claude workspace directory (default: $CLAUDE_HOME)
+#   PUID             - User ID for claude user (default: 1000)
+#   PGID             - Group ID for claude group (default: 1000)
+#
+# FEATURES:
+#   - Handles existing user/group ID conflicts intelligently
+#   - Creates necessary directories (.cache, .config, .local) with proper ownership
+#   - Uses setpriv for secure privilege dropping
+#   - Provides detailed logging of user/group setup process
+#   - Supports Docker's user namespace mapping via PUID/PGID
+#
+# DOCKER USAGE:
+#   docker run -e PUID=1001 -e PGID=1001 -v /host/data:/data your-image
+#
 set -e
 
 CLAUDE_HOME=${CLAUDE_HOME:-"/data/home"}
-CLAUDE_WORKSPACE=${CLAUDE_WORKSPACE:$-CLAUDE_HOME}
+CLAUDE_WORKSPACE=${CLAUDE_WORKSPACE:$CLAUDE_HOME}
 
 # Check if running as root
 if [[ $EUID -ne 0 ]]; then
@@ -129,7 +156,7 @@ mkdir -p "$CLAUDE_WORKSPACE"
 chown -R claude:"$CLAUDE_GROUP_NAME" "$CLAUDE_WORKSPACE"
 
 # Update environment variables for the application
-export CLAUDE_USER="cLaude"
+export CLAUDE_USER="claude"
 export CLAUDE_GROUP="$CLAUDE_GROUP_NAME"
 export CLAUDE_WORKSPACE="$CLAUDE_WORKSPACE"
 export HOME="$CLAUDE_HOME"
