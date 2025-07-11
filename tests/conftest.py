@@ -21,6 +21,7 @@ from httpx import ASGITransport, AsyncClient
 from pytest_httpx import HTTPXMock
 
 from ccproxy.api.app import create_app
+from ccproxy.config.auth import AuthSettings, CredentialStorageSettings
 from ccproxy.config.security import SecuritySettings
 from ccproxy.config.server import ServerSettings
 from ccproxy.config.settings import Settings, get_settings
@@ -28,12 +29,9 @@ from ccproxy.metrics.storage.memory import InMemoryMetricsStorage
 
 
 @lru_cache
-def get_test_settings() -> Settings:
+def get_test_settings(test_settings: Settings) -> Settings:
     """Get test settings - overrides the default settings provider."""
-    return Settings(
-        server=ServerSettings(log_level="WARNING"),
-        security=SecuritySettings(auth_token=None),  # Disable auth by default
-    )
+    return test_settings
 
 
 # Test data directory
@@ -53,6 +51,9 @@ def test_settings(tmp_path: Path) -> Settings:
     return Settings(
         server=ServerSettings(log_level="WARNING"),
         security=SecuritySettings(auth_token=None),  # No auth by default
+        auth=AuthSettings(
+            storage=CredentialStorageSettings(storage_paths=[tmp_path / ".claude/"])
+        ),
     )
 
 
@@ -95,14 +96,13 @@ async def async_client(app: FastAPI) -> AsyncGenerator[AsyncClient, None]:
 
 
 @pytest.fixture
-def auth_settings(tmp_path: Path) -> Settings:
+def auth_settings(test_settings: Settings) -> Settings:
     """Create settings with authentication enabled.
 
     Returns Settings configured with a test auth token.
     """
-    return Settings(
-        security=SecuritySettings(auth_token="test-token-12345"),
-    )
+    test_settings.security.auth_token = "test-token-12345"
+    return test_settings
 
 
 @pytest.fixture

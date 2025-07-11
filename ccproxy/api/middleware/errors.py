@@ -1,5 +1,6 @@
 """Error handling middleware for Claude Code Proxy API Server."""
 
+import logging
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, Request
@@ -297,7 +298,11 @@ def setup_error_handlers(app: FastAPI) -> None:
         request: Request, exc: HTTPException
     ) -> JSONResponse:
         """Handle HTTP exceptions."""
-        logger.error(f"HTTP exception: {exc.status_code} - {exc.detail}")
+        logger.error(
+            f"HTTP exception: {exc.status_code} - {exc.detail}",
+            exc_info=logger.isEnabledFor(logging.DEBUG),
+        )
+        # TODO: Add when in prod hide details in response
         return JSONResponse(
             status_code=exc.status_code,
             content={
@@ -313,7 +318,10 @@ def setup_error_handlers(app: FastAPI) -> None:
         request: Request, exc: StarletteHTTPException
     ) -> JSONResponse:
         """Handle Starlette HTTP exceptions."""
-        logger.error(f"Starlette HTTP exception: {exc.status_code} - {exc.detail}")
+        logger.error(
+            f"Starlette HTTP exception: {exc.status_code} - {exc.detail}",
+            exc_info=logger.isEnabledFor(logging.DEBUG),
+        )
         return JSONResponse(
             status_code=exc.status_code,
             content={

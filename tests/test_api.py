@@ -281,6 +281,73 @@ class TestAnthropicEndpoints:
         assert "status" in data
 
 
+class TestClaudeSDKEndpoints:
+    """Test Claude SDK direct endpoints."""
+
+    def test_claude_status(self, client: TestClient) -> None:
+        """Test Claude SDK status endpoint."""
+        response = client.get("/sdk/status")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert "status" in data
+
+
+class TestDualOpenAIEndpoints:
+    """Test that both /v1 and /openai/v1 OpenAI endpoints work identically."""
+
+    def test_chat_completions_both_paths(
+        self, client: TestClient, mock_claude: HTTPXMock
+    ) -> None:
+        """Test that OpenAI endpoints work on both /v1 and /openai/v1 paths."""
+        request_data = {
+            "model": "claude-3-5-sonnet-20241022",
+            "messages": [{"role": "user", "content": "Hello, world!"}],
+            "max_tokens": 100,
+            "temperature": 0.7,
+        }
+
+        # Test /openai/v1 path
+        response_openai = client.post("/openai/v1/chat/completions", json=request_data)
+        assert response_openai.status_code == 200
+        data_openai = response_openai.json()
+
+        # Test /v1 path (should also work for OpenAI format)
+        response_v1 = client.post("/v1/chat/completions", json=request_data)
+        assert response_v1.status_code == 200
+        data_v1 = response_v1.json()
+
+        # Both responses should have OpenAI format
+        for data in [data_openai, data_v1]:
+            assert "id" in data
+            assert "object" in data
+            assert "created" in data
+            assert "model" in data
+            assert "choices" in data
+            assert "usage" in data
+
+    def test_models_list_both_paths(self, client: TestClient) -> None:
+        """Test that models endpoint works on both OpenAI paths."""
+        # Test /openai/v1/models
+        response_openai = client.get("/openai/v1/models")
+        assert response_openai.status_code == 200
+        data_openai = response_openai.json()
+
+        # Test /v1/models (should return Anthropic format, but still work)
+        response_v1 = client.get("/v1/models")
+        assert response_v1.status_code == 200
+        data_v1 = response_v1.json()
+
+        # OpenAI endpoint should have OpenAI format
+        assert "object" in data_openai
+        assert data_openai["object"] == "list"
+        assert "data" in data_openai
+
+        # V1 endpoint returns Anthropic format
+        assert "data" in data_v1
+
+
+
 class TestAuthenticationEndpoints:
     """Test API endpoints with authentication."""
 
@@ -602,8 +669,8 @@ class TestStatusEndpoints:
         """Test all status endpoints return successfully."""
         status_endpoints = [
             "/v1/status",
-            "/openai/status",
-            "/auth/status",
+            "/openai/v1/status",
+            "/sdk/status",
             "/health",
             "/health/ready",
             "/health/live",

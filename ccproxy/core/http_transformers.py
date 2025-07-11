@@ -25,6 +25,10 @@ class HTTPRequestTransformer:
 
     def transform_path(self, path: str, proxy_mode: str = "full") -> str:
         """Transform request path."""
+        # Remove /api prefix if present (for new proxy endpoints)
+        if path.startswith("/api"):
+            path = path[4:]  # Remove "/api" prefix
+        
         # Remove /openai prefix if present
         if path.startswith("/openai"):
             path = path[7:]  # Remove "/openai" prefix

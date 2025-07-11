@@ -1,25 +1,18 @@
 """Authentication and credentials configuration."""
 
 import os
+from pathlib import Path
 from typing import Any
 
 from pydantic import BaseModel, Field, field_validator
 
 
-def _get_default_storage_paths() -> list[str]:
-    """Get default storage paths, with test override support."""
-    # Allow tests to override credential paths
-    if os.getenv("CCPROXY_TEST_MODE") == "true":
-        # Use a test-specific location that won't pollute real credentials
-        return [
-            "/tmp/ccproxy-test/.config/claude/.credentials.json",
-            "/tmp/ccproxy-test/.claude/.credentials.json",
-        ]
-
+def _get_default_storage_paths() -> list[Path]:
+    """Get default storage paths"""
     return [
-        "~/.config/claude/.credentials.json",  # Alternative legacy location
-        "~/.claude/.credentials.json",  # Legacy location
-        "~/.config/ccproxy/credentials.json",  # location in app config
+        Path("~/.config/claude/.credentials.json"),
+        Path("~/.claude/.credentials.json"),
+        Path("~/.config/ccproxy/credentials.json"),
     ]
 
 
@@ -87,7 +80,7 @@ class OAuthSettings(BaseModel):
 class CredentialStorageSettings(BaseModel):
     """Settings for credential storage locations."""
 
-    storage_paths: list[str] = Field(
+    storage_paths: list[Path] = Field(
         default_factory=lambda: _get_default_storage_paths(),
         description="Paths to search for credentials files",
     )
