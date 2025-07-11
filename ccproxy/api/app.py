@@ -76,6 +76,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(health_router, tags=["health"])
     app.include_router(metrics_router, prefix="/metrics", tags=["metrics"])
 
+    # Include OAuth router for authentication flows
+    from ccproxy.auth.oauth.routes import router as oauth_router
+
+    app.include_router(oauth_router, prefix="/oauth", tags=["oauth"])
+
+    # Include auth router for authentication status
+    from ccproxy.api.routes.auth import router as auth_router
+
+    app.include_router(auth_router, tags=["auth"])
+
     # New /sdk/ routes for Claude SDK endpoints
     app.include_router(claude_router, prefix="/sdk", tags=["claude-sdk"])
 

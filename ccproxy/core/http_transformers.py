@@ -28,7 +28,7 @@ class HTTPRequestTransformer:
         # Remove /api prefix if present (for new proxy endpoints)
         if path.startswith("/api"):
             path = path[4:]  # Remove "/api" prefix
-        
+
         # Remove /openai prefix if present
         if path.startswith("/openai"):
             path = path[7:]  # Remove "/openai" prefix

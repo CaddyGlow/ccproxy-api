@@ -154,7 +154,6 @@ class MetricsMiddleware(BaseHTTPMiddleware):
             await self.collector.collect_response(
                 request_id=request_id,
                 status_code=response.status_code,
-                response_time_ms=response_time_ms,
                 content_length=self._get_content_length(response),
                 content_type=response.headers.get("content-type"),
                 **self._extract_response_tokens(response),
