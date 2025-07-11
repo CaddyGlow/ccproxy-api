@@ -59,6 +59,23 @@ def _convert_openai_to_anthropic_messages(
     return anthropic_messages
 
 
+def _convert_usage_to_openai(anthropic_usage: dict[str, Any]) -> dict[str, Any]:
+    """Convert Anthropic usage format to OpenAI format.
+
+    Args:
+        anthropic_usage: Anthropic format usage data
+
+    Returns:
+        OpenAI format usage data
+    """
+    return {
+        "prompt_tokens": anthropic_usage.get("input_tokens", 0),
+        "completion_tokens": anthropic_usage.get("output_tokens", 0),
+        "total_tokens": anthropic_usage.get("input_tokens", 0)
+        + anthropic_usage.get("output_tokens", 0),
+    }
+
+
 def _convert_anthropic_to_openai_response(
     anthropic_response: dict[str, Any],
 ) -> dict[str, Any]:
@@ -96,14 +113,7 @@ def _convert_anthropic_to_openai_response(
                 "finish_reason": "stop",
             }
         ],
-        "usage": anthropic_response.get(
-            "usage",
-            {
-                "prompt_tokens": 0,
-                "completion_tokens": 0,
-                "total_tokens": 0,
-            },
-        ),
+        "usage": _convert_usage_to_openai(anthropic_response.get("usage", {})),
     }
 
 
@@ -161,6 +171,11 @@ async def create_openai_chat_completion(
             return OpenAIChatCompletionResponse.model_validate(openai_response)
 
     except Exception as e:
+        # Re-raise specific proxy errors to be handled by the error handler
+        from ccproxy.core.errors import ClaudeProxyError
+
+        if isinstance(e, ClaudeProxyError):
+            raise
         raise HTTPException(
             status_code=500, detail=f"Internal server error: {str(e)}"
         ) from e
@@ -216,6 +231,11 @@ async def create_anthropic_message(
             return MessageResponse.model_validate(response)
 
     except Exception as e:
+        # Re-raise specific proxy errors to be handled by the error handler
+        from ccproxy.core.errors import ClaudeProxyError
+
+        if isinstance(e, ClaudeProxyError):
+            raise
         raise HTTPException(
             status_code=500, detail=f"Internal server error: {str(e)}"
         ) from e

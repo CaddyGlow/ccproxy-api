@@ -12,6 +12,7 @@ from collections.abc import AsyncGenerator, Generator
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
+from unittest.mock import AsyncMock
 
 import pytest
 import pytest_asyncio
@@ -72,6 +73,223 @@ def app(test_settings: Settings) -> FastAPI:
     app.dependency_overrides[original_get_settings] = lambda: test_settings
 
     return app
+
+
+@pytest.fixture
+def mock_claude_service() -> AsyncMock:
+    """Create a mock Claude SDK service for testing."""
+    mock_service = AsyncMock()
+
+    # Mock the create_completion method for non-streaming
+    mock_service.create_completion.return_value = {
+        "id": "msg_01234567890",
+        "type": "message",
+        "role": "assistant",
+        "content": [{"type": "text", "text": "Hello! How can I help you?"}],
+        "model": "claude-3-5-sonnet-20241022",
+        "stop_reason": "end_turn",
+        "stop_sequence": None,
+        "usage": {"input_tokens": 10, "output_tokens": 8},
+    }
+
+    # Mock the list_models method
+    mock_service.list_models.return_value = [
+        {
+            "id": "claude-3-5-sonnet-20241022",
+            "object": "model",
+            "created": 1677610602,
+            "owned_by": "anthropic",
+        },
+        {
+            "id": "claude-3-opus-20240229",
+            "object": "model",
+            "created": 1677610602,
+            "owned_by": "anthropic",
+        },
+    ]
+
+    # Mock the validate_health method
+    mock_service.validate_health.return_value = True
+
+    return mock_service
+
+
+@pytest.fixture
+def mock_claude_service_streaming() -> AsyncMock:
+    """Create a mock Claude SDK service for streaming tests."""
+
+    async def mock_streaming_response() -> AsyncGenerator[dict[str, Any], None]:
+        """Mock streaming response generator."""
+        events = [
+            {
+                "type": "message_start",
+                "message": {
+                    "id": "msg_123",
+                    "type": "message",
+                    "role": "assistant",
+                    "content": [],
+                    "model": "claude-3-5-sonnet-20241022",
+                    "usage": {"input_tokens": 10, "output_tokens": 0},
+                },
+            },
+            {
+                "type": "content_block_start",
+                "index": 0,
+                "content_block": {"type": "text", "text": ""},
+            },
+            {
+                "type": "content_block_delta",
+                "index": 0,
+                "delta": {"type": "text_delta", "text": "Hello"},
+            },
+            {
+                "type": "content_block_delta",
+                "index": 0,
+                "delta": {"type": "text_delta", "text": " world!"},
+            },
+            {"type": "content_block_stop", "index": 0},
+            {
+                "type": "message_delta",
+                "delta": {"stop_reason": "end_turn", "stop_sequence": None},
+                "usage": {"output_tokens": 2},
+            },
+            {"type": "message_stop"},
+        ]
+
+        for event in events:
+            yield event  # type: ignore[misc]
+
+    mock_service = AsyncMock()
+
+    # Mock create_completion as an async function
+    async def mock_create_completion(*args: Any, **kwargs: Any) -> Any:
+        if kwargs.get("stream", False):
+            return mock_streaming_response()
+        else:
+            return {
+                "id": "msg_01234567890",
+                "type": "message",
+                "role": "assistant",
+                "content": [{"type": "text", "text": "Hello! How can I help you?"}],
+                "model": "claude-3-5-sonnet-20241022",
+                "stop_reason": "end_turn",
+                "stop_sequence": None,
+                "usage": {"input_tokens": 10, "output_tokens": 8},
+            }
+
+    mock_service.create_completion = mock_create_completion
+
+    # Mock the list_models method
+    mock_service.list_models.return_value = [
+        {
+            "id": "claude-3-5-sonnet-20241022",
+            "object": "model",
+            "created": 1677610602,
+            "owned_by": "anthropic",
+        },
+        {
+            "id": "claude-3-opus-20240229",
+            "object": "model",
+            "created": 1677610602,
+            "owned_by": "anthropic",
+        },
+    ]
+
+    # Mock the validate_health method
+    mock_service.validate_health.return_value = True
+
+    return mock_service
+
+
+@pytest.fixture
+def app_with_mock_claude_streaming(
+    test_settings: Settings, mock_claude_service_streaming: AsyncMock
+) -> FastAPI:
+    """Create test FastAPI application with mocked Claude streaming service.
+
+    Returns a configured FastAPI app with mocked streaming dependencies.
+    """
+    # Create app
+    app = create_app(settings=test_settings)
+
+    # Override the settings dependency for testing
+    from ccproxy.api.dependencies import get_claude_service
+    from ccproxy.config.settings import get_settings as original_get_settings
+
+    app.dependency_overrides[original_get_settings] = lambda: test_settings
+
+    # Override dependency with a function that accepts dependencies but returns mock
+    def mock_get_claude_service_streaming(
+        auth_manager: Any = None, metrics_collector: Any = None
+    ) -> AsyncMock:
+        return mock_claude_service_streaming
+
+    app.dependency_overrides[get_claude_service] = mock_get_claude_service_streaming
+
+    return app
+
+
+@pytest.fixture
+def client_with_mock_claude_streaming(
+    app_with_mock_claude_streaming: FastAPI,
+) -> TestClient:
+    """Create test client with mocked Claude streaming service.
+
+    Returns a TestClient for making requests with mocked streaming.
+    """
+    return TestClient(app_with_mock_claude_streaming)
+
+
+@pytest_asyncio.fixture
+async def async_client_with_mock_claude_streaming(
+    app_with_mock_claude_streaming: FastAPI,
+) -> AsyncGenerator[AsyncClient, None]:
+    """Create async test client with mocked Claude streaming service.
+
+    Yields an AsyncClient for making async requests with mocked streaming.
+    """
+    async with AsyncClient(
+        transport=ASGITransport(app=app_with_mock_claude_streaming),
+        base_url="http://test",
+    ) as ac:
+        yield ac
+
+
+@pytest.fixture
+def app_with_mock_claude(
+    test_settings: Settings, mock_claude_service: AsyncMock
+) -> FastAPI:
+    """Create test FastAPI application with mocked Claude service.
+
+    Returns a configured FastAPI app with mocked dependencies.
+    """
+    # Create app
+    app = create_app(settings=test_settings)
+
+    # Override the settings dependency for testing
+    from ccproxy.api.dependencies import get_claude_service
+    from ccproxy.config.settings import get_settings as original_get_settings
+
+    app.dependency_overrides[original_get_settings] = lambda: test_settings
+
+    # Override dependency with a function that accepts dependencies but returns mock
+    def mock_get_claude_service(
+        auth_manager: Any = None, metrics_collector: Any = None
+    ) -> AsyncMock:
+        return mock_claude_service
+
+    app.dependency_overrides[get_claude_service] = mock_get_claude_service
+
+    return app
+
+
+@pytest.fixture
+def client_with_mock_claude(app_with_mock_claude: FastAPI) -> TestClient:
+    """Create client for testing with mocked Claude service.
+
+    Returns a TestClient with mocked Claude service dependencies.
+    """
+    return TestClient(app_with_mock_claude)
 
 
 @pytest.fixture

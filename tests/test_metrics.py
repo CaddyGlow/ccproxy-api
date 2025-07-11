@@ -692,6 +692,11 @@ class TestMetricsMiddleware:
         }
         request.cookies = {}
         request.state = Mock()
+        # Ensure session_id is None instead of a Mock object
+        request.state.session_id = None
+        # Mock the client to provide proper IP address
+        request.client = Mock()
+        request.client.host = "127.0.0.1"
 
         # Mock the route handler
         async def mock_handler(req: Request) -> Response:
@@ -785,6 +790,11 @@ class TestMetricsMiddleware:
         request.headers = {}
         request.cookies = {}
         request.state = Mock()
+        # Ensure session_id is None instead of a Mock object
+        request.state.session_id = None
+        # Mock the client to provide proper IP address
+        request.client = Mock()
+        request.client.host = "127.0.0.1"
 
         # Mock handler that raises an exception
         async def failing_handler(req: Request) -> Response:

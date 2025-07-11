@@ -770,10 +770,20 @@ class TestOpenAIAdapter:
     def test_model_mapping(self, adapter: OpenAIAdapter) -> None:
         """Test model name mapping from OpenAI to Claude."""
         test_cases = [
-            ("gpt-4", "claude-3-5-sonnet-20241022"),
-            ("gpt-4-turbo", "claude-3-5-sonnet-20241022"),
+            ("gpt-4", "claude-3-5-sonnet-20241022"),  # Direct mapping
+            ("gpt-4-turbo", "claude-3-5-sonnet-20241022"),  # Direct mapping
+            ("gpt-4o", "claude-3-7-sonnet-20250219"),  # Direct mapping
+            ("gpt-4o-mini", "claude-3-5-haiku-latest"),  # Direct mapping
             ("gpt-3.5-turbo", "claude-3-5-haiku-20241022"),  # Direct mapping
             ("o1-preview", "claude-3-5-sonnet-20241022"),  # Direct mapping
+            ("o1-mini", "claude-sonnet-4-20250514"),  # Direct mapping
+            ("o3-mini", "claude-opus-4-20250514"),  # Direct mapping
+            ("gpt-4-new-version", "claude-3-7-sonnet-20250219"),  # Pattern match
+            ("gpt-3.5-new", "claude-3-5-haiku-latest"),  # Pattern match
+            (
+                "claude-3-5-sonnet-20241022",
+                "claude-3-5-sonnet-20241022",
+            ),  # Pass through Claude models
             ("unknown-model", "unknown-model"),  # Pass through unchanged
         ]
 
@@ -909,3 +919,85 @@ class TestOpenAIAdapter:
         assert result["tool_choice"]["type"] == "tool"
         assert result["tool_choice"]["name"] == "analyze_image"
         assert result["thinking"]["budget_tokens"] == 5000
+
+    def test_request_without_optional_fields(self, adapter: OpenAIAdapter) -> None:
+        """Test request conversion when optional fields are None."""
+        openai_request = {
+            "model": "gpt-4",
+            "messages": [{"role": "user", "content": "Hello"}],
+            "max_tokens": 100,
+            "temperature": None,
+            "top_p": None,
+            "stream": None,
+            "stop": None,
+        }
+
+        result = adapter.adapt_request(openai_request)
+
+        # None values should not be included in the result
+        assert "temperature" not in result
+        assert "top_p" not in result
+        assert "stream" not in result
+        assert "stop_sequences" not in result
+
+    def test_reasoning_effort_edge_cases(self, adapter: OpenAIAdapter) -> None:
+        """Test different reasoning effort values."""
+        test_cases = [
+            ("low", 1000),
+            ("medium", 5000),
+            ("high", 10000),
+        ]
+
+        for effort_level, expected_tokens in test_cases:
+            openai_request = {
+                "model": "o1-preview",
+                "messages": [{"role": "user", "content": "Think"}],
+                "reasoning_effort": effort_level,
+                "max_tokens": 100,
+            }
+
+            result = adapter.adapt_request(openai_request)
+            assert result["thinking"]["budget_tokens"] == expected_tokens
+
+    def test_assistant_message_without_content(self, adapter: OpenAIAdapter) -> None:
+        """Test handling assistant message with empty content (only tool calls)."""
+        openai_request = {
+            "model": "gpt-4",
+            "messages": [
+                {"role": "user", "content": "Use a tool"},
+                {
+                    "role": "assistant",
+                    "content": "",  # Empty content, only tool calls
+                    "tool_calls": [
+                        {
+                            "id": "call_123",
+                            "type": "function",
+                            "function": {"name": "test_tool", "arguments": "{}"},
+                        }
+                    ],
+                },
+            ],
+            "max_tokens": 100,
+        }
+
+        result = adapter.adapt_request(openai_request)
+        assert len(result["messages"]) == 2
+
+    def test_content_conversion_edge_cases(self, adapter: OpenAIAdapter) -> None:
+        """Test edge cases in content conversion."""
+        # Test with unsupported content type
+        content = [{"type": "unsupported", "data": "test"}]
+        result = adapter._convert_content_to_anthropic(content)
+        assert result == ""
+
+        # Test with missing image_url field
+        content = [{"type": "image_url"}]
+        result = adapter._convert_content_to_anthropic(content)
+        expected = [{"type": "text", "text": "[Image: ]"}]
+        assert result == expected
+
+        # Test with malformed image URL (invalid data: prefix)
+        content = [{"type": "image_url", "image_url": "data:invalid_format"}]
+        result = adapter._convert_content_to_anthropic(content)
+        # Invalid base64 should be logged but no content added (according to the except block)
+        assert result == ""
