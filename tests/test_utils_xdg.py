@@ -7,10 +7,12 @@ from unittest.mock import patch
 
 import pytest
 
-from ccproxy.core.async_utils import (
+from ccproxy.config.discovery import (
     get_ccproxy_config_dir,
     get_claude_cli_config_dir,
     get_claude_docker_home_dir,
+)
+from ccproxy.core.system import (
     get_xdg_cache_home,
     get_xdg_config_home,
     get_xdg_data_home,
@@ -35,7 +37,7 @@ class TestXDGConfigHome:
         """Test get_xdg_config_home when XDG_CONFIG_HOME is not set."""
         with (
             patch.dict(os.environ, {}, clear=True),
-            patch("ccproxy.utils.xdg.Path.home") as mock_home,
+            patch("ccproxy.core.system.Path.home") as mock_home,
         ):
             mock_home.return_value = Path("/home/testuser")
             result = get_xdg_config_home()
@@ -47,7 +49,7 @@ class TestXDGConfigHome:
         """Test get_xdg_config_home when XDG_CONFIG_HOME is empty string."""
         with (
             patch.dict(os.environ, {"XDG_CONFIG_HOME": ""}),
-            patch("ccproxy.utils.xdg.Path.home") as mock_home,
+            patch("ccproxy.core.system.Path.home") as mock_home,
         ):
             mock_home.return_value = Path("/home/testuser")
             result = get_xdg_config_home()
@@ -90,7 +92,7 @@ class TestXDGDataHome:
         """Test get_xdg_data_home when XDG_DATA_HOME is not set."""
         with (
             patch.dict(os.environ, {}, clear=True),
-            patch("ccproxy.utils.xdg.Path.home") as mock_home,
+            patch("ccproxy.core.system.Path.home") as mock_home,
         ):
             mock_home.return_value = Path("/home/testuser")
             result = get_xdg_data_home()
@@ -102,7 +104,7 @@ class TestXDGDataHome:
         """Test get_xdg_data_home when XDG_DATA_HOME is empty string."""
         with (
             patch.dict(os.environ, {"XDG_DATA_HOME": ""}),
-            patch("ccproxy.utils.xdg.Path.home") as mock_home,
+            patch("ccproxy.core.system.Path.home") as mock_home,
         ):
             mock_home.return_value = Path("/home/testuser")
             result = get_xdg_data_home()
@@ -145,7 +147,7 @@ class TestXDGCacheHome:
         """Test get_xdg_cache_home when XDG_CACHE_HOME is not set."""
         with (
             patch.dict(os.environ, {}, clear=True),
-            patch("ccproxy.utils.xdg.Path.home") as mock_home,
+            patch("ccproxy.core.system.Path.home") as mock_home,
         ):
             mock_home.return_value = Path("/home/testuser")
             result = get_xdg_cache_home()
@@ -157,7 +159,7 @@ class TestXDGCacheHome:
         """Test get_xdg_cache_home when XDG_CACHE_HOME is empty string."""
         with (
             patch.dict(os.environ, {"XDG_CACHE_HOME": ""}),
-            patch("ccproxy.utils.xdg.Path.home") as mock_home,
+            patch("ccproxy.core.system.Path.home") as mock_home,
         ):
             mock_home.return_value = Path("/home/testuser")
             result = get_xdg_cache_home()
@@ -201,7 +203,7 @@ class TestCCProxyConfigDir:
         """Test get_ccproxy_config_dir when XDG_CONFIG_HOME is not set."""
         with (
             patch.dict(os.environ, {}, clear=True),
-            patch("ccproxy.utils.xdg.Path.home") as mock_home,
+            patch("ccproxy.core.system.Path.home") as mock_home,
         ):
             mock_home.return_value = Path("/home/testuser")
             result = get_ccproxy_config_dir()
@@ -211,7 +213,7 @@ class TestCCProxyConfigDir:
 
     def test_get_ccproxy_config_dir_dependency_on_get_xdg_config_home(self):
         """Test that get_ccproxy_config_dir properly depends on get_xdg_config_home."""
-        with patch("ccproxy.utils.xdg.get_xdg_config_home") as mock_xdg:
+        with patch("ccproxy.config.discovery.get_xdg_config_home") as mock_xdg:
             mock_xdg.return_value = Path("/custom/config")
             result = get_ccproxy_config_dir()
             expected = Path("/custom/config") / "ccproxy"
@@ -239,7 +241,7 @@ class TestClaudeCLIConfigDir:
         """Test get_claude_cli_config_dir when XDG_CONFIG_HOME is not set."""
         with (
             patch.dict(os.environ, {}, clear=True),
-            patch("ccproxy.utils.xdg.Path.home") as mock_home,
+            patch("ccproxy.core.system.Path.home") as mock_home,
         ):
             mock_home.return_value = Path("/home/testuser")
             result = get_claude_cli_config_dir()
@@ -249,7 +251,7 @@ class TestClaudeCLIConfigDir:
 
     def test_get_claude_cli_config_dir_dependency_on_get_xdg_config_home(self):
         """Test that get_claude_cli_config_dir properly depends on get_xdg_config_home."""
-        with patch("ccproxy.utils.xdg.get_xdg_config_home") as mock_xdg:
+        with patch("ccproxy.config.discovery.get_xdg_config_home") as mock_xdg:
             mock_xdg.return_value = Path("/custom/config")
             result = get_claude_cli_config_dir()
             expected = Path("/custom/config") / "claude"
@@ -277,7 +279,7 @@ class TestClaudeDockerHomeDir:
         """Test get_claude_docker_home_dir when XDG_CONFIG_HOME is not set."""
         with (
             patch.dict(os.environ, {}, clear=True),
-            patch("ccproxy.utils.xdg.Path.home") as mock_home,
+            patch("ccproxy.core.system.Path.home") as mock_home,
         ):
             mock_home.return_value = Path("/home/testuser")
             result = get_claude_docker_home_dir()
@@ -287,7 +289,7 @@ class TestClaudeDockerHomeDir:
 
     def test_get_claude_docker_home_dir_dependency_on_get_ccproxy_config_dir(self):
         """Test that get_claude_docker_home_dir properly depends on get_ccproxy_config_dir."""
-        with patch("ccproxy.utils.xdg.get_ccproxy_config_dir") as mock_ccproxy:
+        with patch("ccproxy.config.discovery.get_ccproxy_config_dir") as mock_ccproxy:
             mock_ccproxy.return_value = Path("/custom/ccproxy")
             result = get_claude_docker_home_dir()
             expected = Path("/custom/ccproxy") / "home"
@@ -320,7 +322,7 @@ class TestXDGIntegration:
         """Test that the directory hierarchy is consistent."""
         with (
             patch.dict(os.environ, {}, clear=True),
-            patch("ccproxy.utils.xdg.Path.home") as mock_home,
+            patch("ccproxy.core.system.Path.home") as mock_home,
         ):
             mock_home.return_value = Path("/home/testuser")
 
@@ -348,7 +350,7 @@ class TestXDGIntegration:
                 {"XDG_CONFIG_HOME": "/custom/config", "XDG_DATA_HOME": ""},
                 clear=True,
             ),
-            patch("ccproxy.utils.xdg.Path.home") as mock_home,
+            patch("ccproxy.core.system.Path.home") as mock_home,
         ):
             mock_home.return_value = Path("/home/testuser")
 
@@ -399,7 +401,7 @@ class TestXDGEdgeCases:
         """Test behavior when Path.home() raises an exception."""
         with (
             patch.dict(os.environ, {}, clear=True),
-            patch("ccproxy.utils.xdg.Path.home") as mock_home,
+            patch("ccproxy.core.system.Path.home") as mock_home,
         ):
             mock_home.side_effect = RuntimeError("Cannot determine home directory")
 
@@ -409,10 +411,10 @@ class TestXDGEdgeCases:
     def test_none_env_var_behavior(self):
         """Test behavior when environment variable is explicitly None."""
         # This tests the os.environ.get() behavior
-        with patch("ccproxy.utils.xdg.os.environ.get") as mock_get:
+        with patch("ccproxy.core.system.os.environ.get") as mock_get:
             mock_get.return_value = None
 
-            with patch("ccproxy.utils.xdg.Path.home") as mock_home:
+            with patch("ccproxy.core.system.Path.home") as mock_home:
                 mock_home.return_value = Path("/home/testuser")
 
                 result = get_xdg_config_home()

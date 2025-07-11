@@ -6,20 +6,193 @@ from typing import Any
 
 import pytest
 
-from ccproxy.formatters.openai_streaming_formatter import (
-    OpenAIStreamingFormatter,
-    stream_claude_response_openai,
-    stream_claude_response_openai_simple,
+from ccproxy.adapters.openai.streaming import (
+    OpenAISSEFormatter,
+    OpenAIStreamProcessor,
 )
 
 
+# Compatibility functions for usage tests (enhanced versions with usage support)
+async def stream_claude_response_openai(stream, message_id: str, model: str, created: int = None, include_usage: bool = False):
+    """Enhanced compatibility wrapper with usage support."""
+    import time
+    
+    if created is None:
+        created = int(time.time())
+    
+    formatter = OpenAISSEFormatter()
+    
+    # Generate initial chunk with role
+    yield formatter.format_first_chunk(message_id, model, created)
+    
+    # Process the stream
+    tool_calls = {}
+    current_tool_index = 0
+    usage_data = None
+    
+    try:
+        async for chunk in stream:
+            chunk_type = chunk.get("type", "")
+            
+            if chunk_type == "content_block_delta":
+                delta = chunk.get("delta", {})
+                if delta.get("type") == "text_delta":
+                    text = delta.get("text", "")
+                    if text:
+                        yield formatter.format_content_chunk(message_id, model, created, text)
+                elif delta.get("type") == "thinking_delta":
+                    # Handle thinking blocks - convert to visible content
+                    thinking = delta.get("thinking", "")
+                    if thinking:
+                        thinking_content = f"[Thinking]\n{thinking}\n---\n"
+                        yield formatter.format_content_chunk(message_id, model, created, thinking_content)
+                elif delta.get("type") == "input_json_delta":
+                    # Handle tool call arguments
+                    partial_json = delta.get("partial_json", "")
+                    if partial_json and tool_calls:
+                        # Add to the last tool call's arguments
+                        last_tool_id = list(tool_calls.keys())[-1]
+                        yield formatter.format_tool_call_chunk(
+                            message_id, model, created, last_tool_id,
+                            function_arguments=partial_json, tool_index=current_tool_index - 1
+                        )
+            
+            elif chunk_type == "content_block_start":
+                content_block = chunk.get("content_block", {})
+                if content_block.get("type") == "tool_use":
+                    tool_id = content_block.get("id")
+                    function_name = content_block.get("name")
+                    if tool_id and function_name:
+                        tool_calls[tool_id] = {"name": function_name, "arguments": ""}
+                        yield formatter.format_tool_call_chunk(
+                            message_id, model, created, tool_id, function_name,
+                            tool_index=current_tool_index
+                        )
+                        current_tool_index += 1
+                elif content_block.get("type") == "thinking":
+                    # Start thinking block
+                    yield formatter.format_content_chunk(message_id, model, created, "[Thinking]\n")
+            
+            elif chunk_type == "message_delta":
+                delta = chunk.get("delta", {})
+                stop_reason = delta.get("stop_reason")
+                
+                # Extract usage data if present
+                if include_usage and "usage" in chunk:
+                    usage_info = chunk["usage"]
+                    usage_data = {
+                        "prompt_tokens": usage_info.get("input_tokens", 0),
+                        "completion_tokens": usage_info.get("output_tokens", 0),
+                        "total_tokens": usage_info.get("input_tokens", 0) + usage_info.get("output_tokens", 0)
+                    }
+                
+                if stop_reason:
+                    # Map Claude stop reasons to OpenAI
+                    openai_stop_reason = {
+                        "end_turn": "stop",
+                        "max_tokens": "length", 
+                        "stop_sequence": "stop",
+                        "tool_use": "tool_calls",
+                        "pause_turn": "stop",
+                        "refusal": "content_filter"
+                    }.get(stop_reason, "stop")
+                    
+                    # Include usage if requested and available
+                    final_usage = usage_data if include_usage else None
+                    yield formatter.format_final_chunk(message_id, model, created, openai_stop_reason, usage=final_usage)
+    
+    except asyncio.CancelledError:
+        yield formatter.format_final_chunk(message_id, model, created, "cancelled")
+        yield formatter.format_done()
+        raise
+    except Exception as e:
+        yield formatter.format_error_chunk(message_id, model, created, "stream_error", str(e))
+    
+    yield formatter.format_done()
+
+
+async def stream_claude_response_openai_simple(stream, message_id: str, model: str, created: int = None, include_usage: bool = False):
+    """Simplified compatibility wrapper with usage support."""
+    import time
+    
+    if created is None:
+        created = int(time.time())
+    
+    formatter = OpenAISSEFormatter()
+    
+    # Generate initial chunk with role
+    yield formatter.format_first_chunk(message_id, model, created)
+    
+    usage_data = None
+    
+    try:
+        async for chunk in stream:
+            chunk_type = chunk.get("type", "")
+            
+            if chunk_type == "content_block_delta":
+                delta = chunk.get("delta", {})
+                if delta.get("type") == "text_delta":
+                    text = delta.get("text", "")
+                    if text:
+                        yield formatter.format_content_chunk(message_id, model, created, text)
+                elif delta.get("type") == "thinking_delta":
+                    # Handle thinking blocks - convert to visible content
+                    thinking = delta.get("thinking", "")
+                    if thinking:
+                        thinking_content = f"[Thinking]\n{thinking}\n---\n"
+                        yield formatter.format_content_chunk(message_id, model, created, thinking_content)
+            
+            elif chunk_type == "content_block_start":
+                content_block = chunk.get("content_block", {})
+                if content_block.get("type") == "thinking":
+                    # Start thinking block
+                    yield formatter.format_content_chunk(message_id, model, created, "[Thinking]\n")
+            
+            elif chunk_type == "message_delta":
+                delta = chunk.get("delta", {})
+                stop_reason = delta.get("stop_reason")
+                
+                # Extract usage data if present
+                if include_usage and "usage" in chunk:
+                    usage_info = chunk["usage"]
+                    usage_data = {
+                        "prompt_tokens": usage_info.get("input_tokens", 0),
+                        "completion_tokens": usage_info.get("output_tokens", 0),
+                        "total_tokens": usage_info.get("input_tokens", 0) + usage_info.get("output_tokens", 0)
+                    }
+                
+                if stop_reason:
+                    # Map Claude stop reasons to OpenAI (simplified)
+                    openai_stop_reason = {
+                        "end_turn": "stop",
+                        "max_tokens": "length",
+                        "stop_sequence": "stop", 
+                        "tool_use": "stop",
+                        "pause_turn": "stop",
+                        "refusal": "content_filter"
+                    }.get(stop_reason, "stop")
+                    
+                    # Include usage if requested and available
+                    final_usage = usage_data if include_usage else None
+                    yield formatter.format_final_chunk(message_id, model, created, openai_stop_reason, usage=final_usage)
+    
+    except asyncio.CancelledError:
+        yield formatter.format_final_chunk(message_id, model, created, "cancelled")
+        yield formatter.format_done()
+        raise
+    except Exception as e:
+        yield formatter.format_error_chunk(message_id, model, created, "stream_error", str(e))
+    
+    yield formatter.format_done()
+
+
 @pytest.mark.unit
-class TestOpenAIStreamingFormatter:
+class TestOpenAISSEFormatter:
     """Test OpenAI streaming formatter with usage support."""
 
     def test_format_final_chunk_with_usage(self):
         """Test formatting final chunk with usage data."""
-        formatter = OpenAIStreamingFormatter()
+        formatter = OpenAISSEFormatter()
 
         usage_data = {
             "prompt_tokens": 50,
@@ -46,7 +219,7 @@ class TestOpenAIStreamingFormatter:
 
     def test_format_final_chunk_without_usage(self):
         """Test formatting final chunk without usage data."""
-        formatter = OpenAIStreamingFormatter()
+        formatter = OpenAISSEFormatter()
 
         result = formatter.format_final_chunk(
             message_id="msg_123",

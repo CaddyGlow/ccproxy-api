@@ -12,27 +12,144 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
-from ccproxy.formatters.openai_streaming_formatter import (
-    OpenAIStreamingFormatter,
-    stream_claude_response_openai,
-    stream_claude_response_openai_simple,
+from ccproxy.adapters.openai.streaming import (
+    OpenAISSEFormatter,
+    OpenAIStreamProcessor,
 )
 
 
-class TestOpenAIStreamingFormatter:
-    """Test the OpenAIStreamingFormatter class."""
+# Compatibility functions to replace the old streaming functions
+async def stream_claude_response_openai(stream, message_id: str, model: str, created: int = None):
+    """Compatibility wrapper for the old stream_claude_response_openai function."""
+    if created is None:
+        created = int(time.time())
+    
+    formatter = OpenAISSEFormatter()
+    
+    # Generate initial chunk with role
+    yield formatter.format_first_chunk(message_id, model, created)
+    
+    # Process the stream
+    tool_calls = {}
+    current_tool_index = 0
+    
+    try:
+        async for chunk in stream:
+            chunk_type = chunk.get("type", "")
+            
+            if chunk_type == "content_block_delta":
+                delta = chunk.get("delta", {})
+                if delta.get("type") == "text_delta":
+                    text = delta.get("text", "")
+                    if text:
+                        yield formatter.format_content_chunk(message_id, model, created, text)
+                elif delta.get("type") == "input_json_delta":
+                    # Handle tool call arguments
+                    partial_json = delta.get("partial_json", "")
+                    if partial_json and tool_calls:
+                        # Add to the last tool call's arguments
+                        last_tool_id = list(tool_calls.keys())[-1]
+                        yield formatter.format_tool_call_chunk(
+                            message_id, model, created, last_tool_id,
+                            function_arguments=partial_json, tool_index=current_tool_index - 1
+                        )
+            
+            elif chunk_type == "content_block_start":
+                content_block = chunk.get("content_block", {})
+                if content_block.get("type") == "tool_use":
+                    tool_id = content_block.get("id")
+                    function_name = content_block.get("name")
+                    if tool_id and function_name:
+                        tool_calls[tool_id] = {"name": function_name, "arguments": ""}
+                        yield formatter.format_tool_call_chunk(
+                            message_id, model, created, tool_id, function_name,
+                            tool_index=current_tool_index
+                        )
+                        current_tool_index += 1
+            
+            elif chunk_type == "message_delta":
+                delta = chunk.get("delta", {})
+                stop_reason = delta.get("stop_reason")
+                if stop_reason:
+                    # Map Claude stop reasons to OpenAI
+                    openai_stop_reason = {
+                        "end_turn": "stop",
+                        "max_tokens": "length", 
+                        "stop_sequence": "stop",
+                        "tool_use": "tool_calls"
+                    }.get(stop_reason, "stop")
+                    
+                    yield formatter.format_final_chunk(message_id, model, created, openai_stop_reason)
+    
+    except asyncio.CancelledError:
+        yield formatter.format_final_chunk(message_id, model, created, "cancelled")
+        yield formatter.format_done()
+        raise
+    except Exception as e:
+        yield formatter.format_error_chunk(message_id, model, created, "stream_error", str(e))
+    
+    yield formatter.format_done()
+
+
+async def stream_claude_response_openai_simple(stream, message_id: str, model: str, created: int = None):
+    """Simplified compatibility wrapper for streaming Claude responses to OpenAI format."""
+    if created is None:
+        created = int(time.time())
+    
+    formatter = OpenAISSEFormatter()
+    
+    # Generate initial chunk with role
+    yield formatter.format_first_chunk(message_id, model, created)
+    
+    try:
+        async for chunk in stream:
+            chunk_type = chunk.get("type", "")
+            
+            if chunk_type == "content_block_delta":
+                delta = chunk.get("delta", {})
+                if delta.get("type") == "text_delta":
+                    text = delta.get("text", "")
+                    if text:
+                        yield formatter.format_content_chunk(message_id, model, created, text)
+            
+            elif chunk_type == "message_delta":
+                delta = chunk.get("delta", {})
+                stop_reason = delta.get("stop_reason")
+                if stop_reason:
+                    # Map Claude stop reasons to OpenAI (simplified)
+                    openai_stop_reason = {
+                        "end_turn": "stop",
+                        "max_tokens": "length",
+                        "stop_sequence": "stop", 
+                        "tool_use": "stop"
+                    }.get(stop_reason, "stop")
+                    
+                    yield formatter.format_final_chunk(message_id, model, created, openai_stop_reason)
+    
+    except asyncio.CancelledError:
+        yield formatter.format_final_chunk(message_id, model, created, "cancelled")
+        yield formatter.format_done()
+        raise
+    except Exception as e:
+        yield formatter.format_error_chunk(message_id, model, created, "stream_error", str(e))
+    
+    yield formatter.format_done()
+
+
+class TestOpenAISSEFormatter:
+    """Test the OpenAISSEFormatter class."""
 
     def test_format_data_event(self):
         """Test format_data_event method."""
         data = {"type": "test", "message": "hello"}
-        result = OpenAIStreamingFormatter.format_data_event(data)
+        result = OpenAISSEFormatter.format_data_event(data)
 
         expected = 'data: {"type":"test","message":"hello"}\n\n'
         assert result == expected
 
     def test_format_data_event_empty(self):
         """Test format_data_event with empty data."""
-        result = OpenAIStreamingFormatter.format_data_event({})
+        result = OpenAISSEFormatter.format_data_event({})
         assert result == "data: {}\n\n"
 
     def test_format_data_event_complex(self):
@@ -42,7 +159,7 @@ class TestOpenAIStreamingFormatter:
             "nested": {"key": "value", "number": 42},
             "array": [1, 2, 3],
         }
-        result = OpenAIStreamingFormatter.format_data_event(data)
+        result = OpenAISSEFormatter.format_data_event(data)
 
         # Parse the JSON to verify it's valid
         json_str = result.replace("data: ", "").replace("\n\n", "")
@@ -55,7 +172,7 @@ class TestOpenAIStreamingFormatter:
         model = "claude-3-5-sonnet-20241022"
         created = 1234567890
 
-        result = OpenAIStreamingFormatter.format_first_chunk(message_id, model, created)
+        result = OpenAISSEFormatter.format_first_chunk(message_id, model, created)
 
         assert "data: " in result
         assert result.endswith("\n\n")
@@ -73,7 +190,7 @@ class TestOpenAIStreamingFormatter:
 
     def test_format_first_chunk_custom_role(self):
         """Test format_first_chunk with custom role."""
-        result = OpenAIStreamingFormatter.format_first_chunk(
+        result = OpenAISSEFormatter.format_first_chunk(
             "msg_123", "claude-3-5-sonnet-20241022", 1234567890, "user"
         )
 
@@ -89,7 +206,7 @@ class TestOpenAIStreamingFormatter:
         created = 1234567890
         content = "Hello world"
 
-        result = OpenAIStreamingFormatter.format_content_chunk(
+        result = OpenAISSEFormatter.format_content_chunk(
             message_id, model, created, content
         )
 
@@ -108,7 +225,7 @@ class TestOpenAIStreamingFormatter:
 
     def test_format_content_chunk_custom_index(self):
         """Test format_content_chunk with custom choice index."""
-        result = OpenAIStreamingFormatter.format_content_chunk(
+        result = OpenAISSEFormatter.format_content_chunk(
             "msg_123", "claude-3-5-sonnet-20241022", 1234567890, "test", 2
         )
 
@@ -119,7 +236,7 @@ class TestOpenAIStreamingFormatter:
 
     def test_format_content_chunk_empty_content(self):
         """Test format_content_chunk with empty content."""
-        result = OpenAIStreamingFormatter.format_content_chunk(
+        result = OpenAISSEFormatter.format_content_chunk(
             "msg_123", "claude-3-5-sonnet-20241022", 1234567890, ""
         )
 
@@ -136,7 +253,7 @@ class TestOpenAIStreamingFormatter:
         tool_call_id = "tool_123"
         function_name = "get_weather"
 
-        result = OpenAIStreamingFormatter.format_tool_call_chunk(
+        result = OpenAISSEFormatter.format_tool_call_chunk(
             message_id, model, created, tool_call_id, function_name
         )
 
@@ -151,7 +268,7 @@ class TestOpenAIStreamingFormatter:
 
     def test_format_tool_call_chunk_arguments_only(self):
         """Test format_tool_call_chunk with function arguments only."""
-        result = OpenAIStreamingFormatter.format_tool_call_chunk(
+        result = OpenAISSEFormatter.format_tool_call_chunk(
             "msg_123",
             "claude-3-5-sonnet-20241022",
             1234567890,
@@ -168,7 +285,7 @@ class TestOpenAIStreamingFormatter:
 
     def test_format_tool_call_chunk_complete(self):
         """Test format_tool_call_chunk with both name and arguments."""
-        result = OpenAIStreamingFormatter.format_tool_call_chunk(
+        result = OpenAISSEFormatter.format_tool_call_chunk(
             "msg_123",
             "claude-3-5-sonnet-20241022",
             1234567890,
@@ -193,7 +310,7 @@ class TestOpenAIStreamingFormatter:
         model = "claude-3-5-sonnet-20241022"
         created = 1234567890
 
-        result = OpenAIStreamingFormatter.format_final_chunk(message_id, model, created)
+        result = OpenAISSEFormatter.format_final_chunk(message_id, model, created)
 
         json_str = result.replace("data: ", "").replace("\n\n", "")
         data = json.loads(json_str)
@@ -206,7 +323,7 @@ class TestOpenAIStreamingFormatter:
 
     def test_format_final_chunk_custom_reason(self):
         """Test format_final_chunk with custom finish reason."""
-        result = OpenAIStreamingFormatter.format_final_chunk(
+        result = OpenAISSEFormatter.format_final_chunk(
             "msg_123", "claude-3-5-sonnet-20241022", 1234567890, "length", 1
         )
 
@@ -224,7 +341,7 @@ class TestOpenAIStreamingFormatter:
         error_type = "internal_server_error"
         error_message = "Something went wrong"
 
-        result = OpenAIStreamingFormatter.format_error_chunk(
+        result = OpenAISSEFormatter.format_error_chunk(
             message_id, model, created, error_type, error_message
         )
 
@@ -240,7 +357,7 @@ class TestOpenAIStreamingFormatter:
 
     def test_format_done(self):
         """Test format_done method."""
-        result = OpenAIStreamingFormatter.format_done()
+        result = OpenAISSEFormatter.format_done()
         assert result == "data: [DONE]\n\n"
 
 

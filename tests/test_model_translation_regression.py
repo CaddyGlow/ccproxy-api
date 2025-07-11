@@ -39,7 +39,7 @@ class TestModelTranslationRegression:
         )
         assert map_openai_model_to_claude("o3-mini-2024") == "claude-opus-4-20250514"
 
-    @patch("ccproxy.routers.claudecode.openai.ClaudeClient")
+    @patch("ccproxy.api.routes.openai.ClaudeClient")
     def test_openai_endpoint_uses_translated_model(
         self, mock_claude_client_class, test_client
     ):
@@ -87,7 +87,7 @@ class TestModelTranslationRegression:
         import ast
         import inspect
 
-        from ccproxy.routers.claudecode import openai
+        from ccproxy.api.routes import openai
 
         # Get the source of the create_chat_completion function
         source = inspect.getsource(openai.create_chat_completion)

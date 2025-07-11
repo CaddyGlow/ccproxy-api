@@ -6,12 +6,16 @@ from pathlib import Path
 
 import pytest
 
-from ccproxy.utils.docker_validation import (
-    validate_docker_volumes,
-    validate_environment_variable,
-    validate_host_path,
-    validate_volume_format,
-)
+# NOTE: Docker validation functions were refactored or removed
+from ccproxy.config.docker_settings import DockerSettings, validate_host_path
+# validate_docker_volumes is now DockerSettings.validate_docker_volumes()
+# validate_environment_variable and validate_volume_format were removed
+# from ccproxy.utils.docker_validation import (
+#     validate_docker_volumes,
+#     validate_environment_variable,
+#     validate_host_path,
+#     validate_volume_format,
+# )
 
 
 class TestValidateVolumeFormat:

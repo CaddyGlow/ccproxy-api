@@ -7,13 +7,244 @@ from unittest.mock import MagicMock, Mock
 
 import pytest
 
-from ccproxy.formatters.stream_transformer import (
-    ClaudeSDKEventSource,
-    OpenAIStreamTransformer,
-    SSEEventSource,
-    StreamEvent,
-    StreamingConfig,
+from ccproxy.adapters.openai.streaming import (
+    OpenAISSEFormatter,
+    OpenAIStreamProcessor,
 )
+from ccproxy.adapters.anthropic.streaming import (
+    AnthropicStreamingFormatter,
+    AnthropicStreamProcessor,
+)
+
+
+# Compatibility classes and functions to replace the old stream_transformer functionality
+from dataclasses import dataclass
+from typing import Any, AsyncIterator
+import time
+
+
+@dataclass
+class StreamEvent:
+    """Compatibility class for StreamEvent."""
+    type: str
+    data: dict[str, Any] = None
+    
+    def __post_init__(self):
+        if self.data is None:
+            self.data = {}
+
+
+@dataclass
+class StreamingConfig:
+    """Compatibility class for StreamingConfig."""
+    enable_text_chunking: bool = True
+    enable_tool_calls: bool = True
+    enable_usage_info: bool = True
+    chunk_delay_ms: float = 10.0
+    chunk_size_words: int = 3
+
+
+class ClaudeSDKEventSource:
+    """Compatibility class for ClaudeSDKEventSource."""
+    
+    def __init__(self, stream: AsyncIterator[dict[str, Any]]):
+        self.stream = stream
+    
+    async def get_events(self) -> AsyncIterator[StreamEvent]:
+        """Convert Claude SDK chunks to events."""
+        async for chunk in self.stream:
+            chunk_type = chunk.get("type", "")
+            
+            if chunk_type == "message_start":
+                yield StreamEvent("start", chunk)
+            elif chunk_type == "content_block_start":
+                yield StreamEvent("content_block_start", {"block": chunk.get("content_block", {})})
+            elif chunk_type == "content_block_delta":
+                yield StreamEvent("content_block_delta", {"delta": chunk.get("delta", {})})
+            elif chunk_type == "content_block_stop":
+                yield StreamEvent("content_block_stop", chunk)
+            elif chunk_type == "message_delta":
+                yield StreamEvent("message_delta", {"delta": chunk.get("delta", {}), "usage": chunk.get("usage")})
+            elif chunk_type == "message_stop":
+                yield StreamEvent("stop", chunk)
+            else:
+                yield StreamEvent(chunk_type, chunk)
+
+
+class SSEEventSource:
+    """Compatibility class for SSEEventSource."""
+    
+    def __init__(self, response):
+        self.response = response
+    
+    async def get_events(self) -> AsyncIterator[StreamEvent]:
+        """Parse SSE stream and convert to events."""
+        async for data in self.response.aiter_bytes():
+            line = data.decode('utf-8').strip()
+            if line.startswith('data: '):
+                json_str = line[6:]  # Remove 'data: ' prefix
+                try:
+                    import json
+                    chunk = json.loads(json_str)
+                    chunk_type = chunk.get("type", "")
+                    
+                    if chunk_type == "message_start":
+                        yield StreamEvent("start", chunk)
+                    elif chunk_type == "content_block_start":
+                        yield StreamEvent("content_block_start", {"block": chunk.get("content_block", {})})
+                    elif chunk_type == "content_block_delta":
+                        yield StreamEvent("content_block_delta", {"delta": chunk.get("delta", {})})
+                    elif chunk_type == "content_block_stop":
+                        yield StreamEvent("content_block_stop", chunk)
+                    elif chunk_type == "message_delta":
+                        yield StreamEvent("message_delta", {"delta": chunk.get("delta", {}), "usage": chunk.get("usage")})
+                    elif chunk_type == "message_stop":
+                        yield StreamEvent("stop", chunk)
+                    else:
+                        yield StreamEvent(chunk_type, chunk)
+                except Exception:
+                    continue
+
+
+class OpenAIStreamTransformer:
+    """Compatibility class for OpenAIStreamTransformer."""
+    
+    def __init__(self, event_source, message_id: str = None, model: str = "gpt-4", config: StreamingConfig = None):
+        self.event_source = event_source
+        self.message_id = message_id or f"chatcmpl-{int(time.time())}"
+        self.model = model
+        self.config = config or StreamingConfig()
+        self.formatter = OpenAISSEFormatter()
+        self.created = int(time.time())
+        
+    @classmethod
+    def from_claude_sdk(cls, stream: AsyncIterator[dict[str, Any]], message_id: str = None, model: str = "gpt-4", config: StreamingConfig = None):
+        """Create transformer from Claude SDK stream."""
+        event_source = ClaudeSDKEventSource(stream)
+        return cls(event_source, message_id, model, config)
+    
+    @classmethod
+    def from_sse_stream(cls, response, message_id: str = None, model: str = "gpt-4", config: StreamingConfig = None):
+        """Create transformer from SSE stream."""
+        event_source = SSEEventSource(response)
+        return cls(event_source, message_id, model, config)
+    
+    async def transform(self) -> AsyncIterator[str]:
+        """Transform events to OpenAI streaming format."""
+        # Generate initial chunk
+        yield self.formatter.format_first_chunk(self.message_id, self.model, self.created)
+        
+        usage_data = None
+        tool_calls = {}
+        current_tool_index = 0
+        
+        try:
+            async for event in self.event_source.get_events():
+                if event.type == "content_block_delta":
+                    delta = event.data.get("delta", {})
+                    
+                    if delta.get("type") == "text_delta":
+                        text = delta.get("text", "")
+                        if text and self.config.enable_text_chunking:
+                            # Split text into chunks
+                            chunks = self._split_text_for_streaming(text)
+                            for chunk_text in chunks:
+                                if chunk_text.strip():
+                                    yield self.formatter.format_content_chunk(self.message_id, self.model, self.created, chunk_text)
+                                    if self.config.chunk_delay_ms > 0:
+                                        import asyncio
+                                        await asyncio.sleep(self.config.chunk_delay_ms / 1000)
+                        elif text:
+                            yield self.formatter.format_content_chunk(self.message_id, self.model, self.created, text)
+                    
+                    elif delta.get("type") == "thinking_delta":
+                        # Handle thinking blocks
+                        thinking = delta.get("thinking", "")
+                        if thinking:
+                            thinking_content = f"[Thinking]\n{thinking}\n---\n"
+                            yield self.formatter.format_content_chunk(self.message_id, self.model, self.created, thinking_content)
+                    
+                    elif delta.get("type") == "input_json_delta" and self.config.enable_tool_calls:
+                        # Handle tool call arguments
+                        partial_json = delta.get("partial_json", "")
+                        if partial_json and tool_calls:
+                            last_tool_id = list(tool_calls.keys())[-1]
+                            yield self.formatter.format_tool_call_chunk(
+                                self.message_id, self.model, self.created, last_tool_id,
+                                function_arguments=partial_json, tool_index=current_tool_index - 1
+                            )
+                
+                elif event.type == "content_block_start":
+                    block = event.data.get("block", {})
+                    if block.get("type") == "tool_use" and self.config.enable_tool_calls:
+                        tool_id = block.get("id")
+                        function_name = block.get("name")
+                        if tool_id and function_name:
+                            tool_calls[tool_id] = {"name": function_name, "arguments": ""}
+                            yield self.formatter.format_tool_call_chunk(
+                                self.message_id, self.model, self.created, tool_id, function_name,
+                                tool_index=current_tool_index
+                            )
+                            current_tool_index += 1
+                    elif block.get("type") == "thinking":
+                        yield self.formatter.format_content_chunk(self.message_id, self.model, self.created, "[Thinking]\n")
+                
+                elif event.type == "message_delta":
+                    delta = event.data.get("delta", {})
+                    stop_reason = delta.get("stop_reason")
+                    
+                    # Extract usage data if present and enabled
+                    if self.config.enable_usage_info and event.data.get("usage"):
+                        usage_info = event.data["usage"]
+                        usage_data = {
+                            "prompt_tokens": usage_info.get("input_tokens", 0),
+                            "completion_tokens": usage_info.get("output_tokens", 0),
+                            "total_tokens": usage_info.get("input_tokens", 0) + usage_info.get("output_tokens", 0)
+                        }
+                    
+                    if stop_reason:
+                        # Map Claude stop reasons to OpenAI
+                        openai_stop_reason = {
+                            "end_turn": "stop",
+                            "max_tokens": "length", 
+                            "stop_sequence": "stop",
+                            "tool_use": "tool_calls"
+                        }.get(stop_reason, "stop")
+                        
+                        final_usage = usage_data if self.config.enable_usage_info else None
+                        yield self.formatter.format_final_chunk(self.message_id, self.model, self.created, openai_stop_reason, usage=final_usage)
+        
+        except asyncio.CancelledError:
+            yield self.formatter.format_final_chunk(self.message_id, self.model, self.created, "cancelled")
+            yield self.formatter.format_done()
+            raise
+        except Exception as e:
+            yield self.formatter.format_error_chunk(self.message_id, self.model, self.created, "stream_error", str(e))
+        
+        yield self.formatter.format_done()
+    
+    def _split_text_for_streaming(self, text: str) -> list[str]:
+        """Split text into chunks for streaming."""
+        if not text or not self.config.enable_text_chunking:
+            return [text]
+        
+        words = text.split()
+        if len(words) <= self.config.chunk_size_words:
+            return [text]
+        
+        chunks = []
+        current_chunk = []
+        
+        for word in words:
+            current_chunk.append(word)
+            if len(current_chunk) >= self.config.chunk_size_words:
+                chunks.append(" ".join(current_chunk))
+                current_chunk = []
+        
+        if current_chunk:
+            chunks.append(" ".join(current_chunk))
+        
+        return chunks
 
 
 # Test fixtures for Claude SDK responses

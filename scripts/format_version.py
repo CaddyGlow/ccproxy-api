@@ -17,7 +17,7 @@ except ImportError:
     sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from ccproxy import __version__
-from ccproxy.utils import format_version, parse_version
+from ccproxy.core.async_utils import format_version
 
 
 def main() -> None:
@@ -37,7 +37,7 @@ def main() -> None:
 
     try:
         # Format according to requested level
-        formatted_version = format_version(__version__, level)
+        formatted_version = format_version(__version__)
 
         print(formatted_version)
 

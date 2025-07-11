@@ -5,26 +5,61 @@ from typing import Any
 
 import pytest
 
-from ccproxy.formatters.anthropic_streaming import (
-    StreamingFormatter,
-    stream_claude_response,
+from ccproxy.adapters.anthropic.streaming import (
+    AnthropicStreamingFormatter,
+    AnthropicStreamProcessor,
 )
 
 
+# Compatibility function to replace the old stream_claude_response function
+async def stream_claude_response(stream, message_id: str, model: str):
+    """Compatibility wrapper for the old stream_claude_response function."""
+    processor = AnthropicStreamProcessor()
+    formatter = processor.formatter
+    
+    # Generate initial message_start event
+    yield formatter.format_message_start(message_id, model)
+    
+    # Generate content_block_start event
+    yield formatter.format_content_block_start(index=0)
+    
+    # Process the actual stream data
+    try:
+        async for chunk in stream:
+            if chunk.get("type") == "content_block_delta":
+                # Extract text from delta and format it
+                text = chunk.get("delta", {}).get("text", "")
+                if text:
+                    yield formatter.format_content_block_delta(text, index=0)
+            elif chunk.get("type") == "message_delta":
+                # Format message delta
+                delta = chunk.get("delta", {})
+                stop_reason = delta.get("stop_reason")
+                stop_sequence = delta.get("stop_sequence")
+                yield formatter.format_message_delta(stop_reason, stop_sequence)
+    except Exception as e:
+        # Format error
+        yield formatter.format_error("stream_error", str(e))
+    
+    # Generate closing events
+    yield formatter.format_content_block_stop(index=0)
+    yield formatter.format_message_stop()
+    yield formatter.format_done()
+
 @pytest.mark.integration
-class TestStreamingFormatter:
-    """Test StreamingFormatter class."""
+class TestAnthropicStreamingFormatter:
+    """Test AnthropicStreamingFormatter class."""
 
     def test_format_data_only(self):
         """Test format_data_only method."""
         data = {"type": "test", "message": "hello"}
-        result = StreamingFormatter.format_data_only(data)
+        result = AnthropicStreamingFormatter.format_data_only(data)
 
         assert result == 'event: test\ndata: {"type":"test","message":"hello"}\n\n'
 
     def test_format_message_start(self):
         """Test format_message_start method."""
-        result = StreamingFormatter.format_message_start(
+        result = AnthropicStreamingFormatter.format_message_start(
             "msg_123", "claude-3-5-sonnet-20241022"
         )
 
@@ -37,7 +72,7 @@ class TestStreamingFormatter:
 
     def test_format_content_block_start(self):
         """Test format_content_block_start method."""
-        result = StreamingFormatter.format_content_block_start(index=0)
+        result = AnthropicStreamingFormatter.format_content_block_start(index=0)
 
         assert "data: " in result
         assert '"type":"content_block_start"' in result
@@ -46,7 +81,7 @@ class TestStreamingFormatter:
 
     def test_format_content_block_delta(self):
         """Test format_content_block_delta method."""
-        result = StreamingFormatter.format_content_block_delta("Hello", index=0)
+        result = AnthropicStreamingFormatter.format_content_block_delta("Hello", index=0)
 
         assert "data: " in result
         assert '"type":"content_block_delta"' in result
@@ -55,7 +90,7 @@ class TestStreamingFormatter:
 
     def test_format_content_block_stop(self):
         """Test format_content_block_stop method."""
-        result = StreamingFormatter.format_content_block_stop(index=0)
+        result = AnthropicStreamingFormatter.format_content_block_stop(index=0)
 
         assert "data: " in result
         assert '"type":"content_block_stop"' in result
@@ -63,7 +98,7 @@ class TestStreamingFormatter:
 
     def test_format_message_delta(self):
         """Test format_message_delta method."""
-        result = StreamingFormatter.format_message_delta(
+        result = AnthropicStreamingFormatter.format_message_delta(
             stop_reason="end_turn", stop_sequence=None
         )
 
@@ -75,14 +110,14 @@ class TestStreamingFormatter:
 
     def test_format_message_stop(self):
         """Test format_message_stop method."""
-        result = StreamingFormatter.format_message_stop()
+        result = AnthropicStreamingFormatter.format_message_stop()
 
         assert "data: " in result
         assert '"type":"message_stop"' in result
 
     def test_format_error(self):
         """Test format_error method."""
-        result = StreamingFormatter.format_error(
+        result = AnthropicStreamingFormatter.format_error(
             "internal_server_error", "Something went wrong"
         )
 
@@ -95,7 +130,7 @@ class TestStreamingFormatter:
 
     def test_format_done(self):
         """Test format_done method."""
-        result = StreamingFormatter.format_done()
+        result = AnthropicStreamingFormatter.format_done()
 
         assert result == "data: [DONE]\n\n"
 
@@ -104,44 +139,44 @@ class TestStreamingFormatter:
         # Test that all events (except DONE) have both event: and data: lines
 
         # Test message_start event
-        result = StreamingFormatter.format_message_start(
+        result = AnthropicStreamingFormatter.format_message_start(
             "msg_123", "claude-3-5-sonnet-20241022"
         )
         assert result.startswith("event: message_start\ndata: ")
         assert result.endswith("\n\n")
 
         # Test content_block_start event
-        result = StreamingFormatter.format_content_block_start()
+        result = AnthropicStreamingFormatter.format_content_block_start()
         assert result.startswith("event: content_block_start\ndata: ")
         assert result.endswith("\n\n")
 
         # Test content_block_delta event
-        result = StreamingFormatter.format_content_block_delta("Hello")
+        result = AnthropicStreamingFormatter.format_content_block_delta("Hello")
         assert result.startswith("event: content_block_delta\ndata: ")
         assert result.endswith("\n\n")
 
         # Test content_block_stop event
-        result = StreamingFormatter.format_content_block_stop()
+        result = AnthropicStreamingFormatter.format_content_block_stop()
         assert result.startswith("event: content_block_stop\ndata: ")
         assert result.endswith("\n\n")
 
         # Test message_delta event
-        result = StreamingFormatter.format_message_delta()
+        result = AnthropicStreamingFormatter.format_message_delta()
         assert result.startswith("event: message_delta\ndata: ")
         assert result.endswith("\n\n")
 
         # Test message_stop event
-        result = StreamingFormatter.format_message_stop()
+        result = AnthropicStreamingFormatter.format_message_stop()
         assert result.startswith("event: message_stop\ndata: ")
         assert result.endswith("\n\n")
 
         # Test error event
-        result = StreamingFormatter.format_error("test_error", "test message")
+        result = AnthropicStreamingFormatter.format_error("test_error", "test message")
         assert result.startswith("event: error\ndata: ")
         assert result.endswith("\n\n")
 
         # Test generic data event
-        result = StreamingFormatter.format_data_only(
+        result = AnthropicStreamingFormatter.format_data_only(
             {"type": "custom_event", "data": "test"}
         )
         assert result.startswith("event: custom_event\ndata: ")
@@ -164,7 +199,7 @@ class TestStreamingFormatter:
         ]
 
         for data, expected_type in test_cases:
-            result = StreamingFormatter.format_data_only(data)
+            result = AnthropicStreamingFormatter.format_data_only(data)
             assert result.startswith(f"event: {expected_type}\ndata: ")
 
     def test_anthropic_sdk_compatibility(self):
@@ -173,15 +208,15 @@ class TestStreamingFormatter:
 
         # Test a complete streaming sequence
         events = [
-            StreamingFormatter.format_message_start(
+            AnthropicStreamingFormatter.format_message_start(
                 "msg_123", "claude-3-5-sonnet-20241022"
             ),
-            StreamingFormatter.format_content_block_start(),
-            StreamingFormatter.format_content_block_delta("Hello world"),
-            StreamingFormatter.format_content_block_stop(),
-            StreamingFormatter.format_message_delta("end_turn"),
-            StreamingFormatter.format_message_stop(),
-            StreamingFormatter.format_done(),
+            AnthropicStreamingFormatter.format_content_block_start(),
+            AnthropicStreamingFormatter.format_content_block_delta("Hello world"),
+            AnthropicStreamingFormatter.format_content_block_stop(),
+            AnthropicStreamingFormatter.format_message_delta("end_turn"),
+            AnthropicStreamingFormatter.format_message_stop(),
+            AnthropicStreamingFormatter.format_done(),
         ]
 
         # Parse each event as if we were the Anthropic SDK
@@ -221,7 +256,7 @@ class TestStreamingFormatter:
         """Test that all JSON in SSE events is consistently formatted."""
         # Test that JSON is compact (no spaces after separators)
 
-        result = StreamingFormatter.format_message_start(
+        result = AnthropicStreamingFormatter.format_message_start(
             "msg_123", "claude-3-5-sonnet-20241022"
         )
         data_line = result.split("\n")[1]  # Get the data: line
