@@ -14,8 +14,8 @@ def find_toml_config_file() -> Path | None:
     """
     # Check current directory first
     candidates = [
-        Path(".ccproxy.toml"),
-        Path("ccproxy.toml"),
+        Path(".ccproxy.toml").resolve(),
+        Path("ccproxy.toml").resolve(),
     ]
 
     # Check git repo root

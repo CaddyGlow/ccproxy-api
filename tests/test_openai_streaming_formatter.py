@@ -19,30 +19,44 @@ from ccproxy.adapters.openai.streaming import (
 
 
 # Compatibility functions to replace the old streaming functions
-async def stream_claude_response_openai(stream, message_id: str, model: str, created: int = None):
+async def stream_claude_response_openai(
+    stream, message_id: str, model: str, created: int = None
+):
     """Compatibility wrapper for the old stream_claude_response_openai function."""
     if created is None:
         created = int(time.time())
-    
+
     formatter = OpenAISSEFormatter()
-    
+
     # Generate initial chunk with role
     yield formatter.format_first_chunk(message_id, model, created)
-    
+
     # Process the stream
     tool_calls = {}
     current_tool_index = 0
-    
+
     try:
         async for chunk in stream:
             chunk_type = chunk.get("type", "")
-            
+
             if chunk_type == "content_block_delta":
                 delta = chunk.get("delta", {})
                 if delta.get("type") == "text_delta":
                     text = delta.get("text", "")
                     if text:
-                        yield formatter.format_content_chunk(message_id, model, created, text)
+                        # Split text into chunks for better streaming
+                        words = text.split()
+                        chunk_size = 10  # Split into chunks of 10 words
+                        if len(words) > chunk_size:
+                            for i in range(0, len(words), chunk_size):
+                                chunk_text = " ".join(words[i : i + chunk_size])
+                                yield formatter.format_content_chunk(
+                                    message_id, model, created, chunk_text
+                                )
+                        else:
+                            yield formatter.format_content_chunk(
+                                message_id, model, created, text
+                            )
                 elif delta.get("type") == "input_json_delta":
                     # Handle tool call arguments
                     partial_json = delta.get("partial_json", "")
@@ -50,10 +64,14 @@ async def stream_claude_response_openai(stream, message_id: str, model: str, cre
                         # Add to the last tool call's arguments
                         last_tool_id = list(tool_calls.keys())[-1]
                         yield formatter.format_tool_call_chunk(
-                            message_id, model, created, last_tool_id,
-                            function_arguments=partial_json, tool_index=current_tool_index - 1
+                            message_id,
+                            model,
+                            created,
+                            last_tool_id,
+                            function_arguments=partial_json,
+                            tool_call_index=current_tool_index - 1,
                         )
-            
+
             elif chunk_type == "content_block_start":
                 content_block = chunk.get("content_block", {})
                 if content_block.get("type") == "tool_use":
@@ -62,11 +80,15 @@ async def stream_claude_response_openai(stream, message_id: str, model: str, cre
                     if tool_id and function_name:
                         tool_calls[tool_id] = {"name": function_name, "arguments": ""}
                         yield formatter.format_tool_call_chunk(
-                            message_id, model, created, tool_id, function_name,
-                            tool_index=current_tool_index
+                            message_id,
+                            model,
+                            created,
+                            tool_id,
+                            function_name,
+                            tool_call_index=current_tool_index,
                         )
                         current_tool_index += 1
-            
+
             elif chunk_type == "message_delta":
                 delta = chunk.get("delta", {})
                 stop_reason = delta.get("stop_reason")
@@ -74,44 +96,52 @@ async def stream_claude_response_openai(stream, message_id: str, model: str, cre
                     # Map Claude stop reasons to OpenAI
                     openai_stop_reason = {
                         "end_turn": "stop",
-                        "max_tokens": "length", 
+                        "max_tokens": "length",
                         "stop_sequence": "stop",
-                        "tool_use": "tool_calls"
+                        "tool_use": "tool_calls",
                     }.get(stop_reason, "stop")
-                    
-                    yield formatter.format_final_chunk(message_id, model, created, openai_stop_reason)
-    
+
+                    yield formatter.format_final_chunk(
+                        message_id, model, created, openai_stop_reason
+                    )
+
     except asyncio.CancelledError:
         yield formatter.format_final_chunk(message_id, model, created, "cancelled")
         yield formatter.format_done()
         raise
     except Exception as e:
-        yield formatter.format_error_chunk(message_id, model, created, "stream_error", str(e))
-    
+        yield formatter.format_error_chunk(
+            message_id, model, created, "stream_error", str(e)
+        )
+
     yield formatter.format_done()
 
 
-async def stream_claude_response_openai_simple(stream, message_id: str, model: str, created: int = None):
+async def stream_claude_response_openai_simple(
+    stream, message_id: str, model: str, created: int = None
+):
     """Simplified compatibility wrapper for streaming Claude responses to OpenAI format."""
     if created is None:
         created = int(time.time())
-    
+
     formatter = OpenAISSEFormatter()
-    
+
     # Generate initial chunk with role
     yield formatter.format_first_chunk(message_id, model, created)
-    
+
     try:
         async for chunk in stream:
             chunk_type = chunk.get("type", "")
-            
+
             if chunk_type == "content_block_delta":
                 delta = chunk.get("delta", {})
                 if delta.get("type") == "text_delta":
                     text = delta.get("text", "")
                     if text:
-                        yield formatter.format_content_chunk(message_id, model, created, text)
-            
+                        yield formatter.format_content_chunk(
+                            message_id, model, created, text
+                        )
+
             elif chunk_type == "message_delta":
                 delta = chunk.get("delta", {})
                 stop_reason = delta.get("stop_reason")
@@ -120,19 +150,23 @@ async def stream_claude_response_openai_simple(stream, message_id: str, model: s
                     openai_stop_reason = {
                         "end_turn": "stop",
                         "max_tokens": "length",
-                        "stop_sequence": "stop", 
-                        "tool_use": "stop"
+                        "stop_sequence": "stop",
+                        "tool_use": "stop",
                     }.get(stop_reason, "stop")
-                    
-                    yield formatter.format_final_chunk(message_id, model, created, openai_stop_reason)
-    
+
+                    yield formatter.format_final_chunk(
+                        message_id, model, created, openai_stop_reason
+                    )
+
     except asyncio.CancelledError:
         yield formatter.format_final_chunk(message_id, model, created, "cancelled")
         yield formatter.format_done()
         raise
     except Exception as e:
-        yield formatter.format_error_chunk(message_id, model, created, "stream_error", str(e))
-    
+        yield formatter.format_error_chunk(
+            message_id, model, created, "stream_error", str(e)
+        )
+
     yield formatter.format_done()
 
 

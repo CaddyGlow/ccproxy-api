@@ -14,13 +14,17 @@ from ccproxy.core.async_utils import format_version, get_claude_docker_home_dir
 
 def validate_host_path(path: str) -> str:
     """Validate host path for Docker volume mounting."""
+    import os
     from pathlib import Path
 
     if not path:
         raise ValueError("Path cannot be empty")
 
+    # Expand environment variables and user home directory
+    expanded_path = os.path.expandvars(str(Path(path).expanduser()))
+
     # Convert to absolute path and normalize
-    abs_path = Path(path).resolve()
+    abs_path = Path(expanded_path).resolve()
     return str(abs_path)
 
 
@@ -32,24 +36,120 @@ def validate_volumes_list(volumes: list[str]) -> list[str]:
         if not volume:
             continue
 
-        # Expected format: "host_path:container_path" or "host_path:container_path:options"
-        parts = volume.split(":")
-        if len(parts) < 2:
-            raise ValueError(
-                f"Invalid volume format: {volume}. Expected 'host:container' or 'host:container:options'"
-            )
+        # Use validate_volume_format for comprehensive validation
+        validated_volume = validate_volume_format(volume)
+        validated.append(validated_volume)
 
-        host_path = parts[0]
-        container_path = parts[1]
+    return validated
 
-        # Validate host path
-        validate_host_path(host_path)
 
-        # Validate container path (should be absolute)
-        if not container_path.startswith("/"):
-            raise ValueError(f"Container path must be absolute: {container_path}")
+def validate_volume_format(volume: str) -> str:
+    """Validate individual Docker volume format.
 
-        validated.append(volume)
+    Args:
+        volume: Volume mount string in format 'host:container[:options]'
+
+    Returns:
+        Validated volume string with normalized host path
+
+    Raises:
+        ValueError: If volume format is invalid or host path doesn't exist
+    """
+    import os
+    from pathlib import Path
+
+    if not volume:
+        raise ValueError("Volume cannot be empty")
+
+    # Expected format: "host_path:container_path" or "host_path:container_path:options"
+    parts = volume.split(":")
+    if len(parts) < 2:
+        raise ValueError(
+            f"Invalid volume format: {volume}. Expected 'host:container' or 'host:container:options'"
+        )
+
+    host_path = parts[0]
+    container_path = parts[1]
+    options = ":".join(parts[2:]) if len(parts) > 2 else ""
+
+    if not host_path or not container_path:
+        raise ValueError(
+            f"Invalid volume format: {volume}. Expected 'host:container' or 'host:container:options'"
+        )
+
+    # Expand environment variables and user home directory
+    expanded_host_path = os.path.expandvars(str(Path(host_path).expanduser()))
+
+    # Convert to absolute path
+    abs_host_path = Path(expanded_host_path).resolve()
+
+    # Check if the path exists
+    if not abs_host_path.exists():
+        raise ValueError(f"Host path does not exist: {expanded_host_path}")
+
+    # Validate container path (should be absolute)
+    if not container_path.startswith("/"):
+        raise ValueError(f"Container path must be absolute: {container_path}")
+
+    # Reconstruct the volume string with normalized host path
+    result = f"{abs_host_path}:{container_path}"
+    if options:
+        result += f":{options}"
+
+    return result
+
+
+def validate_environment_variable(env_var: str) -> tuple[str, str]:
+    """Validate environment variable format.
+
+    Args:
+        env_var: Environment variable string in format 'KEY=VALUE'
+
+    Returns:
+        Tuple of (key, value)
+
+    Raises:
+        ValueError: If environment variable format is invalid
+    """
+    if not env_var:
+        raise ValueError("Environment variable cannot be empty")
+
+    if "=" not in env_var:
+        raise ValueError(
+            f"Invalid environment variable format: {env_var}. Expected KEY=VALUE format"
+        )
+
+    # Split on first equals sign only (value may contain equals)
+    key, value = env_var.split("=", 1)
+
+    if not key:
+        raise ValueError(
+            f"Invalid environment variable format: {env_var}. Expected KEY=VALUE format"
+        )
+
+    return key, value
+
+
+def validate_docker_volumes(volumes: list[str]) -> list[str]:
+    """Validate Docker volumes list format.
+
+    Args:
+        volumes: List of volume mount strings
+
+    Returns:
+        List of validated volume strings with normalized host paths
+
+    Raises:
+        ValueError: If any volume format is invalid
+    """
+    validated = []
+
+    for volume in volumes:
+        if not volume:
+            continue
+
+        validated_volume = validate_volume_format(volume)
+        validated.append(validated_volume)
 
     return validated
 

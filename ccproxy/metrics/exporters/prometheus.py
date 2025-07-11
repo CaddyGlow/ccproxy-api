@@ -8,7 +8,7 @@ metrics data in Prometheus format for monitoring and alerting.
 import logging
 from collections.abc import Generator
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional
+from typing import Any, Optional
 
 
 try:
@@ -519,6 +519,8 @@ def create_metrics_handler(exporter: PrometheusExporter):
             logger.error(f"Failed to generate metrics: {e}")
             from fastapi import HTTPException
 
-            raise HTTPException(status_code=500, detail="Failed to generate metrics")
+            raise HTTPException(
+                status_code=500, detail="Failed to generate metrics"
+            ) from e
 
     return metrics_handler

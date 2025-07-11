@@ -3,6 +3,7 @@
 import logging
 from typing import Any
 
+import httpx
 from rich.console import Console
 from rich.logging import RichHandler
 from rich.theme import Theme
@@ -85,8 +86,20 @@ def setup_rich_logging(
             uvicorn_logger.setLevel(log_level)
             uvicorn_logger.propagate = False
 
-        # Disable propagation for specific noisy loggers
-        for logger_name in ["httpx", "httpcore", "keyring"]:
+        # Configure specific loggers based on main log level
+        main_level = getattr(logging, level.upper())
+
+        # For httpx, enable debug logging only when main level is DEBUG
+        httpx_logger = logging.getLogger("httpx")
+        if main_level <= logging.DEBUG:
+            httpx_logger.setLevel(logging.DEBUG)
+            httpx_logger.addHandler(rich_handler)
+            httpx_logger.propagate = False
+        else:
+            httpx_logger.setLevel(logging.WARNING)
+
+        # Always suppress these noisy loggers
+        for logger_name in ["httpcore", "keyring", "asyncio"]:
             logger = logging.getLogger(logger_name)
             logger.setLevel(logging.WARNING)
 
@@ -101,6 +114,38 @@ def get_logger(name: str) -> logging.Logger:
         Configured logger instance
     """
     return logging.getLogger(name)
+
+
+# HTTP request/response logging helpers
+async def log_http_request(request: httpx.Request) -> None:
+    """Log httpx request details."""
+    logger = logging.getLogger("httpx")
+    if logger.isEnabledFor(logging.DEBUG):
+        logger.debug(f"HTTP Request: {request.method} {request.url}")
+
+
+async def log_http_response(response: httpx.Response) -> None:
+    """Log httpx response details."""
+    logger = logging.getLogger("httpx")
+    if logger.isEnabledFor(logging.DEBUG):
+        logger.debug(
+            f"HTTP Response: {response.status_code} {response.reason_phrase} ({response.url})"
+        )
+
+
+def get_http_event_hooks() -> dict[str, list]:
+    """Get httpx event hooks for request/response logging.
+
+    Returns:
+        Event hooks dictionary for httpx.AsyncClient
+    """
+    logger = logging.getLogger("httpx")
+    if logger.isEnabledFor(logging.DEBUG):
+        return {
+            "request": [log_http_request],
+            "response": [log_http_response],
+        }
+    return {}
 
 
 class CustomFormatter(DefaultFormatter):

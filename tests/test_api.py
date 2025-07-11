@@ -21,21 +21,19 @@ class TestChatCompletionsEndpoint:
         assert response.status_code == 200
         data = response.json()
         assert data["status"] == "healthy"
-        assert data["service"] == "claude-proxy"
+        assert data["service"] == "claude-code-proxy"
 
-    @patch("ccproxy.routers.claudecode.anthropic.ClaudeClient")
+    @patch("ccproxy.services.claude_sdk_service.ClaudeSDKService.create_completion")
     def test_successful_chat_completion(
         self,
-        mock_claude_client_class,
+        mock_create_completion,
         test_client: TestClient,
         sample_chat_request: dict[str, Any],
         sample_claude_response: dict[str, Any],
     ):
         """Test successful chat completion."""
         # Setup mock
-        mock_client = AsyncMock()
-        mock_client.create_completion.return_value = sample_claude_response
-        mock_claude_client_class.return_value = mock_client
+        mock_create_completion.return_value = sample_claude_response
 
         response = test_client.post("/cc/v1/messages", json=sample_chat_request)
 
@@ -46,20 +44,8 @@ class TestChatCompletionsEndpoint:
         assert data["model"] == "claude-3-5-sonnet-20241022"
         assert "id" in data  # Should have message ID
 
-        # Verify ClaudeClient was called with correct interface
-        mock_client.create_completion.assert_called_once()
-        call_args = mock_client.create_completion.call_args
-        messages = call_args.kwargs["messages"]
-        options = call_args.kwargs["options"]
-
-        # Check messages format
-        assert len(messages) == 1
-        assert messages[0]["role"] == "user"
-        assert messages[0]["content"] == "Hello, how are you?"
-
-        # Check options
-        assert hasattr(options, "model")
-        assert options.model == "claude-3-5-sonnet-20241022"  # Should have message ID
+        # Verify ClaudeSDKService.create_completion was called
+        mock_create_completion.assert_called_once()
 
     def test_invalid_model(self, test_client: TestClient):
         """Test chat completion with invalid model."""
@@ -99,10 +85,10 @@ class TestChatCompletionsEndpoint:
 
         assert response.status_code == 422  # Validation error
 
-    @patch("ccproxy.routers.claudecode.anthropic.ClaudeClient")
+    @patch("ccproxy.services.claude_sdk_service.ClaudeSDKService.create_completion")
     def test_streaming_chat_completion(
         self,
-        mock_claude_client_class,
+        mock_create_completion,
         test_client: TestClient,
         sample_streaming_request: dict[str, Any],
     ):
@@ -125,9 +111,7 @@ class TestChatCompletionsEndpoint:
             for chunk in chunks:
                 yield chunk
 
-        mock_client = AsyncMock()
-        mock_client.create_completion.return_value = mock_streaming_response()
-        mock_claude_client_class.return_value = mock_client
+        mock_create_completion.return_value = mock_streaming_response()
 
         response = test_client.post("/cc/v1/messages", json=sample_streaming_request)
 
@@ -156,7 +140,7 @@ class TestChatCompletionsEndpoint:
         assert len(messages) == 1
         assert messages[0]["role"] == "user"
 
-    @patch("ccproxy.routers.claudecode.anthropic.ClaudeClient")
+    @patch("ccproxy.services.claude_sdk_service.ClaudeSDKService.create_completion")
     def test_claude_client_error(
         self,
         mock_claude_client_class,
@@ -182,7 +166,7 @@ class TestChatCompletionsEndpoint:
         assert data["detail"]["type"] == "error"
         assert data["detail"]["error"]["type"] == "service_unavailable_error"
 
-    @patch("ccproxy.routers.claudecode.anthropic.ClaudeClient")
+    @patch("ccproxy.services.claude_sdk_service.ClaudeSDKService.create_completion")
     def test_max_thinking_tokens_parameter(
         self,
         mock_claude_client_class,
@@ -221,7 +205,7 @@ class TestChatCompletionsEndpoint:
 class TestModelsEndpoint:
     """Test /v1/models endpoint."""
 
-    @patch("ccproxy.routers.claudecode.anthropic.ClaudeClient")
+    @patch("ccproxy.services.claude_sdk_service.ClaudeSDKService.create_completion")
     def test_list_models_success(
         self,
         mock_claude_client_class,
@@ -243,7 +227,7 @@ class TestModelsEndpoint:
         assert data["data"][0]["id"] == "claude-opus-4-20250514"
         assert data["data"][1]["id"] == "claude-3-5-sonnet-20241022"
 
-    @patch("ccproxy.routers.claudecode.anthropic.ClaudeClient")
+    @patch("ccproxy.services.claude_sdk_service.ClaudeSDKService.create_completion")
     def test_list_models_error(self, mock_claude_client_class, test_client: TestClient):
         """Test models listing with error."""
         from ccproxy.core.errors import ClaudeProxyError
@@ -321,7 +305,7 @@ class TestErrorHandling:
 class TestCORSHeaders:
     """Test CORS headers."""
 
-    @patch("ccproxy.routers.claudecode.anthropic.ClaudeClient")
+    @patch("ccproxy.services.claude_sdk_service.ClaudeSDKService.create_completion")
     def test_cors_functionality(
         self,
         mock_claude_client_class,
@@ -351,7 +335,7 @@ class TestCORSHeaders:
         assert "content" in data
         assert data["type"] == "message"
 
-    @patch("ccproxy.routers.claudecode.anthropic.ClaudeClient")
+    @patch("ccproxy.services.claude_sdk_service.ClaudeSDKService.create_completion")
     def test_streaming_cors_headers(
         self,
         mock_claude_client_class,

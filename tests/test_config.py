@@ -428,8 +428,13 @@ class TestTOMLConfigDiscovery:
             os.chdir(sub_dir)
 
             try:
-                found_config = find_toml_config_file()
-                assert found_config == config_file
+                # Mock find_git_root to return our temp directory
+                with patch(
+                    "ccproxy.config.discovery.find_git_root",
+                    return_value=repo_root,
+                ):
+                    found_config = find_toml_config_file()
+                    assert found_config == config_file
             finally:
                 os.chdir(original_cwd)
 
@@ -448,7 +453,7 @@ class TestTOMLConfigDiscovery:
             try:
                 os.chdir(temp_dir)
                 with patch(
-                    "ccproxy.utils.config.get_ccproxy_config_dir",
+                    "ccproxy.config.discovery.get_ccproxy_config_dir",
                     return_value=xdg_config,
                 ):
                     found_config = find_toml_config_file()
@@ -482,7 +487,7 @@ class TestTOMLConfigDiscovery:
 
             try:
                 with patch(
-                    "ccproxy.utils.config.get_ccproxy_config_dir",
+                    "ccproxy.config.discovery.get_ccproxy_config_dir",
                     return_value=xdg_config_dir,
                 ):
                     # Should find current directory first
@@ -514,11 +519,11 @@ class TestTOMLConfigDiscovery:
             try:
                 with (
                     patch(
-                        "ccproxy.utils.config.get_ccproxy_config_dir",
+                        "ccproxy.config.discovery.get_ccproxy_config_dir",
                         return_value=Path(temp_dir) / ".config" / "ccproxy",
                     ),
                     patch(
-                        "ccproxy.utils.config.find_git_root",
+                        "ccproxy.config.discovery.find_git_root",
                         return_value=None,
                     ),
                 ):

@@ -16,14 +16,15 @@ async def stream_claude_response(stream, message_id: str, model: str):
     """Compatibility wrapper for the old stream_claude_response function."""
     processor = AnthropicStreamProcessor()
     formatter = processor.formatter
-    
+
     # Generate initial message_start event
     yield formatter.format_message_start(message_id, model)
-    
+
     # Generate content_block_start event
     yield formatter.format_content_block_start(index=0)
-    
+
     # Process the actual stream data
+    message_delta_data = None
     try:
         async for chunk in stream:
             if chunk.get("type") == "content_block_delta":
@@ -32,19 +33,30 @@ async def stream_claude_response(stream, message_id: str, model: str):
                 if text:
                     yield formatter.format_content_block_delta(text, index=0)
             elif chunk.get("type") == "message_delta":
-                # Format message delta
+                # Store message delta data for later (after content_block_stop)
                 delta = chunk.get("delta", {})
-                stop_reason = delta.get("stop_reason")
-                stop_sequence = delta.get("stop_sequence")
-                yield formatter.format_message_delta(stop_reason, stop_sequence)
+                message_delta_data = {
+                    "stop_reason": delta.get("stop_reason"),
+                    "stop_sequence": delta.get("stop_sequence"),
+                }
     except Exception as e:
         # Format error
         yield formatter.format_error("stream_error", str(e))
-    
-    # Generate closing events
+
+    # Generate closing events in correct order
     yield formatter.format_content_block_stop(index=0)
+
+    # Generate message_delta after content_block_stop
+    if message_delta_data:
+        yield formatter.format_message_delta(
+            message_delta_data["stop_reason"], message_delta_data["stop_sequence"]
+        )
+    else:
+        yield formatter.format_message_delta("end_turn")  # Default message_delta
+
     yield formatter.format_message_stop()
     yield formatter.format_done()
+
 
 @pytest.mark.integration
 class TestAnthropicStreamingFormatter:
@@ -81,7 +93,9 @@ class TestAnthropicStreamingFormatter:
 
     def test_format_content_block_delta(self):
         """Test format_content_block_delta method."""
-        result = AnthropicStreamingFormatter.format_content_block_delta("Hello", index=0)
+        result = AnthropicStreamingFormatter.format_content_block_delta(
+            "Hello", index=0
+        )
 
         assert "data: " in result
         assert '"type":"content_block_delta"' in result

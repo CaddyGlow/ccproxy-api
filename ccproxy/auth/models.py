@@ -10,19 +10,26 @@ class OAuthToken(BaseModel):
 
     access_token: str = Field(..., alias="accessToken")
     refresh_token: str = Field(..., alias="refreshToken")
-    expires_at: int = Field(..., alias="expiresAt")
+    expires_at: int | None = Field(None, alias="expiresAt")
     scopes: list[str] = Field(default_factory=list)
     subscription_type: str | None = Field(None, alias="subscriptionType")
+    token_type: str = Field(default="Bearer", alias="tokenType")
 
     @property
     def is_expired(self) -> bool:
         """Check if the token is expired."""
+        if self.expires_at is None:
+            # If no expiration info, assume not expired for backward compatibility
+            return False
         now = datetime.now(UTC).timestamp() * 1000  # Convert to milliseconds
         return now >= self.expires_at
 
     @property
     def expires_at_datetime(self) -> datetime:
         """Get expiration as datetime object."""
+        if self.expires_at is None:
+            # Return a far future date if no expiration info
+            return datetime.fromtimestamp(2147483647, tz=UTC)  # Year 2038
         return datetime.fromtimestamp(self.expires_at / 1000, tz=UTC)
 
 
@@ -63,6 +70,15 @@ class ClaudeCredentials(BaseModel):
     """Claude credentials from the credentials file."""
 
     claude_ai_oauth: OAuthToken = Field(..., alias="claudeAiOauth")
+
+
+class ValidationResult(BaseModel):
+    """Result of credentials validation."""
+
+    valid: bool
+    expired: bool | None = None
+    credentials: ClaudeCredentials | None = None
+    path: str | None = None
 
 
 # Backwards compatibility - provide common aliases

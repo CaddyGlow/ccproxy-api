@@ -298,6 +298,18 @@ def setup_error_handlers(app: FastAPI) -> None:
     ) -> JSONResponse:
         """Handle HTTP exceptions."""
         logger.error(f"HTTP exception: {exc.status_code} - {exc.detail}")
+
+        # Special handling for 401 errors that already have proper structure
+        if (
+            exc.status_code == 401
+            and isinstance(exc.detail, dict)
+            and "error" in exc.detail
+        ):
+            return JSONResponse(
+                status_code=exc.status_code,
+                content={"detail": exc.detail},
+            )
+
         return JSONResponse(
             status_code=exc.status_code,
             content={

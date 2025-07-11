@@ -4,12 +4,14 @@ import asyncio
 import json
 from datetime import UTC, datetime, timezone
 from pathlib import Path
+from typing import Optional
 
 import typer
 from rich import box
 from rich.console import Console
 from rich.table import Table
 
+from ccproxy.auth.models import ValidationResult
 from ccproxy.cli.helpers import get_rich_toolkit
 from ccproxy.core.async_utils import get_claude_docker_home_dir
 from ccproxy.core.logging import get_logger
@@ -89,7 +91,7 @@ def validate_credentials(
         manager = get_credentials_manager(custom_paths)
         validation_result = asyncio.run(manager.validate())
 
-        if validation_result.get("valid"):
+        if validation_result.valid:
             # Create a status table
             table = Table(
                 show_header=True,
@@ -102,18 +104,25 @@ def validate_credentials(
             table.add_column("Value", style="white")
 
             # Status
-            status = "Valid" if not validation_result.get("expired") else "Expired"
-            status_style = "green" if not validation_result.get("expired") else "red"
+            status = "Valid" if not validation_result.expired else "Expired"
+            status_style = "green" if not validation_result.expired else "red"
             table.add_row("Status", f"[{status_style}]{status}[/{status_style}]")
 
-            # Subscription type
-            sub_type = validation_result.get("subscription_type", "Unknown")
-            table.add_row("Subscription", f"[bold]{sub_type}[/bold]")
+            # Path
+            if validation_result.path:
+                table.add_row("Location", f"[dim]{validation_result.path}[/dim]")
 
-            # Expiration
-            expires_at = validation_result.get("expires_at")
-            if expires_at and isinstance(expires_at, str):
-                exp_dt = datetime.fromisoformat(expires_at)
+            # Subscription type
+            if validation_result.credentials:
+                sub_type = (
+                    validation_result.credentials.claude_ai_oauth.subscription_type
+                    or "Unknown"
+                )
+                table.add_row("Subscription", f"[bold]{sub_type}[/bold]")
+
+                # Expiration
+                oauth_token = validation_result.credentials.claude_ai_oauth
+                exp_dt = oauth_token.expires_at_datetime
                 now = datetime.now(UTC)
                 time_diff = exp_dt - now
 
@@ -126,15 +135,15 @@ def validate_credentials(
 
                 table.add_row("Expires", exp_str)
 
-            # Scopes
-            scopes = validation_result.get("scopes", [])
-            if scopes and isinstance(scopes, list):
-                table.add_row("Scopes", ", ".join(str(s) for s in scopes))
+                # Scopes
+                scopes = oauth_token.scopes
+                if scopes:
+                    table.add_row("Scopes", ", ".join(str(s) for s in scopes))
 
             console.print(table)
 
             # Success message
-            if not validation_result.get("expired"):
+            if not validation_result.expired:
                 toolkit.print(
                     "[green]✓[/green] Valid Claude credentials found", tag="success"
                 )
@@ -150,8 +159,7 @@ def validate_credentials(
 
         else:
             # No valid credentials
-            error_msg = validation_result.get("error", "Unknown error")
-            toolkit.print(f"[red]✗[/red] {error_msg}", tag="error")
+            toolkit.print("[red]✗[/red] No credentials file found", tag="error")
 
             console.print("\n[dim]To authenticate with Claude CLI, run:[/dim]")
             console.print("[cyan]claude login[/cyan]")
@@ -208,7 +216,7 @@ def credential_info(
             raise typer.Exit(1)
 
         # Display account section
-        console.print("\n[bold]Account • /login[/bold]")
+        console.print("\n[bold]Account[/bold]")
         oauth = credentials.claude_ai_oauth
 
         # Login method based on subscription type
@@ -217,35 +225,81 @@ def credential_info(
             login_method = f"Claude {oauth.subscription_type.title()} Account"
         console.print(f"  L Login Method: {login_method}")
 
-        # Try to fetch user profile for organization and email
-        # Use refresh-enabled token method to ensure we have a valid token
-        try:
-            # First try to get a valid access token (with refresh if needed)
-            profile = asyncio.run(manager.fetch_user_profile())
-            valid_token = asyncio.run(manager.get_access_token())
-            if valid_token:
-                profile = asyncio.run(manager.fetch_user_profile())
-                if profile and profile.organization:
-                    console.print(f"  L Organization: {profile.organization.name}")
-                else:
-                    console.print("  L Organization: [dim]Unable to fetch[/dim]")
+        # Try to load saved account profile first
+        profile = asyncio.run(manager.get_account_profile())
 
-                if profile and profile.account:
-                    console.print(f"  L Email: {profile.account.email_address}")
-                else:
-                    console.print("  L Email: [dim]Unable to fetch[/dim]")
-
-                # Reload credentials after potential refresh to show updated token info
-                credentials = asyncio.run(manager.load())
-                if credentials:
-                    oauth = credentials.claude_ai_oauth
+        if profile:
+            # Display saved account data
+            if profile.organization:
+                console.print(f"  L Organization: {profile.organization.name}")
+                if profile.organization.organization_type:
+                    console.print(
+                        f"  L Organization Type: {profile.organization.organization_type}"
+                    )
+                if profile.organization.billing_type:
+                    console.print(
+                        f"  L Billing Type: {profile.organization.billing_type}"
+                    )
+                if profile.organization.rate_limit_tier:
+                    console.print(
+                        f"  L Rate Limit Tier: {profile.organization.rate_limit_tier}"
+                    )
             else:
-                console.print("  L Organization: [dim]Token refresh failed[/dim]")
-                console.print("  L Email: [dim]Token refresh failed[/dim]")
-        except Exception as e:
-            logger.debug(f"Could not fetch user profile: {e}")
-            console.print("  L Organization: [dim]Unable to fetch[/dim]")
-            console.print("  L Email: [dim]Unable to fetch[/dim]")
+                console.print("  L Organization: [dim]Not available[/dim]")
+
+            if profile.account:
+                console.print(f"  L Email: {profile.account.email}")
+                if profile.account.full_name:
+                    console.print(f"  L Full Name: {profile.account.full_name}")
+                if profile.account.display_name:
+                    console.print(f"  L Display Name: {profile.account.display_name}")
+                console.print(
+                    f"  L Has Claude Pro: {'Yes' if profile.account.has_claude_pro else 'No'}"
+                )
+                console.print(
+                    f"  L Has Claude Max: {'Yes' if profile.account.has_claude_max else 'No'}"
+                )
+            else:
+                console.print("  L Email: [dim]Not available[/dim]")
+        else:
+            # No saved profile, try to fetch fresh data
+            try:
+                # First try to get a valid access token (with refresh if needed)
+                valid_token = asyncio.run(manager.get_access_token())
+                if valid_token:
+                    profile = asyncio.run(manager.fetch_user_profile())
+                    if profile:
+                        # Save the profile for future use
+                        asyncio.run(manager._save_account_profile(profile))
+
+                        if profile.organization:
+                            console.print(
+                                f"  L Organization: {profile.organization.name}"
+                            )
+                        else:
+                            console.print(
+                                "  L Organization: [dim]Unable to fetch[/dim]"
+                            )
+
+                        if profile.account:
+                            console.print(f"  L Email: {profile.account.email}")
+                        else:
+                            console.print("  L Email: [dim]Unable to fetch[/dim]")
+                    else:
+                        console.print("  L Organization: [dim]Unable to fetch[/dim]")
+                        console.print("  L Email: [dim]Unable to fetch[/dim]")
+
+                    # Reload credentials after potential refresh to show updated token info
+                    credentials = asyncio.run(manager.load())
+                    if credentials:
+                        oauth = credentials.claude_ai_oauth
+                else:
+                    console.print("  L Organization: [dim]Token refresh failed[/dim]")
+                    console.print("  L Email: [dim]Token refresh failed[/dim]")
+            except Exception as e:
+                logger.debug(f"Could not fetch user profile: {e}")
+                console.print("  L Organization: [dim]Unable to fetch[/dim]")
+                console.print("  L Email: [dim]Unable to fetch[/dim]")
 
         # Create details table
         console.print()
@@ -299,6 +353,15 @@ def credential_info(
             token_preview = f"{oauth.access_token[:8]}...{oauth.access_token[-8:]}"
             table.add_row("Access Token", f"[dim]{token_preview}[/dim]")
 
+        # Account profile status
+        account_profile_exists = profile is not None
+        table.add_row(
+            "Account Profile",
+            "[green]Available[/green]"
+            if account_profile_exists
+            else "[yellow]Not saved[/yellow]",
+        )
+
         console.print(table)
 
     except Exception as e:
@@ -344,7 +407,7 @@ def login_command(
         # Check if already logged in
         manager = get_credentials_manager(custom_paths)
         validation_result = asyncio.run(manager.validate())
-        if validation_result.get("valid") and not validation_result.get("expired"):
+        if validation_result.valid and not validation_result.expired:
             console.print(
                 "[yellow]You are already logged in with valid credentials.[/yellow]"
             )
@@ -379,18 +442,15 @@ def login_command(
             # Show credential info
             console.print("\n[dim]Credential information:[/dim]")
             updated_validation = asyncio.run(manager.validate())
-            if updated_validation.get("valid"):
+            if updated_validation.valid and updated_validation.credentials:
+                oauth_token = updated_validation.credentials.claude_ai_oauth
                 console.print(
-                    f"  Subscription: {updated_validation.get('subscription_type', 'Unknown')}"
+                    f"  Subscription: {oauth_token.subscription_type or 'Unknown'}"
                 )
-                scopes = updated_validation.get("scopes", [])
-                if isinstance(scopes, list):
-                    console.print(f"  Scopes: {', '.join(scopes)}")
-                else:
-                    console.print(f"  Scopes: {scopes}")
-                expires_at = updated_validation.get("expires_at")
-                if expires_at:
-                    console.print(f"  Expires: {expires_at}")
+                if oauth_token.scopes:
+                    console.print(f"  Scopes: {', '.join(oauth_token.scopes)}")
+                exp_dt = oauth_token.expires_at_datetime
+                console.print(f"  Expires: {exp_dt.strftime('%Y-%m-%d %H:%M:%S UTC')}")
         else:
             toolkit.print("Login failed. Please try again.", tag="error")
             raise typer.Exit(1)
@@ -400,6 +460,87 @@ def login_command(
         raise typer.Exit(1) from None
     except Exception as e:
         toolkit.print(f"Error during login: {e}", tag="error")
+        raise typer.Exit(1) from e
+
+
+@app.command()
+def renew(
+    docker: bool = typer.Option(
+        False,
+        "--docker",
+        "-d",
+        help="Renew credentials for Docker environment",
+    ),
+    credential_file: Path | None = typer.Option(
+        None,
+        "--credential-file",
+        "-f",
+        help="Path to custom credential file",
+    ),
+) -> None:
+    """Force renew Claude credentials without checking expiration.
+
+    This command will refresh your access token regardless of whether it's expired.
+    Useful for testing or when you want to ensure you have the latest token.
+
+    Examples:
+        ccproxy auth renew
+        ccproxy auth renew --docker
+        ccproxy auth renew --credential-file /path/to/credentials.json
+    """
+    toolkit = get_rich_toolkit()
+    toolkit.print("[bold cyan]Claude Credentials Renewal[/bold cyan]", centered=True)
+    toolkit.print_line()
+
+    console = Console()
+
+    try:
+        # Get credential paths based on options
+        custom_paths = None
+        if credential_file:
+            custom_paths = [Path(credential_file)]
+        elif docker:
+            custom_paths = get_docker_credential_paths()
+
+        # Create credentials manager
+        manager = get_credentials_manager(custom_paths)
+
+        # Check if credentials exist
+        validation_result = asyncio.run(manager.validate())
+        if not validation_result.valid:
+            toolkit.print("[red]✗[/red] No credentials found to renew", tag="error")
+            console.print("\n[dim]Please login first:[/dim]")
+            console.print("[cyan]ccproxy auth login[/cyan]")
+            raise typer.Exit(1)
+
+        # Force refresh the token
+        console.print("[yellow]Refreshing access token...[/yellow]")
+        refreshed_credentials = asyncio.run(manager.refresh_token())
+
+        if refreshed_credentials:
+            toolkit.print(
+                "[green]✓[/green] Successfully renewed credentials!", tag="success"
+            )
+
+            # Show updated credential info
+            oauth_token = refreshed_credentials.claude_ai_oauth
+            console.print("\n[dim]Updated credential information:[/dim]")
+            console.print(
+                f"  Subscription: {oauth_token.subscription_type or 'Unknown'}"
+            )
+            if oauth_token.scopes:
+                console.print(f"  Scopes: {', '.join(oauth_token.scopes)}")
+            exp_dt = oauth_token.expires_at_datetime
+            console.print(f"  Expires: {exp_dt.strftime('%Y-%m-%d %H:%M:%S UTC')}")
+        else:
+            toolkit.print("[red]✗[/red] Failed to renew credentials", tag="error")
+            raise typer.Exit(1)
+
+    except KeyboardInterrupt:
+        console.print("\n[yellow]Renewal cancelled by user.[/yellow]")
+        raise typer.Exit(1) from None
+    except Exception as e:
+        toolkit.print(f"Error during renewal: {e}", tag="error")
         raise typer.Exit(1) from e
 
 

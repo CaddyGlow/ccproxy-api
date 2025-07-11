@@ -495,8 +495,8 @@ class TestReverseProxyAuthentication:
     @pytest.fixture
     def app_with_auth(self, monkeypatch):
         """Create app with authentication enabled."""
+        from ccproxy.api.app import create_app
         from ccproxy.config.settings import Settings
-        from ccproxy.main import create_app
 
         # Create settings with authentication enabled
         auth_settings = Settings(
@@ -519,8 +519,8 @@ class TestReverseProxyAuthentication:
     @pytest.fixture
     def app_no_auth(self, monkeypatch):
         """Create app with authentication disabled."""
+        from ccproxy.api.app import create_app
         from ccproxy.config.settings import Settings
-        from ccproxy.main import create_app
 
         # Create settings with authentication disabled
         no_auth_settings = Settings(

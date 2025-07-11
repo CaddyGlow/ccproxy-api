@@ -6,7 +6,7 @@ and API usage patterns.
 """
 
 from decimal import Decimal
-from typing import Dict, Optional, Tuple
+from typing import Optional
 
 from .models import CostMetric
 

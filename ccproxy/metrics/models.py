@@ -7,7 +7,7 @@ various types of metrics throughout the application.
 
 from datetime import datetime
 from enum import Enum
-from typing import Any, Dict, Optional, Union
+from typing import Any, Optional, Union
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, Field

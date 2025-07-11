@@ -390,10 +390,10 @@ class TestConfigSchemaCommand:
 
     def test_config_schema_default(self):
         """Test config schema command with default options."""
-        mock_files = [Path("schema1.json"), Path("schema2.json")]
+        mock_files = [Path("ccproxy-schema.json"), Path(".ccproxy-schema.json")]
 
         with patch(
-            "ccproxy.utils.schema.generate_schema_files",
+            "ccproxy.cli.commands.config.schema_commands.generate_schema_files",
             return_value=mock_files,
         ):
             result = self.runner.invoke(app, ["schema"])
@@ -603,7 +603,9 @@ class TestGenerateTokenCommand:
                     "ccproxy.cli.commands.config.commands.secrets.token_urlsafe",
                     return_value="save-token-456",
                 ),
-                patch("ccproxy.utils.find_toml_config_file", return_value=None),
+                patch(
+                    "ccproxy.config.discovery.find_toml_config_file", return_value=None
+                ),
             ):
                 result = self.runner.invoke(
                     app, ["generate-token", "--save", "--config-file", str(config_file)]
@@ -718,7 +720,7 @@ class TestGenerateTokenCommand:
                     return_value="auto-token-def",
                 ),
                 patch(
-                    "ccproxy.utils.find_toml_config_file",
+                    "ccproxy.config.discovery.find_toml_config_file",
                     return_value=config_file,
                 ),
                 patch(
@@ -749,7 +751,7 @@ class TestGenerateTokenCommand:
                         return_value="default-token-ghi",
                     ),
                     patch(
-                        "ccproxy.utils.find_toml_config_file",
+                        "ccproxy.config.discovery.find_toml_config_file",
                         return_value=None,
                     ),
                 ):
@@ -1225,7 +1227,9 @@ class TestConfigCommandsIntegration:
                     "ccproxy.cli.commands.config.commands.secrets.token_urlsafe",
                     return_value="integration-test-token",
                 ),
-                patch("ccproxy.utils.find_toml_config_file", return_value=None),
+                patch(
+                    "ccproxy.config.discovery.find_toml_config_file", return_value=None
+                ),
             ):
                 # Generate and save token
                 result = self.runner.invoke(

@@ -11,6 +11,9 @@ from fastapi import HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import ValidationError
 
+from ccproxy.api.routes.anthropic import (
+    create_message,
+)
 from ccproxy.core.errors import (
     ClaudeProxyError,
     ModelNotFoundError,
@@ -21,17 +24,12 @@ from ccproxy.core.errors import (
     ValidationError as ProxyValidationError,
 )
 from ccproxy.models.messages import (
+    MessageCreateParams,
     MessageResponse,
     SystemMessage,
     ThinkingConfig,
 )
 from ccproxy.models.requests import Message
-from ccproxy.api.routes.anthropic import (
-    create_message,
-)
-from ccproxy.models.messages import (
-    MessageCreateParams,
-)
 
 
 class TestCreateMessage:
@@ -152,9 +150,7 @@ class TestCreateMessage:
                 "ccproxy.api.routes.anthropic.get_settings",
                 return_value=mock_settings,
             ),
-            patch(
-                "ccproxy.api.routes.anthropic.ClaudeClient"
-            ) as mock_client_class,
+            patch("ccproxy.api.routes.anthropic.ClaudeClient") as mock_client_class,
             patch(
                 "ccproxy.api.routes.anthropic.merge_claude_code_options"
             ) as mock_merge,
@@ -212,9 +208,7 @@ class TestCreateMessage:
                 "ccproxy.api.routes.anthropic.get_settings",
                 return_value=mock_settings,
             ),
-            patch(
-                "ccproxy.api.routes.anthropic.ClaudeClient"
-            ) as mock_client_class,
+            patch("ccproxy.api.routes.anthropic.ClaudeClient") as mock_client_class,
             patch(
                 "ccproxy.api.routes.anthropic.merge_claude_code_options"
             ) as mock_merge,
@@ -253,9 +247,7 @@ class TestCreateMessage:
                 "ccproxy.api.routes.anthropic.get_settings",
                 return_value=mock_settings,
             ),
-            patch(
-                "ccproxy.api.routes.anthropic.ClaudeClient"
-            ) as mock_client_class,
+            patch("ccproxy.api.routes.anthropic.ClaudeClient") as mock_client_class,
             patch(
                 "ccproxy.api.routes.anthropic.merge_claude_code_options"
             ) as mock_merge,
@@ -301,9 +293,7 @@ class TestCreateMessage:
                 "ccproxy.api.routes.anthropic.get_settings",
                 return_value=mock_settings,
             ),
-            patch(
-                "ccproxy.api.routes.anthropic.ClaudeClient"
-            ) as mock_client_class,
+            patch("ccproxy.api.routes.anthropic.ClaudeClient") as mock_client_class,
             patch(
                 "ccproxy.api.routes.anthropic.merge_claude_code_options"
             ) as mock_merge,
@@ -343,9 +333,7 @@ class TestCreateMessage:
                 "ccproxy.api.routes.anthropic.get_settings",
                 return_value=mock_settings,
             ),
-            patch(
-                "ccproxy.api.routes.anthropic.ClaudeClient"
-            ) as mock_client_class,
+            patch("ccproxy.api.routes.anthropic.ClaudeClient") as mock_client_class,
             patch(
                 "ccproxy.api.routes.anthropic.merge_claude_code_options"
             ) as mock_merge,
@@ -420,9 +408,7 @@ class TestCreateMessage:
                 "ccproxy.api.routes.anthropic.get_settings",
                 return_value=mock_settings,
             ),
-            patch(
-                "ccproxy.api.routes.anthropic.ClaudeClient"
-            ) as mock_client_class,
+            patch("ccproxy.api.routes.anthropic.ClaudeClient") as mock_client_class,
             patch(
                 "ccproxy.api.routes.anthropic.merge_claude_code_options"
             ) as mock_merge,
@@ -464,9 +450,7 @@ class TestCreateMessage:
                 "ccproxy.api.routes.anthropic.get_settings",
                 return_value=mock_settings,
             ),
-            patch(
-                "ccproxy.api.routes.anthropic.ClaudeClient"
-            ) as mock_client_class,
+            patch("ccproxy.api.routes.anthropic.ClaudeClient") as mock_client_class,
             patch(
                 "ccproxy.api.routes.anthropic.merge_claude_code_options"
             ) as mock_merge,
@@ -499,9 +483,7 @@ class TestCreateMessage:
                 "ccproxy.api.routes.anthropic.get_settings",
                 return_value=mock_settings,
             ),
-            patch(
-                "ccproxy.api.routes.anthropic.ClaudeClient"
-            ) as mock_client_class,
+            patch("ccproxy.api.routes.anthropic.ClaudeClient") as mock_client_class,
             patch(
                 "ccproxy.api.routes.anthropic.merge_claude_code_options"
             ) as mock_merge,
@@ -538,9 +520,7 @@ class TestCreateMessage:
                 "ccproxy.api.routes.anthropic.get_settings",
                 return_value=mock_settings,
             ),
-            patch(
-                "ccproxy.api.routes.anthropic.ClaudeClient"
-            ) as mock_client_class,
+            patch("ccproxy.api.routes.anthropic.ClaudeClient") as mock_client_class,
             patch(
                 "ccproxy.api.routes.anthropic.merge_claude_code_options"
             ) as mock_merge,
@@ -576,9 +556,7 @@ class TestCreateMessage:
                 "ccproxy.api.routes.anthropic.get_settings",
                 return_value=mock_settings,
             ),
-            patch(
-                "ccproxy.api.routes.anthropic.ClaudeClient"
-            ) as mock_client_class,
+            patch("ccproxy.api.routes.anthropic.ClaudeClient") as mock_client_class,
             patch(
                 "ccproxy.api.routes.anthropic.merge_claude_code_options"
             ) as mock_merge,
@@ -614,9 +592,7 @@ class TestCreateMessage:
                 "ccproxy.api.routes.anthropic.get_settings",
                 return_value=mock_settings,
             ),
-            patch(
-                "ccproxy.api.routes.anthropic.ClaudeClient"
-            ) as mock_client_class,
+            patch("ccproxy.api.routes.anthropic.ClaudeClient") as mock_client_class,
             patch(
                 "ccproxy.api.routes.anthropic.merge_claude_code_options"
             ) as mock_merge,
@@ -652,9 +628,7 @@ class TestCreateMessage:
                 "ccproxy.api.routes.anthropic.get_settings",
                 return_value=mock_settings,
             ),
-            patch(
-                "ccproxy.api.routes.anthropic.ClaudeClient"
-            ) as mock_client_class,
+            patch("ccproxy.api.routes.anthropic.ClaudeClient") as mock_client_class,
             patch(
                 "ccproxy.api.routes.anthropic.merge_claude_code_options"
             ) as mock_merge,
@@ -690,9 +664,7 @@ class TestCreateMessage:
                 "ccproxy.api.routes.anthropic.get_settings",
                 return_value=mock_settings,
             ),
-            patch(
-                "ccproxy.api.routes.anthropic.ClaudeClient"
-            ) as mock_client_class,
+            patch("ccproxy.api.routes.anthropic.ClaudeClient") as mock_client_class,
             patch(
                 "ccproxy.api.routes.anthropic.merge_claude_code_options"
             ) as mock_merge,
@@ -731,9 +703,7 @@ class TestCreateMessage:
                 "ccproxy.api.routes.anthropic.get_settings",
                 return_value=mock_settings,
             ),
-            patch(
-                "ccproxy.api.routes.anthropic.ClaudeClient"
-            ) as mock_client_class,
+            patch("ccproxy.api.routes.anthropic.ClaudeClient") as mock_client_class,
             patch(
                 "ccproxy.api.routes.anthropic.merge_claude_code_options"
             ) as mock_merge,
@@ -772,9 +742,7 @@ class TestCreateMessage:
                 "ccproxy.api.routes.anthropic.get_settings",
                 return_value=mock_settings,
             ),
-            patch(
-                "ccproxy.api.routes.anthropic.ClaudeClient"
-            ) as mock_client_class,
+            patch("ccproxy.api.routes.anthropic.ClaudeClient") as mock_client_class,
             patch(
                 "ccproxy.api.routes.anthropic.merge_claude_code_options"
             ) as mock_merge,
@@ -819,9 +787,7 @@ class TestCreateMessage:
                 "ccproxy.api.routes.anthropic.get_settings",
                 return_value=mock_settings,
             ),
-            patch(
-                "ccproxy.api.routes.anthropic.ClaudeClient"
-            ) as mock_client_class,
+            patch("ccproxy.api.routes.anthropic.ClaudeClient") as mock_client_class,
             patch(
                 "ccproxy.api.routes.anthropic.merge_claude_code_options"
             ) as mock_merge,
@@ -866,9 +832,7 @@ class TestCreateMessage:
                 "ccproxy.api.routes.anthropic.get_settings",
                 return_value=mock_settings,
             ),
-            patch(
-                "ccproxy.api.routes.anthropic.ClaudeClient"
-            ) as mock_client_class,
+            patch("ccproxy.api.routes.anthropic.ClaudeClient") as mock_client_class,
             patch(
                 "ccproxy.api.routes.anthropic.merge_claude_code_options"
             ) as mock_merge,
@@ -927,9 +891,7 @@ class TestCreateMessage:
                 "ccproxy.api.routes.anthropic.get_settings",
                 return_value=mock_settings,
             ),
-            patch(
-                "ccproxy.api.routes.anthropic.ClaudeClient"
-            ) as mock_client_class,
+            patch("ccproxy.api.routes.anthropic.ClaudeClient") as mock_client_class,
             patch(
                 "ccproxy.api.routes.anthropic.merge_claude_code_options"
             ) as mock_merge,
@@ -966,9 +928,7 @@ class TestCreateMessage:
                 "ccproxy.api.routes.anthropic.get_settings",
                 return_value=mock_settings,
             ),
-            patch(
-                "ccproxy.api.routes.anthropic.ClaudeClient"
-            ) as mock_client_class,
+            patch("ccproxy.api.routes.anthropic.ClaudeClient") as mock_client_class,
             patch(
                 "ccproxy.api.routes.anthropic.merge_claude_code_options"
             ) as mock_merge,
@@ -1001,9 +961,7 @@ class TestCreateMessage:
                 "ccproxy.api.routes.anthropic.get_settings",
                 return_value=mock_settings,
             ),
-            patch(
-                "ccproxy.api.routes.anthropic.ClaudeClient"
-            ) as mock_client_class,
+            patch("ccproxy.api.routes.anthropic.ClaudeClient") as mock_client_class,
             patch(
                 "ccproxy.api.routes.anthropic.merge_claude_code_options"
             ) as mock_merge,
@@ -1038,9 +996,7 @@ class TestCreateMessage:
                 "ccproxy.api.routes.anthropic.get_settings",
                 return_value=mock_settings,
             ),
-            patch(
-                "ccproxy.api.routes.anthropic.ClaudeClient"
-            ) as mock_client_class,
+            patch("ccproxy.api.routes.anthropic.ClaudeClient") as mock_client_class,
             patch(
                 "ccproxy.api.routes.anthropic.merge_claude_code_options"
             ) as mock_merge,
@@ -1074,9 +1030,7 @@ class TestCreateMessage:
                 "ccproxy.api.routes.anthropic.get_settings",
                 return_value=mock_settings,
             ),
-            patch(
-                "ccproxy.api.routes.anthropic.ClaudeClient"
-            ) as mock_client_class,
+            patch("ccproxy.api.routes.anthropic.ClaudeClient") as mock_client_class,
             patch(
                 "ccproxy.api.routes.anthropic.merge_claude_code_options"
             ) as mock_merge,

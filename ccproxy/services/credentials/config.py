@@ -26,6 +26,10 @@ def _get_default_storage_paths() -> list[str]:
 class OAuthConfig(BaseModel):
     """OAuth configuration settings."""
 
+    base_url: str = Field(
+        default="https://console.anthropic.com",
+        description="Base URL for OAuth API endpoints",
+    )
     beta_version: str = Field(
         default="oauth-2025-04-20",
         description="OAuth beta version header",
@@ -37,6 +41,10 @@ class OAuthConfig(BaseModel):
     authorize_url: str = Field(
         default="https://claude.ai/oauth/authorize",
         description="OAuth authorization endpoint URL",
+    )
+    profile_url: str = Field(
+        default="https://api.anthropic.com/api/oauth/profile",
+        description="OAuth profile endpoint URL",
     )
     client_id: str = Field(
         default="9d1c250a-e61b-44d9-88ed-5944d1962f5e",
@@ -53,6 +61,10 @@ class OAuthConfig(BaseModel):
             "user:inference",
         ],
         description="OAuth scopes to request",
+    )
+    request_timeout: int = Field(
+        default=30,
+        description="Timeout in seconds for OAuth requests",
     )
     user_agent: str = Field(
         default="Claude-Code/1.0.43",

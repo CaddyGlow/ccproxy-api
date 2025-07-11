@@ -7,13 +7,6 @@ from unittest.mock import AsyncMock, MagicMock, mock_open, patch
 
 import pytest
 
-from ccproxy.services.credentials import (
-    CredentialsConfig,
-    CredentialsManager,
-    JsonFileStorage,
-    OAuthClient,
-    OAuthConfig,
-)
 from ccproxy.auth.exceptions import (
     CredentialsExpiredError,
     CredentialsInvalidError,
@@ -25,6 +18,13 @@ from ccproxy.auth.exceptions import (
 from ccproxy.auth.models import (
     ClaudeCredentials,
     OAuthToken,
+)
+from ccproxy.services.credentials import (
+    CredentialsConfig,
+    CredentialsManager,
+    JsonFileStorage,
+    OAuthClient,
+    OAuthConfig,
 )
 
 
@@ -105,9 +105,8 @@ class TestJsonFileStorage:
         assert str(storage.file_path) in location
         assert "with keyring support" in location
 
-
     # Keyring-specific tests (merged from test_keyring_storage.py)
-    
+
     @pytest.fixture
     def credentials_json(self, valid_credentials):
         """Get JSON representation of valid credentials."""
@@ -118,7 +117,7 @@ class TestJsonFileStorage:
         self, tmp_path, valid_credentials, credentials_json
     ):
         """Test loading credentials from keyring when available."""
-        with patch("ccproxy.services.credentials.json_storage.keyring") as mock_keyring:
+        with patch("ccproxy.auth.storage.json_file.keyring") as mock_keyring:
             mock_keyring.get_password.return_value = credentials_json
 
             storage = JsonFileStorage(tmp_path / "credentials.json")
@@ -138,7 +137,7 @@ class TestJsonFileStorage:
         creds_file = tmp_path / "credentials.json"
         creds_file.write_text(json.dumps(valid_credentials.model_dump(by_alias=True)))
 
-        with patch("ccproxy.services.credentials.json_storage.keyring") as mock_keyring:
+        with patch("ccproxy.auth.storage.json_file.keyring") as mock_keyring:
             # Keyring fails
             mock_keyring.get_password.side_effect = Exception("Keyring error")
 
@@ -157,7 +156,7 @@ class TestJsonFileStorage:
         """Test saving to both keyring and file when keyring is available."""
         creds_file = tmp_path / "credentials.json"
 
-        with patch("ccproxy.services.credentials.json_storage.keyring") as mock_keyring:
+        with patch("ccproxy.auth.storage.json_file.keyring") as mock_keyring:
             storage = JsonFileStorage(creds_file)
 
             # Save credentials
@@ -183,7 +182,7 @@ class TestJsonFileStorage:
         """Test that save continues to file even if keyring fails."""
         creds_file = tmp_path / "credentials.json"
 
-        with patch("ccproxy.services.credentials.json_storage.keyring") as mock_keyring:
+        with patch("ccproxy.auth.storage.json_file.keyring") as mock_keyring:
             # Keyring save fails
             mock_keyring.set_password.side_effect = Exception("Keyring error")
 
@@ -226,7 +225,7 @@ class TestJsonFileStorage:
         creds_file = tmp_path / "credentials.json"
         creds_file.write_text(json.dumps(valid_credentials.model_dump(by_alias=True)))
 
-        with patch("ccproxy.services.credentials.json_storage.keyring") as mock_keyring:
+        with patch("ccproxy.auth.storage.json_file.keyring") as mock_keyring:
             storage = JsonFileStorage(creds_file)
 
             # Delete credentials
@@ -248,7 +247,7 @@ class TestJsonFileStorage:
         creds_file = tmp_path / "credentials.json"
         creds_file.write_text("{}")
 
-        with patch("ccproxy.services.credentials.json_storage.keyring") as mock_keyring:
+        with patch("ccproxy.auth.storage.json_file.keyring") as mock_keyring:
             # Keyring delete fails
             mock_keyring.delete_password.side_effect = Exception(
                 "No such keyring entry"
@@ -292,7 +291,7 @@ class TestJsonFileStorage:
         creds_file = tmp_path / "credentials.json"
         creds_file.write_text(json.dumps(valid_credentials.model_dump(by_alias=True)))
 
-        with patch("ccproxy.services.credentials.json_storage.keyring") as mock_keyring:
+        with patch("ccproxy.auth.storage.json_file.keyring") as mock_keyring:
             # Keyring returns None (no credentials)
             mock_keyring.get_password.return_value = None
 
@@ -310,7 +309,7 @@ class TestJsonFileStorage:
         creds_file = tmp_path / "credentials.json"
         creds_file.write_text(json.dumps(valid_credentials.model_dump(by_alias=True)))
 
-        with patch("ccproxy.services.credentials.json_storage.keyring") as mock_keyring:
+        with patch("ccproxy.auth.storage.json_file.keyring") as mock_keyring:
             # Keyring returns invalid JSON
             mock_keyring.get_password.return_value = "invalid json"
 
@@ -351,6 +350,7 @@ class TestCredentialStoragePaths:
             assert "/tmp/ccproxy-test/.config/claude/.credentials.json" in paths
             assert "~/.config/ccproxy/credentials.json" not in paths
 
+
 class TestOAuthClient:
     """Test OAuth client."""
 
@@ -381,13 +381,16 @@ class TestOAuthClient:
 
         mock_client = AsyncMock()
         mock_client.post = AsyncMock(return_value=mock_response)
-        oauth_client._http_client = mock_client
 
-        result = await oauth_client.refresh_token("old-refresh-token")
+        # Mock httpx.AsyncClient context manager
+        with patch("httpx.AsyncClient") as mock_httpx:
+            mock_httpx.return_value.__aenter__.return_value = mock_client
 
-        assert result.access_token == "new-access-token"
-        assert result.refresh_token == "new-refresh-token"
-        assert not result.is_expired
+            result = await oauth_client.refresh_token("old-refresh-token")
+
+            assert result.access_token == "new-access-token"
+            assert result.refresh_token == "new-refresh-token"
+            assert not result.is_expired
 
     @pytest.mark.asyncio
     async def test_refresh_token_failure(self, oauth_client):
@@ -398,10 +401,13 @@ class TestOAuthClient:
 
         mock_client = AsyncMock()
         mock_client.post = AsyncMock(return_value=mock_response)
-        oauth_client._http_client = mock_client
 
-        with pytest.raises(OAuthTokenRefreshError):
-            await oauth_client.refresh_token("bad-refresh-token")
+        # Mock httpx.AsyncClient context manager
+        with patch("httpx.AsyncClient") as mock_httpx:
+            mock_httpx.return_value.__aenter__.return_value = mock_client
+
+            with pytest.raises(OAuthTokenRefreshError):
+                await oauth_client.refresh_token("bad-refresh-token")
 
 
 class TestCredentialsManager:
@@ -494,14 +500,19 @@ class TestCredentialsManager:
         future_time = datetime.now(UTC) + timedelta(hours=1)
         future_ms = int(future_time.timestamp() * 1000)
 
-        new_token = OAuthToken(
-            accessToken="refreshed-token",
-            refreshToken="new-refresh-token",
-            expiresAt=future_ms,
-            scopes=["user:inference"],
-            subscriptionType="pro",
+        # Create mock OAuth response
+        from ccproxy.auth.oauth.models import OAuthTokenResponse
+
+        mock_token_response = OAuthTokenResponse(
+            access_token="refreshed-token",
+            refresh_token="new-refresh-token",
+            expires_in=3600,
+            scope="user:inference",
+            token_type="Bearer",
         )
-        mock_oauth_client.refresh_token = AsyncMock(return_value=new_token)
+        mock_oauth_client.refresh_access_token = AsyncMock(
+            return_value=mock_token_response
+        )
         manager._oauth_client = mock_oauth_client
 
         result = await manager.get_valid_credentials()
@@ -513,16 +524,21 @@ class TestCredentialsManager:
         await manager.save(valid_credentials)
 
         result = await manager.validate()
-        assert result["valid"] is True
-        assert result["expired"] is False
-        assert result["subscription_type"] == "pro"
+        assert result.valid is True
+        assert result.expired is False
+        assert result.credentials is not None
+        assert result.credentials.claude_ai_oauth.subscription_type == "pro"
+        assert result.path is not None
+        assert "credentials.json" in result.path
 
     @pytest.mark.asyncio
     async def test_validate_no_credentials(self, manager, mock_empty_keyring):
         """Test validation when no credentials exist."""
         result = await manager.validate()
-        assert result["valid"] is False
-        assert "error" in result
+        assert result.valid is False
+        assert result.expired is None
+        assert result.credentials is None
+        assert result.path is None
 
     @pytest.mark.asyncio
     async def test_logout(self, manager, valid_credentials):
