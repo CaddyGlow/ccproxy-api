@@ -37,7 +37,7 @@ def main() -> None:
 
     try:
         # Format according to requested level
-        formatted_version = format_version(__version__)
+        formatted_version = format_version(__version__, level=level)
 
         print(formatted_version)
 

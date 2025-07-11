@@ -79,7 +79,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # New /sdk/ routes for Claude SDK endpoints
     app.include_router(claude_router, prefix="/sdk", tags=["claude-sdk"])
 
-    # New /api/ routes for proxy endpoints
+    # New /api/ routes for proxy endpoints (includes OpenAI-compatible /v1/chat/completions)
     app.include_router(proxy_router, prefix="/api", tags=["proxy-api"])
 
     # Legacy OpenAI-compatible API endpoints (both standard and prefixed paths)

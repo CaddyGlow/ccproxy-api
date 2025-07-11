@@ -27,6 +27,37 @@ from ccproxy.services.credentials.config import OAuthConfig
 logger = get_logger(__name__)
 
 
+def _log_http_error_compact(operation: str, response: httpx.Response) -> None:
+    """Log HTTP error response in compact format.
+
+    Args:
+        operation: Description of the operation that failed
+        response: HTTP response object
+    """
+    import os
+
+    # Check if verbose API logging is enabled
+    verbose_api = os.environ.get("CCPROXY_VERBOSE_API", "false").lower() == "true"
+
+    if verbose_api:
+        # Full verbose logging
+        logger.error(f"{operation} failed: {response.status_code} - {response.text}")
+    else:
+        # Compact logging - truncate response body
+        response_text = response.text
+        if len(response_text) > 200:
+            response_preview = f"{response_text[:100]}...{response_text[-50:]}"
+        elif len(response_text) > 100:
+            response_preview = f"{response_text[:100]}..."
+        else:
+            response_preview = response_text
+
+        logger.error(
+            f"{operation} failed: {response.status_code} - {response_preview} "
+            f"(use CCPROXY_VERBOSE_API=true for full response)"
+        )
+
+
 class OAuthClient:
     """OAuth client for handling Anthropic OAuth flows."""
 
@@ -115,9 +146,7 @@ class OAuthClient:
             )
 
             if response.status_code != 200:
-                logger.error(
-                    f"Token exchange failed: {response.status_code} - {response.text}"
-                )
+                _log_http_error_compact("Token exchange", response)
                 response.raise_for_status()
 
             data = response.json()
@@ -156,9 +185,7 @@ class OAuthClient:
             )
 
             if response.status_code != 200:
-                logger.error(
-                    f"Token refresh failed: {response.status_code} - {response.text}"
-                )
+                _log_http_error_compact("Token refresh", response)
                 response.raise_for_status()
 
             data = response.json()
@@ -235,13 +262,11 @@ class OAuthClient:
                 logger.debug("Userinfo endpoint not available")
                 return None
             elif response.status_code != 200:
-                logger.error(
-                    f"Profile fetch failed: {response.status_code} - {response.text}"
-                )
+                _log_http_error_compact("Profile fetch", response)
                 response.raise_for_status()
 
             data = response.json()
-            logger.debug("User profile %r", data)
+            logger.debug("Successfully fetched user profile")
             return UserProfile.model_validate(data)
 
     async def login(self) -> ClaudeCredentials:
@@ -411,8 +436,26 @@ class OAuthClient:
                 return credentials
 
             else:
+                # Use compact logging for the error message
+                import os
+
+                verbose_api = (
+                    os.environ.get("CCPROXY_VERBOSE_API", "false").lower() == "true"
+                )
+
+                if verbose_api:
+                    error_detail = response.text
+                else:
+                    response_text = response.text
+                    if len(response_text) > 200:
+                        error_detail = f"{response_text[:100]}...{response_text[-50:]}"
+                    elif len(response_text) > 100:
+                        error_detail = f"{response_text[:100]}..."
+                    else:
+                        error_detail = response_text
+
                 raise OAuthLoginError(
-                    f"Token exchange failed: {response.status_code} - {response.text}"
+                    f"Token exchange failed: {response.status_code} - {error_detail}"
                 )
 
         except Exception as e:

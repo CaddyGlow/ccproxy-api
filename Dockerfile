@@ -1,14 +1,18 @@
-# Stage 1: Node.js dependencies
-FROM node:18-slim AS node-deps
+# Stage 1: Claude install
+# FROM node:18-slim AS node-deps
+#
+# WORKDIR /app
+#
+# # Install pnpm globally
+# RUN npm install -g pnpm
+#
+# # Copy package.json and install JavaScript dependencies
+# COPY package.json ./
+# RUN pnpm install
 
-WORKDIR /app
-
-# Install pnpm globally
-RUN npm install -g pnpm
-
-# Copy package.json and install JavaScript dependencies
-COPY package.json ./
-RUN pnpm install
+# Stage 1: Install bun from the official image
+FROM oven/bun:1-slim AS bun-deps
+RUN bun install -g @anthropic-ai/claude-code
 
 # Stage 2: Python builder
 FROM ghcr.io/astral-sh/uv:python3.11-bookworm-slim AS builder
@@ -56,10 +60,18 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 # COPY --from=node-deps /usr/local/bin/npx /usr/local/bin/npx
 # COPY --from=node-deps /usr/local/bin/pnpm /usr/local/bin/pnpm
 # COPY --from=node-deps /usr/local/lib/node_modules /usr/local/lib/node_modules
-
 # We have to copy the entire /usr/local that seem to be
 # more realiable
-COPY --from=node-deps /usr/local /usr/local
+#COPY --from=node-deps /usr/local /usr/local
+
+# Copy bun binaries from bun-deps stage and link to node
+COPY --from=bun-deps /usr/local/bin/bun /usr/local/bin/
+COPY --from=bun-deps /usr/local/bin/bunx /usr/local/bin/
+RUN ln -s /usr/local/bin/bun /usr/local/bin/node && ln -s /usr/local/bin/bunx /usr/local/bin/npx
+
+# Install package for claude and link to claude bin
+COPY --from=bun-deps /root/.bun/install/global /app/bun_global
+RUN ln -s /app/bun_global/node_modules/\@anthropic-ai/claude-code/cli.js /usr/local/bin/claude
 
 COPY scripts/entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
@@ -67,13 +79,10 @@ RUN chmod +x /usr/local/bin/entrypoint.sh
 # Copy Python application from builder
 COPY --from=builder /app /app
 
-# Copy Node.js dependencies from first stage
-COPY --from=node-deps /app/node_modules /app/node_modules
-COPY --from=node-deps /app/package.json /app/package.json
-
 WORKDIR /app
 
-ENV PATH="/app/.venv/bin:/app/node_modules/.bin:$PATH"
+# ENV PATH="/app/.venv/bin:/app/node_modules/.bin:$PATH"
+ENV PATH="/app/.venv/bin:/app/bun_global/bin:$PATH"
 ENV PYTHONPATH=/app
 ENV HOST=0.0.0.0
 ENV PORT=8000

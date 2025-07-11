@@ -308,8 +308,27 @@ async def _exchange_code_for_tokens(
                     return False
 
             else:
+                # Use compact logging for the error message
+                import os
+
+                verbose_api = (
+                    os.environ.get("CCPROXY_VERBOSE_API", "false").lower() == "true"
+                )
+
+                if verbose_api:
+                    error_detail = response.text
+                else:
+                    response_text = response.text
+                    if len(response_text) > 200:
+                        error_detail = f"{response_text[:100]}...{response_text[-50:]}"
+                    elif len(response_text) > 100:
+                        error_detail = f"{response_text[:100]}..."
+                    else:
+                        error_detail = response_text
+
                 logger.error(
-                    f"Token exchange failed: {response.status_code} - {response.text}"
+                    f"Token exchange failed: {response.status_code} - {error_detail} "
+                    f"(use CCPROXY_VERBOSE_API=true for full response)"
                 )
                 return False
 

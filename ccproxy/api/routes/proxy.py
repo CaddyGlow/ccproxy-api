@@ -7,6 +7,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
+from ccproxy.adapters.openai.adapter import OpenAIAdapter
 from ccproxy.api.dependencies import ProxyServiceDep
 
 
@@ -59,7 +60,7 @@ async def create_openai_chat_completion(
                 # Return as streaming response
                 async def stream_generator() -> AsyncIterator[bytes]:
                     # Split the SSE data into chunks
-                    for line in response_body.decode().split('\n'):
+                    for line in response_body.decode().split("\n"):
                         if line.strip():
                             yield f"{line}\n".encode()
 
@@ -74,7 +75,11 @@ async def create_openai_chat_completion(
             else:
                 # Parse JSON response
                 response_data = json.loads(response_body.decode())
-                return response_data  # type: ignore[no-any-return]
+
+                # Convert Anthropic response back to OpenAI format for /chat/completions
+                openai_adapter = OpenAIAdapter()
+                openai_response = openai_adapter.adapt_response(response_data)
+                return openai_response
 
     except Exception as e:
         raise HTTPException(
@@ -127,7 +132,7 @@ async def create_anthropic_message(
                 # Return as streaming response
                 async def stream_generator() -> AsyncIterator[bytes]:
                     # Split the SSE data into chunks
-                    for line in response_body.decode().split('\n'):
+                    for line in response_body.decode().split("\n"):
                         if line.strip():
                             yield f"{line}\n".encode()
 

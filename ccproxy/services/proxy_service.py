@@ -112,22 +112,25 @@ class ProxyService:
             logger.debug(f"Checking if should stream response for path: {path}")
             logger.debug(f"Original headers: {headers}")
             logger.debug(f"Transformed headers: {transformed_request['headers']}")
-            
+
             should_stream = False
             if body:
                 try:
                     import json
-                    body_data = json.loads(body.decode('utf-8'))
-                    stream_requested = body_data.get('stream', False)
+
+                    body_data = json.loads(body.decode("utf-8"))
+                    stream_requested = body_data.get("stream", False)
                     logger.debug(f"Request body stream flag: {stream_requested}")
                     should_stream = stream_requested
-                except:
+                except (json.JSONDecodeError, UnicodeDecodeError):
                     logger.debug("Could not parse request body as JSON")
-            
+
             # Also check headers as fallback
             if not should_stream:
-                should_stream = self._should_stream_response(transformed_request["headers"])
-            
+                should_stream = self._should_stream_response(
+                    transformed_request["headers"]
+                )
+
             if should_stream:
                 logger.debug("Streaming response detected, using streaming handler")
                 return await self._handle_streaming_request(
@@ -340,8 +343,12 @@ class ProxyService:
         """
         # Check if client requested streaming
         accept_header = headers.get("accept", "").lower()
-        should_stream = "text/event-stream" in accept_header or "stream" in accept_header
-        logger.debug(f"Stream check - Accept header: {accept_header!r}, Should stream: {should_stream}")
+        should_stream = (
+            "text/event-stream" in accept_header or "stream" in accept_header
+        )
+        logger.debug(
+            f"Stream check - Accept header: {accept_header!r}, Should stream: {should_stream}"
+        )
         return should_stream
 
     async def _handle_streaming_request(
@@ -363,9 +370,11 @@ class ProxyService:
 
         async def stream_generator() -> AsyncGenerator[bytes, None]:
             try:
-                logger.debug(f"Starting stream generator for request: {request_data['method']} {request_data['url']}")
+                logger.debug(
+                    f"Starting stream generator for request: {request_data['method']} {request_data['url']}"
+                )
                 logger.debug(f"Request headers: {request_data['headers']}")
-                
+
                 # Use httpx directly for streaming since we need the stream context manager
                 import os
                 from pathlib import Path
@@ -389,7 +398,7 @@ class ProxyService:
                 ):
                     logger.debug(f"Stream response status: {response.status_code}")
                     logger.debug(f"Stream response headers: {dict(response.headers)}")
-                    
+
                     # Check for errors
                     if response.status_code >= 400:
                         error_content = await response.aread()
@@ -404,7 +413,9 @@ class ProxyService:
                     is_openai = self.response_transformer._is_openai_request(
                         original_path
                     )
-                    logger.debug(f"Is OpenAI request: {is_openai} for path: {original_path}")
+                    logger.debug(
+                        f"Is OpenAI request: {is_openai} for path: {original_path}"
+                    )
 
                     if is_openai:
                         # Transform Anthropic SSE to OpenAI SSE format using adapter
@@ -417,17 +428,60 @@ class ProxyService:
                         ) in self._transform_anthropic_to_openai_stream(
                             response, original_path
                         ):
-                            logger.debug(f"Yielding transformed chunk: {len(transformed_chunk)} bytes")
+                            logger.debug(
+                                f"Yielding transformed chunk: {len(transformed_chunk)} bytes"
+                            )
                             yield transformed_chunk
                     else:
                         # Stream as-is for Anthropic endpoints
                         logger.debug("Streaming as-is for Anthropic endpoint")
                         chunk_count = 0
+                        content_block_delta_count = 0
+
+                        # Check if verbose streaming logs are enabled
+                        import os
+
+                        verbose_streaming = (
+                            os.environ.get("CCPROXY_VERBOSE_STREAMING", "false").lower()
+                            == "true"
+                        )
+
                         async for chunk in response.aiter_bytes():
                             if chunk:
                                 chunk_count += 1
-                                logger.debug(f"Yielding chunk {chunk_count}: {len(chunk)} bytes - {chunk[:100]!r}...")
+
+                                # Compact logging for content_block_delta events
+                                chunk_str = chunk.decode("utf-8", errors="replace")
+                                if (
+                                    "content_block_delta" in chunk_str
+                                    and not verbose_streaming
+                                ):
+                                    content_block_delta_count += 1
+                                    # Only log every 10th content_block_delta or when we start/end
+                                    if content_block_delta_count == 1:
+                                        logger.debug(
+                                            "Streaming content_block_delta events (use CCPROXY_VERBOSE_STREAMING=true for all chunks)"
+                                        )
+                                    elif content_block_delta_count % 10 == 0:
+                                        logger.debug(
+                                            f"...{content_block_delta_count} content_block_delta events streamed..."
+                                        )
+                                elif (
+                                    verbose_streaming
+                                    or "content_block_delta" not in chunk_str
+                                ):
+                                    # Log non-content_block_delta events normally, or everything if verbose mode
+                                    logger.debug(
+                                        f"Yielding chunk {chunk_count}: {len(chunk)} bytes - {chunk[:100]!r}..."
+                                    )
+
                                 yield chunk
+
+                        # Final summary for content_block_delta events
+                        if content_block_delta_count > 0 and not verbose_streaming:
+                            logger.debug(
+                                f"Completed streaming {content_block_delta_count} content_block_delta events"
+                            )
 
             except Exception as e:
                 logger.exception("Error in streaming response")
