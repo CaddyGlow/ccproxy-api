@@ -46,10 +46,10 @@ def setup_error_handlers(app: FastAPI) -> None:
         """Handle Claude proxy specific errors."""
         logger.error(f"Claude proxy error: {exc}")
         return JSONResponse(
-            status_code=500,
+            status_code=exc.status_code,
             content={
                 "error": {
-                    "type": "claude_proxy_error",
+                    "type": exc.error_type,
                     "message": str(exc),
                 }
             },
