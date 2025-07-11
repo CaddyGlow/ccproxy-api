@@ -45,8 +45,8 @@ install:
 
 dev-install:
 	uv sync --all-extras --dev
-	pnpm install
 	uv run pre-commit install
+	bun install -g @anthropic-ai/claude-code
 
 # Cleanup
 clean:
