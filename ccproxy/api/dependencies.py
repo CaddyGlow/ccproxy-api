@@ -12,7 +12,6 @@ from ccproxy.metrics.collector import MetricsCollector
 from ccproxy.metrics.storage.memory import InMemoryMetricsStorage
 from ccproxy.services.claude_sdk_service import ClaudeSDKService
 from ccproxy.services.credentials.manager import CredentialsManager
-from ccproxy.services.hybrid_service import HybridService
 from ccproxy.services.metrics_service import MetricsService
 from ccproxy.services.proxy_service import ProxyService
 
@@ -113,29 +112,8 @@ def get_metrics_service() -> MetricsService:
     return MetricsService()
 
 
-def get_hybrid_service(
-    claude_service: Annotated[ClaudeSDKService, Depends(get_claude_service)],
-    proxy_service: Annotated[ProxyService, Depends(get_proxy_service)],
-) -> HybridService:
-    """Get hybrid service instance.
-
-    Args:
-        claude_service: Claude SDK service dependency
-        proxy_service: Proxy service dependency
-
-    Returns:
-        Hybrid service instance
-    """
-    logger.debug("Creating hybrid service instance")
-    return HybridService(
-        claude_sdk_service=claude_service,
-        proxy_service=proxy_service,
-    )
-
-
 # Type aliases for service dependencies
 ClaudeServiceDep = Annotated[ClaudeSDKService, Depends(get_claude_service)]
 ProxyServiceDep = Annotated[ProxyService, Depends(get_proxy_service)]
-HybridServiceDep = Annotated[HybridService, Depends(get_hybrid_service)]
 MetricsServiceDep = Annotated[MetricsService, Depends(get_metrics_service)]
 MetricsCollectorDep = Annotated[MetricsCollector, Depends(get_metrics_collector)]

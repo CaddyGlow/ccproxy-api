@@ -72,26 +72,24 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     setup_cors_middleware(app, settings)
     setup_error_handlers(app)
 
-    # Include routers
+    # Include health and metrics routers (keep as they are)
     app.include_router(health_router, tags=["health"])
     app.include_router(metrics_router, prefix="/metrics", tags=["metrics"])
 
-    # OpenAI-compatible API endpoints (both standard and prefixed paths)
+    # New /sdk/ routes for Claude SDK endpoints
+    app.include_router(claude_router, prefix="/sdk", tags=["claude-sdk"])
+
+    # New /api/ routes for proxy endpoints
+    app.include_router(proxy_router, prefix="/api", tags=["proxy-api"])
+
+    # Legacy OpenAI-compatible API endpoints (both standard and prefixed paths)
+    # These will be simplified or removed in favor of /sdk/ and /api/ routes
     app.include_router(openai_router, prefix="/v1", tags=["openai-standard"])
     app.include_router(openai_router, prefix="/openai/v1", tags=["openai"])
 
-    # Anthropic API endpoints (for non-OpenAI paths under /v1)
+    # Legacy Anthropic API endpoints (for non-OpenAI paths under /v1)
+    # These will be simplified or removed in favor of /sdk/ and /api/ routes
     app.include_router(anthropic_router, prefix="/v1", tags=["anthropic"])
-
-    # Claude SDK direct endpoints
-    app.include_router(
-        claude_router,
-        prefix=f"{settings.reverse_proxy.claude_code_prefix}/v1",
-        tags=["claude"],
-    )
-
-    # Internal proxy endpoints
-    app.include_router(proxy_router, prefix="/proxy", tags=["proxy"])
 
     return app
 

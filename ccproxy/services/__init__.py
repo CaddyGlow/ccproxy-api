@@ -5,7 +5,6 @@
 
 __all__ = [
     "ClaudeSDKService",
-    "HybridService",
     "MetricsService",
     "ProxyService",
 ]

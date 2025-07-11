@@ -32,7 +32,7 @@ def get_credentials_manager(
     if custom_paths:
         # Get base settings and update storage paths
         settings = get_settings()
-        settings.auth.storage.storage_paths = [str(p) for p in custom_paths]
+        settings.auth.storage.storage_paths = custom_paths
         return CredentialsManager(config=settings.auth)
     else:
         # Use default settings

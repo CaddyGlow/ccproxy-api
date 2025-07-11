@@ -115,7 +115,7 @@ class MetricsService:
             status_code: HTTP status code
             response_time: Response time in seconds
             tokens_used: Number of tokens used
-            service_type: Type of service used (sdk, proxy, hybrid)
+            service_type: Type of service used (sdk, proxy)
         """
         metric = {
             "type": "request_end",
@@ -167,7 +167,7 @@ class MetricsService:
 
         Args:
             event_type: Type of event (e.g., 'startup', 'shutdown', 'health_check')
-            service_type: Type of service (e.g., 'sdk', 'proxy', 'hybrid')
+            service_type: Type of service (e.g., 'sdk', 'proxy')
             metadata: Additional metadata
         """
         metric = {

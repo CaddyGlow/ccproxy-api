@@ -304,7 +304,7 @@ class TestAPIEndpointsWithAuth:
         self, client: TestClient
     ) -> None:
         """Test unauthenticated request when auth is not enabled."""
-        response = client.get("/v1/auth/status")
+        response = client.get("/auth/status")
         # Should succeed when auth is not configured
         assert response.status_code in [200, 404]  # Endpoint may not exist without auth
 
@@ -377,7 +377,7 @@ class TestAPIEndpointsWithAuth:
         self, client_with_auth: TestClient, auth_headers: dict[str, str]
     ) -> None:
         """Test authentication status endpoint."""
-        response = client_with_auth.get("/v1/auth/status", headers=auth_headers)
+        response = client_with_auth.get("/auth/status", headers=auth_headers)
         # Should return auth status
         assert response.status_code in [
             200,
@@ -767,13 +767,13 @@ class TestAuthenticationIntegration:
     ) -> None:
         """Test authentication middleware integration with requests."""
         # Test that auth middleware properly validates tokens
-        response = client_with_auth.get("/v1/auth/status", headers=auth_headers)
+        response = client_with_auth.get("/auth/status", headers=auth_headers)
 
         # Should not get 401 with valid token
         assert response.status_code != status.HTTP_401_UNAUTHORIZED
 
         # Test without headers
-        response = client_with_auth.get("/v1/auth/status")
+        response = client_with_auth.get("/auth/status")
         # May or may not require auth depending on endpoint implementation
         assert response.status_code in [200, 401, 404]
 
