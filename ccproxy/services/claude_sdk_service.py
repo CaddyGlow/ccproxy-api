@@ -12,6 +12,7 @@ from ccproxy.core.errors import (
     ServiceUnavailableError,
 )
 from ccproxy.core.logging import get_logger
+from ccproxy.metrics.collector import MetricsCollector
 
 
 logger = get_logger(__name__)
@@ -30,7 +31,7 @@ class ClaudeSDKService:
         self,
         sdk_client: ClaudeSDKClient | None = None,
         auth_manager: AuthManager | None = None,
-        metrics_collector: Any | None = None,
+        metrics_collector: MetricsCollector | None = None,
     ) -> None:
         """
         Initialize Claude SDK service.
@@ -293,9 +294,47 @@ class ClaudeSDKService:
         if not self.metrics_collector:
             return
 
-        # Implement metrics recording logic
-        # This is a placeholder for future metrics integration
-        logger.debug(f"Recording request metrics for user: {user_id}, model: {model}")
+        try:
+            from uuid import uuid4
+
+            # Generate request ID for correlation
+            request_id = str(uuid4())
+
+            # Calculate input tokens (approximate based on message content)
+            total_chars = sum(len(str(msg.get("content", ""))) for msg in messages)
+            # Rough approximation: 4 characters per token
+            estimated_input_tokens = total_chars // 4
+
+            # Extract additional request parameters
+            max_tokens = None
+            temperature = None
+            for key, value in messages[0].items() if messages else []:
+                if key == "max_tokens":
+                    max_tokens = value
+                elif key == "temperature":
+                    temperature = value
+
+            await self.metrics_collector.collect_request_start(
+                request_id=request_id,
+                method="POST",
+                path="/v1/messages",
+                endpoint="messages",
+                api_version="v1",
+                user_id=user_id,
+                model=model,
+                provider="anthropic",
+                max_tokens=max_tokens,
+                temperature=temperature,
+                streaming=stream,
+            )
+
+            logger.debug(
+                f"Recorded request metrics: user={user_id}, model={model}, "
+                f"stream={stream}, request_id={request_id}"
+            )
+
+        except Exception as e:
+            logger.error(f"Failed to record request metrics: {e}", exc_info=True)
 
     async def _record_completion_metrics(
         self,
@@ -312,9 +351,41 @@ class ClaudeSDKService:
         if not self.metrics_collector:
             return
 
-        # Implement completion metrics recording
-        # This is a placeholder for future metrics integration
-        logger.debug("Recording completion metrics")
+        try:
+            from uuid import uuid4
+
+            # Generate a request ID if we don't have one stored
+            request_id = str(uuid4())
+
+            # Extract token usage from response
+            usage = response.get("usage", {})
+            input_tokens = usage.get("input_tokens")
+            output_tokens = usage.get("output_tokens")
+            cache_read_tokens = usage.get("cache_read_tokens")
+            cache_write_tokens = usage.get("cache_write_tokens")
+
+            # Extract response metadata
+            status_code = 200  # Successful completion
+            completion_reason = response.get("stop_reason", "stop")
+
+            await self.metrics_collector.collect_response(
+                request_id=request_id,
+                status_code=status_code,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                cache_read_tokens=cache_read_tokens,
+                cache_write_tokens=cache_write_tokens,
+                completion_reason=completion_reason,
+                streaming=False,
+            )
+
+            logger.debug(
+                f"Recorded completion metrics: tokens_in={input_tokens}, "
+                f"tokens_out={output_tokens}, reason={completion_reason}"
+            )
+
+        except Exception as e:
+            logger.error(f"Failed to record completion metrics: {e}", exc_info=True)
 
     async def _record_streaming_metrics(
         self,
@@ -331,9 +402,52 @@ class ClaudeSDKService:
         if not self.metrics_collector:
             return
 
-        # Implement streaming metrics recording
-        # This is a placeholder for future metrics integration
-        logger.debug("Recording streaming metrics")
+        try:
+            from uuid import uuid4
+
+            # Generate a request ID if we don't have one stored
+            request_id = str(uuid4())
+
+            # Extract token usage from result message
+            input_tokens = getattr(result_message, "input_tokens", None)
+            output_tokens = getattr(result_message, "output_tokens", None)
+
+            # Calculate streaming-specific metrics
+            message_count = len(assistant_messages)
+            total_content_length = 0
+
+            # Extract content from assistant messages
+            for message in assistant_messages:
+                if hasattr(message, "content"):
+                    content = message.content
+                    if isinstance(content, list):
+                        for item in content:
+                            if hasattr(item, "text"):
+                                total_content_length += len(item.text)
+                    elif hasattr(content, "text"):
+                        total_content_length += len(content.text)
+                    elif isinstance(content, str):
+                        total_content_length += len(content)
+
+            # Record response metrics for streaming
+            await self.metrics_collector.collect_response(
+                request_id=request_id,
+                status_code=200,  # Successful streaming completion
+                content_length=total_content_length,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                streaming=True,
+                completion_reason=getattr(result_message, "stop_reason", "stop"),
+            )
+
+            logger.debug(
+                f"Recorded streaming metrics: messages={message_count}, "
+                f"content_length={total_content_length}, tokens_in={input_tokens}, "
+                f"tokens_out={output_tokens}"
+            )
+
+        except Exception as e:
+            logger.error(f"Failed to record streaming metrics: {e}", exc_info=True)
 
     async def _record_error_metrics(
         self,
@@ -352,9 +466,62 @@ class ClaudeSDKService:
         if not self.metrics_collector:
             return
 
-        # Implement error metrics recording
-        # This is a placeholder for future metrics integration
-        logger.debug(f"Recording error metrics for user: {user_id}, error: {error}")
+        try:
+            from uuid import uuid4
+
+            # Generate a request ID for error correlation
+            request_id = str(uuid4())
+
+            # Determine error type and code from error message
+            error_type = "unknown_error"
+            error_code = None
+            status_code = 500
+
+            # Parse common error patterns
+            error_lower = error.lower()
+            if "authentication" in error_lower or "unauthorized" in error_lower:
+                error_type = "authentication_error"
+                error_code = "401"
+                status_code = 401
+            elif "rate" in error_lower and "limit" in error_lower:
+                error_type = "rate_limit_error"
+                error_code = "429"
+                status_code = 429
+            elif "invalid" in error_lower or "bad request" in error_lower:
+                error_type = "invalid_request_error"
+                error_code = "400"
+                status_code = 400
+            elif "not found" in error_lower:
+                error_type = "not_found_error"
+                error_code = "404"
+                status_code = 404
+            elif "timeout" in error_lower:
+                error_type = "timeout_error"
+                error_code = "408"
+                status_code = 408
+            elif "service unavailable" in error_lower:
+                error_type = "service_unavailable_error"
+                error_code = "503"
+                status_code = 503
+
+            await self.metrics_collector.collect_error(
+                request_id=request_id,
+                error_type=error_type,
+                error_code=error_code,
+                error_message=error,
+                endpoint="messages",
+                method="POST",
+                status_code=status_code,
+                user_id=user_id,
+            )
+
+            logger.debug(
+                f"Recorded error metrics: user={user_id}, model={model}, "
+                f"error_type={error_type}, error_code={error_code}"
+            )
+
+        except Exception as e:
+            logger.error(f"Failed to record error metrics: {e}", exc_info=True)
 
     async def list_models(self) -> list[dict[str, Any]]:
         """

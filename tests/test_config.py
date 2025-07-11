@@ -9,7 +9,7 @@ from unittest.mock import patch
 import pytest
 
 from ccproxy.config import Settings, get_settings
-from ccproxy.utils import find_toml_config_file
+from ccproxy.config.discovery import find_toml_config_file
 
 
 @pytest.mark.unit

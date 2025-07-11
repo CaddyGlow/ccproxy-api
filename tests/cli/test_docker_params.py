@@ -18,7 +18,7 @@ from ccproxy.cli.docker.params import (
     user_mapping_option,
     user_uid_option,
 )
-from ccproxy.utils.docker_params import (
+from ccproxy.cli.docker.params import (
     parse_docker_env,
     parse_docker_volume,
     validate_docker_arg,

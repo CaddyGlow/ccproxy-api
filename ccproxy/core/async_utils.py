@@ -307,3 +307,264 @@ def get_claude_docker_home_dir() -> str:
     claude_dir.mkdir(parents=True, exist_ok=True)
 
     return str(claude_dir)
+
+
+def generate_schema_files(output_dir: Path) -> list[Path]:
+    """Generate JSON Schema files for TOML configuration validation.
+
+    Args:
+        output_dir: Directory to write schema files to
+
+    Returns:
+        List of generated schema file paths
+
+    Raises:
+        ImportError: If required dependencies are not available
+        OSError: If unable to write files
+    """
+    try:
+        import json
+        from typing import Any
+
+        from ccproxy.config.docker_settings import DockerSettings
+
+        # Import the settings and docker settings models
+        from ccproxy.config.settings import Settings
+    except ImportError as e:
+        raise ImportError(f"Required dependencies not available: {e}") from e
+
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    generated_files: list[Path] = []
+
+    # Generate schema for main Settings model
+    settings_schema = Settings.model_json_schema()
+    settings_schema_path = output_dir / "ccproxy-schema.json"
+
+    with settings_schema_path.open("w", encoding="utf-8") as f:
+        json.dump(settings_schema, f, indent=2, ensure_ascii=False)
+    generated_files.append(settings_schema_path)
+
+    # Generate schema for DockerSettings model
+    docker_schema = DockerSettings.model_json_schema()
+    docker_schema_path = output_dir / "docker-settings-schema.json"
+
+    with docker_schema_path.open("w", encoding="utf-8") as f:
+        json.dump(docker_schema, f, indent=2, ensure_ascii=False)
+    generated_files.append(docker_schema_path)
+
+    # Generate a combined schema file that can be used for complete config validation
+    combined_schema = {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "$id": "ccproxy-config-schema",
+        "title": "Claude Code Proxy Configuration Schema",
+        "description": "JSON Schema for validating Claude Code Proxy configuration files",
+        "type": "object",
+        "properties": settings_schema.get("properties", {}),
+        "additionalProperties": settings_schema.get("additionalProperties", False),
+        "definitions": settings_schema.get("$defs", {}),
+    }
+
+    combined_schema_path = output_dir / ".ccproxy-schema.json"
+    with combined_schema_path.open("w", encoding="utf-8") as f:
+        json.dump(combined_schema, f, indent=2, ensure_ascii=False)
+    generated_files.append(combined_schema_path)
+
+    return generated_files
+
+
+def generate_taplo_config(output_dir: Path) -> Path:
+    """Generate taplo configuration for TOML editor support.
+
+    Args:
+        output_dir: Directory to write taplo config to
+
+    Returns:
+        Path to generated taplo.toml file
+
+    Raises:
+        OSError: If unable to write file
+    """
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    taplo_config_path = output_dir / "taplo.toml"
+
+    # Generate taplo configuration that references our schema files
+    taplo_config = """# Taplo configuration for Claude Code Proxy TOML files
+# This configuration enables schema validation and autocomplete in editors
+
+[[rule]]
+name = "ccproxy-config"
+include = [
+    ".ccproxy.toml",
+    "ccproxy.toml",
+    "config.toml",
+    "**/ccproxy*.toml",
+    "**/config*.toml"
+]
+schema = ".ccproxy-schema.json"
+
+[[rule]]
+name = "ccproxy-docker"
+include = [
+    "**/docker-settings.toml",
+    "**/docker.toml"
+]
+schema = "docker-settings-schema.json"
+
+[formatting]
+# Standard TOML formatting options
+indent_string = "  "
+trailing_newline = true
+crlf = false
+
+[schema]
+# Enable schema validation
+enabled = true
+# Show completions from schema
+completion = true
+"""
+
+    with taplo_config_path.open("w", encoding="utf-8") as f:
+        f.write(taplo_config)
+
+    return taplo_config_path
+
+
+def validate_config_with_schema(config_path: Path) -> bool:
+    """Validate a TOML config file against the schema.
+
+    Args:
+        config_path: Path to configuration file to validate
+
+    Returns:
+        True if validation passes, False otherwise
+
+    Raises:
+        ImportError: If check-jsonschema is not available
+        FileNotFoundError: If config file doesn't exist
+        ValueError: If unable to parse or validate file
+    """
+    try:
+        import json
+        import subprocess
+        import tempfile
+        from typing import Any
+
+        # Import tomllib for Python 3.11+ or fallback to tomli
+        try:
+            import tomllib
+        except ImportError:
+            import tomli as tomllib  # type: ignore[no-redef,import-not-found]
+
+        from ccproxy.config.settings import Settings
+    except ImportError as e:
+        raise ImportError(
+            f"Required dependencies not available: {e}. "
+            "Install with: pip install check-jsonschema"
+        ) from e
+
+    config_path = Path(config_path)
+
+    if not config_path.exists():
+        raise FileNotFoundError(f"Configuration file not found: {config_path}")
+
+    # For TOML files, we need to convert to JSON first since check-jsonschema
+    # doesn't directly support TOML validation
+    if config_path.suffix.lower() == ".toml":
+        try:
+            # Read and parse TOML
+            with config_path.open("rb") as f:
+                toml_data = tomllib.load(f)
+        except Exception as e:
+            raise ValueError(f"Unable to parse TOML file {config_path}: {e}") from e
+
+        # Generate schema in a temporary file
+        schema = Settings.model_json_schema()
+
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".json", delete=False, encoding="utf-8"
+        ) as schema_file:
+            json.dump(schema, schema_file, indent=2)
+            schema_path = schema_file.name
+
+        # Convert TOML data to JSON for validation
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".json", delete=False, encoding="utf-8"
+        ) as json_file:
+            json.dump(toml_data, json_file, indent=2)
+            json_path = json_file.name
+
+        try:
+            # Use check-jsonschema to validate
+            result = subprocess.run(
+                ["check-jsonschema", "--schemafile", schema_path, json_path],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+            # Clean up temporary files
+            Path(schema_path).unlink(missing_ok=True)
+            Path(json_path).unlink(missing_ok=True)
+
+            if result.returncode == 0:
+                return True
+            else:
+                # Log validation errors
+                if result.stderr:
+                    raise ValueError(f"Schema validation failed: {result.stderr}")
+                if result.stdout:
+                    raise ValueError(f"Schema validation failed: {result.stdout}")
+                return False
+
+        except FileNotFoundError as e:
+            raise ImportError(
+                "check-jsonschema command not found. "
+                "Install with: pip install check-jsonschema"
+            ) from e
+        except Exception as e:
+            # Clean up temporary files in case of error
+            Path(schema_path).unlink(missing_ok=True)
+            Path(json_path).unlink(missing_ok=True)
+            raise ValueError(f"Validation error: {e}") from e
+
+    else:
+        # For JSON/YAML files, use check-jsonschema directly
+        schema = Settings.model_json_schema()
+
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".json", delete=False, encoding="utf-8"
+        ) as schema_file:
+            json.dump(schema, schema_file, indent=2)
+            schema_path = schema_file.name
+
+        try:
+            result = subprocess.run(
+                ["check-jsonschema", "--schemafile", schema_path, str(config_path)],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+            Path(schema_path).unlink(missing_ok=True)
+
+            if result.returncode == 0:
+                return True
+            else:
+                if result.stderr:
+                    raise ValueError(f"Schema validation failed: {result.stderr}")
+                if result.stdout:
+                    raise ValueError(f"Schema validation failed: {result.stdout}")
+                return False
+
+        except FileNotFoundError as e:
+            raise ImportError(
+                "check-jsonschema command not found. "
+                "Install with: pip install check-jsonschema"
+            ) from e
+        except Exception as e:
+            Path(schema_path).unlink(missing_ok=True)
+            raise ValueError(f"Validation error: {e}") from e
