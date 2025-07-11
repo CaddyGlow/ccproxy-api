@@ -138,25 +138,44 @@ test: add integration tests for streaming
 
 ## Testing
 
-### Test Categories
-
-- **Unit Tests**: Fast, isolated tests (`pytest -m unit`)
-- **Integration Tests**: End-to-end workflows (`pytest -m integration`)
-- **Docker Tests**: Require Docker (`pytest -m docker`)
-- **Network Tests**: Require network access (`pytest -m network`)
-
 ### Running Tests
+
 ```bash
-# All tests
+# Run all tests
 make test
 
-# Specific categories
-make test-unit
-make test-integration
+# Quick test run (no coverage)  
+make test-fast
 
-# With specific markers
-uv run pytest -m "unit and not network"
+# Run specific test file
+make test-file FILE=test_auth.py
+
+# Run tests matching a pattern
+make test-match MATCH="auth"
 ```
+
+### Writing Tests
+
+- Put all tests in `tests/` directory
+- Name test files clearly: `test_feature.py`
+- Most tests should hit your API endpoints (integration-style)
+- Only write isolated unit tests for complex logic
+- Use fixtures in `conftest.py` for common setup
+- Mock external services (Claude SDK, OAuth endpoints)
+
+### What to Test
+
+**Focus on:**
+- API endpoints (both Anthropic and OpenAI formats)
+- Authentication flows
+- Request/response format conversion
+- Error handling
+- Streaming responses
+
+**Skip:**
+- Simple configuration
+- Third-party library internals
+- Logging
 
 ## Security
 

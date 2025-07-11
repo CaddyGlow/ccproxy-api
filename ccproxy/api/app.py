@@ -27,15 +27,17 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     # Startup
     logger.info("Starting Claude Code Proxy API Server...")
-    logger.info(f"Server configured for host: {settings.host}, port: {settings.port}")
+    logger.info(
+        f"Server configured for host: {settings.server.host}, port: {settings.server.port}"
+    )
 
     # Log Claude CLI configuration
-    if settings.claude_cli_path:
-        logger.info(f"Claude CLI configured at: {settings.claude_cli_path}")
+    if settings.claude.cli_path:
+        logger.info(f"Claude CLI configured at: {settings.claude.cli_path}")
     else:
         logger.info("Claude CLI path: Auto-detect at runtime")
         logger.info("Auto-detection will search the following locations:")
-        for path in settings.get_searched_paths():
+        for path in settings.claude.get_searched_paths():
             logger.info(f"  - {path}")
 
     yield
@@ -57,7 +59,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         settings = get_settings()
 
     # Configure rich logging with settings
-    setup_rich_logging(level=settings.log_level)
+    setup_rich_logging(level=settings.server.log_level)
 
     app = FastAPI(
         title="Claude Code Proxy API Server",
@@ -83,7 +85,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     # Claude SDK direct endpoints
     app.include_router(
-        claude_router, prefix=f"{settings.claude_code_prefix}/v1", tags=["claude"]
+        claude_router,
+        prefix=f"{settings.reverse_proxy.claude_code_prefix}/v1",
+        tags=["claude"],
     )
 
     # Internal proxy endpoints

@@ -73,8 +73,8 @@ def _show_api_usage_info(toolkit: Any, settings: Settings) -> None:
     toolkit.print_title("API Client Configuration", tag="config")
 
     # Determine the base URLs
-    anthropic_base_url = f"http://{settings.host}:{settings.port}"
-    openai_base_url = f"http://{settings.host}:{settings.port}/openai"
+    anthropic_base_url = f"http://{settings.server.host}:{settings.server.port}"
+    openai_base_url = f"http://{settings.server.host}:{settings.server.port}/openai"
 
     # Show environment variable exports using code blocks
     toolkit.print("Environment Variables for API Clients:", tag="info")
@@ -83,9 +83,9 @@ def _show_api_usage_info(toolkit: Any, settings: Settings) -> None:
     # Use rich console for code blocks
     console = Console()
 
-    exports = f"""export ANTHROPIC_API_KEY={settings.auth_token}
+    exports = f"""export ANTHROPIC_API_KEY={settings.security.auth_token}
 export ANTHROPIC_BASE_URL={anthropic_base_url}
-export OPENAI_API_KEY={settings.auth_token}
+export OPENAI_API_KEY={settings.security.auth_token}
 export OPENAI_BASE_URL={openai_base_url}"""
 
     console.print(Syntax(exports, "bash", theme="monokai", background_color="default"))
@@ -118,9 +118,9 @@ def _run_docker_server(
             docker_env_dict[key] = value
 
     # Add server configuration to Docker environment
-    if settings.reload:
+    if settings.server.reload:
         docker_env_dict["RELOAD"] = "true"
-    docker_env_dict["PORT"] = str(settings.port)
+    docker_env_dict["PORT"] = str(settings.server.port)
     docker_env_dict["HOST"] = "0.0.0.0"
 
     # Display startup information
@@ -128,7 +128,7 @@ def _run_docker_server(
         "Starting Claude Code Proxy API server with Docker", tag="docker"
     )
     toolkit.print(
-        f"Server will be available at: http://{settings.host}:{settings.port}",
+        f"Server will be available at: http://{settings.server.host}:{settings.server.port}",
         tag="info",
     )
     toolkit.print_line()
@@ -137,10 +137,8 @@ def _run_docker_server(
     toolkit.print_title("Docker Configuration Summary", tag="config")
 
     # Determine effective directories for volume mapping
-    home_dir = docker_home or settings.docker_settings.docker_home_directory
-    workspace_dir = (
-        docker_workspace or settings.docker_settings.docker_workspace_directory
-    )
+    home_dir = docker_home or settings.docker.docker_home_directory
+    workspace_dir = docker_workspace or settings.docker.docker_workspace_directory
 
     # Show volume information
     toolkit.print("Volumes:", tag="config")
@@ -158,10 +156,10 @@ def _run_docker_server(
     key_env_vars = {
         "CLAUDE_HOME": "/data/home",
         "CLAUDE_WORKSPACE": "/data/workspace",
-        "PORT": str(settings.port),
+        "PORT": str(settings.server.port),
         "HOST": "0.0.0.0",
     }
-    if settings.reload:
+    if settings.server.reload:
         key_env_vars["RELOAD"] = "true"
 
     for key, value in key_env_vars.items():
@@ -172,7 +170,7 @@ def _run_docker_server(
         toolkit.print(f"  {env_var}", tag="env")
 
     # Show debug environment information if log level is DEBUG
-    if settings.log_level == "DEBUG":
+    if settings.server.log_level == "DEBUG":
         toolkit.print_line()
         toolkit.print_title("Debug: All Environment Variables", tag="debug")
         all_env = {**docker_env_dict}
@@ -184,7 +182,7 @@ def _run_docker_server(
     toolkit.print_line()
 
     # Show API usage information if auth token is configured
-    if settings.auth_token:
+    if settings.security.auth_token:
         _show_api_usage_info(toolkit, settings)
 
     # Execute using the new Docker adapter
@@ -203,11 +201,11 @@ def _run_docker_server(
         )
     )
 
-    logger.info(f"image {settings.docker_settings.docker_image}")
+    logger.info(f"image {settings.docker.docker_image}")
     logger.info(f"image2 {image}")
 
     # Add port mapping
-    ports = [f"{settings.port}:{settings.port}"]
+    ports = [f"{settings.server.port}:{settings.server.port}"]
 
     # Create Docker adapter and execute
     adapter = create_docker_adapter()
@@ -239,28 +237,30 @@ def _run_local_server(settings: Settings, cli_overrides: dict[str, Any]) -> None
         toolkit.print_title("Starting Claude Code Proxy API server", tag="local")
 
     toolkit.print(
-        f"Server will be available at: http://{settings.host}:{settings.port}",
+        f"Server will be available at: http://{settings.server.host}:{settings.server.port}",
         tag="info",
     )
 
     toolkit.print_line()
 
     # Show API usage information if auth token is configured
-    if settings.auth_token:
+    if settings.security.auth_token:
         _show_api_usage_info(toolkit, settings)
 
     # Set environment variables for server to access CLI overrides
     if cli_overrides:
         os.environ["CCPROXY_CONFIG_OVERRIDES"] = json.dumps(cli_overrides)
 
-    logger.info(f"Starting production server at http://{settings.host}:{settings.port}")
+    logger.info(
+        f"Starting production server at http://{settings.server.host}:{settings.server.port}"
+    )
 
     # Run uvicorn with our already configured logging
     uvicorn.run(
         app=f"{get_root_package_name()}.api:app",
-        host=settings.host,
-        port=settings.port,
-        reload=settings.reload,
+        host=settings.server.host,
+        port=settings.server.port,
+        reload=settings.server.reload,
         workers=None,  # ,settings.workers,
         log_config=None,
         # log_config=get_uvicorn_log_config(),
@@ -412,7 +412,7 @@ def api(
         )
 
         # Set up logging once with the effective log level
-        config_manager.setup_logging(log_level or settings.log_level)
+        config_manager.setup_logging(log_level or settings.server.log_level)
 
         if docker:
             _run_docker_server(
@@ -491,9 +491,7 @@ def claude(
         if docker:
             # Prepare Docker execution using new adapter
 
-            toolkit.print_title(
-                f"image {settings.docker_settings.docker_image}", tag="docker"
-            )
+            toolkit.print_title(f"image {settings.docker.docker_image}", tag="docker")
             image, volumes, environment, command, user_context, additional_args = (
                 _create_docker_adapter_from_settings(
                     settings,
@@ -526,7 +524,7 @@ def claude(
             )
         else:
             # Get claude path from settings
-            claude_path = settings.claude_cli_path
+            claude_path = settings.claude.cli_path
             if not claude_path:
                 toolkit.print("Error: Claude CLI not found.", tag="error")
                 toolkit.print(

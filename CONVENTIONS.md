@@ -115,15 +115,15 @@ Adhere to modern `asyncio` patterns.
 
 Tests are integral to the development process.
 
-  * **Framework:** Use `pytest`.
-  * **Structure:** Follow the `tests/unit/`, `tests/integration/`, `tests/e2e/` structure.
-      * **Unit Tests:** Test individual components (functions, classes) in isolation. Mock external dependencies.
-      * **Integration Tests:** Test interactions between several components or services.
-      * **End-to-End (E2E) Tests:** Test the entire system from client request to final response.
-  * **Fixtures:** Use `conftest.py` for shared `pytest` fixtures within `tests/` and its subdirectories.
-  * **Mocking:** Use `unittest.mock` (including `AsyncMock` for async functions) for mocking dependencies.
-  * **Naming:** Test files: `test_module_name.py`. Test functions: `test_feature_name_behavior()`.
-  * **Coverage:** Aim for high test coverage, especially for core logic and critical paths.
+* **Framework:** Use `pytest`.
+* **Structure:** All tests live in `tests/` directory with descriptive filenames
+  - `test_api_*.py` - API endpoint tests
+  - `test_auth.py` - Authentication tests  
+  - `test_*.py` - Other component tests
+* **Fixtures:** Use `conftest.py` for shared fixtures
+* **Mocking:** Use `unittest.mock` for external dependencies
+* **Naming:** Test files: `test_feature.py`. Test functions: `test_specific_behavior()`
+* **Coverage:** Aim for high coverage on critical paths (auth, API endpoints)
 
 ## 10\. Dependency Management
 

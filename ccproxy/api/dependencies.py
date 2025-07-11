@@ -67,7 +67,7 @@ def get_credentials_manager(
         Credentials manager instance
     """
     logger.debug("Creating credentials manager instance")
-    return CredentialsManager(config=settings.credentials)
+    return CredentialsManager(config=settings.auth.storage)
 
 
 def get_proxy_service(
@@ -98,7 +98,7 @@ def get_proxy_service(
         proxy_client=proxy_client,
         credentials_manager=credentials_manager,
         proxy_mode="full",
-        target_base_url=settings.reverse_proxy_target_url,
+        target_base_url=settings.reverse_proxy.target_url,
         metrics_collector=metrics_collector,
     )
 
