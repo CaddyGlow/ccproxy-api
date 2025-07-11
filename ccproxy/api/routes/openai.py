@@ -1,6 +1,7 @@
 """OpenAI-compatible API endpoints for Claude Code Proxy API Server."""
 
-from typing import Any
+from collections.abc import AsyncIterator
+from typing import Any, Union
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
@@ -17,7 +18,7 @@ router = APIRouter(tags=["openai"])
 async def create_chat_completion(
     request: Request,
     hybrid_service: HybridService = Depends(get_hybrid_service),
-):
+) -> StreamingResponse | dict[str, Any]:
     """Create a chat completion using Claude AI with OpenAI-compatible format.
 
     This endpoint handles OpenAI API format requests and converts them
@@ -43,8 +44,8 @@ async def create_chat_completion(
         # Return appropriate response type
         if hasattr(response, "__aiter__"):
             # Streaming response
-            async def stream_generator():
-                async for chunk in response:
+            async def stream_generator() -> AsyncIterator[bytes]:
+                async for chunk in response:  # type: ignore[union-attr]
                     if isinstance(chunk, dict):
                         yield f"data: {chunk.get('data', '')}\n\n".encode()
                     else:
@@ -69,10 +70,13 @@ async def create_chat_completion(
             # Parse JSON response
             import json
 
-            return json.loads(response_body.decode())
+            response_data = json.loads(response_body.decode())
+            return response_data  # type: ignore[no-any-return]
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Internal server error: {str(e)}"
+        ) from e
 
 
 @router.get("/models")
@@ -98,6 +102,6 @@ async def list_models() -> dict[str, Any]:
 
 
 @router.get("/status")
-async def openai_status():
+async def openai_status() -> dict[str, str]:
     """Get OpenAI API status."""
     return {"status": "openai endpoint available"}

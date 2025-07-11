@@ -323,7 +323,16 @@ class MetricsCollector:
         Returns:
             LatencyMetric object
         """
-        latency_metric = LatencyMetric(request_id=request_id, **timings)
+        # Build kwargs with only valid fields for LatencyMetric
+        latency_kwargs: dict[str, Any] = {
+            "request_id": request_id,
+            "metric_type": MetricType.LATENCY,
+        }
+        for key, value in timings.items():
+            if key in LatencyMetric.model_fields:
+                latency_kwargs[key] = value
+
+        latency_metric = LatencyMetric(**latency_kwargs)
 
         # Get user and session info from request
         if request_id in self._active_requests:
@@ -353,13 +362,19 @@ class MetricsCollector:
         Returns:
             UsageMetric object
         """
-        usage_metric = UsageMetric(
-            window_start=window_start,
-            window_end=window_end,
-            window_duration_seconds=(window_end - window_start).total_seconds(),
-            aggregation_level=aggregation_level,
-            **counts,
-        )
+        # Build kwargs with only valid fields for UsageMetric
+        usage_kwargs: dict[str, Any] = {
+            "metric_type": MetricType.USAGE,
+            "window_start": window_start,
+            "window_end": window_end,
+            "window_duration_seconds": (window_end - window_start).total_seconds(),
+            "aggregation_level": aggregation_level,
+        }
+        for key, value in counts.items():
+            if key in UsageMetric.model_fields:
+                usage_kwargs[key] = value
+
+        usage_metric = UsageMetric(**usage_kwargs)
 
         await self._add_to_buffer(usage_metric)
         return usage_metric
@@ -546,14 +561,14 @@ class MetricsCollector:
         summary.unique_users = len(unique_users)
 
         # Model distribution
-        model_usage = {}
+        model_usage: dict[str, int] = {}
         for request in requests:
             if request.model:
                 model_usage[request.model] = model_usage.get(request.model, 0) + 1
         summary.model_usage = model_usage
 
         # Error breakdown
-        error_types = {}
+        error_types: dict[str, int] = {}
         for error in errors:
             error_types[error.error_type] = error_types.get(error.error_type, 0) + 1
         summary.error_types = error_types

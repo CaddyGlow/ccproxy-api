@@ -53,10 +53,17 @@ dev = [
   "pytest-asyncio>=0.23.0",
   "pytest-cov>=4.0.0",
   "pytest-env>=0.8.0",
+  "pytest-timeout>=2.1.0",
+  "pytest-mock>=3.12.0",
+  "pytest-xdist>=3.5.0",
+  "pytest-html>=4.1.0",
+  "pytest-benchmark>=4.0.0",
   "tox>=4.27.0",
   "pre-commit>=4.2.0",
   "anthropic>=0.57.1",
   "textual-dev>=1.7.0",
+  "pytest-httpx>=0.35.0",
+  "types-pyyaml>=6.0.12.20250516",
 ]
 security = [
   "keyring>=25.0.0", # Optional keyring support for secure credential storage
@@ -78,15 +85,48 @@ docs = [
 schema = ["pydantic>=2.8.0", "check-jsonschema>=0.33.2"]
 
 [tool.coverage.run]
-include = ["ccproxy", "tests"]
+source = ["ccproxy", "tests"]
+include = ["ccproxy/*", "tests/*"]
+omit = [
+  "ccproxy/_version.py",
+  "ccproxy/__main__.py",
+  "tests/conftest.py",
+  "*/migrations/*",
+  "*/__pycache__/*",
+  "*/.*",
+]
+branch = true
+parallel = true
+concurrency = ["thread", "multiprocessing"]
 
 [tool.coverage.report]
+precision = 2
+show_missing = true
+skip_covered = false
+skip_empty = true
+sort = "Cover"
 exclude_lines = [
   "pragma: no cover",
+  "def __repr__",
+  "if self.debug:",
+  "if settings.DEBUG",
+  "raise AssertionError",
+  "raise NotImplementedError",
+  "if 0:",
+  "if __name__ == .__main__.:",
   "if TYPE_CHECKING:",
   "from typing import",
   "VERSION_TUPLE = Tuple",
+  "class .*Protocol.*:",
+  "@(abc\\.)?abstractmethod",
 ]
+
+[tool.coverage.html]
+directory = "htmlcov"
+title = "CCProxy Coverage Report"
+
+[tool.coverage.xml]
+output = "coverage.xml"
 
 [tool.ruff]
 target-version = "py311"
@@ -141,7 +181,7 @@ lines-after-imports = 2
 "tests/*" = ["N802", "N803"] # arg/function name should be lowercase
 
 [tool.mypy]
-python_version = "3.12"
+python_version = "3.11"
 show_column_numbers = true
 follow_imports = "normal"
 exclude = ["docs/", "site/", "tests.depracted/", "examples/"]
@@ -189,6 +229,13 @@ addopts = [
   "--disable-warnings",
   "--tb=short",
   "-v",
+  "--cov=ccproxy",
+  "--cov=tests",
+  "--cov-report=term-missing",
+  "--cov-report=html:htmlcov",
+  "--cov-report=xml",
+  "--cov-branch",
+  "--cov-fail-under=80",
 ]
 testpaths = ["tests"]
 python_files = ["test_*.py", "*_test.py"]
@@ -196,16 +243,54 @@ python_classes = ["Test*"]
 python_functions = ["test_*"]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
+norecursedirs = [
+  ".git",
+  ".tox",
+  "dist",
+  "build",
+  "*.egg",
+  "venv",
+  ".venv",
+  ".devenv",
+  "node_modules",
+  "__pycache__",
+]
+filterwarnings = [
+  "ignore::UserWarning",
+  "ignore::DeprecationWarning",
+  "ignore::PendingDeprecationWarning",
+]
 
 # Set test mode to prevent pollution of real credential files
-env = ["CCPROXY_TEST_MODE=true"]
+env = [
+  "CCPROXY_TEST_MODE=true",
+  "PYTEST_CURRENT_TEST=true",
+  "LOG_LEVEL=WARNING",
+]
 
-# Test markers for different test tiers
+# Test markers for different test categories and tiers
 markers = [
-  "slow: Tests that take > 5 seconds",
-  "network: Tests that require network access",
-  "auth: Authentication-related tests",
+  # Primary test categories
+  "unit: Fast unit tests (< 1s each) that don't require external dependencies",
+  "integration: Integration tests (< 30s each) that test component interactions",
+  "slow: Slow tests (> 30s each) - use sparingly",
+
+  # External dependency markers
+  "real_api: Tests that make real API calls to external services (requires API keys)",
+  "docker: Tests that require Docker to be running",
+  "network: Tests that require network access but don't make real API calls",
+
+  # Feature-specific markers
+  "auth: Authentication and authorization tests",
   "streaming: SSE/streaming response tests",
+  "api: API endpoint tests",
+  "config: Configuration and settings tests",
+  "cli: Command-line interface tests",
+  "metrics: Metrics and monitoring tests",
+
+  # Test quality markers
+  "flaky: Tests that may be unreliable and need investigation",
+  "skip_ci: Tests to skip in CI environment",
 ]
 
 [tool.pytest_timeout]

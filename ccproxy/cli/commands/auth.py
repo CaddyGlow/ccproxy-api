@@ -13,9 +13,10 @@ from rich.table import Table
 
 from ccproxy.auth.models import ValidationResult
 from ccproxy.cli.helpers import get_rich_toolkit
+from ccproxy.config.settings import get_settings
 from ccproxy.core.async_utils import get_claude_docker_home_dir
 from ccproxy.core.logging import get_logger
-from ccproxy.services.credentials import CredentialsConfig, CredentialsManager
+from ccproxy.services.credentials import CredentialsManager
 
 
 app = typer.Typer(name="auth", help="Authentication and credential management")
@@ -29,10 +30,14 @@ def get_credentials_manager(
 ) -> CredentialsManager:
     """Get a CredentialsManager instance with custom paths if provided."""
     if custom_paths:
-        config = CredentialsConfig(storage_paths=[str(p) for p in custom_paths])
+        # Get base settings and update storage paths
+        settings = get_settings()
+        settings.auth.storage.storage_paths = [str(p) for p in custom_paths]
+        return CredentialsManager(config=settings.auth)
     else:
-        config = CredentialsConfig()
-    return CredentialsManager(config=config)
+        # Use default settings
+        settings = get_settings()
+        return CredentialsManager(config=settings.auth)
 
 
 def get_docker_credential_paths() -> list[Path]:
@@ -211,7 +216,7 @@ def credential_info(
         if not credentials:
             toolkit.print("No credential file found", tag="error")
             console.print("\n[dim]Expected locations:[/dim]")
-            for path in manager.config.storage_paths:
+            for path in manager.config.storage.storage_paths:
                 console.print(f"  - {path}")
             raise typer.Exit(1)
 

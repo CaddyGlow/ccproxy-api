@@ -266,9 +266,10 @@ class MetricsStorage(ABC):
         Perform maintenance operations on the storage backend.
 
         This might include vacuuming, reindexing, or other optimization tasks.
-        Default implementation does nothing.
+        Default implementation does nothing - subclasses can override if needed.
         """
-        pass
+        # Default implementation - subclasses can override for maintenance operations
+        return
 
     async def backup(self, backup_path: str) -> bool:
         """

@@ -8,6 +8,6 @@ router = APIRouter(prefix="/claude", tags=["claude-sdk"])
 
 
 @router.get("/status")
-async def claude_status():
+async def claude_status() -> dict[str, str]:
     """Get Claude SDK status."""
     return {"status": "claude sdk endpoint available"}

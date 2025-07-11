@@ -13,7 +13,7 @@ from ccproxy.core.async_utils import format_version
 
 
 try:
-    import yaml  # type: ignore[import-untyped]
+    import yaml
 
     HAS_YAML = True
 except ImportError:

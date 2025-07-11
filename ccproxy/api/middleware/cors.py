@@ -1,5 +1,7 @@
 """CORS middleware for Claude Code Proxy API Server."""
 
+from typing import Any
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -33,7 +35,7 @@ def setup_cors_middleware(app: FastAPI, settings: Settings) -> None:
     logger.info(f"CORS middleware configured: origins={settings.cors.origins}")
 
 
-def get_cors_config(settings: Settings) -> dict:
+def get_cors_config(settings: Settings) -> dict[str, Any]:
     """Get CORS configuration dictionary.
 
     Args:
