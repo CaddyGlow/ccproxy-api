@@ -1,13 +1,13 @@
 """Health check endpoints for Claude Code Proxy API Server."""
 
+import asyncio
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter
 
-from ccproxy.api.dependencies import get_claude_service, get_proxy_service
+from ccproxy import __version__
 from ccproxy.core.logging import get_logger
-from ccproxy.services.claude_sdk_service import ClaudeSDKService
-from ccproxy.services.proxy_service import ProxyService
+from ccproxy.services.credentials import CredentialsManager
 
 
 router = APIRouter()
@@ -25,7 +25,7 @@ async def health_check() -> dict[str, Any]:
     return {
         "status": "healthy",
         "service": "claude-code-proxy",
-        "version": "0.1.0",
+        "version": __version__,
     }
 
 
@@ -60,116 +60,102 @@ async def liveness_check() -> dict[str, Any]:
 
 
 @router.get("/health/claude")
-async def claude_health_check(
-    claude_service: ClaudeSDKService = Depends(get_claude_service),
-) -> dict[str, Any]:
+async def claude_health_check() -> dict[str, Any]:
     """Health check for Claude SDK service.
 
-    Args:
-        claude_service: Injected Claude SDK service dependency
-
     Returns:
-        Claude SDK health status
-
-    Raises:
-        HTTPException: If Claude SDK is not healthy
+        Claude SDK health status including auth status
     """
     try:
         logger.debug("Claude SDK health check request")
-        status = await claude_service.health_check()
+
+        # Check credentials status
+        manager = CredentialsManager()
+        validation = await manager.validate()
+
+        auth_status = (
+            "valid" if validation.valid and not validation.expired else "invalid"
+        )
+
         return {
             "status": "healthy",
             "service": "claude-sdk",
-            "details": status,
+            "auth_status": auth_status,
+            "credentials_path": str(validation.path) if validation.path else None,
         }
 
     except Exception as e:
         logger.error(f"Claude SDK health check failed: {e}")
-        raise HTTPException(status_code=503, detail=f"Claude SDK unhealthy: {e}") from e
+        return {
+            "status": "unhealthy",
+            "service": "claude-sdk",
+            "auth_status": "error",
+            "error": str(e),
+        }
 
 
 @router.get("/health/proxy")
-async def proxy_health_check(
-    proxy_service: ProxyService = Depends(get_proxy_service),
-) -> dict[str, Any]:
+async def proxy_health_check() -> dict[str, Any]:
     """Health check for proxy service.
-
-    Args:
-        proxy_service: Injected proxy service dependency
 
     Returns:
         Proxy service health status
-
-    Raises:
-        HTTPException: If proxy service is not healthy
     """
-    try:
-        logger.debug("Proxy service health check request")
-        status = await proxy_service.health_check()
-        return {
-            "status": "healthy",
-            "service": "proxy",
-            "details": status,
-        }
-
-    except Exception as e:
-        logger.error(f"Proxy service health check failed: {e}")
-        raise HTTPException(
-            status_code=503, detail=f"Proxy service unhealthy: {e}"
-        ) from e
+    logger.debug("Proxy service health check request")
+    return {
+        "status": "healthy",
+        "service": "proxy",
+        "version": __version__,
+    }
 
 
 @router.get("/health/detailed")
-async def detailed_health_check(
-    claude_service: ClaudeSDKService = Depends(get_claude_service),
-    proxy_service: ProxyService = Depends(get_proxy_service),
-) -> dict[str, Any]:
+async def detailed_health_check() -> dict[str, Any]:
     """Detailed health check for all services.
-
-    Args:
-        claude_service: Injected Claude SDK service dependency
-        proxy_service: Injected proxy service dependency
 
     Returns:
         Detailed health status for all services
     """
     logger.debug("Detailed health check request")
 
-    health_status = {
+    health_status: dict[str, Any] = {
         "status": "healthy",
         "service": "claude-code-proxy",
-        "version": "0.1.0",
+        "version": __version__,
         "checks": {},
     }
 
-    # Check Claude SDK
+    # Check Claude SDK and auth
     try:
-        claude_status = await claude_service.health_check()
+        manager = CredentialsManager()
+        validation = await manager.validate()
+
+        auth_status = (
+            "valid" if validation.valid and not validation.expired else "invalid"
+        )
+
         health_status["checks"]["claude"] = {
-            "status": "healthy",
-            "details": claude_status,
+            "status": "healthy" if auth_status == "valid" else "degraded",
+            "auth_status": auth_status,
+            "credentials_path": str(validation.path) if validation.path else None,
         }
+
+        if auth_status != "valid":
+            health_status["status"] = "degraded"
+
     except Exception as e:
         logger.warning(f"Claude SDK health check failed: {e}")
         health_status["checks"]["claude"] = {
             "status": "unhealthy",
+            "auth_status": "error",
             "error": str(e),
         }
         health_status["status"] = "degraded"
 
     # Check proxy service
-    try:
-        proxy_status = await proxy_service.health_check()
-        health_status["checks"]["proxy"] = {
-            "status": "healthy",
-            "details": proxy_status,
-        }
-    except Exception as e:
-        logger.warning(f"Proxy service health check failed: {e}")
-        health_status["checks"]["proxy"] = {
-            "status": "unhealthy",
-            "error": str(e),
-        }
-        health_status["status"] = "degraded"
+    health_status["checks"]["proxy"] = {
+        "status": "healthy",
+        "version": __version__,
+    }
 
     return health_status

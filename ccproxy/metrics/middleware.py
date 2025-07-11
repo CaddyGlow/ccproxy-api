@@ -10,7 +10,7 @@ import contextlib
 import logging
 import time
 from collections.abc import Callable
-from typing import Any, Optional
+from typing import Any, Optional, cast
 from uuid import uuid4
 
 from fastapi import Request, Response
@@ -66,7 +66,9 @@ class MetricsMiddleware(BaseHTTPMiddleware):
         # Internal state
         self._request_contexts: dict[str, dict[str, Any]] = {}
 
-    async def dispatch(self, request: Request, call_next: Callable) -> Response:
+    async def dispatch(
+        self, request: Request, call_next: Callable[..., Any]
+    ) -> Response:
         """
         Process request and collect metrics.
 
@@ -79,14 +81,14 @@ class MetricsMiddleware(BaseHTTPMiddleware):
         """
         # Check if path should be excluded
         if self._should_exclude_path(request.url.path):
-            return await call_next(request)
+            return cast(Response, await call_next(request))
 
         # Check sampling rate
         if self.sample_rate < 1.0:
             import random
 
             if random.random() > self.sample_rate:
-                return await call_next(request)
+                return cast(Response, await call_next(request))
 
         # Generate unique request ID
         request_id = str(uuid4())
@@ -224,7 +226,7 @@ class MetricsMiddleware(BaseHTTPMiddleware):
         """Extract session ID from request."""
         # Check for session in request state
         if hasattr(request.state, "session_id"):
-            return request.state.session_id
+            return cast(str, request.state.session_id)
 
         # Check for session ID in headers
         session_id = request.headers.get("x-session-id")
@@ -243,9 +245,9 @@ class MetricsMiddleware(BaseHTTPMiddleware):
         # Try to get from route
         if hasattr(request, "route") and request.route:
             if hasattr(request.route, "path"):
-                return request.route.path
+                return cast(str, request.route.path)
             elif hasattr(request.route, "name"):
-                return request.route.name
+                return cast(str, request.route.name)
 
         # Fall back to path
         return request.url.path
@@ -380,7 +382,9 @@ class AsyncMetricsMiddleware:
         self.collector = collector
         self.config = kwargs
 
-    async def __call__(self, request: Request, call_next: Callable) -> Response:
+    async def __call__(
+        self, request: Request, call_next: Callable[..., Any]
+    ) -> Response:
         """
         Process request with async metrics collection.
 
@@ -404,7 +408,7 @@ class AsyncMetricsMiddleware:
         ) as request_metric:
             # Process request
             try:
-                response = await call_next(request)
+                response = cast(Response, await call_next(request))
 
                 # Collect response metrics
                 await self.collector.collect_response(

@@ -21,6 +21,7 @@ from ccproxy.auth.models import (
 )
 from ccproxy.auth.storage import JsonFileTokenStorage as JsonFileStorage
 from ccproxy.auth.storage import TokenStorage as CredentialsStorageBackend
+from ccproxy.config.auth import AuthSettings
 from ccproxy.core.logging import get_logger
 from ccproxy.services.credentials.config import CredentialsConfig
 from ccproxy.services.credentials.oauth_client import OAuthClient
@@ -36,7 +37,7 @@ class CredentialsManager:
 
     def __init__(
         self,
-        config: CredentialsConfig | None = None,
+        config: AuthSettings | None = None,
         storage: CredentialsStorageBackend | None = None,
         oauth_client: OAuthClient | None = None,
         http_client: httpx.AsyncClient | None = None,
@@ -49,7 +50,7 @@ class CredentialsManager:
             oauth_client: OAuth client (creates one if not provided)
             http_client: HTTP client for OAuth operations
         """
-        self.config = config or CredentialsConfig()
+        self.config = config or AuthSettings()
         self._storage = storage
         self._oauth_client = oauth_client
         self._http_client = http_client
@@ -86,7 +87,7 @@ class CredentialsManager:
             else:
                 # Use first path as default
                 self._storage = JsonFileStorage(
-                    Path(self.config.storage_paths[0]).expanduser()
+                    Path(self.config.storage.storage_paths[0]).expanduser()
                 )
         return self._storage
 
@@ -96,7 +97,7 @@ class CredentialsManager:
         Returns:
             Path to credentials file if found, None otherwise
         """
-        for path_str in self.config.storage_paths:
+        for path_str in self.config.storage.storage_paths:
             path = Path(path_str).expanduser()
             logger.debug(f"Checking: {path}")
             if path.exists() and path.is_file():
@@ -106,7 +107,7 @@ class CredentialsManager:
                 logger.debug(f"Not found: {path}")
 
         logger.warning("No credentials file found in any searched locations:")
-        for path_str in self.config.storage_paths:
+        for path_str in self.config.storage.storage_paths:
             logger.warning(f"  - {path_str}")
         return None
 
@@ -333,7 +334,7 @@ class CredentialsManager:
         credentials_path = self._find_existing_path()
         if credentials_path is None:
             # Use first path as default
-            credentials_path = Path(self.config.storage_paths[0]).expanduser()
+            credentials_path = Path(self.config.storage.storage_paths[0]).expanduser()
 
         # Replace filename with account.json
         return credentials_path.parent / "account.json"
@@ -436,7 +437,7 @@ class CredentialsManager:
         Returns:
             Path if found, None otherwise
         """
-        for path_str in self.config.storage_paths:
+        for path_str in self.config.storage.storage_paths:
             path = Path(path_str).expanduser()
             if path.exists():
                 return path
@@ -451,8 +452,8 @@ class CredentialsManager:
         Returns:
             True if token should be refreshed
         """
-        if self.config.auto_refresh:
-            buffer = timedelta(seconds=self.config.refresh_buffer_seconds)
+        if self.config.storage.auto_refresh:
+            buffer = timedelta(seconds=self.config.storage.refresh_buffer_seconds)
             return datetime.now(UTC) + buffer >= oauth_token.expires_at_datetime
         else:
             return oauth_token.is_expired

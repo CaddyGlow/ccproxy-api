@@ -67,7 +67,7 @@ def get_credentials_manager(
         Credentials manager instance
     """
     logger.debug("Creating credentials manager instance")
-    return CredentialsManager(config=settings.auth.storage)
+    return CredentialsManager(config=settings.auth)
 
 
 def get_proxy_service(

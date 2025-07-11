@@ -19,6 +19,7 @@ import httpx
 from ccproxy.auth.exceptions import OAuthCallbackError, OAuthLoginError
 from ccproxy.auth.models import ClaudeCredentials, OAuthToken, UserProfile
 from ccproxy.auth.oauth.models import OAuthTokenRequest, OAuthTokenResponse
+from ccproxy.config.auth import OAuthSettings
 from ccproxy.core.logging import get_http_event_hooks, get_logger
 from ccproxy.services.credentials.config import OAuthConfig
 
@@ -29,7 +30,7 @@ logger = get_logger(__name__)
 class OAuthClient:
     """OAuth client for handling Anthropic OAuth flows."""
 
-    def __init__(self, config: OAuthConfig | None = None):
+    def __init__(self, config: OAuthSettings | None = None):
         """Initialize OAuth client.
 
         Args:

@@ -133,7 +133,7 @@ async def log_http_response(response: httpx.Response) -> None:
         )
 
 
-def get_http_event_hooks() -> dict[str, list]:
+def get_http_event_hooks() -> dict[str, list[Any]]:
     """Get httpx event hooks for request/response logging.
 
     Returns:
