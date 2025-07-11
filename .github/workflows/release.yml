@@ -3,6 +3,13 @@ name: Release
 on:
   release:
     types: [created]
+  workflow_dispatch:
+    inputs:
+      force_release:
+        description: 'Force release even if tests fail'
+        required: false
+        default: 'false'
+        type: boolean
 
 env:
   REGISTRY: ghcr.io
@@ -10,7 +17,28 @@ env:
   # IMAGE_NAME: ${{ github.repository }}
 
 jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        run: make dev-install
+
+      - name: Run tests
+        run: make ci
+        continue-on-error: ${{ github.event.inputs.force_release == 'true' }}
+
   build-package:
+    needs: test
     runs-on: ubuntu-latest
     environment: publish
     permissions:
