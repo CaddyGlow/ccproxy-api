@@ -2,7 +2,14 @@
 
 import json
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+from ccproxy.core.transformers import RequestTransformer, ResponseTransformer
+from ccproxy.core.types import ProxyRequest, ProxyResponse, TransformContext
+
+
+if TYPE_CHECKING:
+    from ccproxy.metrics.collector import MetricsCollector
 
 
 logger = logging.getLogger(__name__)
@@ -20,8 +27,85 @@ def get_claude_code_prompt() -> dict[str, Any]:
     }
 
 
-class HTTPRequestTransformer:
-    """Basic HTTP request transformer for proxy service."""
+class HTTPRequestTransformer(RequestTransformer):
+    """HTTP request transformer that implements the abstract RequestTransformer interface."""
+
+    def __init__(self, metrics_collector: "MetricsCollector | None" = None):
+        """Initialize HTTP request transformer.
+
+        Args:
+            metrics_collector: Optional metrics collector for transformation tracking
+        """
+        super().__init__(metrics_collector)
+
+    async def _transform_request(
+        self, request: ProxyRequest, context: TransformContext | None = None
+    ) -> ProxyRequest:
+        """Transform a proxy request according to the abstract interface.
+
+        Args:
+            request: The structured proxy request to transform
+            context: Optional transformation context
+
+        Returns:
+            The transformed proxy request
+        """
+        # Transform path
+        transformed_path = self.transform_path(
+            request.url.split("?")[0].split("/", 3)[-1]
+            if "/" in request.url
+            else request.url
+        )
+
+        # Build new URL with transformed path
+        base_url = "https://api.anthropic.com"
+        new_url = f"{base_url}{transformed_path}"
+
+        # Add query parameters
+        if request.params:
+            import urllib.parse
+
+            query_string = urllib.parse.urlencode(request.params)
+            new_url = f"{new_url}?{query_string}"
+
+        # Transform headers (requires access token from context)
+        access_token = ""
+        if context and hasattr(context, "access_token"):
+            access_token = context.access_token
+        elif context and isinstance(context, dict):
+            access_token = context.get("access_token", "")
+
+        transformed_headers = self.create_proxy_headers(request.headers, access_token)
+
+        # Transform body
+        transformed_body = request.body
+        if request.body:
+            if isinstance(request.body, bytes):
+                transformed_body = self.transform_request_body(
+                    request.body, transformed_path
+                )
+            elif isinstance(request.body, str):
+                transformed_body = self.transform_request_body(
+                    request.body.encode("utf-8"), transformed_path
+                )
+            elif isinstance(request.body, dict):
+                import json
+
+                transformed_body = self.transform_request_body(
+                    json.dumps(request.body).encode("utf-8"), transformed_path
+                )
+
+        # Create new transformed request
+        return ProxyRequest(
+            method=request.method,
+            url=new_url,
+            headers=transformed_headers,
+            params={},  # Already included in URL
+            body=transformed_body,
+            protocol=request.protocol,
+            timeout=request.timeout,
+            metadata=request.metadata,
+        )
 
     def transform_path(self, path: str, proxy_mode: str = "full") -> str:
         """Transform request path."""
@@ -64,7 +148,8 @@ class HTTPRequestTransformer:
                 proxy_headers[key] = value
 
         # Set authentication with OAuth token
-        proxy_headers["Authorization"] = f"Bearer {access_token}"
+        if access_token:
+            proxy_headers["Authorization"] = f"Bearer {access_token}"
 
         # Set defaults for essential headers
         if "content-type" not in [k.lower() for k in proxy_headers]:
@@ -128,6 +213,8 @@ class HTTPRequestTransformer:
             Transformed request body as bytes with Claude Code system prompt
         """
         try:
+            import json
+
             data = json.loads(body.decode("utf-8"))
         except (json.JSONDecodeError, UnicodeDecodeError):
             # Return original if not valid JSON
@@ -180,6 +267,8 @@ class HTTPRequestTransformer:
         # Check body-based indicators
         if body:
             try:
+                import json
+
                 data = json.loads(body.decode("utf-8"))
                 # Look for OpenAI-specific patterns
                 model = data.get("model", "")
@@ -198,6 +287,8 @@ class HTTPRequestTransformer:
         """Transform OpenAI request format to Anthropic format."""
         try:
             # Use the OpenAI adapter for transformation
+            import json
+
             from ccproxy.adapters.openai.adapter import OpenAIAdapter
 
             adapter = OpenAIAdapter()
@@ -211,14 +302,85 @@ class HTTPRequestTransformer:
             return body
 
 
-class HTTPResponseTransformer:
-    """Basic HTTP response transformer for proxy service."""
+class HTTPResponseTransformer(ResponseTransformer):
+    """HTTP response transformer that implements the abstract ResponseTransformer interface."""
+
+    def __init__(self, metrics_collector: "MetricsCollector | None" = None):
+        """Initialize HTTP response transformer.
+
+        Args:
+            metrics_collector: Optional metrics collector for transformation tracking
+        """
+        super().__init__(metrics_collector)
+
+    async def _transform_response(
+        self, response: ProxyResponse, context: TransformContext | None = None
+    ) -> ProxyResponse:
+        """Transform a proxy response according to the abstract interface.
+
+        Args:
+            response: The structured proxy response to transform
+            context: Optional transformation context
+
+        Returns:
+            The transformed proxy response
+        """
+        # Extract original path from context for transformation decisions
+        original_path = ""
+        if context and hasattr(context, "original_path"):
+            original_path = context.original_path
+        elif context and isinstance(context, dict):
+            original_path = context.get("original_path", "")
+
+        # Transform response body
+        transformed_body = response.body
+        if response.body:
+            if isinstance(response.body, bytes):
+                transformed_body = self.transform_response_body(
+                    response.body, original_path
+                )
+            elif isinstance(response.body, str):
+                body_bytes = response.body.encode("utf-8")
+                transformed_body = self.transform_response_body(
+                    body_bytes, original_path
+                )
+            elif isinstance(response.body, dict):
+                import json
+
+                body_bytes = json.dumps(response.body).encode("utf-8")
+                transformed_body = self.transform_response_body(
+                    body_bytes, original_path
+                )
+
+        # Calculate content length for transformed body
+        content_length = 0
+        if transformed_body:
+            if isinstance(transformed_body, bytes):
+                content_length = len(transformed_body)
+            elif isinstance(transformed_body, str):
+                content_length = len(transformed_body.encode("utf-8"))
+            else:
+                content_length = len(str(transformed_body))
+
+        # Transform response headers
+        transformed_headers = self.transform_response_headers(
+            response.headers, original_path, content_length
+        )
+
+        # Create new transformed response
+        return ProxyResponse(
+            status_code=response.status_code,
+            headers=transformed_headers,
+            body=transformed_body,
+            metadata=response.metadata,
+        )
 
     def transform_response_body(
         self, body: bytes, path: str, proxy_mode: str = "full"
     ) -> bytes:
         """Transform response body."""
         # Basic body transformation - pass through for now
+        # Future: Could add OpenAI format conversion here
         return body
 
     def transform_response_headers(
