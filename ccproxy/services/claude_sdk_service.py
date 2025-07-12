@@ -135,7 +135,7 @@ class ClaudeSDKService:
             raise
 
     async def _complete_non_streaming(
-        self, prompt: str, options: Any, model: str, request_id: str
+        self, prompt: str, options: Any, model: str, request_id: str | None = None
     ) -> dict[str, Any]:
         """
         Complete a non-streaming request with business logic.

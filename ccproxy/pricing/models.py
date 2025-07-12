@@ -2,7 +2,7 @@
 
 from collections.abc import Iterator
 from decimal import Decimal
-from typing import Any, Dict
+from typing import Any
 
 from pydantic import BaseModel, Field, RootModel, field_validator
 
@@ -26,9 +26,11 @@ class ModelPricing(BaseModel):
     @classmethod
     def convert_to_decimal(cls, v: Any) -> Decimal:
         """Convert numeric values to Decimal for precision."""
-        if isinstance(v, (int, float, str)):
+        if isinstance(v, int | float | str):
             return Decimal(str(v))
-        return v
+        if isinstance(v, Decimal):
+            return v
+        raise TypeError(f"Cannot convert {type(v)} to Decimal")
 
     class Config:
         """Pydantic configuration."""
@@ -44,7 +46,7 @@ class PricingData(RootModel[dict[str, ModelPricing]]):
     that provides dict-like access while maintaining type safety.
     """
 
-    def __iter__(self) -> Iterator[str]:
+    def __iter__(self) -> Iterator[str]:  # type: ignore[override]
         """Iterate over model names."""
         return iter(self.root)
 

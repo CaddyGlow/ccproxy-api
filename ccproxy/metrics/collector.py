@@ -517,11 +517,22 @@ class MetricsCollector:
             await self.finish_request(request_id)
 
     async def _add_to_buffer(self, metric: MetricRecord) -> None:
-        """Add a metric to the internal buffer."""
+        """Add a metric to the internal buffer and broadcast via SSE if enabled."""
         async with self._buffer_lock:
             self._buffer.append(metric)
             self._total_metrics_collected += 1
             self._metrics_by_type[metric.metric_type] += 1
+
+            # Broadcast to SSE connections if exporter is available
+            if self.sse_exporter:
+                try:
+                    broadcast_count = await self.sse_exporter.broadcast_metric(metric)
+                    if broadcast_count > 0:
+                        logger.debug(
+                            f"Broadcasted {metric.metric_type.value} metric to {broadcast_count} SSE connections"
+                        )
+                except Exception as e:
+                    logger.warning(f"Failed to broadcast metric via SSE: {e}")
 
             # Auto-flush if buffer is full
             if len(self._buffer) >= self.buffer_size:

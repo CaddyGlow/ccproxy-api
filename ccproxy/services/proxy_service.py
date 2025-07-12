@@ -632,10 +632,7 @@ class ProxyService:
                 try:
                     import json
 
-                    if isinstance(body, bytes):
-                        body_str = body.decode("utf-8")
-                    else:
-                        body_str = str(body)
+                    body_str = body.decode("utf-8")
                     body_json = json.loads(body_str)
 
                     model = body_json.get("model")
@@ -788,10 +785,7 @@ class ProxyService:
 
             if body:
                 try:
-                    if isinstance(body, bytes):
-                        body_str = body.decode("utf-8")
-                    else:
-                        body_str = str(body)
+                    body_str = body.decode("utf-8")
                     body_json = json.loads(body_str)
 
                     model = body_json.get("model")

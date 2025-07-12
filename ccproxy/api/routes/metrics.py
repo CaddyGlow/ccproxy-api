@@ -1,5 +1,6 @@
 """Metrics endpoints for Claude Code Proxy API Server."""
 
+from collections.abc import AsyncIterator
 from datetime import datetime, timedelta
 from typing import Any
 
@@ -10,26 +11,26 @@ from ccproxy.api.dependencies import MetricsCollectorDep, MetricsServiceDep
 from ccproxy.metrics.exporters.json_api import JsonApiExporter
 from ccproxy.metrics.exporters.sse import SSEMetricsExporter
 from ccproxy.metrics.models import MetricType
-from ccproxy.metrics.storage.memory import MemoryMetricsStorage
+from ccproxy.metrics.storage.memory import InMemoryMetricsStorage
 
 
 # Create the router for metrics endpoints
 router = APIRouter(prefix="/metrics", tags=["metrics"])
 
 
-# Global SSE exporter instance (will be initialized on first use)
-_sse_exporter: SSEMetricsExporter | None = None
+async def get_sse_exporter(collector: MetricsCollectorDep) -> SSEMetricsExporter:
+    """Get or create the SSE exporter instance from the metrics collector."""
+    # Check if the collector already has an SSE exporter
+    if collector.sse_exporter:
+        return collector.sse_exporter
 
+    # Create a new SSE exporter and attach it to the collector
+    sse_exporter = SSEMetricsExporter(storage=collector.storage)
+    await sse_exporter.start()
 
-async def get_sse_exporter() -> SSEMetricsExporter:
-    """Get or create the global SSE exporter instance."""
-    global _sse_exporter
-    if _sse_exporter is None:
-        # Use memory storage for now (could be configurable)
-        storage = MemoryMetricsStorage()
-        _sse_exporter = SSEMetricsExporter(storage=storage)
-        await _sse_exporter.start()
-    return _sse_exporter
+    # Set it on the collector for future use
+    collector.sse_exporter = sse_exporter
+    return sse_exporter
 
 
 @router.get("/status")
@@ -40,7 +41,7 @@ async def metrics_status() -> dict[str, str]:
 
 @router.get("/data")
 async def get_metrics_data(
-    metrics_service: MetricsServiceDep,
+    collector: MetricsCollectorDep,
     start_time: datetime | None = Query(
         None, description="Start time for metrics query"
     ),
@@ -53,8 +54,8 @@ async def get_metrics_data(
 ) -> dict[str, Any]:
     """Get metrics data with filtering and pagination."""
     try:
-        # Get the storage from metrics service
-        storage = metrics_service.collector.storage
+        # Get the storage from metrics collector
+        storage = collector.storage
 
         # Create JSON API exporter
         json_exporter = JsonApiExporter(storage)
@@ -70,12 +71,14 @@ async def get_metrics_data(
             offset=offset,
         )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to retrieve metrics: {e}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to retrieve metrics: {e}"
+        ) from e
 
 
 @router.get("/summary")
 async def get_metrics_summary(
-    metrics_service: MetricsServiceDep,
+    collector: MetricsCollectorDep,
     start_time: datetime | None = Query(None, description="Start time for summary"),
     end_time: datetime | None = Query(None, description="End time for summary"),
     user_id: str | None = Query(None, description="Filter by user ID"),
@@ -83,8 +86,8 @@ async def get_metrics_summary(
 ) -> dict[str, Any]:
     """Get aggregated metrics summary."""
     try:
-        # Get the storage from metrics service
-        storage = metrics_service.collector.storage
+        # Get the storage from metrics collector
+        storage = collector.storage
 
         # Create JSON API exporter
         json_exporter = JsonApiExporter(storage)
@@ -97,11 +100,14 @@ async def get_metrics_summary(
             session_id=session_id,
         )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to retrieve summary: {e}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to retrieve summary: {e}"
+        ) from e
 
 
 @router.get("/stream")
 async def stream_metrics(
+    collector: MetricsCollectorDep,
     metric_types: list[MetricType] | None = Query(
         None, description="Metric types to subscribe to"
     ),
@@ -113,9 +119,9 @@ async def stream_metrics(
 ) -> StreamingResponse:
     """Stream real-time metrics via Server-Sent Events (SSE)."""
     try:
-        sse_exporter = await get_sse_exporter()
+        sse_exporter = await get_sse_exporter(collector)
 
-        async def event_generator():
+        async def event_generator() -> AsyncIterator[str]:
             """Generate SSE events for the client."""
             async with sse_exporter.create_connection(
                 metric_types=metric_types,
@@ -137,29 +143,33 @@ async def stream_metrics(
             },
         )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to start SSE stream: {e}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to start SSE stream: {e}"
+        ) from e
 
 
 @router.get("/connections")
-async def get_sse_connections_info() -> dict[str, Any]:
+async def get_sse_connections_info(
+    collector: MetricsCollectorDep,
+) -> dict[str, Any]:
     """Get information about active SSE connections."""
     try:
-        sse_exporter = await get_sse_exporter()
+        sse_exporter = await get_sse_exporter(collector)
         return await sse_exporter.get_connections_info()
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Failed to get connections info: {e}"
-        )
+        ) from e
 
 
 @router.get("/health")
 async def get_metrics_health(
-    metrics_service: MetricsServiceDep,
+    collector: MetricsCollectorDep,
 ) -> dict[str, Any]:
     """Get health status of the metrics system."""
     try:
-        # Get the storage from metrics service
-        storage = metrics_service.collector.storage
+        # Get the storage from metrics collector
+        storage = collector.storage
 
         # Create JSON API exporter
         json_exporter = JsonApiExporter(storage)
@@ -168,10 +178,10 @@ async def get_metrics_health(
         health_data = await json_exporter.get_health()
 
         # Add SSE exporter health if available
-        global _sse_exporter
-        if _sse_exporter:
-            sse_health = await _sse_exporter.health_check()
-            connections_info = await _sse_exporter.get_connections_info()
+        if collector.sse_exporter:
+            sse_exporter = collector.sse_exporter
+            sse_health = await sse_exporter.health_check()
+            connections_info = await sse_exporter.get_connections_info()
             health_data["sse"] = {
                 "healthy": sse_health,
                 "connections": connections_info["total_connections"],
@@ -182,4 +192,6 @@ async def get_metrics_health(
 
         return health_data
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to get health status: {e}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get health status: {e}"
+        ) from e

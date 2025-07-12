@@ -22,16 +22,23 @@ logger = get_logger(__name__)
 SettingsDep = Annotated[Settings, Depends(get_settings)]
 
 
+# Global metrics collector instance
+_metrics_collector_instance: MetricsCollector | None = None
+
+
 def get_metrics_collector() -> MetricsCollector:
-    """Get metrics collector instance.
+    """Get metrics collector instance (singleton).
 
     Returns:
         Metrics collector instance
     """
-    logger.debug("Creating metrics collector instance")
-    # Use in-memory storage for now
-    storage = InMemoryMetricsStorage()
-    return MetricsCollector(storage=storage)
+    global _metrics_collector_instance
+    if _metrics_collector_instance is None:
+        logger.debug("Creating metrics collector instance")
+        # Use in-memory storage for now
+        storage = InMemoryMetricsStorage()
+        _metrics_collector_instance = MetricsCollector(storage=storage)
+    return _metrics_collector_instance
 
 
 def get_claude_service(
