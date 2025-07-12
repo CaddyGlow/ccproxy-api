@@ -298,10 +298,14 @@ def setup_error_handlers(app: FastAPI) -> None:
         request: Request, exc: HTTPException
     ) -> JSONResponse:
         """Handle HTTP exceptions."""
-        logger.error(
-            f"HTTP exception: {exc.status_code} - {exc.detail}",
-            exc_info=logger.isEnabledFor(logging.DEBUG),
-        )
+        # Don't log stack trace for 404 errors as they're expected
+        if exc.status_code == 404:
+            logger.info(f"HTTP 404: {exc.detail} - {request.url}")
+        else:
+            logger.error(
+                f"HTTP exception: {exc.status_code} - {exc.detail}",
+                exc_info=logger.isEnabledFor(logging.DEBUG),
+            )
         # TODO: Add when in prod hide details in response
         return JSONResponse(
             status_code=exc.status_code,
@@ -318,10 +322,14 @@ def setup_error_handlers(app: FastAPI) -> None:
         request: Request, exc: StarletteHTTPException
     ) -> JSONResponse:
         """Handle Starlette HTTP exceptions."""
-        logger.error(
-            f"Starlette HTTP exception: {exc.status_code} - {exc.detail}",
-            exc_info=logger.isEnabledFor(logging.DEBUG),
-        )
+        # Don't log stack trace for 404 errors as they're expected
+        if exc.status_code == 404:
+            logger.info(f"Starlette HTTP 404: {exc.detail} - {request.url}")
+        else:
+            logger.error(
+                f"Starlette HTTP exception: {exc.status_code} - {exc.detail}",
+                exc_info=logger.isEnabledFor(logging.DEBUG),
+            )
         return JSONResponse(
             status_code=exc.status_code,
             content={

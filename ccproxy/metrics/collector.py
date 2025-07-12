@@ -9,7 +9,7 @@ import asyncio
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager, suppress
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 # Type forward declaration to avoid circular imports
 from typing import TYPE_CHECKING, Any, Optional
@@ -81,7 +81,7 @@ class MetricsCollector:
         # Metrics tracking
         self._total_metrics_collected = 0
         self._metrics_by_type: dict[MetricType, int] = dict.fromkeys(MetricType, 0)
-        self._last_flush_time = datetime.utcnow()
+        self._last_flush_time = datetime.now(UTC)
 
     async def start(self) -> None:
         """Start the metrics collector."""
@@ -160,7 +160,7 @@ class MetricsCollector:
 
         # Store for correlation with response
         self._active_requests[request_id] = request_metric
-        self._request_start_times[request_id] = datetime.utcnow()
+        self._request_start_times[request_id] = datetime.now(UTC)
 
         await self._add_to_buffer(request_metric)
         return request_metric
@@ -196,7 +196,7 @@ class MetricsCollector:
         response_time_ms = 0.0
         if request_id in self._request_start_times:
             start_time = self._request_start_times[request_id]
-            response_time_ms = (datetime.utcnow() - start_time).total_seconds() * 1000
+            response_time_ms = (datetime.now(UTC) - start_time).total_seconds() * 1000
 
         response_metric = ResponseMetric(
             request_id=request_id,
@@ -429,7 +429,7 @@ class MetricsCollector:
 
         try:
             await self.storage.store_metrics(metrics_to_flush)
-            self._last_flush_time = datetime.utcnow()
+            self._last_flush_time = datetime.now(UTC)
 
             logger.debug(f"Flushed {len(metrics_to_flush)} metrics to storage")
             return len(metrics_to_flush)
@@ -462,7 +462,7 @@ class MetricsCollector:
         """
         # Default to last 24 hours if no time range specified
         if end_time is None:
-            end_time = datetime.utcnow()
+            end_time = datetime.now(UTC)
         if start_time is None:
             start_time = end_time - timedelta(hours=24)
 

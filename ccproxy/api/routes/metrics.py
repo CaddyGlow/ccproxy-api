@@ -1,17 +1,27 @@
 """Metrics endpoints for Claude Code Proxy API Server."""
 
 from collections.abc import AsyncIterator
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta, timezone
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.responses import StreamingResponse
+from fastapi.responses import HTMLResponse, StreamingResponse
 
 from ccproxy.api.dependencies import MetricsCollectorDep, MetricsServiceDep
 from ccproxy.metrics.exporters.json_api import JsonApiExporter
 from ccproxy.metrics.exporters.sse import SSEMetricsExporter
 from ccproxy.metrics.models import MetricType
 from ccproxy.metrics.storage.memory import InMemoryMetricsStorage
+
+
+def ensure_timezone_aware(dt: datetime | None) -> datetime | None:
+    """Ensure datetime is timezone-aware (convert naive to UTC)."""
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        # Assume naive datetime is UTC
+        return dt.replace(tzinfo=UTC)
+    return dt
 
 
 # Create the router for metrics endpoints
@@ -62,8 +72,8 @@ async def get_metrics_data(
 
         # Get metrics data
         return await json_exporter.get_metrics(
-            start_time=start_time,
-            end_time=end_time,
+            start_time=ensure_timezone_aware(start_time),
+            end_time=ensure_timezone_aware(end_time),
             metric_type=metric_type,
             user_id=user_id,
             session_id=session_id,
@@ -94,8 +104,8 @@ async def get_metrics_summary(
 
         # Get summary data
         return await json_exporter.get_summary(
-            start_time=start_time,
-            end_time=end_time,
+            start_time=ensure_timezone_aware(start_time),
+            end_time=ensure_timezone_aware(end_time),
             user_id=user_id,
             session_id=session_id,
         )
@@ -194,4 +204,44 @@ async def get_metrics_health(
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Failed to get health status: {e}"
+        ) from e
+
+
+@router.get("/dashboard")
+async def get_metrics_dashboard() -> HTMLResponse:
+    """Serve the metrics dashboard HTML file."""
+    from pathlib import Path
+
+    # Get the path to the dashboard file
+    current_file = Path(__file__)
+    project_root = (
+        current_file.parent.parent.parent.parent
+    )  # ccproxy/api/routes/metrics.py -> project root
+    dashboard_path = project_root / "ccproxy" / "static" / "dashboard.html"
+
+    # Check if dashboard file exists
+    if not dashboard_path.exists():
+        raise HTTPException(
+            status_code=404,
+            detail="Dashboard not found. Please build the dashboard first using 'cd dashboard && bun run build:prod'",
+        )
+
+    # Read the HTML content
+    try:
+        with dashboard_path.open(encoding="utf-8") as f:
+            html_content = f.read()
+
+        return HTMLResponse(
+            content=html_content,
+            status_code=200,
+            headers={
+                "Cache-Control": "no-cache, no-store, must-revalidate",
+                "Pragma": "no-cache",
+                "Expires": "0",
+                "Content-Type": "text/html; charset=utf-8",
+            },
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to serve dashboard: {str(e)}"
         ) from e

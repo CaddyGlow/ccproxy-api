@@ -6,7 +6,7 @@ data through REST endpoints for monitoring dashboards and analytics.
 """
 
 import logging
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any, Optional, cast
 
 from ..models import MetricRecord, MetricsSummary, MetricType
@@ -90,7 +90,7 @@ class JsonApiExporter:
 
             # Default time range to last 24 hours if not specified
             if end_time is None:
-                end_time = datetime.utcnow()
+                end_time = datetime.now(UTC)
             if start_time is None:
                 start_time = end_time - timedelta(hours=24)
 
@@ -192,7 +192,7 @@ class JsonApiExporter:
         try:
             # Default time range to last 24 hours if not specified
             if end_time is None:
-                end_time = datetime.utcnow()
+                end_time = datetime.now(UTC)
             if start_time is None:
                 start_time = end_time - timedelta(hours=24)
 
@@ -201,7 +201,7 @@ class JsonApiExporter:
             if cache_key in self._cache:
                 cached_data = self._cache[cache_key]
                 if (
-                    datetime.utcnow() - cached_data["timestamp"]
+                    datetime.now(UTC) - cached_data["timestamp"]
                 ).seconds < self.cache_ttl:
                     return cast(dict[str, Any], cached_data["data"])
 
@@ -278,7 +278,7 @@ class JsonApiExporter:
             # Cache the result
             self._cache[cache_key] = {
                 "data": summary_data,
-                "timestamp": datetime.utcnow(),
+                "timestamp": datetime.now(UTC),
             }
 
             return summary_data
@@ -315,7 +315,7 @@ class JsonApiExporter:
         try:
             # Default time range to last 24 hours if not specified
             if end_time is None:
-                end_time = datetime.utcnow()
+                end_time = datetime.now(UTC)
             if start_time is None:
                 start_time = end_time - timedelta(hours=24)
 
@@ -378,7 +378,7 @@ class JsonApiExporter:
                 "status": "healthy"
                 if storage_health.get("status") == "healthy"
                 else "unhealthy",
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(UTC).isoformat(),
                 "storage": storage_health,
                 "info": storage_info,
                 "cache": {
@@ -396,7 +396,7 @@ class JsonApiExporter:
             return {
                 "status": "unhealthy",
                 "error": str(e),
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(UTC).isoformat(),
             }
 
     async def get_stats(self) -> dict[str, Any]:
@@ -414,14 +414,14 @@ class JsonApiExporter:
                 type_counts[metric_type.value] = count
 
             # Get recent activity (last hour)
-            recent_start = datetime.utcnow() - timedelta(hours=1)
+            recent_start = datetime.now(UTC) - timedelta(hours=1)
             recent_count = await self.storage.count_metrics(start_time=recent_start)
 
             # Get storage info
             storage_info = await self.storage.get_storage_info()
 
             return {
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(UTC).isoformat(),
                 "totals": type_counts,
                 "recent_activity": {
                     "last_hour_count": recent_count,
@@ -456,7 +456,7 @@ class JsonApiExporter:
         try:
             # Default time range to last 7 days if not specified
             if end_time is None:
-                end_time = datetime.utcnow()
+                end_time = datetime.now(UTC)
             if start_time is None:
                 start_time = end_time - timedelta(days=7)
 
@@ -470,7 +470,7 @@ class JsonApiExporter:
             if format_type == "json":
                 export_data = {
                     "export_info": {
-                        "timestamp": datetime.utcnow().isoformat(),
+                        "timestamp": datetime.now(UTC).isoformat(),
                         "start_time": start_time.isoformat(),
                         "end_time": end_time.isoformat(),
                         "record_count": len(metrics),
