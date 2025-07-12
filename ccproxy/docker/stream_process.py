@@ -11,20 +11,19 @@ Example:
     # Create custom middleware to add timestamps
     from datetime import datetime
     class TimestampMiddleware(DefaultOutputMiddleware):
-        def process(self, line: str, stream_type: str) -> str:
+        async def process(self, line: str, stream_type: str) -> str:
             timestamp = datetime.now().strftime('%H:%M:%S')
-            return f"[{timestamp}] {super().process(line, stream_type)}"
+            return f"[{timestamp}] {await super().process(line, stream_type)}"
 
     # Run a command with custom output handling
-    return_code, stdout, stderr = run_command(
+    return_code, stdout, stderr = await run_command(
         "ls -la", middleware=TimestampMiddleware()
     )
     ```
 """
 
+import asyncio
 import shlex
-import subprocess
-from threading import Thread
 from typing import Any, Generic, TypeAlias, TypeVar, cast
 
 
@@ -45,7 +44,7 @@ class OutputMiddleware(Generic[T]):
     allowing middleware to transform strings into other types if needed.
     """
 
-    def process(self, line: str, stream_type: str) -> T:
+    async def process(self, line: str, stream_type: str) -> T:
         """Process a line of output from a subprocess stream.
 
         Args:
@@ -78,7 +77,7 @@ class DefaultOutputMiddleware(OutputMiddleware[str]):
         self.stdout_prefix = stdout_prefix
         self.stderr_prefix = stderr_prefix
 
-    def process(self, line: str, stream_type: str) -> str:
+    async def process(self, line: str, stream_type: str) -> str:
         """Process and print a line with the appropriate prefix.
 
         Args:
@@ -128,7 +127,7 @@ class ChainedOutputMiddleware(OutputMiddleware[T]):
 
         self.middleware_chain = middleware_chain
 
-    def process(self, line: str, stream_type: str) -> T:
+    async def process(self, line: str, stream_type: str) -> T:
         """Process line through the middleware chain.
 
         Args:
@@ -142,7 +141,7 @@ class ChainedOutputMiddleware(OutputMiddleware[T]):
 
         # Process through each middleware in sequence
         for middleware in self.middleware_chain:
-            current_output = middleware.process(current_output, stream_type)
+            current_output = await middleware.process(current_output, stream_type)
 
         return cast(T, current_output)
 
@@ -179,7 +178,7 @@ def create_chained_middleware(
     return ChainedOutputMiddleware(middleware_chain)
 
 
-def run_command(
+async def run_command(
     cmd: str | list[str],
     middleware: OutputMiddleware[T] | None = None,
 ) -> ProcessResult[T]:
@@ -202,14 +201,14 @@ def run_command(
     Example:
         ```python
         # Simple command execution
-        rc, stdout, stderr = run_command("ls -l")
+        rc, stdout, stderr = await run_command("ls -l")
 
         # With custom middleware
         class CustomMiddleware(OutputMiddleware[str]):
-            def process(self, line: str, stream_type: str) -> str:
+            async def process(self, line: str, stream_type: str) -> str:
                 return f"[{stream_type}] {line}"
 
-        rc, stdout, stderr = run_command("ls -l", CustomMiddleware())
+        rc, stdout, stderr = await run_command("ls -l", CustomMiddleware())
         ```
     """
     if middleware is None:
@@ -220,54 +219,46 @@ def run_command(
     if isinstance(cmd, str):
         cmd = shlex.split(cmd)
 
-    # Start the process with pipes for stdout and stderr
-    process = subprocess.Popen(
-        cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, bufsize=1
+    # Start the async process with pipes for stdout and stderr
+    process = await asyncio.create_subprocess_exec(
+        *cmd,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
     )
 
-    def stream_output(stream: Any, stream_type: str) -> list[T]:
+    async def stream_output(stream: asyncio.StreamReader, stream_type: str) -> list[T]:
         """Process output from a stream and capture results.
 
         Args:
-            stream: Stream to read from (stdout or stderr)
+            stream: Async stream to read from (stdout or stderr)
             stream_type: Type of the stream ("stdout" or "stderr")
 
         Returns:
             List of processed output lines
         """
         captured: list[T] = []
-        for line in iter(stream.readline, ""):
+        while True:
+            line_bytes = await stream.readline()
+            if not line_bytes:
+                break
+            line = line_bytes.decode().rstrip()
             if line:
-                stripped_line = line.rstrip()
-                processed = middleware.process(stripped_line, stream_type)
+                processed = await middleware.process(line, stream_type)
                 if processed is not None:
                     captured.append(processed)
-        stream.close()
         return captured
 
-    # Prepare output collection
-    stdout_lines: list[T] = []
-    stderr_lines: list[T] = []
+    # Create async tasks for concurrent output processing
+    # Ensure stdout and stderr are available
+    if process.stdout is None or process.stderr is None:
+        raise RuntimeError("Process stdout or stderr is None")
 
-    # Create and start threads for output processing
-    stdout_thread = Thread(
-        target=lambda: stdout_lines.extend(stream_output(process.stdout, "stdout"))
-    )
-    stderr_thread = Thread(
-        target=lambda: stderr_lines.extend(stream_output(process.stderr, "stderr"))
-    )
+    stdout_task = asyncio.create_task(stream_output(process.stdout, "stdout"))
+    stderr_task = asyncio.create_task(stream_output(process.stderr, "stderr"))
 
-    stdout_thread.daemon = True
-    stderr_thread.daemon = True
-
-    stdout_thread.start()
-    stderr_thread.start()
-
-    # Wait for process to complete
-    return_code = process.wait()
-
-    # Wait for output processing to complete
-    stdout_thread.join()
-    stderr_thread.join()
+    # Wait for process to complete and collect output
+    return_code = await process.wait()
+    stdout_lines = await stdout_task
+    stderr_lines = await stderr_task
 
     return return_code, stdout_lines, stderr_lines

@@ -9,6 +9,8 @@ from decimal import Decimal
 from typing import Optional
 
 from ccproxy.core.logging import get_logger
+from ccproxy.pricing.loader import PricingLoader
+from ccproxy.pricing.models import ModelPricing
 from ccproxy.pricing.updater import PricingUpdater
 
 from .models import CostMetric
@@ -63,7 +65,7 @@ class CostCalculator:
             key: Decimal(str(value)) for key, value in pricing.items()
         }
 
-    async def get_model_pricing(self, model: str) -> dict[str, Decimal]:
+    async def get_model_pricing(self, model: str) -> ModelPricing:
         """
         Get pricing information for a specific model.
 
@@ -71,22 +73,22 @@ class CostCalculator:
             model: The model name
 
         Returns:
-            Dictionary with pricing rates per 1M tokens
+            ModelPricing object with pricing rates per 1M tokens
         """
         # Check custom pricing first
         if model in self._custom_pricing:
-            return self._custom_pricing[model]
+            return ModelPricing(**self._custom_pricing[model])
 
         # Try dynamic pricing if enabled
         if self._enable_dynamic_pricing and self._pricing_updater:
             try:
                 dynamic_pricing = await self._pricing_updater.get_current_pricing()
-                if model in dynamic_pricing:
-                    return dynamic_pricing[model]
-                else:
-                    # Try canonical model name mapping
-                    from ccproxy.pricing.loader import PricingLoader
+                if dynamic_pricing:
+                    # Try exact model name match
+                    if model in dynamic_pricing:
+                        return dynamic_pricing[model]
 
+                    # Try canonical model name mapping
                     canonical_name = PricingLoader.get_canonical_model_name(model)
                     if canonical_name != model and canonical_name in dynamic_pricing:
                         return dynamic_pricing[canonical_name]
@@ -95,7 +97,7 @@ class CostCalculator:
 
         # Use default pricing as fallback
         logger.warning(f"Using default pricing for unknown model {model}")
-        return self.DEFAULT_PRICING
+        return ModelPricing(**self.DEFAULT_PRICING)
 
     async def calculate_cost(
         self,
@@ -133,17 +135,15 @@ class CostCalculator:
         pricing = await self.get_model_pricing(model)
 
         # Calculate costs (pricing is per 1M tokens)
-        input_cost = float(
-            pricing["input"] * Decimal(input_tokens) / Decimal("1000000")
-        )
+        input_cost = float(pricing.input * Decimal(input_tokens) / Decimal("1000000"))
         output_cost = float(
-            pricing["output"] * Decimal(output_tokens) / Decimal("1000000")
+            pricing.output * Decimal(output_tokens) / Decimal("1000000")
         )
         cache_read_cost = float(
-            pricing["cache_read"] * Decimal(cache_read_tokens) / Decimal("1000000")
+            pricing.cache_read * Decimal(cache_read_tokens) / Decimal("1000000")
         )
         cache_write_cost = float(
-            pricing["cache_write"] * Decimal(cache_write_tokens) / Decimal("1000000")
+            pricing.cache_write * Decimal(cache_write_tokens) / Decimal("1000000")
         )
 
         total_cost = input_cost + output_cost + cache_read_cost + cache_write_cost
@@ -253,20 +253,20 @@ class CostCalculator:
 
         # Calculate base costs
         input_cost = float(
-            pricing["input"] * Decimal(estimated_input_tokens) / Decimal("1000000")
+            pricing.input * Decimal(estimated_input_tokens) / Decimal("1000000")
         )
         output_cost = float(
-            pricing["output"] * Decimal(estimated_output_tokens) / Decimal("1000000")
+            pricing.output * Decimal(estimated_output_tokens) / Decimal("1000000")
         )
 
         # Apply cache hit rate to input cost
         cache_read_cost = float(
-            pricing["cache_read"]
+            pricing.cache_read
             * Decimal(int(estimated_input_tokens * cache_hit_rate))
             / Decimal("1000000")
         )
         regular_input_cost = float(
-            pricing["input"]
+            pricing.input
             * Decimal(int(estimated_input_tokens * (1 - cache_hit_rate)))
             / Decimal("1000000")
         )
@@ -286,10 +286,19 @@ class CostCalculator:
         """
         pricing = await self.get_model_pricing(model)
 
-        if token_type not in pricing:
+        # Get the appropriate pricing field based on token type
+        if token_type == "input":
+            cost_per_million = pricing.input
+        elif token_type == "output":
+            cost_per_million = pricing.output
+        elif token_type == "cache_read":
+            cost_per_million = pricing.cache_read
+        elif token_type == "cache_write":
+            cost_per_million = pricing.cache_write
+        else:
             raise ValueError(f"Unknown token type: {token_type}")
 
-        return float(pricing[token_type] / Decimal("1000000"))
+        return float(cost_per_million / Decimal("1000000"))
 
     async def compare_model_costs(
         self,
@@ -334,19 +343,24 @@ class CostCalculator:
             List of model names with pricing information
         """
         supported_models = list(self._custom_pricing.keys())
-        
+
         # Add models from dynamic pricing if available
         if self._enable_dynamic_pricing and self._pricing_updater:
             try:
                 dynamic_pricing = await self._pricing_updater.get_current_pricing()
-                supported_models.extend(dynamic_pricing.keys())
+                if dynamic_pricing:
+                    supported_models.extend(dynamic_pricing.model_names())
             except Exception as e:
                 logger.warning(f"Failed to get dynamic models: {e}")
-        
+
         # Add default models from embedded pricing
-        embedded_pricing = self._pricing_updater._get_embedded_pricing() if self._pricing_updater else {}
-        supported_models.extend(embedded_pricing.keys())
-        
+        if self._pricing_updater:
+            try:
+                embedded_pricing = self._pricing_updater._get_embedded_pricing()
+                supported_models.extend(embedded_pricing.model_names())
+            except Exception as e:
+                logger.warning(f"Failed to get embedded models: {e}")
+
         # Remove duplicates and return
         return list(set(supported_models))
 

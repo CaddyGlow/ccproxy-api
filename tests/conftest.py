@@ -574,57 +574,86 @@ def auth_headers() -> dict[str, str]:
 
 @pytest.fixture
 def mock_docker_run_success() -> Generator[Any, None, None]:
-    """Mock subprocess.run for Docker availability check (success)."""
-    from unittest.mock import MagicMock, patch
+    """Mock asyncio.create_subprocess_exec for Docker availability check (success)."""
+    from unittest.mock import AsyncMock, patch
 
-    mock_result = MagicMock()
-    mock_result.returncode = 0
+    mock_process = AsyncMock()
+    mock_process.returncode = 0
+    mock_process.communicate.return_value = (b"Docker version 20.0.0", b"")
+    mock_process.wait.return_value = 0
 
-    with patch("subprocess.run", return_value=mock_result) as mock_run:
-        yield mock_run
+    with patch(
+        "asyncio.create_subprocess_exec", return_value=mock_process
+    ) as mock_subprocess:
+        yield mock_subprocess
 
 
 @pytest.fixture
 def mock_docker_run_unavailable() -> Generator[Any, None, None]:
-    """Mock subprocess.run for Docker availability check (unavailable)."""
+    """Mock asyncio.create_subprocess_exec for Docker availability check (unavailable)."""
     from unittest.mock import patch
 
     with patch(
-        "subprocess.run", side_effect=FileNotFoundError("docker: command not found")
-    ) as mock_run:
-        yield mock_run
+        "asyncio.create_subprocess_exec",
+        side_effect=FileNotFoundError("docker: command not found"),
+    ) as mock_subprocess:
+        yield mock_subprocess
 
 
 @pytest.fixture
 def mock_docker_popen_success() -> Generator[Any, None, None]:
-    """Mock subprocess.Popen for Docker command execution (success)."""
-    from io import StringIO
-    from unittest.mock import MagicMock, patch
+    """Mock asyncio.create_subprocess_exec for Docker command execution (success)."""
+    from unittest.mock import AsyncMock, patch
 
-    mock_proc = MagicMock()
+    # Mock async stream reader
+    mock_stdout = AsyncMock()
+    mock_stdout.readline = AsyncMock(side_effect=[b"mock docker output\n", b""])
+
+    mock_stderr = AsyncMock()
+    mock_stderr.readline = AsyncMock(side_effect=[b""])
+
+    mock_proc = AsyncMock()
     mock_proc.returncode = 0
-    mock_proc.wait.return_value = 0
-    mock_proc.stdout = StringIO("mock docker output\n")
-    mock_proc.stderr = StringIO("")
+    mock_proc.wait = AsyncMock(return_value=0)
+    mock_proc.stdout = mock_stdout
+    mock_proc.stderr = mock_stderr
+    # Also support communicate() for availability checks
+    mock_proc.communicate = AsyncMock(return_value=(b"Docker version 20.0.0", b""))
 
-    with patch("subprocess.Popen", return_value=mock_proc) as mock_popen:
-        yield mock_popen
+    with patch(
+        "asyncio.create_subprocess_exec", return_value=mock_proc
+    ) as mock_subprocess:
+        yield mock_subprocess
 
 
 @pytest.fixture
 def mock_docker_popen_failure() -> Generator[Any, None, None]:
-    """Mock subprocess.Popen for Docker command execution (failure)."""
-    from io import StringIO
-    from unittest.mock import MagicMock, patch
+    """Mock asyncio.create_subprocess_exec for Docker command execution (failure)."""
+    from unittest.mock import AsyncMock, patch
 
-    mock_proc = MagicMock()
+    # Mock async stream reader
+    mock_stdout = AsyncMock()
+    mock_stdout.readline = AsyncMock(side_effect=[b""])
+
+    mock_stderr = AsyncMock()
+    mock_stderr.readline = AsyncMock(
+        side_effect=[b"docker: error running command\n", b""]
+    )
+
+    mock_proc = AsyncMock()
     mock_proc.returncode = 1
-    mock_proc.wait.return_value = 1
-    mock_proc.stdout = StringIO("")
-    mock_proc.stderr = StringIO("docker: error running command\n")
+    mock_proc.wait = AsyncMock(return_value=1)
+    mock_proc.stdout = mock_stdout
+    mock_proc.stderr = mock_stderr
+    # Also support communicate() for availability checks
+    mock_proc.communicate = AsyncMock(
+        return_value=(b"", b"docker: error running command\n")
+    )
 
-    with patch("subprocess.Popen", return_value=mock_proc) as mock_popen:
-        yield mock_popen
+    with patch(
+        "asyncio.create_subprocess_exec", return_value=mock_proc
+    ) as mock_subprocess:
+        yield mock_subprocess
 
 
 @pytest.fixture
