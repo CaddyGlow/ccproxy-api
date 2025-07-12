@@ -1,9 +1,13 @@
 """Core transformer abstractions for request/response transformation."""
 
 from abc import ABC, abstractmethod
-from typing import Any, Optional, Protocol, TypeVar, runtime_checkable
+from typing import TYPE_CHECKING, Any, Optional, Protocol, TypeVar, runtime_checkable
 
 from ccproxy.core.types import ProxyRequest, ProxyResponse, TransformContext
+
+
+if TYPE_CHECKING:
+    from ccproxy.metrics.collector import MetricsCollector
 
 
 T = TypeVar("T", contravariant=True)
@@ -12,6 +16,14 @@ R = TypeVar("R", covariant=True)
 
 class BaseTransformer(ABC):
     """Abstract base class for all transformers."""
+
+    def __init__(self, metrics_collector: "MetricsCollector | None" = None):
+        """Initialize transformer with optional metrics collector.
+
+        Args:
+            metrics_collector: Optional metrics collector for transformation tracking
+        """
+        self.metrics_collector = metrics_collector
 
     @abstractmethod
     async def transform(
@@ -31,15 +43,117 @@ class BaseTransformer(ABC):
         """
         pass
 
+    async def _collect_transformation_metrics(
+        self,
+        transformation_type: str,
+        input_data: Any,
+        output_data: Any,
+        duration_ms: float,
+        success: bool = True,
+        error: str | None = None,
+    ) -> None:
+        """Collect metrics for transformation operations.
+
+        Args:
+            transformation_type: Type of transformation (request/response)
+            input_data: Original input data
+            output_data: Transformed output data
+            duration_ms: Time taken for transformation in milliseconds
+            success: Whether transformation was successful
+            error: Error message if transformation failed
+        """
+        if not self.metrics_collector:
+            return
+
+        try:
+            # Calculate data sizes
+            input_size = self._calculate_data_size(input_data)
+            output_size = self._calculate_data_size(output_data) if output_data else 0
+
+            # Create a unique request ID for this transformation
+            request_id = (
+                f"transformer_{id(self)}_{transformation_type}_{id(input_data)}"
+            )
+
+            # Use existing latency collection method with timing data
+            await self.metrics_collector.collect_latency(
+                request_id=request_id,
+                transformation_duration=duration_ms,
+                processing_time=duration_ms,
+            )
+
+        except Exception as e:
+            # Don't let metrics collection fail the transformation
+            import logging
+
+            logger = logging.getLogger(__name__)
+            logger.debug(f"Failed to collect transformation metrics: {e}")
+
+    def _calculate_data_size(self, data: Any) -> int:
+        """Calculate the size of data in bytes.
+
+        Args:
+            data: The data to measure
+
+        Returns:
+            Size in bytes
+        """
+        if data is None:
+            return 0
+        elif isinstance(data, bytes):
+            return len(data)
+        elif isinstance(data, str):
+            return len(data.encode("utf-8"))
+        elif hasattr(data, "__len__"):
+            return len(str(data))
+        else:
+            return len(str(data))
+
 
 class RequestTransformer(BaseTransformer):
     """Base class for request transformers."""
 
-    @abstractmethod
     async def transform(
         self, request: ProxyRequest, context: TransformContext | None = None
     ) -> ProxyRequest:
-        """Transform a proxy request.
+        """Transform a proxy request with metrics collection.
+
+        Args:
+            request: The request to transform
+            context: Optional transformation context
+
+        Returns:
+            The transformed request
+        """
+        import time
+
+        start_time = time.perf_counter()
+        error_msg = None
+        result = None
+
+        try:
+            result = await self._transform_request(request, context)
+            return result
+        except Exception as e:
+            error_msg = str(e)
+            raise
+        finally:
+            # Collect metrics regardless of success/failure
+            duration_ms = (time.perf_counter() - start_time) * 1000
+            await self._collect_transformation_metrics(
+                transformation_type="request",
+                input_data=request,
+                output_data=result,
+                duration_ms=duration_ms,
+                success=error_msg is None,
+                error=error_msg,
+            )
+
+    @abstractmethod
+    async def _transform_request(
+        self, request: ProxyRequest, context: TransformContext | None = None
+    ) -> ProxyRequest:
+        """Transform a proxy request implementation.
 
         Args:
             request: The request to transform
@@ -54,11 +168,47 @@ class RequestTransformer(BaseTransformer):
 class ResponseTransformer(BaseTransformer):
     """Base class for response transformers."""
 
-    @abstractmethod
     async def transform(
         self, response: ProxyResponse, context: TransformContext | None = None
     ) -> ProxyResponse:
-        """Transform a proxy response.
+        """Transform a proxy response with metrics collection.
+
+        Args:
+            response: The response to transform
+            context: Optional transformation context
+
+        Returns:
+            The transformed response
+        """
+        import time
+
+        start_time = time.perf_counter()
+        error_msg = None
+        result = None
+
+        try:
+            result = await self._transform_response(response, context)
+            return result
+        except Exception as e:
+            error_msg = str(e)
+            raise
+        finally:
+            # Collect metrics regardless of success/failure
+            duration_ms = (time.perf_counter() - start_time) * 1000
+            await self._collect_transformation_metrics(
+                transformation_type="response",
+                input_data=response,
+                output_data=result,
+                duration_ms=duration_ms,
+                success=error_msg is None,
+                error=error_msg,
+            )
+
+    @abstractmethod
+    async def _transform_response(
+        self, response: ProxyResponse, context: TransformContext | None = None
+    ) -> ProxyResponse:
+        """Transform a proxy response implementation.
 
         Args:
             response: The response to transform

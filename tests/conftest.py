@@ -26,6 +26,10 @@ from ccproxy.config.auth import AuthSettings, CredentialStorageSettings
 from ccproxy.config.security import SecuritySettings
 from ccproxy.config.server import ServerSettings
 from ccproxy.config.settings import Settings, get_settings
+from ccproxy.docker.adapter import DockerAdapter
+from ccproxy.docker.docker_path import DockerPath, DockerPathSet
+from ccproxy.docker.models import DockerUserContext
+from ccproxy.docker.stream_process import DefaultOutputMiddleware
 from ccproxy.metrics.storage.memory import InMemoryMetricsStorage
 
 
@@ -563,6 +567,168 @@ def auth_headers() -> dict[str, str]:
     Returns headers with test auth token.
     """
     return {"Authorization": "Bearer test-token-12345"}
+
+
+# Docker test fixtures
+
+
+@pytest.fixture
+def mock_docker_run_success() -> Generator[Any, None, None]:
+    """Mock subprocess.run for Docker availability check (success)."""
+    from unittest.mock import MagicMock, patch
+
+    mock_result = MagicMock()
+    mock_result.returncode = 0
+
+    with patch("subprocess.run", return_value=mock_result) as mock_run:
+        yield mock_run
+
+
+@pytest.fixture
+def mock_docker_run_unavailable() -> Generator[Any, None, None]:
+    """Mock subprocess.run for Docker availability check (unavailable)."""
+    from unittest.mock import patch
+
+    with patch(
+        "subprocess.run", side_effect=FileNotFoundError("docker: command not found")
+    ) as mock_run:
+        yield mock_run
+
+
+@pytest.fixture
+def mock_docker_popen_success() -> Generator[Any, None, None]:
+    """Mock subprocess.Popen for Docker command execution (success)."""
+    from io import StringIO
+    from unittest.mock import MagicMock, patch
+
+    mock_proc = MagicMock()
+    mock_proc.returncode = 0
+    mock_proc.wait.return_value = 0
+    mock_proc.stdout = StringIO("mock docker output\n")
+    mock_proc.stderr = StringIO("")
+
+    with patch("subprocess.Popen", return_value=mock_proc) as mock_popen:
+        yield mock_popen
+
+
+@pytest.fixture
+def mock_docker_popen_failure() -> Generator[Any, None, None]:
+    """Mock subprocess.Popen for Docker command execution (failure)."""
+    from io import StringIO
+    from unittest.mock import MagicMock, patch
+
+    mock_proc = MagicMock()
+    mock_proc.returncode = 1
+    mock_proc.wait.return_value = 1
+    mock_proc.stdout = StringIO("")
+    mock_proc.stderr = StringIO("docker: error running command\n")
+
+    with patch("subprocess.Popen", return_value=mock_proc) as mock_popen:
+        yield mock_popen
+
+
+@pytest.fixture
+def docker_adapter_success(
+    mock_docker_run_success: Any, mock_docker_popen_success: Any
+) -> DockerAdapter:
+    """Create a DockerAdapter with successful subprocess mocking.
+
+    Returns a DockerAdapter instance that will succeed on Docker operations.
+    """
+    from ccproxy.docker.adapter import DockerAdapter
+
+    return DockerAdapter()
+
+
+@pytest.fixture
+def docker_adapter_unavailable(mock_docker_run_unavailable: Any) -> DockerAdapter:
+    """Create a DockerAdapter with Docker unavailable mocking.
+
+    Returns a DockerAdapter instance that simulates Docker not being available.
+    """
+    from ccproxy.docker.adapter import DockerAdapter
+
+    return DockerAdapter()
+
+
+@pytest.fixture
+def docker_adapter_failure(
+    mock_docker_run_success: Any, mock_docker_popen_failure: Any
+) -> DockerAdapter:
+    """Create a DockerAdapter with Docker failure mocking.
+
+    Returns a DockerAdapter instance that simulates Docker command failures.
+    """
+    from ccproxy.docker.adapter import DockerAdapter
+
+    return DockerAdapter()
+
+
+@pytest.fixture
+def docker_path_fixture(tmp_path: Path) -> DockerPath:
+    """Create a DockerPath instance with temporary paths for testing.
+
+    Returns a DockerPath configured with test directories.
+    """
+    from ccproxy.docker.docker_path import DockerPath
+
+    host_path = tmp_path / "host_dir"
+    host_path.mkdir()
+
+    return DockerPath(
+        host_path=host_path,
+        container_path="/app/data",
+        env_definition_variable_name="DATA_PATH",
+    )
+
+
+@pytest.fixture
+def docker_path_set_fixture(tmp_path: Path) -> DockerPathSet:
+    """Create a DockerPathSet instance with temporary paths for testing.
+
+    Returns a DockerPathSet configured with test directories.
+    """
+    from ccproxy.docker.docker_path import DockerPath, DockerPathSet
+
+    # Create multiple test directories
+    host_dir1 = tmp_path / "host_dir1"
+    host_dir2 = tmp_path / "host_dir2"
+    host_dir1.mkdir()
+    host_dir2.mkdir()
+
+    # Create a DockerPathSet and add paths to it
+    path_set = DockerPathSet(tmp_path)
+    path_set.add("data1", "/app/data1", "host_dir1")
+    path_set.add("data2", "/app/data2", "host_dir2")
+
+    return path_set
+
+
+@pytest.fixture
+def docker_user_context() -> DockerUserContext:
+    """Create a DockerUserContext for testing.
+
+    Returns a DockerUserContext with test configuration.
+    """
+    from ccproxy.docker.models import DockerUserContext
+
+    return DockerUserContext.create_manual(
+        uid=1000,
+        gid=1000,
+        username="testuser",
+        enable_user_mapping=True,
+    )
+
+
+@pytest.fixture
+def output_middleware() -> DefaultOutputMiddleware:
+    """Create a basic OutputMiddleware for testing.
+
+    Returns a DefaultOutputMiddleware instance.
+    """
+    from ccproxy.docker.stream_process import DefaultOutputMiddleware
+
+    return DefaultOutputMiddleware()
 
 
 # Pytest configuration

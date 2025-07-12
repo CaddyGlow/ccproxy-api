@@ -28,10 +28,15 @@ class OAuthToken(BaseModel):
             else "***"
         )
 
+        expires_at = (
+            datetime.fromtimestamp(self.expires_at / 1000, tz=UTC).isoformat()
+            if self.expires_at is not None
+            else "None"
+        )
         return (
             f"OAuthToken(access_token='{access_preview}', "
             f"refresh_token='{refresh_preview}', "
-            f"expires_at={self.expires_at}, "
+            f"expires_at={expires_at}, "
             f"scopes={self.scopes}, "
             f"subscription_type='{self.subscription_type}', "
             f"token_type='{self.token_type}')"
