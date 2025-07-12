@@ -5,12 +5,17 @@ This module defines the data structures used to capture and store
 various types of metrics throughout the application.
 """
 
-from datetime import datetime
+from datetime import UTC, datetime, timezone
 from enum import Enum
 from typing import Any, Optional, Union
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, Field
+
+
+def utc_now() -> datetime:
+    """Generate timezone-aware UTC timestamp."""
+    return datetime.now(UTC)
 
 
 class MetricType(str, Enum):
@@ -28,7 +33,7 @@ class MetricRecord(BaseModel):
     """Base metric record."""
 
     id: UUID = Field(default_factory=uuid4)
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=utc_now)
     metric_type: MetricType
     request_id: str | None = None
     user_id: str | None = None
