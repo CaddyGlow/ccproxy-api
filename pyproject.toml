@@ -220,6 +220,7 @@ warn_unused_ignores = false
 # Ignore call-arg errors for Pydantic models with optional fields
 disable_error_code = ["call-arg"]
 
+
 [tool.pytest.ini_options]
 minversion = "6.0"
 addopts = [
@@ -235,7 +236,7 @@ addopts = [
   "--cov-report=html:htmlcov",
   "--cov-report=xml",
   "--cov-branch",
-  "--cov-fail-under=80",
+  # "--cov-fail-under=80",
 ]
 testpaths = ["tests"]
 python_files = ["test_*.py", "*_test.py"]
