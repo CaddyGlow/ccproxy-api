@@ -302,7 +302,7 @@ class MetricsCollector:
         Returns:
             CostMetric object
         """
-        cost_metric = self.cost_calculator.calculate_cost(
+        cost_metric = await self.cost_calculator.calculate_cost(
             model=model,
             input_tokens=input_tokens,
             output_tokens=output_tokens,

@@ -75,7 +75,6 @@ class CostCalculator:
         """
         # Check custom pricing first
         if model in self._custom_pricing:
-            logger.debug(f"Using custom pricing for model {model}")
             return self._custom_pricing[model]
 
         # Try dynamic pricing if enabled
@@ -83,7 +82,6 @@ class CostCalculator:
             try:
                 dynamic_pricing = await self._pricing_updater.get_current_pricing()
                 if model in dynamic_pricing:
-                    logger.debug(f"Using dynamic pricing for model {model}")
                     return dynamic_pricing[model]
                 else:
                     # Try canonical model name mapping
@@ -91,15 +89,12 @@ class CostCalculator:
 
                     canonical_name = PricingLoader.get_canonical_model_name(model)
                     if canonical_name != model and canonical_name in dynamic_pricing:
-                        logger.debug(
-                            f"Using dynamic pricing for model {model} -> {canonical_name}"
-                        )
                         return dynamic_pricing[canonical_name]
             except Exception as e:
                 logger.warning(f"Failed to get dynamic pricing for {model}: {e}")
 
         # Use default pricing as fallback
-        logger.debug(f"Using default pricing for model {model}")
+        logger.warning(f"Using default pricing for unknown model {model}")
         return self.DEFAULT_PRICING
 
     async def calculate_cost(
@@ -194,7 +189,7 @@ class CostCalculator:
             cache_write_tokens=cache_write_tokens,
         )
 
-    def calculate_batch_cost(
+    async def calculate_batch_cost(
         self,
         model: str,
         token_counts: list[tuple[int, int, int, int]],
@@ -220,7 +215,7 @@ class CostCalculator:
             cache_read_tokens,
             cache_write_tokens,
         ) in token_counts:
-            cost_metric = self.calculate_cost(
+            cost_metric = await self.calculate_cost(
                 model=model,
                 input_tokens=input_tokens,
                 output_tokens=output_tokens,
@@ -296,7 +291,7 @@ class CostCalculator:
 
         return float(pricing[token_type] / Decimal("1000000"))
 
-    def compare_model_costs(
+    async def compare_model_costs(
         self,
         models: list[str],
         input_tokens: int,
@@ -320,7 +315,7 @@ class CostCalculator:
         costs = {}
 
         for model in models:
-            cost_metric = self.calculate_cost(
+            cost_metric = await self.calculate_cost(
                 model=model,
                 input_tokens=input_tokens,
                 output_tokens=output_tokens,
@@ -331,14 +326,29 @@ class CostCalculator:
 
         return costs
 
-    def get_supported_models(self) -> list[str]:
+    async def get_supported_models(self) -> list[str]:
         """
         Get a list of all supported models.
 
         Returns:
             List of model names with pricing information
         """
-        return list(self.CLAUDE_PRICING.keys()) + list(self._custom_pricing.keys())
+        supported_models = list(self._custom_pricing.keys())
+        
+        # Add models from dynamic pricing if available
+        if self._enable_dynamic_pricing and self._pricing_updater:
+            try:
+                dynamic_pricing = await self._pricing_updater.get_current_pricing()
+                supported_models.extend(dynamic_pricing.keys())
+            except Exception as e:
+                logger.warning(f"Failed to get dynamic models: {e}")
+        
+        # Add default models from embedded pricing
+        embedded_pricing = self._pricing_updater._get_embedded_pricing() if self._pricing_updater else {}
+        supported_models.extend(embedded_pricing.keys())
+        
+        # Remove duplicates and return
+        return list(set(supported_models))
 
     def validate_token_counts(
         self,
