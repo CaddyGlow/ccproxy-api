@@ -16,6 +16,7 @@ from fastapi import Request, Response
 from fastapi.testclient import TestClient
 
 from ccproxy.metrics.collector import MetricsCollector
+from ccproxy.metrics.exporters.json_api import JsonApiExporter
 from ccproxy.metrics.middleware import MetricsMiddleware
 from ccproxy.metrics.models import (
     CostMetric,
@@ -976,6 +977,206 @@ class TestConcurrentMetrics:
         assert stats["metrics_by_type"][MetricType.REQUEST] == 100
 
         await collector.stop()
+
+
+class TestJsonApiExporter:
+    """Test JSON API exporter functionality including clean serialization."""
+
+    @pytest.mark.unit
+    async def test_metric_to_dict_excludes_none_values(
+        self, metrics_storage: InMemoryMetricsStorage
+    ) -> None:
+        """Test that metric serialization excludes None values."""
+        exporter = JsonApiExporter(storage=metrics_storage)
+
+        # Create a metric with some None values
+        metric = RequestMetric(
+            request_id="test-request-123",
+            method="POST",
+            path="/v1/messages",
+            endpoint="/v1/messages",
+            api_version="v1",
+            user_id="test-user",
+            # These should be None and excluded
+            session_id=None,
+            client_ip=None,
+            user_agent=None,
+            content_length=None,
+            content_type=None,
+            model=None,
+            provider=None,
+            max_tokens=None,
+            temperature=None,
+            streaming=False,  # This should be included as it's not None
+        )
+
+        # Convert to dictionary
+        metric_dict = exporter._metric_to_dict(metric)
+
+        # Verify required fields are present
+        assert "id" in metric_dict
+        assert "timestamp" in metric_dict
+        assert "metric_type" in metric_dict
+        assert "request_id" in metric_dict
+        assert metric_dict["request_id"] == "test-request-123"
+        assert metric_dict["method"] == "POST"
+        assert metric_dict["path"] == "/v1/messages"
+        assert metric_dict["user_id"] == "test-user"
+        assert metric_dict["streaming"] is False
+
+        # Verify None values are excluded
+        assert "session_id" not in metric_dict
+        assert "client_ip" not in metric_dict
+        assert "user_agent" not in metric_dict
+        assert "content_length" not in metric_dict
+        assert "content_type" not in metric_dict
+        assert "model" not in metric_dict
+        assert "provider" not in metric_dict
+        assert "max_tokens" not in metric_dict
+        assert "temperature" not in metric_dict
+
+    @pytest.mark.unit
+    async def test_get_metrics_excludes_none_in_filters(
+        self, metrics_storage: InMemoryMetricsStorage
+    ) -> None:
+        """Test that get_metrics response excludes None values in filters."""
+        await metrics_storage.initialize()
+        exporter = JsonApiExporter(storage=metrics_storage)
+
+        # Call get_metrics with some None parameters
+        result = await exporter.get_metrics(
+            metric_type=None,  # This should be excluded
+            user_id=None,  # This should be excluded
+            session_id=None,  # This should be excluded
+            limit=10,  # This should be included
+        )
+
+        # Verify filters object doesn't contain None values
+        filters = result["metadata"]["filters"]
+        assert "limit" not in filters  # limit is not in filters
+
+        # These should not be present since they were None
+        assert "metric_type" not in filters
+        assert "user_id" not in filters
+        assert "session_id" not in filters
+        assert "request_id" not in filters
+        assert "custom_filters" not in filters
+
+        # Pagination should exclude None values too
+        pagination = result["metadata"]["pagination"]
+        assert "has_next" in pagination
+        assert "has_previous" in pagination
+        # next_offset and previous_offset should not be present if None
+        if "next_offset" in pagination:
+            assert pagination["next_offset"] is not None
+        if "previous_offset" in pagination:
+            assert pagination["previous_offset"] is not None
+
+    @pytest.mark.unit
+    async def test_response_metric_serialization_excludes_none(
+        self, metrics_storage: InMemoryMetricsStorage
+    ) -> None:
+        """Test that ResponseMetric serialization excludes None values."""
+        exporter = JsonApiExporter(storage=metrics_storage)
+
+        # Create response metric with minimal data
+        metric = ResponseMetric(
+            request_id="test-response-123",
+            status_code=200,
+            response_time_ms=150.5,
+            user_id="test-user",
+            # These will be None and should be excluded
+            content_length=None,
+            content_type=None,
+            input_tokens=None,
+            output_tokens=None,
+            cache_read_tokens=None,
+            cache_write_tokens=None,
+            first_token_time_ms=None,
+            stream_completion_time_ms=None,
+            completion_reason=None,
+            streaming=False,
+            safety_filtered=False,
+        )
+
+        metric_dict = exporter._metric_to_dict(metric)
+
+        # Required fields should be present
+        assert metric_dict["request_id"] == "test-response-123"
+        assert metric_dict["status_code"] == 200
+        assert metric_dict["response_time_ms"] == 150.5
+        assert metric_dict["user_id"] == "test-user"
+        assert metric_dict["streaming"] is False
+        assert metric_dict["safety_filtered"] is False
+
+        # None values should be excluded
+        assert "content_length" not in metric_dict
+        assert "content_type" not in metric_dict
+        assert "input_tokens" not in metric_dict
+        assert "output_tokens" not in metric_dict
+        assert "cache_read_tokens" not in metric_dict
+        assert "cache_write_tokens" not in metric_dict
+        assert "first_token_time_ms" not in metric_dict
+        assert "stream_completion_time_ms" not in metric_dict
+        assert "completion_reason" not in metric_dict
+
+    @pytest.mark.unit
+    async def test_cost_metric_with_partial_data(
+        self, metrics_storage: InMemoryMetricsStorage
+    ) -> None:
+        """Test CostMetric serialization with partial data."""
+        exporter = JsonApiExporter(storage=metrics_storage)
+
+        # Create cost metric with only some values (None values for optional fields)
+        metric = CostMetric(
+            request_id="test-cost-123",
+            input_cost=0.001,
+            output_cost=0.002,
+            total_cost=0.003,
+            model="claude-3-haiku-20240307",
+            currency="USD",
+            input_tokens=100,
+            output_tokens=50,
+            # These have defaults and will be present
+            cache_read_cost=0.0,  # Has default value
+            cache_write_cost=0.0,  # Has default value
+            cache_read_tokens=0,  # Has default value
+            cache_write_tokens=0,  # Has default value
+            # These are None and should be excluded
+            sdk_total_cost=None,
+            sdk_input_cost=None,
+            sdk_output_cost=None,
+            sdk_cache_read_cost=None,
+            sdk_cache_write_cost=None,
+            cost_difference=None,
+            cost_accuracy_percentage=None,
+            pricing_tier=None,
+        )
+
+        metric_dict = exporter._metric_to_dict(metric)
+
+        # Present values should be included
+        assert metric_dict["input_cost"] == 0.001
+        assert metric_dict["output_cost"] == 0.002
+        assert metric_dict["total_cost"] == 0.003
+        assert metric_dict["model"] == "claude-3-haiku-20240307"
+        assert metric_dict["currency"] == "USD"
+        assert metric_dict["input_tokens"] == 100
+        assert metric_dict["output_tokens"] == 50
+        assert metric_dict["cache_read_cost"] == 0.0
+        assert metric_dict["cache_write_cost"] == 0.0
+        assert metric_dict["cache_read_tokens"] == 0
+        assert metric_dict["cache_write_tokens"] == 0
+
+        # None values should be excluded
+        assert "sdk_total_cost" not in metric_dict
+        assert "sdk_input_cost" not in metric_dict
+        assert "sdk_output_cost" not in metric_dict
+        assert "sdk_cache_read_cost" not in metric_dict
+        assert "sdk_cache_write_cost" not in metric_dict
+        assert "cost_difference" not in metric_dict
+        assert "cost_accuracy_percentage" not in metric_dict
+        assert "pricing_tier" not in metric_dict
 
 
 class TestMetricsEndToEnd:

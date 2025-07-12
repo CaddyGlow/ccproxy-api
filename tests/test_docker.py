@@ -379,7 +379,9 @@ class TestStreamProcess:
         mock_proc.stderr = mock_stderr
 
         with patch("asyncio.create_subprocess_exec", return_value=mock_proc):
-            result = await run_command(["echo", "test"])
+            result: tuple[int, list[str], list[str]] = await run_command(
+                ["echo", "test"]
+            )
 
         assert result[0] == 0  # returncode
         assert isinstance(result[1], list)  # stdout
@@ -402,7 +404,7 @@ class TestStreamProcess:
         mock_proc.stderr = mock_stderr
 
         with patch("asyncio.create_subprocess_exec", return_value=mock_proc):
-            result = await run_command(["false"])
+            result: tuple[int, list[str], list[str]] = await run_command(["false"])
 
         assert result[0] == 1  # returncode
         assert isinstance(result[1], list)  # stdout
@@ -452,7 +454,9 @@ class TestStreamProcess:
         middleware1 = DefaultOutputMiddleware()
         middleware2 = DefaultOutputMiddleware()
 
-        chained = ChainedOutputMiddleware([middleware1, middleware2])
+        chained: ChainedOutputMiddleware[str] = ChainedOutputMiddleware(
+            [middleware1, middleware2]
+        )
         result = await chained.process("test data", "stdout")
 
         # Should process through both middleware instances
