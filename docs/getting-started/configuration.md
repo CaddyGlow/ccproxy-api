@@ -491,7 +491,6 @@ CLAUDE_GROUP=claude
   "reload": false,
   "cors_origins": ["https://yourdomain.com"],
   "claude_cli_path": "/usr/local/bin/claude",
-  "tools_handling": "warning",
   "docker_settings": {
     "docker_image": "claude-code-proxy:latest",
     "docker_volumes": [

@@ -98,6 +98,38 @@ class MessageConverter:
         Returns:
             Response in Anthropic API format
         """
+        # Extract token usage from result message
+        # First try to get usage from the usage field (preferred method)
+        usage = getattr(result_message, "usage", {})
+        if usage:
+            input_tokens = usage.get("input_tokens", 0)
+            output_tokens = usage.get("output_tokens", 0)
+            cache_read_tokens = usage.get(
+                "cache_read_input_tokens", 0
+            )  # Note: different field name
+            cache_write_tokens = usage.get(
+                "cache_creation_input_tokens", 0
+            )  # Note: different field name
+        else:
+            # Fallback to direct attributes
+            input_tokens = getattr(result_message, "input_tokens", 0)
+            output_tokens = getattr(result_message, "output_tokens", 0)
+            cache_read_tokens = getattr(result_message, "cache_read_tokens", 0)
+            cache_write_tokens = getattr(result_message, "cache_write_tokens", 0)
+
+        # Log token extraction for debugging
+        from ccproxy.core.logging import get_logger
+
+        logger = get_logger(__name__)
+
+        logger.debug(
+            f"Extracted tokens from Claude SDK: input={input_tokens}, output={output_tokens}, "
+            f"cache_read={cache_read_tokens}, cache_write={cache_write_tokens}"
+        )
+
+        # Calculate total tokens
+        total_tokens = input_tokens + output_tokens
+
         return {
             "id": f"msg_{result_message.session_id}",
             "type": "message",
@@ -111,12 +143,14 @@ class MessageConverter:
                 }
             ],
             "model": model,
-            "stop_reason": "end_turn",
+            "stop_reason": getattr(result_message, "stop_reason", "end_turn"),
             "stop_sequence": None,
             "usage": {
-                "input_tokens": 0,  # Claude Code SDK doesn't provide token counts
-                "output_tokens": 0,
-                "total_tokens": 0,
+                "input_tokens": input_tokens,
+                "output_tokens": output_tokens,
+                "cache_read_tokens": cache_read_tokens,
+                "cache_write_tokens": cache_write_tokens,
+                "total_tokens": total_tokens,
             },
         }
 

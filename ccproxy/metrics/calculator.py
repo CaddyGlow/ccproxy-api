@@ -8,48 +8,21 @@ and API usage patterns.
 from decimal import Decimal
 from typing import Optional
 
+from ccproxy.core.logging import get_logger
+from ccproxy.pricing.updater import PricingUpdater
+
 from .models import CostMetric
+
+
+logger = get_logger(__name__)
 
 
 class CostCalculator:
     """
     Calculates costs for Claude API usage based on token counts and model pricing.
-    """
 
-    # Claude pricing per 1M tokens (as of 2024)
-    # These should be updated based on current Anthropic pricing
-    CLAUDE_PRICING: dict[str, dict[str, Decimal]] = {
-        "claude-3-5-sonnet-20241022": {
-            "input": Decimal("3.00"),  # $3.00 per 1M input tokens
-            "output": Decimal("15.00"),  # $15.00 per 1M output tokens
-            "cache_read": Decimal("0.30"),  # $0.30 per 1M cache read tokens
-            "cache_write": Decimal("3.75"),  # $3.75 per 1M cache write tokens
-        },
-        "claude-3-5-haiku-20241022": {
-            "input": Decimal("0.25"),  # $0.25 per 1M input tokens
-            "output": Decimal("1.25"),  # $1.25 per 1M output tokens
-            "cache_read": Decimal("0.03"),  # $0.03 per 1M cache read tokens
-            "cache_write": Decimal("0.30"),  # $0.30 per 1M cache write tokens
-        },
-        "claude-3-opus-20240229": {
-            "input": Decimal("15.00"),  # $15.00 per 1M input tokens
-            "output": Decimal("75.00"),  # $75.00 per 1M output tokens
-            "cache_read": Decimal("1.50"),  # $1.50 per 1M cache read tokens
-            "cache_write": Decimal("18.75"),  # $18.75 per 1M cache write tokens
-        },
-        "claude-3-sonnet-20240229": {
-            "input": Decimal("3.00"),  # $3.00 per 1M input tokens
-            "output": Decimal("15.00"),  # $15.00 per 1M output tokens
-            "cache_read": Decimal("0.30"),  # $0.30 per 1M cache read tokens
-            "cache_write": Decimal("3.75"),  # $3.75 per 1M cache write tokens
-        },
-        "claude-3-haiku-20240307": {
-            "input": Decimal("0.25"),  # $0.25 per 1M input tokens
-            "output": Decimal("1.25"),  # $1.25 per 1M output tokens
-            "cache_read": Decimal("0.03"),  # $0.03 per 1M cache read tokens
-            "cache_write": Decimal("0.30"),  # $0.30 per 1M cache write tokens
-        },
-    }
+    Uses dynamic pricing from external sources (LiteLLM) with fallback to embedded pricing.
+    """
 
     # Default pricing for unknown models (based on Sonnet)
     DEFAULT_PRICING: dict[str, Decimal] = {
@@ -59,9 +32,24 @@ class CostCalculator:
         "cache_write": Decimal("3.75"),
     }
 
-    def __init__(self) -> None:
-        """Initialize the cost calculator."""
+    def __init__(
+        self,
+        pricing_updater: PricingUpdater | None = None,
+        enable_dynamic_pricing: bool = True,
+    ) -> None:
+        """Initialize the cost calculator.
+
+        Args:
+            pricing_updater: PricingUpdater instance for dynamic pricing
+            enable_dynamic_pricing: Whether to use dynamic pricing (vs embedded only)
+        """
         self._custom_pricing: dict[str, dict[str, Decimal]] = {}
+        self._pricing_updater = pricing_updater
+        self._enable_dynamic_pricing = enable_dynamic_pricing
+
+        # Initialize pricing updater if dynamic pricing is enabled
+        if self._enable_dynamic_pricing and self._pricing_updater is None:
+            self._pricing_updater = PricingUpdater()
 
     def add_custom_pricing(self, model: str, pricing: dict[str, float]) -> None:
         """
@@ -75,7 +63,7 @@ class CostCalculator:
             key: Decimal(str(value)) for key, value in pricing.items()
         }
 
-    def get_model_pricing(self, model: str) -> dict[str, Decimal]:
+    async def get_model_pricing(self, model: str) -> dict[str, Decimal]:
         """
         Get pricing information for a specific model.
 
@@ -87,16 +75,34 @@ class CostCalculator:
         """
         # Check custom pricing first
         if model in self._custom_pricing:
+            logger.debug(f"Using custom pricing for model {model}")
             return self._custom_pricing[model]
 
-        # Check built-in pricing
-        if model in self.CLAUDE_PRICING:
-            return self.CLAUDE_PRICING[model]
+        # Try dynamic pricing if enabled
+        if self._enable_dynamic_pricing and self._pricing_updater:
+            try:
+                dynamic_pricing = await self._pricing_updater.get_current_pricing()
+                if model in dynamic_pricing:
+                    logger.debug(f"Using dynamic pricing for model {model}")
+                    return dynamic_pricing[model]
+                else:
+                    # Try canonical model name mapping
+                    from ccproxy.pricing.loader import PricingLoader
 
-        # Use default pricing
+                    canonical_name = PricingLoader.get_canonical_model_name(model)
+                    if canonical_name != model and canonical_name in dynamic_pricing:
+                        logger.debug(
+                            f"Using dynamic pricing for model {model} -> {canonical_name}"
+                        )
+                        return dynamic_pricing[canonical_name]
+            except Exception as e:
+                logger.warning(f"Failed to get dynamic pricing for {model}: {e}")
+
+        # Use default pricing as fallback
+        logger.debug(f"Using default pricing for model {model}")
         return self.DEFAULT_PRICING
 
-    def calculate_cost(
+    async def calculate_cost(
         self,
         model: str,
         input_tokens: int = 0,
@@ -104,6 +110,11 @@ class CostCalculator:
         cache_read_tokens: int = 0,
         cache_write_tokens: int = 0,
         currency: str = "USD",
+        sdk_total_cost: float | None = None,
+        sdk_input_cost: float | None = None,
+        sdk_output_cost: float | None = None,
+        sdk_cache_read_cost: float | None = None,
+        sdk_cache_write_cost: float | None = None,
     ) -> CostMetric:
         """
         Calculate the cost for a given token usage.
@@ -115,11 +126,16 @@ class CostCalculator:
             cache_read_tokens: Number of cache read tokens
             cache_write_tokens: Number of cache write tokens
             currency: Currency code (currently only USD supported)
+            sdk_total_cost: SDK-provided total cost (for comparison)
+            sdk_input_cost: SDK-provided input cost
+            sdk_output_cost: SDK-provided output cost
+            sdk_cache_read_cost: SDK-provided cache read cost
+            sdk_cache_write_cost: SDK-provided cache write cost
 
         Returns:
-            CostMetric with detailed cost breakdown
+            CostMetric with detailed cost breakdown and SDK comparison
         """
-        pricing = self.get_model_pricing(model)
+        pricing = await self.get_model_pricing(model)
 
         # Calculate costs (pricing is per 1M tokens)
         input_cost = float(
@@ -137,6 +153,26 @@ class CostCalculator:
 
         total_cost = input_cost + output_cost + cache_read_cost + cache_write_cost
 
+        # Calculate cost comparison metrics
+        cost_difference = None
+        cost_accuracy_percentage = None
+
+        if sdk_total_cost is not None:
+            cost_difference = total_cost - sdk_total_cost
+            if sdk_total_cost > 0:
+                cost_accuracy_percentage = (
+                    1 - abs(cost_difference) / sdk_total_cost
+                ) * 100
+
+            # Log cost comparison for monitoring accuracy
+            logger.info(
+                f"Cost comparison for {model}: calculated=${total_cost:.6f}, "
+                f"SDK=${sdk_total_cost:.6f}, difference=${cost_difference:.6f}, "
+                f"accuracy={cost_accuracy_percentage:.2f}%"
+                if cost_accuracy_percentage
+                else "N/A"
+            )
+
         return CostMetric(
             model=model,
             currency=currency,
@@ -145,6 +181,13 @@ class CostCalculator:
             cache_read_cost=cache_read_cost,
             cache_write_cost=cache_write_cost,
             total_cost=total_cost,
+            sdk_total_cost=sdk_total_cost,
+            sdk_input_cost=sdk_input_cost,
+            sdk_output_cost=sdk_output_cost,
+            sdk_cache_read_cost=sdk_cache_read_cost,
+            sdk_cache_write_cost=sdk_cache_write_cost,
+            cost_difference=cost_difference,
+            cost_accuracy_percentage=cost_accuracy_percentage,
             input_tokens=input_tokens,
             output_tokens=output_tokens,
             cache_read_tokens=cache_read_tokens,
@@ -190,7 +233,7 @@ class CostCalculator:
 
         return total_cost, cost_metrics
 
-    def estimate_cost(
+    async def estimate_cost(
         self,
         model: str,
         estimated_input_tokens: int,
@@ -211,7 +254,7 @@ class CostCalculator:
         Returns:
             Estimated cost in the specified currency
         """
-        pricing = self.get_model_pricing(model)
+        pricing = await self.get_model_pricing(model)
 
         # Calculate base costs
         input_cost = float(
@@ -235,7 +278,7 @@ class CostCalculator:
 
         return regular_input_cost + output_cost + cache_read_cost
 
-    def get_cost_per_token(self, model: str, token_type: str) -> float:
+    async def get_cost_per_token(self, model: str, token_type: str) -> float:
         """
         Get the cost per token for a specific model and token type.
 
@@ -246,7 +289,7 @@ class CostCalculator:
         Returns:
             Cost per token (not per 1M tokens)
         """
-        pricing = self.get_model_pricing(model)
+        pricing = await self.get_model_pricing(model)
 
         if token_type not in pricing:
             raise ValueError(f"Unknown token type: {token_type}")

@@ -100,7 +100,7 @@ class SQLiteMetricsStorage(MetricsStorage):
         retry_count INTEGER,
         recoverable BOOLEAN,
 
-        -- Cost fields
+        -- Cost fields (calculated)
         input_cost REAL,
         output_cost REAL,
         cache_read_cost REAL,
@@ -108,6 +108,15 @@ class SQLiteMetricsStorage(MetricsStorage):
         total_cost REAL,
         pricing_tier TEXT,
         currency TEXT,
+
+        -- SDK-provided cost fields (for comparison)
+        sdk_total_cost REAL,
+        sdk_input_cost REAL,
+        sdk_output_cost REAL,
+        sdk_cache_read_cost REAL,
+        sdk_cache_write_cost REAL,
+        cost_difference REAL,
+        cost_accuracy_percentage REAL,
 
         -- Latency fields
         request_processing_ms REAL,
@@ -694,6 +703,13 @@ class SQLiteMetricsStorage(MetricsStorage):
                 "total_cost",
                 "pricing_tier",
                 "currency",
+                "sdk_total_cost",
+                "sdk_input_cost",
+                "sdk_output_cost",
+                "sdk_cache_read_cost",
+                "sdk_cache_write_cost",
+                "cost_difference",
+                "cost_accuracy_percentage",
                 "request_processing_ms",
                 "claude_api_call_ms",
                 "response_processing_ms",
@@ -729,7 +745,9 @@ class SQLiteMetricsStorage(MetricsStorage):
         ]
 
         # Initialize all field values to None
-        field_values: list[Any] = [None] * 52  # Total number of optional fields
+        field_values: list[Any] = [
+            None
+        ] * 59  # Total number of optional fields (52 + 7 new SDK cost fields)
 
         # Fill in values based on metric type
         if isinstance(metric, RequestMetric):
@@ -771,7 +789,7 @@ class SQLiteMetricsStorage(MetricsStorage):
                 metric.recoverable,
             ]
         elif isinstance(metric, CostMetric):
-            field_values[29:36] = [
+            field_values[29:43] = [
                 metric.input_cost,
                 metric.output_cost,
                 metric.cache_read_cost,
@@ -779,9 +797,16 @@ class SQLiteMetricsStorage(MetricsStorage):
                 metric.total_cost,
                 metric.pricing_tier,
                 metric.currency,
+                metric.sdk_total_cost,
+                metric.sdk_input_cost,
+                metric.sdk_output_cost,
+                metric.sdk_cache_read_cost,
+                metric.sdk_cache_write_cost,
+                metric.cost_difference,
+                metric.cost_accuracy_percentage,
             ]
         elif isinstance(metric, LatencyMetric):
-            field_values[36:44] = [
+            field_values[43:51] = [
                 metric.request_processing_ms,
                 metric.claude_api_call_ms,
                 metric.response_processing_ms,
@@ -792,7 +817,7 @@ class SQLiteMetricsStorage(MetricsStorage):
                 metric.token_generation_rate,
             ]
         elif isinstance(metric, UsageMetric):
-            field_values[44:52] = [
+            field_values[51:59] = [
                 metric.request_count,
                 metric.token_count,
                 metric.window_start.isoformat(),
@@ -883,6 +908,13 @@ class SQLiteMetricsStorage(MetricsStorage):
                 cache_read_cost=row["cache_read_cost"] or 0.0,
                 cache_write_cost=row["cache_write_cost"] or 0.0,
                 total_cost=row["total_cost"] or 0.0,
+                sdk_total_cost=row["sdk_total_cost"],
+                sdk_input_cost=row["sdk_input_cost"],
+                sdk_output_cost=row["sdk_output_cost"],
+                sdk_cache_read_cost=row["sdk_cache_read_cost"],
+                sdk_cache_write_cost=row["sdk_cache_write_cost"],
+                cost_difference=row["cost_difference"],
+                cost_accuracy_percentage=row["cost_accuracy_percentage"],
                 model=row["model"],
                 pricing_tier=row["pricing_tier"],
                 currency=row["currency"] or "USD",
