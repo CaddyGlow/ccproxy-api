@@ -31,7 +31,7 @@ class LoggerOutputMiddleware(OutputMiddleware[str]):
         self.stderr_prefix = stderr_prefix
         self.stdout_prefix = stdout_prefix
 
-    def process(self, line: str, stream_type: str) -> str:
+    async def process(self, line: str, stream_type: str) -> str:
         """Process and print a line with the appropriate prefix.
 
         Args:

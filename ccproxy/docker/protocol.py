@@ -1,7 +1,15 @@
 """Protocol definition for Docker operations."""
 
+from collections.abc import Awaitable
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Protocol, TypeAlias, TypeVar, runtime_checkable
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Protocol,
+    TypeAlias,
+    TypeVar,
+    runtime_checkable,
+)
 
 from .models import DockerUserContext
 from .stream_process import OutputMiddleware, ProcessResult, T
@@ -21,7 +29,7 @@ DockerResult: TypeAlias = tuple[
 class DockerAdapterProtocol(Protocol):
     """Protocol for Docker operations."""
 
-    def is_available(self) -> bool:
+    def is_available(self) -> Awaitable[bool]:
         """Check if Docker is available on the system.
 
         Returns:
@@ -39,7 +47,7 @@ class DockerAdapterProtocol(Protocol):
         user_context: DockerUserContext | None = None,
         entrypoint: str | None = None,
         ports: list[DockerPortSpec] | None = None,
-    ) -> ProcessResult[T]:
+    ) -> Awaitable[ProcessResult[T]]:
         """Run a Docker container with specified configuration.
 
         Alias for run_container method.
@@ -72,7 +80,7 @@ class DockerAdapterProtocol(Protocol):
         user_context: DockerUserContext | None = None,
         entrypoint: str | None = None,
         ports: list[DockerPortSpec] | None = None,
-    ) -> ProcessResult[T]:
+    ) -> Awaitable[ProcessResult[T]]:
         """Run a Docker container with specified configuration.
 
         Args:
@@ -130,7 +138,7 @@ class DockerAdapterProtocol(Protocol):
         image_tag: str = "latest",
         no_cache: bool = False,
         middleware: OutputMiddleware[T] | None = None,
-    ) -> ProcessResult[T]:
+    ) -> Awaitable[ProcessResult[T]]:
         """Build a Docker image from a Dockerfile.
 
         Args:
@@ -148,7 +156,9 @@ class DockerAdapterProtocol(Protocol):
         """
         ...
 
-    def image_exists(self, image_name: str, image_tag: str = "latest") -> bool:
+    def image_exists(
+        self, image_name: str, image_tag: str = "latest"
+    ) -> Awaitable[bool]:
         """Check if a Docker image exists locally.
 
         Args:
@@ -165,7 +175,7 @@ class DockerAdapterProtocol(Protocol):
         image_name: str,
         image_tag: str = "latest",
         middleware: OutputMiddleware[T] | None = None,
-    ) -> ProcessResult[T]:
+    ) -> Awaitable[ProcessResult[T]]:
         """Pull a Docker image from registry.
 
         Args:

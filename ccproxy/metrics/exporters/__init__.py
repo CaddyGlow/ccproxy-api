@@ -8,6 +8,7 @@ from .base import (
     ExporterValidationError,
 )
 from .json_api import JsonApiExporter
+from .sse import SSEConnection, SSEMetricsExporter
 
 
 # Optional Prometheus support
@@ -26,6 +27,8 @@ __all__ = [
     "ExporterValidationError",
     "ExporterTimeoutError",
     "JsonApiExporter",
+    "SSEConnection",
+    "SSEMetricsExporter",
 ]
 
 # Add Prometheus exporter if available

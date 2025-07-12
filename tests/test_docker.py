@@ -4,6 +4,7 @@ Tests Docker adapter, path utilities, validation, streaming processes,
 and middleware components following the testing patterns from TESTING.md.
 """
 
+import asyncio
 from collections.abc import Generator
 from pathlib import Path
 from typing import Any, Union
@@ -26,21 +27,27 @@ from ccproxy.docker.validators import create_docker_error, validate_port_spec
 class TestDockerAdapter:
     """Test DockerAdapter class functionality."""
 
-    def test_is_available_success(self, docker_adapter_success: DockerAdapter) -> None:
+    async def test_is_available_success(
+        self, docker_adapter_success: DockerAdapter
+    ) -> None:
         """Test Docker availability check when Docker is available."""
-        result = docker_adapter_success.is_available()
+        result = await docker_adapter_success.is_available()
         assert result is True
 
-    def test_is_available_unavailable(
+    async def test_is_available_unavailable(
         self, docker_adapter_unavailable: DockerAdapter
     ) -> None:
         """Test Docker availability check when Docker is not available."""
-        result = docker_adapter_unavailable.is_available()
+        result = await docker_adapter_unavailable.is_available()
         assert result is False
 
-    def test_run_container_success(self, docker_adapter_success: DockerAdapter) -> None:
+    async def test_run_container_success(
+        self, docker_adapter_success: DockerAdapter
+    ) -> None:
         """Test successful container run operation."""
-        result: tuple[int, list[str], list[str]] = docker_adapter_success.run_container(
+        result: tuple[
+            int, list[str], list[str]
+        ] = await docker_adapter_success.run_container(
             image="test-image:latest",
             command=["echo", "hello"],
             volumes=[("/host", "/container")],
@@ -51,9 +58,13 @@ class TestDockerAdapter:
         assert isinstance(result[1], list)  # stdout
         assert isinstance(result[2], list)  # stderr
 
-    def test_run_container_failure(self, docker_adapter_failure: DockerAdapter) -> None:
+    async def test_run_container_failure(
+        self, docker_adapter_failure: DockerAdapter
+    ) -> None:
         """Test container run operation failure."""
-        result: tuple[int, list[str], list[str]] = docker_adapter_failure.run_container(
+        result: tuple[
+            int, list[str], list[str]
+        ] = await docker_adapter_failure.run_container(
             image="test-image:latest",
             command=["echo", "hello"],
             volumes=[],
@@ -85,7 +96,7 @@ class TestDockerAdapter:
             assert args[0] == "docker"  # First argument should be "docker"
             assert "test-image:latest" in args[1]  # Image should be in command
 
-    def test_build_image_success(
+    async def test_build_image_success(
         self, docker_adapter_success: DockerAdapter, tmp_path: Path
     ) -> None:
         """Test successful image build operation."""
@@ -95,7 +106,9 @@ class TestDockerAdapter:
         dockerfile_path = dockerfile_dir / "Dockerfile"
         dockerfile_path.write_text("FROM alpine:latest\nRUN echo 'test'")
 
-        result: tuple[int, list[str], list[str]] = docker_adapter_success.build_image(
+        result: tuple[
+            int, list[str], list[str]
+        ] = await docker_adapter_success.build_image(
             dockerfile_dir=dockerfile_dir, image_name="test-image", image_tag="latest"
         )
 
@@ -103,28 +116,34 @@ class TestDockerAdapter:
         assert isinstance(result[1], list)  # stdout
         assert isinstance(result[2], list)  # stderr
 
-    def test_image_exists_success(self, docker_adapter_success: DockerAdapter) -> None:
+    async def test_image_exists_success(
+        self, docker_adapter_success: DockerAdapter
+    ) -> None:
         """Test checking if image exists."""
-        exists = docker_adapter_success.image_exists("test-image", "latest")
+        exists = await docker_adapter_success.image_exists("test-image", "latest")
         assert isinstance(exists, bool)
 
-    def test_pull_image_success(self, docker_adapter_success: DockerAdapter) -> None:
+    async def test_pull_image_success(
+        self, docker_adapter_success: DockerAdapter
+    ) -> None:
         """Test successful image pull operation."""
-        result: tuple[int, list[str], list[str]] = docker_adapter_success.pull_image(
-            "test-image", "latest"
-        )
+        result: tuple[
+            int, list[str], list[str]
+        ] = await docker_adapter_success.pull_image("test-image", "latest")
 
         assert result[0] == 0  # returncode
         assert isinstance(result[1], list)  # stdout
         assert isinstance(result[2], list)  # stderr
 
-    def test_run_with_user_context(
+    async def test_run_with_user_context(
         self,
         docker_adapter_success: DockerAdapter,
         docker_user_context: DockerUserContext,
     ) -> None:
         """Test running container with user context."""
-        result: tuple[int, list[str], list[str]] = docker_adapter_success.run_container(
+        result: tuple[
+            int, list[str], list[str]
+        ] = await docker_adapter_success.run_container(
             image="test-image:latest",
             command=["echo", "hello"],
             volumes=[],
@@ -317,17 +336,17 @@ class TestDockerValidators:
 class TestStreamProcess:
     """Test streaming process functionality."""
 
-    def test_default_output_middleware(
+    async def test_default_output_middleware(
         self, output_middleware: DefaultOutputMiddleware
     ) -> None:
         """Test DefaultOutputMiddleware functionality."""
         assert isinstance(output_middleware, DefaultOutputMiddleware)
 
         # Test processing output
-        result = output_middleware.process("test output", "stdout")
+        result = await output_middleware.process("test output", "stdout")
         assert result == "test output"
 
-    def test_logger_output_middleware(self) -> None:
+    async def test_logger_output_middleware(self) -> None:
         """Test LoggerOutputMiddleware functionality."""
         import logging
 
@@ -335,7 +354,7 @@ class TestStreamProcess:
         middleware = LoggerOutputMiddleware(logger)
 
         # Test processing output - should return the same data
-        result = middleware.process("test output", "stdout")
+        result = await middleware.process("test output", "stdout")
         assert result == "test output"
 
     def test_create_logger_middleware(self) -> None:
@@ -343,57 +362,72 @@ class TestStreamProcess:
         middleware = create_logger_middleware()
         assert isinstance(middleware, LoggerOutputMiddleware)
 
-    def test_run_command_success(self) -> None:
+    async def test_run_command_success(self) -> None:
         """Test successful command execution."""
-        from io import StringIO
-        from unittest.mock import MagicMock
 
-        mock_proc = MagicMock()
+        mock_proc = AsyncMock()
         mock_proc.returncode = 0
         mock_proc.wait.return_value = 0
-        mock_proc.stdout = StringIO("command output\n")
-        mock_proc.stderr = StringIO("")
 
-        with patch("subprocess.Popen", return_value=mock_proc):
-            result = run_command(["echo", "test"])
+        # Mock the streams
+        mock_stdout = AsyncMock()
+        mock_stdout.readline.side_effect = [b"command output\n", b""]
+        mock_stderr = AsyncMock()
+        mock_stderr.readline.side_effect = [b""]
+
+        mock_proc.stdout = mock_stdout
+        mock_proc.stderr = mock_stderr
+
+        with patch("asyncio.create_subprocess_exec", return_value=mock_proc):
+            result = await run_command(["echo", "test"])
 
         assert result[0] == 0  # returncode
         assert isinstance(result[1], list)  # stdout
         assert isinstance(result[2], list)  # stderr
 
-    def test_run_command_failure(self) -> None:
+    async def test_run_command_failure(self) -> None:
         """Test command execution failure."""
-        from io import StringIO
-        from unittest.mock import MagicMock
 
-        mock_proc = MagicMock()
+        mock_proc = AsyncMock()
         mock_proc.returncode = 1
         mock_proc.wait.return_value = 1
-        mock_proc.stdout = StringIO("")
-        mock_proc.stderr = StringIO("command failed\n")
 
-        with patch("subprocess.Popen", return_value=mock_proc):
-            result = run_command(["false"])
+        # Mock the streams
+        mock_stdout = AsyncMock()
+        mock_stdout.readline.side_effect = [b""]
+        mock_stderr = AsyncMock()
+        mock_stderr.readline.side_effect = [b"command failed\n", b""]
+
+        mock_proc.stdout = mock_stdout
+        mock_proc.stderr = mock_stderr
+
+        with patch("asyncio.create_subprocess_exec", return_value=mock_proc):
+            result = await run_command(["false"])
 
         assert result[0] == 1  # returncode
         assert isinstance(result[1], list)  # stdout
         assert isinstance(result[2], list)  # stderr
 
-    def test_run_command_with_middleware(self) -> None:
+    async def test_run_command_with_middleware(self) -> None:
         """Test command execution with output middleware."""
-        from io import StringIO
-        from unittest.mock import MagicMock
 
-        mock_proc = MagicMock()
+        mock_proc = AsyncMock()
         mock_proc.returncode = 0
         mock_proc.wait.return_value = 0
-        mock_proc.stdout = StringIO("output\n")
-        mock_proc.stderr = StringIO("")
+
+        # Mock the streams
+        mock_stdout = AsyncMock()
+        mock_stdout.readline.side_effect = [b"output\n", b""]
+        mock_stderr = AsyncMock()
+        mock_stderr.readline.side_effect = [b""]
+
+        mock_proc.stdout = mock_stdout
+        mock_proc.stderr = mock_stderr
 
         middleware = DefaultOutputMiddleware()
 
-        with patch("subprocess.Popen", return_value=mock_proc):
-            result = run_command(["echo", "test"], middleware=middleware)
+        with patch("asyncio.create_subprocess_exec", return_value=mock_proc):
+            result = await run_command(["echo", "test"], middleware=middleware)
 
         assert result[0] == 0  # returncode
         assert isinstance(result[1], list)  # stdout
@@ -411,7 +445,7 @@ class TestStreamProcess:
         chained = create_chained_docker_middleware([middleware1, middleware2])
         assert chained is not None
 
-    def test_middleware_process_chain(self) -> None:
+    async def test_middleware_process_chain(self) -> None:
         """Test middleware processing chain."""
         from ccproxy.docker.stream_process import ChainedOutputMiddleware
 
@@ -419,7 +453,7 @@ class TestStreamProcess:
         middleware2 = DefaultOutputMiddleware()
 
         chained = ChainedOutputMiddleware([middleware1, middleware2])
-        result = chained.process("test data", "stdout")
+        result = await chained.process("test data", "stdout")
 
         # Should process through both middleware instances
         assert result == "test data"
@@ -428,7 +462,7 @@ class TestStreamProcess:
 class TestDockerIntegration:
     """Integration tests for Docker components."""
 
-    def test_adapter_with_path_integration(
+    async def test_adapter_with_path_integration(
         self,
         docker_adapter_success: DockerAdapter,
         docker_path_fixture: DockerPath,
@@ -437,7 +471,9 @@ class TestDockerIntegration:
         vol_spec = docker_path_fixture.vol()
         volumes = [vol_spec]
 
-        result: tuple[int, list[str], list[str]] = docker_adapter_success.run_container(
+        result: tuple[
+            int, list[str], list[str]
+        ] = await docker_adapter_success.run_container(
             image="test-image:latest",
             command=["ls", docker_path_fixture.container_path],
             volumes=volumes,
@@ -446,13 +482,15 @@ class TestDockerIntegration:
 
         assert result[0] == 0  # returncode
 
-    def test_adapter_with_user_context_integration(
+    async def test_adapter_with_user_context_integration(
         self,
         docker_adapter_success: DockerAdapter,
         docker_user_context: DockerUserContext,
     ) -> None:
         """Test DockerAdapter integration with DockerUserContext."""
-        result: tuple[int, list[str], list[str]] = docker_adapter_success.run_container(
+        result: tuple[
+            int, list[str], list[str]
+        ] = await docker_adapter_success.run_container(
             image="test-image:latest",
             command=["echo", "integration test"],
             volumes=[],

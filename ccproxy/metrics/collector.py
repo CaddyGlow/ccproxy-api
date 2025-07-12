@@ -10,7 +10,9 @@ import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager, suppress
 from datetime import datetime, timedelta
-from typing import Any, Optional
+
+# Type forward declaration to avoid circular imports
+from typing import TYPE_CHECKING, Any, Optional
 from uuid import UUID
 
 from .calculator import CostCalculator
@@ -29,6 +31,10 @@ from .models import (
 from .storage.base import MetricsStorage
 
 
+if TYPE_CHECKING:
+    from .exporters.sse import SSEMetricsExporter
+
+
 logger = logging.getLogger(__name__)
 
 
@@ -44,6 +50,7 @@ class MetricsCollector:
         buffer_size: int = 1000,
         flush_interval: float = 30.0,
         enable_auto_flush: bool = True,
+        sse_exporter: "SSEMetricsExporter | None" = None,
     ):
         """
         Initialize the metrics collector.
@@ -54,12 +61,14 @@ class MetricsCollector:
             buffer_size: Size of internal buffer before auto-flush
             flush_interval: Interval in seconds for auto-flush
             enable_auto_flush: Whether to enable automatic flushing
+            sse_exporter: Optional SSE exporter for real-time broadcasting
         """
         self.storage = storage
         self.cost_calculator = cost_calculator or CostCalculator()
         self.buffer_size = buffer_size
         self.flush_interval = flush_interval
         self.enable_auto_flush = enable_auto_flush
+        self.sse_exporter = sse_exporter
 
         # Internal state
         self._buffer: list[MetricRecord] = []
