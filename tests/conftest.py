@@ -115,6 +115,64 @@ def mock_claude_service() -> AsyncMock:
 
 
 @pytest.fixture
+def mock_claude_service_unavailable() -> AsyncMock:
+    """Create a mock Claude SDK service that simulates CLI unavailability."""
+    from ccproxy.core.errors import ServiceUnavailableError
+
+    mock_service = AsyncMock()
+
+    # Mock methods to raise ServiceUnavailableError
+    mock_service.create_completion.side_effect = ServiceUnavailableError(
+        "Claude CLI not available"
+    )
+    mock_service.list_models.side_effect = ServiceUnavailableError(
+        "Claude CLI not available"
+    )
+    mock_service.validate_health.side_effect = ServiceUnavailableError(
+        "Claude CLI not available"
+    )
+
+    return mock_service
+
+
+@pytest.fixture
+def app_with_unavailable_claude(
+    test_settings: Settings, mock_claude_service_unavailable: AsyncMock
+) -> FastAPI:
+    """Create test FastAPI application with unavailable Claude service.
+
+    Returns a configured FastAPI app that simulates Claude CLI unavailability.
+    """
+    # Create app
+    app = create_app(settings=test_settings)
+
+    # Override the settings dependency for testing
+    from ccproxy.api.dependencies import get_claude_service
+    from ccproxy.config.settings import get_settings as original_get_settings
+
+    app.dependency_overrides[original_get_settings] = lambda: test_settings
+
+    # Override dependency with a function that returns unavailable service
+    def mock_get_claude_service_unavailable(
+        auth_manager: Any = None, metrics_collector: Any = None
+    ) -> AsyncMock:
+        return mock_claude_service_unavailable
+
+    app.dependency_overrides[get_claude_service] = mock_get_claude_service_unavailable
+
+    return app
+
+
+@pytest.fixture
+def client_with_unavailable_claude(app_with_unavailable_claude: FastAPI) -> TestClient:
+    """Create client for testing with unavailable Claude service.
+
+    Returns a TestClient that simulates Claude CLI unavailability.
+    """
+    return TestClient(app_with_unavailable_claude)
+
+
+@pytest.fixture
 def mock_claude_service_streaming() -> AsyncMock:
     """Create a mock Claude SDK service for streaming tests."""
 
