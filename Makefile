@@ -71,6 +71,9 @@ clean:
 #   - 'unit': Fast unit tests (< 1s each, no external dependencies)
 #   - Tests without 'real_api' marker are considered unit tests by default
 
+fix: format lint-fix
+	ruff check . --unsafe-fixes
+
 # Run all tests with coverage (after ensuring code quality)
 test: check
 	@echo "Running all tests with coverage..."

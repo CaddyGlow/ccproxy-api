@@ -458,9 +458,9 @@ class TestAuthenticationEndpoints:
 class TestErrorHandling:
     """Test API error handling and edge cases."""
 
-    def test_rate_limit_error(
+    def test_claude_cli_unavailable_error(
         self,
-        client: TestClient,
+        client_with_unavailable_claude: TestClient,
     ) -> None:
         """Test handling when Claude CLI is not available."""
         request_data = {
@@ -469,25 +469,14 @@ class TestErrorHandling:
             "messages": [{"role": "user", "content": "Hello"}],
         }
 
-        response = client.post("/sdk/v1/messages", json=request_data)
+        response = client_with_unavailable_claude.post(
+            "/sdk/v1/messages", json=request_data
+        )
 
         # Without Claude CLI, should return 503 Service Unavailable
         assert response.status_code == 503
         data = response.json()
         assert "error" in data
-
-    def test_server_error(self, client: TestClient) -> None:
-        """Test handling when Claude CLI is not available."""
-        request_data = {
-            "model": "claude-3-5-sonnet-20241022",
-            "max_tokens": 50,
-            "messages": [{"role": "user", "content": "Hello"}],
-        }
-
-        response = client.post("/sdk/v1/messages", json=request_data)
-
-        # Without Claude CLI, should return 503 Service Unavailable
-        assert response.status_code == 503
 
     def test_invalid_json(self, client: TestClient) -> None:
         """Test handling of invalid JSON requests."""
@@ -509,7 +498,9 @@ class TestErrorHandling:
 
         assert response.status_code == 422
 
-    def test_large_request_body(self, client: TestClient) -> None:
+    def test_large_request_body(
+        self, client_with_unavailable_claude: TestClient
+    ) -> None:
         """Test handling of large request bodies."""
         # Create a very large message
         large_content = "x" * 1000000  # 1MB of text
@@ -520,12 +511,16 @@ class TestErrorHandling:
             "messages": [{"role": "user", "content": large_content}],
         }
 
-        response = client.post("/sdk/v1/messages", json=request_data)
+        response = client_with_unavailable_claude.post(
+            "/sdk/v1/messages", json=request_data
+        )
 
         # Without Claude CLI, should return 503 Service Unavailable
         assert response.status_code == 503
 
-    def test_malformed_headers(self, client: TestClient) -> None:
+    def test_malformed_headers(
+        self, client_with_unavailable_claude: TestClient
+    ) -> None:
         """Test handling of malformed headers."""
         request_data = {
             "model": "claude-3-5-sonnet-20241022",
@@ -534,7 +529,7 @@ class TestErrorHandling:
         }
 
         # Test with invalid authorization header format
-        response = client.post(
+        response = client_with_unavailable_claude.post(
             "/sdk/v1/messages",
             json=request_data,
             headers={"Authorization": "InvalidFormat"},
@@ -614,17 +609,8 @@ class TestResponseValidation:
     def test_error_response_schema(
         self,
         client: TestClient,
-        claude_responses: dict[str, Any],
-        httpx_mock: HTTPXMock,
     ) -> None:
         """Test error responses follow correct schema."""
-        # Mock error response
-        httpx_mock.add_response(
-            url="https://api.anthropic.com/v1/messages",
-            json=claude_responses["error_response"],
-            status_code=400,
-        )
-
         request_data = {
             "model": "invalid-model",
             "max_tokens": 50,
@@ -633,16 +619,13 @@ class TestResponseValidation:
 
         response = client.post("/sdk/v1/messages", json=request_data)
 
-        assert response.status_code == 400
+        # Invalid model validation happens at Pydantic level, returns 422
+        assert response.status_code == 422
         data = response.json()
 
-        # Verify error structure
-        assert "error" in data
-        error = data["error"]
-        assert "type" in error
-        assert "message" in error
-        assert isinstance(error["type"], str)
-        assert isinstance(error["message"], str)
+        # Verify FastAPI validation error structure
+        assert "detail" in data
+        assert isinstance(data["detail"], list)
 
 
 class TestStatusEndpoints:
@@ -672,21 +655,27 @@ class TestRequestValidation:
     """Test request validation without external calls."""
 
     def test_openai_request_validation(self, client: TestClient) -> None:
-        """Test OpenAI request validation rules."""
-        # Test missing model
+        """Test deprecated OpenAI endpoint returns deprecation message."""
+        # Test missing model - deprecated endpoint returns 200 with deprecation
         response = client.post(
             "/openai/v1/chat/completions",
             json={"messages": [{"role": "user", "content": "test"}]},
         )
-        assert response.status_code == 422
+        assert response.status_code == 200
+        data = response.json()
+        assert "error" in data
+        assert "deprecated" in data["error"]["message"].lower()
 
-        # Test missing messages
+        # Test missing messages - deprecated endpoint returns 200 with deprecation
         response = client.post(
             "/openai/v1/chat/completions", json={"model": "claude-3-5-sonnet-20241022"}
         )
-        assert response.status_code == 422
+        assert response.status_code == 200
+        data = response.json()
+        assert "error" in data
+        assert "deprecated" in data["error"]["message"].lower()
 
-        # Test invalid message role
+        # Test invalid message role - deprecated endpoint returns 200 with deprecation
         response = client.post(
             "/openai/v1/chat/completions",
             json={
@@ -694,18 +683,24 @@ class TestRequestValidation:
                 "messages": [{"role": "invalid", "content": "test"}],
             },
         )
-        assert response.status_code == 422
+        assert response.status_code == 200
+        data = response.json()
+        assert "error" in data
+        assert "deprecated" in data["error"]["message"].lower()
 
     def test_anthropic_request_validation(self, client: TestClient) -> None:
-        """Test Anthropic request validation rules."""
-        # Test missing model
+        """Test deprecated Anthropic endpoint returns deprecation message."""
+        # Test missing model - deprecated endpoint returns 200 with deprecation
         response = client.post(
             "/v1/messages",
             json={"max_tokens": 50, "messages": [{"role": "user", "content": "test"}]},
         )
-        assert response.status_code == 422
+        assert response.status_code == 200
+        data = response.json()
+        assert "error" in data
+        assert "deprecated" in data["error"]["message"].lower()
 
-        # Test missing max_tokens
+        # Test missing max_tokens - deprecated endpoint returns 200 with deprecation
         response = client.post(
             "/v1/messages",
             json={
@@ -713,9 +708,12 @@ class TestRequestValidation:
                 "messages": [{"role": "user", "content": "test"}],
             },
         )
-        assert response.status_code == 422
+        assert response.status_code == 200
+        data = response.json()
+        assert "error" in data
+        assert "deprecated" in data["error"]["message"].lower()
 
-        # Test invalid max_tokens
+        # Test invalid max_tokens - deprecated endpoint returns 200 with deprecation
         response = client.post(
             "/v1/messages",
             json={
@@ -724,4 +722,7 @@ class TestRequestValidation:
                 "messages": [{"role": "user", "content": "test"}],
             },
         )
-        assert response.status_code == 422
+        assert response.status_code == 200
+        data = response.json()
+        assert "error" in data
+        assert "deprecated" in data["error"]["message"].lower()
