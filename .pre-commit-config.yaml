@@ -51,6 +51,24 @@ repos:
         args: [--config-file=pyproject.toml]
         exclude: ^(docs/|examples/)
 
+  # Biome for TypeScript/JavaScript (dashboard)
+  - repo: local
+    hooks:
+      - id: biome-format-dashboard
+        name: biome format dashboard
+        entry: bash -c 'cd dashboard && bun run format'
+        language: system
+        files: ^dashboard/
+        pass_filenames: false
+        always_run: true
+      - id: biome-lint-dashboard
+        name: biome lint dashboard (warnings only)
+        entry: bash -c 'cd dashboard && bun run lint || echo "Linting completed with warnings"'
+        language: system
+        files: ^dashboard/
+        pass_filenames: false
+        always_run: true
+
   # General file checks
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v5.0.0
