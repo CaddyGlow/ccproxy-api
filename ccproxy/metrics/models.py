@@ -118,12 +118,23 @@ class CostMetric(MetricRecord):
 
     metric_type: MetricType = MetricType.COST
 
-    # Cost breakdown
+    # Cost breakdown (calculated by our cost calculator)
     input_cost: float = 0.0
     output_cost: float = 0.0
     cache_read_cost: float = 0.0
     cache_write_cost: float = 0.0
     total_cost: float = 0.0
+
+    # SDK-provided cost information (for comparison)
+    sdk_total_cost: float | None = None
+    sdk_input_cost: float | None = None
+    sdk_output_cost: float | None = None
+    sdk_cache_read_cost: float | None = None
+    sdk_cache_write_cost: float | None = None
+
+    # Cost comparison
+    cost_difference: float | None = None  # calculated_cost - sdk_cost
+    cost_accuracy_percentage: float | None = None  # how close our calculation is
 
     # Pricing model
     model: str

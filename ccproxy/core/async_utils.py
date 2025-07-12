@@ -687,14 +687,6 @@ def generate_json_schema() -> dict[str, Any]:
             ["https://example.com", "https://app.example.com"],
             ["http://localhost:3000"],
         ]
-    if "api_tools_handling" in properties:
-        properties["api_tools_handling"]["description"] = (
-            "How to handle OpenAI tools parameter when converting to Anthropic format"
-        )
-    if "tools_handling" in properties:
-        properties["tools_handling"]["description"] = (
-            "How to handle OpenAI tools parameter when converting to Anthropic format"
-        )
 
     return schema
 

@@ -275,6 +275,11 @@ class MetricsCollector:
         output_tokens: int = 0,
         cache_read_tokens: int = 0,
         cache_write_tokens: int = 0,
+        sdk_total_cost: float | None = None,
+        sdk_input_cost: float | None = None,
+        sdk_output_cost: float | None = None,
+        sdk_cache_read_cost: float | None = None,
+        sdk_cache_write_cost: float | None = None,
         **kwargs: Any,
     ) -> CostMetric:
         """
@@ -287,6 +292,11 @@ class MetricsCollector:
             output_tokens: Number of output tokens
             cache_read_tokens: Number of cache read tokens
             cache_write_tokens: Number of cache write tokens
+            sdk_total_cost: SDK-provided total cost
+            sdk_input_cost: SDK-provided input cost
+            sdk_output_cost: SDK-provided output cost
+            sdk_cache_read_cost: SDK-provided cache read cost
+            sdk_cache_write_cost: SDK-provided cache write cost
             **kwargs: Additional cost parameters
 
         Returns:
@@ -298,6 +308,11 @@ class MetricsCollector:
             output_tokens=output_tokens,
             cache_read_tokens=cache_read_tokens,
             cache_write_tokens=cache_write_tokens,
+            sdk_total_cost=sdk_total_cost,
+            sdk_input_cost=sdk_input_cost,
+            sdk_output_cost=sdk_output_cost,
+            sdk_cache_read_cost=sdk_cache_read_cost,
+            sdk_cache_write_cost=sdk_cache_write_cost,
         )
 
         # Set request correlation

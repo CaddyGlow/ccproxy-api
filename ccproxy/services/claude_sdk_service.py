@@ -105,9 +105,10 @@ class ClaudeSDKService:
         # Convert messages to prompt format
         prompt = self.message_converter.format_messages_to_prompt(messages)
 
-        # Record metrics if collector is configured
+        # Record metrics if collector is configured and get request ID
+        request_id = None
         if self.metrics_collector:
-            await self._record_request_metrics(
+            request_id = await self._record_request_metrics(
                 user_id=user_id,
                 model=model,
                 messages=messages,
@@ -116,22 +117,25 @@ class ClaudeSDKService:
 
         try:
             if stream:
-                return self._stream_completion(prompt, options, model)
+                return self._stream_completion(prompt, options, model, request_id)
             else:
-                return await self._complete_non_streaming(prompt, options, model)
+                return await self._complete_non_streaming(
+                    prompt, options, model, request_id
+                )
 
         except Exception as e:
             # Record error metrics if collector is configured
-            if self.metrics_collector:
+            if self.metrics_collector and request_id:
                 await self._record_error_metrics(
                     user_id=user_id,
                     model=model,
                     error=str(e),
+                    request_id=request_id,
                 )
             raise
 
     async def _complete_non_streaming(
-        self, prompt: str, options: Any, model: str
+        self, prompt: str, options: Any, model: str, request_id: str
     ) -> dict[str, Any]:
         """
         Complete a non-streaming request with business logic.
@@ -140,6 +144,7 @@ class ClaudeSDKService:
             prompt: The formatted prompt
             options: Claude SDK options
             model: The model being used
+            request_id: The request ID for metrics correlation
 
         Returns:
             Response in Anthropic format
@@ -160,6 +165,9 @@ class ClaudeSDKService:
                 assistant_message = message
             elif isinstance(message, ResultMessage):
                 result_message = message
+
+        # Get Claude API call timing
+        claude_api_call_ms = self.sdk_client.get_last_api_call_time_ms()
 
         if result_message is None:
             raise ClaudeProxyError(
@@ -184,13 +192,16 @@ class ClaudeSDKService:
         if self.metrics_collector:
             await self._record_completion_metrics(
                 response=response,
+                result_message=result_message,
                 messages=messages,
+                claude_api_call_ms=claude_api_call_ms,
+                request_id=request_id,
             )
 
         return response
 
     async def _stream_completion(
-        self, prompt: str, options: Any, model: str
+        self, prompt: str, options: Any, model: str, request_id: str | None = None
     ) -> AsyncIterator[dict[str, Any]]:
         """
         Stream completion responses with business logic.
@@ -239,6 +250,9 @@ class ClaudeSDKService:
                         )
 
                 elif isinstance(message, ResultMessage):
+                    # Get Claude API call timing
+                    claude_api_call_ms = self.sdk_client.get_last_api_call_time_ms()
+
                     # Send final chunk
                     yield self.message_converter.create_streaming_end_chunk()
 
@@ -247,6 +261,8 @@ class ClaudeSDKService:
                         await self._record_streaming_metrics(
                             assistant_messages=assistant_messages,
                             result_message=message,
+                            claude_api_call_ms=claude_api_call_ms,
+                            request_id=request_id,
                         )
                     break
 
@@ -281,7 +297,7 @@ class ClaudeSDKService:
         model: str,
         messages: list[dict[str, Any]],
         stream: bool,
-    ) -> None:
+    ) -> str:
         """
         Record request metrics.
 
@@ -290,9 +306,14 @@ class ClaudeSDKService:
             model: Model being used
             messages: Request messages
             stream: Whether streaming is enabled
+
+        Returns:
+            The generated request ID for correlation with response metrics
         """
         if not self.metrics_collector:
-            return
+            from uuid import uuid4
+
+            return str(uuid4())  # Return a dummy ID if no collector
 
         try:
             from uuid import uuid4
@@ -333,36 +354,80 @@ class ClaudeSDKService:
                 f"stream={stream}, request_id={request_id}"
             )
 
+            return request_id
+
         except Exception as e:
             logger.error(f"Failed to record request metrics: {e}", exc_info=True)
+            from uuid import uuid4
+
+            return str(uuid4())  # Return a dummy ID on error
 
     async def _record_completion_metrics(
         self,
         response: dict[str, Any],
+        result_message: Any,
         messages: list[Any],
+        claude_api_call_ms: float = 0.0,
+        request_id: str | None = None,
     ) -> None:
         """
         Record completion metrics.
 
         Args:
             response: The response data
+            result_message: The result message from Claude SDK
             messages: All messages from the conversation
+            claude_api_call_ms: Time spent in Claude API call in milliseconds
+            request_id: The request ID for correlation (if None, generates new one)
         """
         if not self.metrics_collector:
             return
 
         try:
-            from uuid import uuid4
+            # Use provided request_id or generate a new one
+            if request_id is None:
+                from uuid import uuid4
 
-            # Generate a request ID if we don't have one stored
-            request_id = str(uuid4())
+                request_id = str(uuid4())
 
-            # Extract token usage from response
-            usage = response.get("usage", {})
-            input_tokens = usage.get("input_tokens")
-            output_tokens = usage.get("output_tokens")
-            cache_read_tokens = usage.get("cache_read_tokens")
-            cache_write_tokens = usage.get("cache_write_tokens")
+            logger.debug(f"Recording completion metrics for request {request_id}")
+            logger.debug(f"result: {result_message}")
+
+            # Extract token usage from result_message - try usage field first
+            usage = getattr(result_message, "usage", {})
+            if usage:
+                input_tokens = usage.get("input_tokens")
+                output_tokens = usage.get("output_tokens")
+                cache_read_tokens = usage.get(
+                    "cache_read_input_tokens"
+                )  # Note: different field name
+                cache_write_tokens = usage.get(
+                    "cache_creation_input_tokens"
+                )  # Note: different field name
+            else:
+                # Fallback to response usage (for compatibility)
+                usage = response.get("usage", {})
+                input_tokens = usage.get("input_tokens")
+                output_tokens = usage.get("output_tokens")
+                cache_read_tokens = usage.get("cache_read_tokens")
+                cache_write_tokens = usage.get("cache_write_tokens")
+
+            # Extract SDK cost information directly from result_message
+            sdk_total_cost = getattr(result_message, "total_cost", None)
+            sdk_input_cost = getattr(result_message, "input_cost", None)
+            sdk_output_cost = getattr(result_message, "output_cost", None)
+            sdk_cache_read_cost = getattr(result_message, "cache_read_cost", None)
+            sdk_cache_write_cost = getattr(result_message, "cache_write_cost", None)
+
+            # Try alternative cost field names
+            if sdk_total_cost is None:
+                sdk_total_cost = getattr(result_message, "total_cost_usd", None)
+            if sdk_total_cost is None:
+                sdk_total_cost = getattr(result_message, "cost", None)
+            if sdk_total_cost is None:
+                sdk_total_cost = getattr(result_message, "price", None)
+            if sdk_total_cost is None:
+                sdk_total_cost = getattr(result_message, "billing_amount", None)
 
             # Extract response metadata
             status_code = 200  # Successful completion
@@ -379,9 +444,40 @@ class ClaudeSDKService:
                 streaming=False,
             )
 
+            # Collect latency metrics with Claude API call timing
+            if claude_api_call_ms > 0:
+                await self.metrics_collector.collect_latency(
+                    request_id=request_id,
+                    claude_api_call_ms=claude_api_call_ms,
+                    total_latency_ms=claude_api_call_ms,  # For now, total equals API call time
+                )
+
+            # Collect cost metrics with SDK cost comparison if we have a model and tokens
+            if (
+                input_tokens is not None or output_tokens is not None
+            ) and request_id in self.metrics_collector._active_requests:
+                request_metric = self.metrics_collector._active_requests[request_id]
+                if request_metric.model:
+                    await self.metrics_collector.collect_cost(
+                        request_id=request_id,
+                        model=request_metric.model,
+                        input_tokens=input_tokens or 0,
+                        output_tokens=output_tokens or 0,
+                        cache_read_tokens=cache_read_tokens or 0,
+                        cache_write_tokens=cache_write_tokens or 0,
+                        sdk_total_cost=sdk_total_cost,
+                        sdk_input_cost=sdk_input_cost,
+                        sdk_output_cost=sdk_output_cost,
+                        sdk_cache_read_cost=sdk_cache_read_cost,
+                        sdk_cache_write_cost=sdk_cache_write_cost,
+                    )
+
             logger.debug(
                 f"Recorded completion metrics: tokens_in={input_tokens}, "
-                f"tokens_out={output_tokens}, reason={completion_reason}"
+                f"tokens_out={output_tokens}, cache_read={cache_read_tokens}, "
+                f"cache_write={cache_write_tokens}, reason={completion_reason}, "
+                f"claude_api_call_ms={claude_api_call_ms:.2f}, "
+                f"sdk_total_cost={sdk_total_cost}"
             )
 
         except Exception as e:
@@ -391,6 +487,8 @@ class ClaudeSDKService:
         self,
         assistant_messages: list[Any],
         result_message: Any,
+        claude_api_call_ms: float = 0.0,
+        request_id: str | None = None,
     ) -> None:
         """
         Record streaming metrics.
@@ -398,19 +496,52 @@ class ClaudeSDKService:
         Args:
             assistant_messages: List of assistant messages
             result_message: The final result message
+            claude_api_call_ms: Time spent in Claude API call in milliseconds
         """
         if not self.metrics_collector:
             return
 
         try:
-            from uuid import uuid4
+            # Use provided request_id or generate a new one
+            if request_id is None:
+                from uuid import uuid4
 
-            # Generate a request ID if we don't have one stored
-            request_id = str(uuid4())
+                request_id = str(uuid4())
 
-            # Extract token usage from result message
-            input_tokens = getattr(result_message, "input_tokens", None)
-            output_tokens = getattr(result_message, "output_tokens", None)
+            # Extract token usage from result message - try usage field first
+            usage = getattr(result_message, "usage", {})
+            if usage:
+                input_tokens = usage.get("input_tokens")
+                output_tokens = usage.get("output_tokens")
+                cache_read_tokens = usage.get(
+                    "cache_read_input_tokens"
+                )  # Note: different field name
+                cache_write_tokens = usage.get(
+                    "cache_creation_input_tokens"
+                )  # Note: different field name
+            else:
+                # Fallback to direct attributes
+                input_tokens = getattr(result_message, "input_tokens", None)
+                output_tokens = getattr(result_message, "output_tokens", None)
+                cache_read_tokens = getattr(result_message, "cache_read_tokens", None)
+                cache_write_tokens = getattr(result_message, "cache_write_tokens", None)
+
+            # Extract SDK cost information from result message
+            sdk_total_cost = getattr(result_message, "total_cost", None)
+            sdk_input_cost = getattr(result_message, "input_cost", None)
+            sdk_output_cost = getattr(result_message, "output_cost", None)
+            sdk_cache_read_cost = getattr(result_message, "cache_read_cost", None)
+            sdk_cache_write_cost = getattr(result_message, "cache_write_cost", None)
+
+            # Try alternative cost field names
+            if sdk_total_cost is None:
+                sdk_total_cost = getattr(result_message, "total_cost_usd", None)
+            if sdk_total_cost is None:
+                sdk_total_cost = getattr(result_message, "cost", None)
+            if sdk_total_cost is None:
+                sdk_total_cost = getattr(result_message, "price", None)
+            if sdk_total_cost is None:
+                sdk_total_cost = getattr(result_message, "billing_amount", None)
 
             # Calculate streaming-specific metrics
             message_count = len(assistant_messages)
@@ -436,14 +567,46 @@ class ClaudeSDKService:
                 content_length=total_content_length,
                 input_tokens=input_tokens,
                 output_tokens=output_tokens,
+                cache_read_tokens=cache_read_tokens,
+                cache_write_tokens=cache_write_tokens,
                 streaming=True,
                 completion_reason=getattr(result_message, "stop_reason", "stop"),
             )
 
+            # Collect latency metrics with Claude API call timing
+            if claude_api_call_ms > 0:
+                await self.metrics_collector.collect_latency(
+                    request_id=request_id,
+                    claude_api_call_ms=claude_api_call_ms,
+                    total_latency_ms=claude_api_call_ms,  # For now, total equals API call time
+                )
+
+            # Collect cost metrics with SDK cost comparison if we have a model and tokens
+            if (
+                input_tokens is not None or output_tokens is not None
+            ) and request_id in self.metrics_collector._active_requests:
+                request_metric = self.metrics_collector._active_requests[request_id]
+                if request_metric.model:
+                    await self.metrics_collector.collect_cost(
+                        request_id=request_id,
+                        model=request_metric.model,
+                        input_tokens=input_tokens or 0,
+                        output_tokens=output_tokens or 0,
+                        cache_read_tokens=cache_read_tokens or 0,
+                        cache_write_tokens=cache_write_tokens or 0,
+                        sdk_total_cost=sdk_total_cost,
+                        sdk_input_cost=sdk_input_cost,
+                        sdk_output_cost=sdk_output_cost,
+                        sdk_cache_read_cost=sdk_cache_read_cost,
+                        sdk_cache_write_cost=sdk_cache_write_cost,
+                    )
+
             logger.debug(
                 f"Recorded streaming metrics: messages={message_count}, "
                 f"content_length={total_content_length}, tokens_in={input_tokens}, "
-                f"tokens_out={output_tokens}"
+                f"tokens_out={output_tokens}, cache_read={cache_read_tokens}, "
+                f"cache_write={cache_write_tokens}, claude_api_call_ms={claude_api_call_ms:.2f}, "
+                f"sdk_total_cost={sdk_total_cost}"
             )
 
         except Exception as e:
@@ -454,6 +617,7 @@ class ClaudeSDKService:
         user_id: str | None,
         model: str,
         error: str,
+        request_id: str | None = None,
     ) -> None:
         """
         Record error metrics.
@@ -467,10 +631,11 @@ class ClaudeSDKService:
             return
 
         try:
-            from uuid import uuid4
+            # Use provided request_id or generate a new one
+            if request_id is None:
+                from uuid import uuid4
 
-            # Generate a request ID for error correlation
-            request_id = str(uuid4())
+                request_id = str(uuid4())
 
             # Determine error type and code from error message
             error_type = "unknown_error"
