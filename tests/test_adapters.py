@@ -997,7 +997,7 @@ class TestOpenAIAdapter:
         assert result == expected
 
         # Test with malformed image URL (invalid data: prefix)
-        content = [{"type": "image_url", "image_url": "data:invalid_format"}]
+        content = [{"type": "image_url", "image_url": {"url": "data:invalid_format"}}]  # type: ignore[dict-item]
         result = adapter._convert_content_to_anthropic(content)
         # Invalid base64 should be logged but no content added (according to the except block)
         assert result == ""
