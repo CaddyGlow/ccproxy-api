@@ -133,21 +133,29 @@ class JsonApiExporter:
                     "start_time": start_time.isoformat(),
                     "end_time": end_time.isoformat(),
                     "filters": {
-                        "metric_type": metric_type.value if metric_type else None,
-                        "user_id": user_id,
-                        "session_id": session_id,
-                        "request_id": request_id,
-                        "custom_filters": filters,
+                        k: v
+                        for k, v in {
+                            "metric_type": metric_type.value if metric_type else None,
+                            "user_id": user_id,
+                            "session_id": session_id,
+                            "request_id": request_id,
+                            "custom_filters": filters,
+                        }.items()
+                        if v is not None
                     },
                     "pagination": {
-                        "has_next": (offset or 0) + len(metrics_data) < total_count,
-                        "has_previous": (offset or 0) > 0,
-                        "next_offset": (offset or 0) + limit
-                        if (offset or 0) + len(metrics_data) < total_count
-                        else None,
-                        "previous_offset": max(0, (offset or 0) - limit)
-                        if (offset or 0) > 0
-                        else None,
+                        k: v
+                        for k, v in {
+                            "has_next": (offset or 0) + len(metrics_data) < total_count,
+                            "has_previous": (offset or 0) > 0,
+                            "next_offset": (offset or 0) + limit
+                            if (offset or 0) + len(metrics_data) < total_count
+                            else None,
+                            "previous_offset": max(0, (offset or 0) - limit)
+                            if (offset or 0) > 0
+                            else None,
+                        }.items()
+                        if v is not None
                     },
                 },
             }
@@ -492,140 +500,15 @@ class JsonApiExporter:
 
     def _metric_to_dict(self, metric: MetricRecord) -> dict[str, Any]:
         """
-        Convert a metric record to a dictionary.
+        Convert a metric record to a dictionary using Pydantic serialization.
 
         Args:
             metric: MetricRecord to convert
 
         Returns:
-            Dictionary representation of the metric
+            Dictionary representation of the metric (None values excluded)
         """
-        # Base metric data
-        data: dict[str, Any] = {
-            "id": str(metric.id),
-            "timestamp": metric.timestamp.isoformat(),
-            "metric_type": metric.metric_type.value,
-            "request_id": metric.request_id,
-            "user_id": metric.user_id,
-            "session_id": metric.session_id,
-            "metadata": metric.metadata,
-        }
-
-        # Add type-specific data
-        from ..models import (
-            CostMetric,
-            ErrorMetric,
-            LatencyMetric,
-            RequestMetric,
-            ResponseMetric,
-            UsageMetric,
-        )
-
-        if isinstance(metric, RequestMetric):
-            data.update(
-                {
-                    "method": metric.method,
-                    "path": metric.path,
-                    "endpoint": metric.endpoint,
-                    "api_version": metric.api_version,
-                    "client_ip": metric.client_ip,
-                    "user_agent": metric.user_agent,
-                    "content_length": metric.content_length,
-                    "content_type": metric.content_type,
-                    "model": metric.model,
-                    "provider": metric.provider,
-                    "max_tokens": metric.max_tokens,
-                    "temperature": metric.temperature,
-                    "streaming": metric.streaming,
-                }
-            )
-
-        elif isinstance(metric, ResponseMetric):
-            data.update(
-                {
-                    "status_code": metric.status_code,
-                    "response_time_ms": metric.response_time_ms,
-                    "content_length": metric.content_length,
-                    "content_type": metric.content_type,
-                    "input_tokens": metric.input_tokens,
-                    "output_tokens": metric.output_tokens,
-                    "cache_read_tokens": metric.cache_read_tokens,
-                    "cache_write_tokens": metric.cache_write_tokens,
-                    "streaming": metric.streaming,
-                    "first_token_time_ms": metric.first_token_time_ms,
-                    "stream_completion_time_ms": metric.stream_completion_time_ms,
-                    "completion_reason": metric.completion_reason,
-                    "safety_filtered": metric.safety_filtered,
-                }
-            )
-
-        elif isinstance(metric, ErrorMetric):
-            data.update(
-                {
-                    "error_type": metric.error_type,
-                    "error_code": metric.error_code,
-                    "error_message": metric.error_message,
-                    "stack_trace": metric.stack_trace,
-                    "endpoint": metric.endpoint,
-                    "method": metric.method,
-                    "status_code": metric.status_code,
-                    "retry_count": metric.retry_count,
-                    "recoverable": metric.recoverable,
-                }
-            )
-
-        elif isinstance(metric, CostMetric):
-            data.update(
-                {
-                    "input_cost": metric.input_cost,
-                    "output_cost": metric.output_cost,
-                    "cache_read_cost": metric.cache_read_cost,
-                    "cache_write_cost": metric.cache_write_cost,
-                    "total_cost": metric.total_cost,
-                    "sdk_total_cost": metric.sdk_total_cost,
-                    "sdk_input_cost": metric.sdk_input_cost,
-                    "sdk_output_cost": metric.sdk_output_cost,
-                    "sdk_cache_read_cost": metric.sdk_cache_read_cost,
-                    "sdk_cache_write_cost": metric.sdk_cache_write_cost,
-                    "cost_difference": metric.cost_difference,
-                    "cost_accuracy_percentage": metric.cost_accuracy_percentage,
-                    "model": metric.model,
-                    "pricing_tier": metric.pricing_tier,
-                    "currency": metric.currency,
-                    "input_tokens": metric.input_tokens,
-                    "output_tokens": metric.output_tokens,
-                    "cache_read_tokens": metric.cache_read_tokens,
-                    "cache_write_tokens": metric.cache_write_tokens,
-                }
-            )
-
-        elif isinstance(metric, LatencyMetric):
-            data.update(
-                {
-                    "request_processing_ms": metric.request_processing_ms,
-                    "claude_api_call_ms": metric.claude_api_call_ms,
-                    "response_processing_ms": metric.response_processing_ms,
-                    "total_latency_ms": metric.total_latency_ms,
-                    "queue_time_ms": metric.queue_time_ms,
-                    "wait_time_ms": metric.wait_time_ms,
-                    "first_token_latency_ms": metric.first_token_latency_ms,
-                    "token_generation_rate": metric.token_generation_rate,
-                }
-            )
-
-        elif isinstance(metric, UsageMetric):
-            data.update(
-                {
-                    "request_count": metric.request_count,
-                    "token_count": metric.token_count,
-                    "window_start": metric.window_start.isoformat(),
-                    "window_end": metric.window_end.isoformat(),
-                    "window_duration_seconds": metric.window_duration_seconds,
-                    "aggregation_level": metric.aggregation_level,
-                }
-            )
-
-        return data
+        return metric.model_dump(mode="json", exclude_none=True)
 
     def clear_cache(self) -> None:
         """Clear the internal cache."""
