@@ -101,11 +101,6 @@ def app_main(
     auth_token: str = typer.Option(
         None, "--auth-token", help="Bearer token for API authentication"
     ),
-    tools_handling: str = typer.Option(
-        None,
-        "--tools-handling",
-        help="How to handle tools definitions: error, warning, or ignore",
-    ),
     claude_cli_path: str = typer.Option(
         None, "--claude-cli-path", help="Path to Claude CLI executable"
     ),

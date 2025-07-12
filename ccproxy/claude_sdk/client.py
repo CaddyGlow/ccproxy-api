@@ -47,7 +47,7 @@ class ClaudeSDKClient:
 
     def __init__(self) -> None:
         """Initialize the Claude SDK client."""
-        pass
+        self._last_api_call_time_ms: float = 0.0
 
     async def query_completion(
         self, prompt: str, options: ClaudeCodeOptions
@@ -65,6 +65,9 @@ class ClaudeSDKClient:
         Raises:
             ClaudeSDKError: If the query fails
         """
+        import time
+
+        start_time = time.perf_counter()
         try:
             async for message in query(prompt=prompt, options=options):
                 yield message
@@ -83,6 +86,22 @@ class ClaudeSDKClient:
                 error_type="internal_server_error",
                 status_code=500,
             ) from e
+        finally:
+            end_time = time.perf_counter()
+            claude_api_call_ms = (end_time - start_time) * 1000
+            logger.info(f"Claude SDK API call completed in {claude_api_call_ms:.2f}ms")
+
+            # Store timing for metrics collection
+            self._last_api_call_time_ms = claude_api_call_ms
+
+    def get_last_api_call_time_ms(self) -> float:
+        """
+        Get the duration of the last Claude API call in milliseconds.
+
+        Returns:
+            Duration in milliseconds, or 0.0 if no call has been made yet
+        """
+        return self._last_api_call_time_ms
 
     async def validate_health(self) -> bool:
         """

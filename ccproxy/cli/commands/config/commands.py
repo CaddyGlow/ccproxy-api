@@ -109,11 +109,6 @@ def config_list() -> None:
             else "[dim]None[/dim]"
         )
         security_table.add_row(
-            "tools_handling",
-            settings.security.api_tools_handling,
-            "How to handle tools in requests",
-        )
-        security_table.add_row(
             "auth_token", auth_token_display, "Bearer token for authentication"
         )
         security_table.add_row(
@@ -295,7 +290,6 @@ def config_init(
             # "reload": False,
             # "cors_origins": ["*"],
             # "auth_token": None,
-            # "tools_handling": "warning",
             # "claude_cli_path": None,
             # "docker": {
             #     "docker_image": "claude-code-proxy",
@@ -337,9 +331,6 @@ def config_init(
                 f.write('cors_origins = ["*"]  # CORS allowed origins\n')
                 f.write(
                     '# auth_token = "your-secret-token"  # Bearer token for API authentication (optional)\n'
-                )
-                f.write(
-                    'tools_handling = "warning"  # How to handle tools in requests (error, warning, ignore)\n\n'
                 )
 
                 f.write("# Claude CLI configuration\n")
@@ -686,10 +677,7 @@ def _write_toml_config(config_file: Path, config_data: dict[str, Any]) -> None:
                 f.write("\n")
 
             # Write security settings
-            if any(
-                key in config_data
-                for key in ["auth_token", "cors_origins", "tools_handling"]
-            ):
+            if any(key in config_data for key in ["auth_token", "cors_origins"]):
                 f.write("# Security configuration\n")
                 if "auth_token" in config_data:
                     f.write(f'auth_token = "{config_data["auth_token"]}"\n')
@@ -700,8 +688,6 @@ def _write_toml_config(config_file: Path, config_data: dict[str, Any]) -> None:
                         f.write(f'cors_origins = ["{origins_str}"]\n')
                     else:
                         f.write(f'cors_origins = ["{origins}"]\n')
-                if "tools_handling" in config_data:
-                    f.write(f'tools_handling = "{config_data["tools_handling"]}"\n')
                 f.write("\n")
 
             # Write Claude CLI configuration
@@ -755,7 +741,6 @@ def _write_toml_config(config_file: Path, config_data: dict[str, Any]) -> None:
                 "reload",
                 "auth_token",
                 "cors_origins",
-                "tools_handling",
                 "claude_cli_path",
                 "docker",
             }

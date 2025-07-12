@@ -12,8 +12,3 @@ class SecuritySettings(BaseModel):
         default=None,
         description="Bearer token for API authentication (optional)",
     )
-
-    api_tools_handling: Literal["error", "warning", "ignore"] = Field(
-        default="warning",
-        description="How to handle tools definitions in requests: error, warning, or ignore",
-    )
