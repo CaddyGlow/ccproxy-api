@@ -5,7 +5,8 @@ from datetime import UTC, datetime, timedelta, timezone
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.responses import HTMLResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 
 from ccproxy.api.dependencies import MetricsCollectorDep, MetricsServiceDep
 from ccproxy.metrics.exporters.json_api import JsonApiExporter
@@ -209,26 +210,33 @@ async def get_metrics_health(
 
 @router.get("/dashboard")
 async def get_metrics_dashboard() -> HTMLResponse:
-    """Serve the metrics dashboard HTML file."""
+    """Serve the metrics dashboard SPA entry point."""
     from pathlib import Path
 
-    # Get the path to the dashboard file
+    # Get the path to the dashboard folder
     current_file = Path(__file__)
     project_root = (
         current_file.parent.parent.parent.parent
     )  # ccproxy/api/routes/metrics.py -> project root
-    dashboard_path = project_root / "ccproxy" / "static" / "dashboard.html"
+    dashboard_folder = project_root / "ccproxy" / "static" / "dashboard"
+    dashboard_index = dashboard_folder / "index.html"
 
-    # Check if dashboard file exists
-    if not dashboard_path.exists():
+    # Check if dashboard folder and index.html exist
+    if not dashboard_folder.exists():
         raise HTTPException(
             status_code=404,
             detail="Dashboard not found. Please build the dashboard first using 'cd dashboard && bun run build:prod'",
         )
 
+    if not dashboard_index.exists():
+        raise HTTPException(
+            status_code=404,
+            detail="Dashboard index.html not found. Please rebuild the dashboard using 'cd dashboard && bun run build:prod'",
+        )
+
     # Read the HTML content
     try:
-        with dashboard_path.open(encoding="utf-8") as f:
+        with dashboard_index.open(encoding="utf-8") as f:
             html_content = f.read()
 
         return HTMLResponse(
@@ -245,3 +253,25 @@ async def get_metrics_dashboard() -> HTMLResponse:
         raise HTTPException(
             status_code=500, detail=f"Failed to serve dashboard: {str(e)}"
         ) from e
+
+
+@router.get("/dashboard/favicon.svg")
+async def get_dashboard_favicon() -> FileResponse:
+    """Serve the dashboard favicon."""
+    from pathlib import Path
+
+    # Get the path to the favicon
+    current_file = Path(__file__)
+    project_root = (
+        current_file.parent.parent.parent.parent
+    )  # ccproxy/api/routes/metrics.py -> project root
+    favicon_path = project_root / "ccproxy" / "static" / "dashboard" / "favicon.svg"
+
+    if not favicon_path.exists():
+        raise HTTPException(status_code=404, detail="Favicon not found")
+
+    return FileResponse(
+        path=str(favicon_path),
+        media_type="image/svg+xml",
+        headers={"Cache-Control": "public, max-age=3600"},
+    )
