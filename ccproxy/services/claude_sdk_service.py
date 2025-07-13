@@ -14,6 +14,7 @@ from ccproxy.core.errors import (
     ClaudeProxyError,
     ServiceUnavailableError,
 )
+from ccproxy.observability.context import request_context
 
 
 logger = structlog.get_logger(__name__)
@@ -113,17 +114,27 @@ class ClaudeSDKService:
 
         request_id = str(uuid4())
 
-        try:
-            if stream:
-                return self._stream_completion(prompt, options, model, request_id)
-            else:
-                return await self._complete_non_streaming(
-                    prompt, options, model, request_id
-                )
+        # Use request context for observability
+        endpoint = "messages"  # Claude SDK uses messages endpoint
+        async with request_context(
+            method="POST",
+            path=f"/sdk/v1/{endpoint}",
+            endpoint=endpoint,
+            model=model,
+            streaming=stream,
+            service_type="claude_sdk_service",
+        ) as ctx:
+            try:
+                if stream:
+                    return self._stream_completion(prompt, options, model, request_id)
+                else:
+                    return await self._complete_non_streaming(
+                        prompt, options, model, request_id
+                    )
 
-        except Exception as e:
-            # Error handling and logging can be added here if needed
-            raise
+            except Exception as e:
+                # Error handling and logging can be added here if needed
+                raise
 
     async def _complete_non_streaming(
         self,

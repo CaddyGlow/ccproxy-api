@@ -5,7 +5,7 @@ import time
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 
 from ccproxy.api.dependencies import (
     ObservabilityMetricsDep,
@@ -125,9 +125,11 @@ async def get_prometheus_metrics(metrics: ObservabilityMetricsDep) -> Any:
             )
 
         # Generate prometheus format using the registry
-        from prometheus_client import CollectorRegistry
+        from prometheus_client import REGISTRY, CollectorRegistry
 
-        prometheus_data = generate_latest(metrics.registry or CollectorRegistry())
+        # Use the global registry if metrics.registry is None (default behavior)
+        registry = metrics.registry if metrics.registry is not None else REGISTRY
+        prometheus_data = generate_latest(registry)
 
         # Return the metrics data with proper content type
         from fastapi import Response
@@ -229,6 +231,9 @@ async def get_analytics(
     start_time: float | None = Query(None, description="Start timestamp (Unix time)"),
     end_time: float | None = Query(None, description="End timestamp (Unix time)"),
     model: str | None = Query(None, description="Filter by model name"),
+    service_type: str | None = Query(
+        None, description="Filter by service type (proxy_service or claude_sdk_service)"
+    ),
     hours: int | None = Query(
         24, ge=1, le=168, description="Hours of data to analyze (default: 24)"
     ),
@@ -253,7 +258,10 @@ async def get_analytics(
 
         # Get analytics data
         analytics: dict[str, Any] = await storage.get_analytics(
-            start_time=start_time, end_time=end_time, model=model
+            start_time=start_time,
+            end_time=end_time,
+            model=model,
+            service_type=service_type,
         )
 
         # Add metadata
@@ -261,6 +269,7 @@ async def get_analytics(
             "start_time": start_time,
             "end_time": end_time,
             "model": model,
+            "service_type": service_type,
             "hours": hours,
         }
 
@@ -272,6 +281,132 @@ async def get_analytics(
         raise HTTPException(
             status_code=500, detail=f"Analytics generation failed: {str(e)}"
         ) from e
+
+
+@router.get("/stream")
+async def stream_metrics() -> StreamingResponse:
+    """
+    Stream real-time metrics and request logs via Server-Sent Events.
+
+    Returns a continuous stream of request events, metrics updates,
+    and analytics data as they occur.
+    """
+    import asyncio
+    import json
+    from collections.abc import AsyncIterator
+
+    def json_serializer(obj: Any) -> Any:
+        """Custom JSON serializer for datetime and other objects."""
+        from datetime import datetime
+
+        if isinstance(obj, datetime):
+            return obj.isoformat()
+        raise TypeError(f"Object of type {type(obj)} is not JSON serializable")
+
+    async def event_stream() -> AsyncIterator[str]:
+        """Generate Server-Sent Events for real-time metrics."""
+
+        # Send initial connection event
+        yield f"data: {
+            json.dumps(
+                {
+                    'type': 'connection',
+                    'message': 'Connected to metrics stream',
+                    'timestamp': time.time(),
+                },
+                default=json_serializer,
+            )
+        }\n\n"
+
+        # Keep track of last request count to detect new requests
+        last_request_count = 0
+
+        try:
+            while True:
+                try:
+                    # Get current analytics to detect new requests
+                    storage = await get_storage_backend()
+                    if storage:
+                        # Get recent analytics (last 5 minutes)
+                        current_time = time.time()
+                        analytics = await storage.get_analytics(
+                            start_time=current_time - 300,  # 5 minutes ago
+                            end_time=current_time,
+                        )
+
+                        # Check if there are new requests
+                        current_request_count = analytics.get("summary", {}).get(
+                            "total_requests", 0
+                        )
+
+                        if current_request_count > last_request_count:
+                            # New requests detected, send analytics update
+                            yield f"data: {
+                                json.dumps(
+                                    {
+                                        'type': 'analytics_update',
+                                        'data': analytics,
+                                        'timestamp': time.time(),
+                                    },
+                                    default=json_serializer,
+                                )
+                            }\n\n"
+
+                            last_request_count = current_request_count
+
+                        # Send periodic heartbeat with current stats
+                        yield f"data: {
+                            json.dumps(
+                                {
+                                    'type': 'heartbeat',
+                                    'stats': {
+                                        'total_requests': current_request_count,
+                                        'timestamp': time.time(),
+                                    },
+                                },
+                                default=json_serializer,
+                            )
+                        }\n\n"
+
+                except Exception as e:
+                    # Send error event but keep connection alive
+                    yield f"data: {
+                        json.dumps(
+                            {
+                                'type': 'error',
+                                'message': str(e),
+                                'timestamp': time.time(),
+                            },
+                            default=json_serializer,
+                        )
+                    }\n\n"
+
+                # Wait before next check
+                await asyncio.sleep(2)  # Check every 2 seconds
+
+        except asyncio.CancelledError:
+            # Send disconnect event
+            yield f"data: {
+                json.dumps(
+                    {
+                        'type': 'disconnect',
+                        'message': 'Stream disconnected',
+                        'timestamp': time.time(),
+                    },
+                    default=json_serializer,
+                )
+            }\n\n"
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Headers": "Cache-Control",
+        },
+    )
 
 
 @router.get("/health")
