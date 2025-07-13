@@ -3,13 +3,13 @@
 from ccproxy.api.app import create_app, get_app
 from ccproxy.api.dependencies import (
     ClaudeServiceDep,
-    MetricsCollectorDep,
     MetricsServiceDep,
+    ObservabilityMetricsDep,
     ProxyServiceDep,
     SettingsDep,
     get_claude_service,
-    get_metrics_collector,
     get_metrics_service,
+    get_observability_metrics,
     get_proxy_service,
 )
 
@@ -23,10 +23,10 @@ __all__ = [
     "get_claude_service",
     "get_proxy_service",
     "get_metrics_service",
-    "get_metrics_collector",
+    "get_observability_metrics",
     "ClaudeServiceDep",
     "ProxyServiceDep",
     "MetricsServiceDep",
-    "MetricsCollectorDep",
+    "ObservabilityMetricsDep",
     "SettingsDep",
 ]

@@ -8,7 +8,7 @@ requires-python = ">=3.10"
 dependencies = [
   "aiosqlite>=0.21.0",
   "check-jsonschema>=0.33.2",
-  "claude-code-sdk>=0.0.14",             # Using GitHub version with PR #60 fix
+  "claude-code-sdk>=0.0.14", # Using GitHub version with PR #60 fix
   "fastapi[standard]>=0.115.14",
   "httpx>=0.28.1",
   "httpx-sse>=0.4.1",
@@ -19,6 +19,7 @@ dependencies = [
   "pydantic-settings>=2.4.0",
   "rich>=13.0.0",
   "rich-toolkit>=0.14.8",
+  "structlog>=25.4.0",
   "tomli>=2.0.0; python_version<'3.11'",
   "typer>=0.16.0",
   "typing-extensions>=4.0.0",
