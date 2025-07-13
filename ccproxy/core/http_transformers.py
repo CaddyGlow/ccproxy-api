@@ -30,7 +30,7 @@ def get_claude_code_prompt() -> dict[str, Any]:
 class HTTPRequestTransformer(RequestTransformer):
     """HTTP request transformer that implements the abstract RequestTransformer interface."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize HTTP request transformer."""
         super().__init__()
 
@@ -301,7 +301,7 @@ class HTTPRequestTransformer(RequestTransformer):
 class HTTPResponseTransformer(ResponseTransformer):
     """HTTP response transformer that implements the abstract ResponseTransformer interface."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize HTTP response transformer."""
         super().__init__()
 

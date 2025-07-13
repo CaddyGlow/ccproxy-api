@@ -3,9 +3,11 @@
 from collections.abc import AsyncIterator
 from typing import Any
 
+import structlog
+
 from ccproxy.core.async_utils import patched_typing
 from ccproxy.core.errors import ClaudeProxyError, ServiceUnavailableError
-from ccproxy.core.logging import get_logger
+from ccproxy.observability import timed_operation
 
 
 with patched_typing():
@@ -22,7 +24,7 @@ with patched_typing():
         query,
     )
 
-logger = get_logger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class ClaudeSDKError(Exception):
@@ -50,7 +52,7 @@ class ClaudeSDKClient:
         self._last_api_call_time_ms: float = 0.0
 
     async def query_completion(
-        self, prompt: str, options: ClaudeCodeOptions
+        self, prompt: str, options: ClaudeCodeOptions, request_id: str | None = None
     ) -> AsyncIterator[UserMessage | AssistantMessage | SystemMessage | ResultMessage]:
         """
         Execute a query using the Claude Code SDK.
@@ -58,6 +60,7 @@ class ClaudeSDKClient:
         Args:
             prompt: The prompt string to send to Claude
             options: Claude Code options configuration
+            request_id: Optional request ID for correlation
 
         Yields:
             Messages from the Claude Code SDK
@@ -65,34 +68,56 @@ class ClaudeSDKClient:
         Raises:
             ClaudeSDKError: If the query fails
         """
-        import time
+        async with timed_operation("claude_sdk_query", request_id) as op:
+            try:
+                logger.debug("claude_sdk_query_start", prompt_length=len(prompt))
 
-        start_time = time.perf_counter()
-        try:
-            async for message in query(prompt=prompt, options=options):
-                yield message
-        except (CLINotFoundError, CLIConnectionError) as e:
-            raise ServiceUnavailableError(f"Claude CLI not available: {str(e)}") from e
-        except (ProcessError, CLIJSONDecodeError) as e:
-            raise ClaudeProxyError(
-                message=f"Claude process error: {str(e)}",
-                error_type="service_unavailable_error",
-                status_code=503,
-            ) from e
-        except Exception as e:
-            logger.error(f"Unexpected error in query_completion: {e}")
-            raise ClaudeProxyError(
-                message=f"Unexpected error: {str(e)}",
-                error_type="internal_server_error",
-                status_code=500,
-            ) from e
-        finally:
-            end_time = time.perf_counter()
-            claude_api_call_ms = (end_time - start_time) * 1000
-            logger.info(f"Claude SDK API call completed in {claude_api_call_ms:.2f}ms")
+                message_count = 0
+                async for message in query(prompt=prompt, options=options):
+                    message_count += 1
+                    yield message
 
-            # Store timing for metrics collection
-            self._last_api_call_time_ms = claude_api_call_ms
+                # Store final metrics
+                op["message_count"] = message_count
+                self._last_api_call_time_ms = op.get("duration_ms", 0.0)
+
+                logger.debug(
+                    "claude_sdk_query_complete",
+                    message_count=message_count,
+                    duration_ms=op.get("duration_ms"),
+                )
+
+            except (CLINotFoundError, CLIConnectionError) as e:
+                logger.error(
+                    "claude_sdk_connection_error",
+                    error=str(e),
+                    error_type=type(e).__name__,
+                )
+                raise ServiceUnavailableError(
+                    f"Claude CLI not available: {str(e)}"
+                ) from e
+            except (ProcessError, CLIJSONDecodeError) as e:
+                logger.error(
+                    "claude_sdk_process_error",
+                    error=str(e),
+                    error_type=type(e).__name__,
+                )
+                raise ClaudeProxyError(
+                    message=f"Claude process error: {str(e)}",
+                    error_type="service_unavailable_error",
+                    status_code=503,
+                ) from e
+            except Exception as e:
+                logger.error(
+                    "claude_sdk_unexpected_error",
+                    error=str(e),
+                    error_type=type(e).__name__,
+                )
+                raise ClaudeProxyError(
+                    message=f"Unexpected error: {str(e)}",
+                    error_type="internal_server_error",
+                    status_code=500,
+                ) from e
 
     def get_last_api_call_time_ms(self) -> float:
         """
@@ -111,10 +136,20 @@ class ClaudeSDKClient:
             True if healthy, False otherwise
         """
         try:
+            logger.debug("claude_sdk_health_check_start")
+
             # Simple health check - the SDK is available if we can import it
             # More sophisticated checks could be added here
-            return True
-        except Exception:
+            is_healthy = True
+
+            logger.debug("claude_sdk_health_check_complete", healthy=is_healthy)
+            return is_healthy
+        except Exception as e:
+            logger.error(
+                "claude_sdk_health_check_error",
+                error=str(e),
+                error_type=type(e).__name__,
+            )
             return False
 
     async def close(self) -> None:

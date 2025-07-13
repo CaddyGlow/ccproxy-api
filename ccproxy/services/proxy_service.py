@@ -1,19 +1,20 @@
 """Proxy service for orchestrating Claude API requests with business logic."""
 
+import json
 import logging
+import os
+import time
+import urllib.parse
 from collections.abc import AsyncGenerator
-from typing import Any
+from pathlib import Path
+from typing import TYPE_CHECKING, TypedDict
 
 import httpx
+import structlog
 from fastapi import HTTPException
 from fastapi.responses import StreamingResponse
 
-from ccproxy.core.http import (
-    BaseProxyClient,
-    HTTPClient,
-    get_proxy_url,
-    get_ssl_context,
-)
+from ccproxy.core.http import BaseProxyClient
 from ccproxy.core.http_transformers import (
     HTTPRequestTransformer,
     HTTPResponseTransformer,
@@ -27,7 +28,28 @@ from ccproxy.observability import (
 from ccproxy.services.credentials.manager import CredentialsManager
 
 
-logger = logging.getLogger(__name__)
+if TYPE_CHECKING:
+    from ccproxy.observability.context import RequestContext
+
+
+class RequestData(TypedDict):
+    """Typed structure for transformed request data."""
+
+    method: str
+    url: str
+    headers: dict[str, str]
+    body: bytes | None
+
+
+class ResponseData(TypedDict):
+    """Typed structure for transformed response data."""
+
+    status_code: int
+    headers: dict[str, str]
+    body: bytes
+
+
+logger = structlog.get_logger(__name__)
 
 
 class ProxyService:
@@ -74,13 +96,55 @@ class ProxyService:
 
         self.openai_adapter = OpenAIAdapter()
 
+        # Cache environment-based configuration
+        self._proxy_url = self._init_proxy_url()
+        self._ssl_context = self._init_ssl_context()
+        self._verbose_streaming = (
+            os.environ.get("CCPROXY_VERBOSE_STREAMING", "false").lower() == "true"
+        )
+
+    def _init_proxy_url(self) -> str | None:
+        """Initialize proxy URL from environment variables."""
+        # Check for standard proxy environment variables
+        # For HTTPS requests, prioritize HTTPS_PROXY
+        https_proxy = os.environ.get("HTTPS_PROXY") or os.environ.get("https_proxy")
+        all_proxy = os.environ.get("ALL_PROXY")
+        http_proxy = os.environ.get("HTTP_PROXY") or os.environ.get("http_proxy")
+
+        proxy_url = https_proxy or all_proxy or http_proxy
+
+        if proxy_url:
+            logger.debug(f"Using proxy: {proxy_url}")
+
+        return proxy_url
+
+    def _init_ssl_context(self) -> str | bool:
+        """Initialize SSL context configuration from environment variables."""
+        # Check for custom CA bundle
+        ca_bundle = os.environ.get("REQUESTS_CA_BUNDLE") or os.environ.get(
+            "SSL_CERT_FILE"
+        )
+
+        # Check if SSL verification should be disabled (NOT RECOMMENDED)
+        ssl_verify = os.environ.get("SSL_VERIFY", "true").lower()
+
+        if ca_bundle and Path(ca_bundle).exists():
+            logger.info(f"Using custom CA bundle: {ca_bundle}")
+            return ca_bundle
+        elif ssl_verify in ("false", "0", "no"):
+            logger.warning("SSL verification disabled - this is insecure!")
+            return False
+        else:
+            logger.debug("Using default SSL verification")
+            return True
+
     async def handle_request(
         self,
         method: str,
         path: str,
         headers: dict[str, str],
         body: bytes | None = None,
-        query_params: dict[str, Any] | None = None,
+        query_params: dict[str, str | list[str]] | None = None,
         timeout: float = 240.0,
     ) -> tuple[int, dict[str, str], bytes] | StreamingResponse:
         """Handle a proxy request with full business logic orchestration.
@@ -145,8 +209,6 @@ class ProxyService:
 
                 # Handle regular request
                 async with timed_operation("api_call", ctx.request_id) as api_op:
-                    import time
-
                     start_time = time.perf_counter()
 
                     (
@@ -172,16 +234,41 @@ class ProxyService:
                         status_code, response_headers, response_body, path
                     )
 
-                # 5. Extract response metrics
-                tokens_input, tokens_output, cost_usd = self._extract_response_metrics(
-                    transformed_response["body"], model
-                )
+                # 5. Extract response metrics using direct JSON parsing
+                tokens_input = tokens_output = cache_read_tokens = (
+                    cache_write_tokens
+                ) = cost_usd = None
+                if transformed_response["body"]:
+                    try:
+                        response_data = json.loads(
+                            transformed_response["body"].decode("utf-8")
+                        )
+                        usage = response_data.get("usage", {})
+                        tokens_input = usage.get("input_tokens")
+                        tokens_output = usage.get("output_tokens")
+                        cache_read_tokens = usage.get("cache_read_input_tokens")
+                        cache_write_tokens = usage.get("cache_creation_input_tokens")
+
+                        # Calculate cost including cache tokens if we have tokens and model
+                        from ccproxy.utils.cost_calculator import calculate_token_cost
+
+                        cost_usd = calculate_token_cost(
+                            tokens_input,
+                            tokens_output,
+                            model,
+                            cache_read_tokens,
+                            cache_write_tokens,
+                        )
+                    except (json.JSONDecodeError, UnicodeDecodeError):
+                        pass  # Keep all values as None if parsing fails
 
                 # 6. Update context with response data
                 ctx.add_metadata(
                     status_code=status_code,
                     tokens_input=tokens_input,
                     tokens_output=tokens_output,
+                    cache_read_tokens=cache_read_tokens,
+                    cache_write_tokens=cache_write_tokens,
                     cost_usd=cost_usd,
                 )
 
@@ -193,6 +280,10 @@ class ProxyService:
                     self.metrics.record_tokens(tokens_input, "input", model)
                 if tokens_output:
                     self.metrics.record_tokens(tokens_output, "output", model)
+                if cache_read_tokens:
+                    self.metrics.record_tokens(cache_read_tokens, "cache_read", model)
+                if cache_write_tokens:
+                    self.metrics.record_tokens(cache_write_tokens, "cache_write", model)
                 if cost_usd:
                     self.metrics.record_cost(cost_usd, model)
 
@@ -271,9 +362,9 @@ class ProxyService:
         path: str,
         headers: dict[str, str],
         body: bytes | None,
-        query_params: dict[str, Any] | None,
+        query_params: dict[str, str | list[str]] | None,
         access_token: str,
-    ) -> dict[str, Any]:
+    ) -> RequestData:
         """Transform request using the transformer pipeline.
 
         Args:
@@ -329,8 +420,6 @@ class ProxyService:
 
         # Add query parameters to URL if present
         if query_params:
-            import urllib.parse
-
             query_string = urllib.parse.urlencode(query_params)
             target_url = f"{target_url}?{query_string}"
 
@@ -347,7 +436,7 @@ class ProxyService:
         headers: dict[str, str],
         body: bytes,
         original_path: str,
-    ) -> dict[str, Any]:
+    ) -> ResponseData:
         """Transform response using the transformer pipeline.
 
         Args:
@@ -405,8 +494,6 @@ class ProxyService:
             return None, False
 
         try:
-            import json
-
             body_data = json.loads(body.decode("utf-8"))
             model = body_data.get("model")
             streaming = body_data.get("stream", False)
@@ -414,47 +501,12 @@ class ProxyService:
         except (json.JSONDecodeError, UnicodeDecodeError):
             return None, False
 
-    def _extract_response_metrics(
-        self, response_body: bytes, model: str | None
-    ) -> tuple[int | None, int | None, float | None]:
-        """Extract token usage and cost from response body.
-
-        Args:
-            response_body: Response body
-            model: Model name for cost calculation
-
-        Returns:
-            Tuple of (tokens_input, tokens_output, cost_usd)
-        """
-        if not response_body:
-            return None, None, None
-
-        try:
-            import json
-
-            if isinstance(response_body, bytes):
-                response_data = json.loads(response_body.decode("utf-8"))
-            else:
-                response_data = json.loads(str(response_body))
-
-            usage = response_data.get("usage", {})
-            tokens_input = usage.get("input_tokens")
-            tokens_output = usage.get("output_tokens")
-
-            # Cost calculation can be added here if needed
-            cost_usd = None
-
-            return tokens_input, tokens_output, cost_usd
-
-        except (json.JSONDecodeError, UnicodeDecodeError):
-            return None, None, None
-
     async def _handle_streaming_request(
         self,
-        request_data: dict[str, Any],
+        request_data: RequestData,
         original_path: str,
         timeout: float,
-        ctx: Any,
+        ctx: "RequestContext",
     ) -> StreamingResponse:
         """Handle streaming request with transformation.
 
@@ -475,15 +527,9 @@ class ProxyService:
                 logger.debug(f"Request headers: {request_data['headers']}")
 
                 # Use httpx directly for streaming since we need the stream context manager
-                import os
-                import time
-                from pathlib import Path
-
-                import httpx
-
-                # Get proxy and SSL settings
-                proxy_url = self._get_proxy_url()
-                verify = self._get_ssl_context()
+                # Get proxy and SSL settings from cached configuration
+                proxy_url = self._proxy_url
+                verify = self._ssl_context
 
                 start_time = time.perf_counter()
                 async with (
@@ -544,13 +590,8 @@ class ProxyService:
                         chunk_count = 0
                         content_block_delta_count = 0
 
-                        # Check if verbose streaming logs are enabled
-                        import os
-
-                        verbose_streaming = (
-                            os.environ.get("CCPROXY_VERBOSE_STREAMING", "false").lower()
-                            == "true"
-                        )
+                        # Use cached verbose streaming configuration
+                        verbose_streaming = self._verbose_streaming
 
                         async for chunk in response.aiter_bytes():
                             if chunk:
@@ -605,57 +646,6 @@ class ProxyService:
             },
         )
 
-    def _get_proxy_url(self) -> str | None:
-        """Get proxy URL from environment variables.
-
-        Returns:
-            str or None: Proxy URL if any proxy is set
-        """
-        import os
-
-        # Check for standard proxy environment variables
-        # For HTTPS requests, prioritize HTTPS_PROXY
-        https_proxy = os.environ.get("HTTPS_PROXY") or os.environ.get("https_proxy")
-        all_proxy = os.environ.get("ALL_PROXY")
-        http_proxy = os.environ.get("HTTP_PROXY") or os.environ.get("http_proxy")
-
-        proxy_url = https_proxy or all_proxy or http_proxy
-
-        if proxy_url:
-            logger.debug(f"Using proxy: {proxy_url}")
-
-        return proxy_url
-
-    def _get_ssl_context(self) -> str | bool:
-        """Get SSL context configuration from environment variables.
-
-        Returns:
-            SSL verification configuration:
-            - Path to CA bundle file
-            - True for default verification
-            - False to disable verification (insecure)
-        """
-        import os
-        from pathlib import Path
-
-        # Check for custom CA bundle
-        ca_bundle = os.environ.get("REQUESTS_CA_BUNDLE") or os.environ.get(
-            "SSL_CERT_FILE"
-        )
-
-        # Check if SSL verification should be disabled (NOT RECOMMENDED)
-        ssl_verify = os.environ.get("SSL_VERIFY", "true").lower()
-
-        if ca_bundle and Path(ca_bundle).exists():
-            logger.info(f"Using custom CA bundle: {ca_bundle}")
-            return ca_bundle
-        elif ssl_verify in ("false", "0", "no"):
-            logger.warning("SSL verification disabled - this is insecure!")
-            return False
-        else:
-            logger.debug("Using default SSL verification")
-            return True
-
     async def _handle_error(
         self,
         error: Exception,
@@ -699,14 +689,12 @@ class ProxyService:
         """
 
         # Parse SSE chunks from response into dict stream
-        async def sse_to_dict_stream() -> AsyncGenerator[dict[str, Any], None]:
+        async def sse_to_dict_stream() -> AsyncGenerator[dict[str, object], None]:
             async for line in response.aiter_lines():
                 if line.startswith("data: "):
                     data_str = line[6:].strip()
                     if data_str and data_str != "[DONE]":
                         try:
-                            import json
-
                             yield json.loads(data_str)
                         except json.JSONDecodeError:
                             logger.warning(f"Failed to parse SSE chunk: {data_str}")
@@ -716,8 +704,6 @@ class ProxyService:
         async for openai_chunk in self.openai_adapter.adapt_stream(
             sse_to_dict_stream()
         ):
-            import json
-
             sse_line = f"data: {json.dumps(openai_chunk)}\n\n"
             yield sse_line.encode("utf-8")
 

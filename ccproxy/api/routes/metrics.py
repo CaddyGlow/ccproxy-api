@@ -1,8 +1,10 @@
 """Metrics endpoints for Claude Code Proxy API Server."""
 
-from typing import Any
+import re
+import time
+from typing import Any, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse, HTMLResponse
 
 from ccproxy.api.dependencies import (
@@ -19,7 +21,7 @@ async def metrics_status(metrics: ObservabilityMetricsDep) -> dict[str, str]:
     """Get observability system status."""
     return {
         "status": "healthy",
-        "prometheus_enabled": metrics.is_enabled(),
+        "prometheus_enabled": str(metrics.is_enabled()),
         "observability_system": "hybrid_prometheus_structlog",
     }
 
@@ -94,7 +96,7 @@ async def get_dashboard_favicon() -> FileResponse:
 
 
 @router.get("/prometheus")
-async def get_prometheus_metrics(metrics: ObservabilityMetricsDep):
+async def get_prometheus_metrics(metrics: ObservabilityMetricsDep) -> Any:
     """Export metrics in Prometheus format using native prometheus_client.
 
     This endpoint exposes operational metrics collected by the hybrid observability
@@ -123,7 +125,9 @@ async def get_prometheus_metrics(metrics: ObservabilityMetricsDep):
             )
 
         # Generate prometheus format using the registry
-        prometheus_data = generate_latest(metrics.registry)
+        from prometheus_client import CollectorRegistry
+
+        prometheus_data = generate_latest(metrics.registry or CollectorRegistry())
 
         # Return the metrics data with proper content type
         from fastapi import Response
@@ -144,3 +148,148 @@ async def get_prometheus_metrics(metrics: ObservabilityMetricsDep):
         raise HTTPException(
             status_code=500, detail=f"Failed to generate Prometheus metrics: {str(e)}"
         ) from e
+
+
+async def get_storage_backend() -> Any:
+    """Get DuckDB storage backend from pipeline."""
+    try:
+        from ccproxy.observability.pipeline import get_pipeline
+
+        pipeline = await get_pipeline()
+
+        # Get DuckDB storage from pipeline backends
+        for backend in pipeline._storage_backends:
+            if hasattr(backend, "query"):  # DuckDB storage has query method
+                return backend
+
+        return None
+    except Exception:
+        return None
+
+
+# SQL injection protection - allow only safe SQL patterns
+SAFE_SQL_PATTERN = re.compile(
+    r"^SELECT\s+.*\s+FROM\s+(?:requests|operations)(?:\s+WHERE\s+.*)?(?:\s+GROUP\s+BY\s+.*)?(?:\s+ORDER\s+BY\s+.*)?(?:\s+LIMIT\s+\d+)?;?$",
+    re.IGNORECASE | re.DOTALL,
+)
+
+
+@router.get("/query")
+async def query_metrics(
+    sql: str = Query(..., description="SQL query to execute"),
+    limit: int = Query(1000, ge=1, le=10000, description="Maximum number of results"),
+) -> dict[str, Any]:
+    """
+    Execute custom SQL query on metrics data.
+
+    Supports queries on 'requests' and 'operations' tables with safety restrictions.
+
+    Example queries:
+    - SELECT COUNT(*) FROM requests WHERE timestamp > '2024-01-01'
+    - SELECT model, AVG(response_time) FROM requests GROUP BY model
+    - SELECT * FROM requests WHERE status = 'error' ORDER BY timestamp DESC
+    """
+    try:
+        storage = await get_storage_backend()
+        if not storage:
+            raise HTTPException(
+                status_code=503,
+                detail="Storage backend not available. Ensure DuckDB is installed and pipeline is running.",
+            )
+
+        # Basic SQL injection protection
+        sql_clean = sql.strip()
+        if not SAFE_SQL_PATTERN.match(sql_clean):
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid SQL query. Only SELECT queries on 'requests' and 'operations' tables are allowed.",
+            )
+
+        # Execute query
+        results = await storage.query(sql_clean, limit=limit)
+
+        return {
+            "query": sql_clean,
+            "results": results,
+            "count": len(results),
+            "limit": limit,
+            "timestamp": time.time(),
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Query execution failed: {str(e)}"
+        ) from e
+
+
+@router.get("/analytics")
+async def get_analytics(
+    start_time: float | None = Query(None, description="Start timestamp (Unix time)"),
+    end_time: float | None = Query(None, description="End timestamp (Unix time)"),
+    model: str | None = Query(None, description="Filter by model name"),
+    hours: int | None = Query(
+        24, ge=1, le=168, description="Hours of data to analyze (default: 24)"
+    ),
+) -> dict[str, Any]:
+    """
+    Get comprehensive analytics for metrics data.
+
+    Returns summary statistics, hourly trends, and model breakdowns.
+    """
+    try:
+        storage = await get_storage_backend()
+        if not storage:
+            raise HTTPException(
+                status_code=503,
+                detail="Storage backend not available. Ensure DuckDB is installed and pipeline is running.",
+            )
+
+        # Default time range if not provided
+        if start_time is None and end_time is None and hours:
+            end_time = time.time()
+            start_time = end_time - (hours * 3600)
+
+        # Get analytics data
+        analytics: dict[str, Any] = await storage.get_analytics(
+            start_time=start_time, end_time=end_time, model=model
+        )
+
+        # Add metadata
+        analytics["query_params"] = {
+            "start_time": start_time,
+            "end_time": end_time,
+            "model": model,
+            "hours": hours,
+        }
+
+        return analytics
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Analytics generation failed: {str(e)}"
+        ) from e
+
+
+@router.get("/health")
+async def get_storage_health() -> dict[str, Any]:
+    """Get health status of the storage backend."""
+    try:
+        storage = await get_storage_backend()
+        if not storage:
+            return {
+                "status": "unavailable",
+                "storage_backend": "none",
+                "message": "No storage backend available",
+            }
+
+        health: dict[str, Any] = await storage.health_check()
+        health["storage_backend"] = "duckdb"
+
+        return health
+
+    except Exception as e:
+        return {"status": "error", "storage_backend": "duckdb", "error": str(e)}

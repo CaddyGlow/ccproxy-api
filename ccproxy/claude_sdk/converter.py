@@ -104,12 +104,8 @@ class MessageConverter:
         if usage:
             input_tokens = usage.get("input_tokens", 0)
             output_tokens = usage.get("output_tokens", 0)
-            cache_read_tokens = usage.get(
-                "cache_read_input_tokens", 0
-            )  # Note: different field name
-            cache_write_tokens = usage.get(
-                "cache_creation_input_tokens", 0
-            )  # Note: different field name
+            cache_read_tokens = usage.get("cache_read_input_tokens", 0)
+            cache_write_tokens = usage.get("cache_creation_input_tokens", 0)
         else:
             # Fallback to direct attributes
             input_tokens = getattr(result_message, "input_tokens", 0)
@@ -130,6 +126,20 @@ class MessageConverter:
         # Calculate total tokens
         total_tokens = input_tokens + output_tokens
 
+        # Build usage information
+        usage_info = {
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
+            "cache_read_tokens": cache_read_tokens,
+            "cache_write_tokens": cache_write_tokens,
+            "total_tokens": total_tokens,
+        }
+
+        # Add cost information if available
+        total_cost_usd = getattr(result_message, "total_cost_usd", None)
+        if total_cost_usd is not None:
+            usage_info["cost_usd"] = total_cost_usd
+
         return {
             "id": f"msg_{result_message.session_id}",
             "type": "message",
@@ -145,13 +155,7 @@ class MessageConverter:
             "model": model,
             "stop_reason": getattr(result_message, "stop_reason", "end_turn"),
             "stop_sequence": None,
-            "usage": {
-                "input_tokens": input_tokens,
-                "output_tokens": output_tokens,
-                "cache_read_tokens": cache_read_tokens,
-                "cache_write_tokens": cache_write_tokens,
-                "total_tokens": total_tokens,
-            },
+            "usage": usage_info,
         }
 
     @staticmethod

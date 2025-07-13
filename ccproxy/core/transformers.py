@@ -17,9 +17,9 @@ R = TypeVar("R", covariant=True)
 class BaseTransformer(ABC):
     """Abstract base class for all transformers."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize transformer."""
-        pass
+        self.metrics_collector: Any = None
 
     @abstractmethod
     async def transform(

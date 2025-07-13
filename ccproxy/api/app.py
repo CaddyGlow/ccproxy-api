@@ -16,6 +16,8 @@ from ccproxy.api.routes.metrics import router as metrics_router
 from ccproxy.api.routes.proxy import router as proxy_router
 from ccproxy.config.settings import Settings, get_settings
 from ccproxy.core.logging import get_logger, setup_rich_logging
+from ccproxy.observability.config import configure_observability
+from ccproxy.observability.pipeline import get_pipeline
 
 
 @asynccontextmanager
@@ -39,10 +41,27 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         for path in settings.claude.get_searched_paths():
             logger.info(f"  - {path}")
 
+    # Configure observability system (structlog + pipeline)
+    try:
+        configure_observability()
+        pipeline = await get_pipeline()
+        logger.info("Observability system initialized successfully")
+    except Exception as e:
+        logger.error(f"Failed to initialize observability system: {e}")
+        # Continue startup even if observability fails (graceful degradation)
+
     yield
 
     # Shutdown
     logger.info("Shutting down Claude Code Proxy API Server...")
+
+    # Stop observability system
+    try:
+        if "pipeline" in locals():
+            await pipeline.stop()
+            logger.info("Observability system stopped")
+    except Exception as e:
+        logger.error(f"Error stopping observability system: {e}")
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:

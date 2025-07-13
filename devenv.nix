@@ -16,16 +16,18 @@ in
     #   pkgs.tclx
     pkgs.udev
     pkgs.bashInteractive
+    pkgs.duckdb
+    pkgs.stdenv.cc.cc.lib
+    pkgs.glibc
+    pkgs.zlib
+    pkgs.stdenv
   ];
 
-  # env.LD_LIBRARY_PATH = lib.makeLibraryPath [
-  #   pkgs.stdenv.cc.cc.lib
-  #   pkgs.libGL
-  #   pkgs.file
-  #   pkgs.libz
-  #   pkgs.gcc-unwrapped
-  #   pkgs.stdenv
-  # ];
+  env.LD_LIBRARY_PATH = lib.makeLibraryPath [
+    pkgs.stdenv.cc.cc.lib
+    pkgs.zlib
+    pkgs.stdenv
+  ];
 
   # https://devenv.sh/languages/python/
   languages.python = {
@@ -35,9 +37,12 @@ in
 
   languages.javascript = {
     enable = true;
+    bun = {
+      enable = true;
+    };
     pnpm = {
       enable = true;
-      install.enable = true;
+      install.enable = false;
     };
   };
   enterShell = '''';
