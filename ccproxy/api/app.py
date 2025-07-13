@@ -90,9 +90,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     setup_cors_middleware(app, settings)
     setup_error_handlers(app)
 
-    # Include health and metrics routers (keep as they are)
+    # Include health router (always enabled)
     app.include_router(health_router, tags=["health"])
-    app.include_router(metrics_router, tags=["metrics"])
+
+    # Include metrics router only if enabled
+    if settings.observability.metrics_enabled:
+        app.include_router(metrics_router, tags=["metrics"])
 
     # Include OAuth router for authentication flows
     from ccproxy.auth.oauth.routes import router as oauth_router
