@@ -7,7 +7,7 @@ from ccproxy.core.types import ProxyRequest, ProxyResponse, TransformContext
 
 
 if TYPE_CHECKING:
-    from ccproxy.metrics.collector import MetricsCollector
+    pass
 
 
 T = TypeVar("T", contravariant=True)
@@ -17,13 +17,9 @@ R = TypeVar("R", covariant=True)
 class BaseTransformer(ABC):
     """Abstract base class for all transformers."""
 
-    def __init__(self, metrics_collector: "MetricsCollector | None" = None):
-        """Initialize transformer with optional metrics collector.
-
-        Args:
-            metrics_collector: Optional metrics collector for transformation tracking
-        """
-        self.metrics_collector = metrics_collector
+    def __init__(self):
+        """Initialize transformer."""
+        pass
 
     @abstractmethod
     async def transform(

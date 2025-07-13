@@ -9,7 +9,7 @@ from ccproxy.core.types import ProxyRequest, ProxyResponse, TransformContext
 
 
 if TYPE_CHECKING:
-    from ccproxy.metrics.collector import MetricsCollector
+    pass
 
 
 logger = logging.getLogger(__name__)
@@ -30,13 +30,9 @@ def get_claude_code_prompt() -> dict[str, Any]:
 class HTTPRequestTransformer(RequestTransformer):
     """HTTP request transformer that implements the abstract RequestTransformer interface."""
 
-    def __init__(self, metrics_collector: "MetricsCollector | None" = None):
-        """Initialize HTTP request transformer.
-
-        Args:
-            metrics_collector: Optional metrics collector for transformation tracking
-        """
-        super().__init__(metrics_collector)
+    def __init__(self):
+        """Initialize HTTP request transformer."""
+        super().__init__()
 
     async def _transform_request(
         self, request: ProxyRequest, context: TransformContext | None = None
@@ -305,13 +301,9 @@ class HTTPRequestTransformer(RequestTransformer):
 class HTTPResponseTransformer(ResponseTransformer):
     """HTTP response transformer that implements the abstract ResponseTransformer interface."""
 
-    def __init__(self, metrics_collector: "MetricsCollector | None" = None):
-        """Initialize HTTP response transformer.
-
-        Args:
-            metrics_collector: Optional metrics collector for transformation tracking
-        """
-        super().__init__(metrics_collector)
+    def __init__(self):
+        """Initialize HTTP response transformer."""
+        super().__init__()
 
     async def _transform_response(
         self, response: ProxyResponse, context: TransformContext | None = None
