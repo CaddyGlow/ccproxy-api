@@ -3,6 +3,9 @@
 from collections.abc import AsyncIterator
 from typing import Any
 
+import structlog
+from claude_code_sdk import AssistantMessage, ClaudeCodeOptions, ResultMessage
+
 from ccproxy.auth.manager import AuthManager
 from ccproxy.claude_sdk.client import ClaudeSDKClient
 from ccproxy.claude_sdk.converter import MessageConverter
@@ -11,10 +14,9 @@ from ccproxy.core.errors import (
     ClaudeProxyError,
     ServiceUnavailableError,
 )
-from ccproxy.core.logging import get_logger
 
 
-logger = get_logger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class ClaudeSDKService:
@@ -77,7 +79,12 @@ class ClaudeSDKService:
             try:
                 await self._validate_user_auth(user_id)
             except Exception as e:
-                logger.error(f"Authentication failed for user {user_id}: {e}")
+                logger.error(
+                    "authentication_failed",
+                    user_id=user_id,
+                    error=str(e),
+                    error_type=type(e).__name__,
+                )
                 raise
 
         # Extract system message and create options
@@ -119,7 +126,11 @@ class ClaudeSDKService:
             raise
 
     async def _complete_non_streaming(
-        self, prompt: str, options: Any, model: str, request_id: str | None = None
+        self,
+        prompt: str,
+        options: ClaudeCodeOptions,
+        model: str,
+        request_id: str | None = None,
     ) -> dict[str, Any]:
         """
         Complete a non-streaming request with business logic.
@@ -140,11 +151,10 @@ class ClaudeSDKService:
         result_message = None
         assistant_message = None
 
-        async for message in self.sdk_client.query_completion(prompt, options):
+        async for message in self.sdk_client.query_completion(
+            prompt, options, request_id
+        ):
             messages.append(message)
-            # Import here to avoid circular imports
-            from claude_code_sdk import AssistantMessage, ResultMessage
-
             if isinstance(message, AssistantMessage):
                 assistant_message = message
             elif isinstance(message, ResultMessage):
@@ -167,17 +177,46 @@ class ClaudeSDKService:
                 status_code=500,
             )
 
+        logger.info("claude_sdk_completion", result_message)
         # Convert to Anthropic format
         response = self.message_converter.convert_to_anthropic_response(
             assistant_message, result_message, model
         )
 
-        # Completion metrics can be recorded here if needed
+        # Extract token usage and cost from result message using direct access
+        cost_usd = result_message.total_cost_usd
+        if result_message.usage:
+            tokens_input = result_message.usage.get("input_tokens")
+            tokens_output = result_message.usage.get("output_tokens")
+            cache_read_tokens = result_message.usage.get("cache_read_input_tokens")
+            cache_write_tokens = result_message.usage.get("cache_creation_input_tokens")
+        else:
+            tokens_input = tokens_output = cache_read_tokens = cache_write_tokens = None
+
+        # Add cost to response usage section if available
+        if cost_usd is not None and "usage" in response:
+            response["usage"]["cost_usd"] = cost_usd
+
+        # Log metrics for observability
+        logger.info(
+            "claude_sdk_completion",
+            model=model,
+            tokens_input=tokens_input,
+            tokens_output=tokens_output,
+            cache_read_tokens=cache_read_tokens,
+            cache_write_tokens=cache_write_tokens,
+            cost_usd=cost_usd,
+            request_id=request_id,
+        )
 
         return response
 
     async def _stream_completion(
-        self, prompt: str, options: Any, model: str, request_id: str | None = None
+        self,
+        prompt: str,
+        options: ClaudeCodeOptions,
+        model: str,
+        request_id: str | None = None,
     ) -> AsyncIterator[dict[str, Any]]:
         """
         Stream completion responses with business logic.
@@ -197,14 +236,16 @@ class ClaudeSDKService:
         assistant_messages = []
 
         try:
-            async for message in self.sdk_client.query_completion(prompt, options):
+            async for message in self.sdk_client.query_completion(
+                prompt, options, request_id
+            ):
                 message_count += 1
                 logger.debug(
-                    f"Claude SDK message {message_count}: {type(message).__name__}"
+                    "claude_sdk_streaming_message",
+                    message_count=message_count,
+                    message_type=type(message).__name__,
+                    request_id=request_id,
                 )
-
-                # Import here to avoid circular imports
-                from claude_code_sdk import AssistantMessage, ResultMessage
 
                 if isinstance(message, AssistantMessage):
                     assistant_messages.append(message)
@@ -229,17 +270,63 @@ class ClaudeSDKService:
                     # Get Claude API call timing
                     claude_api_call_ms = self.sdk_client.get_last_api_call_time_ms()
 
-                    # Send final chunk
-                    yield self.message_converter.create_streaming_end_chunk()
+                    # Extract cost and tokens from result message using direct access
+                    cost_usd = message.total_cost_usd
+                    if message.usage:
+                        tokens_input = message.usage.get("input_tokens")
+                        tokens_output = message.usage.get("output_tokens")
+                        cache_read_tokens = message.usage.get("cache_read_input_tokens")
+                        cache_write_tokens = message.usage.get(
+                            "cache_creation_input_tokens"
+                        )
+                    else:
+                        tokens_input = tokens_output = cache_read_tokens = (
+                            cache_write_tokens
+                        ) = None
 
-                    # Streaming metrics can be recorded here if needed
+                    # Log streaming completion metrics
+                    logger.info(
+                        "claude_sdk_streaming_completion",
+                        model=model,
+                        tokens_input=tokens_input,
+                        tokens_output=tokens_output,
+                        cache_read_tokens=cache_read_tokens,
+                        cache_write_tokens=cache_write_tokens,
+                        cost_usd=cost_usd,
+                        message_count=message_count,
+                        request_id=request_id,
+                    )
+
+                    # Send final chunk with usage and cost information
+                    final_chunk = self.message_converter.create_streaming_end_chunk()
+
+                    # Add usage information to final chunk
+                    if tokens_input or tokens_output or cost_usd:
+                        usage_info = {}
+                        if tokens_input:
+                            usage_info["input_tokens"] = tokens_input
+                        if tokens_output:
+                            usage_info["output_tokens"] = tokens_output
+                        if cost_usd is not None:
+                            usage_info["cost_usd"] = cost_usd
+
+                        # Update the usage in the final chunk
+                        final_chunk["usage"].update(usage_info)
+
+                    yield final_chunk
+
                     break
 
         except asyncio.CancelledError:
-            logger.info("Stream completion cancelled")
+            logger.info("stream_completion_cancelled", request_id=request_id)
             raise
         except Exception as e:
-            logger.error(f"Error in stream completion: {e}")
+            logger.error(
+                "stream_completion_error",
+                error=str(e),
+                error_type=type(e).__name__,
+                request_id=request_id,
+            )
             yield self.message_converter.create_streaming_end_chunk("error")
             raise
 
@@ -258,7 +345,38 @@ class ClaudeSDKService:
 
         # Implement authentication validation logic
         # This is a placeholder for future auth integration
-        logger.debug(f"Validating auth for user: {user_id}")
+        logger.debug("validating_user_auth", user_id=user_id)
+
+    def _calculate_cost(
+        self,
+        tokens_input: int | None,
+        tokens_output: int | None,
+        model: str | None,
+        cache_read_tokens: int | None = None,
+        cache_write_tokens: int | None = None,
+    ) -> float | None:
+        """
+        Calculate cost in USD for the given token usage including cache tokens.
+
+        Note: This method is provided for consistency, but the Claude SDK already
+        provides accurate cost calculation in ResultMessage.total_cost_usd which
+        should be preferred when available.
+
+        Args:
+            tokens_input: Number of input tokens
+            tokens_output: Number of output tokens
+            model: Model name for pricing lookup
+            cache_read_tokens: Number of cache read tokens
+            cache_write_tokens: Number of cache write tokens
+
+        Returns:
+            Cost in USD or None if calculation not possible
+        """
+        from ccproxy.utils.cost_calculator import calculate_token_cost
+
+        return calculate_token_cost(
+            tokens_input, tokens_output, model, cache_read_tokens, cache_write_tokens
+        )
 
     async def list_models(self) -> list[dict[str, Any]]:
         """
@@ -292,7 +410,11 @@ class ClaudeSDKService:
         try:
             return await self.sdk_client.validate_health()
         except Exception as e:
-            logger.error(f"Health check failed: {e}")
+            logger.error(
+                "claude_sdk_service_health_check_failed",
+                error=str(e),
+                error_type=type(e).__name__,
+            )
             return False
 
     async def close(self) -> None:

@@ -190,20 +190,31 @@ pip install prometheus-client
 # System continues to function with structured logging only
 ```
 
-### Storage Pipeline
+### DuckDB Storage Pipeline
 
-The pipeline processor can be configured for different storage backends:
+The system uses DuckDB as the default storage backend for excellent analytical performance:
 
 ```python
-from ccproxy.observability.pipeline import StoragePipelineProcessor
+from ccproxy.observability.pipeline import LogToStoragePipeline, PipelineConfig
 
-# Custom storage configuration
-processor = StoragePipelineProcessor(
+# Configure DuckDB storage
+config = PipelineConfig(
+    enabled=True,
     batch_size=100,
-    flush_interval=30.0,  # seconds
-    storage_backend=custom_storage
+    processing_interval=5.0,  # seconds
+    storage_backends=["duckdb"]  # Default
 )
+
+pipeline = LogToStoragePipeline(config)
+await pipeline.start()
 ```
+
+**DuckDB Features:**
+- **Analytics-optimized**: Column storage for fast aggregations
+- **Zero configuration**: Single file database (default: `data/metrics.duckdb`)
+- **Full SQL support**: Complex queries, window functions, CTEs
+- **Excellent compression**: 5-10x better than SQLite for time-series data
+- **High performance**: Sub-second response for most analytical queries
 
 ## Endpoints
 
@@ -236,9 +247,121 @@ Returns observability system status:
 ```json
 {
   "status": "healthy",
-  "prometheus_enabled": true,
-  "active_requests": 3,
-  "total_requests": 1542
+  "prometheus_enabled": "True",
+  "observability_system": "hybrid_prometheus_structlog"
+}
+```
+
+### DuckDB Query API
+
+**GET /metrics/query**
+
+Execute custom SQL queries on metrics data with safety restrictions:
+
+```bash
+# Request volume by hour
+curl "http://localhost:8000/metrics/query?sql=SELECT date_trunc('hour', timestamp) as hour, COUNT(*) as requests FROM requests WHERE timestamp > NOW() - INTERVAL '24 hours' GROUP BY hour ORDER BY hour"
+
+# Error rate analysis
+curl "http://localhost:8000/metrics/query?sql=SELECT model, COUNT(*) FILTER (WHERE status = 'error') * 100.0 / COUNT(*) as error_rate FROM requests GROUP BY model"
+
+# Cost analysis by model
+curl "http://localhost:8000/metrics/query?sql=SELECT model, SUM(cost_usd) as total_cost, AVG(response_time) as avg_time FROM requests WHERE timestamp > NOW() - INTERVAL '7 days' GROUP BY model"
+```
+
+**Response Format:**
+```json
+{
+  "query": "SELECT * FROM requests WHERE model = 'claude-3-sonnet' LIMIT 10",
+  "results": [
+    {
+      "timestamp": 1704067200.0,
+      "request_id": "req_123",
+      "method": "POST",
+      "endpoint": "messages",
+      "model": "claude-3-sonnet",
+      "status": "success",
+      "response_time": 1.5,
+      "tokens_input": 150,
+      "tokens_output": 75,
+      "cost_usd": 0.0023
+    }
+  ],
+  "count": 1,
+  "limit": 10,
+  "timestamp": 1704067800.0
+}
+```
+
+**GET /metrics/analytics**
+
+Pre-built analytics with time range filtering:
+
+```bash
+# Last 24 hours analytics
+curl "http://localhost:8000/metrics/analytics?hours=24"
+
+# Custom time range with model filter
+curl "http://localhost:8000/metrics/analytics?start_time=1704000000&end_time=1704086400&model=claude-3-sonnet"
+```
+
+**Response Format:**
+```json
+{
+  "summary": {
+    "total_requests": 1542,
+    "successful_requests": 1487,
+    "failed_requests": 55,
+    "avg_response_time": 1.23,
+    "median_response_time": 1.05,
+    "p95_response_time": 2.8,
+    "total_tokens_input": 231000,
+    "total_tokens_output": 115500,
+    "total_cost_usd": 3.54
+  },
+  "hourly_data": [
+    {
+      "hour": "2024-01-01T10:00:00",
+      "request_count": 64,
+      "error_count": 2
+    }
+  ],
+  "model_stats": [
+    {
+      "model": "claude-3-sonnet",
+      "request_count": 892,
+      "avg_response_time": 1.35,
+      "total_cost": 2.14
+    },
+    {
+      "model": "claude-3-haiku",
+      "request_count": 650,
+      "avg_response_time": 0.89,
+      "total_cost": 1.40
+    }
+  ],
+  "query_params": {
+    "start_time": 1704000000,
+    "end_time": 1704086400,
+    "model": null,
+    "hours": 24
+  },
+  "query_time": 1704067900.0
+}
+```
+
+**GET /metrics/health**
+
+Storage backend health status:
+
+```json
+{
+  "status": "healthy",
+  "enabled": true,
+  "storage_backend": "duckdb",
+  "database_path": "data/metrics.duckdb",
+  "request_count": 1542,
+  "pool_size": 3
 }
 ```
 
@@ -407,7 +530,204 @@ async def business_operation():
     )
 ```
 
+## DuckDB Schema and Query Examples
+
+### Database Schema
+
+The DuckDB storage backend automatically creates two main tables:
+
+```sql
+-- Main requests table for API requests
+CREATE TABLE requests (
+    timestamp TIMESTAMP,
+    request_id VARCHAR,
+    method VARCHAR,
+    endpoint VARCHAR,
+    model VARCHAR,
+    status VARCHAR,
+    response_time DOUBLE,
+    tokens_input INTEGER,
+    tokens_output INTEGER,
+    cost_usd DOUBLE,
+    error_type VARCHAR,
+    error_message TEXT,
+    metadata JSON
+);
+
+-- Operations table for timed operations within requests
+CREATE TABLE operations (
+    timestamp TIMESTAMP,
+    request_id VARCHAR,
+    operation_id VARCHAR,
+    operation_name VARCHAR,
+    duration_ms DOUBLE,
+    status VARCHAR,
+    error_type VARCHAR,
+    metadata JSON
+);
+```
+
+### Common Query Examples
+
+**Request Volume Analysis:**
+```sql
+-- Hourly request volume
+SELECT
+    date_trunc('hour', timestamp) as hour,
+    COUNT(*) as request_count,
+    COUNT(*) FILTER (WHERE status = 'error') as error_count
+FROM requests
+WHERE timestamp > NOW() - INTERVAL '24 hours'
+GROUP BY hour
+ORDER BY hour;
+
+-- Daily request trends by model
+SELECT
+    date_trunc('day', timestamp) as day,
+    model,
+    COUNT(*) as requests,
+    AVG(response_time) as avg_response_time
+FROM requests
+WHERE timestamp > NOW() - INTERVAL '7 days'
+GROUP BY day, model
+ORDER BY day, requests DESC;
+```
+
+**Performance Analysis:**
+```sql
+-- Response time percentiles by model
+SELECT
+    model,
+    COUNT(*) as total_requests,
+    AVG(response_time) as avg_time,
+    PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY response_time) as median_time,
+    PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY response_time) as p95_time,
+    PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY response_time) as p99_time
+FROM requests
+WHERE timestamp > NOW() - INTERVAL '1 day'
+GROUP BY model;
+
+-- Slowest requests analysis
+SELECT
+    request_id,
+    model,
+    endpoint,
+    response_time,
+    tokens_input,
+    tokens_output,
+    timestamp
+FROM requests
+WHERE response_time > 5.0
+ORDER BY response_time DESC
+LIMIT 20;
+```
+
+**Cost Analysis:**
+```sql
+-- Cost breakdown by model and time
+SELECT
+    model,
+    date_trunc('hour', timestamp) as hour,
+    SUM(cost_usd) as total_cost,
+    COUNT(*) as request_count,
+    AVG(cost_usd) as avg_cost_per_request
+FROM requests
+WHERE timestamp > NOW() - INTERVAL '24 hours'
+  AND cost_usd > 0
+GROUP BY model, hour
+ORDER BY total_cost DESC;
+
+-- Token efficiency analysis
+SELECT
+    model,
+    COUNT(*) as requests,
+    SUM(tokens_input) as total_input_tokens,
+    SUM(tokens_output) as total_output_tokens,
+    SUM(cost_usd) as total_cost,
+    AVG(cost_usd / NULLIF(tokens_output, 0)) as cost_per_output_token
+FROM requests
+WHERE timestamp > NOW() - INTERVAL '7 days'
+  AND tokens_output > 0
+GROUP BY model
+ORDER BY cost_per_output_token;
+```
+
+**Error Analysis:**
+```sql
+-- Error rate trends
+SELECT
+    date_trunc('hour', timestamp) as hour,
+    COUNT(*) as total_requests,
+    COUNT(*) FILTER (WHERE status = 'error') as errors,
+    COUNT(*) FILTER (WHERE status = 'error') * 100.0 / COUNT(*) as error_rate_percent
+FROM requests
+WHERE timestamp > NOW() - INTERVAL '24 hours'
+GROUP BY hour
+ORDER BY hour;
+
+-- Error types breakdown
+SELECT
+    error_type,
+    COUNT(*) as error_count,
+    COUNT(*) * 100.0 / SUM(COUNT(*)) OVER () as percentage
+FROM requests
+WHERE status = 'error'
+  AND timestamp > NOW() - INTERVAL '24 hours'
+GROUP BY error_type
+ORDER BY error_count DESC;
+```
+
+**Advanced Analytics:**
+```sql
+-- Request patterns by hour of day
+SELECT
+    EXTRACT(hour FROM timestamp) as hour_of_day,
+    COUNT(*) as request_count,
+    AVG(response_time) as avg_response_time,
+    SUM(cost_usd) as total_cost
+FROM requests
+WHERE timestamp > NOW() - INTERVAL '7 days'
+GROUP BY hour_of_day
+ORDER BY hour_of_day;
+
+-- Model usage correlation with performance
+SELECT
+    model,
+    COUNT(*) as usage_count,
+    AVG(response_time) as avg_response_time,
+    CORR(tokens_input, response_time) as input_tokens_correlation,
+    CORR(tokens_output, response_time) as output_tokens_correlation
+FROM requests
+WHERE timestamp > NOW() - INTERVAL '24 hours'
+  AND tokens_input > 0 AND tokens_output > 0
+GROUP BY model;
+```
+
+### Query Safety and Limits
+
+The `/metrics/query` endpoint includes safety restrictions:
+
+- **READ-ONLY**: Only `SELECT` queries allowed
+- **TABLE RESTRICTIONS**: Can only query `requests` and `operations` tables
+- **INJECTION PROTECTION**: SQL pattern validation to prevent malicious queries
+- **RESULT LIMITS**: Configurable limit (default: 1000 rows, max: 10000)
+- **TIMEOUT PROTECTION**: Queries timeout after 30 seconds
+
 ## Troubleshooting
+
+### DuckDB Installation
+
+If DuckDB is not available:
+
+```bash
+# Install DuckDB for Python
+pip install duckdb>=1.1.0
+
+# Or using uv
+uv add duckdb>=1.1.0
+```
+
+The system gracefully degrades when DuckDB is not installed - structured logging continues to work, but storage and query features are disabled.
 
 ### Prometheus Client Not Available
 

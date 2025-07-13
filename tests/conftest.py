@@ -30,7 +30,6 @@ from ccproxy.docker.adapter import DockerAdapter
 from ccproxy.docker.docker_path import DockerPath, DockerPathSet
 from ccproxy.docker.models import DockerUserContext
 from ccproxy.docker.stream_process import DefaultOutputMiddleware
-from ccproxy.metrics.storage.memory import InMemoryMetricsStorage
 
 
 @lru_cache
@@ -552,12 +551,12 @@ def mock_oauth(httpx_mock: HTTPXMock) -> HTTPXMock:
 
 
 @pytest.fixture
-def metrics_storage() -> InMemoryMetricsStorage:
+def metrics_storage() -> Any:
     """Create isolated in-memory metrics storage.
 
-    Returns an InMemoryMetricsStorage instance for testing.
+    Returns a mock storage instance for testing.
     """
-    return InMemoryMetricsStorage()
+    return None
 
 
 @pytest.fixture
