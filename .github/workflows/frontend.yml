@@ -1,0 +1,128 @@
+name: Frontend CI
+
+on:
+  push:
+    branches: [ main, dev ]
+    paths:
+      - 'dashboard/**'
+      - '.github/workflows/frontend.yml'
+  pull_request:
+    branches: [ main, dev ]
+    paths:
+      - 'dashboard/**'
+      - '.github/workflows/frontend.yml'
+  workflow_dispatch:
+
+jobs:
+  quality-checks:
+    runs-on: ubuntu-latest
+    name: Quality Checks (Biome + TypeScript)
+    defaults:
+      run:
+        working-directory: ./dashboard
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Cache Bun dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            dashboard/node_modules
+            ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ hashFiles('dashboard/bun.lock', 'dashboard/package.json') }}
+          restore-keys: |
+            bun-${{ runner.os }}-
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Run Biome linting
+        run: bun run lint
+
+      - name: Check Biome formatting
+        run: bun run format:check
+
+      - name: Run TypeScript checks
+        run: bun run check
+
+  build-and-test:
+    runs-on: ubuntu-latest
+    name: Build & Test
+    needs: quality-checks
+    defaults:
+      run:
+        working-directory: ./dashboard
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Cache Bun dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            dashboard/node_modules
+            ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ hashFiles('dashboard/bun.lock', 'dashboard/package.json') }}
+          restore-keys: |
+            bun-${{ runner.os }}-
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Build dashboard
+        run: bun run build
+
+      - name: Verify build output
+        run: |
+          if [ ! -f "build/index.html" ]; then
+            echo "❌ Build failed: index.html not found"
+            exit 1
+          fi
+
+          # Check build size (warn if > 500KB)
+          size=$(du -k build/index.html | cut -f1)
+          if [ $size -gt 500 ]; then
+            echo "⚠️  Warning: Dashboard bundle size is ${size}KB (> 500KB)"
+          else
+            echo "✅ Dashboard bundle size: ${size}KB"
+          fi
+
+          # Verify key dependencies are included
+          if ! grep -q "svelte" build/index.html; then
+            echo "❌ Svelte runtime not found in build"
+            exit 1
+          fi
+
+          echo "✅ Build verification passed"
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dashboard-build
+          path: dashboard/build/
+          retention-days: 7
+
+      - name: Test production build
+        run: bun run build:prod
+
+      - name: Verify ccproxy static copy
+        run: |
+          if [ -d "../ccproxy/static/dashboard" ] && [ -f "../ccproxy/static/dashboard/index.html" ]; then
+            echo "✅ Dashboard successfully copied to ccproxy static directory"
+          else
+            echo "❌ Dashboard not found in ccproxy static directory"
+            exit 1
+          fi
