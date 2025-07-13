@@ -31,7 +31,9 @@ async def create_openai_chat_completion(
 
         # Get headers and query params
         headers = dict(request.headers)
-        query_params = dict(request.query_params) if request.query_params else None
+        query_params: dict[str, str | list[str]] | None = (
+            dict(request.query_params) if request.query_params else None
+        )
 
         # Handle the request using proxy service directly
         response = await proxy_service.handle_request(
@@ -103,7 +105,9 @@ async def create_anthropic_message(
 
         # Get headers and query params
         headers = dict(request.headers)
-        query_params = dict(request.query_params) if request.query_params else None
+        query_params: dict[str, str | list[str]] | None = (
+            dict(request.query_params) if request.query_params else None
+        )
 
         # Handle the request using proxy service directly
         response = await proxy_service.handle_request(

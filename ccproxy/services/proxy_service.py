@@ -174,6 +174,7 @@ class ProxyService:
             endpoint=endpoint,
             model=model,
             streaming=streaming,
+            service_type="proxy_service",
         ) as ctx:
             # Record Prometheus metrics
             self.metrics.inc_active_requests()
