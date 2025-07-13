@@ -118,6 +118,152 @@ make test        # Tests with coverage
 - CI will run the full pipeline
 - Address any CI failures
 
+## CI/CD Workflows
+
+The project uses **split CI/CD workflows** for efficient, parallel testing of backend and frontend components.
+
+### Workflow Architecture
+
+We use **two independent GitHub Actions workflows** rather than a single monolithic one:
+
+| Workflow | Triggers | Purpose | Duration |
+|----------|----------|---------|----------|
+| **Backend CI** | Changes to `ccproxy/**`, `tests/**`, `pyproject.toml` | Python code quality & tests | ~3-5 min |
+| **Frontend CI** | Changes to `dashboard/**` | TypeScript/Svelte quality & build | ~2-3 min |
+
+### Backend Workflow (`.github/workflows/backend.yml`)
+
+**Jobs:**
+1. **Quality Checks** - ruff linting + mypy type checking
+2. **Tests** - Unit tests across Python 3.10, 3.11, 3.12
+3. **Build Verification** - Package build + CLI installation test
+
+**Commands tested:**
+```bash
+make dev-install  # Dependency installation
+make check        # Quality checks (lint + typecheck)
+make test-unit    # Fast unit tests
+make build        # Package build
+```
+
+### Frontend Workflow (`.github/workflows/frontend.yml`)
+
+**Jobs:**
+1. **Quality Checks** - Biome linting/formatting + TypeScript checks  
+2. **Build & Test** - Dashboard build + verification + artifact upload
+
+**Commands tested:**
+```bash
+bun install       # Dependency installation
+bun run lint      # Biome linting
+bun run format:check  # Biome formatting check
+bun run check     # TypeScript + Biome checks
+bun run build     # Dashboard build
+bun run build:prod   # Production build + copy to ccproxy/static/
+```
+
+### Dashboard Development
+
+The dashboard is a **SvelteKit SPA** with its own toolchain:
+
+**Dependencies:**
+```bash
+# Install dashboard dependencies
+make dashboard-install
+# Or manually:
+cd dashboard && bun install
+```
+
+**Quality Checks:**
+```bash
+# All dashboard checks
+make dashboard-check
+# Individual checks:
+cd dashboard && bun run lint          # Biome linting  
+cd dashboard && bun run format:check  # Format checking
+cd dashboard && bun run check         # TypeScript + Biome
+```
+
+**Building:**
+```bash
+# Build for production (includes copy to ccproxy/static/)
+make dashboard-build
+# Or manually:
+cd dashboard && bun run build:prod
+```
+
+**Cleaning:**
+```bash
+# Clean dashboard build artifacts
+make dashboard-clean
+```
+
+### Path-Based Triggers
+
+Workflows only run when relevant files change:
+
+**Backend triggers:**
+- `ccproxy/**` - Core Python application code
+- `tests/**` - Test files
+- `pyproject.toml` - Python dependencies
+- `uv.lock` - Dependency lock file
+- `Makefile` - Build configuration
+
+**Frontend triggers:**
+- `dashboard/**` - All dashboard files (SvelteKit app)
+
+**Benefits:**
+- **Faster feedback** - Only relevant checks run
+- **Parallel execution** - Both workflows can run simultaneously
+- **Resource efficiency** - Saves CI minutes
+- **Clear failure isolation** - Know exactly what broke
+
+### CI Status Checks
+
+Both workflows must pass for PR merges:
+
+- ✅ **Backend CI** - All Python quality checks and tests pass
+- ✅ **Frontend CI** - All TypeScript/Svelte checks and build succeeds
+
+### Local Testing
+
+Test workflows locally before pushing:
+
+**Backend:**
+```bash
+make check     # Same checks as CI quality job
+make test-unit # Same tests as CI (without matrix)
+make build     # Same build verification as CI
+```
+
+**Frontend:**
+```bash
+make dashboard-check  # Same checks as CI quality job
+make dashboard-build  # Same build as CI
+```
+
+**Full pipeline:**
+```bash
+make ci               # Backend: pre-commit + tests
+make dashboard-build  # Frontend: checks + build
+```
+
+### Troubleshooting CI Failures
+
+**Backend failures:**
+1. **Lint/Type errors**: Run `make check` locally and fix issues
+2. **Test failures**: Run `make test-unit` and debug specific tests  
+3. **Build failures**: Run `make build` and check for import errors
+
+**Frontend failures:**
+1. **TypeScript errors**: Run `cd dashboard && bun run check`
+2. **Lint/Format errors**: Run `cd dashboard && bun run lint` and `bun run format`
+3. **Build failures**: Run `cd dashboard && bun run build` and check for missing dependencies
+
+**Path trigger issues:**
+- Verify your changes match the path patterns in workflow files
+- Force workflow run with empty commit: `git commit --allow-empty -m "trigger CI"`
+
 ## Code Style Guidelines
 
 ### Python Style

@@ -1,4 +1,4 @@
-.PHONY: help install dev-install clean test test-unit test-real-api test-watch test-fast test-file test-match test-coverage lint typecheck format check pre-commit ci build docker-build docker-run docs-install docs-build docs-serve docs-clean
+.PHONY: help install dev-install clean test test-unit test-real-api test-watch test-fast test-file test-match test-coverage lint typecheck format check pre-commit ci build dashboard-install dashboard-check dashboard-format dashboard-build dashboard-clean docker-build docker-run docs-install docs-build docs-serve docs-clean
 
 $(eval VERSION_DOCKER := $(shell uv run python3 scripts/format_version.py docker))
 
@@ -33,6 +33,13 @@ help:
 	@echo "  docker-build - Build Docker image"
 	@echo "  docker-run   - Run Docker container"
 	@echo ""
+	@echo "Dashboard (frontend):"
+	@echo "  dashboard-install - Install dashboard dependencies"
+	@echo "  dashboard-check   - Run dashboard quality checks (TypeScript + Biome)"
+	@echo "  dashboard-format  - Format dashboard code"
+	@echo "  dashboard-build   - Build dashboard for production"
+	@echo "  dashboard-clean   - Clean dashboard build artifacts"
+	@echo ""
 	@echo "Documentation:"
 	@echo "  docs-install - Install documentation dependencies"
 	@echo "  docs-build   - Build documentation"
@@ -46,7 +53,12 @@ install:
 dev-install:
 	uv sync --all-extras --dev
 	uv run pre-commit install
-	bun install -g @anthropic-ai/claude-code
+	@if command -v bun >/dev/null 2>&1; then \
+		bun install -g @anthropic-ai/claude-code; \
+		$(MAKE) dashboard-install; \
+	else \
+		echo "Warning: Bun not available, skipping Claude Code and dashboard installation"; \
+	fi
 
 # Cleanup
 clean:
@@ -59,6 +71,7 @@ clean:
 	rm -f coverage.xml
 	rm -rf node_modules/
 	rm -f pnpm-lock.yaml
+	$(MAKE) dashboard-clean
 
 # Testing targets (all enforce type checking and linting)
 #
@@ -163,6 +176,34 @@ ci:
 # Build targets
 build:
 	uv build
+
+# Dashboard targets
+dashboard-install:
+	@echo "Installing dashboard dependencies..."
+	@if [ ! -d "dashboard" ]; then echo "Error: dashboard/ directory not found."; exit 1; fi
+	cd dashboard && bun install
+
+dashboard-check:
+	@echo "Running dashboard quality checks..."
+	@if [ ! -d "dashboard" ]; then echo "Error: dashboard/ directory not found."; exit 1; fi
+	cd dashboard && bun run check
+
+dashboard-format:
+	@echo "Formatting dashboard code..."
+	@if [ ! -d "dashboard" ]; then echo "Error: dashboard/ directory not found."; exit 1; fi
+	cd dashboard && bun run format
+
+dashboard-build: dashboard-check
+	@echo "Building dashboard for production..."
+	@if [ ! -d "dashboard" ]; then echo "Error: dashboard/ directory not found."; exit 1; fi
+	cd dashboard && bun run build:prod
+	@echo "✅ Dashboard built and copied to ccproxy/static/"
+
+dashboard-clean:
+	@echo "Cleaning dashboard build artifacts..."
+	@if [ -d "dashboard/build" ]; then rm -rf dashboard/build; fi
+	@if [ -d "dashboard/node_modules/.cache" ]; then rm -rf dashboard/node_modules/.cache; fi
+	@if [ -d "ccproxy/static/dashboard" ]; then rm -rf ccproxy/static/dashboard; fi
 
 # Docker targets
 docker-build:

@@ -6,6 +6,7 @@ from typing import Any
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 from ccproxy.api.dependencies import get_metrics_collector
 from ccproxy.api.middleware.cors import setup_cors_middleware
@@ -105,6 +106,33 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     # New /api/ routes for proxy endpoints (includes OpenAI-compatible /v1/chat/completions)
     app.include_router(proxy_router, prefix="/api", tags=["proxy-api"])
+
+    # Mount static files for dashboard SPA
+    from pathlib import Path
+
+    # Get the path to the dashboard static files
+    current_file = Path(__file__)
+    project_root = (
+        current_file.parent.parent.parent
+    )  # ccproxy/api/app.py -> project root
+    dashboard_static_path = project_root / "ccproxy" / "static" / "dashboard"
+
+    # Mount dashboard static files if they exist
+    if dashboard_static_path.exists():
+        # Mount the _app directory for SvelteKit assets at the correct base path
+        app_path = dashboard_static_path / "_app"
+        if app_path.exists():
+            app.mount(
+                "/metrics/dashboard/_app",
+                StaticFiles(directory=str(app_path)),
+                name="dashboard-assets",
+            )
+
+        # Mount favicon.svg at root level
+        favicon_path = dashboard_static_path / "favicon.svg"
+        if favicon_path.exists():
+            # For single files, we'll handle this in the dashboard route or add a specific route
+            pass
 
     return app
 
