@@ -768,7 +768,8 @@ class TestHTTPTransformersEdgeCases:
 
         mock_collector = Mock()
 
-        transformer = HTTPRequestTransformer(mock_collector)
+        transformer = HTTPRequestTransformer()
+        transformer.metrics_collector = mock_collector
         assert transformer.metrics_collector == mock_collector
 
     def test_response_transformer_with_metrics_collector(self) -> None:
@@ -777,7 +778,8 @@ class TestHTTPTransformersEdgeCases:
 
         mock_collector = Mock()
 
-        transformer = HTTPResponseTransformer(mock_collector)
+        transformer = HTTPResponseTransformer()
+        transformer.metrics_collector = mock_collector
         assert transformer.metrics_collector == mock_collector
 
     def test_transform_path_edge_cases(

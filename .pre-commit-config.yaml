@@ -43,6 +43,8 @@ repos:
           - pytest-httpx>=0.21.0
           # Metrics dependencies
           - prometheus_client>=0.20.0
+          - duckdb>=1.1.3
+          - structlog>=24.1.0
           # Claude SDK (from git source)
           - claude-code-sdk @ git+https://github.com/anthropics/claude-code-sdk-python.git
           - keyring>=24.0.0
