@@ -8,8 +8,7 @@ from ccproxy.auth.dependencies import AuthManagerDep, get_auth_manager
 from ccproxy.config.settings import Settings, get_settings
 from ccproxy.core.http import BaseProxyClient
 from ccproxy.core.logging import get_logger
-from ccproxy.metrics.collector import MetricsCollector
-from ccproxy.metrics.storage.memory import InMemoryMetricsStorage
+from ccproxy.observability import PrometheusMetrics, get_metrics
 from ccproxy.services.claude_sdk_service import ClaudeSDKService
 from ccproxy.services.credentials.manager import CredentialsManager
 from ccproxy.services.metrics_service import MetricsService
@@ -22,34 +21,13 @@ logger = get_logger(__name__)
 SettingsDep = Annotated[Settings, Depends(get_settings)]
 
 
-# Global metrics collector instance
-_metrics_collector_instance: MetricsCollector | None = None
-
-
-def get_metrics_collector() -> MetricsCollector:
-    """Get metrics collector instance (singleton).
-
-    Returns:
-        Metrics collector instance
-    """
-    global _metrics_collector_instance
-    if _metrics_collector_instance is None:
-        logger.debug("Creating metrics collector instance")
-        # Use in-memory storage for now
-        storage = InMemoryMetricsStorage()
-        _metrics_collector_instance = MetricsCollector(storage=storage)
-    return _metrics_collector_instance
-
-
 def get_claude_service(
     auth_manager: AuthManagerDep,
-    metrics_collector: Annotated[MetricsCollector, Depends(get_metrics_collector)],
 ) -> ClaudeSDKService:
     """Get Claude SDK service instance.
 
     Args:
         auth_manager: Authentication manager dependency
-        metrics_collector: Metrics collector dependency
 
     Returns:
         Claude SDK service instance
@@ -57,7 +35,6 @@ def get_claude_service(
     logger.debug("Creating Claude SDK service instance")
     return ClaudeSDKService(
         auth_manager=auth_manager,
-        metrics_collector=metrics_collector,
     )
 
 
@@ -81,14 +58,12 @@ def get_proxy_service(
     credentials_manager: Annotated[
         CredentialsManager, Depends(get_credentials_manager)
     ],
-    metrics_collector: Annotated[MetricsCollector, Depends(get_metrics_collector)],
 ) -> ProxyService:
     """Get proxy service instance.
 
     Args:
         settings: Application settings dependency
         credentials_manager: Credentials manager dependency
-        metrics_collector: Metrics collector dependency
 
     Returns:
         Proxy service instance
@@ -100,12 +75,15 @@ def get_proxy_service(
     http_client = HTTPXClient()
     proxy_client = BaseProxyClient(http_client)
 
+    # Get global metrics instance
+    metrics = get_metrics()
+
     return ProxyService(
         proxy_client=proxy_client,
         credentials_manager=credentials_manager,
         proxy_mode="full",
         target_base_url=settings.reverse_proxy.target_url,
-        metrics_collector=metrics_collector,
+        metrics=metrics,
     )
 
 
@@ -119,8 +97,20 @@ def get_metrics_service() -> MetricsService:
     return MetricsService()
 
 
+def get_observability_metrics() -> PrometheusMetrics:
+    """Get observability metrics instance.
+
+    Returns:
+        PrometheusMetrics instance
+    """
+    logger.debug("Getting observability metrics instance")
+    return get_metrics()
+
+
 # Type aliases for service dependencies
 ClaudeServiceDep = Annotated[ClaudeSDKService, Depends(get_claude_service)]
 ProxyServiceDep = Annotated[ProxyService, Depends(get_proxy_service)]
 MetricsServiceDep = Annotated[MetricsService, Depends(get_metrics_service)]
-MetricsCollectorDep = Annotated[MetricsCollector, Depends(get_metrics_collector)]
+ObservabilityMetricsDep = Annotated[
+    PrometheusMetrics, Depends(get_observability_metrics)
+]

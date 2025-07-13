@@ -18,7 +18,12 @@ from ccproxy.core.http_transformers import (
     HTTPRequestTransformer,
     HTTPResponseTransformer,
 )
-from ccproxy.metrics.collector import MetricsCollector
+from ccproxy.observability import (
+    PrometheusMetrics,
+    get_metrics,
+    request_context,
+    timed_operation,
+)
 from ccproxy.services.credentials.manager import CredentialsManager
 
 
@@ -43,7 +48,7 @@ class ProxyService:
         credentials_manager: CredentialsManager,
         proxy_mode: str = "full",
         target_base_url: str = "https://api.anthropic.com",
-        metrics_collector: MetricsCollector | None = None,
+        metrics: PrometheusMetrics | None = None,
     ) -> None:
         """Initialize the proxy service.
 
@@ -52,13 +57,13 @@ class ProxyService:
             credentials_manager: Authentication manager
             proxy_mode: Transformation mode - "minimal" or "full"
             target_base_url: Base URL for the target API
-            metrics_collector: Metrics collector (optional)
+            metrics: Prometheus metrics collector (optional)
         """
         self.proxy_client = proxy_client
         self.credentials_manager = credentials_manager
         self.proxy_mode = proxy_mode
         self.target_base_url = target_base_url.rstrip("/")
-        self.metrics_collector = metrics_collector
+        self.metrics = metrics or get_metrics()
 
         # Create concrete transformers
         self.request_transformer = HTTPRequestTransformer()
@@ -94,106 +99,119 @@ class ProxyService:
         Raises:
             HTTPException: If request fails
         """
-        # Generate request ID for metrics correlation
-        request_id = None
-        if self.metrics_collector:
-            from uuid import uuid4
+        # Extract request metadata
+        model, streaming = self._extract_request_metadata(body)
+        endpoint = path.split("/")[-1] if path else "unknown"
 
-            request_id = str(uuid4())
+        # Use request context for observability
+        async with request_context(
+            method=method,
+            path=path,
+            endpoint=endpoint,
+            model=model,
+            streaming=streaming,
+        ) as ctx:
+            # Record Prometheus metrics
+            self.metrics.inc_active_requests()
 
-        try:
-            # 1. Record request start metrics
-            if self.metrics_collector and request_id:
-                await self._record_request_start_metrics(
-                    request_id, method, path, headers, body
-                )
+            try:
+                # 1. Authentication - get access token
+                async with timed_operation("oauth_token", ctx.request_id):
+                    logger.debug("Retrieving OAuth access token...")
+                    access_token = await self._get_access_token()
 
-            # 2. Authentication - get access token
-            logger.debug("Retrieving OAuth access token...")
-            access_token = await self._get_access_token()
+                # 2. Request transformation
+                async with timed_operation("request_transform", ctx.request_id):
+                    logger.debug("Transforming request...")
+                    transformed_request = await self._transform_request(
+                        method, path, headers, body, query_params, access_token
+                    )
 
-            # 3. Request transformation
-            logger.debug("Transforming request...")
-            transformed_request = await self._transform_request(
-                method, path, headers, body, query_params, access_token
-            )
+                # 3. Forward request using proxy client
+                logger.debug(f"Forwarding request to: {transformed_request['url']}")
 
-            # 4. Forward request using pure proxy client
-            logger.debug(f"Forwarding request to: {transformed_request['url']}")
-
-            # Check if this will be a streaming response
-            logger.debug(f"Checking if should stream response for path: {path}")
-            logger.debug(f"Original headers: {headers}")
-            logger.debug(f"Transformed headers: {transformed_request['headers']}")
-
-            should_stream = False
-            if body:
-                try:
-                    import json
-
-                    body_data = json.loads(body.decode("utf-8"))
-                    stream_requested = body_data.get("stream", False)
-                    logger.debug(f"Request body stream flag: {stream_requested}")
-                    should_stream = stream_requested
-                except (json.JSONDecodeError, UnicodeDecodeError):
-                    logger.debug("Could not parse request body as JSON")
-
-            # Also check headers as fallback
-            if not should_stream:
-                should_stream = self._should_stream_response(
+                # Check if this will be a streaming response
+                should_stream = streaming or self._should_stream_response(
                     transformed_request["headers"]
                 )
 
-            if should_stream:
-                logger.debug("Streaming response detected, using streaming handler")
-                return await self._handle_streaming_request(
-                    transformed_request, path, timeout, request_id
+                if should_stream:
+                    logger.debug("Streaming response detected, using streaming handler")
+                    return await self._handle_streaming_request(
+                        transformed_request, path, timeout, ctx
+                    )
+                else:
+                    logger.debug("Non-streaming response, using regular handler")
+
+                # Handle regular request
+                async with timed_operation("api_call", ctx.request_id) as api_op:
+                    import time
+
+                    start_time = time.perf_counter()
+
+                    (
+                        status_code,
+                        response_headers,
+                        response_body,
+                    ) = await self.proxy_client.forward(
+                        method=transformed_request["method"],
+                        url=transformed_request["url"],
+                        headers=transformed_request["headers"],
+                        body=transformed_request["body"],
+                        timeout=timeout,
+                    )
+
+                    end_time = time.perf_counter()
+                    api_duration = end_time - start_time
+                    api_op["duration_seconds"] = api_duration
+
+                # 4. Response transformation
+                async with timed_operation("response_transform", ctx.request_id):
+                    logger.debug("Transforming response...")
+                    transformed_response = await self._transform_response(
+                        status_code, response_headers, response_body, path
+                    )
+
+                # 5. Extract response metrics
+                tokens_input, tokens_output, cost_usd = self._extract_response_metrics(
+                    transformed_response["body"], model
                 )
-            else:
-                logger.debug("Non-streaming response, using regular handler")
 
-            # Handle regular request
-            import time
+                # 6. Update context with response data
+                ctx.add_metadata(
+                    status_code=status_code,
+                    tokens_input=tokens_input,
+                    tokens_output=tokens_output,
+                    cost_usd=cost_usd,
+                )
 
-            start_time = time.perf_counter()
-            (
-                status_code,
-                response_headers,
-                response_body,
-            ) = await self.proxy_client.forward(
-                method=transformed_request["method"],
-                url=transformed_request["url"],
-                headers=transformed_request["headers"],
-                body=transformed_request["body"],
-                timeout=timeout,
-            )
-            end_time = time.perf_counter()
-            proxy_api_call_ms = (end_time - start_time) * 1000
-            logger.info(f"Proxy API call completed in {proxy_api_call_ms:.2f}ms")
+                # 7. Record Prometheus metrics
+                self.metrics.record_request(method, endpoint, model, status_code)
+                self.metrics.record_response_time(ctx.duration_seconds, model, endpoint)
 
-            # 5. Response transformation
-            logger.debug("Transforming response...")
-            transformed_response = await self._transform_response(
-                status_code, response_headers, response_body, path
-            )
+                if tokens_input:
+                    self.metrics.record_tokens(tokens_input, "input", model)
+                if tokens_output:
+                    self.metrics.record_tokens(tokens_output, "output", model)
+                if cost_usd:
+                    self.metrics.record_cost(cost_usd, model)
 
-            # 6. Metrics collection
-            await self._collect_metrics(
-                transformed_request, transformed_response, proxy_api_call_ms, request_id
-            )
+                return (
+                    transformed_response["status_code"],
+                    transformed_response["headers"],
+                    transformed_response["body"],
+                )
 
-            return (
-                transformed_response["status_code"],
-                transformed_response["headers"],
-                transformed_response["body"],
-            )
+            except Exception as e:
+                # Record error metrics
+                error_type = type(e).__name__
+                self.metrics.record_error(error_type, endpoint, model)
 
-        except Exception as e:
-            logger.exception(f"Error in proxy request: {method} {path}")
-            if self.metrics_collector and request_id:
-                await self._record_error_metrics(request_id, method, path, str(e))
-            await self._handle_error(e, method, path)
-            raise
+                logger.exception(f"Error in proxy request: {method} {path}")
+                await self._handle_error(e, method, path)
+                raise
+            finally:
+                self.metrics.dec_active_requests()
 
     async def _get_access_token(self) -> str:
         """Get OAuth access token from credentials manager.
@@ -374,12 +392,69 @@ class ProxyService:
         )
         return should_stream
 
+    def _extract_request_metadata(self, body: bytes | None) -> tuple[str | None, bool]:
+        """Extract model and streaming flag from request body.
+
+        Args:
+            body: Request body
+
+        Returns:
+            Tuple of (model, streaming)
+        """
+        if not body:
+            return None, False
+
+        try:
+            import json
+
+            body_data = json.loads(body.decode("utf-8"))
+            model = body_data.get("model")
+            streaming = body_data.get("stream", False)
+            return model, streaming
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            return None, False
+
+    def _extract_response_metrics(
+        self, response_body: bytes, model: str | None
+    ) -> tuple[int | None, int | None, float | None]:
+        """Extract token usage and cost from response body.
+
+        Args:
+            response_body: Response body
+            model: Model name for cost calculation
+
+        Returns:
+            Tuple of (tokens_input, tokens_output, cost_usd)
+        """
+        if not response_body:
+            return None, None, None
+
+        try:
+            import json
+
+            if isinstance(response_body, bytes):
+                response_data = json.loads(response_body.decode("utf-8"))
+            else:
+                response_data = json.loads(str(response_body))
+
+            usage = response_data.get("usage", {})
+            tokens_input = usage.get("input_tokens")
+            tokens_output = usage.get("output_tokens")
+
+            # Cost calculation can be added here if needed
+            cost_usd = None
+
+            return tokens_input, tokens_output, cost_usd
+
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            return None, None, None
+
     async def _handle_streaming_request(
         self,
         request_data: dict[str, Any],
         original_path: str,
         timeout: float,
-        request_id: str | None = None,
+        ctx: Any,
     ) -> StreamingResponse:
         """Handle streaming request with transformation.
 
@@ -580,325 +655,6 @@ class ProxyService:
         else:
             logger.debug("Using default SSL verification")
             return True
-
-    async def _record_request_start_metrics(
-        self,
-        request_id: str,
-        method: str,
-        path: str,
-        headers: dict[str, str],
-        body: bytes | None = None,
-    ) -> None:
-        """Record request start metrics.
-
-        Args:
-            request_id: Request ID for correlation
-            method: HTTP method
-            path: Request path
-            headers: Request headers
-            body: Request body
-        """
-        if not self.metrics_collector:
-            return
-
-        try:
-            from urllib.parse import urlparse
-
-            # Parse path to extract information
-            parsed_path = urlparse(path)
-            endpoint = (
-                parsed_path.path.split("/")[-1] if parsed_path.path else "unknown"
-            )
-
-            # Determine API version
-            api_version = "v1" if "/v1/" in path else "unknown"
-
-            # Determine provider based on path
-            provider = "anthropic"
-            if "/openai/" in path:
-                provider = "openai"
-
-            # Calculate content length for request
-            content_length = len(body) if body else 0
-
-            # Extract model and other parameters from request body
-            model = None
-            max_tokens = None
-            temperature = None
-            streaming = False
-            user_id = None  # Could be extracted from headers or auth context
-
-            if body:
-                try:
-                    import json
-
-                    body_str = body.decode("utf-8")
-                    body_json = json.loads(body_str)
-
-                    model = body_json.get("model")
-                    max_tokens = body_json.get("max_tokens")
-                    temperature = body_json.get("temperature")
-                    streaming = body_json.get("stream", False)
-                except (json.JSONDecodeError, UnicodeDecodeError):
-                    logger.debug("Could not parse request body for request metrics")
-
-            await self.metrics_collector.collect_request_start(
-                request_id=request_id,
-                method=method,
-                path=path,
-                endpoint=endpoint,
-                api_version=api_version,
-                user_id=user_id,
-                content_length=content_length,
-                model=model,
-                provider=provider,
-                max_tokens=max_tokens,
-                temperature=temperature,
-                streaming=streaming,
-            )
-
-            logger.debug(
-                f"Recorded proxy request start metrics: method={method}, path={path}, "
-                f"model={model}, stream={streaming}, request_id={request_id}"
-            )
-
-        except Exception as e:
-            logger.error(
-                f"Failed to record proxy request start metrics: {e}", exc_info=True
-            )
-
-    async def _record_error_metrics(
-        self,
-        request_id: str,
-        method: str,
-        path: str,
-        error: str,
-    ) -> None:
-        """Record error metrics for proxy requests.
-
-        Args:
-            request_id: Request ID for correlation
-            method: HTTP method
-            path: Request path
-            error: Error message
-        """
-        if not self.metrics_collector:
-            return
-
-        try:
-            # Parse error information
-            error_type = "proxy_error"
-            error_code = None
-            status_code = 500
-
-            # Parse common error patterns
-            error_lower = error.lower()
-            if "timeout" in error_lower:
-                error_type = "timeout_error"
-                error_code = "408"
-                status_code = 408
-            elif "connection" in error_lower:
-                error_type = "connection_error"
-                error_code = "503"
-                status_code = 503
-            elif "authentication" in error_lower or "unauthorized" in error_lower:
-                error_type = "authentication_error"
-                error_code = "401"
-                status_code = 401
-
-            await self.metrics_collector.collect_error(
-                request_id=request_id,
-                error_type=error_type,
-                error_code=error_code,
-                error_message=error,
-                endpoint=path.split("/")[-1] if path else "unknown",
-                method=method,
-                status_code=status_code,
-            )
-
-            logger.debug(
-                f"Recorded proxy error metrics: method={method}, path={path}, "
-                f"error_type={error_type}, error_code={error_code}, request_id={request_id}"
-            )
-
-        except Exception as e:
-            logger.error(f"Failed to record proxy error metrics: {e}", exc_info=True)
-
-    async def _collect_metrics(
-        self,
-        request_data: dict[str, Any],
-        response_data: dict[str, Any],
-        proxy_api_call_ms: float = 0.0,
-        request_id: str | None = None,
-    ) -> None:
-        """Collect metrics for the request/response.
-
-        Args:
-            request_data: Request data
-            response_data: Response data
-            proxy_api_call_ms: Time spent in proxy API call in milliseconds
-        """
-        if not self.metrics_collector:
-            return
-
-        try:
-            import json
-
-            # Use provided request_id or generate a new one
-            if request_id is None:
-                from uuid import uuid4
-
-                request_id = str(uuid4())
-
-            # Extract request information
-            method = request_data.get("method", "GET")
-            url = request_data.get("url", "")
-            headers = request_data.get("headers", {})
-            body = request_data.get("body")
-
-            # Parse URL to get path and determine endpoint
-            from urllib.parse import urlparse
-
-            parsed_url = urlparse(url)
-            path = parsed_url.path
-            endpoint = path.split("/")[-1] if path else "unknown"
-
-            # Determine API version
-            api_version = "v1" if "/v1/" in path else "unknown"
-
-            # Extract user information (if available)
-            user_id = None  # Could be extracted from headers or auth context
-
-            # Determine provider based on path
-            provider = "anthropic"
-            if "/openai/" in path:
-                provider = "openai"
-
-            # Calculate content length for request
-            content_length = len(body) if body else 0
-
-            # Extract model and other parameters from request body
-            model = None
-            max_tokens = None
-            temperature = None
-            streaming = False
-
-            if body:
-                try:
-                    body_str = body.decode("utf-8")
-                    body_json = json.loads(body_str)
-
-                    model = body_json.get("model")
-                    max_tokens = body_json.get("max_tokens")
-                    temperature = body_json.get("temperature")
-                    streaming = body_json.get("stream", False)
-                except (json.JSONDecodeError, UnicodeDecodeError):
-                    logger.debug("Could not parse request body for metrics")
-
-            # Record request metrics
-            await self.metrics_collector.collect_request_start(
-                request_id=request_id,
-                method=method,
-                path=path,
-                endpoint=endpoint,
-                api_version=api_version,
-                user_id=user_id,
-                content_length=content_length,
-                model=model,
-                provider=provider,
-                max_tokens=max_tokens,
-                temperature=temperature,
-                streaming=streaming,
-            )
-
-            # Extract response information
-            status_code = response_data.get("status_code", 500)
-            response_headers = response_data.get("headers", {})
-            response_body = response_data.get("body")
-
-            # Calculate response content length
-            response_content_length = len(response_body) if response_body else 0
-
-            # Extract token usage and other metrics from response body
-            input_tokens = None
-            output_tokens = None
-            cache_read_tokens = None
-            cache_write_tokens = None
-            completion_reason = None
-
-            if response_body and status_code == 200:
-                try:
-                    if isinstance(response_body, bytes):
-                        response_body_str = response_body.decode("utf-8")
-                    else:
-                        response_body_str = str(response_body)
-                    response_json = json.loads(response_body_str)
-
-                    # Extract usage information
-                    usage = response_json.get("usage", {})
-                    input_tokens = usage.get("input_tokens")
-                    output_tokens = usage.get("output_tokens")
-                    cache_read_tokens = usage.get("cache_read_tokens")
-                    cache_write_tokens = usage.get("cache_write_tokens")
-
-                    # Extract completion reason
-                    completion_reason = response_json.get("stop_reason")
-
-                except (json.JSONDecodeError, UnicodeDecodeError):
-                    logger.debug("Could not parse response body for metrics")
-
-            # Record response metrics
-            await self.metrics_collector.collect_response(
-                request_id=request_id,
-                status_code=status_code,
-                content_length=response_content_length,
-                input_tokens=input_tokens,
-                output_tokens=output_tokens,
-                cache_read_tokens=cache_read_tokens,
-                cache_write_tokens=cache_write_tokens,
-                completion_reason=completion_reason,
-                streaming=streaming,
-            )
-
-            # Collect latency metrics with proxy API call timing
-            if proxy_api_call_ms > 0:
-                await self.metrics_collector.collect_latency(
-                    request_id=request_id,
-                    claude_api_call_ms=proxy_api_call_ms,  # For proxy, this represents the HTTP call time
-                    total_latency_ms=proxy_api_call_ms,  # For now, total equals API call time
-                )
-
-            # Collect cost metrics if we have model and token information
-            if model and (input_tokens is not None or output_tokens is not None):
-                cost_metric = await self.metrics_collector.collect_cost(
-                    request_id=request_id,
-                    model=model,
-                    input_tokens=input_tokens or 0,
-                    output_tokens=output_tokens or 0,
-                    cache_read_tokens=cache_read_tokens or 0,
-                    cache_write_tokens=cache_write_tokens or 0,
-                    # Note: Proxy requests don't have SDK cost information
-                    # since they go directly to Anthropic API, not through Claude SDK
-                )
-
-                # Log proxy cost calculation
-                logger.info(
-                    f"Proxy cost calculation for {model}: calculated=${cost_metric.total_cost:.6f}, "
-                    f"tokens_in={input_tokens}, tokens_out={output_tokens}, "
-                    f"cache_read={cache_read_tokens}, cache_write={cache_write_tokens}"
-                )
-
-            # Clean up request tracking
-            await self.metrics_collector.finish_request(request_id)
-
-            logger.debug(
-                f"Recorded proxy metrics: method={method}, path={path}, "
-                f"status={status_code}, tokens_in={input_tokens}, "
-                f"tokens_out={output_tokens}, proxy_api_call_ms={proxy_api_call_ms:.2f}"
-            )
-
-        except Exception as e:
-            logger.error(f"Failed to collect proxy metrics: {e}", exc_info=True)
 
     async def _handle_error(
         self,

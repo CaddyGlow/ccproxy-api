@@ -8,7 +8,6 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from ccproxy.api.dependencies import get_metrics_collector
 from ccproxy.api.middleware.cors import setup_cors_middleware
 from ccproxy.api.middleware.errors import setup_error_handlers
 from ccproxy.api.routes.claude import router as claude_router
@@ -17,7 +16,6 @@ from ccproxy.api.routes.metrics import router as metrics_router
 from ccproxy.api.routes.proxy import router as proxy_router
 from ccproxy.config.settings import Settings, get_settings
 from ccproxy.core.logging import get_logger, setup_rich_logging
-from ccproxy.metrics.middleware import MetricsMiddleware
 
 
 @asynccontextmanager
@@ -41,19 +39,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         for path in settings.claude.get_searched_paths():
             logger.info(f"  - {path}")
 
-    # Initialize and start metrics collector
-    metrics_collector = get_metrics_collector()
-    await metrics_collector.start()
-    logger.info("Metrics collector started")
-
     yield
 
     # Shutdown
     logger.info("Shutting down Claude Code Proxy API Server...")
-
-    # Stop metrics collector
-    await metrics_collector.stop()
-    logger.info("Metrics collector stopped")
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -81,16 +70,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # Setup middleware
     setup_cors_middleware(app, settings)
     setup_error_handlers(app)
-
-    # Add metrics middleware
-    metrics_collector = get_metrics_collector()
-    app.add_middleware(
-        MetricsMiddleware,
-        collector=metrics_collector,
-        capture_request_body=False,
-        capture_response_body=False,
-        excluded_paths=["/health", "/metrics", "/docs", "/openapi.json"],
-    )
 
     # Include health and metrics routers (keep as they are)
     app.include_router(health_router, tags=["health"])
