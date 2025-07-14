@@ -1,7 +1,6 @@
 """Main entry point for Claude Proxy API Server."""
 
 import json
-import logging
 import os
 import secrets
 from pathlib import Path
@@ -23,7 +22,7 @@ from ccproxy.config.settings import (
     config_manager,
 )
 from ccproxy.core.async_utils import get_package_dir, get_root_package_name
-from ccproxy.core.logging import get_logger
+from ccproxy.core.logging import get_structlog_logger
 from ccproxy.models.responses import (
     PermissionToolAllowResponse,
     PermissionToolDenyResponse,
@@ -50,7 +49,7 @@ app = typer.Typer(
 )
 
 # Logger will be configured by configuration manager
-logger = get_logger(__name__)
+logger = get_structlog_logger(__name__)
 
 
 # Add global --version option

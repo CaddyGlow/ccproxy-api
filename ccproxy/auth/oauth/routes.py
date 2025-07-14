@@ -13,13 +13,13 @@ from ccproxy.auth.models import (
     OAuthToken,
 )
 from ccproxy.auth.storage import JsonFileTokenStorage as JsonFileStorage
-from ccproxy.core.logging import get_logger
+from ccproxy.core.logging import get_structlog_logger
 
 # Import CredentialsManager locally to avoid circular import
 from ccproxy.services.credentials.config import OAuthConfig
 
 
-logger = get_logger(__name__)
+logger = get_structlog_logger(__name__)
 
 router = APIRouter(tags=["oauth"])
 
@@ -38,7 +38,7 @@ def register_oauth_flow(
         "success": False,
         "error": None,
     }
-    logger.debug(f"Registered OAuth flow for state: {state}")
+    logger.debug("Registered OAuth flow", state=state, operation="register_oauth_flow")
 
 
 def get_oauth_flow_result(state: str) -> dict[str, Any] | None:
@@ -62,7 +62,15 @@ async def oauth_callback(
     try:
         if error:
             error_msg = error_description or error or "OAuth authentication failed"
-            logger.error(f"OAuth callback error: {error_msg}")
+            logger.error(
+                "OAuth callback error",
+                error_type="oauth_error",
+                error_message=error_msg,
+                oauth_error=error,
+                oauth_error_description=error_description,
+                state=state,
+                operation="oauth_callback",
+            )
 
             # Update pending flow if state is provided
             if state and state in _pending_flows:
@@ -90,7 +98,13 @@ async def oauth_callback(
 
         if not code:
             error_msg = "No authorization code received"
-            logger.error(error_msg)
+            logger.error(
+                "OAuth callback missing authorization code",
+                error_type="missing_code",
+                error_message=error_msg,
+                state=state,
+                operation="oauth_callback",
+            )
 
             if state and state in _pending_flows:
                 _pending_flows[state].update(
@@ -117,7 +131,12 @@ async def oauth_callback(
 
         if not state:
             error_msg = "Missing state parameter"
-            logger.error(error_msg)
+            logger.error(
+                "OAuth callback missing state parameter",
+                error_type="missing_state",
+                error_message=error_msg,
+                operation="oauth_callback",
+            )
             return HTMLResponse(
                 content=f"""
                 <html>
@@ -135,7 +154,13 @@ async def oauth_callback(
         # Check if this is a valid pending flow
         if state not in _pending_flows:
             error_msg = "Invalid or expired state parameter"
-            logger.error(f"OAuth callback with unknown state: {state}")
+            logger.error(
+                "OAuth callback with invalid state",
+                error_type="invalid_state",
+                error_message="Invalid or expired state parameter",
+                state=state,
+                operation="oauth_callback",
+            )
             return HTMLResponse(
                 content=f"""
                 <html>
@@ -168,7 +193,9 @@ async def oauth_callback(
         )
 
         if success:
-            logger.info("OAuth login successful")
+            logger.info(
+                "OAuth login successful", state=state, operation="oauth_callback"
+            )
             return HTMLResponse(
                 content="""
                 <html>
@@ -189,7 +216,13 @@ async def oauth_callback(
             )
         else:
             error_msg = "Failed to exchange authorization code for tokens"
-            logger.error(error_msg)
+            logger.error(
+                "OAuth token exchange failed",
+                error_type="token_exchange_failed",
+                error_message=error_msg,
+                state=state,
+                operation="oauth_callback",
+            )
             return HTMLResponse(
                 content=f"""
                 <html>
@@ -205,7 +238,14 @@ async def oauth_callback(
             )
 
     except Exception as e:
-        logger.exception("Unexpected error in OAuth callback")
+        logger.error(
+            "Unexpected error in OAuth callback",
+            error_type="unexpected_error",
+            error_message=str(e),
+            state=state,
+            operation="oauth_callback",
+            exc_info=True,
+        )
 
         if state and state in _pending_flows:
             _pending_flows[state].update(
@@ -301,10 +341,19 @@ async def _exchange_code_for_tokens(
                     manager = CredentialsManager()
 
                 if await manager.save(credentials):
-                    logger.info("Successfully saved OAuth credentials")
+                    logger.info(
+                        "Successfully saved OAuth credentials",
+                        subscription_type=oauth_data["subscriptionType"],
+                        scopes=oauth_data["scopes"],
+                        operation="exchange_code_for_tokens",
+                    )
                     return True
                 else:
-                    logger.error("Failed to save OAuth credentials")
+                    logger.error(
+                        "Failed to save OAuth credentials",
+                        error_type="save_credentials_failed",
+                        operation="exchange_code_for_tokens",
+                    )
                     return False
 
             else:
@@ -327,11 +376,21 @@ async def _exchange_code_for_tokens(
                         error_detail = response_text
 
                 logger.error(
-                    f"Token exchange failed: {response.status_code} - {error_detail} "
-                    f"(use CCPROXY_VERBOSE_API=true for full response)"
+                    "Token exchange failed",
+                    error_type="token_exchange_failed",
+                    status_code=response.status_code,
+                    error_detail=error_detail,
+                    verbose_api_enabled=verbose_api,
+                    operation="exchange_code_for_tokens",
                 )
                 return False
 
     except Exception as e:
-        logger.exception("Error during token exchange")
+        logger.error(
+            "Error during token exchange",
+            error_type="token_exchange_exception",
+            error_message=str(e),
+            operation="exchange_code_for_tokens",
+            exc_info=True,
+        )
         return False

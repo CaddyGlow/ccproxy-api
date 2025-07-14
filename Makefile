@@ -83,7 +83,7 @@ clean:
 #   - Tests without 'real_api' marker are considered unit tests by default
 
 fix: format lint-fix
-	ruff check . --unsafe-fixes
+	ruff check . --fix --unsafe-fixes
 
 # Run all tests with coverage (after ensuring code quality)
 test: check

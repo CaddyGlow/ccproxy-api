@@ -26,6 +26,8 @@ from openai.types.chat import (
     ChatCompletionUserMessageParam,
 )
 
+from ccproxy.core.logging import get_structlog_logger
+
 
 def setup_logging(debug: bool = False) -> None:
     """Setup logging configuration.
@@ -47,35 +49,40 @@ def setup_logging(debug: bool = False) -> None:
         logging.getLogger("openai").setLevel(logging.WARNING)
 
 
-logger = logging.getLogger(__name__)
+logger = get_structlog_logger(__name__)
 
 
 class LoggingHTTPClient(httpx.Client):
     """Custom HTTP client that logs requests and responses"""
 
     def request(self, method: str, url: URL | str, **kwargs: Any) -> httpx.Response:
-        logger.info("=== HTTP REQUEST ===")
-        logger.info(f"Method: {method}")
-        logger.info(f"URL: {url}")
-        logger.info(f"Headers: {kwargs.get('headers', {})}")
+        logger.info("http_request_start")
+        logger.info(
+            "http_request_details",
+            method=method,
+            url=str(url),
+            headers=kwargs.get("headers", {}),
+        )
         if "content" in kwargs:
             try:
                 content = kwargs["content"]
                 if isinstance(content, bytes):
                     content = content.decode("utf-8")
-                logger.info(f"Body: {content}")
+                logger.info("http_request_body", body=content)
             except Exception as e:
-                logger.info(f"Body: <could not decode: {e}>")
+                logger.info("http_request_body_decode_error", error=str(e))
 
         response = super().request(method, url, **kwargs)
 
-        logger.info("=== HTTP RESPONSE ===")
-        logger.info(f"Status: {response.status_code}")
-        logger.info(f"Headers: {dict(response.headers)}")
+        logger.info(
+            "http_response_start",
+            status_code=response.status_code,
+            headers=dict(response.headers),
+        )
         try:
-            logger.info(f"Body: {response.text}")
+            logger.info("http_response_body", body=response.text)
         except Exception as e:
-            logger.info(f"Body: <could not decode: {e}>")
+            logger.info("http_response_body_decode_error", error=str(e))
 
         return response
 
@@ -91,7 +98,7 @@ def get_weather(location: str, unit: str = "celsius") -> dict[str, Any]:
     Returns:
         Dictionary containing weather information
     """
-    logger.info(f"Getting weather for {location} in {unit}")
+    logger.info("weather_request", location=location, unit=unit)
 
     # Mock weather data for demonstration
     result = {
@@ -103,7 +110,7 @@ def get_weather(location: str, unit: str = "celsius") -> dict[str, Any]:
         "wind_speed": 10,
     }
 
-    logger.info(f"Weather result: {result}")
+    logger.info("weather_result", result=result)
     return result
 
 
@@ -122,7 +129,9 @@ def calculate_distance(
     Returns:
         Dictionary containing distance information
     """
-    logger.info(f"Calculating distance between ({lat1}, {lon1}) and ({lat2}, {lon2})")
+    logger.info(
+        "distance_calculation_start", lat1=lat1, lon1=lon1, lat2=lat2, lon2=lon2
+    )
 
     # Simplified distance calculation for demonstration
     import math
@@ -152,7 +161,7 @@ def calculate_distance(
         },
     }
 
-    logger.info(f"Distance calculation result: {result}")
+    logger.info("distance_calculation_result", result=result)
     return result
 
 
@@ -282,7 +291,7 @@ def handle_tool_call(tool_name: str, tool_input: dict[str, Any]) -> dict[str, An
     Returns:
         Tool execution result
     """
-    logger.info(f"Handling tool call: {tool_name} with input: {tool_input}")
+    logger.info("tool_call_start", tool_name=tool_name, tool_input=tool_input)
 
     if tool_name == "get_weather":
         result = get_weather(**tool_input)
@@ -290,9 +299,9 @@ def handle_tool_call(tool_name: str, tool_input: dict[str, Any]) -> dict[str, An
         result = calculate_distance(**tool_input)
     else:
         result = {"error": f"Unknown tool: {tool_name}"}
-        logger.error(f"Unknown tool requested: {tool_name}")
+        logger.error("unknown_tool_requested", tool_name=tool_name)
 
-    logger.info(f"Tool call result: {result}")
+    logger.info("tool_call_result", result=result)
     return result
 
 
@@ -339,10 +348,16 @@ def main() -> None:
     base_url_default = "http://127.0.0.1:8000"
 
     if not api_key:
-        logger.warning("OPENAI_API_KEY not set, using dummy key")
+        logger.warning(
+            "api_key_missing", message="OPENAI_API_KEY not set, using dummy key"
+        )
         os.environ["OPENAI_API_KEY"] = "dummy"
     if not base_url:
-        logger.warning(f"OPENAI_BASE_URL not set, using {base_url_default}")
+        logger.warning(
+            "base_url_missing",
+            message="OPENAI_BASE_URL not set",
+            default_url=base_url_default,
+        )
         os.environ["OPENAI_BASE_URL"] = base_url_default
 
     # Create tools
@@ -363,7 +378,10 @@ def main() -> None:
         client = openai.OpenAI(
             http_client=http_client,
         )
-        logger.info("OpenAI client initialized successfully with logging HTTP client")
+        logger.info(
+            "openai_client_initialized",
+            message="Client initialized with logging HTTP client",
+        )
 
         # Example conversation with tools
         messages: list[ChatCompletionMessageParam] = [
@@ -377,18 +395,32 @@ def main() -> None:
         print("Starting conversation with Claude via OpenAI API...")
         print("=" * 40)
 
-        logger.info(f"Sending request to Claude with {len(tools)} tools")
+        logger.info("claude_request_start", tools_count=len(tools))
+        tool_names = [
+            getattr(tool, "function", {}).get("name", "Unknown")
+            if hasattr(tool, "function")
+            else tool.get("function", {}).get("name", "Unknown")
+            for tool in tools
+        ]
+        logger.info("tools_available", tool_names=tool_names)
         logger.info(
-            f"Tools available: {[getattr(tool, 'function', {}).get('name', 'Unknown') if hasattr(tool, 'function') else tool.get('function', {}).get('name', 'Unknown') for tool in tools]}"
+            "initial_message", content=getattr(messages[0], "content", "No content")
         )
-        logger.info(f"Initial message: {getattr(messages[0], 'content', 'No content')}")
 
         # Log the complete request structure
-        logger.info("=== REQUEST STRUCTURE ===")
-        logger.info("Model: gpt-4o")
-        logger.info("Max tokens: 1000")
-        logger.info(f"Messages: {json.dumps(messages, indent=2)}")
-        logger.info(f"Tools: {json.dumps(tools, indent=2)}")
+        logger.info(
+            "request_structure",
+            model="gpt-4o",
+            max_tokens=1000,
+            messages=[
+                msg.model_dump() if hasattr(msg, "model_dump") else msg
+                for msg in messages
+            ],
+            tools=[
+                tool.model_dump() if hasattr(tool, "model_dump") else tool
+                for tool in tools
+            ],
+        )
 
         response = client.chat.completions.create(
             model="gpt-4o",  # Will be mapped to Claude by proxy
@@ -400,12 +432,17 @@ def main() -> None:
         print("\nClaude's response:")
 
         # Log the complete response structure
-        logger.info("=== COMPLETE RESPONSE STRUCTURE ===")
-        logger.info(f"Response: {response}")
-        logger.info(f"Response ID: {response.id}")
-        logger.info(f"Model: {response.model}")
-        logger.info(f"Usage: {response.usage}")
-        logger.info(f"Choices: {len(response.choices) if response.choices else 0}")
+        logger.info(
+            "openai_response_structure",
+            response_id=response.id,
+            model=response.model,
+            usage=response.usage.model_dump()
+            if hasattr(response.usage, "model_dump")
+            else dict(response.usage)
+            if response.usage
+            else None,
+            choices_count=len(response.choices) if response.choices else 0,
+        )
 
         if not response.choices:
             print("No choices in response!")
@@ -414,11 +451,15 @@ def main() -> None:
         choice = response.choices[0]
         print(f"Finish reason: {choice.finish_reason}")
 
-        logger.info(f"Choice finish reason: {choice.finish_reason}")
-        logger.info(f"Message role: {choice.message.role}")
-        logger.info(f"Message content: {choice.message.content}")
-        if choice.message.tool_calls:
-            logger.info(f"Tool calls: {len(choice.message.tool_calls)}")
+        logger.info(
+            "choice_details",
+            finish_reason=choice.finish_reason,
+            message_role=choice.message.role,
+            message_content=choice.message.content,
+            tool_calls_count=len(choice.message.tool_calls)
+            if choice.message.tool_calls
+            else 0,
+        )
 
         # Handle the response based on finish reason
         while True:
@@ -473,7 +514,7 @@ def main() -> None:
                 )
                 messages.extend(tool_messages)
 
-                logger.info("=== MESSAGE HISTORY AFTER TOOL USE ===")
+                logger.info("message_history_after_tool_use")
                 for i, msg in enumerate(messages):
                     # Handle both dict and object types
                     if isinstance(msg, dict):
@@ -483,17 +524,20 @@ def main() -> None:
                         role = getattr(msg, "role", "Unknown")
                         content = getattr(msg, "content", None)
 
-                    logger.info(f"Message {i}: role={role}")
-
+                    msg_data = {"message_index": i, "role": role}
                     if isinstance(content, str):
-                        logger.info(
-                            f"  Content: {content[:100] + '...' if len(content) > 100 else content}"
+                        msg_data["content_preview"] = (
+                            content[:100] + "..." if len(content) > 100 else content
                         )
                     else:
-                        logger.info(f"  Content: {type(content)}")
+                        msg_data["content_type"] = str(type(content))
+                    logger.info("message_in_history", **msg_data)
 
                 # Continue conversation with tool results
-                logger.info("Sending follow-up request with tool results")
+                logger.info(
+                    "sending_followup_request",
+                    message="Sending follow-up request with tool results",
+                )
                 response = client.chat.completions.create(
                     model="gpt-4o",
                     max_tokens=1000,
@@ -502,10 +546,16 @@ def main() -> None:
                 )
 
                 choice = response.choices[0]
-                logger.info("=== FOLLOW-UP RESPONSE ===")
-                logger.info(f"Response ID: {response.id}")
-                logger.info(f"Finish reason: {choice.finish_reason}")
-                logger.info(f"Usage: {response.usage}")
+                logger.info(
+                    "followup_response",
+                    response_id=response.id,
+                    finish_reason=choice.finish_reason,
+                    usage=response.usage.model_dump()
+                    if hasattr(response.usage, "model_dump")
+                    else dict(response.usage)
+                    if response.usage
+                    else None,
+                )
 
             elif choice.finish_reason in ["stop", "length"]:
                 # Conversation is complete

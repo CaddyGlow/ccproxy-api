@@ -7,11 +7,12 @@ for converting between OpenAI and Anthropic API formats.
 from __future__ import annotations
 
 import json
-import logging
 import time
 import uuid
 from collections.abc import AsyncIterator
 from typing import Any, Literal, cast
+
+import structlog
 
 from ccproxy.core.interfaces import APIAdapter
 from ccproxy.models.openai import OpenAIChatCompletionRequest
@@ -31,7 +32,7 @@ from .models import (
 from .streaming import OpenAIStreamProcessor
 
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 # Model mapping from OpenAI to Claude
@@ -200,18 +201,32 @@ class OpenAIAdapter(APIAdapter):
                 "budget_tokens": thinking_tokens,
             }
             logger.debug(
-                f"Converted reasoning_effort '{openai_req.reasoning_effort}' to thinking budget {thinking_tokens}"
+                "Converted reasoning effort to thinking budget",
+                reasoning_effort=openai_req.reasoning_effort,
+                thinking_tokens=thinking_tokens,
+                operation="adapt_request",
             )
 
         # Note: seed, logprobs, top_logprobs, and store don't have direct Anthropic equivalents
         if openai_req.seed is not None:
             logger.debug(
-                f"Seed parameter ({openai_req.seed}) requested but not supported by Anthropic"
+                "Seed parameter not supported by Anthropic",
+                seed=openai_req.seed,
+                operation="adapt_request",
             )
         if openai_req.logprobs or openai_req.top_logprobs:
-            logger.debug("Log probabilities requested but not supported by Anthropic")
+            logger.debug(
+                "Log probabilities not supported by Anthropic",
+                logprobs=openai_req.logprobs,
+                top_logprobs=openai_req.top_logprobs,
+                operation="adapt_request",
+            )
         if openai_req.store:
-            logger.debug("Store parameter requested but not supported by Anthropic")
+            logger.debug(
+                "Store parameter not supported by Anthropic",
+                store=openai_req.store,
+                operation="adapt_request",
+            )
 
         # Handle tools/functions
         if openai_req.tools:
@@ -245,7 +260,15 @@ class OpenAIAdapter(APIAdapter):
                 openai_req.function_call
             )
 
-        logger.debug(f"Converted OpenAI request to Anthropic: {anthropic_request}")
+        logger.debug(
+            "Converted OpenAI request to Anthropic",
+            original_model=openai_req.model,
+            anthropic_model=anthropic_request.get("model"),
+            has_tools=bool(anthropic_request.get("tools")),
+            has_system=bool(anthropic_request.get("system")),
+            message_count=len(cast(list[Any], anthropic_request["messages"])),
+            operation="adapt_request",
+        )
         return anthropic_request
 
     def adapt_response(self, response: dict[str, Any]) -> dict[str, Any]:
@@ -332,7 +355,17 @@ class OpenAIAdapter(APIAdapter):
                 system_fingerprint=generate_openai_system_fingerprint(),
             )
 
-            logger.debug(f"Converted Anthropic response to OpenAI: {openai_response}")
+            logger.debug(
+                "Converted Anthropic response to OpenAI",
+                response_id=request_id,
+                original_model=original_model,
+                finish_reason=valid_finish_reason,
+                content_length=len(content) if content else 0,
+                tool_calls_count=len(tool_calls),
+                input_tokens=usage_info.get("input_tokens", 0),
+                output_tokens=usage_info.get("output_tokens", 0),
+                operation="adapt_response",
+            )
             return openai_response.model_dump()
 
         except Exception as e:
@@ -369,7 +402,11 @@ class OpenAIAdapter(APIAdapter):
                             yield json.loads(data_str)
                         except json.JSONDecodeError:
                             logger.warning(
-                                f"Failed to parse streaming chunk: {data_str}"
+                                "Failed to parse streaming chunk",
+                                chunk_data=data_str[:100] + "..."
+                                if len(data_str) > 100
+                                else data_str,
+                                operation="adapt_stream",
                             )
                             continue
         except Exception as e:
@@ -524,7 +561,11 @@ class OpenAIAdapter(APIAdapter):
                                 }
                             )
                         except ValueError:
-                            logger.warning(f"Invalid base64 image URL: {url}")
+                            logger.warning(
+                                "Invalid base64 image URL",
+                                url=url[:100] + "..." if len(url) > 100 else url,
+                                operation="convert_content_to_anthropic",
+                            )
                     else:
                         # URL-based image (not directly supported by Anthropic)
                         anthropic_content.append(
@@ -562,7 +603,11 @@ class OpenAIAdapter(APIAdapter):
                                 }
                             )
                         except ValueError:
-                            logger.warning(f"Invalid base64 image URL: {url}")
+                            logger.warning(
+                                "Invalid base64 image URL",
+                                url=url[:100] + "..." if len(url) > 100 else url,
+                                operation="convert_content_to_anthropic",
+                            )
                     else:
                         # URL-based image (not directly supported by Anthropic)
                         anthropic_content.append(
@@ -674,7 +719,13 @@ class OpenAIAdapter(APIAdapter):
             else:
                 input_dict = arguments_str  # Already a dict
         except json.JSONDecodeError:
-            logger.warning(f"Failed to parse tool arguments as JSON: {arguments_str}")
+            logger.warning(
+                "Failed to parse tool arguments as JSON",
+                arguments=arguments_str[:200] + "..."
+                if len(str(arguments_str)) > 200
+                else str(arguments_str),
+                operation="convert_tool_call_to_anthropic",
+            )
             input_dict = {}
 
         return {
