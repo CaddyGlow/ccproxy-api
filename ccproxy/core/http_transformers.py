@@ -1,8 +1,9 @@
 """HTTP-level transformers for proxy service."""
 
 import json
-import logging
 from typing import TYPE_CHECKING, Any
+
+import structlog
 
 from ccproxy.core.transformers import RequestTransformer, ResponseTransformer
 from ccproxy.core.types import ProxyRequest, ProxyResponse, TransformContext
@@ -12,7 +13,7 @@ if TYPE_CHECKING:
     pass
 
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 # Claude Code system prompt constants
 claude_code_prompt = "You are Claude Code, Anthropic's official CLI for Claude."
@@ -293,7 +294,11 @@ class HTTPRequestTransformer(RequestTransformer):
             return json.dumps(anthropic_data).encode("utf-8")
 
         except Exception as e:
-            logger.warning(f"Failed to transform OpenAI request: {e}")
+            logger.warning(
+                "Failed to transform OpenAI request",
+                error=str(e),
+                operation="transform_openai_to_anthropic",
+            )
             # Return original body if transformation fails
             return body
 

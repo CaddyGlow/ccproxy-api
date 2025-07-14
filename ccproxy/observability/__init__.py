@@ -33,6 +33,18 @@ from .pipeline import (
     get_pipeline,
     pipeline_context,
 )
+from .pushgateway import (
+    PushgatewayClient,
+    get_pushgateway_client,
+    reset_pushgateway_client,
+)
+from .scheduler import (
+    ObservabilityScheduler,
+    get_scheduler,
+    scheduler_context,
+    start_scheduler,
+    stop_scheduler,
+)
 
 
 __all__ = [
@@ -54,4 +66,14 @@ __all__ = [
     "enqueue_log_event",
     "create_structlog_processor",
     "pipeline_context",
+    # Pushgateway
+    "PushgatewayClient",
+    "get_pushgateway_client",
+    "reset_pushgateway_client",
+    # Scheduler
+    "ObservabilityScheduler",
+    "get_scheduler",
+    "scheduler_context",
+    "start_scheduler",
+    "stop_scheduler",
 ]

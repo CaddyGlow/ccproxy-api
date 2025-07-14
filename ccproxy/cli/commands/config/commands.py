@@ -7,10 +7,137 @@ from typing import Any
 
 import typer
 from click import get_current_context
+from pydantic import BaseModel
+from pydantic.fields import FieldInfo
 
 from ccproxy._version import __version__
 from ccproxy.cli.helpers import get_rich_toolkit
-from ccproxy.config.settings import get_settings
+from ccproxy.config.settings import Settings, get_settings
+
+
+def _create_config_table(title: str, rows: list[tuple[str, str, str]]) -> Any:
+    """Create a configuration table with standard styling."""
+    from rich.table import Table
+
+    table = Table(title=title, show_header=True, header_style="bold magenta")
+    table.add_column("Setting", style="cyan", width=20)
+    table.add_column("Value", style="green")
+    table.add_column("Description", style="dim")
+
+    for setting, value, description in rows:
+        table.add_row(setting, value, description)
+
+    return table
+
+
+def _format_value(value: Any) -> str:
+    """Format a configuration value for display."""
+    if value is None:
+        return "[dim]Auto-detect[/dim]"
+    elif isinstance(value, bool | int | float):
+        return str(value)
+    elif isinstance(value, str):
+        if not value:
+            return "[dim]Not set[/dim]"
+        # Special handling for sensitive values
+        if any(
+            keyword in value.lower()
+            for keyword in ["token", "key", "secret", "password"]
+        ):
+            return "[green]Set[/green]"
+        return value
+    elif isinstance(value, list):
+        if not value:
+            return "[dim]None[/dim]"
+        if len(value) == 1:
+            return str(value[0])
+        return "\n".join(str(item) for item in value)
+    elif isinstance(value, dict):
+        if not value:
+            return "[dim]None[/dim]"
+        return "\n".join(f"{k}={v}" for k, v in value.items())
+    else:
+        return str(value)
+
+
+def _get_field_description(field_info: FieldInfo) -> str:
+    """Get a human-readable description from a Pydantic field."""
+    if field_info.description:
+        return field_info.description
+    # Generate a basic description from the field name
+    return "Configuration setting"
+
+
+def _generate_config_rows_from_model(
+    model: BaseModel, prefix: str = ""
+) -> list[tuple[str, str, str]]:
+    """Generate configuration rows from a Pydantic model dynamically."""
+    rows = []
+
+    for field_name, _field_info in model.model_fields.items():
+        field_value = getattr(model, field_name)
+        display_name = f"{prefix}{field_name}" if prefix else field_name
+
+        # If the field value is also a BaseModel, we might want to flatten it
+        if isinstance(field_value, BaseModel):
+            # For nested models, we can either flatten or show as a summary
+            # For now, let's show a summary and then add sub-rows
+            model_name = field_value.__class__.__name__
+            rows.append(
+                (
+                    display_name,
+                    f"[dim]{model_name} configuration[/dim]",
+                    _get_field_description(_field_info),
+                )
+            )
+
+            # Add sub-rows for the nested model
+            sub_rows = _generate_config_rows_from_model(field_value, f"{display_name}_")
+            rows.extend(sub_rows)
+        else:
+            # Regular field
+            formatted_value = _format_value(field_value)
+            description = _get_field_description(_field_info)
+            rows.append((display_name, formatted_value, description))
+
+    return rows
+
+
+def _group_config_rows(
+    rows: list[tuple[str, str, str]],
+) -> dict[str, list[tuple[str, str, str]]]:
+    """Group configuration rows by their top-level section."""
+    groups: dict[str, list[tuple[str, str, str]]] = {}
+
+    for setting, value, description in rows:
+        # Determine the group based on the setting name
+        if setting.startswith("server"):
+            group_name = "Server Configuration"
+        elif setting.startswith("security"):
+            group_name = "Security Configuration"
+        elif setting.startswith("cors"):
+            group_name = "CORS Configuration"
+        elif setting.startswith("claude"):
+            group_name = "Claude CLI Configuration"
+        elif setting.startswith("reverse_proxy"):
+            group_name = "Reverse Proxy Configuration"
+        elif setting.startswith("auth"):
+            group_name = "Authentication Configuration"
+        elif setting.startswith("docker"):
+            group_name = "Docker Configuration"
+        elif setting.startswith("observability"):
+            group_name = "Observability Configuration"
+        else:
+            group_name = "General Configuration"
+
+        if group_name not in groups:
+            groups[group_name] = []
+
+        # Clean up the setting name by removing the prefix
+        clean_setting = setting.split("_", 1)[1] if "_" in setting else setting
+        groups[group_name].append((clean_setting, value, description))
+
+    return groups
 
 
 def get_config_path_from_context() -> Path | None:
@@ -45,157 +172,22 @@ def config_list() -> None:
 
         from rich.console import Console
         from rich.panel import Panel
-        from rich.table import Table
         from rich.text import Text
 
         console = Console()
 
-        # Main server configuration table
-        server_table = Table(
-            title="Server Configuration", show_header=True, header_style="bold magenta"
-        )
-        server_table.add_column("Setting", style="cyan", width=20)
-        server_table.add_column("Value", style="green")
-        server_table.add_column("Description", style="dim")
+        # Generate configuration rows dynamically from the Settings model
+        all_rows = _generate_config_rows_from_model(settings)
 
-        server_table.add_row("host", settings.server.host, "Server host address")
-        server_table.add_row("port", str(settings.server.port), "Server port number")
-        server_table.add_row(
-            "log_level", settings.server.log_level, "Logging verbosity level"
-        )
-        server_table.add_row(
-            "workers", str(settings.server.workers), "Number of worker processes"
-        )
-        server_table.add_row(
-            "reload", str(settings.server.reload), "Auto-reload for development"
-        )
-        server_table.add_row(
-            "server_url", settings.server_url, "Complete server URL (computed)"
+        # Add computed fields that aren't part of the model but are useful to display
+        all_rows.append(
+            ("server_url", settings.server_url, "Complete server URL (computed)")
         )
 
-        # Claude CLI configuration table
-        claude_table = Table(
-            title="Claude CLI Configuration",
-            show_header=True,
-            header_style="bold magenta",
-        )
-        claude_table.add_column("Setting", style="cyan", width=20)
-        claude_table.add_column("Value", style="green")
-        claude_table.add_column("Description", style="dim")
+        # Group rows by configuration section
+        grouped_rows = _group_config_rows(all_rows)
 
-        claude_path_display = settings.claude.cli_path or "[dim]Auto-detect[/dim]"
-        claude_table.add_row(
-            "claude_cli_path", claude_path_display, "Path to Claude CLI executable"
-        )
-
-        # Security configuration table
-        security_table = Table(
-            title="Security Configuration",
-            show_header=True,
-            header_style="bold magenta",
-        )
-        security_table.add_column("Setting", style="cyan", width=20)
-        security_table.add_column("Value", style="green")
-        security_table.add_column("Description", style="dim")
-
-        auth_token_display = (
-            "[dim]Not set[/dim]"
-            if not settings.security.auth_token
-            else "[green]Set[/green]"
-        )
-        cors_origins_display = (
-            ", ".join(settings.cors.origins)
-            if settings.cors.origins
-            else "[dim]None[/dim]"
-        )
-        security_table.add_row(
-            "auth_token", auth_token_display, "Bearer token for authentication"
-        )
-        security_table.add_row(
-            "cors_origins", cors_origins_display, "Allowed CORS origins"
-        )
-
-        # Docker configuration table
-        docker_table = Table(
-            title="Docker Configuration", show_header=True, header_style="bold magenta"
-        )
-        docker_table.add_column("Setting", style="cyan", width=20)
-        docker_table.add_column("Value", style="green")
-        docker_table.add_column("Description", style="dim")
-
-        docker_table.add_row(
-            "docker_image",
-            settings.docker.docker_image,
-            "Docker image for Claude commands",
-        )
-        docker_table.add_row(
-            "docker_home_directory",
-            settings.docker.docker_home_directory or "[dim]Auto-detect[/dim]",
-            "Host directory for container home",
-        )
-        docker_table.add_row(
-            "docker_workspace_directory",
-            settings.docker.docker_workspace_directory or "[dim]Auto-detect[/dim]",
-            "Host directory for workspace",
-        )
-
-        # Docker volumes
-        if settings.docker.docker_volumes:
-            volumes_text = "\n".join(settings.docker.docker_volumes)
-            docker_table.add_row("docker_volumes", volumes_text, "Docker volume mounts")
-        else:
-            docker_table.add_row(
-                "docker_volumes", "[dim]None[/dim]", "Docker volume mounts"
-            )
-
-        # Docker environment variables
-        if settings.docker.docker_environment:
-            env_text = "\n".join(
-                [f"{k}={v}" for k, v in settings.docker.docker_environment.items()]
-            )
-            docker_table.add_row(
-                "docker_environment", env_text, "Docker environment variables"
-            )
-        else:
-            docker_table.add_row(
-                "docker_environment", "[dim]None[/dim]", "Docker environment variables"
-            )
-
-        # Additional docker args
-        if settings.docker.docker_additional_args:
-            args_text = " ".join(settings.docker.docker_additional_args)
-            docker_table.add_row(
-                "docker_additional_args", args_text, "Extra Docker run arguments"
-            )
-        else:
-            docker_table.add_row(
-                "docker_additional_args",
-                "[dim]None[/dim]",
-                "Extra Docker run arguments",
-            )
-
-        # User mapping settings
-        docker_table.add_row(
-            "user_mapping_enabled",
-            str(settings.docker.user_mapping_enabled),
-            "Enable/disable UID/GID mapping",
-        )
-
-        uid_display = (
-            str(settings.docker.user_uid)
-            if settings.docker.user_uid is not None
-            else "[dim]Auto-detect[/dim]"
-        )
-        docker_table.add_row("user_uid", uid_display, "User ID for container")
-
-        gid_display = (
-            str(settings.docker.user_gid)
-            if settings.docker.user_gid is not None
-            else "[dim]Auto-detect[/dim]"
-        )
-        docker_table.add_row("user_gid", gid_display, "Group ID for container")
-
-        # Display all tables
+        # Display header
         console.print(
             Panel.fit(
                 f"[bold]Claude Code Proxy API Configuration[/bold]\n[dim]Version: {__version__}[/dim]",
@@ -203,16 +195,15 @@ def config_list() -> None:
             )
         )
         console.print()
-        console.print(server_table)
-        console.print()
-        console.print(claude_table)
-        console.print()
-        console.print(security_table)
-        console.print()
-        console.print(docker_table)
+
+        # Display each configuration section as a table
+        for section_name, section_rows in grouped_rows.items():
+            if section_rows:  # Only show sections that have data
+                table = _create_config_table(section_name, section_rows)
+                console.print(table)
+                console.print()
 
         # Show configuration file sources
-        console.print()
         info_text = Text()
         info_text.append("Configuration loaded from: ", style="bold")
         info_text.append(
@@ -281,28 +272,8 @@ def config_init(
         # Create output directory if it doesn't exist
         output_dir.mkdir(parents=True, exist_ok=True)
 
-        # Generate example configuration
-        example_config = {
-            "host": "127.0.0.1",
-            "port": 8000,
-            "log_level": "INFO",
-            # "workers": 1,
-            # "reload": False,
-            # "cors_origins": ["*"],
-            # "auth_token": None,
-            # "claude_cli_path": None,
-            # "docker": {
-            #     "docker_image": "claude-code-proxy",
-            #     "docker_volumes": [],
-            #     "docker_environment": {},
-            #     "docker_additional_args": [],
-            #     "docker_home_directory": None,
-            #     "docker_workspace_directory": None,
-            #     "user_mapping_enabled": True,
-            #     "user_uid": None,
-            #     "user_gid": None,
-            # },
-        }
+        # Generate configuration dynamically from Settings model
+        example_config = _generate_default_config_from_model(Settings)
 
         # Determine output file name
         if format == "toml":
@@ -314,59 +285,8 @@ def config_init(
                 )
                 raise typer.Exit(1)
 
-            # Write TOML with comments
-            with output_file.open("w", encoding="utf-8") as f:
-                f.write("# Claude Code Proxy API Configuration\n")
-                f.write("# This file configures the ccproxy server settings\n\n")
-
-                f.write("# Server configuration\n")
-                f.write('host = "127.0.0.1"  # Server host address\n')
-                f.write("port = 8000  # Server port number\n")
-                f.write(
-                    'log_level = "INFO"  # Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)\n'
-                )
-                f.write("reload = false  # Enable auto-reload for development\n\n")
-
-                f.write("# Security configuration\n")
-                f.write('cors_origins = ["*"]  # CORS allowed origins\n')
-                f.write(
-                    '# auth_token = "your-secret-token"  # Bearer token for API authentication (optional)\n'
-                )
-
-                f.write("# Claude CLI configuration\n")
-                f.write(
-                    '# claude_cli_path = "/path/to/claude"  # Path to Claude CLI executable (auto-detect if not set)\n\n'
-                )
-
-                f.write("# Docker configuration\n")
-                f.write("[docker]\n")
-                f.write(
-                    'docker_image = "claude-code-proxy"  # Docker image for Claude commands\n'
-                )
-                f.write(
-                    "docker_volumes = []  # Volume mounts in 'host:container[:options]' format\n"
-                )
-                f.write(
-                    "docker_environment = {}  # Environment variables for Docker container\n"
-                )
-                f.write(
-                    "docker_additional_args = []  # Additional Docker run arguments\n"
-                )
-                f.write(
-                    '# docker_home_directory = "/path/to/home"  # Host directory for container home\n'
-                )
-                f.write(
-                    '# docker_workspace_directory = "/path/to/workspace"  # Host directory for workspace\n'
-                )
-                f.write("user_mapping_enabled = true  # Enable UID/GID mapping\n")
-                f.write(
-                    "# user_uid = 1000  # User ID for container (auto-detect if not set)\n"
-                )
-                f.write(
-                    "# user_gid = 1000  # Group ID for container (auto-detect if not set)\n\n"
-                )
-
-                # Pool settings removed - connection pooling functionality has been removed
+            # Write TOML with comments using dynamic generation
+            _write_toml_config_with_comments(output_file, example_config, Settings)
 
         elif format == "json":
             output_file = output_dir / "config.json"
@@ -378,9 +298,7 @@ def config_init(
                 raise typer.Exit(1)
 
             # Write JSON with pretty formatting
-            with output_file.open("w", encoding="utf-8") as f:
-                json.dump(example_config, f, indent=2)
-                f.write("\n")
+            _write_json_config_with_comments(output_file, example_config)
 
         elif format == "yaml":
             try:
@@ -401,10 +319,7 @@ def config_init(
                 raise typer.Exit(1)
 
             # Write YAML with comments
-            with output_file.open("w", encoding="utf-8") as f:
-                f.write("# Claude Code Proxy API Configuration\n")
-                f.write("# This file configures the ccproxy server settings\n\n")
-                yaml.dump(example_config, f, default_flow_style=False, sort_keys=False)
+            _write_yaml_config_with_comments(output_file, example_config)
 
         toolkit.print(
             f"Created example configuration file: {output_file}", tag="success"
@@ -636,16 +551,206 @@ def _write_yaml_config(config_file: Path, config_data: dict[str, Any]) -> None:
         ) from e
 
 
+def _generate_default_config_from_model(
+    settings_class: type[Settings],
+) -> dict[str, Any]:
+    """Generate a default configuration dictionary from the Settings model."""
+    # Create a default instance to get all default values
+    default_settings = settings_class()
+
+    config_data = {}
+
+    # Iterate through all fields and extract their default values
+    for field_name, _field_info in settings_class.model_fields.items():
+        field_value = getattr(default_settings, field_name)
+
+        if isinstance(field_value, BaseModel):
+            # For nested models, recursively generate their config
+            config_data[field_name] = _generate_nested_config_from_model(field_value)
+        else:
+            # Convert Path objects to strings for JSON serialization
+            if isinstance(field_value, Path):
+                config_data[field_name] = str(field_value)  # type: ignore[assignment]
+            else:
+                config_data[field_name] = field_value
+
+    return config_data
+
+
+def _generate_nested_config_from_model(model: BaseModel) -> dict[str, Any]:
+    """Generate configuration for nested models."""
+    config_data = {}
+
+    for field_name, _field_info in model.model_fields.items():
+        field_value = getattr(model, field_name)
+
+        if isinstance(field_value, BaseModel):
+            config_data[field_name] = _generate_nested_config_from_model(field_value)
+        else:
+            # Convert Path objects to strings for JSON serialization
+            if isinstance(field_value, Path):
+                config_data[field_name] = str(field_value)  # type: ignore[assignment]
+            else:
+                config_data[field_name] = field_value
+
+    return config_data
+
+
+def _write_toml_config_with_comments(
+    config_file: Path, config_data: dict[str, Any], settings_class: type[Settings]
+) -> None:
+    """Write configuration data to a TOML file with comments and proper formatting."""
+    with config_file.open("w", encoding="utf-8") as f:
+        f.write("# Claude Code Proxy API Configuration\n")
+        f.write("# This file configures the ccproxy server settings\n")
+        f.write("# Most settings are commented out with their default values\n")
+        f.write("# Uncomment and modify as needed\n\n")
+
+        # Write each top-level section
+        for field_name, _field_info in settings_class.model_fields.items():
+            field_value = config_data.get(field_name)
+            description = _get_field_description(_field_info)
+
+            f.write(f"# {description}\n")
+
+            if isinstance(field_value, dict):
+                # This is a nested model - write as a TOML section
+                f.write(f"# [{field_name}]\n")
+                _write_toml_section(f, field_value, prefix="# ", level=0)
+            else:
+                # Simple field - write as commented line
+                formatted_value = _format_config_value_for_toml(field_value)
+                f.write(f"# {field_name} = {formatted_value}\n")
+
+            f.write("\n")
+
+
+def _write_toml_section(
+    f: Any, data: dict[str, Any], prefix: str = "", level: int = 0
+) -> None:
+    """Write a TOML section with proper indentation and commenting."""
+    for key, value in data.items():
+        if isinstance(value, dict):
+            # Nested section
+            f.write(f"{prefix}[{key}]\n")
+            _write_toml_section(f, value, prefix, level + 1)
+        else:
+            # Simple value
+            formatted_value = _format_config_value_for_toml(value)
+            f.write(f"{prefix}{key} = {formatted_value}\n")
+
+
+def _format_config_value_for_toml(value: Any) -> str:
+    """Format a configuration value for TOML output."""
+    if value is None:
+        return "null"
+    elif isinstance(value, bool):
+        return "true" if value else "false"
+    elif isinstance(value, str):
+        return f'"{value}"'
+    elif isinstance(value, int | float):
+        return str(value)
+    elif isinstance(value, list):
+        if not value:
+            return "[]"
+        # Format list items
+        formatted_items = []
+        for item in value:
+            if isinstance(item, str):
+                formatted_items.append(f'"{item}"')
+            else:
+                formatted_items.append(str(item))
+        return f"[{', '.join(formatted_items)}]"
+    elif isinstance(value, dict):
+        if not value:
+            return "{}"
+        # Format dict as inline table
+        formatted_items = []
+        for k, v in value.items():
+            if isinstance(v, str):
+                formatted_items.append(f'{k} = "{v}"')
+            else:
+                formatted_items.append(f"{k} = {v}")
+        return f"{{{', '.join(formatted_items)}}}"
+    else:
+        return str(value)
+
+
+def _write_json_config_with_comments(
+    config_file: Path, config_data: dict[str, Any]
+) -> None:
+    """Write configuration data to a JSON file with formatting."""
+
+    def convert_for_json(obj: Any) -> Any:
+        """Convert objects to JSON-serializable format."""
+        if isinstance(obj, Path):
+            return str(obj)
+        elif isinstance(obj, dict):
+            return {k: convert_for_json(v) for k, v in obj.items()}
+        elif isinstance(obj, list):
+            return [convert_for_json(item) for item in obj]
+        elif hasattr(obj, "__dict__"):
+            # Handle complex objects by converting to string
+            return str(obj)
+        else:
+            return obj
+
+    serializable_data = convert_for_json(config_data)
+
+    with config_file.open("w", encoding="utf-8") as f:
+        json.dump(serializable_data, f, indent=2, sort_keys=True)
+        f.write("\n")
+
+
+def _write_yaml_config_with_comments(
+    config_file: Path, config_data: dict[str, Any]
+) -> None:
+    """Write configuration data to a YAML file with comments."""
+    try:
+        import yaml
+
+        with config_file.open("w", encoding="utf-8") as f:
+            f.write("# Claude Code Proxy API Configuration\n")
+            f.write("# This file configures the ccproxy server settings\n")
+            f.write("# Most settings are commented out with their default values\n")
+            f.write("# Uncomment and modify as needed\n\n")
+
+            # Write YAML with comments
+            yaml_content = yaml.dump(
+                config_data, default_flow_style=False, sort_keys=True, indent=2
+            )
+
+            # Comment out all lines except the first few essential ones
+            lines = yaml_content.split("\n")
+            essential_fields = {"host", "port", "log_level"}
+
+            for line in lines:
+                if line.strip():
+                    # Check if this line contains an essential field
+                    is_essential = any(field in line for field in essential_fields)
+                    if is_essential and not line.startswith("#"):
+                        f.write(line + "\n")
+                    else:
+                        f.write(f"# {line}\n" if line.strip() else "\n")
+                else:
+                    f.write(line + "\n")
+
+    except ImportError as e:
+        raise ValueError(
+            "YAML support not available. Install with: pip install pyyaml"
+        ) from e
+
+
 def _write_config_file(
     config_file: Path, config_data: dict[str, Any], file_format: str
 ) -> None:
     """Write configuration data to file in the specified format."""
     if file_format == "toml":
-        _write_toml_config(config_file, config_data)
+        _write_toml_config_with_comments(config_file, config_data, Settings)
     elif file_format == "json":
-        _write_json_config(config_file, config_data)
+        _write_json_config_with_comments(config_file, config_data)
     elif file_format == "yaml":
-        _write_yaml_config(config_file, config_data)
+        _write_yaml_config_with_comments(config_file, config_data)
     else:
         raise ValueError(f"Unsupported config format: {file_format}")
 

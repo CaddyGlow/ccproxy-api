@@ -1,8 +1,8 @@
 """Error handling middleware for Claude Code Proxy API Server."""
 
-import logging
 from typing import Any
 
+import structlog
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
@@ -25,10 +25,10 @@ from ccproxy.core.errors import (
     TransformationError,
     ValidationError,
 )
-from ccproxy.core.logging import get_logger
+from ccproxy.core.logging import get_structlog_logger
 
 
-logger = get_logger(__name__)
+logger = get_structlog_logger(__name__)
 
 
 def setup_error_handlers(app: FastAPI) -> None:
@@ -37,14 +37,21 @@ def setup_error_handlers(app: FastAPI) -> None:
     Args:
         app: FastAPI application instance
     """
-    logger.debug("Setting up error handlers")
+    logger.debug("Setting up error handlers", operation="setup_error_handlers")
 
     @app.exception_handler(ClaudeProxyError)
     async def claude_proxy_error_handler(
         request: Request, exc: ClaudeProxyError
     ) -> JSONResponse:
         """Handle Claude proxy specific errors."""
-        logger.error(f"Claude proxy error: {exc}")
+        logger.error(
+            "Claude proxy error",
+            error_type="claude_proxy_error",
+            error_message=str(exc),
+            status_code=exc.status_code,
+            request_method=request.method,
+            request_url=str(request.url.path),
+        )
         return JSONResponse(
             status_code=exc.status_code,
             content={
@@ -60,7 +67,14 @@ def setup_error_handlers(app: FastAPI) -> None:
         request: Request, exc: ValidationError
     ) -> JSONResponse:
         """Handle validation errors."""
-        logger.error(f"Validation error: {exc}")
+        logger.error(
+            "Validation error",
+            error_type="validation_error",
+            error_message=str(exc),
+            status_code=400,
+            request_method=request.method,
+            request_url=str(request.url.path),
+        )
         return JSONResponse(
             status_code=400,
             content={
@@ -76,7 +90,16 @@ def setup_error_handlers(app: FastAPI) -> None:
         request: Request, exc: AuthenticationError
     ) -> JSONResponse:
         """Handle authentication errors."""
-        logger.error(f"Authentication error: {exc}")
+        logger.error(
+            "Authentication error",
+            error_type="authentication_error",
+            error_message=str(exc),
+            status_code=401,
+            request_method=request.method,
+            request_url=str(request.url.path),
+            client_ip=request.client.host if request.client else "unknown",
+            user_agent=request.headers.get("user-agent", "unknown"),
+        )
         return JSONResponse(
             status_code=401,
             content={
@@ -92,7 +115,15 @@ def setup_error_handlers(app: FastAPI) -> None:
         request: Request, exc: PermissionError
     ) -> JSONResponse:
         """Handle permission errors."""
-        logger.error(f"Permission error: {exc}")
+        logger.error(
+            "Permission error",
+            error_type="permission_error",
+            error_message=str(exc),
+            status_code=403,
+            request_method=request.method,
+            request_url=str(request.url.path),
+            client_ip=request.client.host if request.client else "unknown",
+        )
         return JSONResponse(
             status_code=403,
             content={
@@ -108,7 +139,14 @@ def setup_error_handlers(app: FastAPI) -> None:
         request: Request, exc: NotFoundError
     ) -> JSONResponse:
         """Handle not found errors."""
-        logger.error(f"Not found error: {exc}")
+        logger.error(
+            "Not found error",
+            error_type="not_found_error",
+            error_message=str(exc),
+            status_code=404,
+            request_method=request.method,
+            request_url=str(request.url.path),
+        )
         return JSONResponse(
             status_code=404,
             content={
@@ -124,7 +162,15 @@ def setup_error_handlers(app: FastAPI) -> None:
         request: Request, exc: RateLimitError
     ) -> JSONResponse:
         """Handle rate limit errors."""
-        logger.error(f"Rate limit error: {exc}")
+        logger.error(
+            "Rate limit error",
+            error_type="rate_limit_error",
+            error_message=str(exc),
+            status_code=429,
+            request_method=request.method,
+            request_url=str(request.url.path),
+            client_ip=request.client.host if request.client else "unknown",
+        )
         return JSONResponse(
             status_code=429,
             content={
@@ -140,7 +186,14 @@ def setup_error_handlers(app: FastAPI) -> None:
         request: Request, exc: ModelNotFoundError
     ) -> JSONResponse:
         """Handle model not found errors."""
-        logger.error(f"Model not found error: {exc}")
+        logger.error(
+            "Model not found error",
+            error_type="model_not_found_error",
+            error_message=str(exc),
+            status_code=404,
+            request_method=request.method,
+            request_url=str(request.url.path),
+        )
         return JSONResponse(
             status_code=404,
             content={
@@ -156,7 +209,14 @@ def setup_error_handlers(app: FastAPI) -> None:
         request: Request, exc: TimeoutError
     ) -> JSONResponse:
         """Handle timeout errors."""
-        logger.error(f"Timeout error: {exc}")
+        logger.error(
+            "Timeout error",
+            error_type="timeout_error",
+            error_message=str(exc),
+            status_code=408,
+            request_method=request.method,
+            request_url=str(request.url.path),
+        )
         return JSONResponse(
             status_code=408,
             content={
@@ -172,7 +232,14 @@ def setup_error_handlers(app: FastAPI) -> None:
         request: Request, exc: ServiceUnavailableError
     ) -> JSONResponse:
         """Handle service unavailable errors."""
-        logger.error(f"Service unavailable error: {exc}")
+        logger.error(
+            "Service unavailable error",
+            error_type="service_unavailable_error",
+            error_message=str(exc),
+            status_code=503,
+            request_method=request.method,
+            request_url=str(request.url.path),
+        )
         return JSONResponse(
             status_code=503,
             content={
@@ -186,7 +253,14 @@ def setup_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(DockerError)
     async def docker_error_handler(request: Request, exc: DockerError) -> JSONResponse:
         """Handle Docker errors."""
-        logger.error(f"Docker error: {exc}")
+        logger.error(
+            "Docker error",
+            error_type="docker_error",
+            error_message=str(exc),
+            status_code=500,
+            request_method=request.method,
+            request_url=str(request.url.path),
+        )
         return JSONResponse(
             status_code=500,
             content={
@@ -201,7 +275,14 @@ def setup_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(ProxyError)
     async def proxy_error_handler(request: Request, exc: ProxyError) -> JSONResponse:
         """Handle proxy errors."""
-        logger.error(f"Proxy error: {exc}")
+        logger.error(
+            "Proxy error",
+            error_type="proxy_error",
+            error_message=str(exc),
+            status_code=500,
+            request_method=request.method,
+            request_url=str(request.url.path),
+        )
         return JSONResponse(
             status_code=500,
             content={
@@ -217,7 +298,14 @@ def setup_error_handlers(app: FastAPI) -> None:
         request: Request, exc: TransformationError
     ) -> JSONResponse:
         """Handle transformation errors."""
-        logger.error(f"Transformation error: {exc}")
+        logger.error(
+            "Transformation error",
+            error_type="transformation_error",
+            error_message=str(exc),
+            status_code=500,
+            request_method=request.method,
+            request_url=str(request.url.path),
+        )
         return JSONResponse(
             status_code=500,
             content={
@@ -233,7 +321,14 @@ def setup_error_handlers(app: FastAPI) -> None:
         request: Request, exc: MiddlewareError
     ) -> JSONResponse:
         """Handle middleware errors."""
-        logger.error(f"Middleware error: {exc}")
+        logger.error(
+            "Middleware error",
+            error_type="middleware_error",
+            error_message=str(exc),
+            status_code=500,
+            request_method=request.method,
+            request_url=str(request.url.path),
+        )
         return JSONResponse(
             status_code=500,
             content={
@@ -249,7 +344,14 @@ def setup_error_handlers(app: FastAPI) -> None:
         request: Request, exc: ProxyConnectionError
     ) -> JSONResponse:
         """Handle proxy connection errors."""
-        logger.error(f"Proxy connection error: {exc}")
+        logger.error(
+            "Proxy connection error",
+            error_type="proxy_connection_error",
+            error_message=str(exc),
+            status_code=502,
+            request_method=request.method,
+            request_url=str(request.url.path),
+        )
         return JSONResponse(
             status_code=502,
             content={
@@ -265,7 +367,14 @@ def setup_error_handlers(app: FastAPI) -> None:
         request: Request, exc: ProxyTimeoutError
     ) -> JSONResponse:
         """Handle proxy timeout errors."""
-        logger.error(f"Proxy timeout error: {exc}")
+        logger.error(
+            "Proxy timeout error",
+            error_type="proxy_timeout_error",
+            error_message=str(exc),
+            status_code=504,
+            request_method=request.method,
+            request_url=str(request.url.path),
+        )
         return JSONResponse(
             status_code=504,
             content={
@@ -281,7 +390,15 @@ def setup_error_handlers(app: FastAPI) -> None:
         request: Request, exc: ProxyAuthenticationError
     ) -> JSONResponse:
         """Handle proxy authentication errors."""
-        logger.error(f"Proxy authentication error: {exc}")
+        logger.error(
+            "Proxy authentication error",
+            error_type="proxy_authentication_error",
+            error_message=str(exc),
+            status_code=401,
+            request_method=request.method,
+            request_url=str(request.url.path),
+            client_ip=request.client.host if request.client else "unknown",
+        )
         return JSONResponse(
             status_code=401,
             content={
@@ -300,11 +417,23 @@ def setup_error_handlers(app: FastAPI) -> None:
         """Handle HTTP exceptions."""
         # Don't log stack trace for 404 errors as they're expected
         if exc.status_code == 404:
-            logger.info(f"HTTP 404: {exc.detail} - {request.url}")
+            logger.info(
+                "HTTP 404 error",
+                error_type="http_404",
+                error_message=exc.detail,
+                status_code=404,
+                request_method=request.method,
+                request_url=str(request.url.path),
+            )
         else:
             logger.error(
-                f"HTTP exception: {exc.status_code} - {exc.detail}",
-                exc_info=logger.isEnabledFor(logging.DEBUG),
+                "HTTP exception",
+                error_type="http_error",
+                error_message=exc.detail,
+                status_code=exc.status_code,
+                request_method=request.method,
+                request_url=str(request.url.path),
+                exc_info=True,
             )
         # TODO: Add when in prod hide details in response
         return JSONResponse(
@@ -324,11 +453,23 @@ def setup_error_handlers(app: FastAPI) -> None:
         """Handle Starlette HTTP exceptions."""
         # Don't log stack trace for 404 errors as they're expected
         if exc.status_code == 404:
-            logger.info(f"Starlette HTTP 404: {exc.detail} - {request.url}")
+            logger.info(
+                "Starlette HTTP 404 error",
+                error_type="starlette_http_404",
+                error_message=exc.detail,
+                status_code=404,
+                request_method=request.method,
+                request_url=str(request.url.path),
+            )
         else:
             logger.error(
-                f"Starlette HTTP exception: {exc.status_code} - {exc.detail}",
-                exc_info=logger.isEnabledFor(logging.DEBUG),
+                "Starlette HTTP exception",
+                error_type="starlette_http_error",
+                error_message=exc.detail,
+                status_code=exc.status_code,
+                request_method=request.method,
+                request_url=str(request.url.path),
+                exc_info=True,
             )
         return JSONResponse(
             status_code=exc.status_code,
@@ -346,7 +487,15 @@ def setup_error_handlers(app: FastAPI) -> None:
         request: Request, exc: Exception
     ) -> JSONResponse:
         """Handle all other unhandled exceptions."""
-        logger.error(f"Unhandled exception: {exc}", exc_info=True)
+        logger.error(
+            "Unhandled exception",
+            error_type="unhandled_exception",
+            error_message=str(exc),
+            status_code=500,
+            request_method=request.method,
+            request_url=str(request.url.path),
+            exc_info=True,
+        )
         return JSONResponse(
             status_code=500,
             content={
@@ -357,4 +506,6 @@ def setup_error_handlers(app: FastAPI) -> None:
             },
         )
 
-    logger.info("Error handlers configured successfully")
+    logger.info(
+        "Error handlers configured successfully", operation="setup_error_handlers"
+    )

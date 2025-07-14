@@ -1,13 +1,14 @@
 """Generic HTTP client abstractions for pure forwarding without business logic."""
 
-import logging
 import os
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+import structlog
 
-logger = logging.getLogger(__name__)
+
+logger = structlog.get_logger(__name__)
 
 
 if TYPE_CHECKING:
@@ -275,7 +276,11 @@ def get_proxy_url() -> str | None:
     proxy_url = https_proxy or all_proxy or http_proxy
 
     if proxy_url:
-        logger.debug(f"Using proxy: {proxy_url}")
+        logger.debug(
+            "Using proxy for HTTP requests",
+            proxy_url=proxy_url,
+            operation="get_proxy_url",
+        )
 
     return proxy_url
 
@@ -296,11 +301,24 @@ def get_ssl_context() -> str | bool:
     ssl_verify = os.environ.get("SSL_VERIFY", "true").lower()
 
     if ca_bundle and Path(ca_bundle).exists():
-        logger.info(f"Using custom CA bundle: {ca_bundle}")
+        logger.info(
+            "Using custom CA bundle for SSL verification",
+            ca_bundle_path=ca_bundle,
+            operation="get_ssl_context",
+        )
         return ca_bundle
     elif ssl_verify in ("false", "0", "no"):
-        logger.warning("SSL verification disabled - this is insecure!")
+        logger.warning(
+            "SSL verification disabled - this is insecure!",
+            ssl_verify_value=ssl_verify,
+            operation="get_ssl_context",
+            security_warning=True,
+        )
         return False
     else:
-        logger.debug("Using default SSL verification")
+        logger.debug(
+            "Using default SSL verification",
+            ssl_verify_value=ssl_verify,
+            operation="get_ssl_context",
+        )
         return True

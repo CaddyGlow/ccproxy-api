@@ -2,7 +2,6 @@
 
 import asyncio
 import json
-import logging
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -22,12 +21,12 @@ from ccproxy.auth.models import (
 from ccproxy.auth.storage import JsonFileTokenStorage as JsonFileStorage
 from ccproxy.auth.storage import TokenStorage as CredentialsStorageBackend
 from ccproxy.config.auth import AuthSettings
-from ccproxy.core.logging import get_logger
+from ccproxy.core.logging import get_structlog_logger
 from ccproxy.services.credentials.config import CredentialsConfig
 from ccproxy.services.credentials.oauth_client import OAuthClient
 
 
-logger = get_logger(__name__)
+logger = get_structlog_logger(__name__)
 
 
 class CredentialsManager:
@@ -99,16 +98,17 @@ class CredentialsManager:
         """
         for path_str in self.config.storage.storage_paths:
             path = Path(path_str).expanduser()
-            logger.debug(f"Checking: {path}")
+            logger.debug("checking_credentials_path", path=str(path))
             if path.exists() and path.is_file():
-                logger.info(f"Found credentials file at: {path}")
+                logger.info("credentials_file_found", path=str(path))
                 return path
             else:
-                logger.debug(f"Not found: {path}")
+                logger.debug("credentials_path_not_found", path=str(path))
 
-        logger.warning("No credentials file found in any searched locations:")
-        for path_str in self.config.storage.storage_paths:
-            logger.warning(f"  - {path_str}")
+        logger.warning(
+            "no_credentials_files_found",
+            searched_paths=self.config.storage.storage_paths,
+        )
         return None
 
     async def load(self) -> ClaudeCredentials | None:
@@ -120,7 +120,7 @@ class CredentialsManager:
         try:
             return await self.storage.load()
         except Exception as e:
-            logger.error(f"Error loading credentials: {e}")
+            logger.error("credentials_load_failed", error=str(e))
             return None
 
     async def save(self, credentials: ClaudeCredentials) -> bool:
@@ -135,7 +135,7 @@ class CredentialsManager:
         try:
             return await self.storage.save(credentials)
         except Exception as e:
-            logger.error(f"Error saving credentials: {e}")
+            logger.error("credentials_save_failed", error=str(e))
             return False
 
     # ==================== OAuth Operations ====================
@@ -166,11 +166,13 @@ class CredentialsManager:
                 determined_subscription = self._determine_subscription_type(profile)
                 credentials.claude_ai_oauth.subscription_type = determined_subscription
 
-                logger.debug(f"Set subscription type to: {determined_subscription}")
+                logger.debug(
+                    "subscription_type_set", subscription_type=determined_subscription
+                )
             else:
-                logger.debug("No profile data available during login")
+                logger.debug("no_profile_data_during_login")
         except Exception as e:
-            logger.warning(f"Failed to fetch profile during login: {e}")
+            logger.warning("profile_fetch_failed_during_login", error=str(e))
             # Continue with login even if profile fetch fails
 
         await self.save(credentials)
@@ -276,7 +278,7 @@ class CredentialsManager:
         except Exception as e:
             logger.error(
                 f"Error fetching user profile: {e}",
-                exc_info=logger.isEnabledFor(logging.DEBUG),
+                exc_info=True,
             )
             return None
 

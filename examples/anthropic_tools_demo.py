@@ -20,6 +20,8 @@ import httpx
 from anthropic.types import MessageParam, ToolParam
 from httpx import URL
 
+from ccproxy.core.logging import get_structlog_logger
+
 
 def setup_logging(debug: bool = False) -> None:
     """Setup logging configuration.
@@ -41,35 +43,40 @@ def setup_logging(debug: bool = False) -> None:
         logging.getLogger("anthropic").setLevel(logging.WARNING)
 
 
-logger = logging.getLogger(__name__)
+logger = get_structlog_logger(__name__)
 
 
 class LoggingHTTPClient(httpx.Client):
     """Custom HTTP client that logs requests and responses"""
 
     def request(self, method: str, url: URL | str, **kwargs: Any) -> httpx.Response:
-        logger.info("=== HTTP REQUEST ===")
-        logger.info(f"Method: {method}")
-        logger.info(f"URL: {url}")
-        logger.info(f"Headers: {kwargs.get('headers', {})}")
+        logger.info("http_request_start")
+        logger.info(
+            "http_request_details",
+            method=method,
+            url=str(url),
+            headers=kwargs.get("headers", {}),
+        )
         if "content" in kwargs:
             try:
                 content = kwargs["content"]
                 if isinstance(content, bytes):
                     content = content.decode("utf-8")
-                logger.info(f"Body: {content}")
+                logger.info("http_request_body", body=content)
             except Exception as e:
-                logger.info(f"Body: <could not decode: {e}>")
+                logger.info("http_request_body_decode_error", error=str(e))
 
         response = super().request(method, url, **kwargs)
 
-        logger.info("=== HTTP RESPONSE ===")
-        logger.info(f"Status: {response.status_code}")
-        logger.info(f"Headers: {dict(response.headers)}")
+        logger.info(
+            "http_response_start",
+            status_code=response.status_code,
+            headers=dict(response.headers),
+        )
         try:
-            logger.info(f"Body: {response.text}")
+            logger.info("http_response_body", body=response.text)
         except Exception as e:
-            logger.info(f"Body: <could not decode: {e}>")
+            logger.info("http_response_body_decode_error", error=str(e))
 
         return response
 
@@ -85,7 +92,7 @@ def get_weather(location: str, unit: str = "celsius") -> dict[str, Any]:
     Returns:
         Dictionary containing weather information
     """
-    logger.info(f"Getting weather for {location} in {unit}")
+    logger.info("weather_request", location=location, unit=unit)
 
     # Mock weather data for demonstration
     result = {
@@ -97,7 +104,7 @@ def get_weather(location: str, unit: str = "celsius") -> dict[str, Any]:
         "wind_speed": 10,
     }
 
-    logger.info(f"Weather result: {result}")
+    logger.info("weather_result", result=result)
     return result
 
 
@@ -116,7 +123,9 @@ def calculate_distance(
     Returns:
         Dictionary containing distance information
     """
-    logger.info(f"Calculating distance between ({lat1}, {lon1}) and ({lat2}, {lon2})")
+    logger.info(
+        "distance_calculation_start", lat1=lat1, lon1=lon1, lat2=lat2, lon2=lon2
+    )
 
     # Simplified distance calculation for demonstration
     import math
@@ -146,7 +155,7 @@ def calculate_distance(
         },
     }
 
-    logger.info(f"Distance calculation result: {result}")
+    logger.info("distance_calculation_result", result=result)
     return result
 
 
@@ -270,7 +279,7 @@ def handle_tool_call(tool_name: str, tool_input: dict[str, Any]) -> dict[str, An
     Returns:
         Tool execution result
     """
-    logger.info(f"Handling tool call: {tool_name} with input: {tool_input}")
+    logger.info("tool_call_start", tool_name=tool_name, tool_input=tool_input)
 
     if tool_name == "get_weather":
         result = get_weather(**tool_input)
@@ -278,9 +287,9 @@ def handle_tool_call(tool_name: str, tool_input: dict[str, Any]) -> dict[str, An
         result = calculate_distance(**tool_input)
     else:
         result = {"error": f"Unknown tool: {tool_name}"}
-        logger.error(f"Unknown tool requested: {tool_name}")
+        logger.error("unknown_tool_requested", tool_name=tool_name)
 
-    logger.info(f"Tool call result: {result}")
+    logger.info("tool_call_result", result=result)
     return result
 
 
@@ -327,10 +336,16 @@ def main() -> None:
     base_url_default = "http://127.0.0.1:8000"
 
     if not api_key:
-        logger.warning("ANTHROPIC_API_KEY not set, using dummy key")
+        logger.warning(
+            "api_key_missing", message="ANTHROPIC_API_KEY not set, using dummy key"
+        )
         os.environ["ANTHROPIC_API_KEY"] = "dummy"
     if not base_url:
-        logger.warning(f"ANTHROPIC_BASE_URL not set, using {base_url_default}")
+        logger.warning(
+            "base_url_missing",
+            message="ANTHROPIC_BASE_URL not set",
+            default_url=base_url_default,
+        )
         os.environ["ANTHROPIC_BASE_URL"] = base_url_default
 
     # Create tools
@@ -349,7 +364,8 @@ def main() -> None:
         http_client = LoggingHTTPClient()
         client = anthropic.Anthropic(http_client=http_client)
         logger.info(
-            "Anthropic client initialized successfully with logging HTTP client"
+            "anthropic_client_initialized",
+            message="Client initialized with logging HTTP client",
         )
 
         # Example conversation with tools
@@ -364,18 +380,29 @@ def main() -> None:
         print("Starting conversation with Claude...")
         print("=" * 40)
 
-        logger.info(f"Sending request to Claude with {len(tools)} tools")
-        logger.info(
-            f"Tools available: {[getattr(tool, 'name', None) if hasattr(tool, 'name') else tool.get('name', 'Unknown') if isinstance(tool, dict) else 'Unknown' for tool in tools]}"
-        )
-        logger.info(f"Initial message: {messages[0]['content']}")
+        logger.info("claude_request_start", tools_count=len(tools))
+        tool_names = [
+            getattr(tool, "name", None)
+            if hasattr(tool, "name")
+            else tool.get("name", "Unknown")
+            if isinstance(tool, dict)
+            else "Unknown"
+            for tool in tools
+        ]
+        logger.info("tools_available", tool_names=tool_names)
+        logger.info("initial_message", content=messages[0]["content"])
 
         # Log the complete request structure
-        logger.info("=== REQUEST STRUCTURE ===")
-        logger.info("Model: claude-3-5-sonnet-20241022")
-        logger.info("Max tokens: 1000")
-        logger.info(f"Messages: {json.dumps(messages, indent=2)}")
-        logger.info(f"Tools: {json.dumps(tools, indent=2)}")
+        logger.info(
+            "request_structure",
+            model="claude-3-5-sonnet-20241022",
+            max_tokens=1000,
+            messages=messages,
+            tools=[
+                tool.model_dump() if hasattr(tool, "model_dump") else tool
+                for tool in tools
+            ],
+        )
 
         response = client.messages.create(
             model="claude-3-5-sonnet-20241022",
@@ -388,21 +415,32 @@ def main() -> None:
         print(f"Stop reason: {response.stop_reason}")
 
         # Log the complete response structure
-        logger.info("=== COMPLETE RESPONSE STRUCTURE ===")
-        logger.info(f"Response ID: {response.id}")
-        logger.info(f"Model: {response.model}")
-        logger.info(f"Stop reason: {response.stop_reason}")
-        logger.info(f"Usage: {response.usage}")
-        logger.info(f"Content blocks: {len(response.content)}")
+        logger.info(
+            "claude_response_structure",
+            response_id=response.id,
+            model=response.model,
+            stop_reason=response.stop_reason,
+            usage=response.usage.model_dump()
+            if hasattr(response.usage, "model_dump")
+            else dict(response.usage)
+            if response.usage
+            else None,
+            content_blocks_count=len(response.content),
+        )
 
         for i, content_block in enumerate(response.content):
-            logger.info(f"Content block {i}: type={content_block.type}")
+            block_data = {"block_index": i, "type": content_block.type}
             if hasattr(content_block, "text"):
-                logger.info(f"  Text: {content_block.text[:100]}...")
+                block_data["text_preview"] = (
+                    content_block.text[:100] + "..."
+                    if len(content_block.text) > 100
+                    else content_block.text
+                )
             if hasattr(content_block, "name"):
-                logger.info(f"  Tool name: {content_block.name}")
+                block_data["tool_name"] = content_block.name
             if hasattr(content_block, "input"):
-                logger.info(f"  Tool input: {content_block.input}")
+                block_data["tool_input"] = content_block.input
+            logger.info("response_content_block", **block_data)
 
         # Handle the response based on stop reason
         while True:
@@ -445,16 +483,24 @@ def main() -> None:
                 messages.append({"role": "assistant", "content": response.content})
                 messages.append({"role": "user", "content": tool_results})  # type: ignore[typeddict-item]
 
-                logger.info("=== MESSAGE HISTORY AFTER TOOL USE ===")
+                logger.info("message_history_after_tool_use")
                 for i, msg in enumerate(messages):
-                    logger.info(f"Message {i}: role={msg['role']}")
+                    msg_data = {"message_index": i, "role": msg["role"]}
                     if isinstance(msg["content"], str):
-                        logger.info(f"  Content: {msg['content'][:100]}...")
+                        msg_data["content_preview"] = (
+                            msg["content"][:100] + "..."
+                            if len(msg["content"]) > 100
+                            else msg["content"]
+                        )
                     else:
-                        logger.info(f"  Content: {type(msg['content'])}")
+                        msg_data["content_type"] = str(type(msg["content"]))
+                    logger.info("message_in_history", **msg_data)
 
                 # Continue conversation with tool results
-                logger.info("Sending follow-up request with tool results")
+                logger.info(
+                    "sending_followup_request",
+                    message="Sending follow-up request with tool results",
+                )
                 response = client.messages.create(
                     model="claude-3-5-sonnet-20241022",
                     max_tokens=1000,
@@ -462,10 +508,16 @@ def main() -> None:
                     messages=messages,
                 )
 
-                logger.info("=== FOLLOW-UP RESPONSE ===")
-                logger.info(f"Response ID: {response.id}")
-                logger.info(f"Stop reason: {response.stop_reason}")
-                logger.info(f"Usage: {response.usage}")
+                logger.info(
+                    "followup_response",
+                    response_id=response.id,
+                    stop_reason=response.stop_reason,
+                    usage=response.usage.model_dump()
+                    if hasattr(response.usage, "model_dump")
+                    else dict(response.usage)
+                    if response.usage
+                    else None,
+                )
 
             elif response.stop_reason in ["end_turn", "stop_sequence", "max_tokens"]:
                 # Conversation is complete
