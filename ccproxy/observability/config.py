@@ -34,14 +34,14 @@ def configure_observability(
     # Delegate to core logging system for all structlog configuration
     from ccproxy.core.logging import setup_dual_logging
 
-    setup_dual_logging(
-        level=level,
-        format_type=format_type,
-        enable_observability=enable_pipeline,
-        show_path=show_path,
-        show_time=show_time,
-        configure_uvicorn=False,  # Don't reconfigure uvicorn in observability context
-    )
+    # setup_dual_logging(
+    #     level=level,
+    #     format_type=format_type,
+    #     enable_observability=enable_pipeline,
+    #     show_path=show_path,
+    #     show_time=show_time,
+    #     configure_uvicorn=False,  # Don't reconfigure uvicorn in observability context
+    # )
 
 
 def get_observability_status() -> dict[str, Any]:

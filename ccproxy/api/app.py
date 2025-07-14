@@ -44,7 +44,16 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     # Configure observability system (structlog + pipeline + scheduler)
     try:
-        configure_observability()
+        # Determine format based on log level - Rich for DEBUG, JSON for production
+        format_type = "rich" if settings.server.log_level.upper() == "DEBUG" else "json"
+        show_path = settings.server.log_level.upper() == "DEBUG"
+
+        configure_observability(
+            format_type=format_type,
+            level=settings.server.log_level,
+            show_path=show_path,
+            show_time=True,
+        )
         pipeline = await get_pipeline()
         scheduler = await get_scheduler()
         logger.info("Observability system initialized successfully")
@@ -81,9 +90,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     """
     if settings is None:
         settings = get_settings()
-
-    # Configure rich logging with settings
-    setup_rich_logging(level=settings.server.log_level)
 
     app = FastAPI(
         title="Claude Code Proxy API Server",

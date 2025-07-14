@@ -6,6 +6,8 @@ from collections.abc import Callable, Iterable, MutableMapping
 from typing import Any
 
 import httpx
+import prometheus_client
+import structlog
 from rich.console import Console
 from rich.logging import RichHandler
 from rich.theme import Theme
@@ -91,19 +93,34 @@ def setup_rich_logging(
         # Configure specific loggers based on main log level
         main_level = getattr(logging, level.upper())
 
-        # For httpx, enable debug logging only when main level is DEBUG
+        # For httpx, enable info logging only when main level is DEBUG
         httpx_logger = logging.getLogger("httpx")
         if main_level <= logging.DEBUG:
-            httpx_logger.setLevel(logging.DEBUG)
+            httpx_logger.setLevel(logging.INFO)
             httpx_logger.addHandler(rich_handler)
             httpx_logger.propagate = False
         else:
             httpx_logger.setLevel(logging.WARNING)
 
+        # Disable httpx's internal trace events (those bare lines without timestamps)
+        # These are separate from the logger and print directly to stdout
+        import os
+
+        os.environ.pop("HTTPX_LOG_LEVEL", None)  # Remove any HTTPX_LOG_LEVEL env var
+
         # Always suppress these noisy loggers
-        for logger_name in ["httpcore", "keyring", "asyncio"]:
+        for logger_name in [
+            "httpcore",
+            "urllib3",
+            "urllib3.connectionpool",
+            "keyring",
+            "asyncio",
+        ]:
             logger = logging.getLogger(logger_name)
             logger.setLevel(logging.WARNING)
+            # Completely disable httpcore and urllib3 to prevent debug traces that bypass our logging
+            if logger_name in ["httpcore", "urllib3"]:
+                logger.disabled = True
 
 
 def configure_structlog(
@@ -156,11 +173,11 @@ def configure_structlog(
 
     # Add format-specific processors
     if format_type == "rich":
-        # For Rich output, use a custom processor that preserves Rich formatting
+        # For Rich output, use Rich-aware renderer that processes markup
         processors.extend(
             [
                 _rich_structlog_processor,
-                structlog.dev.ConsoleRenderer(colors=True),
+                _rich_console_renderer,
             ]
         )
     elif format_type == "json":
@@ -211,6 +228,58 @@ def _rich_structlog_processor(
         event_dict["event"] = f"[{color}]{event}[/{color}]"
 
     return event_dict
+
+
+def _rich_console_renderer(
+    logger: Any, method_name: str, event_dict: dict[str, Any]
+) -> str:
+    """Custom renderer that uses Rich console to properly process markup."""
+    # Import Rich console for markup processing
+    from rich.console import Console
+
+    # Create a Rich console that can process markup
+    rich_console = Console(markup=True, highlight=False, force_terminal=True)
+
+    # Extract timestamp
+    timestamp = event_dict.get("timestamp", "")
+    if timestamp:
+        timestamp_str = f"[dim]{timestamp}[/dim] "
+    else:
+        timestamp_str = ""
+
+    # Extract log level
+    level = event_dict.get("level", "info").upper()
+    level_colors = {
+        "DEBUG": "dim white",
+        "INFO": "cyan",
+        "WARNING": "yellow",
+        "ERROR": "red",
+        "CRITICAL": "bold white on red",
+    }
+    level_color = level_colors.get(level, "white")
+    level_str = f"[{level_color}][{level:<8}][/{level_color}] "
+
+    # Extract main event message
+    event = event_dict.get("event", "")
+
+    # Build context string from remaining fields
+    context_parts = []
+    for key, value in event_dict.items():
+        if key not in ("timestamp", "level", "event"):
+            context_parts.append(f"[dim]{key}[/dim]=[bright_blue]{value}[/bright_blue]")
+
+    context_str = " ".join(context_parts)
+    if context_str:
+        context_str = " " + context_str
+
+    # Combine all parts
+    message = f"{timestamp_str}{level_str}{event}{context_str}"
+
+    # Use Rich console to render the markup to a string
+    with rich_console.capture() as capture:
+        rich_console.print(message, markup=True, highlight=False)
+
+    return capture.get().rstrip("\n")
 
 
 def get_structlog_logger(name: str) -> Any:
@@ -299,6 +368,28 @@ def setup_dual_logging(
                 uvicorn_logger.addHandler(handler)
                 uvicorn_logger.setLevel(log_level)
                 uvicorn_logger.propagate = False
+
+        # Configure verbose loggers based on main log level
+        main_level = getattr(logging, level.upper())
+
+        # For httpx, enable info logging only when main level is DEBUG
+        httpx_logger = logging.getLogger("httpx")
+        if main_level <= logging.DEBUG:
+            httpx_logger.setLevel(logging.INFO)
+        else:
+            httpx_logger.setLevel(logging.WARNING)
+
+        # Always suppress these noisy loggers
+        for logger_name in [
+            "httpcore",
+            "urllib3",
+            "urllib3.connectionpool",
+            "keyring",
+            "asyncio",
+            "httpx",
+        ]:
+            logger = logging.getLogger(logger_name)
+            logger.setLevel(logging.WARNING)
 
 
 def configure_logging_from_settings(
@@ -461,31 +552,16 @@ def get_logger(name: str) -> logging.Logger:
     Returns:
         Configured logger instance
     """
-    return logging.getLogger(name)
+    return structlog.getLogger(name)
 
 
 # HTTP request/response logging helpers
 async def log_http_request(request: httpx.Request) -> None:
     """Log httpx request details."""
-    logger = get_structlog_logger("httpx")
-    logger.debug(
-        "HTTP request",
-        method=request.method,
-        url=str(request.url),
-        operation="http_request",
-    )
 
 
 async def log_http_response(response: httpx.Response) -> None:
     """Log httpx response details."""
-    logger = get_structlog_logger("httpx")
-    logger.debug(
-        "HTTP response",
-        status_code=response.status_code,
-        reason_phrase=response.reason_phrase,
-        url=str(response.url),
-        operation="http_response",
-    )
 
 
 def get_http_event_hooks() -> dict[str, list[Any]]:
@@ -494,12 +570,6 @@ def get_http_event_hooks() -> dict[str, list[Any]]:
     Returns:
         Event hooks dictionary for httpx.AsyncClient
     """
-    logger = logging.getLogger("httpx")
-    if logger.isEnabledFor(logging.DEBUG):
-        return {
-            "request": [log_http_request],
-            "response": [log_http_response],
-        }
     return {}
 
 

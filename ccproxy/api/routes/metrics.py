@@ -10,10 +10,14 @@ from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 from ccproxy.api.dependencies import (
     ObservabilityMetricsDep,
 )
+from ccproxy.core.logging import get_structlog_logger
 
 
 # Create the router for metrics endpoints
 router = APIRouter(prefix="/metrics", tags=["metrics"])
+
+# Create structured logger
+logger = get_structlog_logger(__name__)
 
 
 @router.get("/status")
@@ -68,9 +72,16 @@ async def get_metrics_dashboard() -> HTMLResponse:
             },
         )
     except Exception as e:
+        logger.error(
+            "Failed to serve dashboard",
+            error=str(e),
+            dashboard_path=str(dashboard_index),
+            error_type=type(e).__name__,
+        )
         raise HTTPException(
-            status_code=500, detail=f"Failed to serve dashboard: {str(e)}"
-        ) from e
+            status_code=500,
+            detail="Dashboard temporarily unavailable. Please check server logs for details.",
+        ) from None
 
 
 @router.get("/dashboard/favicon.svg")
@@ -147,9 +158,16 @@ async def get_prometheus_metrics(metrics: ObservabilityMetricsDep) -> Any:
     except HTTPException:
         raise
     except Exception as e:
+        logger.error(
+            "Failed to generate Prometheus metrics",
+            error=str(e),
+            error_type=type(e).__name__,
+            metrics_enabled=metrics.is_enabled(),
+        )
         raise HTTPException(
-            status_code=500, detail=f"Failed to generate Prometheus metrics: {str(e)}"
-        ) from e
+            status_code=500,
+            detail="Metrics generation temporarily unavailable. Please check server logs for details.",
+        ) from None
 
 
 async def get_storage_backend() -> Any:
@@ -221,9 +239,17 @@ async def query_metrics(
     except HTTPException:
         raise
     except Exception as e:
+        logger.error(
+            "Query execution failed",
+            error=str(e),
+            error_type=type(e).__name__,
+            query=sql_clean if "sql_clean" in locals() else sql,
+            limit=limit,
+        )
         raise HTTPException(
-            status_code=500, detail=f"Query execution failed: {str(e)}"
-        ) from e
+            status_code=500,
+            detail="Query execution failed. Please check query syntax and try again.",
+        ) from None
 
 
 @router.get("/analytics")
@@ -278,9 +304,20 @@ async def get_analytics(
     except HTTPException:
         raise
     except Exception as e:
+        logger.error(
+            "Analytics generation failed",
+            error=str(e),
+            error_type=type(e).__name__,
+            start_time=start_time,
+            end_time=end_time,
+            model=model,
+            service_type=service_type,
+            hours=hours,
+        )
         raise HTTPException(
-            status_code=500, detail=f"Analytics generation failed: {str(e)}"
-        ) from e
+            status_code=500,
+            detail="Analytics temporarily unavailable. Please check server logs for details.",
+        ) from None
 
 
 @router.get("/stream")

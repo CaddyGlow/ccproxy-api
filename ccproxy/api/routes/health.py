@@ -6,12 +6,12 @@ from typing import Any
 from fastapi import APIRouter
 
 from ccproxy import __version__
-from ccproxy.core.logging import get_logger
+from ccproxy.core.logging import get_structlog_logger
 from ccproxy.services.credentials import CredentialsManager
 
 
 router = APIRouter()
-logger = get_logger(__name__)
+logger = get_structlog_logger(__name__)
 
 
 @router.get("/health")
@@ -21,7 +21,11 @@ async def health_check() -> dict[str, Any]:
     Returns:
         Health status information
     """
-    logger.debug("Health check request")
+    logger.debug(
+        "Health check request",
+        service="claude-code-proxy",
+        check_type="basic",
+    )
     return {
         "status": "healthy",
         "service": "claude-code-proxy",
@@ -36,7 +40,11 @@ async def readiness_check() -> dict[str, Any]:
     Returns:
         Readiness status information
     """
-    logger.debug("Readiness check request")
+    logger.debug(
+        "Readiness check request",
+        service="claude-code-proxy",
+        check_type="readiness",
+    )
     return {
         "status": "ready",
         "service": "claude-code-proxy",
@@ -51,7 +59,11 @@ async def liveness_check() -> dict[str, Any]:
     Returns:
         Liveness status information
     """
-    logger.debug("Liveness check request")
+    logger.debug(
+        "Liveness check request",
+        service="claude-code-proxy",
+        check_type="liveness",
+    )
     return {
         "status": "alive",
         "service": "claude-code-proxy",
@@ -67,7 +79,11 @@ async def claude_health_check() -> dict[str, Any]:
         Claude SDK health status including auth status
     """
     try:
-        logger.debug("Claude SDK health check request")
+        logger.debug(
+            "Claude SDK health check request",
+            service="claude-sdk",
+            check_type="individual",
+        )
 
         # Check credentials status
         manager = CredentialsManager()
@@ -85,7 +101,12 @@ async def claude_health_check() -> dict[str, Any]:
         }
 
     except Exception as e:
-        logger.error(f"Claude SDK health check failed: {e}")
+        logger.error(
+            "Claude SDK health check failed",
+            error=str(e),
+            error_type=type(e).__name__,
+            service="claude-sdk",
+        )
         return {
             "status": "unhealthy",
             "service": "claude-sdk",
@@ -101,7 +122,11 @@ async def proxy_health_check() -> dict[str, Any]:
     Returns:
         Proxy service health status
     """
-    logger.debug("Proxy service health check request")
+    logger.debug(
+        "Proxy service health check request",
+        service="proxy",
+        check_type="individual",
+    )
     return {
         "status": "healthy",
         "service": "proxy",
@@ -116,7 +141,11 @@ async def detailed_health_check() -> dict[str, Any]:
     Returns:
         Detailed health status for all services
     """
-    logger.debug("Detailed health check request")
+    logger.debug(
+        "Detailed health check request",
+        service="claude-code-proxy",
+        check_type="detailed",
+    )
 
     health_status: dict[str, Any] = {
         "status": "healthy",
@@ -144,7 +173,13 @@ async def detailed_health_check() -> dict[str, Any]:
             health_status["status"] = "degraded"
 
     except Exception as e:
-        logger.warning(f"Claude SDK health check failed: {e}")
+        logger.warning(
+            "Claude SDK health check failed in detailed check",
+            error=str(e),
+            error_type=type(e).__name__,
+            service="claude-sdk",
+            check_type="detailed",
+        )
         health_status["checks"]["claude"] = {
             "status": "unhealthy",
             "auth_status": "error",
