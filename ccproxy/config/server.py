@@ -35,6 +35,26 @@ class ServerSettings(BaseModel):
         description="Logging level",
     )
 
+    log_format: str = Field(
+        default="auto",
+        description="Logging output format: 'rich' for development, 'json' for production, 'auto' for automatic selection",
+    )
+
+    log_show_path: bool = Field(
+        default=False,
+        description="Whether to show module path in logs (automatically enabled for DEBUG level)",
+    )
+
+    log_show_time: bool = Field(
+        default=True,
+        description="Whether to show timestamps in logs",
+    )
+
+    log_console_width: int | None = Field(
+        default=None,
+        description="Optional console width override for Rich output",
+    )
+
     @field_validator("log_level")
     @classmethod
     def validate_log_level(cls, v: str) -> str:
@@ -44,3 +64,13 @@ class ServerSettings(BaseModel):
         if upper_v not in valid_levels:
             raise ValueError(f"Invalid log level: {v}. Must be one of {valid_levels}")
         return upper_v
+
+    @field_validator("log_format")
+    @classmethod
+    def validate_log_format(cls, v: str) -> str:
+        """Validate and normalize log format."""
+        lower_v = v.lower()
+        valid_formats = ["auto", "rich", "json", "plain"]
+        if lower_v not in valid_formats:
+            raise ValueError(f"Invalid log format: {v}. Must be one of {valid_formats}")
+        return lower_v

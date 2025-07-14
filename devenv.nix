@@ -21,6 +21,7 @@ in
     pkgs.glibc
     pkgs.zlib
     pkgs.stdenv
+    pkgs.playwright-driver.browsers
   ];
 
   env.LD_LIBRARY_PATH = lib.makeLibraryPath [
@@ -28,6 +29,12 @@ in
     pkgs.zlib
     pkgs.stdenv
   ];
+
+  env = {
+    PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD = 1;
+    PLAYWRIGHT_BROWSERS_PATH = pkgs.playwright-driver.browsers;
+    PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS = true;
+  };
 
   # https://devenv.sh/languages/python/
   languages.python = {

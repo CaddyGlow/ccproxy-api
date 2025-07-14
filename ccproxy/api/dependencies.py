@@ -32,8 +32,12 @@ def get_claude_service(
         Claude SDK service instance
     """
     logger.debug("Creating Claude SDK service instance")
+    # Get global metrics instance
+    metrics = get_metrics()
+
     return ClaudeSDKService(
         auth_manager=auth_manager,
+        metrics=metrics,
     )
 
 

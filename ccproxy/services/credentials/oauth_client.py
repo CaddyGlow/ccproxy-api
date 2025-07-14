@@ -3,7 +3,6 @@
 import asyncio
 import base64
 import hashlib
-import logging
 import secrets
 import time
 import urllib.parse
@@ -20,11 +19,11 @@ from ccproxy.auth.exceptions import OAuthCallbackError, OAuthLoginError
 from ccproxy.auth.models import ClaudeCredentials, OAuthToken, UserProfile
 from ccproxy.auth.oauth.models import OAuthTokenRequest, OAuthTokenResponse
 from ccproxy.config.auth import OAuthSettings
-from ccproxy.core.logging import get_http_event_hooks, get_logger
+from ccproxy.core.logging import get_http_event_hooks, get_structlog_logger
 from ccproxy.services.credentials.config import OAuthConfig
 
 
-logger = get_logger(__name__)
+logger = get_structlog_logger(__name__)
 
 
 def _log_http_error_compact(operation: str, response: httpx.Response) -> None:
@@ -41,7 +40,12 @@ def _log_http_error_compact(operation: str, response: httpx.Response) -> None:
 
     if verbose_api:
         # Full verbose logging
-        logger.error(f"{operation} failed: {response.status_code} - {response.text}")
+        logger.error(
+            "http_operation_failed",
+            operation=operation,
+            status_code=response.status_code,
+            response_text=response.text,
+        )
     else:
         # Compact logging - truncate response body
         response_text = response.text
@@ -53,8 +57,11 @@ def _log_http_error_compact(operation: str, response: httpx.Response) -> None:
             response_preview = response_text
 
         logger.error(
-            f"{operation} failed: {response.status_code} - {response_preview} "
-            f"(use CCPROXY_VERBOSE_API=true for full response)"
+            "http_operation_failed_compact",
+            operation=operation,
+            status_code=response.status_code,
+            response_preview=response_preview,
+            verbose_hint="use CCPROXY_VERBOSE_API=true for full response",
         )
 
 
@@ -259,14 +266,16 @@ class OAuthClient:
 
             if response.status_code == 404:
                 # Userinfo endpoint not available - this is expected for some OAuth providers
-                logger.debug("Userinfo endpoint not available")
+                logger.debug(
+                    "userinfo_endpoint_unavailable", endpoint=self.config.profile_url
+                )
                 return None
             elif response.status_code != 200:
                 _log_http_error_compact("Profile fetch", response)
                 response.raise_for_status()
 
             data = response.json()
-            logger.debug("Successfully fetched user profile")
+            logger.debug("user_profile_fetched", endpoint=self.config.profile_url)
             return UserProfile.model_validate(data)
 
     async def login(self) -> ClaudeCredentials:
@@ -361,8 +370,12 @@ class OAuthClient:
                 f"{self.config.authorize_url}?{urllib.parse.urlencode(auth_params)}"
             )
 
-            logger.info("Opening browser for OAuth authorization...")
-            logger.info(f"If browser doesn't open, visit: {auth_url}")
+            logger.info("oauth_browser_opening", auth_url=auth_url)
+            logger.info(
+                "oauth_manual_url",
+                message="If browser doesn't open, visit this URL",
+                auth_url=auth_url,
+            )
 
             # Open browser
             webbrowser.open(auth_url)
@@ -432,7 +445,7 @@ class OAuthClient:
 
                 credentials = ClaudeCredentials(claudeAiOauth=OAuthToken(**oauth_data))
 
-                logger.info("Successfully completed OAuth login")
+                logger.info("oauth_login_successful", client_id=self.config.client_id)
                 return credentials
 
             else:

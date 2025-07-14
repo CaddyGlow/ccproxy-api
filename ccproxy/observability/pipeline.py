@@ -13,6 +13,8 @@ Key features:
 - Configurable batch sizes and processing intervals
 """
 
+from __future__ import annotations
+
 import asyncio
 import json
 import time
@@ -39,7 +41,7 @@ class LogEvent:
     data: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
-    def from_structlog_event(cls, event_dict: dict[str, Any]) -> "LogEvent":
+    def from_structlog_event(cls, event_dict: dict[str, Any]) -> LogEvent:
         """Create LogEvent from structlog event dictionary."""
         # Handle timestamp conversion from ISO string to Unix timestamp
         timestamp_raw = event_dict.get("timestamp", time.time())

@@ -15,6 +15,7 @@ from ccproxy.core.errors import (
     ServiceUnavailableError,
 )
 from ccproxy.observability.context import request_context
+from ccproxy.observability.metrics import PrometheusMetrics
 
 
 logger = structlog.get_logger(__name__)
@@ -33,6 +34,7 @@ class ClaudeSDKService:
         self,
         sdk_client: ClaudeSDKClient | None = None,
         auth_manager: AuthManager | None = None,
+        metrics: PrometheusMetrics | None = None,
     ) -> None:
         """
         Initialize Claude SDK service.
@@ -40,9 +42,11 @@ class ClaudeSDKService:
         Args:
             sdk_client: Claude SDK client instance
             auth_manager: Authentication manager (optional)
+            metrics: Prometheus metrics instance (optional)
         """
         self.sdk_client = sdk_client or ClaudeSDKClient()
         self.auth_manager = auth_manager
+        self.metrics = metrics
         self.message_converter = MessageConverter()
         self.options_handler = OptionsHandler()
 
@@ -124,17 +128,37 @@ class ClaudeSDKService:
             streaming=stream,
             service_type="claude_sdk_service",
         ) as ctx:
+            # Record active request start
+            if self.metrics:
+                self.metrics.inc_active_requests()
+
             try:
                 if stream:
+                    # For streaming, return the async iterator directly
+                    # Response time will be handled by the async context manager
                     return self._stream_completion(prompt, options, model, request_id)
                 else:
-                    return await self._complete_non_streaming(
+                    result = await self._complete_non_streaming(
                         prompt, options, model, request_id
                     )
+                    # Record response time after completion
+                    if self.metrics:
+                        self.metrics.record_response_time(
+                            ctx.duration_seconds, model, endpoint, "claude_sdk_service"
+                        )
+                    return result
 
             except Exception as e:
-                # Error handling and logging can be added here if needed
+                # Record error metrics if available
+                if self.metrics:
+                    self.metrics.record_error(
+                        type(e).__name__, "messages", model, "claude_sdk_service"
+                    )
                 raise
+            finally:
+                # Record active request end
+                if self.metrics:
+                    self.metrics.dec_active_requests()
 
     async def _complete_non_streaming(
         self,
@@ -219,6 +243,31 @@ class ClaudeSDKService:
             cost_usd=cost_usd,
             request_id=request_id,
         )
+
+        # Record Prometheus metrics if available
+        if self.metrics:
+            self.metrics.record_request(
+                "POST", "messages", model, "200", "claude_sdk_service"
+            )
+
+            if tokens_input:
+                self.metrics.record_tokens(
+                    tokens_input, "input", model, "claude_sdk_service"
+                )
+            if tokens_output:
+                self.metrics.record_tokens(
+                    tokens_output, "output", model, "claude_sdk_service"
+                )
+            if cache_read_tokens:
+                self.metrics.record_tokens(
+                    cache_read_tokens, "cache_read", model, "claude_sdk_service"
+                )
+            if cache_write_tokens:
+                self.metrics.record_tokens(
+                    cache_write_tokens, "cache_write", model, "claude_sdk_service"
+                )
+            if cost_usd:
+                self.metrics.record_cost(cost_usd, model, "total", "claude_sdk_service")
 
         return response
 
@@ -307,6 +356,39 @@ class ClaudeSDKService:
                         message_count=message_count,
                         request_id=request_id,
                     )
+
+                    # Record Prometheus metrics if available
+                    if self.metrics:
+                        self.metrics.record_request(
+                            "POST", "messages", model, "200", "claude_sdk_service"
+                        )
+
+                        if tokens_input:
+                            self.metrics.record_tokens(
+                                tokens_input, "input", model, "claude_sdk_service"
+                            )
+                        if tokens_output:
+                            self.metrics.record_tokens(
+                                tokens_output, "output", model, "claude_sdk_service"
+                            )
+                        if cache_read_tokens:
+                            self.metrics.record_tokens(
+                                cache_read_tokens,
+                                "cache_read",
+                                model,
+                                "claude_sdk_service",
+                            )
+                        if cache_write_tokens:
+                            self.metrics.record_tokens(
+                                cache_write_tokens,
+                                "cache_write",
+                                model,
+                                "claude_sdk_service",
+                            )
+                        if cost_usd:
+                            self.metrics.record_cost(
+                                cost_usd, model, "total", "claude_sdk_service"
+                            )
 
                     # Send final chunk with usage and cost information
                     final_chunk = self.message_converter.create_streaming_end_chunk()

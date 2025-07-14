@@ -1,6 +1,5 @@
 """Shared server utilities for CLI commands."""
 
-import logging
 from pathlib import Path
 from typing import Optional
 
@@ -9,10 +8,10 @@ from ccproxy.config.settings import (
     Settings,
     config_manager,
 )
-from ccproxy.core.logging import get_logger
+from ccproxy.core.logging import get_structlog_logger
 
 
-logger = get_logger(__name__)
+logger = get_structlog_logger(__name__)
 
 
 def validate_server_settings(settings: Settings) -> None:
@@ -24,6 +23,14 @@ def validate_server_settings(settings: Settings) -> None:
     Raises:
         ConfigurationError: If settings are invalid
     """
+    logger.debug(
+        "validating_server_settings",
+        host=settings.server.host,
+        port=settings.server.port,
+        log_level=settings.server.log_level,
+        workers=settings.server.workers,
+    )
+
     # Validate port range
     if not 1 <= settings.server.port <= 65535:
         raise ConfigurationError(
@@ -90,9 +97,13 @@ def check_port_availability(host: str, port: int) -> bool:
     """
     import socket
 
+    logger.debug("checking_port_availability", host=host, port=port)
+
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
             sock.bind((host, port))
+            logger.debug("port_available", host=host, port=port)
             return True
     except OSError:
+        logger.debug("port_unavailable", host=host, port=port)
         return False

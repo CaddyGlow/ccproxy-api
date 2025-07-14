@@ -10,8 +10,12 @@ Key features:
 - Minimal overhead for high-frequency operations
 - Standard Prometheus metric types (Counter, Histogram, Gauge)
 - Automatic label management and validation
+- Pushgateway integration for batch metric pushing
 """
 
+from __future__ import annotations
+
+import asyncio
 import logging
 from typing import Any, Optional, Union
 
@@ -28,7 +32,7 @@ except ImportError:
         def __init__(self, *args: Any, **kwargs: Any) -> None:
             pass
 
-        def labels(self, **kwargs: Any) -> "_DummyCounter":
+        def labels(self, **kwargs: Any) -> _DummyCounter:
             return self
 
         def inc(self, value: float = 1) -> None:
@@ -38,20 +42,20 @@ except ImportError:
         def __init__(self, *args: Any, **kwargs: Any) -> None:
             pass
 
-        def labels(self, **kwargs: Any) -> "_DummyHistogram":
+        def labels(self, **kwargs: Any) -> _DummyHistogram:
             return self
 
         def observe(self, value: float) -> None:
             pass
 
-        def time(self) -> "_DummyHistogram":
+        def time(self) -> _DummyHistogram:
             return self
 
     class _DummyGauge:
         def __init__(self, *args: Any, **kwargs: Any) -> None:
             pass
 
-        def labels(self, **kwargs: Any) -> "_DummyGauge":
+        def labels(self, **kwargs: Any) -> _DummyGauge:
             return self
 
         def set(self, value: float) -> None:
@@ -94,7 +98,10 @@ class PrometheusMetrics:
     """
 
     def __init__(
-        self, namespace: str = "ccproxy", registry: CollectorRegistry | None = None
+        self,
+        namespace: str = "ccproxy",
+        registry: CollectorRegistry | None = None,
+        pushgateway_client: Any | None = None,
     ):
         """
         Initialize Prometheus metrics.
@@ -102,6 +109,7 @@ class PrometheusMetrics:
         Args:
             namespace: Metric name prefix
             registry: Custom Prometheus registry (uses default if None)
+            pushgateway_client: Optional pushgateway client for dependency injection
         """
         if not PROMETHEUS_AVAILABLE:
             logger.warning(
@@ -110,11 +118,21 @@ class PrometheusMetrics:
             )
 
         self.namespace = namespace
-        self.registry = registry
+        # Use default registry if None is passed
+        if registry is None and PROMETHEUS_AVAILABLE:
+            from prometheus_client import REGISTRY
+
+            self.registry: CollectorRegistry | None = REGISTRY
+        else:
+            self.registry = registry
         self._enabled = PROMETHEUS_AVAILABLE
+        self._pushgateway_client = pushgateway_client
 
         if self._enabled:
             self._init_metrics()
+            # Initialize pushgateway client if not provided via DI
+            if self._pushgateway_client is None:
+                self._init_pushgateway()
 
     def _init_metrics(self) -> None:
         """Initialize all Prometheus metric objects."""
@@ -178,13 +196,66 @@ class PrometheusMetrics:
             f"{self.namespace}_info", "System information", registry=self.registry
         )
 
+        # Service up metric (for Grafana service health)
+        self.up = Gauge(
+            "up",
+            "Service is up and running",
+            labelnames=["job"],
+            registry=self.registry,
+        )
+
         # Set initial system info
+        try:
+            from ccproxy import __version__
+            version = __version__
+        except ImportError:
+            version = "unknown"
+
         self.system_info.info(
             {
-                "version": "1.0.0",  # TODO: Get from version module
+                "version": version,
                 "metrics_enabled": "true",
             }
         )
+
+        # Set service as up
+        self.up.labels(job="ccproxy").set(1)
+
+    def _init_pushgateway(self) -> None:
+        """Initialize Pushgateway client if configured (fallback for non-DI usage)."""
+        try:
+            # Import here to avoid circular imports
+            from ccproxy.config.settings import get_settings
+
+            from .pushgateway import PushgatewayClient
+
+            settings = get_settings()
+            logger.debug(
+                "pushgateway_init_attempt: enabled=%s url=%s job=%s",
+                settings.observability.pushgateway_enabled,
+                settings.observability.pushgateway_url,
+                settings.observability.pushgateway_job,
+            )
+
+            self._pushgateway_client = PushgatewayClient(settings.observability)
+
+            if self._pushgateway_client.is_enabled():
+                logger.info(
+                    "pushgateway_initialized: url=%s job=%s",
+                    settings.observability.pushgateway_url,
+                    settings.observability.pushgateway_job,
+                )
+            else:
+                logger.debug(
+                    "pushgateway_disabled: prometheus_available=%s url_configured=%s enabled_setting=%s",
+                    hasattr(self._pushgateway_client, "_enabled")
+                    and self._pushgateway_client._enabled,
+                    bool(settings.observability.pushgateway_url),
+                    settings.observability.pushgateway_enabled,
+                )
+        except Exception as e:
+            logger.warning("pushgateway_init_failed: error=%s", str(e))
+            self._pushgateway_client = None
 
     def record_request(
         self,
@@ -358,28 +429,122 @@ class PrometheusMetrics:
         """Check if metrics collection is enabled."""
         return self._enabled
 
+    def push_to_gateway(self, method: str = "push") -> bool:
+        """
+        Push current metrics to Pushgateway using official prometheus_client methods.
+
+        Args:
+            method: Push method - "push" (replace), "pushadd" (add), or "delete"
+
+        Returns:
+            True if push succeeded, False otherwise
+        """
+        logger.debug(
+            "push_to_gateway_attempt: metrics_enabled=%s client_exists=%s client_enabled=%s method=%s",
+            self._enabled,
+            self._pushgateway_client is not None,
+            self._pushgateway_client.is_enabled()
+            if self._pushgateway_client
+            else False,
+            method,
+        )
+
+        if not self._enabled or not self._pushgateway_client:
+            logger.debug(
+                "push_to_gateway_skipped: reason=metrics_disabled_or_no_client"
+            )
+            return False
+
+        result = self._pushgateway_client.push_metrics(self.registry, method)
+        logger.debug("push_to_gateway_result: success=%s method=%s", result, method)
+        return bool(result)
+
+    def push_add_to_gateway(self) -> bool:
+        """
+        Add current metrics to existing job/instance in Pushgateway (pushadd operation).
+
+        This is useful when you want to add metrics without replacing existing ones.
+
+        Returns:
+            True if push succeeded, False otherwise
+        """
+        return self.push_to_gateway(method="pushadd")
+
+    def delete_from_gateway(self) -> bool:
+        """
+        Delete all metrics for the configured job from Pushgateway.
+
+        This removes all metrics associated with the job, useful for cleanup.
+
+        Returns:
+            True if delete succeeded, False otherwise
+        """
+        logger.debug(
+            "delete_from_gateway_attempt: metrics_enabled=%s client_exists=%s client_enabled=%s",
+            self._enabled,
+            self._pushgateway_client is not None,
+            self._pushgateway_client.is_enabled()
+            if self._pushgateway_client
+            else False,
+        )
+
+        if not self._enabled or not self._pushgateway_client:
+            logger.debug(
+                "delete_from_gateway_skipped: reason=metrics_disabled_or_no_client"
+            )
+            return False
+
+        result = self._pushgateway_client.delete_metrics()
+        logger.debug("delete_from_gateway_result: success=%s", result)
+        return bool(result)
+
+    def is_pushgateway_enabled(self) -> bool:
+        """Check if Pushgateway client is enabled and configured."""
+        return (
+            self._pushgateway_client is not None
+            and self._pushgateway_client.is_enabled()
+        )
+
 
 # Global metrics instance
 _global_metrics: PrometheusMetrics | None = None
 
 
 def get_metrics(
-    namespace: str = "ccproxy", registry: CollectorRegistry | None = None
+    namespace: str = "ccproxy",
+    registry: CollectorRegistry | None = None,
+    pushgateway_client: Any | None = None,
+    settings: Any | None = None,
 ) -> PrometheusMetrics:
     """
-    Get or create global metrics instance.
+    Get or create global metrics instance with dependency injection.
 
     Args:
         namespace: Metric namespace prefix
         registry: Custom Prometheus registry
+        pushgateway_client: Optional pushgateway client for dependency injection
+        settings: Optional settings instance to avoid circular imports
 
     Returns:
-        PrometheusMetrics instance
+        PrometheusMetrics instance with full pushgateway support:
+        - push_to_gateway(): Replace all metrics (default)
+        - push_add_to_gateway(): Add metrics to existing job
+        - delete_from_gateway(): Delete all metrics for job
     """
     global _global_metrics
 
     if _global_metrics is None:
-        _global_metrics = PrometheusMetrics(namespace=namespace, registry=registry)
+        # Create pushgateway client if not provided via DI
+        if pushgateway_client is None:
+            from .pushgateway import get_pushgateway_client
+
+            pushgateway_client = get_pushgateway_client()
+
+        _global_metrics = PrometheusMetrics(
+            namespace=namespace,
+            registry=registry,
+            pushgateway_client=pushgateway_client,
+        )
 
     return _global_metrics
 
@@ -388,3 +553,8 @@ def reset_metrics() -> None:
     """Reset global metrics instance (mainly for testing)."""
     global _global_metrics
     _global_metrics = None
+
+    # Also reset pushgateway client
+    from .pushgateway import reset_pushgateway_client
+
+    reset_pushgateway_client()

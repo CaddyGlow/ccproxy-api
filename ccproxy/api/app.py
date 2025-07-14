@@ -18,6 +18,7 @@ from ccproxy.config.settings import Settings, get_settings
 from ccproxy.core.logging import get_logger, setup_rich_logging
 from ccproxy.observability.config import configure_observability
 from ccproxy.observability.pipeline import get_pipeline
+from ccproxy.observability.scheduler import get_scheduler, stop_scheduler
 
 
 @asynccontextmanager
@@ -41,10 +42,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         for path in settings.claude.get_searched_paths():
             logger.info(f"  - {path}")
 
-    # Configure observability system (structlog + pipeline)
+    # Configure observability system (structlog + pipeline + scheduler)
     try:
         configure_observability()
         pipeline = await get_pipeline()
+        scheduler = await get_scheduler()
         logger.info("Observability system initialized successfully")
     except Exception as e:
         logger.error(f"Failed to initialize observability system: {e}")
@@ -59,7 +61,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     try:
         if "pipeline" in locals():
             await pipeline.stop()
-            logger.info("Observability system stopped")
+        if "scheduler" in locals():
+            await scheduler.stop()
+        # Also stop global scheduler
+        await stop_scheduler()
+        logger.info("Observability system stopped")
     except Exception as e:
         logger.error(f"Error stopping observability system: {e}")
 

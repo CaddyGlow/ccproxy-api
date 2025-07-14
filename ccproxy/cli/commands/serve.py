@@ -1,7 +1,6 @@
 """Serve command for Claude Code Proxy API server - consolidates server-related commands."""
 
 import json
-import logging
 import os
 from pathlib import Path
 from typing import Any
@@ -23,7 +22,7 @@ from ccproxy.config.settings import (
     config_manager,
 )
 from ccproxy.core.async_utils import get_root_package_name
-from ccproxy.core.logging import get_logger
+from ccproxy.core.logging import get_structlog_logger
 from ccproxy.docker import (
     DockerEnv,
     DockerPath,
@@ -49,7 +48,7 @@ from ..docker.params import (
 
 
 # Logger will be configured by configuration manager
-logger = get_logger(__name__)
+logger = get_structlog_logger(__name__)
 
 
 def get_config_path_from_context() -> Path | None:
@@ -201,8 +200,11 @@ def _run_docker_server(
         )
     )
 
-    logger.info(f"image {settings.docker.docker_image}")
-    logger.info(f"image2 {image}")
+    logger.info(
+        "docker_server_config",
+        configured_image=settings.docker.docker_image,
+        effective_image=image,
+    )
 
     # Add port mapping
     ports = [f"{settings.server.port}:{settings.server.port}"]
@@ -252,7 +254,10 @@ def _run_local_server(settings: Settings, cli_overrides: dict[str, Any]) -> None
         os.environ["CCPROXY_CONFIG_OVERRIDES"] = json.dumps(cli_overrides)
 
     logger.info(
-        f"Starting production server at http://{settings.server.host}:{settings.server.port}"
+        "server_starting",
+        host=settings.server.host,
+        port=settings.server.port,
+        url=f"http://{settings.server.host}:{settings.server.port}",
     )
 
     # Run uvicorn with our already configured logging
@@ -385,6 +390,16 @@ def api(
         ccproxy serve --port 8080 --workers 4
     """
     try:
+        # Log CLI command execution start
+        logger.info(
+            "cli_command_starting",
+            command="serve",
+            docker=docker,
+            port=port,
+            host=host,
+            config_path=str(config) if config else None,
+        )
+
         # Get config path from context if not provided directly
         if config is None:
             config = get_config_path_from_context()
@@ -415,6 +430,17 @@ def api(
         # Set up logging once with the effective log level
         config_manager.setup_logging(log_level or settings.server.log_level)
 
+        # Log effective configuration
+        logger.info(
+            "configuration_loaded",
+            host=settings.server.host,
+            port=settings.server.port,
+            log_level=settings.server.log_level,
+            docker_mode=docker,
+            docker_image=settings.docker.docker_image if docker else None,
+            auth_enabled=bool(settings.security.auth_token),
+        )
+
         if docker:
             _run_docker_server(
                 settings,
@@ -432,10 +458,12 @@ def api(
             _run_local_server(settings, cli_overrides)
 
     except ConfigurationError as e:
+        logger.error("cli_configuration_error", error=str(e), command="serve")
         toolkit = get_rich_toolkit()
         toolkit.print(f"Configuration error: {e}", tag="error")
         raise typer.Exit(1) from e
     except Exception as e:
+        logger.error("cli_unexpected_error", error=str(e), command="serve")
         toolkit = get_rich_toolkit()
         toolkit.print(f"Error starting server: {e}", tag="error")
         raise typer.Exit(1) from e
@@ -484,6 +512,14 @@ def claude(
     toolkit = get_rich_toolkit()
 
     try:
+        # Log CLI command execution start
+        logger.info(
+            "cli_command_starting",
+            command="claude",
+            docker=docker,
+            args=args if args else [],
+        )
+
         # Load settings using configuration manager
         settings = config_manager.load_settings(
             config_path=get_config_path_from_context()
@@ -511,6 +547,13 @@ def claude(
             )
 
             cmd_str = " ".join(command or [])
+            logger.info(
+                "docker_execution",
+                image=image,
+                command=" ".join(command or []),
+                volumes_count=len(volumes),
+                env_vars_count=len(environment),
+            )
             toolkit.print(f"Executing: docker run ... {image} {cmd_str}", tag="docker")
             toolkit.print_line()
 
@@ -538,6 +581,7 @@ def claude(
             if not Path(claude_path).is_absolute():
                 claude_path = str(Path(claude_path).resolve())
 
+            logger.info("local_claude_execution", claude_path=claude_path, args=args)
             toolkit.print(f"Executing: {claude_path} {' '.join(args)}", tag="claude")
             toolkit.print_line()
 
@@ -551,8 +595,10 @@ def claude(
                 raise typer.Exit(1) from e
 
     except ConfigurationError as e:
+        logger.error("cli_configuration_error", error=str(e), command="claude")
         toolkit.print(f"Configuration error: {e}", tag="error")
         raise typer.Exit(1) from e
     except Exception as e:
+        logger.error("cli_unexpected_error", error=str(e), command="claude")
         toolkit.print(f"Error executing claude command: {e}", tag="error")
         raise typer.Exit(1) from e
