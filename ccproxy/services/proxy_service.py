@@ -274,19 +274,31 @@ class ProxyService:
                 )
 
                 # 7. Record Prometheus metrics
-                self.metrics.record_request(method, endpoint, model, status_code)
-                self.metrics.record_response_time(ctx.duration_seconds, model, endpoint)
+                self.metrics.record_request(
+                    method, endpoint, model, status_code, "proxy_service"
+                )
+                self.metrics.record_response_time(
+                    ctx.duration_seconds, model, endpoint, "proxy_service"
+                )
 
                 if tokens_input:
-                    self.metrics.record_tokens(tokens_input, "input", model)
+                    self.metrics.record_tokens(
+                        tokens_input, "input", model, "proxy_service"
+                    )
                 if tokens_output:
-                    self.metrics.record_tokens(tokens_output, "output", model)
+                    self.metrics.record_tokens(
+                        tokens_output, "output", model, "proxy_service"
+                    )
                 if cache_read_tokens:
-                    self.metrics.record_tokens(cache_read_tokens, "cache_read", model)
+                    self.metrics.record_tokens(
+                        cache_read_tokens, "cache_read", model, "proxy_service"
+                    )
                 if cache_write_tokens:
-                    self.metrics.record_tokens(cache_write_tokens, "cache_write", model)
+                    self.metrics.record_tokens(
+                        cache_write_tokens, "cache_write", model, "proxy_service"
+                    )
                 if cost_usd:
-                    self.metrics.record_cost(cost_usd, model)
+                    self.metrics.record_cost(cost_usd, model, "total", "proxy_service")
 
                 return (
                     transformed_response["status_code"],
@@ -297,7 +309,7 @@ class ProxyService:
             except Exception as e:
                 # Record error metrics
                 error_type = type(e).__name__
-                self.metrics.record_error(error_type, endpoint, model)
+                self.metrics.record_error(error_type, endpoint, model, "proxy_service")
 
                 logger.exception(f"Error in proxy request: {method} {path}")
                 await self._handle_error(e, method, path)
