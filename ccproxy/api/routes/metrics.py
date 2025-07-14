@@ -307,16 +307,15 @@ async def stream_metrics() -> StreamingResponse:
         """Generate Server-Sent Events for real-time metrics."""
 
         # Send initial connection event
-        yield f"data: {
-            json.dumps(
-                {
-                    'type': 'connection',
-                    'message': 'Connected to metrics stream',
-                    'timestamp': time.time(),
-                },
-                default=json_serializer,
-            )
-        }\n\n"
+        data = json.dumps(
+            {
+                "type": "connection",
+                "message": "Connected to metrics stream",
+                "timestamp": time.time(),
+            },
+            default=json_serializer,
+        )
+        yield f"data: {data}\n\n"
 
         # Keep track of last request count to detect new requests
         last_request_count = 0
@@ -341,61 +340,57 @@ async def stream_metrics() -> StreamingResponse:
 
                         if current_request_count > last_request_count:
                             # New requests detected, send analytics update
-                            yield f"data: {
-                                json.dumps(
-                                    {
-                                        'type': 'analytics_update',
-                                        'data': analytics,
-                                        'timestamp': time.time(),
-                                    },
-                                    default=json_serializer,
-                                )
-                            }\n\n"
+                            data = json.dumps(
+                                {
+                                    "type": "analytics_update",
+                                    "data": analytics,
+                                    "timestamp": time.time(),
+                                },
+                                default=json_serializer,
+                            )
+                            yield f"data: {data}\n\n"
 
                             last_request_count = current_request_count
 
                         # Send periodic heartbeat with current stats
-                        yield f"data: {
-                            json.dumps(
-                                {
-                                    'type': 'heartbeat',
-                                    'stats': {
-                                        'total_requests': current_request_count,
-                                        'timestamp': time.time(),
-                                    },
-                                },
-                                default=json_serializer,
-                            )
-                        }\n\n"
-
-                except Exception as e:
-                    # Send error event but keep connection alive
-                    yield f"data: {
-                        json.dumps(
+                        data = json.dumps(
                             {
-                                'type': 'error',
-                                'message': str(e),
-                                'timestamp': time.time(),
+                                "type": "heartbeat",
+                                "stats": {
+                                    "total_requests": current_request_count,
+                                    "timestamp": time.time(),
+                                },
                             },
                             default=json_serializer,
                         )
-                    }\n\n"
+                        yield f"data: {data}\n\n"
+
+                except Exception as e:
+                    # Send error event but keep connection alive
+                    data = json.dumps(
+                        {
+                            "type": "error",
+                            "message": str(e),
+                            "timestamp": time.time(),
+                        },
+                        default=json_serializer,
+                    )
+                    yield f"data: {data}\n\n"
 
                 # Wait before next check
                 await asyncio.sleep(2)  # Check every 2 seconds
 
         except asyncio.CancelledError:
             # Send disconnect event
-            yield f"data: {
-                json.dumps(
-                    {
-                        'type': 'disconnect',
-                        'message': 'Stream disconnected',
-                        'timestamp': time.time(),
-                    },
-                    default=json_serializer,
-                )
-            }\n\n"
+            data = json.dumps(
+                {
+                    "type": "disconnect",
+                    "message": "Stream disconnected",
+                    "timestamp": time.time(),
+                },
+                default=json_serializer,
+            )
+            yield f"data: {data}\n\n"
 
     return StreamingResponse(
         event_stream(),
