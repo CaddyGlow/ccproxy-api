@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-import logging
 from typing import Any
 
 from ccproxy.config.observability import ObservabilitySettings
+from ccproxy.core.logging import get_structlog_logger
 
 
-logger = logging.getLogger(__name__)
+logger = get_structlog_logger(__name__)
 
 
 # Import prometheus_client with graceful degradation (matching existing metrics.py pattern)
@@ -59,11 +59,11 @@ class PushgatewayClient:
         self._enabled = PROMETHEUS_AVAILABLE and settings.pushgateway_enabled
 
         logger.debug(
-            "pushgateway_client_init: prometheus_available=%s pushgateway_enabled=%s pushgateway_url=%s final_enabled=%s",
-            PROMETHEUS_AVAILABLE,
-            settings.pushgateway_enabled,
-            settings.pushgateway_url,
-            self._enabled,
+            "pushgateway_client_init",
+            prometheus_available=PROMETHEUS_AVAILABLE,
+            pushgateway_enabled=settings.pushgateway_enabled,
+            pushgateway_url=settings.pushgateway_url,
+            final_enabled=self._enabled,
         )
 
         if not PROMETHEUS_AVAILABLE and settings.pushgateway_enabled:
@@ -83,12 +83,12 @@ class PushgatewayClient:
             True if push succeeded, False otherwise
         """
         logger.debug(
-            "pushgateway_push_attempt: enabled=%s has_url=%s url=%s job=%s method=%s",
-            self._enabled,
-            bool(self.settings.pushgateway_url),
-            self.settings.pushgateway_url,
-            self.settings.pushgateway_job,
-            method,
+            "pushgateway_push_attempt",
+            enabled=self._enabled,
+            has_url=bool(self.settings.pushgateway_url),
+            url=self.settings.pushgateway_url,
+            job=self.settings.pushgateway_job,
+            method=method,
         )
 
         if not self._enabled or not self.settings.pushgateway_url:
@@ -101,17 +101,17 @@ class PushgatewayClient:
                 logger.debug("pushgateway_using_remote_write_protocol")
                 return self._push_remote_write(registry)
             else:
-                logger.debug("pushgateway_using_standard_protocol method=%s", method)
+                logger.debug("pushgateway_using_standard_protocol", method=method)
                 return self._push_standard(registry, method)
 
         except Exception as e:
             logger.error(
-                "pushgateway_push_failed: url=%s job=%s method=%s error=%s error_type=%s",
-                self.settings.pushgateway_url,
-                self.settings.pushgateway_job,
-                method,
-                str(e),
-                type(e).__name__,
+                "pushgateway_push_failed",
+                url=self.settings.pushgateway_url,
+                job=self.settings.pushgateway_job,
+                method=method,
+                error=str(e),
+                error_type=type(e).__name__,
             )
             return False
 
@@ -144,14 +144,15 @@ class PushgatewayClient:
                 job=self.settings.pushgateway_job,
             )
         else:
-            logger.error("pushgateway_invalid_method: method=%s", method)
+            logger.error("pushgateway_invalid_method", method=method)
             return False
 
         logger.info(
-            "pushgateway_push_success: url=%s job=%s protocol=standard method=%s",
-            self.settings.pushgateway_url,
-            self.settings.pushgateway_job,
-            method,
+            "pushgateway_push_success",
+            url=self.settings.pushgateway_url,
+            job=self.settings.pushgateway_job,
+            protocol="standard",
+            method=method,
         )
         return True
 
@@ -182,9 +183,9 @@ class PushgatewayClient:
             import_url = self.settings.pushgateway_url
 
         logger.debug(
-            "pushgateway_import_attempt: original_url=%s import_url=%s",
-            self.settings.pushgateway_url,
-            import_url,
+            "pushgateway_import_attempt",
+            original_url=self.settings.pushgateway_url,
+            import_url=import_url,
         )
 
         # VictoriaMetrics import endpoint accepts text/plain exposition format
@@ -199,23 +200,25 @@ class PushgatewayClient:
         )
 
         logger.debug(
-            "metrics_data_sample: %s", metrics_data[:200] if metrics_data else "empty"
+            "metrics_data_sample",
+            sample=metrics_data[:200] if metrics_data else "empty",
         )
 
         if response.status_code in (200, 204):
             logger.info(
-                "pushgateway_import_success: url=%s job=%s protocol=victoriametrics_import status=%s",
-                import_url,
-                self.settings.pushgateway_job,
-                response.status_code,
+                "pushgateway_import_success",
+                url=import_url,
+                job=self.settings.pushgateway_job,
+                protocol="victoriametrics_import",
+                status=response.status_code,
             )
             return True
         else:
             logger.error(
-                "pushgateway_import_failed: url=%s status=%s response=%s",
-                import_url,
-                response.status_code,
-                response.text[:500] if response.text else "empty",
+                "pushgateway_import_failed",
+                url=import_url,
+                status=response.status_code,
+                response=response.text[:500] if response.text else "empty",
             )
             return False
 
@@ -237,11 +240,11 @@ class PushgatewayClient:
             True if delete succeeded, False otherwise
         """
         logger.debug(
-            "pushgateway_delete_attempt: enabled=%s has_url=%s url=%s job=%s",
-            self._enabled,
-            bool(self.settings.pushgateway_url),
-            self.settings.pushgateway_url,
-            self.settings.pushgateway_job,
+            "pushgateway_delete_attempt",
+            enabled=self._enabled,
+            has_url=bool(self.settings.pushgateway_url),
+            url=self.settings.pushgateway_url,
+            job=self.settings.pushgateway_job,
         )
 
         if not self._enabled or not self.settings.pushgateway_url:
@@ -257,11 +260,11 @@ class PushgatewayClient:
                 return self._push_standard(None, method="delete")  # type: ignore[arg-type]
         except Exception as e:
             logger.error(
-                "pushgateway_delete_failed: url=%s job=%s error=%s error_type=%s",
-                self.settings.pushgateway_url,
-                self.settings.pushgateway_job,
-                str(e),
-                type(e).__name__,
+                "pushgateway_delete_failed",
+                url=self.settings.pushgateway_url,
+                job=self.settings.pushgateway_job,
+                error=str(e),
+                error_type=type(e).__name__,
             )
             return False
 
