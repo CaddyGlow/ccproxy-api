@@ -2,7 +2,8 @@
 
 import logging
 import sys
-from typing import Any, Callable, Iterable, MutableMapping
+from collections.abc import Callable, Iterable, MutableMapping
+from typing import Any
 
 import httpx
 from rich.console import Console
