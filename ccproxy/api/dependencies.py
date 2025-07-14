@@ -11,7 +11,6 @@ from ccproxy.core.logging import get_logger
 from ccproxy.observability import PrometheusMetrics, get_metrics
 from ccproxy.services.claude_sdk_service import ClaudeSDKService
 from ccproxy.services.credentials.manager import CredentialsManager
-from ccproxy.services.metrics_service import MetricsService
 from ccproxy.services.proxy_service import ProxyService
 
 
@@ -87,16 +86,6 @@ def get_proxy_service(
     )
 
 
-def get_metrics_service() -> MetricsService:
-    """Get metrics service instance.
-
-    Returns:
-        Metrics service instance
-    """
-    logger.debug("Creating metrics service instance")
-    return MetricsService()
-
-
 def get_observability_metrics() -> PrometheusMetrics:
     """Get observability metrics instance.
 
@@ -110,7 +99,6 @@ def get_observability_metrics() -> PrometheusMetrics:
 # Type aliases for service dependencies
 ClaudeServiceDep = Annotated[ClaudeSDKService, Depends(get_claude_service)]
 ProxyServiceDep = Annotated[ProxyService, Depends(get_proxy_service)]
-MetricsServiceDep = Annotated[MetricsService, Depends(get_metrics_service)]
 ObservabilityMetricsDep = Annotated[
     PrometheusMetrics, Depends(get_observability_metrics)
 ]
