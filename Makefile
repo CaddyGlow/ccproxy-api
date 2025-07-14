@@ -29,7 +29,9 @@ help:
 	@echo "  ci           - Run full CI pipeline (pre-commit + test)"
 	@echo ""
 	@echo "Build and deployment:"
-	@echo "  build        - Build Python package"
+	@echo "  build        - Build Python package (includes dashboard)"
+	@echo "  build-backend - Build Python package only (no dashboard)"
+	@echo "  build-dashboard - Build dashboard only"
 	@echo "  docker-build - Build Docker image"
 	@echo "  docker-run   - Run Docker container"
 	@echo ""
@@ -170,8 +172,14 @@ ci:
 	$(MAKE) test
 
 # Build targets
-build:
+build: build-dashboard
 	uv build
+
+build-backend:
+	uv build
+
+build-dashboard:
+	$(MAKE) -C dashboard build
 
 # Dashboard delegation
 dashboard:

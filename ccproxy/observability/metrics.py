@@ -122,14 +122,14 @@ class PrometheusMetrics:
         self.request_counter = Counter(
             f"{self.namespace}_requests_total",
             "Total number of requests processed",
-            labelnames=["method", "endpoint", "model", "status"],
+            labelnames=["method", "endpoint", "model", "status", "service_type"],
             registry=self.registry,
         )
 
         self.response_time = Histogram(
             f"{self.namespace}_response_duration_seconds",
             "Response time in seconds",
-            labelnames=["model", "endpoint"],
+            labelnames=["model", "endpoint", "service_type"],
             buckets=[0.01, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 25.0],
             registry=self.registry,
         )
@@ -141,6 +141,7 @@ class PrometheusMetrics:
             labelnames=[
                 "type",
                 "model",
+                "service_type",
             ],  # _type: input, output, cache_read, cache_write
             registry=self.registry,
         )
@@ -149,7 +150,11 @@ class PrometheusMetrics:
         self.cost_counter = Counter(
             f"{self.namespace}_cost_usd_total",
             "Total cost in USD",
-            labelnames=["model", "cost_type"],  # cost_type: input, output, cache, total
+            labelnames=[
+                "model",
+                "cost_type",
+                "service_type",
+            ],  # cost_type: input, output, cache, total
             registry=self.registry,
         )
 
@@ -157,7 +162,7 @@ class PrometheusMetrics:
         self.error_counter = Counter(
             f"{self.namespace}_errors_total",
             "Total number of errors",
-            labelnames=["error_type", "endpoint", "model"],
+            labelnames=["error_type", "endpoint", "model", "service_type"],
             registry=self.registry,
         )
 
@@ -187,6 +192,7 @@ class PrometheusMetrics:
         endpoint: str,
         model: str | None = None,
         status: str | int = "unknown",
+        service_type: str | None = None,
     ) -> None:
         """
         Record a request event.
@@ -196,6 +202,7 @@ class PrometheusMetrics:
             endpoint: API endpoint path
             model: Model name used
             status: Response status code or status string
+            service_type: Service type (claude_sdk_service, proxy_service)
         """
         if not self._enabled:
             return
@@ -205,6 +212,7 @@ class PrometheusMetrics:
             endpoint=endpoint,
             model=model or "unknown",
             status=str(status),
+            service_type=service_type or "unknown",
         ).inc()
 
     def record_response_time(
@@ -212,6 +220,7 @@ class PrometheusMetrics:
         duration_seconds: float,
         model: str | None = None,
         endpoint: str = "unknown",
+        service_type: str | None = None,
     ) -> None:
         """
         Record response time.
@@ -220,16 +229,23 @@ class PrometheusMetrics:
             duration_seconds: Response time in seconds
             model: Model name used
             endpoint: API endpoint
+            service_type: Service type (claude_sdk_service, proxy_service)
         """
         if not self._enabled:
             return
 
-        self.response_time.labels(model=model or "unknown", endpoint=endpoint).observe(
-            duration_seconds
-        )
+        self.response_time.labels(
+            model=model or "unknown",
+            endpoint=endpoint,
+            service_type=service_type or "unknown",
+        ).observe(duration_seconds)
 
     def record_tokens(
-        self, token_count: int, token_type: str, model: str | None = None
+        self,
+        token_count: int,
+        token_type: str,
+        model: str | None = None,
+        service_type: str | None = None,
     ) -> None:
         """
         Record token usage.
@@ -238,16 +254,23 @@ class PrometheusMetrics:
             token_count: Number of tokens
             token_type: Type of tokens (input, output, cache_read, cache_write)
             model: Model name
+            service_type: Service type (claude_sdk_service, proxy_service)
         """
         if not self._enabled or token_count <= 0:
             return
 
-        self.token_counter.labels(type=token_type, model=model or "unknown").inc(
-            token_count
-        )
+        self.token_counter.labels(
+            type=token_type,
+            model=model or "unknown",
+            service_type=service_type or "unknown",
+        ).inc(token_count)
 
     def record_cost(
-        self, cost_usd: float, model: str | None = None, cost_type: str = "total"
+        self,
+        cost_usd: float,
+        model: str | None = None,
+        cost_type: str = "total",
+        service_type: str | None = None,
     ) -> None:
         """
         Record cost.
@@ -256,16 +279,23 @@ class PrometheusMetrics:
             cost_usd: Cost in USD
             model: Model name
             cost_type: Type of cost (input, output, cache, total)
+            service_type: Service type (claude_sdk_service, proxy_service)
         """
         if not self._enabled or cost_usd <= 0:
             return
 
-        self.cost_counter.labels(model=model or "unknown", cost_type=cost_type).inc(
-            cost_usd
-        )
+        self.cost_counter.labels(
+            model=model or "unknown",
+            cost_type=cost_type,
+            service_type=service_type or "unknown",
+        ).inc(cost_usd)
 
     def record_error(
-        self, error_type: str, endpoint: str = "unknown", model: str | None = None
+        self,
+        error_type: str,
+        endpoint: str = "unknown",
+        model: str | None = None,
+        service_type: str | None = None,
     ) -> None:
         """
         Record an error event.
@@ -274,12 +304,16 @@ class PrometheusMetrics:
             error_type: Type/name of error
             endpoint: API endpoint where error occurred
             model: Model name if applicable
+            service_type: Service type (claude_sdk_service, proxy_service)
         """
         if not self._enabled:
             return
 
         self.error_counter.labels(
-            error_type=error_type, endpoint=endpoint, model=model or "unknown"
+            error_type=error_type,
+            endpoint=endpoint,
+            model=model or "unknown",
+            service_type=service_type or "unknown",
         ).inc()
 
     def set_active_requests(self, count: int) -> None:
