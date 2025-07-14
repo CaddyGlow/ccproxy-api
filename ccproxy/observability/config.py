@@ -7,16 +7,7 @@ enabling structured logging that feeds into the observability system.
 
 from __future__ import annotations
 
-import json
-import logging
-import sys
-from collections.abc import Mapping, MutableMapping
 from typing import Any
-
-import structlog
-from structlog.stdlib import LoggerFactory
-
-from .pipeline import create_structlog_processor
 
 
 def configure_observability(
@@ -40,73 +31,16 @@ def configure_observability(
         show_path: Whether to show the module path in logs
         show_time: Whether to show timestamps in logs
     """
-    # Base processors that are always included
-    processors: list[Any] = [
-        structlog.contextvars.merge_contextvars,
-        structlog.processors.add_log_level,
-    ]
+    # Delegate to core logging system for all structlog configuration
+    from ccproxy.core.logging import setup_dual_logging
 
-    # Add timestamp if requested
-    if show_time:
-        processors.append(structlog.processors.TimeStamper(fmt="iso"))
-
-    # Add callsite info if path is requested
-    if show_path:
-        processors.append(
-            structlog.processors.CallsiteParameterAdder(
-                parameters=[
-                    structlog.processors.CallsiteParameter.FUNC_NAME,
-                    structlog.processors.CallsiteParameter.LINENO,
-                    structlog.processors.CallsiteParameter.FILENAME,
-                ]
-            )
-        )
-
-    # Add pipeline processor if enabled
-    if enable_pipeline:
-        import contextlib
-
-        with contextlib.suppress(ImportError):
-            processors.append(create_structlog_processor())
-
-    # Add format-specific processors
-    if format_type == "rich":
-        # For Rich output, use Rich-compatible processors
-        try:
-            # Import the Rich processor from core logging
-            from ccproxy.core.logging import _rich_structlog_processor
-
-            processors.extend(
-                [
-                    _rich_structlog_processor,
-                    structlog.dev.ConsoleRenderer(colors=True),
-                ]
-            )
-        except ImportError:
-            # Fallback to plain console renderer
-            processors.append(structlog.dev.ConsoleRenderer(colors=True))
-    elif format_type == "json":
-        # For JSON output, use standard JSON renderer
-        processors.append(structlog.processors.JSONRenderer())
-    else:
-        # Default to plain text
-        processors.append(structlog.dev.ConsoleRenderer(colors=False))
-
-    # Configure structlog
-    structlog.configure(
-        processors=processors,
-        wrapper_class=structlog.stdlib.BoundLogger,
-        logger_factory=LoggerFactory(),
-        context_class=dict,
-        cache_logger_on_first_use=True,
-    )
-
-    # Configure standard library logging to work with structlog
-    logging.basicConfig(
-        format="%(message)s",
-        stream=sys.stdout,
-        level=getattr(logging, level.upper()),
-        force=True,
+    setup_dual_logging(
+        level=level,
+        format_type=format_type,
+        enable_observability=enable_pipeline,
+        show_path=show_path,
+        show_time=show_time,
+        configure_uvicorn=False,  # Don't reconfigure uvicorn in observability context
     )
 
 
