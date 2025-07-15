@@ -579,6 +579,11 @@ class ProxyService:
         response_headers = {}
         response_status = 200
 
+        # Initialize streaming metrics collector
+        from ccproxy.utils.streaming_metrics import StreamingMetricsCollector
+
+        metrics_collector = StreamingMetricsCollector(request_id=ctx.request_id)
+
         async def stream_generator() -> AsyncGenerator[bytes, None]:
             try:
                 logger.debug(
@@ -664,6 +669,82 @@ class ProxyService:
 
                                 # Compact logging for content_block_delta events
                                 chunk_str = chunk.decode("utf-8", errors="replace")
+
+                                # Extract token metrics from streaming events
+                                is_final = metrics_collector.process_chunk(chunk_str)
+
+                                # If this is the final chunk with complete metrics, update context and record metrics
+                                if is_final:
+                                    model = ctx.metadata.get("model")
+                                    cost_usd = metrics_collector.calculate_final_cost(
+                                        model
+                                    )
+                                    final_metrics = metrics_collector.get_metrics()
+
+                                    # Update context with final metrics
+                                    ctx.add_metadata(
+                                        status_code=response_status,
+                                        tokens_input=final_metrics["tokens_input"],
+                                        tokens_output=final_metrics["tokens_output"],
+                                        cache_read_tokens=final_metrics[
+                                            "cache_read_tokens"
+                                        ],
+                                        cache_write_tokens=final_metrics[
+                                            "cache_write_tokens"
+                                        ],
+                                        cost_usd=cost_usd,
+                                    )
+
+                                    # Record Prometheus metrics
+                                    endpoint = ctx.metadata.get("endpoint", "unknown")
+
+                                    self.metrics.record_request(
+                                        "POST",
+                                        endpoint,
+                                        model,
+                                        response_status,
+                                        "proxy_service",
+                                    )
+                                    self.metrics.record_response_time(
+                                        ctx.duration_seconds,
+                                        model,
+                                        endpoint,
+                                        "proxy_service",
+                                    )
+
+                                    if final_metrics["tokens_input"]:
+                                        self.metrics.record_tokens(
+                                            final_metrics["tokens_input"],
+                                            "input",
+                                            model,
+                                            "proxy_service",
+                                        )
+                                    if final_metrics["tokens_output"]:
+                                        self.metrics.record_tokens(
+                                            final_metrics["tokens_output"],
+                                            "output",
+                                            model,
+                                            "proxy_service",
+                                        )
+                                    if final_metrics["cache_read_tokens"]:
+                                        self.metrics.record_tokens(
+                                            final_metrics["cache_read_tokens"],
+                                            "cache_read",
+                                            model,
+                                            "proxy_service",
+                                        )
+                                    if final_metrics["cache_write_tokens"]:
+                                        self.metrics.record_tokens(
+                                            final_metrics["cache_write_tokens"],
+                                            "cache_write",
+                                            model,
+                                            "proxy_service",
+                                        )
+                                    if cost_usd:
+                                        self.metrics.record_cost(
+                                            cost_usd, model, "total", "proxy_service"
+                                        )
+
                                 if (
                                     "content_block_delta" in chunk_str
                                     and not verbose_streaming
