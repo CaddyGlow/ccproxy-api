@@ -8,7 +8,6 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 
 from ccproxy.api.dependencies import get_claude_service
-from ccproxy.core.logging import get_structlog_logger
 from ccproxy.models.messages import MessageCreateParams, MessageResponse
 from ccproxy.models.openai import (
     OpenAIChatCompletionRequest,
@@ -21,9 +20,6 @@ from ccproxy.services.claude_sdk_service import ClaudeSDKService
 
 # Create the router for Claude SDK endpoints
 router = APIRouter(tags=["claude-sdk"])
-
-# Create structured logger
-logger = get_structlog_logger(__name__)
 
 
 def _convert_openai_to_anthropic_messages(
@@ -180,17 +176,9 @@ async def create_openai_chat_completion(
 
         if isinstance(e, ClaudeProxyError):
             raise
-
-        # Log the error details for debugging
-        logger.error(
-            "Failed to create OpenAI chat completion",
-            error=str(e),
-            error_type=type(e).__name__,
-            model=getattr(request, "model", "unknown"),
-            stream=getattr(request, "stream", False),
-        )
-
-        raise HTTPException(status_code=500, detail="Failed to create chat completion")
+        raise HTTPException(
+            status_code=500, detail=f"Internal server error: {str(e)}"
+        ) from e
 
 
 @router.post("/v1/messages", response_model=None)
@@ -248,17 +236,9 @@ async def create_anthropic_message(
 
         if isinstance(e, ClaudeProxyError):
             raise
-
-        # Log the error details for debugging
-        logger.error(
-            "Failed to create Anthropic message",
-            error=str(e),
-            error_type=type(e).__name__,
-            model=getattr(request, "model", "unknown"),
-            stream=getattr(request, "stream", False),
-        )
-
-        raise HTTPException(status_code=500, detail="Failed to create message")
+        raise HTTPException(
+            status_code=500, detail=f"Internal server error: {str(e)}"
+        ) from e
 
 
 @router.get("/models", response_model=OpenAIModelsResponse)
@@ -280,16 +260,9 @@ async def list_sdk_models(
             data=models,
         )
     except Exception as e:
-        # Log the error details for debugging
-        logger.error(
-            "Failed to retrieve models from Claude SDK",
-            error=str(e),
-            error_type=type(e).__name__,
-        )
-
         raise HTTPException(
-            status_code=500, detail="Failed to retrieve available models"
-        )
+            status_code=500, detail=f"Failed to retrieve models: {str(e)}"
+        ) from e
 
 
 @router.get("/status")

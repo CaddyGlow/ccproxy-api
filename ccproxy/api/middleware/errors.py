@@ -426,6 +426,9 @@ def setup_error_handlers(app: FastAPI) -> None:
                 request_url=str(request.url.path),
             )
         else:
+            # Log with basic stack trace (no local variables)
+            # import traceback
+            # stack_trace = traceback.format_exc()
             logger.error(
                 "HTTP exception",
                 error_type="http_error",
@@ -433,7 +436,7 @@ def setup_error_handlers(app: FastAPI) -> None:
                 status_code=exc.status_code,
                 request_method=request.method,
                 request_url=str(request.url.path),
-                exc_info=True,
+                # stack_trace=stack_trace,
             )
         # TODO: Add when in prod hide details in response
         return JSONResponse(
@@ -469,7 +472,6 @@ def setup_error_handlers(app: FastAPI) -> None:
                 status_code=exc.status_code,
                 request_method=request.method,
                 request_url=str(request.url.path),
-                exc_info=True,
             )
         return JSONResponse(
             status_code=exc.status_code,
@@ -494,7 +496,6 @@ def setup_error_handlers(app: FastAPI) -> None:
             status_code=500,
             request_method=request.method,
             request_url=str(request.url.path),
-            exc_info=True,
         )
         return JSONResponse(
             status_code=500,

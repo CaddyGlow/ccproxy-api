@@ -100,10 +100,8 @@ from ccproxy.core.interfaces import (
 )
 from ccproxy.core.logging import (
     CUSTOM_THEME,
-    CustomFormatter,
     console,
     get_logger,
-    get_uvicorn_log_config,
     setup_rich_logging,
 )
 from ccproxy.core.middleware import (
