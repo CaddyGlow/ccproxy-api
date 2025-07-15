@@ -1,6 +1,6 @@
 """Common type aliases used across the ccproxy models."""
 
-from typing import Literal, TypeAlias
+from typing import Literal, TypeAlias, TypedDict
 
 
 # Message and content types
@@ -77,3 +77,24 @@ OpenAIObjectType: TypeAlias = Literal[
 
 # Permission behavior types
 PermissionBehavior: TypeAlias = Literal["allow", "deny"]
+
+
+# Usage and streaming related types
+class UsageData(TypedDict, total=False):
+    """Token usage data extracted from streaming or non-streaming responses."""
+
+    input_tokens: int | None
+    output_tokens: int | None
+    cache_read_input_tokens: int | None
+    cache_creation_input_tokens: int | None
+    event_type: StreamEventType | None
+
+
+class StreamingTokenMetrics(TypedDict, total=False):
+    """Accumulated token metrics during streaming."""
+
+    tokens_input: int | None
+    tokens_output: int | None
+    cache_read_tokens: int | None
+    cache_write_tokens: int | None
+    cost_usd: float | None
