@@ -10,6 +10,7 @@ from fastapi.staticfiles import StaticFiles
 
 from ccproxy.api.middleware.cors import setup_cors_middleware
 from ccproxy.api.middleware.errors import setup_error_handlers
+from ccproxy.api.middleware.logging import AccessLogMiddleware
 from ccproxy.api.routes.claude import router as claude_router
 from ccproxy.api.routes.health import router as health_router
 from ccproxy.api.routes.metrics import router as metrics_router
@@ -50,6 +51,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
         # Configure Rich logging to reduce stack trace verbosity
         from ccproxy.core.logging import setup_rich_logging
+
         setup_rich_logging(
             level=settings.server.log_level,
             show_path=show_path,
@@ -110,6 +112,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # Setup middleware
     setup_cors_middleware(app, settings)
     setup_error_handlers(app)
+
+    # Add custom access log middleware
+    app.add_middleware(AccessLogMiddleware)
 
     # Include health router (always enabled)
     app.include_router(health_router, tags=["health"])

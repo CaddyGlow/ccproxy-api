@@ -205,7 +205,9 @@ async def timed_operation(
                 operation_name=operation_name,
                 duration_ms=duration_ms,
                 **{
-                    k: v for k, v in op_context.items() if k not in ("logger", "start_time")
+                    k: v
+                    for k, v in op_context.items()
+                    if k not in ("logger", "start_time")
                 },
             )
 

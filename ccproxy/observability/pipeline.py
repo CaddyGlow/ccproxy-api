@@ -113,7 +113,7 @@ class LogToStoragePipeline:
             return
 
         self._running = True
-        logger.info("pipeline_start")
+        logger.debug("pipeline_start")
 
         # Initialize storage backends
         await self._init_storage_backends()
@@ -127,7 +127,7 @@ class LogToStoragePipeline:
             return
 
         self._running = False
-        logger.info("pipeline_stop")
+        logger.debug("pipeline_stop")
 
         # Cancel processor task
         if self._processor_task:

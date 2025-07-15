@@ -19,68 +19,9 @@ class AnthropicError(BaseModel):
     error: Annotated[ErrorDetail, Field(description="Error details")]
 
 
-class InvalidRequestError(AnthropicError):
-    """Invalid request error (400)."""
-
-    error: Annotated[ErrorDetail, Field(description="Error details")] = ErrorDetail(
-        type="invalid_request_error", message="Invalid request"
-    )
-
-
-class AuthenticationError(AnthropicError):
-    """Authentication error (401)."""
-
-    error: Annotated[ErrorDetail, Field(description="Error details")] = ErrorDetail(
-        type="authentication_error", message="Authentication failed"
-    )
-
-
-class PermissionError(AnthropicError):
-    """Permission error (403)."""
-
-    error: Annotated[ErrorDetail, Field(description="Error details")] = ErrorDetail(
-        type="permission_error", message="Permission denied"
-    )
-
-
-class NotFoundError(AnthropicError):
-    """Not found error (404)."""
-
-    error: Annotated[ErrorDetail, Field(description="Error details")] = ErrorDetail(
-        type="not_found_error", message="Resource not found"
-    )
-
-
-class RateLimitError(AnthropicError):
-    """Rate limit error (429)."""
-
-    error: Annotated[ErrorDetail, Field(description="Error details")] = ErrorDetail(
-        type="rate_limit_error", message="Rate limit exceeded"
-    )
-
-
-class InternalServerError(AnthropicError):
-    """Internal server error (500)."""
-
-    error: Annotated[ErrorDetail, Field(description="Error details")] = ErrorDetail(
-        type="internal_server_error", message="Internal server error"
-    )
-
-
-class ServiceUnavailableError(AnthropicError):
-    """Service unavailable error (503)."""
-
-    error: Annotated[ErrorDetail, Field(description="Error details")] = ErrorDetail(
-        type="service_unavailable_error", message="Service temporarily unavailable"
-    )
-
-
-# Streaming error format
-class StreamingError(BaseModel):
-    """Streaming error message format."""
-
-    type: Annotated[Literal["error"], Field(description="Error type")] = "error"
-    error: Annotated[ErrorDetail, Field(description="Error details")]
+# Note: Specific error model classes were removed as they were unused.
+# Error responses are now forwarded directly from the upstream Claude API
+# to preserve the exact error format and headers.
 
 
 def create_error_response(
