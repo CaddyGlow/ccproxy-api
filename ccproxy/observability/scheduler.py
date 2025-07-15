@@ -56,7 +56,7 @@ class ObservabilityScheduler:
             return
 
         self._running = True
-        logger.info("observability_scheduler_start")
+        logger.debug("observability_scheduler_start")
 
         # Initialize metrics instance
         await self._init_metrics()
@@ -72,7 +72,7 @@ class ObservabilityScheduler:
             return
 
         self._running = False
-        logger.info("observability_scheduler_stop")
+        logger.debug("observability_scheduler_stop")
 
         # Cancel all tasks
         for task in self._tasks:
@@ -95,7 +95,7 @@ class ObservabilityScheduler:
 
     async def _pushgateway_task(self) -> None:
         """Periodic task to push metrics to Pushgateway."""
-        logger.info(
+        logger.debug(
             "pushgateway_task_start",
             interval=self._pushgateway_interval,
             url=self.settings.pushgateway_url,
@@ -116,7 +116,7 @@ class ObservabilityScheduler:
                 await asyncio.sleep(self._pushgateway_interval)
 
             except asyncio.CancelledError:
-                logger.info("pushgateway_task_cancelled")
+                logger.debug("pushgateway_task_cancelled")
                 break
             except Exception as e:
                 logger.error("pushgateway_task_error", error=str(e))
@@ -132,7 +132,9 @@ class ObservabilityScheduler:
             interval: Interval in seconds
         """
         self._pushgateway_interval = max(1.0, interval)
-        logger.info("pushgateway_interval_updated", interval=self._pushgateway_interval)
+        logger.debug(
+            "pushgateway_interval_updated", interval=self._pushgateway_interval
+        )
 
 
 # Global scheduler instance
