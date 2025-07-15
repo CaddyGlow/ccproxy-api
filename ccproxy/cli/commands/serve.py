@@ -104,6 +104,7 @@ def _run_docker_server(
 ) -> None:
     """Run the server using Docker."""
     toolkit = get_rich_toolkit()
+    logger = get_structlog_logger(__name__)
 
     docker_env = docker_env or []
     docker_volume = docker_volume or []
@@ -224,6 +225,7 @@ def _run_local_server(settings: Settings, cli_overrides: dict[str, Any]) -> None
     """Run the server locally."""
     in_docker = is_running_in_docker()
     toolkit = get_rich_toolkit()
+    logger = get_structlog_logger(__name__)
 
     if in_docker:
         toolkit.print_title(
@@ -391,15 +393,8 @@ def api(
         ccproxy serve --port 8080 --workers 4
     """
     try:
-        # Log CLI command execution start
-        logger.info(
-            "cli_command_starting",
-            command="serve",
-            docker=docker,
-            port=port,
-            host=host,
-            config_path=str(config) if config else None,
-        )
+        # Early logging - use basic print until logging is configured
+        # We'll log this properly after logging is configured
 
         # Get config path from context if not provided directly
         if config is None:
@@ -431,6 +426,19 @@ def api(
         # Set up logging once with the effective log level
         config_manager.setup_logging(log_level or settings.server.log_level)
 
+        # Re-get logger after logging is configured
+        logger = get_structlog_logger(__name__)
+        
+        # Log CLI command that was deferred
+        logger.info(
+            "cli_command_starting",
+            command="serve",
+            docker=docker,
+            port=port,
+            host=host,
+            config_path=str(config) if config else None,
+        )
+        
         # Log effective configuration
         logger.info(
             "configuration_loaded",
@@ -459,12 +467,10 @@ def api(
             _run_local_server(settings, cli_overrides)
 
     except ConfigurationError as e:
-        logger.error("cli_configuration_error", error=str(e), command="serve")
         toolkit = get_rich_toolkit()
         toolkit.print(f"Configuration error: {e}", tag="error")
         raise typer.Exit(1) from e
     except Exception as e:
-        logger.error("cli_unexpected_error", error=str(e), command="serve")
         toolkit = get_rich_toolkit()
         toolkit.print(f"Error starting server: {e}", tag="error")
         raise typer.Exit(1) from e
