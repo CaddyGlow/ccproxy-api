@@ -210,6 +210,8 @@ class HTTPXClient(HTTPClient):
                 content=body,
             )
 
+            # Always return the response, even for error status codes
+            # This allows the proxy to forward upstream errors directly
             return (
                 response.status_code,
                 dict(response.headers),
@@ -221,6 +223,8 @@ class HTTPXClient(HTTPClient):
         except httpx.ConnectError as e:
             raise HTTPConnectionError(f"Connection failed: {e}") from e
         except httpx.HTTPStatusError as e:
+            # This shouldn't happen with the default raise_for_status=False
+            # but keep it just in case
             raise HTTPError(
                 f"HTTP {e.response.status_code}: {e.response.reason_phrase}",
                 status_code=e.response.status_code,

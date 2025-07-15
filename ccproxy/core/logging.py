@@ -401,7 +401,7 @@ def configure_logging_from_settings(
     )
 
 
-def get_logger(name: str) -> logging.Logger:
+def get_logger(name: str) -> Any:
     """Get a logger instance with the given name.
 
     Args:

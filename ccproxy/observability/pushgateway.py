@@ -65,7 +65,6 @@ class PushgatewayClient:
                 "Install with: pip install prometheus-client"
             )
 
-
     def push_metrics(self, registry: CollectorRegistry, method: str = "push") -> bool:
         """Push metrics to Pushgateway using official prometheus_client methods.
 
@@ -130,7 +129,7 @@ class PushgatewayClient:
             logger.error("pushgateway_invalid_method", method=method)
             return False
 
-        logger.info(
+        logger.debug(
             "pushgateway_push_success",
             url=self.settings.pushgateway_url,
             job=self.settings.pushgateway_job,
@@ -165,7 +164,6 @@ class PushgatewayClient:
             # Fallback - assume it's already the correct import URL
             import_url = self.settings.pushgateway_url
 
-
         # VictoriaMetrics import endpoint accepts text/plain exposition format
         response = requests.post(
             import_url,
@@ -177,9 +175,8 @@ class PushgatewayClient:
             timeout=30,
         )
 
-
         if response.status_code in (200, 204):
-            logger.info(
+            logger.debug(
                 "pushgateway_import_success",
                 url=import_url,
                 job=self.settings.pushgateway_job,

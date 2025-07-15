@@ -231,9 +231,23 @@ class ProxyService:
                 # 4. Response transformation
                 async with timed_operation("response_transform", ctx.request_id):
                     logger.debug("Transforming response...")
-                    transformed_response = await self._transform_response(
-                        status_code, response_headers, response_body, path
-                    )
+                    # For error responses, skip transformation to preserve upstream error format
+                    if status_code >= 400:
+                        logger.info(
+                            f"Preserving upstream error response: {status_code}",
+                            status_code=status_code,
+                            has_body=bool(response_body),
+                            content_length=len(response_body) if response_body else 0,
+                        )
+                        transformed_response = {
+                            "status_code": status_code,
+                            "headers": response_headers,
+                            "body": response_body,
+                        }
+                    else:
+                        transformed_response = await self._transform_response(
+                            status_code, response_headers, response_body, path
+                        )
 
                 # 5. Extract response metrics using direct JSON parsing
                 tokens_input = tokens_output = cache_read_tokens = (
@@ -312,7 +326,8 @@ class ProxyService:
                 self.metrics.record_error(error_type, endpoint, model, "proxy_service")
 
                 logger.exception(f"Error in proxy request: {method} {path}")
-                await self._handle_error(e, method, path)
+                # Re-raise the exception without transformation
+                # Let higher layers handle specific error types
                 raise
             finally:
                 self.metrics.dec_active_requests()
@@ -461,6 +476,14 @@ class ProxyService:
         Returns:
             Transformed response data
         """
+        # For error responses, pass through without transformation
+        if status_code >= 400:
+            return {
+                "status_code": status_code,
+                "headers": headers,
+                "body": body,
+            }
+
         transformed_body = self.response_transformer.transform_response_body(
             body, original_path, self.proxy_mode
         )
@@ -531,6 +554,9 @@ class ProxyService:
         Returns:
             StreamingResponse
         """
+        # Store response headers to preserve for errors
+        response_headers = {}
+        response_status = 200
 
         async def stream_generator() -> AsyncGenerator[bytes, None]:
             try:
@@ -563,6 +589,11 @@ class ProxyService:
                     )
                     logger.debug(f"Stream response status: {response.status_code}")
                     logger.debug(f"Stream response headers: {dict(response.headers)}")
+
+                    # Store response status and headers
+                    nonlocal response_status, response_headers
+                    response_status = response.status_code
+                    response_headers = dict(response.headers)
 
                     # Check for errors
                     if response.status_code >= 400:
@@ -648,45 +679,30 @@ class ProxyService:
                 error_message = f'data: {{"error": "Streaming error: {str(e)}"}}\\n\\n'
                 yield error_message.encode("utf-8")
 
-        return StreamingResponse(
-            stream_generator(),
-            media_type="text/event-stream",
-            headers={
-                "Cache-Control": "no-cache",
-                "Connection": "keep-alive",
-                "Access-Control-Allow-Origin": "*",
-                "Access-Control-Allow-Headers": "*",
-            },
-        )
+        # For error responses, use upstream headers
+        if response_status >= 400:
+            # Use upstream headers but ensure CORS headers are present
+            final_headers = response_headers.copy()
+            final_headers["Access-Control-Allow-Origin"] = "*"
+            final_headers["Access-Control-Allow-Headers"] = "*"
 
-    async def _handle_error(
-        self,
-        error: Exception,
-        method: str,
-        path: str,
-    ) -> None:
-        """Handle errors in proxy requests.
-
-        Args:
-            error: The error that occurred
-            method: HTTP method
-            path: Request path
-        """
-        # Convert known exceptions to HTTP exceptions
-        if isinstance(error, httpx.TimeoutException):
-            raise HTTPException(status_code=504, detail="Gateway timeout") from error
-        elif isinstance(error, httpx.HTTPStatusError):
-            raise HTTPException(
-                status_code=error.response.status_code, detail=str(error)
-            ) from error
-        elif isinstance(error, HTTPException):
-            # Re-raise HTTP exceptions as-is
-            raise
+            return StreamingResponse(
+                stream_generator(),
+                status_code=response_status,
+                headers=final_headers,
+            )
         else:
-            # Generic server error
-            raise HTTPException(
-                status_code=500, detail="Internal server error"
-            ) from error
+            # For success responses, use standard streaming headers
+            return StreamingResponse(
+                stream_generator(),
+                media_type="text/event-stream",
+                headers={
+                    "Cache-Control": "no-cache",
+                    "Connection": "keep-alive",
+                    "Access-Control-Allow-Origin": "*",
+                    "Access-Control-Allow-Headers": "*",
+                },
+            )
 
     async def _transform_anthropic_to_openai_stream(
         self, response: httpx.Response, original_path: str
