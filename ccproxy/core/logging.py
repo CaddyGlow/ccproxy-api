@@ -192,7 +192,7 @@ def configure_structlog(
         processors.extend(
             [
                 _rich_structlog_processor,
-                # _rich_console_renderer,
+                structlog.dev.ConsoleRenderer(colors=True),
             ]
         )
     elif format_type == "json":

@@ -51,19 +51,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     # Configure observability system (structlog + pipeline + scheduler)
     try:
-        # Determine format based on log level - Rich for DEBUG, JSON for production
-        format_type = "rich" if settings.server.log_level.upper() == "DEBUG" else "json"
-        show_path = settings.server.log_level.upper() == "DEBUG"
-
-        # Configure Rich logging to reduce stack trace verbosity
-        from ccproxy.core.logging import setup_rich_logging
-
-        setup_rich_logging(
-            level=settings.server.log_level,
-            show_path=show_path,
-            show_time=True,
-            verbose_tracebacks=settings.server.log_level.upper() == "DEBUG",
-        )
 
         # configure_observability(
         #     format_type=format_type,
@@ -107,6 +94,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     """
     if settings is None:
         settings = get_settings()
+    
+    # Configure logging based on settings BEFORE any module uses logger
+    # This is needed for reload mode where the app is re-imported
+    from ccproxy.config.settings import config_manager
+    import structlog
+    
+    # Only configure if not already configured
+    if not structlog.is_configured():
+        config_manager.setup_logging(settings.server.log_level)
 
     app = FastAPI(
         title="Claude Code Proxy API Server",
