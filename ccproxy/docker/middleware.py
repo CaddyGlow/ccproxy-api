@@ -2,12 +2,12 @@
 
 from typing import Any
 
-from ccproxy.core.logging import get_structlog_logger
+from structlog import get_logger
 
 from .stream_process import OutputMiddleware, create_chained_middleware
 
 
-logger = get_structlog_logger(__name__)
+logger = get_logger(__name__)
 
 
 class LoggerOutputMiddleware(OutputMiddleware[str]):

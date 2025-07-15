@@ -4,6 +4,7 @@ import json
 from typing import Optional
 
 import keyring
+from structlog import get_logger
 
 from ccproxy.auth.exceptions import (
     CredentialsInvalidError,
@@ -11,7 +12,6 @@ from ccproxy.auth.exceptions import (
 )
 from ccproxy.auth.models import ClaudeCredentials
 from ccproxy.auth.storage.base import TokenStorage
-from ccproxy.core.logging import get_logger
 
 
 logger = get_logger(__name__)

@@ -4,11 +4,12 @@ from __future__ import annotations
 
 from typing import Any
 
+from structlog import get_logger
+
 from ccproxy.config.observability import ObservabilitySettings
-from ccproxy.core.logging import get_structlog_logger
 
 
-logger = get_structlog_logger(__name__)
+logger = get_logger(__name__)
 
 
 # Import prometheus_client with graceful degradation (matching existing metrics.py pattern)
