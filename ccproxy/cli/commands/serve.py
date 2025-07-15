@@ -430,16 +430,21 @@ def api(
 
         from ccproxy.core.logging import setup_logging
 
-        # Only configure if not already configured
-        if not structlog.is_configured():
-            # Use JSON logs if explicitly requested via env var
-            json_logs = os.environ.get("CCPROXY_JSON_LOGS", "").lower() == "true"
-            setup_logging(
-                json_logs=json_logs, log_level=log_level or settings.server.log_level
-            )
+        # Always reconfigure logging to ensure log level changes are picked up
+        # Use JSON logs if explicitly requested via env var
+        json_logs = os.environ.get("CCPROXY_JSON_LOGS", "").lower() == "true"
+        setup_logging(
+            json_logs=json_logs, log_level=log_level or settings.server.log_level
+        )
 
         # Re-get logger after logging is configured
         logger = get_logger(__name__)
+
+        # Test debug logging
+        logger.debug(
+            "Debug logging is enabled",
+            effective_log_level=log_level or settings.server.log_level,
+        )
 
         # Log CLI command that was deferred
         logger.info(

@@ -52,6 +52,21 @@ def calculate_token_cost(
         cache = PricingCache()
         cached_data = cache.load_cached_data()
 
+        # If cache is expired, try to use stale cache as fallback
+        if not cached_data:
+            try:
+                import json
+
+                if cache.cache_file.exists():
+                    with cache.cache_file.open(encoding="utf-8") as f:
+                        cached_data = json.load(f)
+                    logger.debug(
+                        "cost_calculation_using_stale_cache",
+                        cache_age_hours=cache.get_cache_info().get("age_hours"),
+                    )
+            except (OSError, json.JSONDecodeError):
+                pass
+
         if not cached_data:
             logger.debug("cost_calculation_skipped", reason="no_pricing_data")
             return None
@@ -139,6 +154,21 @@ def calculate_cost_breakdown(
         # Try to get pricing from cache (synchronous fallback)
         cache = PricingCache()
         cached_data = cache.load_cached_data()
+
+        # If cache is expired, try to use stale cache as fallback
+        if not cached_data:
+            try:
+                import json
+
+                if cache.cache_file.exists():
+                    with cache.cache_file.open(encoding="utf-8") as f:
+                        cached_data = json.load(f)
+                    logger.debug(
+                        "cost_breakdown_using_stale_cache",
+                        cache_age_hours=cache.get_cache_info().get("age_hours"),
+                    )
+            except (OSError, json.JSONDecodeError):
+                pass
 
         if not cached_data:
             return None
