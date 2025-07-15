@@ -115,9 +115,22 @@ async def request_context(
     try:
         yield ctx
 
-        # Log successful completion
+        # Log successful completion with comprehensive access log
         duration_ms = ctx.duration_ms
-        request_logger.info(
+
+        # Use the new unified access logger for comprehensive logging
+        from ccproxy.observability.access_logger import log_request_access
+
+        log_request_access(
+            context=ctx,
+            # Extract client info from metadata if available
+            client_ip=ctx.metadata.get("client_ip"),
+            user_agent=ctx.metadata.get("user_agent"),
+            query=ctx.metadata.get("query"),
+        )
+
+        # Also keep the original request_success event for debugging
+        request_logger.debug(
             "request_success",
             request_id=request_id,
             duration_ms=duration_ms,
