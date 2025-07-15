@@ -6,9 +6,11 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request, Response
 from fastapi.responses import StreamingResponse
+from starlette.background import BackgroundTask
 
 from ccproxy.adapters.openai.adapter import OpenAIAdapter
 from ccproxy.api.dependencies import ProxyServiceDep
+from ccproxy.api.responses import ProxyResponse
 from ccproxy.core.errors import ProxyHTTPException
 
 
@@ -43,6 +45,7 @@ async def create_openai_chat_completion(
             headers=headers,
             body=body,
             query_params=query_params,
+            request=request,  # Pass the request object for context access
         )
 
         # Return appropriate response type
@@ -54,7 +57,7 @@ async def create_openai_chat_completion(
             status_code, response_headers, response_body = response
             if status_code >= 400:
                 # Forward error response directly with headers
-                return Response(
+                return ProxyResponse(
                     content=response_body,
                     status_code=status_code,
                     headers=response_headers,
@@ -88,7 +91,7 @@ async def create_openai_chat_completion(
                 openai_response = openai_adapter.adapt_response(response_data)
 
                 # Return response with headers
-                return Response(
+                return ProxyResponse(
                     content=json.dumps(openai_response),
                     status_code=status_code,
                     headers=response_headers,
@@ -128,6 +131,7 @@ async def create_anthropic_message(
         headers=headers,
         body=body,
         query_params=query_params,
+        request=request,  # Pass the request object for context access
     )
 
     # Return appropriate response type
@@ -169,7 +173,7 @@ async def create_anthropic_message(
             response_data = json.loads(response_body.decode())
 
             # Return response with headers
-            return Response(
+            return ProxyResponse(
                 content=response_body,  # Use original body to preserve exact format
                 status_code=status_code,
                 headers=response_headers,

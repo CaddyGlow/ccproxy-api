@@ -1,5 +1,6 @@
 """FastAPI application factory for Claude Code Proxy API Server."""
 
+import logging
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from typing import Any
@@ -11,6 +12,8 @@ from fastapi.staticfiles import StaticFiles
 from ccproxy.api.middleware.cors import setup_cors_middleware
 from ccproxy.api.middleware.errors import setup_error_handlers
 from ccproxy.api.middleware.logging import AccessLogMiddleware
+from ccproxy.api.middleware.request_id import RequestIDMiddleware
+from ccproxy.api.middleware.server_header import ServerHeaderMiddleware
 from ccproxy.api.routes.claude import router as claude_router
 from ccproxy.api.routes.health import router as health_router
 from ccproxy.api.routes.metrics import router as metrics_router
@@ -20,6 +23,9 @@ from ccproxy.core.logging import get_logger
 from ccproxy.observability.config import configure_observability
 from ccproxy.observability.pipeline import get_pipeline
 from ccproxy.observability.scheduler import get_scheduler, stop_scheduler
+
+
+logging.getLogger("fastapi").setLevel(logging.WARNING)
 
 
 @asynccontextmanager
@@ -113,8 +119,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     setup_cors_middleware(app, settings)
     setup_error_handlers(app)
 
-    # Add custom access log middleware
+    # Add custom access log middleware first (will run second due to middleware order)
     app.add_middleware(AccessLogMiddleware)
+
+    # Add request ID middleware second (will run first to initialize context)
+    app.add_middleware(RequestIDMiddleware)
+
+    # Add server header middleware (for non-proxy routes)
+    # You can customize the server name here
+    app.add_middleware(ServerHeaderMiddleware, server_name="Claude Code Proxy/1.0")
 
     # Include health router (always enabled)
     app.include_router(health_router, tags=["health"])

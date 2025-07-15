@@ -268,6 +268,7 @@ def _run_local_server(settings: Settings, cli_overrides: dict[str, Any]) -> None
         workers=None,  # ,settings.workers,
         log_config=None,
         access_log=False,  # Disable uvicorn's default access logs
+        server_header=False,  # Disable uvicorn's server header to preserve upstream headers
         reload_includes=["ccproxy", "pyproject.toml", "uv.lock"],
         # log_config=get_uvicorn_log_config(),
     )
@@ -428,7 +429,7 @@ def api(
         )
 
         # Set up logging once with the effective log level
-        # config_manager.setup_logging(log_level or settings.server.log_level)
+        config_manager.setup_logging(log_level or settings.server.log_level)
 
         # Log effective configuration
         logger.info(
