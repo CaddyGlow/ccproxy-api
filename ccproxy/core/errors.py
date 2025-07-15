@@ -2,6 +2,12 @@
 
 from typing import Any, Optional
 
+from fastapi import HTTPException
+
+
+class ProxyHTTPException(HTTPException):
+    pass
+
 
 class ProxyError(Exception):
     """Base exception for all proxy-related errors."""

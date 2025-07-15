@@ -15,7 +15,7 @@ from ccproxy.api.routes.health import router as health_router
 from ccproxy.api.routes.metrics import router as metrics_router
 from ccproxy.api.routes.proxy import router as proxy_router
 from ccproxy.config.settings import Settings, get_settings
-from ccproxy.core.logging import get_logger, setup_rich_logging
+from ccproxy.core.logging import get_logger
 from ccproxy.observability.config import configure_observability
 from ccproxy.observability.pipeline import get_pipeline
 from ccproxy.observability.scheduler import get_scheduler, stop_scheduler
@@ -48,12 +48,21 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         format_type = "rich" if settings.server.log_level.upper() == "DEBUG" else "json"
         show_path = settings.server.log_level.upper() == "DEBUG"
 
-        configure_observability(
-            format_type=format_type,
+        # Configure Rich logging to reduce stack trace verbosity
+        from ccproxy.core.logging import setup_rich_logging
+        setup_rich_logging(
             level=settings.server.log_level,
             show_path=show_path,
             show_time=True,
+            verbose_tracebacks=settings.server.log_level.upper() == "DEBUG",
         )
+
+        # configure_observability(
+        #     format_type=format_type,
+        #     level=settings.server.log_level,
+        #     show_path=show_path,
+        #     show_time=True,
+        # )
         pipeline = await get_pipeline()
         scheduler = await get_scheduler()
         logger.info("Observability system initialized successfully")

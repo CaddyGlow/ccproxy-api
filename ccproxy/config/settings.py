@@ -464,6 +464,7 @@ class ConfigurationManager:
             level=effective_level,
             format_type=format_type,
             configure_uvicorn=True,
+            verbose_tracebacks=effective_level.upper() == "DEBUG",
         )
         self._logging_configured = True
 

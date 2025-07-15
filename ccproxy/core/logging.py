@@ -37,6 +37,7 @@ def setup_rich_logging(
     show_time: bool = True,
     console_width: int | None = None,
     configure_uvicorn: bool = True,
+    verbose_tracebacks: bool = False,
 ) -> None:
     """Configure rich logging for the application.
 
@@ -46,15 +47,29 @@ def setup_rich_logging(
         show_time: Whether to show timestamps in logs
         console_width: Optional console width override
         configure_uvicorn: Whether to configure uvicorn loggers
+        verbose_tracebacks: Whether to show verbose tracebacks with locals
     """
+    # Configure traceback suppression for cleaner output
+    suppress_modules = [
+        "httpx",
+        "httpcore",
+        "urllib3",
+        "uvicorn",
+        "contextlib",
+        "asyncio",
+        "logging",
+        "starlette",
+        "fastapi",
+    ]
+
     # Create rich handler with custom settings
     rich_handler = RichHandler(
         console=Console(theme=CUSTOM_THEME, width=console_width),
         show_time=show_time,
         show_path=show_path,
         rich_tracebacks=True,
-        tracebacks_show_locals=True,
-        tracebacks_suppress=[],
+        tracebacks_show_locals=verbose_tracebacks,
+        tracebacks_suppress=suppress_modules if not verbose_tracebacks else [],
         markup=True,
         enable_link_path=True,
     )
@@ -177,7 +192,7 @@ def configure_structlog(
         processors.extend(
             [
                 _rich_structlog_processor,
-                _rich_console_renderer,
+                # _rich_console_renderer,
             ]
         )
     elif format_type == "json":
@@ -230,58 +245,6 @@ def _rich_structlog_processor(
     return event_dict
 
 
-def _rich_console_renderer(
-    logger: Any, method_name: str, event_dict: dict[str, Any]
-) -> str:
-    """Custom renderer that uses Rich console to properly process markup."""
-    # Import Rich console for markup processing
-    from rich.console import Console
-
-    # Create a Rich console that can process markup
-    rich_console = Console(markup=True, highlight=False, force_terminal=True)
-
-    # Extract timestamp
-    timestamp = event_dict.get("timestamp", "")
-    if timestamp:
-        timestamp_str = f"[dim]{timestamp}[/dim] "
-    else:
-        timestamp_str = ""
-
-    # Extract log level
-    level = event_dict.get("level", "info").upper()
-    level_colors = {
-        "DEBUG": "dim white",
-        "INFO": "cyan",
-        "WARNING": "yellow",
-        "ERROR": "red",
-        "CRITICAL": "bold white on red",
-    }
-    level_color = level_colors.get(level, "white")
-    level_str = f"[{level_color}][{level:<8}][/{level_color}] "
-
-    # Extract main event message
-    event = event_dict.get("event", "")
-
-    # Build context string from remaining fields
-    context_parts = []
-    for key, value in event_dict.items():
-        if key not in ("timestamp", "level", "event"):
-            context_parts.append(f"[dim]{key}[/dim]=[bright_blue]{value}[/bright_blue]")
-
-    context_str = " ".join(context_parts)
-    if context_str:
-        context_str = " " + context_str
-
-    # Combine all parts
-    message = f"{timestamp_str}{level_str}{event}{context_str}"
-
-    # Use Rich console to render the markup to a string
-    with rich_console.capture() as capture:
-        rich_console.print(message, markup=True, highlight=False)
-
-    return capture.get().rstrip("\n")
-
-
 def get_structlog_logger(name: str) -> Any:
     """Get a structlog logger instance with the given name.
 
@@ -304,6 +267,7 @@ def setup_dual_logging(
     show_time: bool = True,
     console_width: int | None = None,
     configure_uvicorn: bool = True,
+    verbose_tracebacks: bool = False,
 ) -> None:
     """Setup both Rich and structlog logging for dual-mode support.
 
@@ -319,6 +283,7 @@ def setup_dual_logging(
         show_time: Whether to show timestamps in logs
         console_width: Optional console width override
         configure_uvicorn: Whether to configure uvicorn loggers
+        verbose_tracebacks: Whether to show verbose tracebacks with locals
     """
     if format_type == "rich":
         # Setup Rich logging for beautiful console output
@@ -328,6 +293,7 @@ def setup_dual_logging(
             show_time=show_time,
             console_width=console_width,
             configure_uvicorn=configure_uvicorn,
+            verbose_tracebacks=verbose_tracebacks,
         )
 
         # Setup structlog with Rich output compatibility
@@ -399,6 +365,7 @@ def configure_logging_from_settings(
     show_path: bool = False,
     show_time: bool = True,
     console_width: int | None = None,
+    verbose_tracebacks: bool = False,
 ) -> None:
     """Configure logging system from application settings.
 
@@ -412,6 +379,7 @@ def configure_logging_from_settings(
         show_path: Whether to show the module path in logs
         show_time: Whether to show timestamps in logs
         console_width: Optional console width override
+        verbose_tracebacks: Whether to show verbose tracebacks with locals
     """
     # Determine format based on log level and environment
     if log_format == "auto":
@@ -429,118 +397,8 @@ def configure_logging_from_settings(
         show_time=show_time,
         console_width=console_width,
         configure_uvicorn=True,
+        verbose_tracebacks=verbose_tracebacks,
     )
-
-
-def get_logging_config_from_settings() -> dict[str, Any]:
-    """Get logging configuration from application settings.
-
-    This function extracts logging-related configuration from the application
-    settings and returns a dictionary suitable for configuring the logging system.
-
-    Returns:
-        Dictionary with logging configuration parameters
-    """
-    try:
-        from ccproxy.config import get_settings
-
-        settings = get_settings()
-
-        # Determine log format based on server settings with observability fallback
-        log_format = settings.server.log_format
-        if log_format == "auto":
-            # Check observability settings first, then fallback to development detection
-            if (
-                hasattr(settings.observability, "logging_format")
-                and settings.observability.logging_format != "auto"
-            ):
-                log_format = settings.observability.logging_format
-            else:
-                log_format = "rich" if settings.is_development else "json"
-
-        # Extract logging configuration from settings
-        return {
-            "log_level": settings.server.log_level,
-            "log_format": log_format,
-            "enable_observability": settings.observability.enabled,
-            "show_path": settings.server.log_show_path
-            or settings.server.log_level == "DEBUG",
-            "show_time": settings.server.log_show_time,
-            "console_width": settings.server.log_console_width,
-        }
-    except ImportError:
-        # Fallback if settings are not available
-        return {
-            "log_level": "INFO",
-            "log_format": "rich",
-            "enable_observability": False,
-            "show_path": False,
-            "show_time": True,
-            "console_width": None,
-        }
-
-
-def setup_logging_from_config() -> None:
-    """Setup logging system using application configuration.
-
-    This is a convenience function that loads configuration from settings
-    and applies it to the logging system.
-    """
-    config = get_logging_config_from_settings()
-    configure_logging_from_settings(**config)
-
-
-def migrate_to_structlog(logger_name: str) -> tuple[Any, Any]:
-    """Migration helper to get both standard and structlog loggers.
-
-    This function helps with gradual migration from standard logging to structlog
-    by returning both logger types for the same name.
-
-    Args:
-        logger_name: Logger name (typically __name__)
-
-    Returns:
-        Tuple of (standard_logger, structlog_logger)
-    """
-    standard_logger = get_logger(logger_name)
-    structlog_logger = get_structlog_logger(logger_name)
-    return standard_logger, structlog_logger
-
-
-def log_with_context(
-    logger: Any,
-    level: str,
-    message: str,
-    **context: Any,
-) -> None:
-    """Helper function to log with structured context.
-
-    This function works with both standard loggers and structlog loggers,
-    automatically detecting the type and using appropriate methods.
-
-    Args:
-        logger: Logger instance (standard or structlog)
-        level: Log level (debug, info, warning, error, critical)
-        message: Log message
-        **context: Additional context to include in structured logs
-    """
-    log_method = getattr(logger, level.lower(), None)
-    if not log_method:
-        return
-
-    # Check if it's a structlog logger
-    if hasattr(logger, "bind"):
-        # Structlog logger - use context binding
-        if context:
-            logger = logger.bind(**context)
-        log_method(message)
-    else:
-        # Standard logger - log with extra context
-        if context:
-            # Format context for standard logger
-            context_str = " ".join(f"{k}={v}" for k, v in context.items())
-            message = f"{message} [{context_str}]"
-        log_method(message)
 
 
 def get_logger(name: str) -> logging.Logger:
@@ -556,75 +414,75 @@ def get_logger(name: str) -> logging.Logger:
 
 
 # HTTP request/response logging helpers
-async def log_http_request(request: httpx.Request) -> None:
-    """Log httpx request details."""
+# async def log_http_request(request: httpx.Request) -> None:
+#     """Log httpx request details."""
+#
+#
+# async def log_http_response(response: httpx.Response) -> None:
+#     """Log httpx response details."""
+#
+#
+# def get_http_event_hooks() -> dict[str, list[Any]]:
+#     """Get httpx event hooks for request/response logging.
+#
+#     Returns:
+#         Event hooks dictionary for httpx.AsyncClient
+#     """
+#     return {}
+#
 
 
-async def log_http_response(response: httpx.Response) -> None:
-    """Log httpx response details."""
-
-
-def get_http_event_hooks() -> dict[str, list[Any]]:
-    """Get httpx event hooks for request/response logging.
-
-    Returns:
-        Event hooks dictionary for httpx.AsyncClient
-    """
-    return {}
-
-
-class CustomFormatter(DefaultFormatter):
-    """Custom formatter for uvicorn logs with rich toolkit integration."""
-
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
-        super().__init__(*args, **kwargs)
-        from ccproxy.cli.helpers import get_rich_toolkit
-
-        self.toolkit = get_rich_toolkit()
-
-    def formatMessage(self, record: logging.LogRecord) -> str:  # noqa: N802
-        return self.toolkit.print_as_string(record.getMessage(), tag=record.levelname)
-
-
-def get_uvicorn_log_config() -> dict[str, Any]:
-    """Get uvicorn logging configuration.
-
-    Returns:
-        Dictionary with uvicorn logging configuration
-    """
-    return {
-        "version": 1,
-        "disable_existing_loggers": False,
-        "formatters": {
-            "default": {
-                "()": CustomFormatter,
-                "fmt": "%(levelprefix)s %(message)s",
-                "use_colors": None,
-            },
-            "access": {
-                "()": CustomFormatter,
-                "fmt": "%(levelprefix)s %(client_addr)s - '%(request_line)s' %(status_code)s",
-            },
-        },
-        "handlers": {
-            "default": {
-                "formatter": "default",
-                "class": "logging.StreamHandler",
-                "stream": "ext://sys.stderr",
-            },
-            "access": {
-                "formatter": "access",
-                "class": "logging.StreamHandler",
-                "stream": "ext://sys.stdout",
-            },
-        },
-        "loggers": {
-            "uvicorn": {"handlers": ["default"], "level": "INFO"},
-            "uvicorn.error": {"level": "INFO"},
-            "uvicorn.access": {
-                "handlers": ["access"],
-                "level": "INFO",
-                "propagate": False,
-            },
-        },
-    }
+#     """Custom formatter for uvicorn logs with rich toolkit integration."""
+#
+#     def __init__(self, *args: Any, **kwargs: Any) -> None:
+#         super().__init__(*args, **kwargs)
+#         from ccproxy.cli.helpers import get_rich_toolkit
+#
+#         self.toolkit = get_rich_toolkit()
+#
+#     def formatMessage(self, record: logging.LogRecord) -> str:  # noqa: N802
+#         return self.toolkit.print_as_string(record.getMessage(), tag=record.levelname)
+#
+#
+# def get_uvicorn_log_config() -> dict[str, Any]:
+#     """Get uvicorn logging configuration.
+#
+#     Returns:
+#         Dictionary with uvicorn logging configuration
+#     """
+#     return {
+#         "version": 1,
+#         "disable_existing_loggers": False,
+#         "formatters": {
+#             "default": {
+#                 "()": CustomFormatter,
+#                 "fmt": "%(levelprefix)s %(message)s",
+#                 "use_colors": None,
+#             },
+#             "access": {
+#                 "()": CustomFormatter,
+#                 "fmt": "%(levelprefix)s %(client_addr)s - '%(request_line)s' %(status_code)s",
+#             },
+#         },
+#         "handlers": {
+#             "default": {
+#                 "formatter": "default",
+#                 "class": "logging.StreamHandler",
+#                 "stream": "ext://sys.stderr",
+#             },
+#             "access": {
+#                 "formatter": "access",
+#                 "class": "logging.StreamHandler",
+#                 "stream": "ext://sys.stdout",
+#             },
+#         },
+#         "loggers": {
+#             "uvicorn": {"handlers": ["default"], "level": "INFO"},
+#             "uvicorn.error": {"level": "INFO"},
+#             "uvicorn.access": {
+#                 "handlers": ["access"],
+#                 "level": "INFO",
+#                 "propagate": False,
+#             },
+#         },
+#     }

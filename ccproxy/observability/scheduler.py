@@ -104,37 +104,15 @@ class ObservabilityScheduler:
 
         while self._running:
             try:
-                logger.debug(
-                    "pushgateway_task_cycle",
-                    metrics_instance_exists=self._metrics_instance is not None,
-                    pushgateway_enabled=self._metrics_instance.is_pushgateway_enabled()
-                    if self._metrics_instance
-                    else False,
-                )
-
                 if (
                     self._metrics_instance
                     and self._metrics_instance.is_pushgateway_enabled()
                 ):
-                    logger.debug("pushgateway_attempting_push")
                     success = self._metrics_instance.push_to_gateway()
-                    if success:
-                        logger.info("pushgateway_push_success")
-                    else:
+                    if not success:
                         logger.warning("pushgateway_push_failed")
-                else:
-                    logger.debug(
-                        "pushgateway_disabled_or_unavailable",
-                        has_instance=self._metrics_instance is not None,
-                        pushgateway_enabled=self._metrics_instance.is_pushgateway_enabled()
-                        if self._metrics_instance
-                        else False,
-                    )
 
                 # Wait for next interval
-                logger.debug(
-                    "pushgateway_task_sleeping", interval=self._pushgateway_interval
-                )
                 await asyncio.sleep(self._pushgateway_interval)
 
             except asyncio.CancelledError:
@@ -144,7 +122,6 @@ class ObservabilityScheduler:
                 logger.error("pushgateway_task_error", error=str(e))
                 # Backoff on error
                 backoff_time = min(self._pushgateway_interval * 2, 60.0)
-                logger.debug("pushgateway_task_backoff", backoff_time=backoff_time)
                 await asyncio.sleep(backoff_time)
 
     def set_pushgateway_interval(self, interval: float) -> None:

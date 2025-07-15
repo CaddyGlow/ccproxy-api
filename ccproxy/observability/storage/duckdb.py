@@ -210,7 +210,6 @@ class DuckDBStorage:
                 "CREATE INDEX IF NOT EXISTS idx_operations_request_id ON operations(request_id)"
             )
 
-            logger.debug("duckdb_schema_created")
 
         except Exception as e:
             logger.error("duckdb_schema_error", error=str(e))
@@ -265,11 +264,6 @@ class DuckDBStorage:
             if operations:
                 await self._insert_operations(conn, operations)
 
-            logger.debug(
-                "duckdb_batch_stored",
-                requests_count=len(requests),
-                operations_count=len(operations),
-            )
             return True
 
         except Exception as e:

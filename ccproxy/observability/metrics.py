@@ -234,12 +234,6 @@ class PrometheusMetrics:
             from .pushgateway import PushgatewayClient
 
             settings = get_settings()
-            logger.debug(
-                "pushgateway_init_attempt: enabled=%s url=%s job=%s",
-                settings.observability.pushgateway_enabled,
-                settings.observability.pushgateway_url,
-                settings.observability.pushgateway_job,
-            )
 
             self._pushgateway_client = PushgatewayClient(settings.observability)
 
@@ -248,14 +242,6 @@ class PrometheusMetrics:
                     "pushgateway_initialized: url=%s job=%s",
                     settings.observability.pushgateway_url,
                     settings.observability.pushgateway_job,
-                )
-            else:
-                logger.debug(
-                    "pushgateway_disabled: prometheus_available=%s url_configured=%s enabled_setting=%s",
-                    hasattr(self._pushgateway_client, "_enabled")
-                    and self._pushgateway_client._enabled,
-                    bool(settings.observability.pushgateway_url),
-                    settings.observability.pushgateway_enabled,
                 )
         except Exception as e:
             logger.warning("pushgateway_init_failed: error=%s", str(e))
@@ -443,24 +429,11 @@ class PrometheusMetrics:
         Returns:
             True if push succeeded, False otherwise
         """
-        logger.debug(
-            "push_to_gateway_attempt: metrics_enabled=%s client_exists=%s client_enabled=%s method=%s",
-            self._enabled,
-            self._pushgateway_client is not None,
-            self._pushgateway_client.is_enabled()
-            if self._pushgateway_client
-            else False,
-            method,
-        )
 
         if not self._enabled or not self._pushgateway_client:
-            logger.debug(
-                "push_to_gateway_skipped: reason=metrics_disabled_or_no_client"
-            )
             return False
 
         result = self._pushgateway_client.push_metrics(self.registry, method)
-        logger.debug("push_to_gateway_result: success=%s method=%s", result, method)
         return bool(result)
 
     def push_add_to_gateway(self) -> bool:
@@ -483,23 +456,11 @@ class PrometheusMetrics:
         Returns:
             True if delete succeeded, False otherwise
         """
-        logger.debug(
-            "delete_from_gateway_attempt: metrics_enabled=%s client_exists=%s client_enabled=%s",
-            self._enabled,
-            self._pushgateway_client is not None,
-            self._pushgateway_client.is_enabled()
-            if self._pushgateway_client
-            else False,
-        )
 
         if not self._enabled or not self._pushgateway_client:
-            logger.debug(
-                "delete_from_gateway_skipped: reason=metrics_disabled_or_no_client"
-            )
             return False
 
         result = self._pushgateway_client.delete_metrics()
-        logger.debug("delete_from_gateway_result: success=%s", result)
         return bool(result)
 
     def is_pushgateway_enabled(self) -> bool:
