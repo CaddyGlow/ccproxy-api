@@ -700,30 +700,24 @@ class ProxyService:
                 error_message = f'data: {{"error": "Streaming error: {str(e)}"}}\\n\\n'
                 yield error_message.encode("utf-8")
 
-        # For error responses, use upstream headers
-        if response_status >= 400:
-            # Use upstream headers but ensure CORS headers are present
-            final_headers = response_headers.copy()
-            final_headers["Access-Control-Allow-Origin"] = "*"
-            final_headers["Access-Control-Allow-Headers"] = "*"
+        # Always use upstream headers as base
+        final_headers = response_headers.copy()
 
-            return StreamingResponse(
-                stream_generator(),
-                status_code=response_status,
-                headers=final_headers,
-            )
-        else:
-            # For success responses, use standard streaming headers
-            return StreamingResponse(
-                stream_generator(),
-                media_type="text/event-stream",
-                headers={
-                    "Cache-Control": "no-cache",
-                    "Connection": "keep-alive",
-                    "Access-Control-Allow-Origin": "*",
-                    "Access-Control-Allow-Headers": "*",
-                },
-            )
+        # Ensure critical headers for streaming
+        final_headers["Cache-Control"] = "no-cache"
+        final_headers["Connection"] = "keep-alive"
+        final_headers["Access-Control-Allow-Origin"] = "*"
+        final_headers["Access-Control-Allow-Headers"] = "*"
+
+        # Set content-type if not already set by upstream
+        if "content-type" not in final_headers:
+            final_headers["content-type"] = "text/event-stream"
+
+        return StreamingResponse(
+            stream_generator(),
+            status_code=response_status,
+            headers=final_headers,
+        )
 
     async def _transform_anthropic_to_openai_stream(
         self, response: httpx.Response, original_path: str
