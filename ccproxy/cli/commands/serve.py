@@ -12,7 +12,6 @@ from click import get_current_context
 from ccproxy._version import __version__
 from ccproxy.cli.helpers import (
     get_rich_toolkit,
-    get_uvicorn_log_config,
     is_running_in_docker,
     warning,
 )
@@ -428,7 +427,7 @@ def api(
         )
 
         # Set up logging once with the effective log level
-        config_manager.setup_logging(log_level or settings.server.log_level)
+        # config_manager.setup_logging(log_level or settings.server.log_level)
 
         # Log effective configuration
         logger.info(

@@ -113,7 +113,7 @@ class LogToStoragePipeline:
             return
 
         self._running = True
-        logger.info("pipeline_start", config=self.config.__dict__)
+        logger.info("pipeline_start")
 
         # Initialize storage backends
         await self._init_storage_backends()
@@ -176,13 +176,9 @@ class LogToStoragePipeline:
                     storage = DuckDBStorage(database_path=self.config.duckdb_path)
                     await storage.initialize()
                     self._storage_backends.append(storage)
-                    logger.info(
-                        "pipeline_storage_init",
-                        backend=backend_name,
-                        path=self.config.duckdb_path,
-                    )
+                    logger.info("pipeline_storage_init", backend=backend_name)
                 elif backend_name == "duckdb" and not self.config.duckdb_enabled:
-                    logger.info("pipeline_duckdb_disabled", backend=backend_name)
+                    pass  # DuckDB disabled
                 elif backend_name == "sqlite":
                     # Legacy SQLite support (removed - use DuckDB instead)
                     logger.warning("sqlite_backend_removed", use_instead="duckdb")
@@ -281,11 +277,6 @@ class LogToStoragePipeline:
         # Store metrics in backends
         if metrics:
             await self._store_metrics(metrics)
-            logger.debug(
-                "pipeline_batch_processed",
-                event_count=len(events),
-                metric_count=len(metrics),
-            )
 
     async def _convert_request_event(self, event: LogEvent) -> dict[str, Any] | None:
         """Convert request event to storage metric."""

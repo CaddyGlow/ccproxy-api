@@ -58,19 +58,13 @@ class PushgatewayClient:
         self.settings = settings
         self._enabled = PROMETHEUS_AVAILABLE and settings.pushgateway_enabled
 
-        logger.debug(
-            "pushgateway_client_init",
-            prometheus_available=PROMETHEUS_AVAILABLE,
-            pushgateway_enabled=settings.pushgateway_enabled,
-            pushgateway_url=settings.pushgateway_url,
-            final_enabled=self._enabled,
-        )
-
-        if not PROMETHEUS_AVAILABLE and settings.pushgateway_enabled:
+        # Only log if pushgateway is enabled but prometheus is not available
+        if settings.pushgateway_enabled and not PROMETHEUS_AVAILABLE:
             logger.warning(
                 "prometheus_client not available. Pushgateway will be disabled. "
                 "Install with: pip install prometheus-client"
             )
+
 
     def push_metrics(self, registry: CollectorRegistry, method: str = "push") -> bool:
         """Push metrics to Pushgateway using official prometheus_client methods.
@@ -82,26 +76,15 @@ class PushgatewayClient:
         Returns:
             True if push succeeded, False otherwise
         """
-        logger.debug(
-            "pushgateway_push_attempt",
-            enabled=self._enabled,
-            has_url=bool(self.settings.pushgateway_url),
-            url=self.settings.pushgateway_url,
-            job=self.settings.pushgateway_job,
-            method=method,
-        )
 
         if not self._enabled or not self.settings.pushgateway_url:
-            logger.debug("pushgateway_push_skipped: reason=disabled_or_no_url")
             return False
 
         try:
             # Check if URL looks like VictoriaMetrics remote write endpoint
             if "/api/v1/write" in self.settings.pushgateway_url:
-                logger.debug("pushgateway_using_remote_write_protocol")
                 return self._push_remote_write(registry)
             else:
-                logger.debug("pushgateway_using_standard_protocol", method=method)
                 return self._push_standard(registry, method)
 
         except Exception as e:
@@ -182,11 +165,6 @@ class PushgatewayClient:
             # Fallback - assume it's already the correct import URL
             import_url = self.settings.pushgateway_url
 
-        logger.debug(
-            "pushgateway_import_attempt",
-            original_url=self.settings.pushgateway_url,
-            import_url=import_url,
-        )
 
         # VictoriaMetrics import endpoint accepts text/plain exposition format
         response = requests.post(
@@ -199,10 +177,6 @@ class PushgatewayClient:
             timeout=30,
         )
 
-        logger.debug(
-            "metrics_data_sample",
-            sample=metrics_data[:200] if metrics_data else "empty",
-        )
 
         if response.status_code in (200, 204):
             logger.info(
@@ -239,16 +213,8 @@ class PushgatewayClient:
         Returns:
             True if delete succeeded, False otherwise
         """
-        logger.debug(
-            "pushgateway_delete_attempt",
-            enabled=self._enabled,
-            has_url=bool(self.settings.pushgateway_url),
-            url=self.settings.pushgateway_url,
-            job=self.settings.pushgateway_job,
-        )
 
         if not self._enabled or not self.settings.pushgateway_url:
-            logger.debug("pushgateway_delete_skipped: reason=disabled_or_no_url")
             return False
 
         try:

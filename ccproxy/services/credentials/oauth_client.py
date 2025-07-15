@@ -19,7 +19,7 @@ from ccproxy.auth.exceptions import OAuthCallbackError, OAuthLoginError
 from ccproxy.auth.models import ClaudeCredentials, OAuthToken, UserProfile
 from ccproxy.auth.oauth.models import OAuthTokenRequest, OAuthTokenResponse
 from ccproxy.config.auth import OAuthSettings
-from ccproxy.core.logging import get_http_event_hooks, get_structlog_logger
+from ccproxy.core.logging import get_structlog_logger
 from ccproxy.services.credentials.config import OAuthConfig
 
 

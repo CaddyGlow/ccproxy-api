@@ -179,12 +179,13 @@ async def timed_operation(
         **context,
     )
 
-    # Log operation start
-    op_logger.debug(
-        "operation_start",
-        operation_name=operation_name,
-        **context,
-    )
+    # Log operation start (only for important operations)
+    if operation_name in ("claude_api_call", "request_processing", "auth_check"):
+        op_logger.debug(
+            "operation_start",
+            operation_name=operation_name,
+            **context,
+        )
 
     # Operation context
     op_context = {
@@ -196,16 +197,17 @@ async def timed_operation(
     try:
         yield op_context
 
-        # Log successful completion
+        # Log successful completion (only for important operations)
         duration_ms = (time.perf_counter() - start_time) * 1000
-        op_logger.info(
-            "operation_success",
-            operation_name=operation_name,
-            duration_ms=duration_ms,
-            **{
-                k: v for k, v in op_context.items() if k not in ("logger", "start_time")
-            },
-        )
+        if operation_name in ("claude_api_call", "request_processing", "auth_check"):
+            op_logger.info(
+                "operation_success",
+                operation_name=operation_name,
+                duration_ms=duration_ms,
+                **{
+                    k: v for k, v in op_context.items() if k not in ("logger", "start_time")
+                },
+            )
 
     except Exception as e:
         # Log operation error
