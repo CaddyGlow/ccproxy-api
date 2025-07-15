@@ -4,7 +4,7 @@ import json
 from collections.abc import AsyncIterator
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, Response
 from fastapi.responses import StreamingResponse
 
 from ccproxy.adapters.openai.adapter import OpenAIAdapter
@@ -53,8 +53,12 @@ async def create_openai_chat_completion(
             # Tuple response - handle regular response
             status_code, response_headers, response_body = response
             if status_code >= 400:
-                raise HTTPException(
-                    status_code=status_code, detail=response_body.decode()
+                # Forward error response directly with headers
+                return Response(
+                    content=response_body,
+                    status_code=status_code,
+                    headers=response_headers,
+                    media_type=response_headers.get("content-type", "application/json"),
                 )
 
             # Check if this is a streaming response based on content-type
@@ -82,7 +86,14 @@ async def create_openai_chat_completion(
                 # Convert Anthropic response back to OpenAI format for /chat/completions
                 openai_adapter = OpenAIAdapter()
                 openai_response = openai_adapter.adapt_response(response_data)
-                return openai_response
+
+                # Return response with headers
+                return Response(
+                    content=json.dumps(openai_response),
+                    status_code=status_code,
+                    headers=response_headers,
+                    media_type=response_headers.get("content-type", "application/json"),
+                )
 
     except Exception as e:
         raise HTTPException(
@@ -127,8 +138,12 @@ async def create_anthropic_message(
         # Tuple response - handle regular response
         status_code, response_headers, response_body = response
         if status_code >= 400:
-            raise ProxyHTTPException(
-                status_code=status_code, detail=response_body.decode()
+            # Forward error response directly with headers
+            return Response(
+                content=response_body,
+                status_code=status_code,
+                headers=response_headers,
+                media_type=response_headers.get("content-type", "application/json"),
             )
 
         # Check if this is a streaming response based on content-type
@@ -152,7 +167,14 @@ async def create_anthropic_message(
         else:
             # Parse JSON response
             response_data = json.loads(response_body.decode())
-            return response_data  # type: ignore[no-any-return]
+
+            # Return response with headers
+            return Response(
+                content=response_body,  # Use original body to preserve exact format
+                status_code=status_code,
+                headers=response_headers,
+                media_type=response_headers.get("content-type", "application/json"),
+            )
 
     # except Exception as e:
     #     raise HTTPException(

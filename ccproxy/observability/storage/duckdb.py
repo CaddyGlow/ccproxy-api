@@ -84,7 +84,7 @@ class DuckDBStorage:
             await self._create_schema()
 
             self._initialized = True
-            logger.info(
+            logger.debug(
                 "duckdb_storage_initialized",
                 database_path=str(self.database_path),
                 pool_size=self.pool_size,
@@ -209,7 +209,6 @@ class DuckDBStorage:
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_operations_request_id ON operations(request_id)"
             )
-
 
         except Exception as e:
             logger.error("duckdb_schema_error", error=str(e))
