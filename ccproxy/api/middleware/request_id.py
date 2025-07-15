@@ -1,6 +1,5 @@
 """Request ID middleware for generating and tracking request IDs."""
 
-import time
 import uuid
 from typing import Any
 
@@ -9,7 +8,7 @@ from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.types import ASGIApp
 
-from ccproxy.observability.context import RequestContext
+from ccproxy.observability.context import request_context
 
 
 logger = structlog.get_logger(__name__)
@@ -39,27 +38,23 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
         # Generate or extract request ID
         request_id = request.headers.get("x-request-id") or str(uuid.uuid4())
 
-        # Create request context
-        start_time = time.perf_counter()
-        request_logger = logger.bind(request_id=request_id)
-
-        # Create and store request context in state
-        request.state.request_id = request_id
-        request.state.context = RequestContext(
+        # Use the proper request context manager to ensure __aexit__ is called
+        async with request_context(
             request_id=request_id,
-            start_time=start_time,
-            logger=request_logger,
-            metadata={
-                "method": request.method,
-                "path": str(request.url.path),
-                "client_ip": request.client.host if request.client else "unknown",
-            },
-        )
+            method=request.method,
+            path=str(request.url.path),
+            client_ip=request.client.host if request.client else "unknown",
+            user_agent=request.headers.get("user-agent", "unknown"),
+            query=str(request.url.query) if request.url.query else None,
+        ) as ctx:
+            # Store context in request state for access by services
+            request.state.request_id = request_id
+            request.state.context = ctx
 
-        # Process the request
-        response = await call_next(request)
+            # Process the request
+            response = await call_next(request)
 
-        # Add request ID to response headers
-        response.headers["x-request-id"] = request_id
+            # Add request ID to response headers
+            response.headers["x-request-id"] = request_id
 
-        return response  # type: ignore[no-any-return]
+            return response  # type: ignore[no-any-return]

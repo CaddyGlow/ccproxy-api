@@ -118,21 +118,18 @@ class AccessLogMiddleware(BaseHTTPMiddleware):
                     ]:
                         context_metadata.pop(key, None)
 
-                # Log the access with all metadata
-                logger.info(
-                    "access_log",
-                    request_id=request_id,
+                # Use start-only logging - let context handle comprehensive access logging
+                # Only log basic request start info since context will handle complete access log
+                from ccproxy.observability.access_logger import log_request_start
+
+                log_request_start(
+                    request_id=request_id or "unknown",
                     method=method,
                     path=path,
-                    query=query,
-                    status_code=status_code,
                     client_ip=client_ip,
                     user_agent=user_agent,
-                    duration_ms=duration_ms,
-                    duration_seconds=duration_seconds,
-                    error_message=error_message,
+                    query=query,
                     **rate_limit_info,
-                    **context_metadata,  # Include all context metadata
                 )
             else:
                 # Log error case
