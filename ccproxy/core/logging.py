@@ -35,7 +35,7 @@ def configure_structlog(json_logs: bool = False) -> None:
         context_class=dict,
         logger_factory=structlog.stdlib.LoggerFactory(),
         wrapper_class=structlog.stdlib.BoundLogger,
-        cache_logger_on_first_use=True,
+        cache_logger_on_first_use=False,  # Don't cache to allow reconfiguration
     )
 
 
@@ -44,7 +44,11 @@ def setup_logging(json_logs: bool = False, log_level: str = "INFO") -> BoundLogg
     Setup logging for the entire application including uvicorn and fastapi.
     Returns a structlog logger instance.
     """
-    # Configure structlog first
+    # Set the log level for the root logger first so structlog can see it
+    root_logger = logging.getLogger()
+    root_logger.setLevel(getattr(logging, log_level.upper(), logging.INFO))
+
+    # Configure structlog after setting the log level
     configure_structlog(json_logs=json_logs)
 
     # Create a handler that will format stdlib logs through structlog
@@ -69,16 +73,49 @@ def setup_logging(json_logs: bool = False, log_level: str = "INFO") -> BoundLogg
         )
     )
 
-    # Configure root logger
-    root_logger = logging.getLogger()
+    # Configure root logger (level already set above)
     root_logger.handlers = [handler]
-    root_logger.setLevel(log_level)
 
     # Make sure uvicorn and fastapi loggers use our configuration
-    for logger_name in ["uvicorn", "uvicorn.access", "uvicorn.error", "fastapi"]:
+    for logger_name in [
+        "uvicorn",
+        "uvicorn.access",
+        "uvicorn.error",
+        "fastapi",
+        "ccproxy",
+    ]:
         logger = logging.getLogger(logger_name)
         logger.handlers = []  # Remove default handlers
         logger.propagate = True  # Use root logger's handlers
+        logger.setLevel(getattr(logging, log_level.upper(), logging.INFO))
+
+    # Configure httpx logger separately - INFO when app is DEBUG, WARNING otherwise
+    httpx_logger = logging.getLogger("httpx")
+    # httpx_logger.handlers = []  # Remove default handlers
+    # httpx_logger.propagate = True  # Use root logger's handlers
+    if log_level.upper() == "DEBUG":
+        httpx_logger.setLevel(logging.INFO)
+    else:
+        httpx_logger.setLevel(logging.WARNING)
+
+    # Set noisy HTTP-related loggers to WARNING when app log level >= WARNING, else use app log level
+    app_log_level = getattr(logging, log_level.upper(), logging.INFO)
+    noisy_log_level = (
+        logging.WARNING if app_log_level <= logging.WARNING else app_log_level
+    )
+
+    for noisy_logger_name in [
+        "urllib3",
+        "urllib3.connectionpool",
+        "requests",
+        "aiohttp",
+        "httpcore",
+        "httpcore.http11",
+    ]:
+        noisy_logger = logging.getLogger(noisy_logger_name)
+        noisy_logger.handlers = []  # Remove default handlers
+        noisy_logger.propagate = True  # Use root logger's handlers
+        noisy_logger.setLevel(noisy_log_level)
 
     return structlog.get_logger()  # type: ignore[no-any-return]
 
