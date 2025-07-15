@@ -180,10 +180,20 @@ class ProxyService:
                 streaming=streaming,
                 service_type="proxy_service",
             )
-            # Use a no-op context manager since we're using existing context
-            from contextlib import nullcontext
+            # Create a context manager that preserves the existing context's lifecycle
+            # This ensures __aexit__ is called for proper access logging
+            from contextlib import asynccontextmanager
 
-            context_manager: Any = nullcontext(ctx)
+            @asynccontextmanager
+            async def existing_context_manager():
+                try:
+                    yield ctx
+                finally:
+                    # Let the existing context handle its own lifecycle
+                    # The middleware or parent context will call __aexit__
+                    pass
+
+            context_manager: Any = existing_context_manager()
         else:
             # Create new context for observability
             context_manager = request_context(
@@ -693,6 +703,16 @@ class ProxyService:
                                             "cache_write_tokens"
                                         ],
                                         cost_usd=cost_usd,
+                                    )
+
+                                    # Log comprehensive access log for streaming completion
+                                    from ccproxy.observability.access_logger import log_request_access
+                                    
+                                    log_request_access(
+                                        context=ctx,
+                                        status_code=response_status,
+                                        # Additional metadata for streaming completion
+                                        event_type="streaming_complete",
                                     )
 
                                     # Record Prometheus metrics
