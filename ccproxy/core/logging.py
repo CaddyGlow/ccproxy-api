@@ -93,9 +93,9 @@ def setup_rich_logging(
     if configure_uvicorn:
         # Configure uvicorn loggers to use our rich handler
         uvicorn_loggers = {
-            "uvicorn": logging.INFO,
-            "uvicorn.error": logging.INFO,
-            "uvicorn.access": logging.INFO,  # Always show access logs
+            "uvicorn": logging.WARNING,
+            "uvicorn.error": logging.WARNING,
+            "uvicorn.access": logging.WARNING,  # Always show access logs
         }
 
         for logger_name, log_level in uvicorn_loggers.items():

@@ -7,11 +7,11 @@ import time
 import urllib.parse
 from collections.abc import AsyncGenerator
 from pathlib import Path
-from typing import TYPE_CHECKING, TypedDict
+from typing import TYPE_CHECKING, Any, TypedDict
 
 import httpx
 import structlog
-from fastapi import HTTPException
+from fastapi import HTTPException, Request
 from fastapi.responses import StreamingResponse
 
 from ccproxy.core.http import BaseProxyClient
@@ -146,6 +146,7 @@ class ProxyService:
         body: bytes | None = None,
         query_params: dict[str, str | list[str]] | None = None,
         timeout: float = 240.0,
+        request: Request | None = None,  # Optional FastAPI Request object
     ) -> tuple[int, dict[str, str], bytes] | StreamingResponse:
         """Handle a proxy request with full business logic orchestration.
 
@@ -156,6 +157,7 @@ class ProxyService:
             body: Request body
             query_params: Query parameters
             timeout: Request timeout in seconds
+            request: Optional FastAPI Request object for accessing request context
 
         Returns:
             Tuple of (status_code, headers, body) or StreamingResponse for streaming
@@ -167,15 +169,33 @@ class ProxyService:
         model, streaming = self._extract_request_metadata(body)
         endpoint = path.split("/")[-1] if path else "unknown"
 
-        # Use request context for observability
-        async with request_context(
-            method=method,
-            path=path,
-            endpoint=endpoint,
-            model=model,
-            streaming=streaming,
-            service_type="proxy_service",
-        ) as ctx:
+        # Use existing context from request if available, otherwise create new one
+        if request and hasattr(request, "state") and hasattr(request.state, "context"):
+            # Use existing context from middleware
+            ctx = request.state.context
+            # Add service-specific metadata
+            ctx.add_metadata(
+                endpoint=endpoint,
+                model=model,
+                streaming=streaming,
+                service_type="proxy_service",
+            )
+            # Use a no-op context manager since we're using existing context
+            from contextlib import nullcontext
+
+            context_manager: Any = nullcontext(ctx)
+        else:
+            # Create new context for observability
+            context_manager = request_context(
+                method=method,
+                path=path,
+                endpoint=endpoint,
+                model=model,
+                streaming=streaming,
+                service_type="proxy_service",
+            )
+
+        async with context_manager as ctx:
             # Record Prometheus metrics
             self.metrics.inc_active_requests()
 

@@ -80,11 +80,45 @@ class AccessLogMiddleware(BaseHTTPMiddleware):
 
                 # Extract rate limit headers if present
                 rate_limit_info = {}
+                anthropic_request_id = None
                 for header_name, header_value in response.headers.items():
-                    if header_name.lower().startswith("x-ratelimit-"):
-                        rate_limit_info[header_name.lower()] = header_value
+                    header_lower = header_name.lower()
+                    # Capture x-ratelimit-* headers
+                    if header_lower.startswith(
+                        "x-ratelimit-"
+                    ) or header_lower.startswith("anthropic-ratelimit-"):
+                        rate_limit_info[header_lower] = header_value
+                    # Capture request-id from Anthropic's response
+                    elif header_lower == "request-id":
+                        anthropic_request_id = header_value
 
-                # Log the access
+                # Add anthropic request ID if present
+                if anthropic_request_id:
+                    rate_limit_info["anthropic_request_id"] = anthropic_request_id
+
+                # Extract metadata from context if available
+                context_metadata = {}
+                if hasattr(request.state, "context") and isinstance(
+                    request.state.context, RequestContext
+                ):
+                    # Get all metadata from the context
+                    context_metadata = request.state.context.metadata.copy()
+                    # Remove fields we're already logging separately
+                    for key in [
+                        "method",
+                        "path",
+                        "client_ip",
+                        "status_code",
+                        "request_id",
+                        "duration_ms",
+                        "duration_seconds",
+                        "query",
+                        "user_agent",
+                        "error_message",
+                    ]:
+                        context_metadata.pop(key, None)
+
+                # Log the access with all metadata
                 logger.info(
                     "access_log",
                     request_id=request_id,
@@ -98,6 +132,7 @@ class AccessLogMiddleware(BaseHTTPMiddleware):
                     duration_seconds=duration_seconds,
                     error_message=error_message,
                     **rate_limit_info,
+                    **context_metadata,  # Include all context metadata
                 )
             else:
                 # Log error case
