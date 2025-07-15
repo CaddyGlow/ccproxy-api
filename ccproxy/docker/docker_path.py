@@ -4,11 +4,10 @@ from pathlib import Path
 from typing import Self
 
 from pydantic import BaseModel, field_validator
+from structlog import get_logger
 
-from ccproxy.core.logging import get_structlog_logger
 
-
-logger = get_structlog_logger(__name__)
+logger = get_logger(__name__)
 
 
 class DockerPath(BaseModel):
@@ -117,7 +116,7 @@ class DockerPathSet:
         """
         self.base_host_path = Path(base_host_path).resolve() if base_host_path else None
         self.paths: dict[str, DockerPath] = {}
-        self.logger = get_structlog_logger(f"{__name__}.{self.__class__.__name__}")
+        self.logger = get_logger(f"{__name__}.{self.__class__.__name__}")
 
     def add(
         self, name: str, container_path: str, host_subpath: str | None = None

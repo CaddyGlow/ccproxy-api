@@ -3,6 +3,8 @@
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Any, Optional, Protocol, TypeVar, runtime_checkable
 
+from structlog import get_logger
+
 from ccproxy.core.types import ProxyRequest, ProxyResponse, TransformContext
 
 
@@ -80,9 +82,8 @@ class BaseTransformer(ABC):
 
         except Exception as e:
             # Don't let metrics collection fail the transformation
-            import logging
-
-            logger = logging.getLogger(__name__)
+            logger = get_logger(__name__)
+            # logger = logging.getLogger(__name__)
             logger.debug(f"Failed to collect transformation metrics: {e}")
 
     def _calculate_data_size(self, data: Any) -> int:

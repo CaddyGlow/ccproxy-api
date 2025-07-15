@@ -8,6 +8,7 @@ from typing import Any
 import typer
 import uvicorn
 from click import get_current_context
+from structlog import get_logger
 
 from ccproxy._version import __version__
 from ccproxy.cli.helpers import (
@@ -21,7 +22,6 @@ from ccproxy.config.settings import (
     config_manager,
 )
 from ccproxy.core.async_utils import get_root_package_name
-from ccproxy.core.logging import get_structlog_logger
 from ccproxy.docker import (
     DockerEnv,
     DockerPath,
@@ -47,7 +47,7 @@ from ..docker.params import (
 
 
 # Logger will be configured by configuration manager
-logger = get_structlog_logger(__name__)
+logger = get_logger(__name__)
 
 
 def get_config_path_from_context() -> Path | None:
@@ -104,7 +104,7 @@ def _run_docker_server(
 ) -> None:
     """Run the server using Docker."""
     toolkit = get_rich_toolkit()
-    logger = get_structlog_logger(__name__)
+    logger = get_logger(__name__)
 
     docker_env = docker_env or []
     docker_volume = docker_volume or []
@@ -123,13 +123,13 @@ def _run_docker_server(
     docker_env_dict["HOST"] = "0.0.0.0"
 
     # Display startup information
-    toolkit.print_title(
-        "Starting Claude Code Proxy API server with Docker", tag="docker"
-    )
-    toolkit.print(
-        f"Server will be available at: http://{settings.server.host}:{settings.server.port}",
-        tag="info",
-    )
+    # toolkit.print_title(
+    #     "Starting Claude Code Proxy API server with Docker", tag="docker"
+    # )
+    # toolkit.print(
+    #     f"Server will be available at: http://{settings.server.host}:{settings.server.port}",
+    #     tag="info",
+    # )
     toolkit.print_line()
 
     # Show Docker configuration summary
@@ -225,7 +225,7 @@ def _run_local_server(settings: Settings, cli_overrides: dict[str, Any]) -> None
     """Run the server locally."""
     in_docker = is_running_in_docker()
     toolkit = get_rich_toolkit()
-    logger = get_structlog_logger(__name__)
+    logger = get_logger(__name__)
 
     if in_docker:
         toolkit.print_title(
@@ -236,15 +236,15 @@ def _run_local_server(settings: Settings, cli_overrides: dict[str, Any]) -> None
             f"uid={warning(str(os.getuid()))} gid={warning(str(os.getgid()))}"
         )
         toolkit.print(f"HOME={os.environ['HOME']}")
-    else:
-        toolkit.print_title("Starting Claude Code Proxy API server", tag="local")
+    # else:
+    #     toolkit.print_title("Starting Claude Code Proxy API server", tag="local")
 
-    toolkit.print(
-        f"Server will be available at: http://{settings.server.host}:{settings.server.port}",
-        tag="info",
-    )
+    # toolkit.print(
+    #     f"Server will be available at: http://{settings.server.host}:{settings.server.port}",
+    #     tag="info",
+    # )
 
-    toolkit.print_line()
+    # toolkit.print_line()
 
     # Show API usage information if auth token is configured
     if settings.security.auth_token:
@@ -263,7 +263,8 @@ def _run_local_server(settings: Settings, cli_overrides: dict[str, Any]) -> None
 
     # Run uvicorn with our already configured logging
     uvicorn.run(
-        app=f"{get_root_package_name()}.api:app",
+        app=f"{get_root_package_name()}.api.app:create_app",
+        factory=True,
         host=settings.server.host,
         port=settings.server.port,
         reload=settings.server.reload,
@@ -424,11 +425,22 @@ def api(
         )
 
         # Set up logging once with the effective log level
-        config_manager.setup_logging(log_level or settings.server.log_level)
+        # Import here to avoid circular import
+        import structlog
+
+        from ccproxy.core.logging import setup_logging
+
+        # Only configure if not already configured
+        if not structlog.is_configured():
+            # Use JSON logs if explicitly requested via env var
+            json_logs = os.environ.get("CCPROXY_JSON_LOGS", "").lower() == "true"
+            setup_logging(
+                json_logs=json_logs, log_level=log_level or settings.server.log_level
+            )
 
         # Re-get logger after logging is configured
-        logger = get_structlog_logger(__name__)
-        
+        logger = get_logger(__name__)
+
         # Log CLI command that was deferred
         logger.info(
             "cli_command_starting",
@@ -438,7 +450,7 @@ def api(
             host=host,
             config_path=str(config) if config else None,
         )
-        
+
         # Log effective configuration
         logger.info(
             "configuration_loaded",

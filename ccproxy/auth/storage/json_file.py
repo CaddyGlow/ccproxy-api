@@ -5,13 +5,14 @@ import json
 from pathlib import Path
 from typing import Optional
 
+from structlog import get_logger
+
 from ccproxy.auth.exceptions import (
     CredentialsInvalidError,
     CredentialsStorageError,
 )
 from ccproxy.auth.models import ClaudeCredentials
 from ccproxy.auth.storage.base import TokenStorage
-from ccproxy.core.logging import get_logger
 
 
 logger = get_logger(__name__)

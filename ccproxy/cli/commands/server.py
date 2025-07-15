@@ -3,15 +3,16 @@
 from pathlib import Path
 from typing import Optional
 
+from structlog import get_logger
+
 from ccproxy.config.settings import (
     ConfigurationError,
     Settings,
     config_manager,
 )
-from ccproxy.core.logging import get_structlog_logger
 
 
-logger = get_structlog_logger(__name__)
+logger = get_logger(__name__)
 
 
 def validate_server_settings(settings: Settings) -> None:

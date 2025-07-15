@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 import httpx
+from structlog import get_logger
 
 from ccproxy.auth.exceptions import (
     CredentialsExpiredError,
@@ -21,12 +22,11 @@ from ccproxy.auth.models import (
 from ccproxy.auth.storage import JsonFileTokenStorage as JsonFileStorage
 from ccproxy.auth.storage import TokenStorage as CredentialsStorageBackend
 from ccproxy.config.auth import AuthSettings
-from ccproxy.core.logging import get_structlog_logger
 from ccproxy.services.credentials.config import CredentialsConfig
 from ccproxy.services.credentials.oauth_client import OAuthClient
 
 
-logger = get_structlog_logger(__name__)
+logger = get_logger(__name__)
 
 
 class CredentialsManager:

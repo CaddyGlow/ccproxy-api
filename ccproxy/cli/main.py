@@ -8,9 +8,11 @@ from typing import Any, Optional, cast
 
 import typer
 from click import get_current_context
+from structlog import get_logger
 from typer import Typer
 
 from ccproxy._version import __version__
+from ccproxy.api.middleware.cors import setup_cors_middleware
 from ccproxy.cli.helpers import (
     get_rich_toolkit,
     is_running_in_docker,
@@ -20,9 +22,10 @@ from ccproxy.config.settings import (
     ConfigurationError,
     Settings,
     config_manager,
+    get_settings,
 )
 from ccproxy.core.async_utils import get_package_dir, get_root_package_name
-from ccproxy.core.logging import get_structlog_logger
+from ccproxy.core.logging import setup_logging
 from ccproxy.models.responses import (
     PermissionToolAllowResponse,
     PermissionToolDenyResponse,
@@ -49,7 +52,7 @@ app = typer.Typer(
 )
 
 # Logger will be configured by configuration manager
-logger = get_structlog_logger(__name__)
+logger = get_logger(__name__)
 
 
 # Add global --version option
@@ -180,10 +183,6 @@ def app_main(
     # Store config path for commands to use
     ctx.ensure_object(dict)
     ctx.obj["config_path"] = config
-
-    # Setup logging for all commands
-    if log_level:
-        config_manager.setup_logging(log_level)
 
     # NOTE: Default command routing commented out because it interferes with subcommand handling
     # The 'serve' command is registered as default=True which handles this automatically

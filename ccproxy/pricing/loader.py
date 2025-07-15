@@ -4,8 +4,7 @@ from decimal import Decimal
 from typing import Any
 
 from pydantic import ValidationError
-
-from ccproxy.core.logging import get_logger
+from structlog import get_logger
 
 from .models import PricingData
 

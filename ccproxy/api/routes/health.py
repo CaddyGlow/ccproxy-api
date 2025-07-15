@@ -4,9 +4,9 @@ import asyncio
 from typing import Any
 
 from fastapi import APIRouter
+from structlog import get_logger
 
 from ccproxy import __version__
-from ccproxy.core.logging import get_logger
 from ccproxy.services.credentials import CredentialsManager
 
 

@@ -7,8 +7,7 @@ from pathlib import Path
 from typing import Any
 
 import httpx
-
-from ccproxy.core.logging import get_logger
+from structlog import get_logger
 
 
 logger = get_logger(__name__)

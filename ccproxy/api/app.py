@@ -1,6 +1,5 @@
 """FastAPI application factory for Claude Code Proxy API Server."""
 
-import logging
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from typing import Any
@@ -8,7 +7,9 @@ from typing import Any
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
+from structlog import get_logger
 
+from ccproxy import __version__
 from ccproxy.api.middleware.cors import setup_cors_middleware
 from ccproxy.api.middleware.errors import setup_error_handlers
 from ccproxy.api.middleware.logging import AccessLogMiddleware
@@ -19,20 +20,19 @@ from ccproxy.api.routes.health import router as health_router
 from ccproxy.api.routes.metrics import router as metrics_router
 from ccproxy.api.routes.proxy import router as proxy_router
 from ccproxy.config.settings import Settings, get_settings
-from ccproxy.core.logging import get_logger
+from ccproxy.core.logging import setup_logging
 from ccproxy.observability.config import configure_observability
 from ccproxy.observability.pipeline import get_pipeline
 from ccproxy.observability.scheduler import get_scheduler, stop_scheduler
 
 
-logging.getLogger("fastapi").setLevel(logging.WARNING)
+logger = get_logger(__name__)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Application lifespan manager."""
     settings = get_settings()
-    logger = get_logger(__name__)
 
     # Startup
     logger.info("Starting Claude Code Proxy API Server...")
@@ -51,7 +51,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     # Configure observability system (structlog + pipeline + scheduler)
     try:
-
         # configure_observability(
         #     format_type=format_type,
         #     level=settings.server.log_level,
@@ -94,20 +93,23 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     """
     if settings is None:
         settings = get_settings()
-    
+
     # Configure logging based on settings BEFORE any module uses logger
     # This is needed for reload mode where the app is re-imported
-    from ccproxy.config.settings import config_manager
     import structlog
-    
+
+    from ccproxy.config.settings import config_manager
+
     # Only configure if not already configured
     if not structlog.is_configured():
-        config_manager.setup_logging(settings.server.log_level)
+        # Always use console output
+        json_logs = False
+        setup_logging(json_logs=json_logs, log_level=settings.server.log_level)
 
     app = FastAPI(
         title="Claude Code Proxy API Server",
         description="High-performance API server providing Anthropic and OpenAI-compatible interfaces for Claude AI models",
-        version="0.1.0",
+        version=__version__,
         lifespan=lifespan,
     )
 

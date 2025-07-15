@@ -32,7 +32,7 @@ def configure_observability(
         show_time: Whether to show timestamps in logs
     """
     # Delegate to core logging system for all structlog configuration
-    from ccproxy.core.logging import setup_dual_logging
+    from ccproxy.core.logging import setup_logging
 
     # setup_dual_logging(
     #     level=level,

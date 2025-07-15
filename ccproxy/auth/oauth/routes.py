@@ -7,19 +7,19 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse
+from structlog import get_logger
 
 from ccproxy.auth.models import (
     ClaudeCredentials,
     OAuthToken,
 )
 from ccproxy.auth.storage import JsonFileTokenStorage as JsonFileStorage
-from ccproxy.core.logging import get_structlog_logger
 
 # Import CredentialsManager locally to avoid circular import
 from ccproxy.services.credentials.config import OAuthConfig
 
 
-logger = get_structlog_logger(__name__)
+logger = get_logger(__name__)
 
 router = APIRouter(tags=["oauth"])
 

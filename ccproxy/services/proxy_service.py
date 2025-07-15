@@ -252,6 +252,7 @@ class ProxyService:
                 async with timed_operation("response_transform", ctx.request_id):
                     logger.debug("Transforming response...")
                     # For error responses, skip transformation to preserve upstream error format
+                    transformed_response: ResponseData
                     if status_code >= 400:
                         logger.info(
                             f"Preserving upstream error response: {status_code}",
@@ -259,11 +260,11 @@ class ProxyService:
                             has_body=bool(response_body),
                             content_length=len(response_body) if response_body else 0,
                         )
-                        transformed_response = {
-                            "status_code": status_code,
-                            "headers": response_headers,
-                            "body": response_body,
-                        }
+                        transformed_response = ResponseData(
+                            status_code=status_code,
+                            headers=response_headers,
+                            body=response_body,
+                        )
                     else:
                         transformed_response = await self._transform_response(
                             status_code, response_headers, response_body, path

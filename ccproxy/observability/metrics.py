@@ -86,10 +86,10 @@ except ImportError:
     CollectorRegistry = _DummyCollectorRegistry  # type: ignore[misc,assignment]
 
 
-from ccproxy.core.logging import get_structlog_logger
+from structlog import get_logger
 
 
-logger = get_structlog_logger(__name__)
+logger = get_logger(__name__)
 
 
 class PrometheusMetrics:

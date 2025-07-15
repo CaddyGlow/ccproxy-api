@@ -14,16 +14,16 @@ from typing import Any, Optional
 from urllib.parse import parse_qs, urlparse
 
 import httpx
+from structlog import get_logger
 
 from ccproxy.auth.exceptions import OAuthCallbackError, OAuthLoginError
 from ccproxy.auth.models import ClaudeCredentials, OAuthToken, UserProfile
 from ccproxy.auth.oauth.models import OAuthTokenRequest, OAuthTokenResponse
 from ccproxy.config.auth import OAuthSettings
-from ccproxy.core.logging import get_structlog_logger
 from ccproxy.services.credentials.config import OAuthConfig
 
 
-logger = get_structlog_logger(__name__)
+logger = get_logger(__name__)
 
 
 def _log_http_error_compact(operation: str, response: httpx.Response) -> None:

@@ -6,6 +6,7 @@ import structlog
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
+from structlog import get_logger
 
 from ccproxy.core.errors import (
     AuthenticationError,
@@ -25,10 +26,9 @@ from ccproxy.core.errors import (
     TransformationError,
     ValidationError,
 )
-from ccproxy.core.logging import get_structlog_logger
 
 
-logger = get_structlog_logger(__name__)
+logger = get_logger(__name__)
 
 
 def setup_error_handlers(app: FastAPI) -> None:

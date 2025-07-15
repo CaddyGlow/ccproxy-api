@@ -114,7 +114,7 @@ class MessageConverter:
             cache_write_tokens = getattr(result_message, "cache_write_tokens", 0)
 
         # Log token extraction for debugging
-        from ccproxy.core.logging import get_logger
+        from structlog import get_logger
 
         logger = get_logger(__name__)
 

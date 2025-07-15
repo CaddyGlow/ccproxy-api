@@ -451,7 +451,6 @@ class ConfigurationManager:
             return
 
         # Import here to avoid circular import
-        from ccproxy.core.logging import setup_dual_logging
 
         effective_level = log_level or (
             self._settings.server.log_level if self._settings else "INFO"
@@ -460,12 +459,12 @@ class ConfigurationManager:
         # Determine format based on log level - Rich for DEBUG, JSON for production
         format_type = "rich" if effective_level.upper() == "DEBUG" else "json"
 
-        setup_dual_logging(
-            level=effective_level,
-            format_type=format_type,
-            configure_uvicorn=True,
-            verbose_tracebacks=effective_level.upper() == "DEBUG",
-        )
+        # setup_dual_logging(
+        #     level=effective_level,
+        #     format_type=format_type,
+        #     configure_uvicorn=True,
+        #     verbose_tracebacks=effective_level.upper() == "DEBUG",
+        # )
         self._logging_configured = True
 
     def get_cli_overrides_from_args(self, **cli_args: Any) -> dict[str, Any]:

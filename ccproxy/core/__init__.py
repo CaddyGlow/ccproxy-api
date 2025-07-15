@@ -98,12 +98,6 @@ from ccproxy.core.interfaces import (
 from ccproxy.core.interfaces import (
     TransformerProtocol as ITransformerProtocol,
 )
-from ccproxy.core.logging import (
-    CUSTOM_THEME,
-    console,
-    get_logger,
-    setup_rich_logging,
-)
 from ccproxy.core.middleware import (
     BaseMiddleware,
     CompositeMiddleware,
@@ -265,13 +259,6 @@ __all__ = [
     "URL_PATTERN",
     "UUID_PATTERN",
     "YAML_EXTENSIONS",
-    # Logging utilities
-    "CUSTOM_THEME",
-    "CustomFormatter",
-    "console",
-    "get_logger",
-    "get_uvicorn_log_config",
-    "setup_rich_logging",
     # Validators
     "validate_choice",
     "validate_dict",

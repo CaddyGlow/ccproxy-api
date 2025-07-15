@@ -22,7 +22,7 @@ router = APIRouter(tags=["proxy"])
 async def create_openai_chat_completion(
     request: Request,
     proxy_service: ProxyServiceDep,
-) -> StreamingResponse | dict[str, Any]:
+) -> StreamingResponse | Response:
     """Create a chat completion using Claude AI with OpenAI-compatible format.
 
     This endpoint handles OpenAI API format requests and forwards them
@@ -108,7 +108,7 @@ async def create_openai_chat_completion(
 async def create_anthropic_message(
     request: Request,
     proxy_service: ProxyServiceDep,
-) -> StreamingResponse | dict[str, Any]:
+) -> StreamingResponse | Response:
     """Create a message using Claude AI with Anthropic format.
 
     This endpoint handles Anthropic API format requests and forwards them
