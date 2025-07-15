@@ -4,7 +4,7 @@ import asyncio
 from decimal import Decimal
 from typing import Any
 
-from ccproxy.core.logging import get_logger
+from structlog import get_logger
 
 from .cache import PricingCache
 from .loader import PricingLoader

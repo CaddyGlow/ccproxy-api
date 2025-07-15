@@ -3,11 +3,11 @@
 from typing import Annotated
 
 from fastapi import Depends
+from structlog import get_logger
 
 from ccproxy.auth.dependencies import AuthManagerDep, get_auth_manager
 from ccproxy.config.settings import Settings, get_settings
 from ccproxy.core.http import BaseProxyClient
-from ccproxy.core.logging import get_logger
 from ccproxy.observability import PrometheusMetrics, get_metrics
 from ccproxy.services.claude_sdk_service import ClaudeSDKService
 from ccproxy.services.credentials.manager import CredentialsManager
