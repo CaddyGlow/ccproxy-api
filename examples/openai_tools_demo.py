@@ -25,8 +25,7 @@ from openai.types.chat import (
     ChatCompletionToolParam,
     ChatCompletionUserMessageParam,
 )
-
-from ccproxy.core.logging import get_structlog_logger
+from structlog import get_logger
 
 
 def setup_logging(debug: bool = False) -> None:
@@ -49,7 +48,7 @@ def setup_logging(debug: bool = False) -> None:
         logging.getLogger("openai").setLevel(logging.WARNING)
 
 
-logger = get_structlog_logger(__name__)
+logger = get_logger(__name__)
 
 
 class LoggingHTTPClient(httpx.Client):

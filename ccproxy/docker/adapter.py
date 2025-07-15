@@ -6,7 +6,7 @@ import shlex
 from pathlib import Path
 from typing import cast
 
-from ccproxy.core.logging import get_structlog_logger
+from structlog import get_logger
 
 from .middleware import LoggerOutputMiddleware
 from .models import DockerUserContext
@@ -25,7 +25,7 @@ from .stream_process import (
 from .validators import create_docker_error, validate_port_spec
 
 
-logger = get_structlog_logger(__name__)
+logger = get_logger(__name__)
 
 
 class DockerAdapter:

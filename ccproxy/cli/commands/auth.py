@@ -10,12 +10,12 @@ import typer
 from rich import box
 from rich.console import Console
 from rich.table import Table
+from structlog import get_logger
 
 from ccproxy.auth.models import ValidationResult
 from ccproxy.cli.helpers import get_rich_toolkit
 from ccproxy.config.settings import get_settings
 from ccproxy.core.async_utils import get_claude_docker_home_dir
-from ccproxy.core.logging import get_logger
 from ccproxy.services.credentials import CredentialsManager
 
 
