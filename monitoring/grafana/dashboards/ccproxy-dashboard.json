@@ -170,7 +170,7 @@
       "pluginVersion": "9.0.0",
       "targets": [
         {
-          "expr": "sum(ccproxy_requests_total) or vector(0)",
+          "expr": "sum(increase(ccproxy_requests_total[$__range])) or vector(0)",
           "legendFormat": "Total Requests",
           "refId": "A"
         }
@@ -236,7 +236,7 @@
       "pluginVersion": "9.0.0",
       "targets": [
         {
-          "expr": "sum(ccproxy_tokens_total{type=\"input\"}) or vector(0)",
+          "expr": "sum(increase(ccproxy_tokens_total{type=\"input\"}[$__range])) or vector(0)",
           "legendFormat": "Total Input Tokens",
           "refId": "A"
         }
@@ -302,7 +302,7 @@
       "pluginVersion": "9.0.0",
       "targets": [
         {
-          "expr": "sum(ccproxy_tokens_total{type=\"output\"}) or vector(0)",
+          "expr": "sum(increase(ccproxy_tokens_total{type=\"output\"}[$__range])) or vector(0)",
           "legendFormat": "Total Output Tokens",
           "refId": "A"
         }
@@ -368,7 +368,7 @@
       "pluginVersion": "9.0.0",
       "targets": [
         {
-          "expr": "sum(ccproxy_tokens_total{type=\"cache\"}) or vector(0)",
+          "expr": "sum(increase(ccproxy_tokens_total{type=\"cache\"}[$__range])) or vector(0)",
           "legendFormat": "Total Cache Tokens",
           "refId": "A"
         }
@@ -434,7 +434,7 @@
       "pluginVersion": "9.0.0",
       "targets": [
         {
-          "expr": "sum(ccproxy_cost_usd_total) or vector(0)",
+          "expr": "sum(increase(ccproxy_cost_usd_total[$__range])) or vector(0)",
           "legendFormat": "Total Cost",
           "refId": "A"
         }
