@@ -1,6 +1,9 @@
 """Tests for metrics API endpoints with DuckDB storage."""
 
+import asyncio
+import json
 import time
+from collections.abc import AsyncGenerator
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -369,3 +372,234 @@ class TestMetricsAPIIntegration:
             assert "summary" in analytics_data
             assert "hourly_data" in analytics_data
             assert "model_stats" in analytics_data
+
+
+@pytest.mark.unit
+class TestSSEStreamingEndpoint:
+    """Test SSE streaming endpoint functionality."""
+
+    @pytest.fixture
+    def client(self, test_settings: Settings) -> TestClient:
+        """Create test client."""
+        app = create_app(test_settings)
+        return TestClient(app)
+
+    def test_sse_stream_endpoint_basic(self, client: TestClient) -> None:
+        """Test basic SSE stream endpoint functionality."""
+        # Test the new event-driven SSE endpoint
+        with client.stream("GET", "/metrics/stream") as response:
+            assert response.status_code == 200
+            assert response.headers["content-type"] == "text/event-stream"
+            assert response.headers["cache-control"] == "no-cache"
+            assert response.headers["connection"] == "keep-alive"
+
+            # Read first event (should be connection event)
+            events = []
+            for line in response.iter_lines():
+                if line.startswith("data: "):
+                    event_data = json.loads(line[6:])  # Remove "data: " prefix
+                    events.append(event_data)
+
+                    # Stop after connection event
+                    if event_data.get("type") == "connection":
+                        break
+
+            # Should receive connection event
+            assert len(events) >= 1
+            connection_event = events[0]
+            assert connection_event["type"] == "connection"
+            assert connection_event["message"] == "Connected to metrics stream"
+            assert "connection_id" in connection_event
+            assert "timestamp" in connection_event
+
+    def test_sse_stream_endpoint_headers(self, client: TestClient) -> None:
+        """Test SSE stream endpoint has correct headers."""
+        response = client.get("/metrics/stream")
+
+        assert response.status_code == 200
+        assert response.headers["content-type"] == "text/event-stream"
+        assert response.headers["cache-control"] == "no-cache"
+        assert response.headers["connection"] == "keep-alive"
+        assert response.headers["access-control-allow-origin"] == "*"
+        assert response.headers["access-control-allow-headers"] == "Cache-Control"
+
+    @patch("ccproxy.observability.sse_events.get_sse_manager")
+    def test_sse_stream_with_events(
+        self, mock_get_sse_manager: MagicMock, client: TestClient
+    ) -> None:
+        """Test SSE stream endpoint with event emission."""
+        # Mock SSE manager
+        mock_manager = AsyncMock()
+        mock_get_sse_manager.return_value = mock_manager
+
+        # Mock event stream
+        async def mock_event_stream(connection_id: str) -> AsyncGenerator[str, None]:
+            # Connection event
+            connection_event = {
+                "type": "connection",
+                "message": "Connected to metrics stream",
+                "connection_id": connection_id,
+                "timestamp": time.time(),
+            }
+            yield f"data: {json.dumps(connection_event)}\n\n"
+
+            # Test request event
+            request_event = {
+                "type": "request_start",
+                "data": {
+                    "request_id": "test-123",
+                    "method": "POST",
+                    "path": "/api/v1/messages",
+                },
+                "timestamp": time.time(),
+            }
+            yield f"data: {json.dumps(request_event)}\n\n"
+
+            # Test completion event
+            completion_event = {
+                "type": "request_complete",
+                "data": {
+                    "request_id": "test-123",
+                    "method": "POST",
+                    "path": "/api/v1/messages",
+                    "status_code": 200,
+                    "duration_ms": 850.5,
+                    "tokens_input": 39,
+                    "tokens_output": 10,
+                },
+                "timestamp": time.time(),
+            }
+            yield f"data: {json.dumps(completion_event)}\n\n"
+
+        mock_manager.add_connection.side_effect = mock_event_stream
+
+        # Test streaming
+        with client.stream("GET", "/metrics/stream") as response:
+            assert response.status_code == 200
+
+            events = []
+            for line in response.iter_lines():
+                if line.startswith("data: "):
+                    event_data = json.loads(line[6:])  # Remove "data: " prefix
+                    events.append(event_data)
+
+                    # Stop after receiving completion event
+                    if event_data.get("type") == "request_complete":
+                        break
+
+            # Should receive all three events
+            assert len(events) == 3
+
+            # Check connection event
+            assert events[0]["type"] == "connection"
+            assert events[0]["message"] == "Connected to metrics stream"
+
+            # Check request start event
+            assert events[1]["type"] == "request_start"
+            assert events[1]["data"]["request_id"] == "test-123"
+            assert events[1]["data"]["method"] == "POST"
+            assert events[1]["data"]["path"] == "/api/v1/messages"
+
+            # Check request complete event
+            assert events[2]["type"] == "request_complete"
+            assert events[2]["data"]["request_id"] == "test-123"
+            assert events[2]["data"]["status_code"] == 200
+            assert events[2]["data"]["duration_ms"] == 850.5
+            assert events[2]["data"]["tokens_input"] == 39
+            assert events[2]["data"]["tokens_output"] == 10
+
+    @patch("ccproxy.observability.sse_events.get_sse_manager")
+    def test_sse_stream_error_handling(
+        self, mock_get_sse_manager: MagicMock, client: TestClient
+    ) -> None:
+        """Test SSE stream endpoint error handling."""
+        # Mock SSE manager to raise exception
+        mock_manager = AsyncMock()
+        mock_get_sse_manager.return_value = mock_manager
+
+        async def mock_failing_stream(connection_id: str) -> AsyncGenerator[str, None]:
+            # Connection event
+            connection_event = {
+                "type": "connection",
+                "message": "Connected to metrics stream",
+                "connection_id": connection_id,
+                "timestamp": time.time(),
+            }
+            yield f"data: {json.dumps(connection_event)}\n\n"
+
+            # Raise exception
+            raise Exception("Test error")
+
+        mock_manager.add_connection.side_effect = mock_failing_stream
+
+        # Test streaming with error
+        with client.stream("GET", "/metrics/stream") as response:
+            assert response.status_code == 200
+
+            events = []
+            for line in response.iter_lines():
+                if line.startswith("data: "):
+                    event_data = json.loads(line[6:])  # Remove "data: " prefix
+                    events.append(event_data)
+
+                    # Stop after error event
+                    if event_data.get("type") == "error":
+                        break
+
+            # Should receive connection event and error event
+            assert len(events) >= 2
+
+            # Check connection event
+            assert events[0]["type"] == "connection"
+
+            # Check error event
+            assert events[1]["type"] == "error"
+            assert events[1]["message"] == "Test error"
+            assert "timestamp" in events[1]
+
+
+@pytest.mark.integration
+class TestSSEIntegration:
+    """Integration tests for SSE functionality with real events."""
+
+    @pytest.fixture
+    def client_with_sse(self, test_settings: Settings) -> TestClient:
+        """Create test client with SSE functionality."""
+        app = create_app(test_settings)
+        return TestClient(app)
+
+    async def test_sse_real_time_events(self, client_with_sse: TestClient) -> None:
+        """Test real-time SSE events during API requests."""
+        # This test would ideally make real API requests and verify
+        # that SSE events are emitted in real-time. Due to complexity
+        # of setting up full authentication and Claude API mocking,
+        # this demonstrates the test structure for integration testing.
+
+        # Start SSE stream
+        events = []
+
+        async def collect_events() -> None:
+            with client_with_sse.stream("GET", "/metrics/stream") as response:
+                assert response.status_code == 200
+
+                for line in response.iter_lines():
+                    if line.startswith("data: "):
+                        event_data = json.loads(line[6:])
+                        events.append(event_data)
+
+                        # Stop after collecting a few events
+                        if len(events) >= 2:
+                            break
+
+        # Note: In a full integration test, we would:
+        # 1. Start SSE stream collection in background
+        # 2. Make API requests that trigger access logging
+        # 3. Verify that corresponding SSE events are emitted
+        # 4. Check event timing and content accuracy
+
+        # For now, just verify the stream starts correctly
+        await collect_events()
+
+        # Should receive at least connection event
+        assert len(events) >= 1
+        assert events[0]["type"] == "connection"

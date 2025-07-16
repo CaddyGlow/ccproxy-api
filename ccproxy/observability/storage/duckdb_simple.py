@@ -336,54 +336,56 @@ class SimpleDuckDBStorage:
                 if service_type:
                     statement = statement.where(AccessLog.service_type == service_type)
 
-                # Get summary statistics
-                summary_statement = select(
-                    func.count().label("total_requests"),
-                    func.avg(AccessLog.duration_ms).label("avg_duration_ms"),
-                    func.sum(AccessLog.cost_usd).label("total_cost_usd"),
-                    func.sum(AccessLog.tokens_input).label("total_tokens_input"),
-                    func.sum(AccessLog.tokens_output).label("total_tokens_output"),
-                )
-
-                # Apply same filters to summary
+                # Get summary statistics using individual queries to avoid overload issues
+                base_where_conditions = []
                 if start_time:
                     start_dt = datetime.fromtimestamp(start_time)
-                    summary_statement = summary_statement.where(
-                        AccessLog.timestamp >= start_dt
-                    )
+                    base_where_conditions.append(AccessLog.timestamp >= start_dt)
                 if end_time:
                     end_dt = datetime.fromtimestamp(end_time)
-                    summary_statement = summary_statement.where(
-                        AccessLog.timestamp <= end_dt
-                    )
+                    base_where_conditions.append(AccessLog.timestamp <= end_dt)
                 if model:
-                    summary_statement = summary_statement.where(
-                        AccessLog.model == model
-                    )
+                    base_where_conditions.append(AccessLog.model == model)
                 if service_type:
-                    summary_statement = summary_statement.where(
-                        AccessLog.service_type == service_type
-                    )
+                    base_where_conditions.append(AccessLog.service_type == service_type)
 
-                summary_result = session.exec(summary_statement).first()
+                total_requests = session.exec(
+                    select(func.count())
+                    .select_from(AccessLog)
+                    .where(*base_where_conditions)
+                ).first()
+
+                avg_duration = session.exec(
+                    select(func.avg(AccessLog.duration_ms))
+                    .select_from(AccessLog)
+                    .where(*base_where_conditions)
+                ).first()
+
+                total_cost = session.exec(
+                    select(func.sum(AccessLog.cost_usd))
+                    .select_from(AccessLog)
+                    .where(*base_where_conditions)
+                ).first()
+
+                total_tokens_input = session.exec(
+                    select(func.sum(AccessLog.tokens_input))
+                    .select_from(AccessLog)
+                    .where(*base_where_conditions)
+                ).first()
+
+                total_tokens_output = session.exec(
+                    select(func.sum(AccessLog.tokens_output))
+                    .select_from(AccessLog)
+                    .where(*base_where_conditions)
+                ).first()
 
                 return {
                     "summary": {
-                        "total_requests": summary_result.total_requests
-                        if summary_result
-                        else 0,
-                        "avg_duration_ms": summary_result.avg_duration_ms
-                        if summary_result
-                        else 0,
-                        "total_cost_usd": summary_result.total_cost_usd
-                        if summary_result
-                        else 0,
-                        "total_tokens_input": summary_result.total_tokens_input
-                        if summary_result
-                        else 0,
-                        "total_tokens_output": summary_result.total_tokens_output
-                        if summary_result
-                        else 0,
+                        "total_requests": total_requests or 0,
+                        "avg_duration_ms": avg_duration or 0,
+                        "total_cost_usd": total_cost or 0,
+                        "total_tokens_input": total_tokens_input or 0,
+                        "total_tokens_output": total_tokens_output or 0,
                     },
                     "query_time": time.time(),
                 }
