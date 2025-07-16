@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
+import random
+import time
 from typing import Any
 
 from structlog import get_logger
@@ -39,6 +42,47 @@ except ImportError:
         pass
 
 
+class CircuitBreaker:
+    """Simple circuit breaker for pushgateway operations."""
+
+    def __init__(self, failure_threshold: int = 5, recovery_timeout: float = 60.0):
+        self.failure_threshold = failure_threshold
+        self.recovery_timeout = recovery_timeout
+        self.failure_count = 0
+        self.last_failure_time = 0.0
+        self.state = "CLOSED"  # CLOSED, OPEN, HALF_OPEN
+
+    def can_execute(self) -> bool:
+        """Check if operation can be executed."""
+        if self.state == "CLOSED":
+            return True
+        elif self.state == "OPEN":
+            if time.time() - self.last_failure_time > self.recovery_timeout:
+                self.state = "HALF_OPEN"
+                return True
+            return False
+        else:  # HALF_OPEN
+            return True
+
+    def record_success(self) -> None:
+        """Record successful operation."""
+        self.failure_count = 0
+        self.state = "CLOSED"
+
+    def record_failure(self) -> None:
+        """Record failed operation."""
+        self.failure_count += 1
+        self.last_failure_time = time.time()
+
+        if self.failure_count >= self.failure_threshold:
+            self.state = "OPEN"
+            logger.warning(
+                "pushgateway_circuit_breaker_opened",
+                failure_count=self.failure_count,
+                recovery_timeout=self.recovery_timeout,
+            )
+
+
 class PushgatewayClient:
     """Prometheus Pushgateway client using official prometheus_client methods.
 
@@ -58,6 +102,10 @@ class PushgatewayClient:
         """
         self.settings = settings
         self._enabled = PROMETHEUS_AVAILABLE and settings.pushgateway_enabled
+        self._circuit_breaker = CircuitBreaker(
+            failure_threshold=5,
+            recovery_timeout=60.0,
+        )
 
         # Only log if pushgateway is enabled but prometheus is not available
         if settings.pushgateway_enabled and not PROMETHEUS_AVAILABLE:
@@ -80,14 +128,31 @@ class PushgatewayClient:
         if not self._enabled or not self.settings.pushgateway_url:
             return False
 
+        # Check circuit breaker before attempting operation
+        if not self._circuit_breaker.can_execute():
+            logger.debug(
+                "pushgateway_circuit_breaker_blocking",
+                state=self._circuit_breaker.state,
+                failure_count=self._circuit_breaker.failure_count,
+            )
+            return False
+
         try:
             # Check if URL looks like VictoriaMetrics remote write endpoint
             if "/api/v1/write" in self.settings.pushgateway_url:
-                return self._push_remote_write(registry)
+                success = self._push_remote_write(registry)
             else:
-                return self._push_standard(registry, method)
+                success = self._push_standard(registry, method)
+
+            if success:
+                self._circuit_breaker.record_success()
+            else:
+                self._circuit_breaker.record_failure()
+
+            return success
 
         except Exception as e:
+            self._circuit_breaker.record_failure()
             logger.error(
                 "pushgateway_push_failed",
                 url=self.settings.pushgateway_url,
@@ -108,36 +173,48 @@ class PushgatewayClient:
         if not self.settings.pushgateway_url:
             return False
 
-        # Use the appropriate prometheus_client function based on method
-        if method == "push":
-            push_to_gateway(
-                gateway=self.settings.pushgateway_url,
-                job=self.settings.pushgateway_job,
-                registry=registry,
-            )
-        elif method == "pushadd":
-            pushadd_to_gateway(
-                gateway=self.settings.pushgateway_url,
-                job=self.settings.pushgateway_job,
-                registry=registry,
-            )
-        elif method == "delete":
-            delete_from_gateway(
-                gateway=self.settings.pushgateway_url,
-                job=self.settings.pushgateway_job,
-            )
-        else:
-            logger.error("pushgateway_invalid_method", method=method)
-            return False
+        try:
+            # Use the appropriate prometheus_client function based on method
+            if method == "push":
+                push_to_gateway(
+                    gateway=self.settings.pushgateway_url,
+                    job=self.settings.pushgateway_job,
+                    registry=registry,
+                )
+            elif method == "pushadd":
+                pushadd_to_gateway(
+                    gateway=self.settings.pushgateway_url,
+                    job=self.settings.pushgateway_job,
+                    registry=registry,
+                )
+            elif method == "delete":
+                delete_from_gateway(
+                    gateway=self.settings.pushgateway_url,
+                    job=self.settings.pushgateway_job,
+                )
+            else:
+                logger.error("pushgateway_invalid_method", method=method)
+                return False
 
-        logger.debug(
-            "pushgateway_push_success",
-            url=self.settings.pushgateway_url,
-            job=self.settings.pushgateway_job,
-            protocol="standard",
-            method=method,
-        )
-        return True
+            logger.debug(
+                "pushgateway_push_success",
+                url=self.settings.pushgateway_url,
+                job=self.settings.pushgateway_job,
+                protocol="standard",
+                method=method,
+            )
+            return True
+
+        except Exception as e:
+            logger.error(
+                "pushgateway_standard_push_failed",
+                url=self.settings.pushgateway_url,
+                job=self.settings.pushgateway_job,
+                method=method,
+                error=str(e),
+                error_type=type(e).__name__,
+            )
+            return False
 
     def _push_remote_write(self, registry: CollectorRegistry) -> bool:
         """Push using VictoriaMetrics import protocol for exposition format data.
@@ -215,14 +292,32 @@ class PushgatewayClient:
         if not self._enabled or not self.settings.pushgateway_url:
             return False
 
+        # Check circuit breaker before attempting operation
+        if not self._circuit_breaker.can_execute():
+            logger.debug(
+                "pushgateway_circuit_breaker_blocking_delete",
+                state=self._circuit_breaker.state,
+                failure_count=self._circuit_breaker.failure_count,
+            )
+            return False
+
         try:
             # Only standard pushgateway supports delete operation
             if "/api/v1/write" in self.settings.pushgateway_url:
                 logger.warning("pushgateway_delete_not_supported_for_remote_write")
                 return False
             else:
-                return self._push_standard(None, method="delete")  # type: ignore[arg-type]
+                success = self._push_standard(None, method="delete")  # type: ignore[arg-type]
+
+                if success:
+                    self._circuit_breaker.record_success()
+                else:
+                    self._circuit_breaker.record_failure()
+
+                return success
+
         except Exception as e:
+            self._circuit_breaker.record_failure()
             logger.error(
                 "pushgateway_delete_failed",
                 url=self.settings.pushgateway_url,
