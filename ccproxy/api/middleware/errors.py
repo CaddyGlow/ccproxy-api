@@ -37,7 +37,7 @@ def setup_error_handlers(app: FastAPI) -> None:
     Args:
         app: FastAPI application instance
     """
-    logger.debug("Setting up error handlers", operation="setup_error_handlers")
+    logger.debug("error_handlers_setup_start")
 
     @app.exception_handler(ClaudeProxyError)
     async def claude_proxy_error_handler(
@@ -507,6 +507,4 @@ def setup_error_handlers(app: FastAPI) -> None:
             },
         )
 
-    logger.info(
-        "Error handlers configured successfully", operation="setup_error_handlers"
-    )
+    logger.info("error_handlers_setup_completed")
