@@ -109,9 +109,6 @@ async def log_request_access(
     # Store in DuckDB if available
     await _store_access_log(log_data)
 
-    # Emit SSE event for real-time dashboard updates
-    await _emit_sse_event(log_data)
-
 
 async def _store_access_log(log_data: dict[str, Any]) -> None:
     """Store access log in DuckDB storage if available."""
