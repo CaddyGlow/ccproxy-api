@@ -281,7 +281,7 @@ def get_proxy_url() -> str | None:
 
     if proxy_url:
         logger.debug(
-            "Using proxy for HTTP requests",
+            "proxy_configured",
             proxy_url=proxy_url,
             operation="get_proxy_url",
         )
@@ -306,14 +306,14 @@ def get_ssl_context() -> str | bool:
 
     if ca_bundle and Path(ca_bundle).exists():
         logger.info(
-            "Using custom CA bundle for SSL verification",
+            "ssl_ca_bundle_configured",
             ca_bundle_path=ca_bundle,
             operation="get_ssl_context",
         )
         return ca_bundle
     elif ssl_verify in ("false", "0", "no"):
         logger.warning(
-            "SSL verification disabled - this is insecure!",
+            "ssl_verification_disabled",
             ssl_verify_value=ssl_verify,
             operation="get_ssl_context",
             security_warning=True,
@@ -321,7 +321,7 @@ def get_ssl_context() -> str | bool:
         return False
     else:
         logger.debug(
-            "Using default SSL verification",
+            "ssl_default_verification",
             ssl_verify_value=ssl_verify,
             operation="get_ssl_context",
         )

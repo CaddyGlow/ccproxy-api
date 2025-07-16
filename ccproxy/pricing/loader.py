@@ -55,11 +55,13 @@ class PricingLoader:
             ):
                 claude_models[model_name] = model_data
                 if verbose:
-                    logger.debug(f"Found Claude model: {model_name}")
+                    logger.debug("claude_model_found", model_name=model_name)
 
         if verbose:
             logger.info(
-                f"Extracted {len(claude_models)} Claude models from LiteLLM data"
+                "claude_models_extracted",
+                model_count=len(claude_models),
+                source="LiteLLM",
             )
         return claude_models
 
@@ -91,9 +93,7 @@ class PricingLoader:
                 # Skip models without pricing info
                 if input_cost_per_token is None or output_cost_per_token is None:
                     if verbose:
-                        logger.warning(
-                            f"Model {model_name} missing required pricing fields"
-                        )
+                        logger.warning("model_pricing_missing", model_name=model_name)
                     continue
 
                 # Convert to per-1M-token pricing (multiply by 1,000,000)
@@ -119,17 +119,22 @@ class PricingLoader:
 
                 if verbose:
                     logger.debug(
-                        f"Converted {model_name} -> {canonical_name}: "
-                        f"input=${pricing['input']}, output=${pricing['output']}"
+                        "model_pricing_converted",
+                        original_name=model_name,
+                        canonical_name=canonical_name,
+                        input_cost=str(pricing["input"]),
+                        output_cost=str(pricing["output"]),
                     )
 
             except (ValueError, TypeError) as e:
                 if verbose:
-                    logger.error(f"Failed to convert pricing for {model_name}: {e}")
+                    logger.error(
+                        "pricing_conversion_failed", model_name=model_name, error=str(e)
+                    )
                 continue
 
         if verbose:
-            logger.info(f"Converted {len(internal_format)} models to internal format")
+            logger.info("models_converted", model_count=len(internal_format))
         return internal_format
 
     @staticmethod
@@ -153,7 +158,7 @@ class PricingLoader:
 
             if not claude_models:
                 if verbose:
-                    logger.warning("No Claude models found in LiteLLM data")
+                    logger.warning("claude_models_not_found", source="LiteLLM")
                 return None
 
             # Convert to internal format
@@ -163,26 +168,24 @@ class PricingLoader:
 
             if not internal_pricing:
                 if verbose:
-                    logger.warning("No valid pricing data after conversion")
+                    logger.warning("pricing_data_invalid")
                 return None
 
             # Validate and create PricingData model
             pricing_data = PricingData.from_dict(internal_pricing)
 
             if verbose:
-                logger.info(
-                    f"Successfully loaded pricing for {len(pricing_data)} models"
-                )
+                logger.info("pricing_data_loaded", model_count=len(pricing_data))
 
             return pricing_data
 
         except ValidationError as e:
             if verbose:
-                logger.error(f"Pricing data validation failed: {e}")
+                logger.error("pricing_validation_failed", error=str(e))
             return None
         except Exception as e:
             if verbose:
-                logger.error(f"Failed to load pricing from LiteLLM data: {e}")
+                logger.error("pricing_load_failed", source="LiteLLM", error=str(e))
             return None
 
     @staticmethod
@@ -203,7 +206,7 @@ class PricingLoader:
             if isinstance(pricing_data, PricingData):
                 if verbose:
                     logger.debug(
-                        f"Pricing data already validated for {len(pricing_data)} models"
+                        "pricing_already_validated", model_count=len(pricing_data)
                     )
                 return pricing_data
 
@@ -211,7 +214,7 @@ class PricingLoader:
             if isinstance(pricing_data, dict):
                 if not pricing_data:
                     if verbose:
-                        logger.warning("Pricing data is empty")
+                        logger.warning("pricing_data_empty")
                     return None
 
                 # Try to create PricingData model
@@ -219,7 +222,7 @@ class PricingLoader:
 
                 if verbose:
                     logger.debug(
-                        f"Validated pricing data for {len(validated_data)} models"
+                        "pricing_data_validated", model_count=len(validated_data)
                     )
 
                 return validated_data
@@ -227,17 +230,19 @@ class PricingLoader:
             # Invalid type
             if verbose:
                 logger.error(
-                    f"Pricing data must be dict or PricingData, got {type(pricing_data)}"
+                    "pricing_data_invalid_type",
+                    actual_type=type(pricing_data).__name__,
+                    expected_types=["dict", "PricingData"],
                 )
             return None
 
         except ValidationError as e:
             if verbose:
-                logger.error(f"Pricing data validation failed: {e}")
+                logger.error("pricing_validation_failed", error=str(e))
             return None
         except Exception as e:
             if verbose:
-                logger.error(f"Unexpected error validating pricing data: {e}")
+                logger.error("pricing_validation_unexpected_error", error=str(e))
             return None
 
     @staticmethod

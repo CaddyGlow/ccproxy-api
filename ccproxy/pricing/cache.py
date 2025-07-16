@@ -67,7 +67,7 @@ class PricingCache:
             return is_valid
 
         except OSError as e:
-            logger.warning(f"Failed to check cache file stats: {e}")
+            logger.warning("cache_stats_check_failed", error=str(e))
             return False
 
     def load_cached_data(self) -> dict[str, Any] | None:
@@ -86,7 +86,7 @@ class PricingCache:
             return data  # type: ignore[no-any-return]
 
         except (OSError, json.JSONDecodeError) as e:
-            logger.warning(f"Failed to load cached pricing data: {e}")
+            logger.warning("cache_load_failed", error=str(e))
             return None
 
     async def download_pricing_data(self, timeout: int = 30) -> dict[str, Any] | None:
@@ -99,18 +99,18 @@ class PricingCache:
             Downloaded pricing data or None if download failed
         """
         try:
-            logger.info(f"Downloading pricing data from {self.source_url}")
+            logger.info("pricing_download_start", url=self.source_url)
 
             async with httpx.AsyncClient(timeout=timeout) as client:
                 response = await client.get(self.source_url)
                 response.raise_for_status()
 
                 data = response.json()
-                logger.info(f"Downloaded pricing data: {len(data)} models")
+                logger.info("pricing_download_completed", model_count=len(data))
                 return data  # type: ignore[no-any-return]
 
         except (httpx.HTTPError, json.JSONDecodeError) as e:
-            logger.error(f"Failed to download pricing data: {e}")
+            logger.error("pricing_download_failed", error=str(e))
             return None
 
     def save_to_cache(self, data: dict[str, Any]) -> bool:
@@ -135,7 +135,7 @@ class PricingCache:
             return True
 
         except OSError as e:
-            logger.error(f"Failed to save pricing data to cache: {e}")
+            logger.error("cache_save_failed", error=str(e))
             return False
 
     async def get_pricing_data(
@@ -164,16 +164,16 @@ class PricingCache:
 
         # If download failed, try to use stale cache as fallback
         if not force_refresh:
-            logger.warning("Download failed, attempting to use stale cache")
+            logger.warning("pricing_download_failed_using_stale_cache")
             try:
                 with self.cache_file.open(encoding="utf-8") as f:
                     stale_data = json.load(f)
-                logger.warning("Using stale cached pricing data")
+                logger.warning("stale_cache_used")
                 return stale_data  # type: ignore[no-any-return]
             except (OSError, json.JSONDecodeError):
                 pass
 
-        logger.error("Failed to get pricing data from any source")
+        logger.error("pricing_data_unavailable")
         return None
 
     def clear_cache(self) -> bool:
@@ -187,7 +187,7 @@ class PricingCache:
                 self.cache_file.unlink()
             return True
         except OSError as e:
-            logger.error(f"Failed to clear pricing cache: {e}")
+            logger.error("cache_clear_failed", error=str(e))
             return False
 
     def get_cache_info(self) -> dict[str, Any]:

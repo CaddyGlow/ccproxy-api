@@ -65,7 +65,7 @@ class PricingUpdater:
             # Only check file changes every 30 seconds to reduce I/O
             if (current_time - self._last_file_check_time) > 30:
                 if self._has_cache_file_changed():
-                    logger.info("Cache file has changed, reloading pricing data")
+                    logger.info("cache_file_changed")
                     # File changed, need to reload
                     pricing_data = await self._load_pricing_data()
                     self._cached_pricing = pricing_data
@@ -81,7 +81,7 @@ class PricingUpdater:
         )
 
         if should_refresh:
-            logger.info("Refreshing pricing data from external source")
+            logger.info("pricing_refresh_start")
             await self._refresh_pricing()
 
         # Load pricing data
@@ -120,24 +120,24 @@ class PricingUpdater:
             True if refresh was successful
         """
         try:
-            logger.info("Refreshing pricing data from external source")
+            logger.info("pricing_refresh_start")
 
             # Download fresh data
             raw_data = await self.cache.download_pricing_data()
             if raw_data is None:
-                logger.error("Failed to download fresh pricing data")
+                logger.error("pricing_download_failed")
                 return False
 
             # Save to cache
             if not self.cache.save_to_cache(raw_data):
-                logger.error("Failed to save pricing data to cache")
+                logger.error("cache_save_failed")
                 return False
 
-            logger.info("Successfully refreshed pricing data")
+            logger.info("pricing_refresh_completed")
             return True
 
         except Exception as e:
-            logger.error(f"Failed to refresh pricing data: {e}")
+            logger.error("pricing_refresh_failed", error=str(e))
             return False
 
     async def _load_pricing_data(self) -> PricingData | None:
@@ -155,18 +155,18 @@ class PricingUpdater:
 
             if pricing_data:
                 logger.info(
-                    f"Loaded pricing for {len(pricing_data)} Claude models from external source"
+                    "pricing_loaded_from_external", model_count=len(pricing_data)
                 )
                 return pricing_data
             else:
-                logger.warning("External pricing data failed validation")
+                logger.warning("external_pricing_validation_failed")
 
         # Fallback to embedded pricing
         if self.fallback_to_embedded:
-            logger.info("Using embedded pricing data as fallback")
+            logger.info("using_embedded_pricing_fallback")
             return self._get_embedded_pricing()
         else:
-            logger.error("No valid pricing data available and fallback disabled")
+            logger.error("pricing_unavailable_no_fallback")
             return None
 
     def _get_embedded_pricing(self) -> PricingData:
@@ -218,7 +218,7 @@ class PricingUpdater:
         Returns:
             True if refresh was successful
         """
-        logger.info("Force refreshing pricing data")
+        logger.info("pricing_force_refresh_start")
 
         # Clear cached pricing
         self._cached_pricing = None
@@ -239,7 +239,7 @@ class PricingUpdater:
         Returns:
             True if cache was cleared successfully
         """
-        logger.info("Clearing pricing cache")
+        logger.info("pricing_cache_clear_start")
 
         # Clear in-memory cache
         self._cached_pricing = None
@@ -273,7 +273,7 @@ class PricingUpdater:
             True if external source is accessible and has valid data
         """
         try:
-            logger.debug("Validating external pricing source")
+            logger.debug("external_pricing_validation_start")
 
             # Try to download data
             raw_data = await self.cache.download_pricing_data(timeout=10)
@@ -283,20 +283,20 @@ class PricingUpdater:
             # Try to parse Claude models
             claude_models = PricingLoader.extract_claude_models(raw_data)
             if not claude_models:
-                logger.warning("No Claude models found in external source")
+                logger.warning("claude_models_not_found_in_external")
                 return False
 
             # Try to load and validate using Pydantic
             pricing_data = PricingLoader.load_pricing_from_data(raw_data, verbose=False)
             if not pricing_data:
-                logger.warning("Failed to load and validate external pricing data")
+                logger.warning("external_pricing_load_failed")
                 return False
 
             logger.info(
-                f"External source is valid with {len(pricing_data)} Claude models"
+                "external_pricing_validation_completed", model_count=len(pricing_data)
             )
             return True
 
         except Exception as e:
-            logger.error(f"External source validation failed: {e}")
+            logger.error("external_pricing_validation_failed", error=str(e))
             return False

@@ -82,14 +82,14 @@ class ClaudeSDKClient:
                 self._last_api_call_time_ms = op.get("duration_ms", 0.0)
 
                 logger.debug(
-                    "claude_sdk_query_complete",
+                    "claude_sdk_query_completed",
                     message_count=message_count,
                     duration_ms=op.get("duration_ms"),
                 )
 
             except (CLINotFoundError, CLIConnectionError) as e:
                 logger.error(
-                    "claude_sdk_connection_error",
+                    "claude_sdk_connection_failed",
                     error=str(e),
                     error_type=type(e).__name__,
                 )
@@ -98,7 +98,7 @@ class ClaudeSDKClient:
                 ) from e
             except (ProcessError, CLIJSONDecodeError) as e:
                 logger.error(
-                    "claude_sdk_process_error",
+                    "claude_sdk_process_failed",
                     error=str(e),
                     error_type=type(e).__name__,
                 )
@@ -109,7 +109,7 @@ class ClaudeSDKClient:
                 ) from e
             except Exception as e:
                 logger.error(
-                    "claude_sdk_unexpected_error",
+                    "claude_sdk_unexpected_error_occurred",
                     error=str(e),
                     error_type=type(e).__name__,
                 )
@@ -136,17 +136,20 @@ class ClaudeSDKClient:
             True if healthy, False otherwise
         """
         try:
-            logger.debug("claude_sdk_health_check_start")
+            logger.debug("health_check_start", component="claude_sdk")
 
             # Simple health check - the SDK is available if we can import it
             # More sophisticated checks could be added here
             is_healthy = True
 
-            logger.debug("claude_sdk_health_check_complete", healthy=is_healthy)
+            logger.debug(
+                "health_check_completed", component="claude_sdk", healthy=is_healthy
+            )
             return is_healthy
         except Exception as e:
             logger.error(
-                "claude_sdk_health_check_error",
+                "health_check_failed",
+                component="claude_sdk",
                 error=str(e),
                 error_type=type(e).__name__,
             )
