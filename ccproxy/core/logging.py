@@ -1,37 +1,60 @@
 import logging
 import sys
+from collections.abc import MutableMapping
+from typing import Any
 
 import structlog
 from structlog.stdlib import BoundLogger
+from structlog.typing import Processor
 
 
-def configure_structlog(json_logs: bool = False) -> None:
+def configure_structlog(json_logs: bool = False, log_level: str = "INFO") -> None:
     """Configure structlog with your preferred processors."""
-    timestamper = structlog.processors.TimeStamper(fmt="iso")
+    # Use different timestamp format based on log level
+    # Dev mode (DEBUG): only hours without microseconds
+    # Info mode: full date without microseconds
+    if log_level.upper() == "DEBUG":
+        timestamper = structlog.processors.TimeStamper(fmt="%H:%M:%S")
+    else:
+        timestamper = structlog.processors.TimeStamper(fmt="%Y-%m-%d %H:%M:%S")
 
     # Processors that will be used for structlog loggers
-    processors = [
+    processors: list[Processor] = [
         structlog.stdlib.filter_by_level,
-        structlog.stdlib.add_logger_name,
-        structlog.stdlib.add_log_level,
-        structlog.stdlib.PositionalArgumentsFormatter(),
-        timestamper,
-        structlog.processors.StackInfoRenderer(),
-        structlog.processors.format_exc_info,
-        structlog.processors.UnicodeDecoder(),
-        structlog.processors.CallsiteParameterAdder(
-            parameters=[
-                structlog.processors.CallsiteParameter.FILENAME,
-                structlog.processors.CallsiteParameter.LINENO,
-            ]
-        ),
-        # This wrapper passes the event dictionary to the ProcessorFormatter
-        # so we don't double-render
-        structlog.stdlib.ProcessorFormatter.wrap_for_formatter,
     ]
 
+    # Only add logger name if NOT in INFO mode
+    if log_level.upper() != "INFO":
+        processors.append(structlog.stdlib.add_logger_name)
+
+    processors.extend(
+        [
+            structlog.stdlib.add_log_level,
+            structlog.stdlib.PositionalArgumentsFormatter(),
+            timestamper,
+            structlog.processors.StackInfoRenderer(),
+            structlog.processors.format_exc_info,
+            structlog.processors.UnicodeDecoder(),
+        ]
+    )
+
+    # Only add CallsiteParameterAdder if NOT in INFO mode
+    if log_level.upper() != "INFO":
+        processors.append(
+            structlog.processors.CallsiteParameterAdder(
+                parameters=[
+                    structlog.processors.CallsiteParameter.FILENAME,
+                    structlog.processors.CallsiteParameter.LINENO,
+                ]
+            )
+        )
+
+    # This wrapper passes the event dictionary to the ProcessorFormatter
+    # so we don't double-render
+    processors.append(structlog.stdlib.ProcessorFormatter.wrap_for_formatter)
+
     structlog.configure(
-        processors=processors,  # type: ignore[arg-type]
+        processors=processors,
         context_class=dict,
         logger_factory=structlog.stdlib.LoggerFactory(),
         wrapper_class=structlog.stdlib.BoundLogger,
@@ -49,7 +72,7 @@ def setup_logging(json_logs: bool = False, log_level: str = "INFO") -> BoundLogg
     root_logger.setLevel(getattr(logging, log_level.upper(), logging.INFO))
 
     # Configure structlog after setting the log level
-    configure_structlog(json_logs=json_logs)
+    configure_structlog(json_logs=json_logs, log_level=log_level)
 
     # Create a handler that will format stdlib logs through structlog
     handler = logging.StreamHandler(sys.stdout)
@@ -62,14 +85,25 @@ def setup_logging(json_logs: bool = False, log_level: str = "INFO") -> BoundLogg
     )
 
     # Use ProcessorFormatter to handle both structlog and stdlib logs
+    # Use the same timestamp format for foreign logs
+    if log_level.upper() == "DEBUG":
+        foreign_timestamper = structlog.processors.TimeStamper(fmt="%H:%M:%S")
+    else:
+        foreign_timestamper = structlog.processors.TimeStamper(fmt="%Y-%m-%d %H:%M:%S")
+
+    # Build foreign_pre_chain conditionally
+    foreign_pre_chain: list[Processor] = [structlog.stdlib.add_log_level]
+
+    # Only add logger name if NOT in INFO mode
+    if log_level.upper() != "INFO":
+        foreign_pre_chain.append(structlog.stdlib.add_logger_name)
+
+    foreign_pre_chain.append(foreign_timestamper)
+
     handler.setFormatter(
         structlog.stdlib.ProcessorFormatter(
             processor=renderer,
-            foreign_pre_chain=[
-                structlog.stdlib.add_log_level,
-                structlog.stdlib.add_logger_name,
-                structlog.processors.TimeStamper(fmt="iso"),
-            ],
+            foreign_pre_chain=foreign_pre_chain,
         )
     )
 
@@ -87,7 +121,12 @@ def setup_logging(json_logs: bool = False, log_level: str = "INFO") -> BoundLogg
         logger = logging.getLogger(logger_name)
         logger.handlers = []  # Remove default handlers
         logger.propagate = True  # Use root logger's handlers
-        logger.setLevel(getattr(logging, log_level.upper(), logging.INFO))
+
+        # Set uvicorn loggers to WARNING when app log level is INFO to reduce noise
+        if logger_name.startswith("uvicorn") and log_level.upper() == "INFO":
+            logger.setLevel(logging.WARNING)
+        else:
+            logger.setLevel(getattr(logging, log_level.upper(), logging.INFO))
 
     # Configure httpx logger separately - INFO when app is DEBUG, WARNING otherwise
     httpx_logger = logging.getLogger("httpx")
