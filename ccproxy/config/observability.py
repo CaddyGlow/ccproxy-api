@@ -28,6 +28,11 @@ class ObservabilitySettings(BaseModel):
         description="Job name for Pushgateway metrics",
     )
 
+    pushgateway_batch_interval: float = Field(
+        default=5.0,
+        description="Interval in seconds for pushing metrics to Pushgateway",
+    )
+
     duckdb_enabled: bool = Field(
         default=True,
         description="Enable DuckDB storage for metrics",
@@ -60,6 +65,16 @@ class ObservabilitySettings(BaseModel):
                 f"Invalid logging format: {v}. Must be one of {valid_formats}"
             )
         return lower_v
+
+    @field_validator("pushgateway_batch_interval")
+    @classmethod
+    def validate_batch_interval(cls, v: float) -> float:
+        """Validate batch interval is within reasonable bounds."""
+        if v < 0.1:
+            raise ValueError("Batch interval must be at least 0.1 seconds")
+        if v > 300:
+            raise ValueError("Batch interval must not exceed 300 seconds (5 minutes)")
+        return v
 
     @property
     def enabled(self) -> bool:

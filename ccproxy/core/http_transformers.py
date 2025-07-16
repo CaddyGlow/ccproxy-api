@@ -136,6 +136,9 @@ class HTTPRequestTransformer(RequestTransformer):
             # Authentication headers to be replaced
             "authorization",
             "x-api-key",
+            # Compression headers to avoid decompression issues
+            "accept-encoding",
+            "content-encoding",
         }
 
         # Copy important headers (excluding problematic ones)
@@ -181,7 +184,8 @@ class HTTPRequestTransformer(RequestTransformer):
         # Standard HTTP headers for proper API interaction
         proxy_headers["accept-language"] = "*"
         proxy_headers["sec-fetch-mode"] = "cors"
-        proxy_headers["accept-encoding"] = "gzip, deflate"
+        # Note: accept-encoding removed to avoid compression issues
+        # HTTPX handles compression automatically
 
         return proxy_headers
 
@@ -393,7 +397,11 @@ class HTTPResponseTransformer(ResponseTransformer):
         # Copy important headers
         for key, value in headers.items():
             lower_key = key.lower()
-            if lower_key not in ["content-length", "transfer-encoding"]:
+            if lower_key not in [
+                "content-length",
+                "transfer-encoding",
+                "content-encoding",
+            ]:
                 transformed_headers[key] = value
 
         # Set content length
