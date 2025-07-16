@@ -35,19 +35,19 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     settings = get_settings()
 
     # Startup
-    logger.info("Starting Claude Code Proxy API Server...")
+    logger.info("server_start")
     logger.info(
-        f"Server configured for host: {settings.server.host}, port: {settings.server.port}"
+        "server_configured", host=settings.server.host, port=settings.server.port
     )
 
     # Log Claude CLI configuration
     if settings.claude.cli_path:
-        logger.info(f"Claude CLI configured at: {settings.claude.cli_path}")
+        logger.info("claude_cli_configured", cli_path=settings.claude.cli_path)
     else:
-        logger.info("Claude CLI path: Auto-detect at runtime")
-        logger.info("Auto-detection will search the following locations:")
-        for path in settings.claude.get_searched_paths():
-            logger.info(f"  - {path}")
+        logger.info("claude_cli_auto_detect")
+        logger.info(
+            "claude_cli_search_paths", paths=settings.claude.get_searched_paths()
+        )
 
     # Configure observability system (structlog + pipeline + scheduler)
     try:
@@ -59,15 +59,15 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         # )
         pipeline = await get_pipeline()
         scheduler = await get_scheduler()
-        logger.info("Observability system initialized successfully")
+        logger.info("observability_initialized")
     except Exception as e:
-        logger.error(f"Failed to initialize observability system: {e}")
+        logger.error("observability_initialization_failed", error=str(e))
         # Continue startup even if observability fails (graceful degradation)
 
     yield
 
     # Shutdown
-    logger.info("Shutting down Claude Code Proxy API Server...")
+    logger.info("server_stop")
 
     # Stop observability system
     try:
@@ -77,9 +77,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             await scheduler.stop()
         # Also stop global scheduler
         await stop_scheduler()
-        logger.info("Observability system stopped")
+        logger.info("observability_stopped")
     except Exception as e:
-        logger.error(f"Error stopping observability system: {e}")
+        logger.error("observability_stop_failed", error=str(e))
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
