@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import random
 from collections.abc import Callable
 from contextlib import asynccontextmanager
 from typing import Any, Optional
@@ -49,6 +50,8 @@ class ObservabilityScheduler:
         self._tasks: list[asyncio.Task[Any]] = []
         self._pushgateway_interval = settings.pushgateway_batch_interval
         self._metrics_instance: Any | None = None
+        self._consecutive_failures = 0
+        self._max_backoff = 300.0  # 5 minutes max backoff
 
     async def start(self) -> None:
         """Start the scheduler and background tasks."""
@@ -96,6 +99,27 @@ class ObservabilityScheduler:
 
         self._tasks.clear()
 
+    def _calculate_backoff_delay(self) -> float:
+        """Calculate exponential backoff delay with jitter.
+
+        Returns:
+            Backoff delay in seconds
+        """
+        if self._consecutive_failures == 0:
+            return self._pushgateway_interval
+
+        # Exponential backoff: base_interval * (2 ^ failures)
+        base_delay = self._pushgateway_interval * (2**self._consecutive_failures)
+
+        # Cap at max_backoff
+        base_delay = min(base_delay, self._max_backoff)
+
+        # Add jitter (±25% random variation)
+        jitter = base_delay * 0.25 * (random.random() - 0.5)
+        delay = base_delay + jitter
+
+        return max(float(delay), 1.0)  # Minimum 1 second delay
+
     async def _init_metrics(self) -> None:
         """Initialize metrics instance."""
         try:
@@ -116,24 +140,50 @@ class ObservabilityScheduler:
 
         while self._running:
             try:
+                success = False
                 if (
                     self._metrics_instance
                     and self._metrics_instance.is_pushgateway_enabled()
                 ):
                     success = self._metrics_instance.push_to_gateway()
-                    if not success:
-                        logger.warning("pushgateway_push_failed")
 
-                # Wait for next interval
-                await asyncio.sleep(self._pushgateway_interval)
+                    if success:
+                        self._consecutive_failures = 0
+                        logger.debug("pushgateway_push_success")
+                    else:
+                        self._consecutive_failures += 1
+                        logger.warning(
+                            "pushgateway_push_failed",
+                            consecutive_failures=self._consecutive_failures,
+                        )
+
+                # Calculate delay based on success/failure
+                delay = self._calculate_backoff_delay()
+
+                if not success and self._consecutive_failures > 0:
+                    logger.info(
+                        "pushgateway_backoff_delay",
+                        consecutive_failures=self._consecutive_failures,
+                        delay=delay,
+                        max_backoff=self._max_backoff,
+                    )
+
+                # Wait for next interval or backoff delay
+                await asyncio.sleep(delay)
 
             except asyncio.CancelledError:
                 logger.debug("pushgateway_task_cancelled")
                 break
             except Exception as e:
-                logger.error("pushgateway_task_error", error=str(e))
-                # Backoff on error
-                backoff_time = min(self._pushgateway_interval * 2, 60.0)
+                self._consecutive_failures += 1
+                logger.error(
+                    "pushgateway_task_error",
+                    error=str(e),
+                    error_type=type(e).__name__,
+                    consecutive_failures=self._consecutive_failures,
+                )
+                # Use exponential backoff for exceptions too
+                backoff_time = self._calculate_backoff_delay()
                 await asyncio.sleep(backoff_time)
 
     def set_pushgateway_interval(self, interval: float) -> None:
