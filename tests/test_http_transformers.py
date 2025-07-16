@@ -163,6 +163,62 @@ class TestHTTPRequestTransformer:
         assert result["x-app"] == "cli"
         assert "anthropic-beta" in result
 
+    def test_create_proxy_headers_excludes_compression_headers(
+        self, request_transformer: HTTPRequestTransformer
+    ) -> None:
+        """Test that compression headers are excluded from proxy headers."""
+        original_headers = {
+            "Content-Type": "application/json",
+            "Accept-Encoding": "gzip, deflate, br",
+            "Content-Encoding": "gzip",
+            "User-Agent": "test-client",
+        }
+        access_token = "test-token-123"
+
+        result = request_transformer.create_proxy_headers(
+            original_headers, access_token
+        )
+
+        # Should exclude compression headers to prevent decompression issues
+        assert "Accept-Encoding" not in result
+        assert "accept-encoding" not in result
+        assert "Content-Encoding" not in result
+        assert "content-encoding" not in result
+
+        # Should preserve safe headers
+        assert result["Content-Type"] == "application/json"
+        assert result["Authorization"] == "Bearer test-token-123"
+
+    def test_create_proxy_headers_excludes_compression_headers_case_insensitive(
+        self, request_transformer: HTTPRequestTransformer
+    ) -> None:
+        """Test that compression headers are excluded case-insensitively."""
+        original_headers = {
+            "Content-Type": "application/json",
+            "accept-encoding": "gzip",  # lowercase
+            "ACCEPT-ENCODING": "deflate",  # uppercase
+            "Accept-Encoding": "br",  # mixed case
+            "content-encoding": "gzip",  # lowercase
+            "CONTENT-ENCODING": "deflate",  # uppercase
+            "Content-Encoding": "br",  # mixed case
+        }
+        access_token = "test-token"
+
+        result = request_transformer.create_proxy_headers(
+            original_headers, access_token
+        )
+
+        # Should exclude all variations of compression headers
+        assert "accept-encoding" not in result
+        assert "ACCEPT-ENCODING" not in result
+        assert "Accept-Encoding" not in result
+        assert "content-encoding" not in result
+        assert "CONTENT-ENCODING" not in result
+        assert "Content-Encoding" not in result
+
+        # Should preserve safe headers
+        assert result["Content-Type"] == "application/json"
+
     def test_transform_system_prompt_no_existing_system(
         self, request_transformer: HTTPRequestTransformer
     ) -> None:
@@ -914,3 +970,224 @@ class TestHTTPTransformersEdgeCases:
             1048576,  # 1MB
         )
         assert result3["Content-Length"] == "1048576"
+
+    def test_response_headers_excludes_content_encoding(
+        self, response_transformer: HTTPResponseTransformer
+    ) -> None:
+        """Test that content-encoding header is excluded to prevent compression issues."""
+        original_headers = {
+            "Content-Type": "application/json",
+            "Content-Encoding": "gzip",
+            "Content-Length": "100",
+            "Server": "anthropic-api",
+        }
+        path = "/v1/messages"
+        content_length = 150
+
+        result = response_transformer.transform_response_headers(
+            original_headers, path, content_length
+        )
+
+        # Should exclude content-encoding to prevent decompression issues
+        assert "Content-Encoding" not in result
+        assert "content-encoding" not in result
+
+        # Should preserve other headers
+        assert result["Content-Type"] == "application/json"
+        assert result["Server"] == "anthropic-api"
+        assert result["Content-Length"] == "150"
+
+    def test_response_headers_excludes_compression_headers_case_insensitive(
+        self, response_transformer: HTTPResponseTransformer
+    ) -> None:
+        """Test that compression headers are excluded case-insensitively."""
+        original_headers = {
+            "Content-Type": "application/json",
+            "content-encoding": "gzip",  # lowercase
+            "CONTENT-ENCODING": "deflate",  # uppercase
+            "Content-Encoding": "br",  # mixed case
+            "Transfer-Encoding": "chunked",
+            "Server": "anthropic-api",
+        }
+        path = "/v1/messages"
+        content_length = 200
+
+        result = response_transformer.transform_response_headers(
+            original_headers, path, content_length
+        )
+
+        # Should exclude all variations of content-encoding
+        assert "content-encoding" not in result
+        assert "CONTENT-ENCODING" not in result
+        assert "Content-Encoding" not in result
+
+        # Should also exclude transfer-encoding
+        assert "Transfer-Encoding" not in result
+
+        # Should preserve safe headers
+        assert result["Content-Type"] == "application/json"
+        assert result["Server"] == "anthropic-api"
+        assert result["Content-Length"] == "200"
+
+
+class TestCompressionRegressionPrevention:
+    """Test suite specifically for preventing compression-related regressions.
+
+    This test class contains tests that specifically prevent the compression
+    issue where HTTPX auto-decompresses responses but content-encoding headers
+    are still forwarded, causing clients to try to decompress already
+    decompressed data.
+    """
+
+    @pytest.fixture
+    def request_transformer(self) -> HTTPRequestTransformer:
+        """Create HTTP request transformer instance for testing."""
+        return HTTPRequestTransformer()
+
+    @pytest.fixture
+    def response_transformer(self) -> HTTPResponseTransformer:
+        """Create HTTP response transformer instance for testing."""
+        return HTTPResponseTransformer()
+
+    def test_compression_regression_response_headers_stripped(
+        self, response_transformer: HTTPResponseTransformer
+    ) -> None:
+        """Test that compression headers are stripped from responses to prevent decompression errors.
+
+        This test prevents the specific regression where:
+        1. HTTPX automatically decompresses compressed responses
+        2. But content-encoding headers are still forwarded to clients
+        3. Clients try to decompress already decompressed data
+        4. Results in "Error -3 while decompressing data: incorrect header check"
+        """
+        # Simulate a compressed response from upstream API
+        upstream_headers = {
+            "Content-Type": "application/json",
+            "Content-Encoding": "gzip",  # This would cause issues if forwarded
+            "Content-Length": "100",
+            "Server": "anthropic-api",
+            "Cache-Control": "no-cache",
+        }
+
+        # After HTTPX decompression, the content length would be different
+        actual_content_length = 250  # Decompressed content is larger
+
+        result = response_transformer.transform_response_headers(
+            upstream_headers, "/v1/messages", actual_content_length
+        )
+
+        # CRITICAL: Content-Encoding must be stripped to prevent client decompression
+        assert "Content-Encoding" not in result
+        assert "content-encoding" not in result
+
+        # Content-Length should be updated to reflect decompressed size
+        assert result["Content-Length"] == "250"
+
+        # Other headers should be preserved
+        assert result["Content-Type"] == "application/json"
+        assert result["Server"] == "anthropic-api"
+        assert result["Cache-Control"] == "no-cache"
+
+    def test_compression_regression_request_headers_stripped(
+        self, request_transformer: HTTPRequestTransformer
+    ) -> None:
+        """Test that compression headers are stripped from requests to prevent issues.
+
+        This test prevents issues where clients send compression-related headers
+        that could cause problems in the proxy flow.
+        """
+        # Simulate a client request with compression headers
+        client_headers = {
+            "Content-Type": "application/json",
+            "Accept-Encoding": "gzip, deflate, br",  # Could cause upstream compression
+            "Content-Encoding": "gzip",  # Client trying to send compressed data
+            "User-Agent": "test-client",
+        }
+        access_token = "test-token"
+
+        result = request_transformer.create_proxy_headers(client_headers, access_token)
+
+        # CRITICAL: Compression headers must be stripped to prevent issues
+        assert "Accept-Encoding" not in result
+        assert "accept-encoding" not in result
+        assert "Content-Encoding" not in result
+        assert "content-encoding" not in result
+
+        # Other headers should be preserved
+        assert result["Content-Type"] == "application/json"
+        assert result["Authorization"] == "Bearer test-token"
+
+    def test_compression_regression_multiple_encodings(
+        self, response_transformer: HTTPResponseTransformer
+    ) -> None:
+        """Test that multiple compression encodings are all stripped properly."""
+        # Test with multiple compression formats
+        upstream_headers = {
+            "Content-Type": "application/json",
+            "Content-Encoding": "gzip, br",  # Multiple encodings
+            "Vary": "Accept-Encoding",
+            "X-Content-Type-Options": "nosniff",
+        }
+
+        result = response_transformer.transform_response_headers(
+            upstream_headers, "/v1/messages", 100
+        )
+
+        # All compression-related headers should be stripped
+        assert "Content-Encoding" not in result
+        assert "content-encoding" not in result
+
+        # Non-compression headers should be preserved
+        assert result["Vary"] == "Accept-Encoding"
+        assert result["X-Content-Type-Options"] == "nosniff"
+
+    async def test_compression_regression_full_response_flow(
+        self, response_transformer: HTTPResponseTransformer
+    ) -> None:
+        """Test full response transformation flow prevents compression issues."""
+        # Simulate a full response with compression headers
+        response_body = json.dumps(
+            {
+                "id": "msg_123",
+                "content": [{"type": "text", "text": "Hello from Claude!"}],
+                "usage": {"input_tokens": 10, "output_tokens": 5},
+            }
+        ).encode("utf-8")
+
+        # Simulate what upstream API would send (with compression headers)
+        upstream_response = ProxyResponse(
+            status_code=200,
+            headers={
+                "Content-Type": "application/json",
+                "Content-Encoding": "gzip",  # This would cause client issues
+                "Content-Length": "50",  # Original compressed size
+                "Server": "anthropic-api",
+                "X-Request-ID": "req_123",
+            },
+            body=response_body,  # This is already decompressed by HTTPX
+            metadata={"request_id": "req_123"},
+        )
+
+        context = TransformContext()
+        context.set("original_path", "/v1/messages")
+
+        # Transform the response
+        result = await response_transformer._transform_response(
+            upstream_response, context
+        )
+
+        # CRITICAL: Content-Encoding must be stripped
+        assert "Content-Encoding" not in result.headers
+        assert "content-encoding" not in result.headers
+
+        # Content-Length should be recalculated for decompressed body
+        assert "Content-Length" in result.headers
+        assert result.headers["Content-Length"] == str(len(response_body))
+
+        # Other headers should be preserved
+        assert result.headers["Content-Type"] == "application/json"
+        assert result.headers["Server"] == "anthropic-api"
+        assert result.headers["X-Request-ID"] == "req_123"
+
+        # Body should be intact
+        assert result.body == response_body

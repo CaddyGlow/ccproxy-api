@@ -1,15 +1,17 @@
 """Metrics endpoints for Claude Code Proxy API Server."""
 
-import re
 import time
+from datetime import datetime
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
+from sqlmodel import Session, func, select
 
 from ccproxy.api.dependencies import (
     ObservabilityMetricsDep,
 )
+from ccproxy.observability.storage.models import AccessLog
 
 
 # Create the router for metrics endpoints
@@ -169,27 +171,18 @@ async def get_storage_backend() -> Any:
         return None
 
 
-# SQL injection protection - allow only safe SQL patterns
-SAFE_SQL_PATTERN = re.compile(
-    r"^SELECT\s+.*\s+FROM\s+(?:requests|operations)(?:\s+WHERE\s+.*)?(?:\s+GROUP\s+BY\s+.*)?(?:\s+ORDER\s+BY\s+.*)?(?:\s+LIMIT\s+\d+)?;?$",
-    re.IGNORECASE | re.DOTALL,
-)
-
-
 @router.get("/query")
 async def query_metrics(
-    sql: str = Query(..., description="SQL query to execute"),
     limit: int = Query(1000, ge=1, le=10000, description="Maximum number of results"),
+    start_time: float | None = Query(None, description="Start timestamp filter"),
+    end_time: float | None = Query(None, description="End timestamp filter"),
+    model: str | None = Query(None, description="Model filter"),
+    service_type: str | None = Query(None, description="Service type filter"),
 ) -> dict[str, Any]:
     """
-    Execute custom SQL query on metrics data.
+    Query access logs with filters.
 
-    Supports queries on 'requests' and 'operations' tables with safety restrictions.
-
-    Example queries:
-    - SELECT COUNT(*) FROM requests WHERE timestamp > '2024-01-01'
-    - SELECT model, AVG(response_time) FROM requests GROUP BY model
-    - SELECT * FROM requests WHERE status = 'error' ORDER BY timestamp DESC
+    Returns access log entries with optional filtering by time range, model, and service type.
     """
     try:
         storage = await get_storage_backend()
@@ -199,24 +192,64 @@ async def query_metrics(
                 detail="Storage backend not available. Ensure DuckDB is installed and pipeline is running.",
             )
 
-        # Basic SQL injection protection
-        sql_clean = sql.strip()
-        if not SAFE_SQL_PATTERN.match(sql_clean):
+        # Use SQLModel for querying
+        if hasattr(storage, "_engine") and storage._engine:
+            try:
+                with Session(storage._engine) as session:
+                    # Build base query
+                    statement = select(AccessLog)
+
+                    # Add filters - convert Unix timestamps to datetime
+                    if start_time:
+                        start_dt = datetime.fromtimestamp(start_time)
+                        statement = statement.where(AccessLog.timestamp >= start_dt)
+                    if end_time:
+                        end_dt = datetime.fromtimestamp(end_time)
+                        statement = statement.where(AccessLog.timestamp <= end_dt)
+                    if model:
+                        statement = statement.where(AccessLog.model == model)
+                    if service_type:
+                        statement = statement.where(
+                            AccessLog.service_type == service_type
+                        )
+
+                    # Apply limit and order
+                    statement = statement.order_by(AccessLog.timestamp.desc()).limit(
+                        limit
+                    )
+
+                    # Execute query
+                    results = session.exec(statement).all()
+
+                    # Convert to dict format
+                    entries = [log.dict() for log in results]
+
+                    return {
+                        "results": entries,
+                        "count": len(entries),
+                        "limit": limit,
+                        "filters": {
+                            "start_time": start_time,
+                            "end_time": end_time,
+                            "model": model,
+                            "service_type": service_type,
+                        },
+                        "timestamp": time.time(),
+                    }
+
+            except Exception as e:
+                import structlog
+
+                logger = structlog.get_logger(__name__)
+                logger.error("sqlmodel_query_error", error=str(e))
+                raise HTTPException(
+                    status_code=500, detail=f"Query execution failed: {str(e)}"
+                ) from e
+        else:
             raise HTTPException(
-                status_code=400,
-                detail="Invalid SQL query. Only SELECT queries on 'requests' and 'operations' tables are allowed.",
+                status_code=503,
+                detail="Storage engine not available",
             )
-
-        # Execute query
-        results = await storage.query(sql_clean, limit=limit)
-
-        return {
-            "query": sql_clean,
-            "results": results,
-            "count": len(results),
-            "limit": limit,
-            "timestamp": time.time(),
-        }
 
     except HTTPException:
         raise
@@ -256,24 +289,104 @@ async def get_analytics(
             end_time = time.time()
             start_time = end_time - (hours * 3600)
 
-        # Get analytics data
-        analytics: dict[str, Any] = await storage.get_analytics(
-            start_time=start_time,
-            end_time=end_time,
-            model=model,
-            service_type=service_type,
-        )
+        # Use SQLModel for analytics
+        if hasattr(storage, "_engine") and storage._engine:
+            try:
+                with Session(storage._engine) as session:
+                    # Build base query
+                    statement = select(AccessLog)
 
-        # Add metadata
-        analytics["query_params"] = {
-            "start_time": start_time,
-            "end_time": end_time,
-            "model": model,
-            "service_type": service_type,
-            "hours": hours,
-        }
+                    # Add filters - convert Unix timestamps to datetime
+                    if start_time:
+                        start_dt = datetime.fromtimestamp(start_time)
+                        statement = statement.where(AccessLog.timestamp >= start_dt)
+                    if end_time:
+                        end_dt = datetime.fromtimestamp(end_time)
+                        statement = statement.where(AccessLog.timestamp <= end_dt)
+                    if model:
+                        statement = statement.where(AccessLog.model == model)
+                    if service_type:
+                        statement = statement.where(
+                            AccessLog.service_type == service_type
+                        )
 
-        return analytics
+                    # Get summary statistics
+                    summary_statement = select(
+                        func.count().label("total_requests"),
+                        func.avg(AccessLog.duration_ms).label("avg_duration_ms"),
+                        func.sum(AccessLog.cost_usd).label("total_cost_usd"),
+                        func.sum(AccessLog.tokens_input).label("total_tokens_input"),
+                        func.sum(AccessLog.tokens_output).label("total_tokens_output"),
+                    )
+
+                    # Apply same filters to summary
+                    if start_time:
+                        start_dt = datetime.fromtimestamp(start_time)
+                        summary_statement = summary_statement.where(
+                            AccessLog.timestamp >= start_dt
+                        )
+                    if end_time:
+                        end_dt = datetime.fromtimestamp(end_time)
+                        summary_statement = summary_statement.where(
+                            AccessLog.timestamp <= end_dt
+                        )
+                    if model:
+                        summary_statement = summary_statement.where(
+                            AccessLog.model == model
+                        )
+                    if service_type:
+                        summary_statement = summary_statement.where(
+                            AccessLog.service_type == service_type
+                        )
+
+                    summary_result = session.exec(summary_statement).first()
+
+                    analytics = {
+                        "summary": {
+                            "total_requests": summary_result.total_requests
+                            if summary_result
+                            else 0,
+                            "avg_duration_ms": summary_result.avg_duration_ms
+                            if summary_result
+                            else 0,
+                            "total_cost_usd": summary_result.total_cost_usd
+                            if summary_result
+                            else 0,
+                            "total_tokens_input": summary_result.total_tokens_input
+                            if summary_result
+                            else 0,
+                            "total_tokens_output": summary_result.total_tokens_output
+                            if summary_result
+                            else 0,
+                        },
+                        "query_time": time.time(),
+                        "backend": "sqlmodel",
+                    }
+
+                    # Add metadata
+                    analytics["query_params"] = {
+                        "start_time": start_time,
+                        "end_time": end_time,
+                        "model": model,
+                        "service_type": service_type,
+                        "hours": hours,
+                    }
+
+                    return analytics
+
+            except Exception as e:
+                import structlog
+
+                logger = structlog.get_logger(__name__)
+                logger.error("sqlmodel_analytics_error", error=str(e))
+                raise HTTPException(
+                    status_code=500, detail=f"Analytics query failed: {str(e)}"
+                ) from e
+        else:
+            raise HTTPException(
+                status_code=503,
+                detail="Storage engine not available",
+            )
 
     except HTTPException:
         raise
@@ -402,6 +515,93 @@ async def stream_metrics() -> StreamingResponse:
             "Access-Control-Allow-Headers": "Cache-Control",
         },
     )
+
+
+@router.get("/entries")
+async def get_database_entries(
+    limit: int = Query(
+        50, ge=1, le=1000, description="Maximum number of entries to return"
+    ),
+    offset: int = Query(0, ge=0, description="Number of entries to skip"),
+    order_by: str = Query(
+        "timestamp",
+        description="Column to order by (timestamp, duration_ms, cost_usd, model, service_type, status_code)",
+    ),
+    order_desc: bool = Query(False, description="Order in descending order"),
+) -> dict[str, Any]:
+    """
+    Get the last n database entries from the access logs.
+
+    Returns individual request entries with full details for analysis.
+    """
+    try:
+        storage = await get_storage_backend()
+        if not storage:
+            raise HTTPException(
+                status_code=503,
+                detail="Storage backend not available. Ensure DuckDB is installed and pipeline is running.",
+            )
+
+        # Use SQLModel for entries
+        if hasattr(storage, "_engine") and storage._engine:
+            try:
+                with Session(storage._engine) as session:
+                    # Validate order_by parameter using SQLModel
+                    valid_columns = list(AccessLog.model_fields.keys())
+                    if order_by not in valid_columns:
+                        order_by = "timestamp"
+
+                    # Build SQLModel query
+                    order_attr = getattr(AccessLog, order_by)
+                    order_clause = order_attr.desc() if order_desc else order_attr.asc()
+
+                    statement = (
+                        select(AccessLog)
+                        .order_by(order_clause)
+                        .offset(offset)
+                        .limit(limit)
+                    )
+                    results = session.exec(statement).all()
+
+                    # Get total count
+                    count_statement = select(func.count()).select_from(AccessLog)
+                    total_count = session.exec(count_statement).first()
+
+                    # Convert to dict format
+                    entries = [log.dict() for log in results]
+
+                    return {
+                        "entries": entries,
+                        "total_count": total_count,
+                        "limit": limit,
+                        "offset": offset,
+                        "order_by": order_by,
+                        "order_desc": order_desc,
+                        "page": (offset // limit) + 1,
+                        "total_pages": ((total_count or 0) + limit - 1) // limit,
+                        "backend": "sqlmodel",
+                    }
+
+            except Exception as e:
+                import structlog
+
+                logger = structlog.get_logger(__name__)
+                logger.error("sqlmodel_entries_error", error=str(e))
+                raise HTTPException(
+                    status_code=500, detail=f"Failed to retrieve entries: {str(e)}"
+                ) from e
+        else:
+            raise HTTPException(
+                status_code=503,
+                detail="Storage engine not available",
+            )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to retrieve database entries: {str(e)}"
+        ) from e
 
 
 @router.get("/health")
