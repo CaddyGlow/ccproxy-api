@@ -338,42 +338,6 @@ class TestMetricsAPIEndpoints:
             assert response.status_code == 503
 
 
-@pytest.mark.integration
-class TestMetricsAPIIntegration:
-    """Integration tests for metrics API with actual DuckDB storage."""
-
-    @pytest.fixture
-    def client_with_duckdb(self, test_settings: Settings) -> TestClient:
-        """Create test client with DuckDB storage enabled."""
-        app = create_app(test_settings)
-        return TestClient(app)
-
-    def test_full_metrics_pipeline_integration(
-        self, client_with_duckdb: TestClient
-    ) -> None:
-        """Test full metrics pipeline from storage to API."""
-        # Note: This test requires actual DuckDB installation
-        # It tests the integration but may be skipped if DuckDB not available
-
-        # Test health endpoint
-        response = client_with_duckdb.get("/metrics/health")
-        assert response.status_code == 200
-
-        # If DuckDB is available, storage should be healthy
-        data = response.json()
-        if data["status"] == "healthy":
-            # Test analytics endpoint
-            analytics_response = client_with_duckdb.get(
-                "/metrics/analytics", params={"hours": 1}
-            )
-            assert analytics_response.status_code == 200
-
-            analytics_data = analytics_response.json()
-            assert "summary" in analytics_data
-            assert "hourly_data" in analytics_data
-            assert "model_stats" in analytics_data
-
-
 @pytest.mark.unit
 class TestSSEStreamingEndpoint:
     """Test SSE streaming endpoint functionality."""

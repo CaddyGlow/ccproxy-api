@@ -23,22 +23,35 @@ logger = structlog.get_logger(__name__)
 
 
 class AccessLogPayload(TypedDict, total=False):
-    """TypedDict for access log data payloads."""
+    """TypedDict for access log data payloads.
 
+    Note: All fields are optional (total=False) to allow partial payloads.
+    The storage layer will provide sensible defaults for missing fields.
+    """
+
+    # Core request identification
     request_id: str
     timestamp: int | float | datetime
+
+    # Request details
     method: str
     endpoint: str
     path: str
     query: str
     client_ip: str
     user_agent: str
+
+    # Service and model info
     service_type: str
     model: str
     streaming: bool
+
+    # Response details
     status_code: int
     duration_ms: float
     duration_seconds: float
+
+    # Token and cost tracking
     tokens_input: int
     tokens_output: int
     cache_read_tokens: int
@@ -127,7 +140,7 @@ class SimpleDuckDBStorage:
             logger.warning("Failed to check/add query column", error=str(e))
             # Continue without failing - the column might already exist or schema might be different
 
-    async def store_request(self, data: AccessLogPayload | dict[str, Any]) -> bool:
+    async def store_request(self, data: AccessLogPayload) -> bool:
         """Store a single request log entry.
 
         Args:
@@ -171,9 +184,10 @@ class SimpleDuckDBStorage:
                 cost_sdk_usd=data.get("cost_sdk_usd", 0.0),
             )
 
-            # Store using SQLModel session
+            # Store using SQLModel session with upsert behavior
             with Session(self._engine) as session:
-                session.add(access_log)
+                # Use merge to handle potential duplicates
+                session.merge(access_log)
                 session.commit()
 
             logger.info(
@@ -189,9 +203,7 @@ class SimpleDuckDBStorage:
             )
             return False
 
-    async def store_batch(
-        self, metrics: Sequence[AccessLogPayload | dict[str, Any]]
-    ) -> bool:
+    async def store_batch(self, metrics: Sequence[AccessLogPayload]) -> bool:
         """Store a batch of metrics efficiently.
 
         Args:
@@ -204,7 +216,7 @@ class SimpleDuckDBStorage:
             return False
 
         try:
-            # Store using SQLModel
+            # Store using SQLModel with upsert behavior
             with Session(self._engine) as session:
                 for metric in metrics:
                     # Convert Unix timestamp to datetime if needed
@@ -237,7 +249,8 @@ class SimpleDuckDBStorage:
                         cost_usd=metric.get("cost_usd", 0.0),
                         cost_sdk_usd=metric.get("cost_sdk_usd", 0.0),
                     )
-                    session.add(access_log)
+                    # Use merge to handle potential duplicates
+                    session.merge(access_log)
 
                 session.commit()
 
@@ -251,7 +264,7 @@ class SimpleDuckDBStorage:
             )
             return False
 
-    async def store(self, metric: AccessLogPayload | dict[str, Any]) -> bool:
+    async def store(self, metric: AccessLogPayload) -> bool:
         """Store single metric.
 
         Args:

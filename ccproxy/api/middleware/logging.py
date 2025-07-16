@@ -36,6 +36,10 @@ class AccessLogMiddleware(BaseHTTPMiddleware):
         # Record start time
         start_time = time.perf_counter()
 
+        # Store DuckDB storage in request state if available
+        if hasattr(request.app.state, "duckdb_storage"):
+            request.state.duckdb_storage = request.app.state.duckdb_storage
+
         # Extract client info
         client_ip = "unknown"
         if request.client:

@@ -26,13 +26,6 @@ from .context import (
     tracked_request_context,
 )
 from .metrics import PrometheusMetrics, get_metrics, reset_metrics
-from .pipeline import (
-    LogToStoragePipeline,
-    create_structlog_processor,
-    enqueue_log_event,
-    get_pipeline,
-    pipeline_context,
-)
 from .pushgateway import (
     PushgatewayClient,
     get_pushgateway_client,

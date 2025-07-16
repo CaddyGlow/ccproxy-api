@@ -4,11 +4,12 @@ import time
 from datetime import datetime as dt
 from typing import Any, Optional, TypedDict, cast
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 from sqlmodel import Session, col, desc, func, select
 
 from ccproxy.api.dependencies import (
+    DuckDBStorageDep,
     ObservabilityMetricsDep,
 )
 from ccproxy.observability.storage.models import AccessLog
@@ -218,25 +219,9 @@ async def get_prometheus_metrics(metrics: ObservabilityMetricsDep) -> Response:
         ) from e
 
 
-async def get_storage_backend() -> Any:
-    """Get DuckDB storage backend from pipeline."""
-    try:
-        from ccproxy.observability.pipeline import get_pipeline
-
-        pipeline = await get_pipeline()
-
-        # Get DuckDB storage from pipeline backends
-        for backend in pipeline._storage_backends:
-            if hasattr(backend, "query"):  # DuckDB storage has query method
-                return backend
-
-        return None
-    except Exception:
-        return None
-
-
 @router.get("/query")
 async def query_metrics(
+    storage: DuckDBStorageDep,
     limit: int = Query(1000, ge=1, le=10000, description="Maximum number of results"),
     start_time: float | None = Query(None, description="Start timestamp filter"),
     end_time: float | None = Query(None, description="End timestamp filter"),
@@ -249,7 +234,6 @@ async def query_metrics(
     Returns access log entries with optional filtering by time range, model, and service type.
     """
     try:
-        storage = await get_storage_backend()
         if not storage:
             raise HTTPException(
                 status_code=503,
@@ -326,6 +310,7 @@ async def query_metrics(
 
 @router.get("/analytics")
 async def get_analytics(
+    storage: DuckDBStorageDep,
     start_time: float | None = Query(None, description="Start timestamp (Unix time)"),
     end_time: float | None = Query(None, description="End timestamp (Unix time)"),
     model: str | None = Query(None, description="Filter by model name"),
@@ -343,7 +328,6 @@ async def get_analytics(
     Returns summary statistics, hourly trends, and model breakdowns.
     """
     try:
-        storage = await get_storage_backend()
         if not storage:
             raise HTTPException(
                 status_code=503,
@@ -662,7 +646,7 @@ async def get_analytics(
 
 
 @router.get("/stream")
-async def stream_metrics() -> StreamingResponse:
+async def stream_metrics(request: Request) -> StreamingResponse:
     """
     Stream real-time metrics and request logs via Server-Sent Events.
 
@@ -673,6 +657,15 @@ async def stream_metrics() -> StreamingResponse:
     import asyncio
     import uuid
     from collections.abc import AsyncIterator
+
+    # Get request ID from request state
+    request_id = getattr(request.state, "request_id", None)
+
+    if request and hasattr(request, "state") and hasattr(request.state, "context"):
+        # Use existing context from middleware
+        ctx = request.state.context
+        # Set streaming flag for access log
+        ctx.add_metadata(streaming=True)
 
     async def event_stream() -> AsyncIterator[str]:
         """Generate Server-Sent Events for real-time metrics."""
@@ -686,7 +679,9 @@ async def stream_metrics() -> StreamingResponse:
 
         try:
             # Use SSE manager for event-driven streaming
-            async for event_data in sse_manager.add_connection(connection_id):
+            async for event_data in sse_manager.add_connection(
+                connection_id, request_id
+            ):
                 yield event_data
 
         except asyncio.CancelledError:
@@ -717,6 +712,7 @@ async def stream_metrics() -> StreamingResponse:
 
 @router.get("/entries")
 async def get_database_entries(
+    storage: DuckDBStorageDep,
     limit: int = Query(
         50, ge=1, le=1000, description="Maximum number of entries to return"
     ),
@@ -737,7 +733,6 @@ async def get_database_entries(
     Returns individual request entries with full details for analysis.
     """
     try:
-        storage = await get_storage_backend()
         if not storage:
             raise HTTPException(
                 status_code=503,
@@ -846,10 +841,9 @@ async def get_database_entries(
 
 
 @router.get("/health")
-async def get_storage_health() -> dict[str, Any]:
+async def get_storage_health(storage: DuckDBStorageDep) -> dict[str, Any]:
     """Get health status of the storage backend."""
     try:
-        storage = await get_storage_backend()
         if not storage:
             return {
                 "status": "unavailable",

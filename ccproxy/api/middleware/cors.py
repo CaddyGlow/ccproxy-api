@@ -32,7 +32,7 @@ def setup_cors_middleware(app: FastAPI, settings: Settings) -> None:
         max_age=settings.cors.max_age,
     )
 
-    logger.info("cors_middleware_configured", origins=settings.cors.origins)
+    logger.debug("cors_middleware_configured", origins=settings.cors.origins)
 
 
 def get_cors_config(settings: Settings) -> dict[str, Any]:

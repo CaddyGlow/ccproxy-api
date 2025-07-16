@@ -254,7 +254,7 @@ def _run_local_server(settings: Settings, cli_overrides: dict[str, Any]) -> None
     if cli_overrides:
         os.environ["CCPROXY_CONFIG_OVERRIDES"] = json.dumps(cli_overrides)
 
-    logger.info(
+    logger.debug(
         "server_starting",
         host=settings.server.host,
         port=settings.server.port,
@@ -465,6 +465,11 @@ def api(
             docker_mode=docker,
             docker_image=settings.docker.docker_image if docker else None,
             auth_enabled=bool(settings.security.auth_token),
+            duckdb_enabled=settings.observability.duckdb_enabled,
+            duckdb_path=settings.observability.duckdb_path
+            if settings.observability.duckdb_enabled
+            else None,
+            claude_cli_path=settings.claude.cli_path,
         )
 
         if docker:

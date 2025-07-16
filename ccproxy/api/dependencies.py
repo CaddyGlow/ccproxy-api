@@ -2,13 +2,14 @@
 
 from typing import Annotated
 
-from fastapi import Depends
+from fastapi import Depends, Request
 from structlog import get_logger
 
 from ccproxy.auth.dependencies import AuthManagerDep, get_auth_manager
 from ccproxy.config.settings import Settings, get_settings
 from ccproxy.core.http import BaseProxyClient
 from ccproxy.observability import PrometheusMetrics, get_metrics
+from ccproxy.observability.storage.duckdb_simple import SimpleDuckDBStorage
 from ccproxy.services.claude_sdk_service import ClaudeSDKService
 from ccproxy.services.credentials.manager import CredentialsManager
 from ccproxy.services.proxy_service import ProxyService
@@ -100,9 +101,22 @@ def get_observability_metrics() -> PrometheusMetrics:
     return get_metrics()
 
 
+async def get_duckdb_storage(request: Request) -> SimpleDuckDBStorage | None:
+    """Get DuckDB storage from app state.
+
+    Args:
+        request: FastAPI request object
+
+    Returns:
+        SimpleDuckDBStorage instance if available, None otherwise
+    """
+    return getattr(request.app.state, "duckdb_storage", None)
+
+
 # Type aliases for service dependencies
 ClaudeServiceDep = Annotated[ClaudeSDKService, Depends(get_claude_service)]
 ProxyServiceDep = Annotated[ProxyService, Depends(get_proxy_service)]
 ObservabilityMetricsDep = Annotated[
     PrometheusMetrics, Depends(get_observability_metrics)
 ]
+DuckDBStorageDep = Annotated[SimpleDuckDBStorage | None, Depends(get_duckdb_storage)]

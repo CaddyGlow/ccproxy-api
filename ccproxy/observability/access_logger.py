@@ -16,6 +16,7 @@ import structlog
 
 if TYPE_CHECKING:
     from ccproxy.observability.context import RequestContext
+    from ccproxy.observability.storage.duckdb_simple import SimpleDuckDBStorage
 
 
 logger = structlog.get_logger(__name__)
@@ -30,6 +31,7 @@ async def log_request_access(
     path: str | None = None,
     query: str | None = None,
     error_message: str | None = None,
+    storage: SimpleDuckDBStorage | None = None,
     **additional_metadata: Any,
 ) -> None:
     """Log comprehensive access information for a request.
@@ -47,6 +49,7 @@ async def log_request_access(
         path: Request path
         query: Query parameters
         error_message: Error message if applicable
+        storage: DuckDB storage instance (optional)
         **additional_metadata: Any additional fields to include
     """
     # Extract basic request info from context metadata if not provided
@@ -107,28 +110,25 @@ async def log_request_access(
     context.logger.info("access_log", **log_data)
 
     # Store in DuckDB if available
-    await _store_access_log(log_data)
+    await _store_access_log(log_data, storage)
 
     # Emit SSE event for real-time dashboard updates
     await _emit_access_event("request_complete", log_data)
 
 
-async def _store_access_log(log_data: dict[str, Any]) -> None:
-    """Store access log in DuckDB storage if available."""
+async def _store_access_log(
+    log_data: dict[str, Any], storage: SimpleDuckDBStorage | None = None
+) -> None:
+    """Store access log in DuckDB storage if available.
+
+    Args:
+        log_data: Log data to store
+        storage: DuckDB storage instance (optional)
+    """
+    if not storage:
+        return
+
     try:
-        from ccproxy.config.settings import get_settings
-        from ccproxy.observability.storage.duckdb_simple import SimpleDuckDBStorage
-
-        settings = get_settings()
-        if not settings.observability.duckdb_enabled:
-            return
-
-        # Initialize storage if needed
-        storage = SimpleDuckDBStorage(database_path=settings.observability.duckdb_path)
-
-        if not storage.is_enabled():
-            await storage.initialize()
-
         # Prepare data for DuckDB storage
         storage_data = {
             "timestamp": time.time(),
@@ -256,7 +256,7 @@ def log_request_start(
     # Remove None values
     log_data = {k: v for k, v in log_data.items() if v is not None}
 
-    logger.info("access_log_start", **log_data)
+    logger.debug("access_log_start", **log_data)
 
     # Emit SSE event for real-time dashboard updates
     # Note: This is a synchronous function, so we schedule the async emission

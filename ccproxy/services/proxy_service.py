@@ -631,9 +631,6 @@ class ProxyService:
                 ):
                     end_time = time.perf_counter()
                     proxy_api_call_ms = (end_time - start_time) * 1000
-                    logger.info(
-                        "proxy_streaming_completed", duration_ms=proxy_api_call_ms
-                    )
                     logger.debug(
                         "stream_response_received",
                         status_code=response.status_code,
@@ -668,7 +665,7 @@ class ProxyService:
 
                     if is_openai:
                         # Transform Anthropic SSE to OpenAI SSE format using adapter
-                        logger.info("sse_transform_start", path=original_path)
+                        logger.debug("sse_transform_start", path=original_path)
 
                         async for (
                             transformed_chunk

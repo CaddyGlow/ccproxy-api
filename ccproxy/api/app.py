@@ -24,6 +24,7 @@ from ccproxy.config.settings import Settings, get_settings
 from ccproxy.core.logging import setup_logging
 from ccproxy.observability.config import configure_observability
 from ccproxy.observability.scheduler import get_scheduler, stop_scheduler
+from ccproxy.observability.storage.duckdb_simple import SimpleDuckDBStorage
 
 
 logger = get_logger(__name__)
@@ -35,32 +36,53 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     settings = get_settings()
 
     # Startup
-    logger.info("server_start")
     logger.info(
+        "server_start",
+        host=settings.server.host,
+        port=settings.server.port,
+        url=f"http://{settings.server.host}:{settings.server.port}",
+    )
+    logger.debug(
         "server_configured", host=settings.server.host, port=settings.server.port
     )
 
     # Log Claude CLI configuration
     if settings.claude.cli_path:
-        logger.info("claude_cli_configured", cli_path=settings.claude.cli_path)
+        logger.debug("claude_cli_configured", cli_path=settings.claude.cli_path)
     else:
-        logger.info("claude_cli_auto_detect")
-        logger.info(
+        logger.debug("claude_cli_auto_detect")
+        logger.debug(
             "claude_cli_search_paths", paths=settings.claude.get_searched_paths()
         )
 
     # Configure observability system (scheduler only now)
     try:
         scheduler = await get_scheduler()
-        logger.info("observability_initialized")
+        logger.debug("observability_initialized")
     except Exception as e:
         logger.error("observability_initialization_failed", error=str(e))
         # Continue startup even if observability fails (graceful degradation)
 
+    # Initialize DuckDB storage if enabled
+    if settings.observability.duckdb_enabled:
+        try:
+            storage = SimpleDuckDBStorage(
+                database_path=settings.observability.duckdb_path
+            )
+            await storage.initialize()
+            app.state.duckdb_storage = storage
+            logger.debug(
+                "duckdb_storage_initialized",
+                path=str(settings.observability.duckdb_path),
+            )
+        except Exception as e:
+            logger.error("duckdb_storage_initialization_failed", error=str(e))
+            # Continue without DuckDB storage (graceful degradation)
+
     yield
 
     # Shutdown
-    logger.info("server_stop")
+    logger.debug("server_stop")
 
     # Stop observability system
     try:
@@ -68,9 +90,17 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             await scheduler.stop()
         # Also stop global scheduler
         await stop_scheduler()
-        logger.info("observability_stopped")
+        logger.debug("observability_stopped")
     except Exception as e:
         logger.error("observability_stop_failed", error=str(e))
+
+    # Close DuckDB storage if initialized
+    if hasattr(app.state, "duckdb_storage") and app.state.duckdb_storage:
+        try:
+            await app.state.duckdb_storage.close()
+            logger.debug("duckdb_storage_closed")
+        except Exception as e:
+            logger.error("duckdb_storage_close_failed", error=str(e))
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:

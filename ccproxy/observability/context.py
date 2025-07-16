@@ -42,6 +42,7 @@ class RequestContext:
     start_time: float
     logger: structlog.BoundLogger
     metadata: dict[str, Any] = field(default_factory=dict)
+    storage: Any | None = None  # Optional DuckDB storage instance
 
     @property
     def duration_ms(self) -> float:
@@ -100,7 +101,7 @@ async def request_context(
     start_time = time.perf_counter()
 
     # Log request start
-    request_logger.info(
+    request_logger.debug(
         "request_start", request_id=request_id, timestamp=time.time(), **initial_context
     )
 
@@ -130,6 +131,7 @@ async def request_context(
             client_ip=ctx.metadata.get("client_ip"),
             user_agent=ctx.metadata.get("user_agent"),
             query=ctx.metadata.get("query"),
+            storage=ctx.storage,  # Pass storage from context
         )
 
         # Also keep the original request_success event for debugging
