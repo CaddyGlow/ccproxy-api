@@ -496,6 +496,7 @@ def setup_error_handlers(app: FastAPI) -> None:
             status_code=500,
             request_method=request.method,
             request_url=str(request.url.path),
+            exc_info=True,
         )
         return JSONResponse(
             status_code=500,
