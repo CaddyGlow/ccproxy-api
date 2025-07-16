@@ -726,7 +726,7 @@ class ProxyService:
                                         log_request_access,
                                     )
 
-                                    log_request_access(
+                                    await log_request_access(
                                         context=ctx,
                                         status_code=response_status,
                                         # Additional metadata for streaming completion

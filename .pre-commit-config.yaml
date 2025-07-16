@@ -50,6 +50,8 @@ repos:
           - keyring>=24.0.0
           - aiosqlite>=0.21.0
           - types-PyYAML>=6.0.12.12
+          - sqlmodel>=0.0.24
+          - duckdb-engine>=0.17.0
         args: [--config-file=pyproject.toml]
         exclude: ^(docs/|examples/)
 

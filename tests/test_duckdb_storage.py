@@ -9,7 +9,9 @@ from typing import Any
 
 import pytest
 
-from ccproxy.observability.storage.duckdb import DuckDBStorage
+from ccproxy.observability.storage.duckdb_simple import (
+    SimpleDuckDBStorage as DuckDBStorage,
+)
 
 
 @pytest.mark.unit
