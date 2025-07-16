@@ -2,16 +2,80 @@
 
 import time
 from datetime import datetime as dt
-from typing import Any, Optional
+from typing import Any, Optional, TypedDict, cast
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
-from sqlmodel import Session, func, select
+from sqlmodel import Session, col, desc, func, select
 
 from ccproxy.api.dependencies import (
     ObservabilityMetricsDep,
 )
 from ccproxy.observability.storage.models import AccessLog
+
+
+class AnalyticsSummary(TypedDict):
+    """TypedDict for analytics summary data."""
+
+    total_requests: int
+    total_successful_requests: int
+    total_error_requests: int
+    avg_duration_ms: float
+    total_cost_usd: float
+    total_tokens_input: int
+    total_tokens_output: int
+    total_cache_read_tokens: int
+    total_cache_write_tokens: int
+    total_tokens_all: int
+
+
+class TokenAnalytics(TypedDict):
+    """TypedDict for token analytics data."""
+
+    input_tokens: int
+    output_tokens: int
+    cache_read_tokens: int
+    cache_write_tokens: int
+    total_tokens: int
+
+
+class RequestAnalytics(TypedDict):
+    """TypedDict for request analytics data."""
+
+    total_requests: int
+    successful_requests: int
+    error_requests: int
+    success_rate: float
+    error_rate: float
+
+
+class ServiceBreakdown(TypedDict):
+    """TypedDict for service type breakdown data."""
+
+    request_count: int
+    successful_requests: int
+    error_requests: int
+    success_rate: float
+    error_rate: float
+    avg_duration_ms: float
+    total_cost_usd: float
+    total_tokens_input: int
+    total_tokens_output: int
+    total_cache_read_tokens: int
+    total_cache_write_tokens: int
+    total_tokens_all: int
+
+
+class AnalyticsResult(TypedDict):
+    """TypedDict for complete analytics result."""
+
+    summary: AnalyticsSummary
+    token_analytics: TokenAnalytics
+    request_analytics: RequestAnalytics
+    service_type_breakdown: dict[str, ServiceBreakdown]
+    query_time: float
+    backend: str
+    query_params: dict[str, Any]
 
 
 # Create the router for metrics endpoints
@@ -98,7 +162,7 @@ async def get_dashboard_favicon() -> FileResponse:
 
 
 @router.get("/prometheus")
-async def get_prometheus_metrics(metrics: ObservabilityMetricsDep) -> Any:
+async def get_prometheus_metrics(metrics: ObservabilityMetricsDep) -> Response:
     """Export metrics in Prometheus format using native prometheus_client.
 
     This endpoint exposes operational metrics collected by the hybrid observability
@@ -215,7 +279,7 @@ async def query_metrics(
                         )
 
                     # Apply limit and order
-                    statement = statement.order_by(AccessLog.timestamp.desc()).limit(  # type: ignore[attr-defined]
+                    statement = statement.order_by(desc(AccessLog.timestamp)).limit(
                         limit
                     )
 
@@ -272,7 +336,7 @@ async def get_analytics(
     hours: int | None = Query(
         24, ge=1, le=168, description="Hours of data to analyze (default: 24)"
     ),
-) -> dict[str, Any]:
+) -> AnalyticsResult:
     """
     Get comprehensive analytics for metrics data.
 
@@ -303,8 +367,8 @@ async def get_analytics(
                     end_dt = dt.fromtimestamp(end_time) if end_time else None
 
                     # Helper function to build filter conditions
-                    def build_filter_conditions():
-                        conditions = []
+                    def build_filter_conditions() -> list[Any]:
+                        conditions: list[Any] = []
                         if start_dt:
                             conditions.append(AccessLog.timestamp >= start_dt)
                         if end_dt:
@@ -326,11 +390,11 @@ async def get_analytics(
 
                             if include_filters:
                                 conditions.append(
-                                    AccessLog.service_type.in_(include_filters)
+                                    col(AccessLog.service_type).in_(include_filters)
                                 )
                             if exclude_filters:
                                 conditions.append(
-                                    ~AccessLog.service_type.in_(exclude_filters)
+                                    ~col(AccessLog.service_type).in_(exclude_filters)
                                 )
 
                         return conditions
@@ -573,7 +637,7 @@ async def get_analytics(
                         "hours": hours,
                     }
 
-                    return analytics
+                    return cast(AnalyticsResult, analytics)
 
             except Exception as e:
                 import structlog
@@ -707,11 +771,11 @@ async def get_database_entries(
 
                         if include_filters:
                             statement = statement.where(
-                                AccessLog.service_type.in_(include_filters)
+                                col(AccessLog.service_type).in_(include_filters)
                             )
                         if exclude_filters:
                             statement = statement.where(
-                                ~AccessLog.service_type.in_(exclude_filters)
+                                ~col(AccessLog.service_type).in_(exclude_filters)
                             )
 
                     statement = (
@@ -734,11 +798,11 @@ async def get_database_entries(
 
                         if include_filters:
                             count_statement = count_statement.where(
-                                AccessLog.service_type.in_(include_filters)
+                                col(AccessLog.service_type).in_(include_filters)
                             )
                         if exclude_filters:
                             count_statement = count_statement.where(
-                                ~AccessLog.service_type.in_(exclude_filters)
+                                ~col(AccessLog.service_type).in_(exclude_filters)
                             )
 
                     total_count = session.exec(count_statement).first()

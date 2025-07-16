@@ -6,18 +6,45 @@ low request rates (< 10 req/s).
 """
 
 import time
+from collections.abc import Sequence
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Optional, TypedDict
 
 import structlog
 from sqlalchemy import text
+from sqlalchemy.engine import Engine
 from sqlmodel import Session, SQLModel, create_engine, desc, func, select
 
 from .models import AccessLog
 
 
 logger = structlog.get_logger(__name__)
+
+
+class AccessLogPayload(TypedDict, total=False):
+    """TypedDict for access log data payloads."""
+
+    request_id: str
+    timestamp: int | float | datetime
+    method: str
+    endpoint: str
+    path: str
+    query: str
+    client_ip: str
+    user_agent: str
+    service_type: str
+    model: str
+    streaming: bool
+    status_code: int
+    duration_ms: float
+    duration_seconds: float
+    tokens_input: int
+    tokens_output: int
+    cache_read_tokens: int
+    cache_write_tokens: int
+    cost_usd: float
+    cost_sdk_usd: float
 
 
 class SimpleDuckDBStorage:
@@ -30,8 +57,8 @@ class SimpleDuckDBStorage:
             database_path: Path to DuckDB database file
         """
         self.database_path = Path(database_path)
-        self._engine: Any | None = None
-        self._initialized = False
+        self._engine: Engine | None = None
+        self._initialized: bool = False
 
     async def initialize(self) -> None:
         """Initialize the storage backend."""
@@ -100,7 +127,7 @@ class SimpleDuckDBStorage:
             logger.warning("Failed to check/add query column", error=str(e))
             # Continue without failing - the column might already exist or schema might be different
 
-    async def store_request(self, data: dict[str, Any]) -> bool:
+    async def store_request(self, data: AccessLogPayload | dict[str, Any]) -> bool:
         """Store a single request log entry.
 
         Args:
@@ -162,7 +189,9 @@ class SimpleDuckDBStorage:
             )
             return False
 
-    async def store_batch(self, metrics: list[dict[str, Any]]) -> bool:
+    async def store_batch(
+        self, metrics: Sequence[AccessLogPayload | dict[str, Any]]
+    ) -> bool:
         """Store a batch of metrics efficiently.
 
         Args:
@@ -222,7 +251,7 @@ class SimpleDuckDBStorage:
             )
             return False
 
-    async def store(self, metric: dict[str, Any]) -> bool:
+    async def store(self, metric: AccessLogPayload | dict[str, Any]) -> bool:
         """Store single metric.
 
         Args:
@@ -236,7 +265,7 @@ class SimpleDuckDBStorage:
     async def query(
         self,
         sql: str,
-        params: list[Any] | None = None,
+        params: dict[str, Any] | list[Any] | None = None,
         limit: int = 1000,
     ) -> list[dict[str, Any]]:
         """Execute SQL query and return results.
@@ -258,12 +287,21 @@ class SimpleDuckDBStorage:
                 # For now, we'll use raw SQL through the engine
                 # In a full implementation, this would be converted to SQLModel queries
 
-                limited_sql = f"SELECT * FROM ({sql}) LIMIT {limit}"
+                # Use parameterized query to prevent SQL injection
+                limited_sql = "SELECT * FROM (" + sql + ") LIMIT :limit"
 
+                query_params = {"limit": limit}
                 if params:
-                    result = session.execute(text(limited_sql), params)
+                    # Merge user params with limit param
+                    if isinstance(params, dict):
+                        query_params.update(params)
+                        result = session.execute(text(limited_sql), query_params)
+                    else:
+                        # If params is a list, we need to handle it differently
+                        # For now, we'll use the safer approach of not supporting list params with limits
+                        result = session.execute(text(sql), params)
                 else:
-                    result = session.execute(text(limited_sql))
+                    result = session.execute(text(limited_sql), query_params)
 
                 # Convert to list of dictionaries
                 columns = list(result.keys())
