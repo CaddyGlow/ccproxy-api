@@ -117,11 +117,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # You can customize the server name here
     app.add_middleware(ServerHeaderMiddleware, server_name="Claude Code Proxy/1.0")
 
-    # Add DuckDB logging middleware if enabled
-    if settings.observability.duckdb_enabled:
-        from ccproxy.observability.middleware import DuckDBLoggingMiddleware
-
-        app.add_middleware(DuckDBLoggingMiddleware)
+    # DuckDB logging is now handled in the request context
 
     # Include health router (always enabled)
     app.include_router(health_router, tags=["health"])

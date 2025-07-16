@@ -121,7 +121,7 @@ async def request_context(
         # Use the new unified access logger for comprehensive logging
         from ccproxy.observability.access_logger import log_request_access
 
-        log_request_access(
+        await log_request_access(
             context=ctx,
             # Extract client info from metadata if available
             client_ip=ctx.metadata.get("client_ip"),

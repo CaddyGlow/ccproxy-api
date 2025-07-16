@@ -5,22 +5,16 @@ connection pooling or batch processing. Suitable for dev environments with
 low request rates (< 10 req/s).
 """
 
-import json
 import time
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional
 
 import structlog
+from sqlalchemy import text
+from sqlmodel import Session, SQLModel, create_engine, desc, func, select
 
-
-# Handle graceful degradation if DuckDB not available
-try:
-    import duckdb
-
-    DUCKDB_AVAILABLE = True
-except ImportError:
-    DUCKDB_AVAILABLE = False
-    duckdb = None  # type: ignore[assignment]
+from .models import AccessLog
 
 
 logger = structlog.get_logger(__name__)
@@ -35,20 +29,12 @@ class SimpleDuckDBStorage:
         Args:
             database_path: Path to DuckDB database file
         """
-        if not DUCKDB_AVAILABLE:
-            logger.warning("duckdb_not_available", install_cmd="pip install duckdb")
-
         self.database_path = Path(database_path)
-        self._connection: Any | None = None
+        self._engine: Any | None = None
         self._initialized = False
-        self._enabled = DUCKDB_AVAILABLE
 
     async def initialize(self) -> None:
         """Initialize the storage backend."""
-        if not self._enabled:
-            logger.info("duckdb_storage_disabled", reason="duckdb_not_available")
-            return
-
         if self._initialized:
             return
 
@@ -56,10 +42,10 @@ class SimpleDuckDBStorage:
             # Ensure data directory exists
             self.database_path.parent.mkdir(parents=True, exist_ok=True)
 
-            # Create connection
-            self._connection = duckdb.connect(str(self.database_path))
+            # Create SQLModel engine
+            self._engine = create_engine(f"duckdb:///{self.database_path}")
 
-            # Create schema
+            # Create schema using SQLModel
             await self._create_schema()
 
             self._initialized = True
@@ -69,44 +55,50 @@ class SimpleDuckDBStorage:
 
         except Exception as e:
             logger.error("simple_duckdb_init_error", error=str(e), exc_info=True)
-            self._enabled = False
+            raise
 
     async def _create_schema(self) -> None:
-        """Create database schema for metrics."""
-        if not self._connection:
+        """Create database schema using SQLModel."""
+        if not self._engine:
             return
 
         try:
-            # Main requests table - same as before
-            self._connection.execute("""
-                CREATE TABLE IF NOT EXISTS requests (
-                    timestamp TIMESTAMP,
-                    request_id VARCHAR,
-                    method VARCHAR,
-                    endpoint VARCHAR,
-                    service_type VARCHAR,
-                    model VARCHAR,
-                    status VARCHAR,
-                    response_time DOUBLE,
-                    tokens_input INTEGER,
-                    tokens_output INTEGER,
-                    cost_usd DOUBLE,
-                    error_type VARCHAR,
-                    error_message TEXT,
-                    metadata JSON
-                )
-            """)
+            # Create tables using SQLModel metadata
+            AccessLog.metadata.create_all(self._engine)
 
-            # Create basic indexes
-            self._connection.execute(
-                "CREATE INDEX IF NOT EXISTS idx_requests_timestamp ON requests(timestamp)"
-            )
-            self._connection.execute(
-                "CREATE INDEX IF NOT EXISTS idx_requests_request_id ON requests(request_id)"
-            )
+            # Check if query column exists and add if missing
+            await self._ensure_query_column()
 
         except Exception as e:
             logger.error("simple_duckdb_schema_error", error=str(e))
+            raise
+
+    async def _ensure_query_column(self) -> None:
+        """Ensure query column exists in the access_logs table."""
+        if not self._engine:
+            return
+
+        try:
+            with Session(self._engine) as session:
+                # Check if query column exists
+                result = session.execute(
+                    text(
+                        "SELECT column_name FROM information_schema.columns WHERE table_name = 'access_logs' AND column_name = 'query'"
+                    )
+                )
+                if not result.fetchone():
+                    # Add query column if it doesn't exist
+                    session.execute(
+                        text(
+                            "ALTER TABLE access_logs ADD COLUMN query VARCHAR DEFAULT ''"
+                        )
+                    )
+                    session.commit()
+                    logger.info("Added query column to access_logs table")
+
+        except Exception as e:
+            logger.warning("Failed to check/add query column", error=str(e))
+            # Continue without failing - the column might already exist or schema might be different
 
     async def store_request(self, data: dict[str, Any]) -> bool:
         """Store a single request log entry.
@@ -117,42 +109,49 @@ class SimpleDuckDBStorage:
         Returns:
             True if stored successfully
         """
-        if not self._enabled or not self._initialized or not self._connection:
+        if not self._initialized or not self._engine:
             return False
 
         try:
-            # Prepare data for insert
-            insert_data = (
-                data.get("timestamp", time.time()),
-                data.get("request_id"),
-                data.get("method"),
-                data.get("endpoint"),
-                data.get("service_type"),
-                data.get("model"),
-                data.get("status"),
-                data.get("response_time", 0.0),
-                data.get("tokens_input", 0),
-                data.get("tokens_output", 0),
-                data.get("cost_usd", 0.0),
-                data.get("error_type"),
-                data.get("error_message"),
-                json.dumps(data.get("metadata", {})),
+            # Convert Unix timestamp to datetime if needed
+            timestamp_value = data.get("timestamp", time.time())
+            if isinstance(timestamp_value, int | float):
+                timestamp_dt = datetime.fromtimestamp(timestamp_value)
+            else:
+                timestamp_dt = timestamp_value
+
+            # Create AccessLog object with type validation
+            access_log = AccessLog(
+                request_id=data.get("request_id", ""),
+                timestamp=timestamp_dt,
+                method=data.get("method", ""),
+                endpoint=data.get("endpoint", ""),
+                path=data.get("path", data.get("endpoint", "")),
+                query=data.get("query", ""),
+                client_ip=data.get("client_ip", ""),
+                user_agent=data.get("user_agent", ""),
+                service_type=data.get("service_type", ""),
+                model=data.get("model", ""),
+                streaming=data.get("streaming", False),
+                status_code=data.get("status_code", 200),
+                duration_ms=data.get("duration_ms", 0.0),
+                duration_seconds=data.get("duration_seconds", 0.0),
+                tokens_input=data.get("tokens_input", 0),
+                tokens_output=data.get("tokens_output", 0),
+                cache_read_tokens=data.get("cache_read_tokens", 0),
+                cache_write_tokens=data.get("cache_write_tokens", 0),
+                cost_usd=data.get("cost_usd", 0.0),
+                cost_sdk_usd=data.get("cost_sdk_usd", 0.0),
             )
 
-            # Direct insert with explicit column names
-            self._connection.execute(
-                """
-                INSERT INTO requests (
-                    timestamp, request_id, method, endpoint, service_type,
-                    model, status, response_time, tokens_input, tokens_output,
-                    cost_usd, error_type, error_message, metadata
-                ) VALUES (
-                    to_timestamp(?), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
-                )
-                """,
-                insert_data,
-            )
+            # Store using SQLModel session
+            with Session(self._engine) as session:
+                session.add(access_log)
+                session.commit()
 
+            logger.info(
+                "simple_duckdb_store_success", request_id=data.get("request_id")
+            )
             return True
 
         except Exception as e:
@@ -162,6 +161,77 @@ class SimpleDuckDBStorage:
                 request_id=data.get("request_id"),
             )
             return False
+
+    async def store_batch(self, metrics: list[dict[str, Any]]) -> bool:
+        """Store a batch of metrics efficiently.
+
+        Args:
+            metrics: List of metric data to store
+
+        Returns:
+            True if batch stored successfully
+        """
+        if not self._initialized or not metrics or not self._engine:
+            return False
+
+        try:
+            # Store using SQLModel
+            with Session(self._engine) as session:
+                for metric in metrics:
+                    # Convert Unix timestamp to datetime if needed
+                    timestamp_value = metric.get("timestamp", time.time())
+                    if isinstance(timestamp_value, int | float):
+                        timestamp_dt = datetime.fromtimestamp(timestamp_value)
+                    else:
+                        timestamp_dt = timestamp_value
+
+                    # Create AccessLog object with type validation
+                    access_log = AccessLog(
+                        request_id=metric.get("request_id", ""),
+                        timestamp=timestamp_dt,
+                        method=metric.get("method", ""),
+                        endpoint=metric.get("endpoint", ""),
+                        path=metric.get("path", metric.get("endpoint", "")),
+                        query=metric.get("query", ""),
+                        client_ip=metric.get("client_ip", ""),
+                        user_agent=metric.get("user_agent", ""),
+                        service_type=metric.get("service_type", ""),
+                        model=metric.get("model", ""),
+                        streaming=metric.get("streaming", False),
+                        status_code=metric.get("status_code", 200),
+                        duration_ms=metric.get("duration_ms", 0.0),
+                        duration_seconds=metric.get("duration_seconds", 0.0),
+                        tokens_input=metric.get("tokens_input", 0),
+                        tokens_output=metric.get("tokens_output", 0),
+                        cache_read_tokens=metric.get("cache_read_tokens", 0),
+                        cache_write_tokens=metric.get("cache_write_tokens", 0),
+                        cost_usd=metric.get("cost_usd", 0.0),
+                        cost_sdk_usd=metric.get("cost_sdk_usd", 0.0),
+                    )
+                    session.add(access_log)
+
+                session.commit()
+
+            return True
+
+        except Exception as e:
+            logger.error(
+                "simple_duckdb_store_batch_error",
+                error=str(e),
+                metric_count=len(metrics),
+            )
+            return False
+
+    async def store(self, metric: dict[str, Any]) -> bool:
+        """Store single metric.
+
+        Args:
+            metric: Metric data to store
+
+        Returns:
+            True if stored successfully
+        """
+        return await self.store_batch([metric])
 
     async def query(
         self,
@@ -179,24 +249,27 @@ class SimpleDuckDBStorage:
         Returns:
             List of result rows as dictionaries
         """
-        if not self._enabled or not self._initialized or not self._connection:
+        if not self._initialized or not self._engine:
             return []
 
         try:
-            # Apply limit to query
-            limited_sql = f"SELECT * FROM ({sql}) LIMIT {limit}"
+            # Use SQLModel for querying
+            with Session(self._engine) as session:
+                # For now, we'll use raw SQL through the engine
+                # In a full implementation, this would be converted to SQLModel queries
 
-            # Execute query
-            if params:
-                result = self._connection.execute(limited_sql, params)
-            else:
-                result = self._connection.execute(limited_sql)
+                limited_sql = f"SELECT * FROM ({sql}) LIMIT {limit}"
 
-            # Convert to list of dictionaries
-            columns = [desc[0] for desc in result.description]
-            rows = result.fetchall()
+                if params:
+                    result = session.execute(text(limited_sql), params)
+                else:
+                    result = session.execute(text(limited_sql))
 
-            return [dict(zip(columns, row, strict=False)) for row in rows]
+                # Convert to list of dictionaries
+                columns = list(result.keys())
+                rows = result.fetchall()
+
+                return [dict(zip(columns, row, strict=False)) for row in rows]
 
         except Exception as e:
             logger.error("simple_duckdb_query_error", sql=sql, error=str(e))
@@ -211,34 +284,132 @@ class SimpleDuckDBStorage:
         Returns:
             List of recent request records
         """
-        return await self.query(
-            "SELECT * FROM requests ORDER BY timestamp DESC", limit=limit
-        )
+        if not self._engine:
+            return []
+
+        try:
+            with Session(self._engine) as session:
+                statement = (
+                    select(AccessLog).order_by(desc(AccessLog.timestamp)).limit(limit)
+                )
+                results = session.exec(statement).all()
+                return [log.dict() for log in results]
+        except Exception as e:
+            logger.error("sqlmodel_query_error", error=str(e))
+            return []
+
+    async def get_analytics(
+        self,
+        start_time: float | None = None,
+        end_time: float | None = None,
+        model: str | None = None,
+        service_type: str | None = None,
+    ) -> dict[str, Any]:
+        """Get analytics using SQLModel.
+
+        Args:
+            start_time: Start timestamp (Unix time)
+            end_time: End timestamp (Unix time)
+            model: Filter by model name
+            service_type: Filter by service type
+
+        Returns:
+            Analytics summary data
+        """
+        if not self._engine:
+            return {}
+
+        try:
+            with Session(self._engine) as session:
+                # Build base query
+                statement = select(AccessLog)
+
+                # Add filters - convert Unix timestamps to datetime
+                if start_time:
+                    start_dt = datetime.fromtimestamp(start_time)
+                    statement = statement.where(AccessLog.timestamp >= start_dt)
+                if end_time:
+                    end_dt = datetime.fromtimestamp(end_time)
+                    statement = statement.where(AccessLog.timestamp <= end_dt)
+                if model:
+                    statement = statement.where(AccessLog.model == model)
+                if service_type:
+                    statement = statement.where(AccessLog.service_type == service_type)
+
+                # Get summary statistics
+                summary_statement = select(
+                    func.count().label("total_requests"),
+                    func.avg(AccessLog.duration_ms).label("avg_duration_ms"),
+                    func.sum(AccessLog.cost_usd).label("total_cost_usd"),
+                    func.sum(AccessLog.tokens_input).label("total_tokens_input"),
+                    func.sum(AccessLog.tokens_output).label("total_tokens_output"),
+                )
+
+                # Apply same filters to summary
+                if start_time:
+                    start_dt = datetime.fromtimestamp(start_time)
+                    summary_statement = summary_statement.where(
+                        AccessLog.timestamp >= start_dt
+                    )
+                if end_time:
+                    end_dt = datetime.fromtimestamp(end_time)
+                    summary_statement = summary_statement.where(
+                        AccessLog.timestamp <= end_dt
+                    )
+                if model:
+                    summary_statement = summary_statement.where(
+                        AccessLog.model == model
+                    )
+                if service_type:
+                    summary_statement = summary_statement.where(
+                        AccessLog.service_type == service_type
+                    )
+
+                summary_result = session.exec(summary_statement).first()
+
+                return {
+                    "summary": {
+                        "total_requests": summary_result.total_requests
+                        if summary_result
+                        else 0,
+                        "avg_duration_ms": summary_result.avg_duration_ms
+                        if summary_result
+                        else 0,
+                        "total_cost_usd": summary_result.total_cost_usd
+                        if summary_result
+                        else 0,
+                        "total_tokens_input": summary_result.total_tokens_input
+                        if summary_result
+                        else 0,
+                        "total_tokens_output": summary_result.total_tokens_output
+                        if summary_result
+                        else 0,
+                    },
+                    "query_time": time.time(),
+                }
+
+        except Exception as e:
+            logger.error("sqlmodel_analytics_error", error=str(e))
+            return {}
 
     async def close(self) -> None:
         """Close the database connection."""
-        if self._connection:
+        if self._engine:
             try:
-                self._connection.close()
+                self._engine.dispose()
             except Exception as e:
-                logger.error("simple_duckdb_close_error", error=str(e))
+                logger.error("simple_duckdb_engine_close_error", error=str(e))
             finally:
-                self._connection = None
-                self._initialized = False
+                self._engine = None
+
+        self._initialized = False
 
     def is_enabled(self) -> bool:
         """Check if storage is enabled and available."""
-        return self._enabled and self._initialized
+        return self._initialized
 
     async def health_check(self) -> dict[str, Any]:
         """Get health status of the storage backend."""
-        if not self._enabled:
-            return {
-                "status": "disabled",
-                "reason": "duckdb_not_available",
-                "enabled": False,
-            }
-
         if not self._initialized:
             return {
                 "status": "not_initialized",
@@ -246,22 +417,23 @@ class SimpleDuckDBStorage:
             }
 
         try:
-            if not self._connection:
+            if self._engine:
+                with Session(self._engine) as session:
+                    statement = select(func.count()).select_from(AccessLog)
+                    access_log_count = session.exec(statement).first()
+
+                    return {
+                        "status": "healthy",
+                        "enabled": True,
+                        "database_path": str(self.database_path),
+                        "access_log_count": access_log_count,
+                        "backend": "sqlmodel",
+                    }
+            else:
                 return {
                     "status": "no_connection",
                     "enabled": False,
                 }
-
-            # Test query
-            result = self._connection.execute("SELECT COUNT(*) FROM requests")
-            request_count = result.fetchone()[0]
-
-            return {
-                "status": "healthy",
-                "enabled": True,
-                "database_path": str(self.database_path),
-                "request_count": request_count,
-            }
 
         except Exception as e:
             return {
