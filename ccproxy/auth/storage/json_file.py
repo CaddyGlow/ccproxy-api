@@ -40,16 +40,18 @@ class JsonFileTokenStorage(TokenStorage):
             CredentialsStorageError: If there's an error reading the file
         """
         if not await self.exists():
-            logger.debug(f"Credentials file not found: {self.file_path}")
+            logger.debug("credentials_file_not_found", path=str(self.file_path))
             return None
 
         try:
-            logger.debug(f"Loading credentials from file: {self.file_path}")
+            logger.debug(
+                "credentials_load_start", source="file", path=str(self.file_path)
+            )
             with self.file_path.open() as f:
                 data = json.load(f)
 
             credentials = ClaudeCredentials.model_validate(data)
-            logger.debug("Loaded credential %r", credentials)
+            logger.debug("credentials_load_completed", source="file")
 
             return credentials
 
@@ -96,7 +98,9 @@ class JsonFileTokenStorage(TokenStorage):
                 Path.replace(temp_path, self.file_path)
 
                 logger.debug(
-                    f"Successfully saved credentials to file: {self.file_path}"
+                    "credentials_save_completed",
+                    source="file",
+                    path=str(self.file_path),
                 )
                 return True
             except Exception as e:
@@ -133,12 +137,16 @@ class JsonFileTokenStorage(TokenStorage):
         try:
             if await self.exists():
                 self.file_path.unlink()
-                logger.debug(f"Deleted credentials file: {self.file_path}")
+                logger.debug(
+                    "credentials_delete_completed",
+                    source="file",
+                    path=str(self.file_path),
+                )
                 deleted = True
         except Exception as e:
             if not deleted:  # Only raise if we failed to delete from both
                 raise CredentialsStorageError(f"Error deleting credentials: {e}") from e
-            logger.debug(f"Failed to delete file but keyring deletion succeeded: {e}")
+            logger.debug("credentials_delete_partial", source="file", error=str(e))
 
         return deleted
 

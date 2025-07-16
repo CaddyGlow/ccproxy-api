@@ -22,7 +22,6 @@ from ccproxy.api.routes.proxy import router as proxy_router
 from ccproxy.config.settings import Settings, get_settings
 from ccproxy.core.logging import setup_logging
 from ccproxy.observability.config import configure_observability
-from ccproxy.observability.pipeline import get_pipeline
 from ccproxy.observability.scheduler import get_scheduler, stop_scheduler
 
 
@@ -49,15 +48,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             "claude_cli_search_paths", paths=settings.claude.get_searched_paths()
         )
 
-    # Configure observability system (structlog + pipeline + scheduler)
+    # Configure observability system (scheduler only now)
     try:
-        # configure_observability(
-        #     format_type=format_type,
-        #     level=settings.server.log_level,
-        #     show_path=show_path,
-        #     show_time=True,
-        # )
-        pipeline = await get_pipeline()
         scheduler = await get_scheduler()
         logger.info("observability_initialized")
     except Exception as e:
@@ -71,8 +63,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     # Stop observability system
     try:
-        if "pipeline" in locals():
-            await pipeline.stop()
         if "scheduler" in locals():
             await scheduler.stop()
         # Also stop global scheduler
@@ -126,6 +116,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # Add server header middleware (for non-proxy routes)
     # You can customize the server name here
     app.add_middleware(ServerHeaderMiddleware, server_name="Claude Code Proxy/1.0")
+
+    # Add DuckDB logging middleware if enabled
+    if settings.observability.duckdb_enabled:
+        from ccproxy.observability.middleware import DuckDBLoggingMiddleware
+
+        app.add_middleware(DuckDBLoggingMiddleware)
 
     # Include health router (always enabled)
     app.include_router(health_router, tags=["health"])

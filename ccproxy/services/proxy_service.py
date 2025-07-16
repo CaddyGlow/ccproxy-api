@@ -114,7 +114,7 @@ class ProxyService:
         proxy_url = https_proxy or all_proxy or http_proxy
 
         if proxy_url:
-            logger.debug(f"Using proxy: {proxy_url}")
+            logger.debug("proxy_configured", proxy_url=proxy_url)
 
         return proxy_url
 
@@ -129,13 +129,13 @@ class ProxyService:
         ssl_verify = os.environ.get("SSL_VERIFY", "true").lower()
 
         if ca_bundle and Path(ca_bundle).exists():
-            logger.info(f"Using custom CA bundle: {ca_bundle}")
+            logger.info("ca_bundle_configured", ca_bundle=ca_bundle)
             return ca_bundle
         elif ssl_verify in ("false", "0", "no"):
-            logger.warning("SSL verification disabled - this is insecure!")
+            logger.warning("ssl_verification_disabled")
             return False
         else:
-            logger.debug("Using default SSL verification")
+            logger.debug("ssl_verification_default")
             return True
 
     async def handle_request(
@@ -185,7 +185,7 @@ class ProxyService:
             from contextlib import asynccontextmanager
 
             @asynccontextmanager
-            async def existing_context_manager():
+            async def existing_context_manager() -> AsyncGenerator[Any, None]:
                 try:
                     yield ctx
                 finally:
@@ -212,18 +212,18 @@ class ProxyService:
             try:
                 # 1. Authentication - get access token
                 async with timed_operation("oauth_token", ctx.request_id):
-                    logger.debug("Retrieving OAuth access token...")
+                    logger.debug("oauth_token_retrieval_start")
                     access_token = await self._get_access_token()
 
                 # 2. Request transformation
                 async with timed_operation("request_transform", ctx.request_id):
-                    logger.debug("Transforming request...")
+                    logger.debug("request_transform_start")
                     transformed_request = await self._transform_request(
                         method, path, headers, body, query_params, access_token
                     )
 
                 # 3. Forward request using proxy client
-                logger.debug(f"Forwarding request to: {transformed_request['url']}")
+                logger.debug("request_forwarding_start", url=transformed_request["url"])
 
                 # Check if this will be a streaming response
                 should_stream = streaming or self._should_stream_response(
@@ -231,12 +231,12 @@ class ProxyService:
                 )
 
                 if should_stream:
-                    logger.debug("Streaming response detected, using streaming handler")
+                    logger.debug("streaming_response_detected")
                     return await self._handle_streaming_request(
                         transformed_request, path, timeout, ctx
                     )
                 else:
-                    logger.debug("Non-streaming response, using regular handler")
+                    logger.debug("non_streaming_response_detected")
 
                 # Handle regular request
                 async with timed_operation("api_call", ctx.request_id) as api_op:
@@ -260,12 +260,12 @@ class ProxyService:
 
                 # 4. Response transformation
                 async with timed_operation("response_transform", ctx.request_id):
-                    logger.debug("Transforming response...")
+                    logger.debug("response_transform_start")
                     # For error responses, skip transformation to preserve upstream error format
                     transformed_response: ResponseData
                     if status_code >= 400:
                         logger.info(
-                            f"Preserving upstream error response: {status_code}",
+                            "upstream_error_preserved",
                             status_code=status_code,
                             has_body=bool(response_body),
                             content_length=len(response_body) if response_body else 0,
@@ -356,7 +356,13 @@ class ProxyService:
                 error_type = type(e).__name__
                 self.metrics.record_error(error_type, endpoint, model, "proxy_service")
 
-                logger.exception(f"Error in proxy request: {method} {path}")
+                logger.exception(
+                    "proxy_request_failed",
+                    method=method,
+                    path=path,
+                    error=str(e),
+                    exc_info=True,
+                )
                 # Re-raise the exception without transformation
                 # Let higher layers handle specific error types
                 raise
@@ -375,7 +381,7 @@ class ProxyService:
         try:
             access_token = await self.credentials_manager.get_access_token()
             if not access_token:
-                logger.error("No OAuth access token available")
+                logger.error("oauth_token_unavailable")
 
                 # Try to get more details about credential status
                 try:
@@ -387,14 +393,15 @@ class ProxyService:
                         and validation.credentials
                     ):
                         logger.debug(
-                            "Found credentials but access token is invalid/expired"
-                        )
-                        logger.debug(
-                            f"Expired at: {validation.credentials.claude_ai_oauth.expires_at}"
+                            "oauth_token_expired",
+                            expired_at=str(
+                                validation.credentials.claude_ai_oauth.expires_at
+                            ),
                         )
                 except Exception as e:
                     logger.debug(
-                        f"Could not check credential details: {e}",
+                        "credential_check_failed",
+                        error=str(e),
                         exc_info=logger.isEnabledFor(logging.DEBUG),
                     )
 
@@ -403,13 +410,13 @@ class ProxyService:
                     detail="No valid OAuth credentials found. Please run 'ccproxy auth login'.",
                 )
 
-            logger.debug("Successfully retrieved OAuth access token")
+            logger.debug("oauth_token_retrieved")
             return access_token
 
         except HTTPException:
             raise
         except Exception as e:
-            logger.error(f"Failed to get access token: {e}")
+            logger.error("oauth_token_retrieval_failed", error=str(e), exc_info=True)
             raise HTTPException(
                 status_code=401,
                 detail="Authentication failed",
@@ -452,7 +459,7 @@ class ProxyService:
 
             if "beta" not in query_params:
                 query_params["beta"] = "true"
-                logger.debug("Added beta=true query parameter to /v1/messages request")
+                logger.debug("beta_parameter_added")
 
         # Transform body first (as it might change size)
         proxy_body = None
@@ -544,7 +551,9 @@ class ProxyService:
             "text/event-stream" in accept_header or "stream" in accept_header
         )
         logger.debug(
-            f"Stream check - Accept header: {accept_header!r}, Should stream: {should_stream}"
+            "stream_check_completed",
+            accept_header=accept_header,
+            should_stream=should_stream,
         )
         return should_stream
 
@@ -597,9 +606,11 @@ class ProxyService:
         async def stream_generator() -> AsyncGenerator[bytes, None]:
             try:
                 logger.debug(
-                    f"Starting stream generator for request: {request_data['method']} {request_data['url']}"
+                    "stream_generator_start",
+                    method=request_data["method"],
+                    url=request_data["url"],
+                    headers=request_data["headers"],
                 )
-                logger.debug(f"Request headers: {request_data['headers']}")
 
                 # Use httpx directly for streaming since we need the stream context manager
                 # Get proxy and SSL settings from cached configuration
@@ -621,10 +632,13 @@ class ProxyService:
                     end_time = time.perf_counter()
                     proxy_api_call_ms = (end_time - start_time) * 1000
                     logger.info(
-                        f"Proxy streaming API call completed in {proxy_api_call_ms:.2f}ms"
+                        "proxy_streaming_completed", duration_ms=proxy_api_call_ms
                     )
-                    logger.debug(f"Stream response status: {response.status_code}")
-                    logger.debug(f"Stream response headers: {dict(response.headers)}")
+                    logger.debug(
+                        "stream_response_received",
+                        status_code=response.status_code,
+                        headers=dict(response.headers),
+                    )
 
                     # Store response status and headers
                     nonlocal response_status, response_headers
@@ -634,9 +648,12 @@ class ProxyService:
                     # Check for errors
                     if response.status_code >= 400:
                         error_content = await response.aread()
-                        logger.info(f"Streaming error {response.status_code}")
-                        logger.debug(
-                            f"Streaming error detail: {error_content.decode('utf-8', errors='replace')}"
+                        logger.info(
+                            "streaming_error_received",
+                            status_code=response.status_code,
+                            error_detail=error_content.decode(
+                                "utf-8", errors="replace"
+                            ),
                         )
                         yield error_content
                         return
@@ -646,14 +663,12 @@ class ProxyService:
                         original_path
                     )
                     logger.debug(
-                        f"Is OpenAI request: {is_openai} for path: {original_path}"
+                        "openai_format_check", is_openai=is_openai, path=original_path
                     )
 
                     if is_openai:
                         # Transform Anthropic SSE to OpenAI SSE format using adapter
-                        logger.info(
-                            f"Transforming Anthropic SSE to OpenAI format for {original_path}"
-                        )
+                        logger.info("sse_transform_start", path=original_path)
 
                         async for (
                             transformed_chunk
@@ -661,12 +676,13 @@ class ProxyService:
                             response, original_path
                         ):
                             logger.debug(
-                                f"Yielding transformed chunk: {len(transformed_chunk)} bytes"
+                                "transformed_chunk_yielded",
+                                chunk_size=len(transformed_chunk),
                             )
                             yield transformed_chunk
                     else:
                         # Stream as-is for Anthropic endpoints
-                        logger.debug("Streaming as-is for Anthropic endpoint")
+                        logger.debug("anthropic_streaming_start")
                         chunk_count = 0
                         content_block_delta_count = 0
 
@@ -706,8 +722,10 @@ class ProxyService:
                                     )
 
                                     # Log comprehensive access log for streaming completion
-                                    from ccproxy.observability.access_logger import log_request_access
-                                    
+                                    from ccproxy.observability.access_logger import (
+                                        log_request_access,
+                                    )
+
                                     log_request_access(
                                         context=ctx,
                                         status_code=response_status,
@@ -772,12 +790,11 @@ class ProxyService:
                                     content_block_delta_count += 1
                                     # Only log every 10th content_block_delta or when we start/end
                                     if content_block_delta_count == 1:
-                                        logger.debug(
-                                            "Streaming content_block_delta events (use CCPROXY_VERBOSE_STREAMING=true for all chunks)"
-                                        )
+                                        logger.debug("content_block_delta_start")
                                     elif content_block_delta_count % 10 == 0:
                                         logger.debug(
-                                            f"...{content_block_delta_count} content_block_delta events streamed..."
+                                            "content_block_delta_progress",
+                                            count=content_block_delta_count,
                                         )
                                 elif (
                                     verbose_streaming
@@ -785,7 +802,12 @@ class ProxyService:
                                 ):
                                     # Log non-content_block_delta events normally, or everything if verbose mode
                                     logger.debug(
-                                        f"Yielding chunk {chunk_count}: {len(chunk)} bytes - {chunk[:100]!r}..."
+                                        "chunk_yielded",
+                                        chunk_number=chunk_count,
+                                        chunk_size=len(chunk),
+                                        chunk_preview=chunk[:100].decode(
+                                            "utf-8", errors="replace"
+                                        ),
                                     )
 
                                 yield chunk
@@ -793,11 +815,12 @@ class ProxyService:
                         # Final summary for content_block_delta events
                         if content_block_delta_count > 0 and not verbose_streaming:
                             logger.debug(
-                                f"Completed streaming {content_block_delta_count} content_block_delta events"
+                                "content_block_delta_completed",
+                                total_count=content_block_delta_count,
                             )
 
             except Exception as e:
-                logger.exception("Error in streaming response")
+                logger.exception("streaming_error", error=str(e), exc_info=True)
                 error_message = f'data: {{"error": "Streaming error: {str(e)}"}}\\n\\n'
                 yield error_message.encode("utf-8")
 
@@ -842,7 +865,7 @@ class ProxyService:
                         try:
                             yield json.loads(data_str)
                         except json.JSONDecodeError:
-                            logger.warning(f"Failed to parse SSE chunk: {data_str}")
+                            logger.warning("sse_parse_failed", data=data_str)
                             continue
 
         # Transform using OpenAI adapter and format back to SSE

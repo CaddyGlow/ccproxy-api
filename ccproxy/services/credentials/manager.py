@@ -170,9 +170,11 @@ class CredentialsManager:
                     "subscription_type_set", subscription_type=determined_subscription
                 )
             else:
-                logger.debug("no_profile_data_during_login")
+                logger.debug(
+                    "profile_fetch_skipped", context="login", reason="no_profile_data"
+                )
         except Exception as e:
-            logger.warning("profile_fetch_failed_during_login", error=str(e))
+            logger.warning("profile_fetch_failed", context="login", error=str(e))
             # Continue with login even if profile fetch fails
 
         await self.save(credentials)
@@ -210,19 +212,26 @@ class CredentialsManager:
                 should_refresh = self._should_refresh_token(oauth_token)
 
                 if should_refresh:
-                    logger.info("Token expired or expiring soon, refreshing...")
+                    logger.info(
+                        "token_refresh_start", reason="expired_or_expiring_soon"
+                    )
                     try:
                         credentials = await self._refresh_token_with_profile(
                             credentials
                         )
                     except Exception as e:
-                        logger.error(f"Failed to refresh token: {e}")
+                        logger.error(
+                            "token_refresh_failed", error=str(e), exc_info=True
+                        )
                         if oauth_token.is_expired:
                             raise CredentialsExpiredError(
                                 "Token expired and refresh failed. Please login again."
                             ) from e
                         # If not expired yet but refresh failed, return existing token
-                        logger.warning("Using existing token despite failed refresh")
+                        logger.warning(
+                            "token_refresh_fallback",
+                            reason="refresh_failed_but_token_not_expired",
+                        )
 
         return credentials
 
@@ -258,7 +267,7 @@ class CredentialsManager:
         if not credentials:
             raise CredentialsNotFoundError("No credentials found. Please login first.")
 
-        logger.info("Refreshing token (forced)")
+        logger.info("token_refresh_start", reason="forced")
         return await self._refresh_token_with_profile(credentials)
 
     async def fetch_user_profile(self) -> UserProfile | None:
@@ -277,7 +286,8 @@ class CredentialsManager:
             return profile
         except Exception as e:
             logger.error(
-                f"Error fetching user profile: {e}",
+                "user_profile_fetch_failed",
+                error=str(e),
                 exc_info=True,
             )
             return None
@@ -321,7 +331,7 @@ class CredentialsManager:
             await self._delete_account_profile()
             return success
         except Exception as e:
-            logger.error(f"Error deleting credentials: {e}")
+            logger.error("credentials_delete_failed", error=str(e), exc_info=True)
             return False
 
     # ==================== Private Helper Methods ====================
@@ -360,11 +370,11 @@ class CredentialsManager:
             with account_path.open("w", encoding="utf-8") as f:
                 json.dump(profile_data, f, indent=2, ensure_ascii=False)
 
-            logger.debug(f"Saved account profile to: {account_path}")
+            logger.debug("account_profile_saved", path=str(account_path))
             return True
 
         except Exception as e:
-            logger.error(f"Error saving account profile: {e}")
+            logger.error("account_profile_save_failed", error=str(e), exc_info=True)
             return False
 
     async def _load_account_profile(self) -> UserProfile | None:
@@ -377,7 +387,7 @@ class CredentialsManager:
             account_path = await self._get_account_profile_path()
 
             if not account_path.exists():
-                logger.debug("No account profile file found")
+                logger.debug("account_profile_not_found", path=str(account_path))
                 return None
 
             with account_path.open("r", encoding="utf-8") as f:
@@ -386,7 +396,7 @@ class CredentialsManager:
             return UserProfile.model_validate(profile_data)
 
         except Exception as e:
-            logger.debug(f"Error loading account profile: {e}")
+            logger.debug("account_profile_load_failed", error=str(e))
             return None
 
     async def _delete_account_profile(self) -> bool:
@@ -399,10 +409,10 @@ class CredentialsManager:
             account_path = await self._get_account_profile_path()
             if account_path.exists():
                 account_path.unlink()
-                logger.debug(f"Deleted account profile: {account_path}")
+                logger.debug("account_profile_deleted", path=str(account_path))
             return True
         except Exception as e:
-            logger.debug(f"Error deleting account profile: {e}")
+            logger.debug("account_profile_delete_failed", error=str(e))
             return False
 
     def _determine_subscription_type(self, profile: UserProfile) -> str:
@@ -531,17 +541,22 @@ class CredentialsManager:
                 new_token.subscription_type = determined_subscription
                 credentials.claude_ai_oauth = new_token
 
-                logger.debug(f"Updated subscription type to: {determined_subscription}")
+                logger.debug(
+                    "subscription_type_updated",
+                    subscription_type=determined_subscription,
+                )
             else:
                 logger.debug(
-                    "No profile data available, keeping existing subscription type"
+                    "profile_fetch_skipped", reason="no_profile_data_available"
                 )
         except Exception as e:
-            logger.warning(f"Failed to fetch profile during token refresh: {e}")
+            logger.warning(
+                "profile_fetch_failed", context="token_refresh", error=str(e)
+            )
             # Continue with token refresh even if profile fetch fails
 
         # Save updated credentials
         await self.save(credentials)
 
-        logger.info("Successfully refreshed token")
+        logger.info("token_refresh_completed")
         return credentials

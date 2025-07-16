@@ -84,7 +84,11 @@ class BaseTransformer(ABC):
             # Don't let metrics collection fail the transformation
             logger = get_logger(__name__)
             # logger = logging.getLogger(__name__)
-            logger.debug(f"Failed to collect transformation metrics: {e}")
+            logger.debug(
+                "transformation_metrics_failed",
+                error=str(e),
+                operation="collect_transformation_metrics",
+            )
 
     def _calculate_data_size(self, data: Any) -> int:
         """Calculate the size of data in bytes.

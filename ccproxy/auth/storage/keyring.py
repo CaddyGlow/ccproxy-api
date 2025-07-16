@@ -51,11 +51,19 @@ class KeyringTokenStorage(TokenStorage):
             ) from e
 
         try:
-            logger.debug(f"Loading credentials from keyring: {self.service_name}")
+            logger.debug(
+                "credentials_load_start",
+                source="keyring",
+                service_name=self.service_name,
+            )
             password = keyring.get_password(self.service_name, self.username)
 
             if password is None:
-                logger.debug("No credentials found in keyring")
+                logger.debug(
+                    "credentials_not_found",
+                    source="keyring",
+                    service_name=self.service_name,
+                )
                 return None
 
             # Parse the stored JSON
@@ -77,11 +85,14 @@ class KeyringTokenStorage(TokenStorage):
     def _log_credential_details(self, credentials: ClaudeCredentials) -> None:
         """Log credential details safely."""
         oauth_token = credentials.claude_ai_oauth
-        logger.debug("Successfully loaded credentials from keyring:")
-        logger.debug(f"  - Subscription type: {oauth_token.subscription_type}")
-        logger.debug(f"  - Token expires at: {oauth_token.expires_at_datetime}")
-        logger.debug(f"  - Token expired: {oauth_token.is_expired}")
-        logger.debug(f"  - Scopes: {oauth_token.scopes}")
+        logger.debug(
+            "credentials_load_completed",
+            source="keyring",
+            subscription_type=oauth_token.subscription_type,
+            expires_at=str(oauth_token.expires_at_datetime),
+            is_expired=oauth_token.is_expired,
+            scopes=oauth_token.scopes,
+        )
 
     async def save(self, credentials: ClaudeCredentials) -> bool:
         """Save credentials to the OS keyring.
@@ -112,7 +123,9 @@ class KeyringTokenStorage(TokenStorage):
             keyring.set_password(self.service_name, self.username, json_data)
 
             logger.debug(
-                f"Successfully saved credentials to keyring: {self.service_name}"
+                "credentials_save_completed",
+                source="keyring",
+                service_name=self.service_name,
             )
             return True
 
@@ -158,7 +171,11 @@ class KeyringTokenStorage(TokenStorage):
         try:
             if await self.exists():
                 keyring.delete_password(self.service_name, self.username)
-                logger.debug(f"Deleted credentials from keyring: {self.service_name}")
+                logger.debug(
+                    "credentials_delete_completed",
+                    source="keyring",
+                    service_name=self.service_name,
+                )
                 return True
             return False
         except Exception as e:

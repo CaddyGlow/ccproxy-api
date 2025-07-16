@@ -49,25 +49,24 @@ class ProxyResponse(Response):
         # Ensure we include all original headers, including 'server'
         headers_list = []
 
-        # Add all headers from the response
+        # Add all headers from the response, but skip content-length
+        # as we'll recalculate it based on actual body
         for name, value in self._preserve_headers.items():
-            headers_list.append((name.lower().encode(), value.encode()))
+            lower_name = name.lower()
+            # Skip content-length and transfer-encoding as we'll set them correctly
+            if lower_name not in ["content-length", "transfer-encoding"]:
+                headers_list.append((lower_name.encode(), value.encode()))
 
-        # Ensure we have proper content-type and content-length
-        has_content_type = False
-        has_content_length = False
+        # Always set correct content-length based on actual body
+        if self.body:
+            headers_list.append((b"content-length", str(len(self.body)).encode()))
+        else:
+            headers_list.append((b"content-length", b"0"))
 
-        for header in headers_list:
-            if header[0] == b"content-type":
-                has_content_type = True
-            elif header[0] == b"content-length":
-                has_content_length = True
-
-        # Add missing headers if needed
+        # Ensure we have content-type
+        has_content_type = any(h[0] == b"content-type" for h in headers_list)
         if not has_content_type and self.media_type:
             headers_list.append((b"content-type", self.media_type.encode()))
-        if not has_content_length and self.body:
-            headers_list.append((b"content-length", str(len(self.body)).encode()))
 
         await send(
             {

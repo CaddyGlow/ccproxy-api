@@ -119,8 +119,12 @@ class MessageConverter:
         logger = get_logger(__name__)
 
         logger.debug(
-            f"Extracted tokens from Claude SDK: input={input_tokens}, output={output_tokens}, "
-            f"cache_read={cache_read_tokens}, cache_write={cache_write_tokens}"
+            "token_usage_extracted",
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            cache_read_tokens=cache_read_tokens,
+            cache_write_tokens=cache_write_tokens,
+            source="claude_sdk",
         )
 
         # Calculate total tokens
