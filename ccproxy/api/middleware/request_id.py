@@ -52,6 +52,10 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
             request.state.request_id = request_id
             request.state.context = ctx
 
+            # Add DuckDB storage to context if available
+            if hasattr(request.state, "duckdb_storage"):
+                ctx.storage = request.state.duckdb_storage
+
             # Process the request
             response = await call_next(request)
 

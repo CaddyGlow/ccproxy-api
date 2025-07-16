@@ -508,4 +508,4 @@ def setup_error_handlers(app: FastAPI) -> None:
             },
         )
 
-    logger.info("error_handlers_setup_completed")
+    logger.debug("error_handlers_setup_completed")
