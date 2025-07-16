@@ -109,6 +109,9 @@ async def log_request_access(
     # Store in DuckDB if available
     await _store_access_log(log_data)
 
+    # Emit SSE event for real-time dashboard updates
+    await _emit_access_event("request_complete", log_data)
+
 
 async def _store_access_log(log_data: dict[str, Any]) -> None:
     """Store access log in DuckDB storage if available."""
@@ -174,6 +177,46 @@ async def _write_to_storage(storage: Any, data: dict[str, Any]) -> None:
         )
 
 
+async def _emit_access_event(event_type: str, data: dict[str, Any]) -> None:
+    """Emit SSE event for real-time dashboard updates."""
+    try:
+        from ccproxy.observability.sse_events import emit_sse_event
+
+        # Create event data for SSE (exclude internal fields)
+        sse_data = {
+            "request_id": data.get("request_id"),
+            "method": data.get("method"),
+            "path": data.get("path"),
+            "query": data.get("query"),
+            "status_code": data.get("status_code"),
+            "client_ip": data.get("client_ip"),
+            "user_agent": data.get("user_agent"),
+            "service_type": data.get("service_type"),
+            "model": data.get("model"),
+            "streaming": data.get("streaming"),
+            "duration_ms": data.get("duration_ms"),
+            "duration_seconds": data.get("duration_seconds"),
+            "tokens_input": data.get("tokens_input"),
+            "tokens_output": data.get("tokens_output"),
+            "cost_usd": data.get("cost_usd"),
+            "endpoint": data.get("endpoint"),
+        }
+
+        # Remove None values
+        sse_data = {k: v for k, v in sse_data.items() if v is not None}
+
+        await emit_sse_event(event_type, sse_data)
+
+    except Exception as e:
+        # Log error but don't fail the request
+        logger.debug(
+            "sse_emit_failed",
+            event_type=event_type,
+            error=str(e),
+            request_id=data.get("request_id"),
+        )
+
+
 def log_request_start(
     request_id: str,
     method: str,
@@ -214,3 +257,35 @@ def log_request_start(
     log_data = {k: v for k, v in log_data.items() if v is not None}
 
     logger.info("access_log_start", **log_data)
+
+    # Emit SSE event for real-time dashboard updates
+    # Note: This is a synchronous function, so we schedule the async emission
+    try:
+        import asyncio
+
+        from ccproxy.observability.sse_events import emit_sse_event
+
+        # Create event data for SSE
+        sse_data = {
+            "request_id": request_id,
+            "method": method,
+            "path": path,
+            "client_ip": client_ip,
+            "user_agent": user_agent,
+            "query": query,
+        }
+
+        # Remove None values
+        sse_data = {k: v for k, v in sse_data.items() if v is not None}
+
+        # Schedule async event emission
+        asyncio.create_task(emit_sse_event("request_start", sse_data))
+
+    except Exception as e:
+        # Log error but don't fail the request
+        logger.debug(
+            "sse_emit_failed",
+            event_type="request_start",
+            error=str(e),
+            request_id=request_id,
+        )

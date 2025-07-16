@@ -19,6 +19,7 @@ from ccproxy.api.routes.claude import router as claude_router
 from ccproxy.api.routes.health import router as health_router
 from ccproxy.api.routes.metrics import router as metrics_router
 from ccproxy.api.routes.proxy import router as proxy_router
+from ccproxy.auth.oauth.routes import router as oauth_router
 from ccproxy.config.settings import Settings, get_settings
 from ccproxy.core.logging import setup_logging
 from ccproxy.observability.config import configure_observability
@@ -115,9 +116,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     # Add server header middleware (for non-proxy routes)
     # You can customize the server name here
-    app.add_middleware(ServerHeaderMiddleware, server_name="Claude Code Proxy/1.0")
-
-    # DuckDB logging is now handled in the request context
+    app.add_middleware(ServerHeaderMiddleware, server_name="uvicorn")
 
     # Include health router (always enabled)
     app.include_router(health_router, tags=["health"])
@@ -125,9 +124,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # Include metrics router only if enabled
     if settings.observability.metrics_enabled:
         app.include_router(metrics_router, tags=["metrics"])
-
-    # Include OAuth router for authentication flows
-    from ccproxy.auth.oauth.routes import router as oauth_router
 
     app.include_router(oauth_router, prefix="/oauth", tags=["oauth"])
 
