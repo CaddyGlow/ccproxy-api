@@ -46,6 +46,7 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
             client_ip=request.client.host if request.client else "unknown",
             user_agent=request.headers.get("user-agent", "unknown"),
             query=str(request.url.query) if request.url.query else None,
+            service_type="access_log",
         ) as ctx:
             # Store context in request state for access by services
             request.state.request_id = request_id
