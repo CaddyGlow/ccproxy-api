@@ -47,7 +47,7 @@ class ObservabilityScheduler:
         self.settings = settings
         self._running = False
         self._tasks: list[asyncio.Task[Any]] = []
-        self._pushgateway_interval = 30.0  # seconds
+        self._pushgateway_interval = settings.pushgateway_batch_interval
         self._metrics_instance: Any | None = None
 
     async def start(self) -> None:
@@ -62,9 +62,21 @@ class ObservabilityScheduler:
         await self._init_metrics()
 
         # Start periodic tasks
+        logger.debug(
+            "pushgateway_task_check",
+            pushgateway_enabled=self.settings.pushgateway_enabled,
+            pushgateway_url=self.settings.pushgateway_url,
+        )
+
         if self.settings.pushgateway_enabled and self.settings.pushgateway_url:
             task = asyncio.create_task(self._pushgateway_task())
             self._tasks.append(task)
+            logger.debug("pushgateway_task_created")
+        else:
+            logger.debug(
+                "pushgateway_task_skipped",
+                reason="pushgateway not enabled or URL not configured",
+            )
 
     async def stop(self) -> None:
         """Stop the scheduler and cancel all tasks."""

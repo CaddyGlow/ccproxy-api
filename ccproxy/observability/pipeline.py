@@ -171,9 +171,9 @@ class LogToStoragePipeline:
         for backend_name in self.config.storage_backends:
             try:
                 if backend_name == "duckdb" and self.config.duckdb_enabled:
-                    from .storage.duckdb import DuckDBStorage
+                    from .storage.duckdb_simple import SimpleDuckDBStorage
 
-                    storage = DuckDBStorage(database_path=self.config.duckdb_path)
+                    storage = SimpleDuckDBStorage(database_path=self.config.duckdb_path)
                     await storage.initialize()
                     self._storage_backends.append(storage)
                     logger.info("pipeline_storage_init", backend=backend_name)

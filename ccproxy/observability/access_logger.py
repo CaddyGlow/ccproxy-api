@@ -7,6 +7,7 @@ access logs with complete request metadata including token usage and costs.
 
 from __future__ import annotations
 
+import asyncio
 import time
 from typing import TYPE_CHECKING, Any, Optional
 
@@ -20,7 +21,7 @@ if TYPE_CHECKING:
 logger = structlog.get_logger(__name__)
 
 
-def log_request_access(
+async def log_request_access(
     context: RequestContext,
     status_code: int | None = None,
     client_ip: str | None = None,
@@ -35,6 +36,7 @@ def log_request_access(
 
     This function generates a unified access log entry with complete request
     metadata including timing, tokens, costs, and any additional context.
+    Also stores the access log in DuckDB if available.
 
     Args:
         context: Request context with timing and metadata
@@ -74,6 +76,7 @@ def log_request_access(
         "cache_read_tokens",
         "cache_write_tokens",
         "cost_usd",
+        "cost_sdk_usd",
     ]
 
     for field in token_fields:
@@ -100,8 +103,78 @@ def log_request_access(
     # Remove None values to keep log clean
     log_data = {k: v for k, v in log_data.items() if v is not None}
 
-    # Log as access_log event
+    # Log as access_log event (structured logging)
     context.logger.info("access_log", **log_data)
+
+    # Store in DuckDB if available
+    await _store_access_log(log_data)
+
+    # Emit SSE event for real-time dashboard updates
+    await _emit_sse_event(log_data)
+
+
+async def _store_access_log(log_data: dict[str, Any]) -> None:
+    """Store access log in DuckDB storage if available."""
+    try:
+        from ccproxy.config.settings import get_settings
+        from ccproxy.observability.storage.duckdb_simple import SimpleDuckDBStorage
+
+        settings = get_settings()
+        if not settings.observability.duckdb_enabled:
+            return
+
+        # Initialize storage if needed
+        storage = SimpleDuckDBStorage(database_path=settings.observability.duckdb_path)
+
+        if not storage.is_enabled():
+            await storage.initialize()
+
+        # Prepare data for DuckDB storage
+        storage_data = {
+            "timestamp": time.time(),
+            "request_id": log_data.get("request_id"),
+            "method": log_data.get("method", ""),
+            "endpoint": log_data.get("endpoint", log_data.get("path", "")),
+            "path": log_data.get("path", ""),
+            "query": log_data.get("query", ""),
+            "client_ip": log_data.get("client_ip", ""),
+            "user_agent": log_data.get("user_agent", ""),
+            "service_type": log_data.get("service_type", ""),
+            "model": log_data.get("model", ""),
+            "streaming": log_data.get("streaming", False),
+            "status_code": log_data.get("status_code", 200),
+            "duration_ms": log_data.get("duration_ms", 0.0),
+            "duration_seconds": log_data.get("duration_seconds", 0.0),
+            "tokens_input": log_data.get("tokens_input", 0),
+            "tokens_output": log_data.get("tokens_output", 0),
+            "cache_read_tokens": log_data.get("cache_read_tokens", 0),
+            "cache_write_tokens": log_data.get("cache_write_tokens", 0),
+            "cost_usd": log_data.get("cost_usd", 0.0),
+            "cost_sdk_usd": log_data.get("cost_sdk_usd", 0.0),
+        }
+
+        # Store asynchronously (fire and forget)
+        asyncio.create_task(_write_to_storage(storage, storage_data))
+
+    except Exception as e:
+        # Log error but don't fail the request
+        logger.error(
+            "access_log_duckdb_error",
+            error=str(e),
+            request_id=log_data.get("request_id"),
+        )
+
+
+async def _write_to_storage(storage: Any, data: dict[str, Any]) -> None:
+    """Write data to storage asynchronously."""
+    try:
+        await storage.store_request(data)
+    except Exception as e:
+        logger.error(
+            "duckdb_store_error",
+            error=str(e),
+            request_id=data.get("request_id"),
+        )
 
 
 def log_request_start(
