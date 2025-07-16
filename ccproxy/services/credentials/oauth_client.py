@@ -445,7 +445,7 @@ class OAuthClient:
 
                 credentials = ClaudeCredentials(claudeAiOauth=OAuthToken(**oauth_data))
 
-                logger.info("oauth_login_successful", client_id=self.config.client_id)
+                logger.info("oauth_login_completed", client_id=self.config.client_id)
                 return credentials
 
             else:

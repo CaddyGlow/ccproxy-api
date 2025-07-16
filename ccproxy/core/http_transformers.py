@@ -295,7 +295,7 @@ class HTTPRequestTransformer(RequestTransformer):
 
         except Exception as e:
             logger.warning(
-                "Failed to transform OpenAI request",
+                "openai_transformation_failed",
                 error=str(e),
                 operation="transform_openai_to_anthropic",
             )

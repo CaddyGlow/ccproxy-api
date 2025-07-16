@@ -143,7 +143,7 @@ async def create_anthropic_message(
         status_code, response_headers, response_body = response
         if status_code >= 400:
             # Forward error response directly with headers
-            return Response(
+            return ProxyResponse(
                 content=response_body,
                 status_code=status_code,
                 headers=response_headers,

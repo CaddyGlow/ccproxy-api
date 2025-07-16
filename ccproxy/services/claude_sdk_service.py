@@ -89,6 +89,7 @@ class ClaudeSDKService:
                     user_id=user_id,
                     error=str(e),
                     error_type=type(e).__name__,
+                    exc_info=True,
                 )
                 raise
 
@@ -212,7 +213,7 @@ class ClaudeSDKService:
                 status_code=500,
             )
 
-        logger.info("claude_sdk_completion", result_message)
+        logger.info("claude_sdk_completion_received")
         # Convert to Anthropic format
         response = self.message_converter.convert_to_anthropic_response(
             assistant_message, result_message, model
@@ -234,7 +235,7 @@ class ClaudeSDKService:
 
         # Log metrics for observability
         logger.info(
-            "claude_sdk_completion",
+            "claude_sdk_completion_completed",
             model=model,
             tokens_input=tokens_input,
             tokens_output=tokens_output,
@@ -301,7 +302,7 @@ class ClaudeSDKService:
             ):
                 message_count += 1
                 logger.debug(
-                    "claude_sdk_streaming_message",
+                    "streaming_message_received",
                     message_count=message_count,
                     message_type=type(message).__name__,
                     request_id=request_id,
@@ -346,7 +347,7 @@ class ClaudeSDKService:
 
                     # Log streaming completion metrics
                     logger.info(
-                        "claude_sdk_streaming_completion",
+                        "streaming_completion_completed",
                         model=model,
                         tokens_input=tokens_input,
                         tokens_output=tokens_output,
@@ -411,14 +412,15 @@ class ClaudeSDKService:
                     break
 
         except asyncio.CancelledError:
-            logger.info("stream_completion_cancelled", request_id=request_id)
+            logger.info("streaming_completion_cancelled", request_id=request_id)
             raise
         except Exception as e:
             logger.error(
-                "stream_completion_error",
+                "streaming_completion_failed",
                 error=str(e),
                 error_type=type(e).__name__,
                 request_id=request_id,
+                exc_info=True,
             )
             yield self.message_converter.create_streaming_end_chunk("error")
             raise
@@ -438,7 +440,7 @@ class ClaudeSDKService:
 
         # Implement authentication validation logic
         # This is a placeholder for future auth integration
-        logger.debug("validating_user_auth", user_id=user_id)
+        logger.debug("user_auth_validation_start", user_id=user_id)
 
     def _calculate_cost(
         self,
@@ -504,9 +506,10 @@ class ClaudeSDKService:
             return await self.sdk_client.validate_health()
         except Exception as e:
             logger.error(
-                "claude_sdk_service_health_check_failed",
+                "health_check_failed",
                 error=str(e),
                 error_type=type(e).__name__,
+                exc_info=True,
             )
             return False
 
