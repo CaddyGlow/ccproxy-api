@@ -137,7 +137,6 @@ async def get_auth_manager_with_injected_settings(
     credentials: Annotated[
         HTTPAuthorizationCredentials | None, Depends(bearer_scheme)
     ] = None,
-    settings: Annotated["Settings | None", Depends()] = None,
 ) -> AuthManager:
     """Get authentication manager with dependency-injected settings.
 
@@ -157,9 +156,7 @@ async def get_auth_manager_with_injected_settings(
     # Import here to avoid circular imports
     from ccproxy.config.settings import get_settings
 
-    if settings is None:
-        settings = get_settings()
-
+    settings = get_settings()
     return await _get_auth_manager_with_settings(credentials, settings)
 
 
@@ -211,6 +208,19 @@ async def get_access_token(
             detail=str(e),
             headers={"WWW-Authenticate": "Bearer"},
         ) from e
+
+
+async def get_auth_manager_dependency(
+    credentials: Annotated[
+        HTTPAuthorizationCredentials | None, Depends(bearer_scheme)
+    ] = None,
+) -> AuthManager:
+    """Dependency wrapper for getting auth manager with settings injection."""
+    # Import here to avoid circular imports
+    from ccproxy.config.settings import get_settings
+
+    settings = get_settings()
+    return await _get_auth_manager_with_settings(credentials, settings)
 
 
 # Type aliases for common dependencies
