@@ -15,6 +15,7 @@ from fastapi import HTTPException, Request
 from fastapi.responses import StreamingResponse
 from typing_extensions import TypedDict
 
+from ccproxy.config.settings import Settings
 from ccproxy.core.http import BaseProxyClient
 from ccproxy.core.http_transformers import (
     HTTPRequestTransformer,
@@ -69,6 +70,7 @@ class ProxyService:
         self,
         proxy_client: BaseProxyClient,
         credentials_manager: CredentialsManager,
+        settings: Settings,
         proxy_mode: str = "full",
         target_base_url: str = "https://api.anthropic.com",
         metrics: PrometheusMetrics | None = None,
@@ -78,12 +80,14 @@ class ProxyService:
         Args:
             proxy_client: HTTP client for pure forwarding
             credentials_manager: Authentication manager
+            settings: Application settings
             proxy_mode: Transformation mode - "minimal" or "full"
             target_base_url: Base URL for the target API
             metrics: Prometheus metrics collector (optional)
         """
         self.proxy_client = proxy_client
         self.credentials_manager = credentials_manager
+        self.settings = settings
         self.proxy_mode = proxy_mode
         self.target_base_url = target_base_url.rstrip("/")
         self.metrics = metrics or get_metrics()
@@ -371,7 +375,9 @@ class ProxyService:
                 self.metrics.dec_active_requests()
 
     async def _get_access_token(self) -> str:
-        """Get OAuth access token from credentials manager.
+        """Get access token for upstream authentication.
+
+        Tries configured auth_token first, then falls back to OAuth credentials.
 
         Returns:
             Valid access token
@@ -379,6 +385,12 @@ class ProxyService:
         Raises:
             HTTPException: If no valid token is available
         """
+        # First try to get configured auth_token from settings
+        if self.settings.security.auth_token:
+            logger.debug("using_configured_auth_token")
+            return self.settings.security.auth_token
+
+        # Fall back to OAuth credentials
         try:
             access_token = await self.credentials_manager.get_access_token()
             if not access_token:

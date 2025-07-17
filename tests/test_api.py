@@ -363,8 +363,8 @@ class TestAuthenticationEndpoints:
 
         response = client_with_auth.post("/api/v1/chat/completions", json=request_data)
 
-        # Should return 500 because proxy service is not set up in test
-        assert response.status_code == 500
+        # Should return 401 because request is unauthenticated
+        assert response.status_code == 401
 
     def test_openai_chat_completions_invalid_token(
         self, client_with_auth: TestClient
@@ -382,8 +382,8 @@ class TestAuthenticationEndpoints:
             headers={"Authorization": "Bearer invalid-token"},
         )
 
-        # Should return 500 because proxy service is not set up in test
-        assert response.status_code == 500
+        # Should return 401 because token is invalid
+        assert response.status_code == 401
 
     def test_anthropic_messages_authenticated(
         self,
@@ -416,8 +416,8 @@ class TestAuthenticationEndpoints:
 
         response = client_with_auth.post("/api/v1/messages", json=request_data)
 
-        # Should return 500 because proxy service is not set up in test
-        assert response.status_code == 500
+        # Should return 401 because request is unauthenticated
+        assert response.status_code == 401
 
     def test_models_list_authenticated(
         self, client_with_auth: TestClient, auth_headers: dict[str, str]

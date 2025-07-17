@@ -47,6 +47,7 @@ class SSEEventManager:
 
         Args:
             connection_id: Unique connection identifier (generated if not provided)
+            request_id: Request identifier for tracking
 
         Yields:
             JSON-formatted event strings for SSE
@@ -66,16 +67,16 @@ class SSEEventManager:
             "sse_connection_added", connection_id=connection_id, request_id=request_id
         )
 
-        # Send initial connection event
-        connection_event = {
-            "type": "connection",
-            "message": "Connected to metrics stream",
-            "connection_id": connection_id,
-            "timestamp": time.time(),
-        }
-        yield self._format_sse_event(connection_event)
-
         try:
+            # Send initial connection event
+            connection_event = {
+                "type": "connection",
+                "message": "Connected to metrics stream",
+                "connection_id": connection_id,
+                "timestamp": time.time(),
+            }
+            yield self._format_sse_event(connection_event)
+
             while True:
                 # Wait for next event
                 event = await queue.get()
@@ -90,18 +91,25 @@ class SSEEventManager:
         except asyncio.CancelledError:
             logger.debug("sse_connection_cancelled", connection_id=connection_id)
             raise
+        except GeneratorExit:
+            logger.debug("sse_connection_generator_exit", connection_id=connection_id)
+            raise
         finally:
             # Clean up connection
             await self._cleanup_connection(connection_id)
 
-            # Send disconnect event
-            disconnect_event = {
-                "type": "disconnect",
-                "message": "Stream disconnected",
-                "connection_id": connection_id,
-                "timestamp": time.time(),
-            }
-            yield self._format_sse_event(disconnect_event)
+            # Send disconnect event only if not in shutdown
+            try:
+                disconnect_event = {
+                    "type": "disconnect",
+                    "message": "Stream disconnected",
+                    "connection_id": connection_id,
+                    "timestamp": time.time(),
+                }
+                yield self._format_sse_event(disconnect_event)
+            except (GeneratorExit, asyncio.CancelledError):
+                # Ignore errors during cleanup
+                pass
 
     async def emit_event(self, event_type: str, data: dict[str, Any]) -> None:
         """
@@ -132,16 +140,22 @@ class SSEEventManager:
                 # Try to put event in queue without blocking
                 queue.put_nowait(event)
             except asyncio.QueueFull:
-                # Queue is full, drop oldest event and add overflow indicator
+                # Queue is full, handle overflow
                 try:
+                    # Try to drop oldest event and add overflow indicator
                     queue.get_nowait()  # Remove oldest
                     overflow_event = {
                         "type": "overflow",
                         "message": "Event queue full, some events dropped",
                         "timestamp": time.time(),
                     }
-                    queue.put_nowait(overflow_event)
-                    queue.put_nowait(event)
+                    try:
+                        queue.put_nowait(overflow_event)
+                        queue.put_nowait(event)
+                    except asyncio.QueueFull:
+                        # Still full after dropping, connection is problematic
+                        failed_connections.append(connection_id)
+                        continue
 
                     logger.warning(
                         "sse_queue_overflow",
@@ -155,6 +169,13 @@ class SSEEventManager:
                     except asyncio.QueueFull:
                         # Still full, connection is problematic
                         failed_connections.append(connection_id)
+                except Exception as e:
+                    logger.error(
+                        "sse_overflow_error",
+                        connection_id=connection_id,
+                        error=str(e),
+                    )
+                    failed_connections.append(connection_id)
             except Exception as e:
                 logger.error(
                     "sse_broadcast_error",
