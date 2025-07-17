@@ -188,6 +188,7 @@ def _run_docker_server(
     image, volumes, environment, command, user_context, additional_args = (
         _create_docker_adapter_from_settings(
             settings,
+            command=["ccproxy", "serve"],
             docker_image=docker_image,
             docker_env=[f"{k}={v}" for k, v in docker_env_dict.items()],
             docker_volume=docker_volume,

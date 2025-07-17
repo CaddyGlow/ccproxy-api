@@ -312,8 +312,7 @@ class TestAPIEndpointsWithAuth:
         self, client_with_auth: TestClient
     ) -> None:
         """Test unauthenticated request when auth is enabled."""
-        # The /api/v1/messages endpoint requires the proxy service to be set up
-        # Since we're not mocking the proxy service properly, it will return 500
+        # Test unauthenticated request with auth enabled
         response = client_with_auth.post(
             "/api/v1/messages",
             json={
@@ -321,8 +320,8 @@ class TestAPIEndpointsWithAuth:
                 "messages": [{"role": "user", "content": "Hello"}],
             },
         )
-        # Should return 500 because proxy service is not set up in test
-        assert response.status_code == 500
+        # Should return 401 because request is unauthenticated
+        assert response.status_code == 401
 
     def test_authenticated_request_with_valid_token(
         self,
