@@ -170,6 +170,7 @@ pre-commit:
 ci:
 	uv run pre-commit run --all-files
 	$(MAKE) test
+	$(MAKE) -C dashboard test
 
 # Build targets
 build: build-dashboard

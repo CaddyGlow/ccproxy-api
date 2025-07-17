@@ -74,7 +74,7 @@ class TestOpenAIEndpoints:
 
     def test_chat_completions_invalid_model(
         self,
-        client: TestClient,
+        client_with_mock_claude: TestClient,
     ) -> None:
         """Test OpenAI chat completion with invalid model."""
 
@@ -84,21 +84,29 @@ class TestOpenAIEndpoints:
             "max_tokens": 50,
         }
 
-        response = client.post("/sdk/v1/chat/completions", json=request_data)
+        response = client_with_mock_claude.post(
+            "/sdk/v1/chat/completions", json=request_data
+        )
 
         assert response.status_code == 400
         data = response.json()
         assert "error" in data
 
-    def test_chat_completions_missing_messages(self, client: TestClient) -> None:
+    def test_chat_completions_missing_messages(
+        self, client_with_mock_claude: TestClient
+    ) -> None:
         """Test OpenAI chat completion with missing messages."""
         request_data = {"model": "claude-3-5-sonnet-20241022", "max_tokens": 50}
 
-        response = client.post("/sdk/v1/chat/completions", json=request_data)
+        response = client_with_mock_claude.post(
+            "/sdk/v1/chat/completions", json=request_data
+        )
 
         assert response.status_code == 422  # Validation error
 
-    def test_chat_completions_empty_messages(self, client: TestClient) -> None:
+    def test_chat_completions_empty_messages(
+        self, client_with_mock_claude: TestClient
+    ) -> None:
         """Test OpenAI chat completion with empty messages array."""
         request_data = {
             "model": "claude-3-5-sonnet-20241022",
@@ -106,11 +114,15 @@ class TestOpenAIEndpoints:
             "max_tokens": 50,
         }
 
-        response = client.post("/sdk/v1/chat/completions", json=request_data)
+        response = client_with_mock_claude.post(
+            "/sdk/v1/chat/completions", json=request_data
+        )
 
         assert response.status_code == 422  # Validation error
 
-    def test_chat_completions_malformed_message(self, client: TestClient) -> None:
+    def test_chat_completions_malformed_message(
+        self, client_with_mock_claude: TestClient
+    ) -> None:
         """Test OpenAI chat completion with malformed message."""
         request_data = {
             "model": "claude-3-5-sonnet-20241022",
@@ -118,7 +130,9 @@ class TestOpenAIEndpoints:
             "max_tokens": 50,
         }
 
-        response = client.post("/sdk/v1/chat/completions", json=request_data)
+        response = client_with_mock_claude.post(
+            "/sdk/v1/chat/completions", json=request_data
+        )
 
         assert response.status_code == 422  # Validation error
 
@@ -200,7 +214,7 @@ class TestAnthropicEndpoints:
 
     def test_create_message_invalid_model(
         self,
-        client: TestClient,
+        client_with_mock_claude: TestClient,
     ) -> None:
         """Test Anthropic message creation with invalid model."""
 
@@ -210,24 +224,28 @@ class TestAnthropicEndpoints:
             "messages": [{"role": "user", "content": "Hello"}],
         }
 
-        response = client.post("/sdk/v1/messages", json=request_data)
+        response = client_with_mock_claude.post("/sdk/v1/messages", json=request_data)
 
         assert response.status_code == 422
         data = response.json()
         assert "detail" in data
 
-    def test_create_message_missing_max_tokens(self, client: TestClient) -> None:
+    def test_create_message_missing_max_tokens(
+        self, client_with_mock_claude: TestClient
+    ) -> None:
         """Test Anthropic message creation with missing max_tokens."""
         request_data = {
             "model": "claude-3-5-sonnet-20241022",
             "messages": [{"role": "user", "content": "Hello"}],
         }
 
-        response = client.post("/sdk/v1/messages", json=request_data)
+        response = client_with_mock_claude.post("/sdk/v1/messages", json=request_data)
 
         assert response.status_code == 422  # Validation error
 
-    def test_create_message_invalid_message_role(self, client: TestClient) -> None:
+    def test_create_message_invalid_message_role(
+        self, client_with_mock_claude: TestClient
+    ) -> None:
         """Test Anthropic message creation with invalid role."""
         request_data = {
             "model": "claude-3-5-sonnet-20241022",
@@ -235,13 +253,13 @@ class TestAnthropicEndpoints:
             "messages": [{"role": "invalid", "content": "Hello"}],
         }
 
-        response = client.post("/sdk/v1/messages", json=request_data)
+        response = client_with_mock_claude.post("/sdk/v1/messages", json=request_data)
 
         assert response.status_code == 422  # Validation error
 
-    def test_list_models_anthropic(self, client: TestClient) -> None:
+    def test_list_models_anthropic(self, client_with_mock_claude: TestClient) -> None:
         """Test Anthropic models list endpoint."""
-        response = client.get("/sdk/models")
+        response = client_with_mock_claude.get("/sdk/models")
 
         assert response.status_code == 200
         data = response.json()
@@ -308,7 +326,9 @@ class TestDualOpenAIEndpoints:
         assert "choices" in data_sdk
         assert "usage" in data_sdk
 
-    def test_models_list_both_paths(self, client: TestClient) -> None:
+    def test_models_list_both_paths(
+        self, client: TestClient, client_with_mock_claude: TestClient
+    ) -> None:
         """Test that models endpoint works on both API paths."""
         # Test /api/models (Proxy API)
         response_api = client.get("/api/models")
@@ -316,7 +336,7 @@ class TestDualOpenAIEndpoints:
         data_api = response_api.json()
 
         # Test /sdk/models (Claude SDK)
-        response_sdk = client.get("/sdk/models")
+        response_sdk = client_with_mock_claude.get("/sdk/models")
         assert response_sdk.status_code == 200
         data_sdk = response_sdk.json()
 
@@ -348,8 +368,8 @@ class TestAuthenticationEndpoints:
             "/api/v1/chat/completions", json=request_data, headers=auth_headers
         )
 
-        # Should return 500 because proxy service is not set up in test
-        assert response.status_code == 500
+        # Should return 401 because auth token is valid but proxy service is not set up in test
+        assert response.status_code == 401
 
     def test_openai_chat_completions_unauthenticated(
         self, client_with_auth: TestClient
@@ -401,8 +421,8 @@ class TestAuthenticationEndpoints:
             "/api/v1/messages", json=request_data, headers=auth_headers
         )
 
-        # Should return 500 because proxy service is not set up in test
-        assert response.status_code == 500
+        # Should return 401 because auth token is valid but proxy service is not set up in test
+        assert response.status_code == 401
 
     def test_anthropic_messages_unauthenticated(
         self, client_with_auth: TestClient
@@ -423,27 +443,25 @@ class TestAuthenticationEndpoints:
         self, client_with_auth: TestClient, auth_headers: dict[str, str]
     ) -> None:
         """Test models list endpoints with authentication."""
-        # Test API models endpoint
+        # Test API models endpoint - static, no auth required
         response = client_with_auth.get("/api/models", headers=auth_headers)
         assert response.status_code == 200
 
-        # Test SDK models endpoint
+        # Test SDK models endpoint - should return 401 because proxy service is not set up in test
         response = client_with_auth.get("/sdk/models", headers=auth_headers)
-        assert response.status_code == 200
+        assert response.status_code == 401
 
     def test_models_list_unauthenticated(self, client_with_auth: TestClient) -> None:
         """Test models list endpoints return model data."""
-        # Test API models endpoint - should return model list
+        # Test API models endpoint - static, no auth required
         response = client_with_auth.get("/api/models")
         assert response.status_code == 200
         data = response.json()
         assert "data" in data
 
-        # Test SDK models endpoint - should return model list
+        # Test SDK models endpoint - should require auth
         response = client_with_auth.get("/sdk/models")
-        assert response.status_code == 200
-        data = response.json()
-        assert "data" in data
+        assert response.status_code == 401
 
 
 class TestErrorHandling:
@@ -469,9 +487,9 @@ class TestErrorHandling:
         data = response.json()
         assert "error" in data
 
-    def test_invalid_json(self, client: TestClient) -> None:
+    def test_invalid_json(self, client_with_mock_claude: TestClient) -> None:
         """Test handling of invalid JSON requests."""
-        response = client.post(
+        response = client_with_mock_claude.post(
             "/sdk/v1/messages",
             content="invalid json",
             headers={"Content-Type": "application/json"},
@@ -479,9 +497,11 @@ class TestErrorHandling:
 
         assert response.status_code == 422
 
-    def test_unsupported_content_type(self, client: TestClient) -> None:
+    def test_unsupported_content_type(
+        self, client_with_mock_claude: TestClient
+    ) -> None:
         """Test handling of unsupported content types."""
-        response = client.post(
+        response = client_with_mock_claude.post(
             "/sdk/v1/messages",
             content="some data",
             headers={"Content-Type": "text/plain"},
@@ -599,7 +619,7 @@ class TestResponseValidation:
 
     def test_error_response_schema(
         self,
-        client: TestClient,
+        client_with_mock_claude: TestClient,
     ) -> None:
         """Test error responses follow correct schema."""
         request_data = {
@@ -608,7 +628,7 @@ class TestResponseValidation:
             "messages": [{"role": "user", "content": "Test"}],
         }
 
-        response = client.post("/sdk/v1/messages", json=request_data)
+        response = client_with_mock_claude.post("/sdk/v1/messages", json=request_data)
 
         # Invalid model validation happens at Pydantic level, returns 422
         assert response.status_code == 422

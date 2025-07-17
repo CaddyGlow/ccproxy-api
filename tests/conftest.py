@@ -81,19 +81,40 @@ def app(test_settings: Settings) -> FastAPI:
 @pytest.fixture
 def mock_claude_service() -> AsyncMock:
     """Create a mock Claude SDK service for testing."""
+    from ccproxy.core.errors import ClaudeProxyError
+
     mock_service = AsyncMock()
 
-    # Mock the create_completion method for non-streaming
-    mock_service.create_completion.return_value = {
-        "id": "msg_01234567890",
-        "type": "message",
-        "role": "assistant",
-        "content": [{"type": "text", "text": "Hello! How can I help you?"}],
-        "model": "claude-3-5-sonnet-20241022",
-        "stop_reason": "end_turn",
-        "stop_sequence": None,
-        "usage": {"input_tokens": 10, "output_tokens": 8},
-    }
+    # List of supported models for validation
+    SUPPORTED_MODELS = [
+        "claude-3-5-sonnet-20241022",
+        "claude-3-5-sonnet-20240620",
+        "claude-3-opus-20240229",
+        "claude-3-haiku-20240307",
+    ]
+
+    # Mock create_completion with model validation
+    async def mock_create_completion(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        model = kwargs.get("model", "")
+        if model not in SUPPORTED_MODELS:
+            raise ClaudeProxyError(
+                message=f"Unsupported model: {model}",
+                error_type="invalid_request_error",
+                status_code=400,
+            )
+
+        return {
+            "id": "msg_01234567890",
+            "type": "message",
+            "role": "assistant",
+            "content": [{"type": "text", "text": "Hello! How can I help you?"}],
+            "model": model,
+            "stop_reason": "end_turn",
+            "stop_sequence": None,
+            "usage": {"input_tokens": 10, "output_tokens": 8},
+        }
+
+    mock_service.create_completion = mock_create_completion
 
     # Mock the list_models method
     mock_service.list_models.return_value = [
@@ -222,8 +243,26 @@ def mock_claude_service_streaming() -> AsyncMock:
 
     mock_service = AsyncMock()
 
-    # Mock create_completion as an async function
+    # Mock create_completion as an async function with model validation
     async def mock_create_completion(*args: Any, **kwargs: Any) -> Any:
+        from ccproxy.core.errors import ClaudeProxyError
+
+        # List of supported models for validation
+        SUPPORTED_MODELS = [
+            "claude-3-5-sonnet-20241022",
+            "claude-3-5-sonnet-20240620",
+            "claude-3-opus-20240229",
+            "claude-3-haiku-20240307",
+        ]
+
+        model = kwargs.get("model", "")
+        if model not in SUPPORTED_MODELS:
+            raise ClaudeProxyError(
+                message=f"Unsupported model: {model}",
+                error_type="invalid_request_error",
+                status_code=400,
+            )
+
         if kwargs.get("stream", False):
             return mock_streaming_response()
         else:
@@ -232,7 +271,7 @@ def mock_claude_service_streaming() -> AsyncMock:
                 "type": "message",
                 "role": "assistant",
                 "content": [{"type": "text", "text": "Hello! How can I help you?"}],
-                "model": "claude-3-5-sonnet-20241022",
+                "model": model,
                 "stop_reason": "end_turn",
                 "stop_sequence": None,
                 "usage": {"input_tokens": 10, "output_tokens": 8},
