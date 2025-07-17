@@ -372,16 +372,19 @@ Always investigate strategically, then provide focused explanations with code ex
     async def _chat_completion_with_retry(
         self,
         client: openai.OpenAI,
-        max_attempts: int = 10,
+        max_attempts: int | None = 10,
         backoff: float = 1,
+        max_delay: float = 60,
         **kwargs: Any,
     ):
-        """Call the chat/completions endpoint with simple exponential back-off retries.
+        """Call the chat/completions endpoint with exponential back-off retries.
 
         Args:
             client: The OpenAI client instance to use.
-            max_attempts: Maximum number of attempts before giving up.
-            backoff: Initial back-off delay (seconds); doubled after every failure.
+            max_attempts: Maximum number of retry attempts before giving up. If ``None`` or a
+                non-positive value, the request will be retried indefinitely.
+            backoff: Initial back-off delay in seconds.
+            max_delay: Maximum delay between retries in seconds (caps the exponential back-off).
 
         Returns:
             The successful response object.
@@ -391,21 +394,27 @@ Always investigate strategically, then provide focused explanations with code ex
         """
         attempt = 0
         delay = backoff
-        while attempt < max_attempts:
+
+        while True:
             try:
                 return client.chat.completions.create(**kwargs)
-            except (
-                Exception
-            ) as e:  # Broad catch – OpenAI/Anthropic SDKs raise various errors
+            except Exception as e:  # Broad catch – SDKs raise various errors
                 attempt += 1
-                if attempt >= max_attempts:
+
+                # Exit if we have exhausted the allowed attempts
+                if max_attempts is not None and max_attempts > 0 and attempt >= max_attempts:
+                    logger.error(
+                        f"Max retry attempts reached ({max_attempts}). Raising last error."
+                    )
                     raise
+
                 logger.warning(
                     f"Request failed ({e}); retrying in {delay:.1f}s "
-                    f"({attempt}/{max_attempts})"
+                    f"(attempt {attempt}{'' if max_attempts is None else f'/{max_attempts}'})"
                 )
                 await asyncio.sleep(delay)
-                delay *= 2
+                # Exponential back-off with upper bound
+                delay = min(delay * 2, max_delay)
 
     def _execute_bash_command(self, command: str) -> dict[str, Any]:
         """Execute a bash command with security filtering."""
