@@ -7,12 +7,13 @@ import time
 import urllib.parse
 from collections.abc import AsyncGenerator
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, TypedDict
+from typing import TYPE_CHECKING, Any
 
 import httpx
 import structlog
 from fastapi import HTTPException, Request
 from fastapi.responses import StreamingResponse
+from typing_extensions import TypedDict
 
 from ccproxy.core.http import BaseProxyClient
 from ccproxy.core.http_transformers import (

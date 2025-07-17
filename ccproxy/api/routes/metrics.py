@@ -2,11 +2,12 @@
 
 import time
 from datetime import datetime as dt
-from typing import Any, Optional, TypedDict, cast
+from typing import Any, Optional, cast
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 from sqlmodel import Session, col, desc, func, select
+from typing_extensions import TypedDict
 
 from ccproxy.api.dependencies import (
     DuckDBStorageDep,
