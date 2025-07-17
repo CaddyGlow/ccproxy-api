@@ -172,13 +172,13 @@ class TestSSEEventManager:
         initial_count = await sse_manager.get_connection_count()
         assert initial_count == 0
 
-        async def short_connection() -> None:
+        async def persistent_connection() -> None:
             async for _event in sse_manager.add_connection(connection_id):
-                # Stop after connection event
-                break
+                # Keep connection alive
+                await asyncio.sleep(0.01)
 
-        # Start and immediately stop connection
-        task = asyncio.create_task(short_connection())
+        # Start connection
+        task = asyncio.create_task(persistent_connection())
         await asyncio.sleep(0.1)  # Let connection establish
 
         # Check connection was added
@@ -401,6 +401,11 @@ class TestSSEGlobalFunctions:
 
 class TestSSEErrorHandling:
     """Test SSE error handling scenarios."""
+
+    @pytest.fixture
+    def sse_manager(self) -> SSEEventManager:
+        """Create SSE manager for testing."""
+        return SSEEventManager(max_queue_size=10)
 
     async def test_emit_event_with_no_connections(self) -> None:
         """Test emitting events when no connections exist."""

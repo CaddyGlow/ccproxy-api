@@ -519,6 +519,20 @@ def reset_metrics() -> None:
     global _global_metrics
     _global_metrics = None
 
+    # Clear Prometheus registry to avoid duplicate metrics in tests
+    if PROMETHEUS_AVAILABLE:
+        try:
+            from prometheus_client import REGISTRY
+
+            # Clear all collectors from the registry
+            collectors = list(REGISTRY._collector_to_names.keys())
+            for collector in collectors:
+                REGISTRY.unregister(collector)
+        except Exception:
+            # If clearing the registry fails, just continue
+            # This is mainly for testing and shouldn't break functionality
+            pass
+
     # Also reset pushgateway client
     from .pushgateway import reset_pushgateway_client
 
