@@ -61,6 +61,9 @@ class OpenAIMessage(BaseModel):
         None,
         description="Tool call this message is responding to (only for tool messages)",
     )
+    refusal: Annotated[
+        str | None, Field(description="Refusal message from the assistant (optional)")
+    ] = None
 
     model_config = ConfigDict(extra="forbid")
 
@@ -81,13 +84,42 @@ class OpenAIFunction(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class OpenAICustomTool(BaseModel):
+    """OpenAI custom tool definition."""
+
+    name: str = Field(..., description="The name of the custom tool")
+    description: str | None = Field(
+        None, description="A description of what the custom tool does"
+    )
+    input_schema: dict[str, Any] = Field(
+        ...,
+        description="The input schema the custom tool accepts, described as a JSON Schema object",
+    )
+
+    model_config = ConfigDict(extra="forbid")
+
+
 class OpenAITool(BaseModel):
     """OpenAI tool definition."""
 
     type: ToolType = Field("function", description="The type of tool")
-    function: OpenAIFunction = Field(..., description="The function definition")
+    function: OpenAIFunction | None = Field(
+        None, description="The function definition (for function tools)"
+    )
+    custom: OpenAICustomTool | None = Field(
+        None, description="The custom tool definition (for custom tools)"
+    )
 
     model_config = ConfigDict(extra="forbid")
+
+    @model_validator(mode="after")
+    def validate_tool_fields(self) -> "OpenAITool":
+        """Validate that the correct fields are provided based on tool type."""
+        if self.type == "function" and self.function is None:
+            raise ValueError("function field is required for function tools")
+        elif self.type == "custom" and self.custom is None:
+            raise ValueError("custom field is required for custom tools")
+        return self
 
 
 class OpenAIToolChoice(BaseModel):
@@ -602,6 +634,7 @@ __all__ = [
     "OpenAIMessageContent",
     # Tool models
     "OpenAIFunction",
+    "OpenAICustomTool",
     "OpenAITool",
     "OpenAIToolChoice",
     # Request models

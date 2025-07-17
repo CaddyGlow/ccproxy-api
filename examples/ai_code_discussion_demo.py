@@ -219,11 +219,13 @@ class AICodeDiscussionManager:
         debug: bool = False,
         stream: bool = False,
         use_rich: bool = True,
+        thinking: bool = False,
     ):
         self.project_root = project_root or str(pathlib.Path.cwd())
         self.proxy_url = proxy_url
         self.debug = debug
         self.stream = stream
+        self.thinking = thinking
         self.use_rich = use_rich and RICH_AVAILABLE
 
         # Initialize secure code access
@@ -375,6 +377,7 @@ Always investigate strategically, then provide focused explanations with code ex
         max_attempts: int | None = 10,
         backoff: float = 1,
         max_delay: float = 60,
+        stream: bool = None,
         **kwargs: Any,
     ):
         """Call the chat/completions endpoint with exponential back-off retries.
@@ -385,9 +388,10 @@ Always investigate strategically, then provide focused explanations with code ex
                 non-positive value, the request will be retried indefinitely.
             backoff: Initial back-off delay in seconds.
             max_delay: Maximum delay between retries in seconds (caps the exponential back-off).
+            stream: Whether to stream the response. If None, uses self.stream.
 
         Returns:
-            The successful response object.
+            The successful response object or full streamed content if streaming.
 
         Raises:
             Exception: Re-raises the last exception if all attempts fail.
@@ -395,14 +399,148 @@ Always investigate strategically, then provide focused explanations with code ex
         attempt = 0
         delay = backoff
 
+        # Use instance stream setting if not explicitly specified
+        if stream is None:
+            stream = self.stream
+
         while True:
             try:
-                return client.chat.completions.create(**kwargs)
+                if stream:
+                    # Handle streaming response
+                    full_content = ""
+                    thinking_content = ""
+                    is_thinking = False
+                    is_tool_call = False
+
+                    # Create with stream=True - remove thinking parameter for OpenAI if it exists
+                    create_kwargs = kwargs.copy()
+                    if (
+                        "thinking" in create_kwargs
+                        and "openai" in str(client.__class__).lower()
+                    ):
+                        del create_kwargs["thinking"]
+                    stream_resp = client.chat.completions.create(
+                        stream=True, **create_kwargs
+                    )
+
+                    # For rich output
+                    if self.use_rich and self.console:
+                        with Live("", refresh_per_second=10) as live:
+                            for chunk in stream_resp:
+                                # Extract content delta from the chunk
+                                delta = chunk.choices[0].delta
+
+                                if (
+                                    delta
+                                    and hasattr(delta, "content")
+                                    and delta.content
+                                ):
+                                    if is_thinking:
+                                        # In thinking mode, accumulate thinking content
+                                        thinking_content += delta.content
+                                        live.update(
+                                            f"🤔 [italic yellow]Thinking:[/italic yellow] {thinking_content}"
+                                        )
+                                    else:
+                                        # Normal content - accumulate and display
+                                        full_content += delta.content
+                                        # Display markdown content
+                                        live.update(Markdown(full_content))
+
+                                # Check for thinking or tool_calls state in the delta
+                                if (
+                                    delta
+                                    and hasattr(delta, "tool_calls")
+                                    and delta.tool_calls
+                                ):
+                                    is_tool_call = True
+                                    live.update(
+                                        "🔧 [italic cyan]Using tools...[/italic cyan]"
+                                    )
+
+                                # Check for thinking or tool usage indicators in content
+                                if (
+                                    not is_thinking
+                                    and full_content
+                                    and "thinking" in full_content.lower()
+                                ):
+                                    is_thinking = True
+                                    thinking_content = full_content
+                                    live.update(
+                                        f"🤔 [italic yellow]Thinking:[/italic yellow] {thinking_content}"
+                                    )
+                    else:
+                        # Simple terminal output for streaming without rich
+                        print("\nStreaming response:", end="", flush=True)
+                        for chunk in stream_resp:
+                            delta = chunk.choices[0].delta
+                            if delta and hasattr(delta, "content") and delta.content:
+                                print(delta.content, end="", flush=True)
+                                full_content += delta.content
+                            # Check for tool calls
+                            if (
+                                delta
+                                and hasattr(delta, "tool_calls")
+                                and delta.tool_calls
+                            ):
+                                print("\n[Using tools...]", end="", flush=True)
+                        print()  # Final newline
+
+                    # Create a synthetic response object with the accumulated content
+                    synthetic_response = type(
+                        "SyntheticResponse",
+                        (),
+                        {
+                            "choices": [
+                                type(
+                                    "Choice",
+                                    (),
+                                    {
+                                        "message": type(
+                                            "Message",
+                                            (),
+                                            {
+                                                "content": full_content,
+                                                "tool_calls": None,
+                                                "role": "assistant",
+                                            },
+                                        ),
+                                        "finish_reason": "stop",
+                                    },
+                                )
+                            ],
+                            "usage": type(
+                                "Usage",
+                                (),
+                                {
+                                    "prompt_tokens": 0,
+                                    "completion_tokens": len(full_content)
+                                    // 4,  # Rough estimate
+                                    "total_tokens": len(full_content) // 4,
+                                },
+                            ),
+                        },
+                    )
+
+                    return synthetic_response
+                else:
+                    # Non-streaming request - remove thinking parameter for OpenAI if it exists
+                    create_kwargs = kwargs.copy()
+                    if (
+                        "thinking" in create_kwargs
+                        and "openai" in str(client.__class__).lower()
+                    ):
+                        del create_kwargs["thinking"]
+                    return client.chat.completions.create(**create_kwargs)
             except Exception as e:  # Broad catch – SDKs raise various errors
                 attempt += 1
 
                 # Exit if we have exhausted the allowed attempts
-                if max_attempts is not None and max_attempts > 0 and attempt >= max_attempts:
+                if (
+                    max_attempts is not None
+                    and max_attempts > 0
+                    and attempt >= max_attempts
+                ):
                     logger.error(
                         f"Max retry attempts reached ({max_attempts}). Raising last error."
                     )
@@ -791,13 +929,20 @@ Ready to investigate and explain the key implementation details!"""
         logger.debug(f"Sending to OpenAI, turn {turn}, message count: {len(messages)}")
 
         try:
+            # Add thinking parameter if enabled - use reasoning_effort for o1 models
+            extra_params = {}
+            if self.thinking:
+                # Use reasoning_effort parameter for thinking mode with o1 model
+                extra_params["reasoning_effort"] = "high"
+
             response = await self._chat_completion_with_retry(
                 self.openai_client,
-                model="gpt-4o",
+                model="o1-mini" if self.thinking else "gpt-4o",
                 messages=messages,
                 tools=self.tools,  # type: ignore
                 max_tokens=1000,
-                temperature=0.7,
+                temperature=1,
+                **extra_params,
             )
 
             if not response.choices:
@@ -842,11 +987,12 @@ Ready to investigate and explain the key implementation details!"""
                 # Make another request to get the AI's response after tool usage
                 follow_up_response = await self._chat_completion_with_retry(
                     self.openai_client,
-                    model="gpt-4o",
+                    model="o1-mini" if self.thinking else "gpt-4o",
                     messages=self.openai_messages,
                     tools=self.tools,  # type: ignore
                     max_tokens=1000,
-                    temperature=0.7,
+                    temperature=1,
+                    **extra_params,
                 )
 
                 # Track follow-up token usage
@@ -885,13 +1031,20 @@ Ready to investigate and explain the key implementation details!"""
         )
 
         try:
+            # Add thinking parameter if enabled
+            extra_params = {}
+            if self.thinking:
+                # Use thinking parameter that works with Claude models
+                extra_params["thinking"] = {"type": "enabled", "budget_tokens": 10000}
+
             response = await self._chat_completion_with_retry(
                 self.anthropic_client,
-                model="claude-3-5-sonnet-20241022",
+                model="claude-sonnet-4-20250514",
                 messages=messages,
                 tools=self.tools,  # type: ignore
                 max_tokens=1000,
-                temperature=0.7,
+                temperature=1,  # Must use temperature=1 when thinking is enabled
+                **extra_params,
             )
 
             if not response.choices:
@@ -936,11 +1089,12 @@ Ready to investigate and explain the key implementation details!"""
                 # Make another request to get the AI's response after tool usage
                 follow_up_response = await self._chat_completion_with_retry(
                     self.anthropic_client,
-                    model="claude-3-5-sonnet-20241022",
+                    model="claude-sonnet-4-20250514",
                     messages=self.anthropic_messages,
                     tools=self.tools,  # type: ignore
                     max_tokens=1000,
-                    temperature=0.7,
+                    temperature=1,  # Must use temperature=1 when thinking is enabled
+                    **extra_params,
                 )
 
                 # Track follow-up token usage
@@ -984,6 +1138,7 @@ Ready to investigate and explain the key implementation details!"""
             table.add_row("Project root:", str(self.code_access.project_root))
             table.add_row("Proxy URL:", self.proxy_url)
             table.add_row("Streaming:", "enabled" if self.stream else "disabled")
+            table.add_row("Thinking mode:", "enabled" if self.thinking else "disabled")
 
             panel = Panel(
                 table,
@@ -1002,6 +1157,7 @@ Ready to investigate and explain the key implementation details!"""
             print(f"Max turns: {max_turns}")
             print(f"Project root: {self.code_access.project_root}")
             print(f"Proxy URL: {self.proxy_url}")
+            print(f"Thinking mode: {'enabled' if self.thinking else 'disabled'}")
             print("=" * 60)
 
     def print_conversation_end(self, total_turns: int) -> None:
@@ -1047,12 +1203,51 @@ Ready to investigate and explain the key implementation details!"""
         # Copy any tool interactions that happened since start_idx
         for i in range(start_idx, len(from_messages)):
             msg = from_messages[i]
-            if msg.get("role") == "assistant" and msg.get("tool_calls"):
-                # Share the tool calls as context
-                to_messages.append(msg)
-            elif msg.get("role") == "tool":
-                # Share the tool results
-                to_messages.append(msg)
+
+            # Handle both dictionary messages and ChatCompletionMessage objects
+            if isinstance(msg, dict):
+                role = msg.get("role")
+                tool_calls = msg.get("tool_calls")
+                # Copy dictionary message directly
+                if (role == "assistant" and tool_calls) or role == "tool":
+                    to_messages.append(msg)
+            else:
+                # Handle OpenAI ChatCompletionMessage objects
+                try:
+                    role = getattr(msg, "role", None)
+                    tool_calls = getattr(msg, "tool_calls", None)
+
+                    if role == "assistant" and tool_calls:
+                        # Convert to dict for consistency
+                        to_messages.append(
+                            {
+                                "role": "assistant",
+                                "content": msg.content,
+                                "tool_calls": [
+                                    {
+                                        "id": tc.id,
+                                        "type": tc.type,
+                                        "function": {
+                                            "name": tc.function.name,
+                                            "arguments": tc.function.arguments,
+                                        },
+                                    }
+                                    for tc in tool_calls
+                                ],
+                            }
+                        )
+                    elif role == "tool":
+                        to_messages.append(
+                            {
+                                "role": "tool",
+                                "tool_call_id": msg.tool_call_id,
+                                "content": msg.content,
+                            }
+                        )
+                except AttributeError:
+                    # Skip if we can't process this message type
+                    logger.warning(f"Skipping message with unknown format: {type(msg)}")
+                    continue
 
         # Add the final response as user message
         to_messages.append({"role": "user", "content": final_response})
@@ -1181,6 +1376,11 @@ Examples:
     )
 
     parser.add_argument("--plain", action="store_true", help="Disable rich formatting")
+    parser.add_argument(
+        "--thinking",
+        action="store_true",
+        help="Enable AI thinking mode to see reasoning process (requires ccproxy adapter fix)",
+    )
 
     return parser.parse_args()
 
@@ -1230,6 +1430,7 @@ async def main() -> None:
             debug=args.debug,
             stream=args.stream,
             use_rich=not args.plain,
+            thinking=args.thinking,
         )
 
         await manager.run_code_discussion(args.topic, args.turns)

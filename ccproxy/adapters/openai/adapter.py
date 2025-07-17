@@ -155,6 +155,68 @@ class OpenAIAdapter(APIAdapter):
         if openai_req.stream is not None:
             anthropic_request["stream"] = openai_req.stream
 
+        # Check if thinking parameter is directly provided
+        if hasattr(openai_req, "thinking") and openai_req.thinking:
+            # Set temperature=1 as required by Claude when thinking is enabled
+            anthropic_request["temperature"] = 1
+
+            # Handle different thinking parameter formats
+            if isinstance(openai_req.thinking, dict):
+                anthropic_request["thinking"] = openai_req.thinking
+            elif isinstance(openai_req.thinking, bool) and openai_req.thinking:
+                anthropic_request["thinking"] = {
+                    "type": "enabled",
+                    "budget_tokens": 5000,  # Default value
+                }
+
+            # Ensure messages are properly formatted for thinking mode
+            # Claude requires assistant messages to start with a thinking block
+            if anthropic_request["messages"]:
+                # When thinking is enabled, ensure all messages are correctly formatted
+                for msg in anthropic_request["messages"]:
+                    # Handle user messages that come after assistant messages with tool calls
+                    if msg["role"] == "user" and isinstance(msg.get("content"), str):
+                        # Check if this is the last message
+                        if msg == anthropic_request["messages"][-1]:
+                            # We want to mark this but we can't add custom fields to the request
+                            # So just log it for debugging
+                            logger.debug(
+                                "last_user_message_in_thinking_mode",
+                                operation="adapt_request",
+                            )
+
+                    # Format assistant messages
+                    elif msg["role"] == "assistant":
+                        # Ensure content is in the right format
+                        if isinstance(msg.get("content"), str):
+                            # Convert string content to list with thinking block first
+                            msg["content"] = [
+                                {
+                                    "type": "thinking",
+                                    "thinking": "Analyzing the request...",
+                                    "signature": "placeholder_signature",
+                                },
+                                {"type": "text", "text": msg.get("content", "")},
+                            ]
+                        elif isinstance(msg.get("content"), list) and msg["content"]:
+                            # Check if the first block isn't a thinking block
+                            first_block = msg["content"][0]
+                            if isinstance(first_block, dict) and first_block.get(
+                                "type"
+                            ) not in ["thinking", "redacted_thinking"]:
+                                # Add a thinking block at the beginning
+                                msg["content"].insert(
+                                    0,
+                                    {
+                                        "type": "thinking",
+                                        "thinking": "Analyzing the request...",
+                                        "signature": "placeholder_signature",
+                                    },
+                                )
+
+                # Log that thinking mode is enabled for debugging
+                logger.debug("thinking_mode_enabled", operation="adapt_request")
+
         if openai_req.stop is not None:
             if isinstance(openai_req.stop, str):
                 anthropic_request["stop_sequences"] = [openai_req.stop]
@@ -200,6 +262,58 @@ class OpenAIAdapter(APIAdapter):
                 "type": "enabled",
                 "budget_tokens": thinking_tokens,
             }
+
+            # Force temperature=1 when thinking is enabled (Claude requirement)
+            anthropic_request["temperature"] = 1
+
+            # Ensure messages are properly formatted for thinking mode
+            # Claude requires assistant messages to start with a thinking block
+            if anthropic_request["messages"]:
+                # When thinking is enabled, ensure all messages are correctly formatted
+                for msg in anthropic_request["messages"]:
+                    # Handle user messages that come after assistant messages with tool calls
+                    if msg["role"] == "user" and isinstance(msg.get("content"), str):
+                        # Check if this is the last message
+                        if msg == anthropic_request["messages"][-1]:
+                            # We want to mark this but we can't add custom fields to the request
+                            # So just log it for debugging
+                            logger.debug(
+                                "last_user_message_in_thinking_mode",
+                                operation="adapt_request",
+                            )
+
+                    # Format assistant messages
+                    elif msg["role"] == "assistant":
+                        # Ensure content is in the right format
+                        if isinstance(msg.get("content"), str):
+                            # Convert string content to list with thinking block first
+                            msg["content"] = [
+                                {
+                                    "type": "thinking",
+                                    "thinking": "Analyzing the request...",
+                                    "signature": "placeholder_signature",
+                                },
+                                {"type": "text", "text": msg.get("content", "")},
+                            ]
+                        elif isinstance(msg.get("content"), list) and msg["content"]:
+                            # Check if the first block isn't a thinking block
+                            first_block = msg["content"][0]
+                            if isinstance(first_block, dict) and first_block.get(
+                                "type"
+                            ) not in ["thinking", "redacted_thinking"]:
+                                # Add a thinking block at the beginning
+                                msg["content"].insert(
+                                    0,
+                                    {
+                                        "type": "thinking",
+                                        "thinking": "Analyzing the request...",
+                                        "signature": "placeholder_signature",
+                                    },
+                                )
+
+                # Log that thinking mode is enabled for debugging
+                logger.debug("thinking_mode_enabled", operation="adapt_request")
+
             logger.debug(
                 "reasoning_effort_converted",
                 reasoning_effort=openai_req.reasoning_effort,
@@ -305,16 +419,18 @@ class OpenAIAdapter(APIAdapter):
                         content += block.get("text", "")
                     elif block.get("type") == "thinking":
                         # Handle thinking blocks - we can include them with a marker
-                        thinking_text = block.get("text", "")
+                        thinking_text = block.get("thinking", "")
                         if thinking_text:
                             content += f"[Thinking]\n{thinking_text}\n---\n"
                     elif block.get("type") == "tool_use":
                         tool_calls.append(format_openai_tool_call(block))
 
             # Create OpenAI message
+            # Ensure content is not None when there are tool calls
+            final_content = content if content else (None if not tool_calls else "")
             message = OpenAIResponseMessage(
                 role="assistant",
-                content=content or None,
+                content=final_content,
                 tool_calls=tool_calls if tool_calls else None,
             )
 
@@ -644,15 +760,34 @@ class OpenAIAdapter(APIAdapter):
                             "input_schema": func.get("parameters", {}),
                         }
                     )
-            elif hasattr(tool, "type") and tool.type == "function":
+                elif tool.get("type") == "custom":
+                    # Handle custom tools - they have a custom field like function tools have a function field
+                    custom = tool.get("custom", {})
+                    anthropic_tools.append(
+                        {
+                            "name": custom.get("name", ""),
+                            "description": custom.get("description", ""),
+                            "input_schema": custom.get("input_schema", {}),
+                        }
+                    )
+            elif hasattr(tool, "type"):
                 # Handle Pydantic OpenAITool model
-                anthropic_tools.append(
-                    {
-                        "name": tool.function.name,
-                        "description": tool.function.description or "",
-                        "input_schema": tool.function.parameters,
-                    }
-                )
+                if tool.type == "function" and tool.function:
+                    anthropic_tools.append(
+                        {
+                            "name": tool.function.name,
+                            "description": tool.function.description or "",
+                            "input_schema": tool.function.parameters,
+                        }
+                    )
+                elif tool.type == "custom" and tool.custom:
+                    anthropic_tools.append(
+                        {
+                            "name": tool.custom.name,
+                            "description": tool.custom.description or "",
+                            "input_schema": tool.custom.input_schema,
+                        }
+                    )
 
         return anthropic_tools
 
