@@ -1,9 +1,13 @@
 """FastAPI dependency injection for authentication."""
 
-from typing import Annotated, Any
+from typing import TYPE_CHECKING, Annotated, Any
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+
+
+if TYPE_CHECKING:
+    from ccproxy.config.settings import Settings
 
 from ccproxy.auth.bearer import BearerTokenAuthManager
 from ccproxy.auth.credentials_adapter import CredentialsAuthManager
@@ -48,6 +52,62 @@ async def get_bearer_auth_manager(
     return BearerTokenAuthManager(credentials.credentials)
 
 
+async def _get_auth_manager_with_settings(
+    credentials: HTTPAuthorizationCredentials | None,
+    settings: "Settings",
+) -> AuthManager:
+    """Internal function to get auth manager with specific settings.
+
+    Args:
+        credentials: HTTP authorization credentials
+        settings: Application settings
+
+    Returns:
+        AuthManager instance
+
+    Raises:
+        HTTPException: If no valid authentication available
+    """
+    # Try bearer token first if provided
+    if credentials and credentials.credentials:
+        try:
+            # If API has configured auth_token, validate against it
+            if settings.security.auth_token:
+                if credentials.credentials == settings.security.auth_token:
+                    bearer_auth = BearerTokenAuthManager(credentials.credentials)
+                    if await bearer_auth.is_authenticated():
+                        return bearer_auth
+                else:
+                    # Token doesn't match configured auth_token
+                    raise HTTPException(
+                        status_code=status.HTTP_401_UNAUTHORIZED,
+                        detail="Invalid bearer token",
+                        headers={"WWW-Authenticate": "Bearer"},
+                    )
+            else:
+                # No auth_token configured, accept any bearer token
+                bearer_auth = BearerTokenAuthManager(credentials.credentials)
+                if await bearer_auth.is_authenticated():
+                    return bearer_auth
+        except (AuthenticationError, ValueError):
+            pass
+
+    # Fall back to credentials only if no auth_token is configured
+    if not settings.security.auth_token:
+        try:
+            credentials_auth = CredentialsAuthManager()
+            if await credentials_auth.is_authenticated():
+                return credentials_auth
+        except AuthenticationError:
+            pass
+
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Authentication required",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+
+
 async def get_auth_manager(
     credentials: Annotated[
         HTTPAuthorizationCredentials | None, Depends(bearer_scheme)
@@ -66,28 +126,41 @@ async def get_auth_manager(
     Raises:
         HTTPException: If no valid authentication available
     """
-    # Try bearer token first if provided
-    if credentials and credentials.credentials:
-        try:
-            bearer_auth = BearerTokenAuthManager(credentials.credentials)
-            if await bearer_auth.is_authenticated():
-                return bearer_auth
-        except (AuthenticationError, ValueError):
-            pass
+    # Import here to avoid circular imports
+    from ccproxy.config.settings import get_settings
 
-    # Fall back to credentials
-    try:
-        credentials_auth = CredentialsAuthManager()
-        if await credentials_auth.is_authenticated():
-            return credentials_auth
-    except AuthenticationError:
-        pass
+    settings = get_settings()
+    return await _get_auth_manager_with_settings(credentials, settings)
 
-    raise HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Authentication required",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
+
+async def get_auth_manager_with_injected_settings(
+    credentials: Annotated[
+        HTTPAuthorizationCredentials | None, Depends(bearer_scheme)
+    ] = None,
+    settings: Annotated["Settings | None", Depends()] = None,
+) -> AuthManager:
+    """Get authentication manager with dependency-injected settings.
+
+    This version uses FastAPI's dependency injection for settings,
+    which allows test overrides to work properly.
+
+    Args:
+        credentials: HTTP authorization credentials
+        settings: Application settings (injected by FastAPI)
+
+    Returns:
+        AuthManager instance
+
+    Raises:
+        HTTPException: If no valid authentication available
+    """
+    # Import here to avoid circular imports
+    from ccproxy.config.settings import get_settings
+
+    if settings is None:
+        settings = get_settings()
+
+    return await _get_auth_manager_with_settings(credentials, settings)
 
 
 async def require_auth(

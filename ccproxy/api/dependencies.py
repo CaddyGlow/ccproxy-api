@@ -85,6 +85,7 @@ def get_proxy_service(
     return ProxyService(
         proxy_client=proxy_client,
         credentials_manager=credentials_manager,
+        settings=settings,
         proxy_mode="full",
         target_base_url=settings.reverse_proxy.target_url,
         metrics=metrics,
