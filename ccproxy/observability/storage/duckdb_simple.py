@@ -9,12 +9,13 @@ import time
 from collections.abc import Sequence
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Optional, TypedDict
+from typing import Any, Optional
 
 import structlog
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
 from sqlmodel import Session, SQLModel, create_engine, desc, func, select
+from typing_extensions import TypedDict
 
 from .models import AccessLog
 
