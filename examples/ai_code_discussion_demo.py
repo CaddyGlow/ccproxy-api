@@ -370,7 +370,11 @@ Always investigate strategically, then provide focused explanations with code ex
             return {"success": False, "error": f"Unknown tool: {tool_name}"}
 
     async def _chat_completion_with_retry(
-        self, client: openai.OpenAI, max_attempts: int = 3, backoff: float = 0.5, **kwargs: Any
+        self,
+        client: openai.OpenAI,
+        max_attempts: int = 10,
+        backoff: float = 1,
+        **kwargs: Any,
     ):
         """Call the chat/completions endpoint with simple exponential back-off retries.
 
@@ -390,7 +394,9 @@ Always investigate strategically, then provide focused explanations with code ex
         while attempt < max_attempts:
             try:
                 return client.chat.completions.create(**kwargs)
-            except Exception as e:  # Broad catch – OpenAI/Anthropic SDKs raise various errors
+            except (
+                Exception
+            ) as e:  # Broad catch – OpenAI/Anthropic SDKs raise various errors
                 attempt += 1
                 if attempt >= max_attempts:
                     raise
