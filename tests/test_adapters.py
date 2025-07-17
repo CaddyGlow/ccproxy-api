@@ -497,6 +497,44 @@ class TestOpenAIAdapter:
             == "San Francisco"
         )
 
+    def test_adapt_response_tool_calls_no_text_content(
+        self, adapter: OpenAIAdapter
+    ) -> None:
+        """Test conversion of tool use when there's no text content."""
+        anthropic_response = {
+            "id": "msg_123",
+            "type": "message",
+            "role": "assistant",
+            "content": [
+                {
+                    "type": "tool_use",
+                    "id": "toolu_123",
+                    "name": "get_weather",
+                    "input": {"location": "San Francisco"},
+                },
+            ],
+            "model": "claude-3-5-sonnet-20241022",
+            "stop_reason": "tool_use",
+            "usage": {"input_tokens": 10, "output_tokens": 20},
+        }
+
+        result = adapter.adapt_response(anthropic_response)
+
+        choice = result["choices"][0]
+        assert choice["finish_reason"] == "tool_calls"
+        # Content should be empty string when there are tool calls but no text
+        assert choice["message"]["content"] == ""
+        assert len(choice["message"]["tool_calls"]) == 1
+
+        tool_call = choice["message"]["tool_calls"][0]
+        assert tool_call["id"] == "toolu_123"
+        assert tool_call["type"] == "function"
+        assert tool_call["function"]["name"] == "get_weather"
+        assert (
+            json.loads(tool_call["function"]["arguments"])["location"]
+            == "San Francisco"
+        )
+
     def test_adapt_response_stop_reason_mapping(self, adapter: OpenAIAdapter) -> None:
         """Test mapping of various stop reasons."""
         test_cases = [
