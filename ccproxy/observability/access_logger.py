@@ -106,8 +106,16 @@ async def log_request_access(
     # Remove None values to keep log clean
     log_data = {k: v for k, v in log_data.items() if v is not None}
 
-    # Log as access_log event (structured logging)
-    context.logger.info("access_log", **log_data)
+    logger = context.logger.bind(**log_data)
+    if not log_data.get("streaming", False):
+        # Log as access_log event (structured logging)
+        logger.info("access_log")
+    elif log_data.get("event_type", "") == "streaming_complete":
+        logger.info("access_log")
+    else:
+        # if streaming is true, and not streaming_complete log as debug
+        # real access_log will come later
+        logger.debug("access_log")
 
     # Store in DuckDB if available
     await _store_access_log(log_data, storage)

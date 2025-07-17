@@ -667,6 +667,7 @@ async def stream_metrics(request: Request) -> StreamingResponse:
         ctx = request.state.context
         # Set streaming flag for access log
         ctx.add_metadata(streaming=True)
+        ctx.add_metadata(event_type="streaming_complete")
 
     async def event_stream() -> AsyncIterator[str]:
         """Generate Server-Sent Events for real-time metrics."""

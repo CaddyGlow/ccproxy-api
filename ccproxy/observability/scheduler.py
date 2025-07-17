@@ -49,7 +49,9 @@ class ObservabilityScheduler:
         self._running = False
         self._tasks: list[asyncio.Task[Any]] = []
         self._pushgateway_interval = settings.pushgateway_batch_interval
+        self._stats_printing_interval = settings.stats_printing_interval
         self._metrics_instance: Any | None = None
+        self._stats_collector_instance: Any | None = None
         self._consecutive_failures = 0
         self._max_backoff = 300.0  # 5 minutes max backoff
 
@@ -63,6 +65,9 @@ class ObservabilityScheduler:
 
         # Initialize metrics instance
         await self._init_metrics()
+
+        # Initialize stats collector instance
+        await self._init_stats_collector()
 
         # Start periodic tasks
         logger.debug(
@@ -79,6 +84,23 @@ class ObservabilityScheduler:
             logger.debug(
                 "pushgateway_task_skipped",
                 reason="pushgateway not enabled or URL not configured",
+            )
+
+        # Start stats printing task
+        logger.debug(
+            "stats_printing_task_check",
+            stats_printing_enabled=self.settings.stats_printing_enabled,
+            stats_printing_interval=self.settings.stats_printing_interval,
+        )
+
+        if self.settings.stats_printing_enabled:
+            task = asyncio.create_task(self._stats_printing_task())
+            self._tasks.append(task)
+            logger.debug("stats_printing_task_created")
+        else:
+            logger.debug(
+                "stats_printing_task_skipped",
+                reason="stats printing not enabled",
             )
 
     async def stop(self) -> None:
@@ -128,6 +150,18 @@ class ObservabilityScheduler:
             self._metrics_instance = get_metrics()
         except Exception as e:
             logger.error("scheduler_metrics_init_failed", error=str(e))
+
+    async def _init_stats_collector(self) -> None:
+        """Initialize stats collector instance."""
+        try:
+            from .stats_printer import get_stats_collector
+
+            self._stats_collector_instance = get_stats_collector(
+                settings=self.settings,
+                metrics_instance=self._metrics_instance,
+            )
+        except Exception as e:
+            logger.error("scheduler_stats_collector_init_failed", error=str(e))
 
     async def _pushgateway_task(self) -> None:
         """Periodic task to push metrics to Pushgateway."""
@@ -186,6 +220,36 @@ class ObservabilityScheduler:
                 backoff_time = self._calculate_backoff_delay()
                 await asyncio.sleep(backoff_time)
 
+    async def _stats_printing_task(self) -> None:
+        """Periodic task to print stats summary."""
+        logger.debug(
+            "stats_printing_task_start",
+            interval=self._stats_printing_interval,
+        )
+
+        while self._running:
+            try:
+                if self._stats_collector_instance:
+                    await self._stats_collector_instance.print_stats()
+                    logger.debug("stats_printing_success")
+                else:
+                    logger.warning("stats_printing_no_collector")
+
+                # Wait for next interval
+                await asyncio.sleep(self._stats_printing_interval)
+
+            except asyncio.CancelledError:
+                logger.debug("stats_printing_task_cancelled")
+                break
+            except Exception as e:
+                logger.error(
+                    "stats_printing_task_error",
+                    error=str(e),
+                    error_type=type(e).__name__,
+                )
+                # Wait standard interval before retrying
+                await asyncio.sleep(self._stats_printing_interval)
+
     def set_pushgateway_interval(self, interval: float) -> None:
         """
         Set the interval for pushing metrics to Pushgateway.
@@ -196,6 +260,18 @@ class ObservabilityScheduler:
         self._pushgateway_interval = max(1.0, interval)
         logger.debug(
             "pushgateway_interval_updated", interval=self._pushgateway_interval
+        )
+
+    def set_stats_printing_interval(self, interval: float) -> None:
+        """
+        Set the interval for printing stats summary.
+
+        Args:
+            interval: Interval in seconds
+        """
+        self._stats_printing_interval = max(1.0, interval)
+        logger.debug(
+            "stats_printing_interval_updated", interval=self._stats_printing_interval
         )
 
 

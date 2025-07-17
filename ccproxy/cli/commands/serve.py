@@ -262,6 +262,10 @@ def _run_local_server(settings: Settings, cli_overrides: dict[str, Any]) -> None
         url=f"http://{settings.server.host}:{settings.server.port}",
     )
 
+    reload_includes = None
+    if settings.server.reload:
+        reload_includes = ["ccproxy", "pyproject.toml", "uv.lock"]
+
     # Run uvicorn with our already configured logging
     uvicorn.run(
         app=f"{get_root_package_name()}.api.app:create_app",
@@ -273,7 +277,7 @@ def _run_local_server(settings: Settings, cli_overrides: dict[str, Any]) -> None
         log_config=None,
         access_log=False,  # Disable uvicorn's default access logs
         server_header=False,  # Disable uvicorn's server header to preserve upstream headers
-        reload_includes=["ccproxy", "pyproject.toml", "uv.lock"],
+        reload_includes=reload_includes,
         # log_config=get_uvicorn_log_config(),
     )
 
