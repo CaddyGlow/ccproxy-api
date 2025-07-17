@@ -394,9 +394,24 @@ def app_with_auth(auth_settings: Settings) -> FastAPI:
     app = create_app(settings=auth_settings)
 
     # Override the settings dependency for testing
+    from fastapi.security import HTTPAuthorizationCredentials
+
+    from ccproxy.auth.dependencies import (
+        _get_auth_manager_with_settings,
+        get_auth_manager,
+    )
+    from ccproxy.auth.manager import AuthManager
     from ccproxy.config.settings import get_settings as original_get_settings
 
     app.dependency_overrides[original_get_settings] = lambda: auth_settings
+
+    # Also override the auth manager to use the test settings
+    async def test_auth_manager(
+        credentials: HTTPAuthorizationCredentials | None = None,
+    ) -> AuthManager:
+        return await _get_auth_manager_with_settings(credentials, auth_settings)
+
+    app.dependency_overrides[get_auth_manager] = test_auth_manager
 
     return app
 
