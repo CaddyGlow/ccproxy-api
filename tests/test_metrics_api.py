@@ -359,7 +359,14 @@ class TestSSEStreamingEndpoint:
 
             # Read first event (should be connection event)
             events = []
-            for line in response.iter_lines():
+            line_count = 0
+            max_lines = 10  # Limit to prevent infinite loop
+
+            for line_count, line in enumerate(response.iter_lines()):
+                line_count += 1
+                if line_count > max_lines:
+                    break
+
                 if line.startswith("data: "):
                     event_data = json.loads(line[6:])  # Remove "data: " prefix
                     events.append(event_data)
