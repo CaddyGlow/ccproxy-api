@@ -18,7 +18,7 @@ OpenAIContentType: TypeAlias = Literal["text", "image_url"]
 # Tool-related types
 ToolChoiceType: TypeAlias = Literal["auto", "any", "tool", "none", "required"]
 OpenAIToolChoiceType: TypeAlias = Literal["none", "auto", "required"]
-ToolType: TypeAlias = Literal["function"]
+ToolType: TypeAlias = Literal["function", "custom"]
 
 # Response format types
 ResponseFormatType: TypeAlias = Literal["text", "json_object", "json_schema"]
