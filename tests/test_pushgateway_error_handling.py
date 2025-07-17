@@ -325,13 +325,22 @@ class TestObservabilityScheduler:
         # Start scheduler briefly
         await scheduler.start()
 
-        # Wait a bit for task to run
-        await asyncio.sleep(0.1)
+        # Wait for the first task execution to complete with polling
+        # The pushgateway task should execute immediately on the first run
+        max_wait_time = 2.0  # Maximum time to wait
+        poll_interval = 0.05  # How often to check
+        elapsed_time = 0.0
+
+        while elapsed_time < max_wait_time:
+            if scheduler._consecutive_failures > 0:
+                break
+            await asyncio.sleep(poll_interval)
+            elapsed_time += poll_interval
+
+        # Check that failure was recorded
+        assert scheduler._consecutive_failures > 0
 
         await scheduler.stop()
-
-        # Should have recorded failures
-        assert scheduler._consecutive_failures > 0
 
     def test_set_pushgateway_interval(self, scheduler: ObservabilityScheduler) -> None:
         """Test setting pushgateway interval."""
@@ -371,8 +380,17 @@ class TestIntegration:
         # Start scheduler
         await scheduler.start()
 
-        # Wait for a few failures
-        await asyncio.sleep(0.3)
+        # Wait for a few failures (interval is 0.1s, so wait for multiple cycles)
+        # Use polling to wait for the failure count to increment
+        max_wait_time = 2.0  # Maximum time to wait
+        poll_interval = 0.05  # How often to check
+        elapsed_time = 0.0
+
+        while elapsed_time < max_wait_time:
+            if scheduler._consecutive_failures > 0:
+                break
+            await asyncio.sleep(poll_interval)
+            elapsed_time += poll_interval
 
         # Should have recorded multiple failures
         assert scheduler._consecutive_failures > 0
