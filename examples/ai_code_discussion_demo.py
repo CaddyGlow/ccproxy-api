@@ -369,6 +369,38 @@ Always investigate strategically, then provide focused explanations with code ex
         else:
             return {"success": False, "error": f"Unknown tool: {tool_name}"}
 
+    async def _chat_completion_with_retry(
+        self, client: openai.OpenAI, max_attempts: int = 3, backoff: float = 0.5, **kwargs: Any
+    ):
+        """Call the chat/completions endpoint with simple exponential back-off retries.
+
+        Args:
+            client: The OpenAI client instance to use.
+            max_attempts: Maximum number of attempts before giving up.
+            backoff: Initial back-off delay (seconds); doubled after every failure.
+
+        Returns:
+            The successful response object.
+
+        Raises:
+            Exception: Re-raises the last exception if all attempts fail.
+        """
+        attempt = 0
+        delay = backoff
+        while attempt < max_attempts:
+            try:
+                return client.chat.completions.create(**kwargs)
+            except Exception as e:  # Broad catch – OpenAI/Anthropic SDKs raise various errors
+                attempt += 1
+                if attempt >= max_attempts:
+                    raise
+                logger.warning(
+                    f"Request failed ({e}); retrying in {delay:.1f}s "
+                    f"({attempt}/{max_attempts})"
+                )
+                await asyncio.sleep(delay)
+                delay *= 2
+
     def _execute_bash_command(self, command: str) -> dict[str, Any]:
         """Execute a bash command with security filtering."""
         import shlex
@@ -744,7 +776,8 @@ Ready to investigate and explain the key implementation details!"""
         logger.debug(f"Sending to OpenAI, turn {turn}, message count: {len(messages)}")
 
         try:
-            response = self.openai_client.chat.completions.create(
+            response = await self._chat_completion_with_retry(
+                self.openai_client,
                 model="gpt-4o",
                 messages=messages,
                 tools=self.tools,  # type: ignore
@@ -792,7 +825,8 @@ Ready to investigate and explain the key implementation details!"""
                     )
 
                 # Make another request to get the AI's response after tool usage
-                follow_up_response = self.openai_client.chat.completions.create(
+                follow_up_response = await self._chat_completion_with_retry(
+                    self.openai_client,
                     model="gpt-4o",
                     messages=self.openai_messages,
                     tools=self.tools,  # type: ignore
@@ -836,7 +870,8 @@ Ready to investigate and explain the key implementation details!"""
         )
 
         try:
-            response = self.anthropic_client.chat.completions.create(
+            response = await self._chat_completion_with_retry(
+                self.anthropic_client,
                 model="claude-3-5-sonnet-20241022",
                 messages=messages,
                 tools=self.tools,  # type: ignore
@@ -884,7 +919,8 @@ Ready to investigate and explain the key implementation details!"""
                     )
 
                 # Make another request to get the AI's response after tool usage
-                follow_up_response = self.anthropic_client.chat.completions.create(
+                follow_up_response = await self._chat_completion_with_retry(
+                    self.anthropic_client,
                     model="claude-3-5-sonnet-20241022",
                     messages=self.anthropic_messages,
                     tools=self.tools,  # type: ignore
