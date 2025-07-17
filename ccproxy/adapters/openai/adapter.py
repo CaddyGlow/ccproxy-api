@@ -155,67 +155,19 @@ class OpenAIAdapter(APIAdapter):
         if openai_req.stream is not None:
             anthropic_request["stream"] = openai_req.stream
 
+        # Initialize thinking mode parameters
+        thinking_enabled = False
+        thinking_tokens = 5000  # Default value
+
         # Check if thinking parameter is directly provided
         if hasattr(openai_req, "thinking") and openai_req.thinking:
-            # Set temperature=1 as required by Claude when thinking is enabled
-            anthropic_request["temperature"] = 1
-
+            thinking_enabled = True
             # Handle different thinking parameter formats
-            if isinstance(openai_req.thinking, dict):
-                anthropic_request["thinking"] = openai_req.thinking
-            elif isinstance(openai_req.thinking, bool) and openai_req.thinking:
-                anthropic_request["thinking"] = {
-                    "type": "enabled",
-                    "budget_tokens": 5000,  # Default value
-                }
-
-            # Ensure messages are properly formatted for thinking mode
-            # Claude requires assistant messages to start with a thinking block
-            if anthropic_request["messages"]:
-                # When thinking is enabled, ensure all messages are correctly formatted
-                for msg in anthropic_request["messages"]:
-                    # Handle user messages that come after assistant messages with tool calls
-                    if msg["role"] == "user" and isinstance(msg.get("content"), str):
-                        # Check if this is the last message
-                        if msg == anthropic_request["messages"][-1]:
-                            # We want to mark this but we can't add custom fields to the request
-                            # So just log it for debugging
-                            logger.debug(
-                                "last_user_message_in_thinking_mode",
-                                operation="adapt_request",
-                            )
-
-                    # Format assistant messages
-                    elif msg["role"] == "assistant":
-                        # Ensure content is in the right format
-                        if isinstance(msg.get("content"), str):
-                            # Convert string content to list with thinking block first
-                            msg["content"] = [
-                                {
-                                    "type": "thinking",
-                                    "thinking": "Analyzing the request...",
-                                    "signature": "placeholder_signature",
-                                },
-                                {"type": "text", "text": msg.get("content", "")},
-                            ]
-                        elif isinstance(msg.get("content"), list) and msg["content"]:
-                            # Check if the first block isn't a thinking block
-                            first_block = msg["content"][0]
-                            if isinstance(first_block, dict) and first_block.get(
-                                "type"
-                            ) not in ["thinking", "redacted_thinking"]:
-                                # Add a thinking block at the beginning
-                                msg["content"].insert(
-                                    0,
-                                    {
-                                        "type": "thinking",
-                                        "thinking": "Analyzing the request...",
-                                        "signature": "placeholder_signature",
-                                    },
-                                )
-
-                # Log that thinking mode is enabled for debugging
-                logger.debug("thinking_mode_enabled", operation="adapt_request")
+            if (
+                isinstance(openai_req.thinking, dict)
+                and "budget_tokens" in openai_req.thinking
+            ):
+                thinking_tokens = openai_req.thinking["budget_tokens"]
 
         if openai_req.stop is not None:
             if isinstance(openai_req.stop, str):
@@ -251,6 +203,7 @@ class OpenAIAdapter(APIAdapter):
 
         # Handle reasoning_effort (o1 models) -> thinking configuration
         if openai_req.reasoning_effort:
+            thinking_enabled = True
             # Map reasoning effort to thinking tokens
             thinking_tokens_map = {
                 "low": 1000,
@@ -258,61 +211,6 @@ class OpenAIAdapter(APIAdapter):
                 "high": 10000,
             }
             thinking_tokens = thinking_tokens_map.get(openai_req.reasoning_effort, 5000)
-            anthropic_request["thinking"] = {
-                "type": "enabled",
-                "budget_tokens": thinking_tokens,
-            }
-
-            # Force temperature=1 when thinking is enabled (Claude requirement)
-            anthropic_request["temperature"] = 1
-
-            # Ensure messages are properly formatted for thinking mode
-            # Claude requires assistant messages to start with a thinking block
-            if anthropic_request["messages"]:
-                # When thinking is enabled, ensure all messages are correctly formatted
-                for msg in anthropic_request["messages"]:
-                    # Handle user messages that come after assistant messages with tool calls
-                    if msg["role"] == "user" and isinstance(msg.get("content"), str):
-                        # Check if this is the last message
-                        if msg == anthropic_request["messages"][-1]:
-                            # We want to mark this but we can't add custom fields to the request
-                            # So just log it for debugging
-                            logger.debug(
-                                "last_user_message_in_thinking_mode",
-                                operation="adapt_request",
-                            )
-
-                    # Format assistant messages
-                    elif msg["role"] == "assistant":
-                        # Ensure content is in the right format
-                        if isinstance(msg.get("content"), str):
-                            # Convert string content to list with thinking block first
-                            msg["content"] = [
-                                {
-                                    "type": "thinking",
-                                    "thinking": "Analyzing the request...",
-                                    "signature": "placeholder_signature",
-                                },
-                                {"type": "text", "text": msg.get("content", "")},
-                            ]
-                        elif isinstance(msg.get("content"), list) and msg["content"]:
-                            # Check if the first block isn't a thinking block
-                            first_block = msg["content"][0]
-                            if isinstance(first_block, dict) and first_block.get(
-                                "type"
-                            ) not in ["thinking", "redacted_thinking"]:
-                                # Add a thinking block at the beginning
-                                msg["content"].insert(
-                                    0,
-                                    {
-                                        "type": "thinking",
-                                        "thinking": "Analyzing the request...",
-                                        "signature": "placeholder_signature",
-                                    },
-                                )
-
-                # Log that thinking mode is enabled for debugging
-                logger.debug("thinking_mode_enabled", operation="adapt_request")
 
             logger.debug(
                 "reasoning_effort_converted",
@@ -377,6 +275,11 @@ class OpenAIAdapter(APIAdapter):
                 openai_req.function_call
             )
 
+        # Configure thinking mode if enabled
+        self._configure_thinking_mode(
+            anthropic_request, thinking_enabled, thinking_tokens
+        )
+
         logger.debug(
             "format_conversion_completed",
             from_format="openai",
@@ -385,6 +288,7 @@ class OpenAIAdapter(APIAdapter):
             anthropic_model=anthropic_request.get("model"),
             has_tools=bool(anthropic_request.get("tools")),
             has_system=bool(anthropic_request.get("system")),
+            thinking_enabled=thinking_enabled,
             message_count=len(cast(list[Any], anthropic_request["messages"])),
             operation="adapt_request",
         )
@@ -417,11 +321,25 @@ class OpenAIAdapter(APIAdapter):
                 for block in response["content"]:
                     if block.get("type") == "text":
                         content += block.get("text", "")
-                    elif block.get("type") == "thinking":
+                    elif block.get("type") in ["thinking", "redacted_thinking"]:
                         # Handle thinking blocks - we can include them with a marker
                         thinking_text = block.get("thinking", "")
+                        thinking_type = block.get("type", "thinking")
+                        signature = block.get("signature", "")
+
+                        # Include signature in formatted output for reference
                         if thinking_text:
-                            content += f"[Thinking]\n{thinking_text}\n---\n"
+                            content_type = (
+                                "Thinking"
+                                if thinking_type == "thinking"
+                                else "Redacted Thinking"
+                            )
+                            signature_info = (
+                                f" [signature: {signature[:20]}...]"
+                                if signature
+                                else ""
+                            )
+                            content += f"[{content_type}{signature_info}]\n{thinking_text}\n---\n"
                     elif block.get("type") == "tool_use":
                         tool_calls.append(format_openai_tool_call(block))
 
@@ -476,6 +394,16 @@ class OpenAIAdapter(APIAdapter):
                 system_fingerprint=generate_openai_system_fingerprint(),
             )
 
+            # Count thinking blocks for logging
+            thinking_blocks_count = 0
+            redacted_thinking_blocks_count = 0
+            if "content" in response and response["content"]:
+                for block in response["content"]:
+                    if block.get("type") == "thinking":
+                        thinking_blocks_count += 1
+                    elif block.get("type") == "redacted_thinking":
+                        redacted_thinking_blocks_count += 1
+
             logger.debug(
                 "format_conversion_completed",
                 from_format="anthropic",
@@ -485,6 +413,8 @@ class OpenAIAdapter(APIAdapter):
                 finish_reason=valid_finish_reason,
                 content_length=len(content) if content else 0,
                 tool_calls_count=len(tool_calls),
+                thinking_blocks_count=thinking_blocks_count,
+                redacted_thinking_blocks_count=redacted_thinking_blocks_count,
                 input_tokens=usage_info.get("input_tokens", 0),
                 output_tokens=usage_info.get("output_tokens", 0),
                 operation="adapt_response",
@@ -655,6 +585,22 @@ class OpenAIAdapter(APIAdapter):
                             "text": block.text,
                         }
                     )
+                elif block_type in ["thinking", "redacted_thinking"] and hasattr(
+                    block, "thinking"
+                ):
+                    # Preserve thinking blocks with signatures
+                    thinking_block = {
+                        "type": block_type,
+                        "thinking": getattr(block, "thinking", ""),
+                    }
+
+                    # Add signature only if present and not empty
+                    if hasattr(block, "signature") and getattr(
+                        block, "signature", None
+                    ):
+                        thinking_block["signature"] = getattr(block, "signature", "")
+
+                    anthropic_content.append(thinking_block)
                 elif (
                     block_type == "image_url"
                     and hasattr(block, "image_url")
@@ -705,6 +651,18 @@ class OpenAIAdapter(APIAdapter):
                             "text": block.get("text", ""),
                         }
                     )
+                elif block.get("type") in ["thinking", "redacted_thinking"]:
+                    # Preserve thinking blocks with signatures
+                    thinking_block = {
+                        "type": block.get("type"),
+                        "thinking": block.get("thinking", ""),
+                    }
+
+                    # Add signature only if present and not empty
+                    if "signature" in block and block.get("signature", ""):
+                        thinking_block["signature"] = block.get("signature", "")
+
+                    anthropic_content.append(thinking_block)
                 elif block.get("type") == "image_url":
                     # Convert image URL to Anthropic format
                     image_url = block.get("image_url", {})
@@ -892,6 +850,78 @@ class OpenAIAdapter(APIAdapter):
         }
 
         return mapping.get(stop_reason, "stop")
+
+    def _configure_thinking_mode(
+        self,
+        anthropic_request: dict[str, Any],
+        thinking_enabled: bool,
+        thinking_tokens: int,
+    ) -> None:
+        """Configure thinking mode and format messages for thinking support.
+
+        Args:
+            anthropic_request: The Anthropic request to configure
+            thinking_enabled: Whether thinking mode is enabled
+            thinking_tokens: The number of tokens to allocate for thinking
+        """
+        if not thinking_enabled:
+            return
+
+        # Force temperature=1 when thinking is enabled (Claude requirement)
+        anthropic_request["temperature"] = 1
+
+        # Set thinking configuration
+        anthropic_request["thinking"] = {
+            "type": "enabled",
+            "budget_tokens": thinking_tokens,
+        }
+
+        # Ensure messages are properly formatted for thinking mode
+        # Claude requires assistant messages to start with a thinking block
+        if anthropic_request["messages"]:
+            # When thinking is enabled, ensure all messages are correctly formatted
+            for msg in anthropic_request["messages"]:
+                # Handle user messages that come after assistant messages with tool calls
+                if msg["role"] == "user" and isinstance(msg.get("content"), str):
+                    # Check if this is the last message
+                    if msg == anthropic_request["messages"][-1]:
+                        # We want to mark this but we can't add custom fields to the request
+                        # So just log it for debugging
+                        logger.debug(
+                            "last_user_message_in_thinking_mode",
+                            operation="adapt_request",
+                        )
+
+                # Format assistant messages
+                elif msg["role"] == "assistant":
+                    # Ensure content is in the right format
+                    if isinstance(msg.get("content"), str):
+                        # Convert string content to list with thinking block first
+                        msg["content"] = [
+                            {
+                                "type": "thinking",
+                                "thinking": "Analyzing the request...",
+                                # No signature - let Anthropic add it
+                            },
+                            {"type": "text", "text": msg.get("content", "")},
+                        ]
+                    elif isinstance(msg.get("content"), list) and msg["content"]:
+                        # Check if the first block isn't a thinking block
+                        first_block = msg["content"][0]
+                        if isinstance(first_block, dict) and first_block.get(
+                            "type"
+                        ) not in ["thinking", "redacted_thinking"]:
+                            # Add a thinking block at the beginning
+                            msg["content"].insert(
+                                0,
+                                {
+                                    "type": "thinking",
+                                    "thinking": "Analyzing the request...",
+                                },
+                            )
+
+            # Log that thinking mode is enabled for debugging
+            logger.debug("thinking_mode_enabled", operation="adapt_request")
 
 
 __all__ = [

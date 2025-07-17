@@ -11,6 +11,8 @@ import time
 from collections.abc import AsyncGenerator, AsyncIterator
 from typing import Any
 
+import structlog
+
 from .models import (
     OpenAIStreamingChatCompletionResponse,
     OpenAIStreamingChoice,
@@ -19,6 +21,9 @@ from .models import (
     generate_openai_response_id,
     generate_openai_system_fingerprint,
 )
+
+
+logger = structlog.get_logger(__name__)
 
 
 class OpenAISSEFormatter:
@@ -93,6 +98,48 @@ class OpenAISSEFormatter:
                 {
                     "index": choice_index,
                     "delta": {"content": content},
+                    "logprobs": None,
+                    "finish_reason": None,
+                }
+            ],
+        }
+        return OpenAISSEFormatter.format_data_event(data)
+
+    @staticmethod
+    def format_thinking_chunk(
+        message_id: str,
+        model: str,
+        created: int,
+        thinking_text: str,
+        thinking_type: str = "thinking",
+        choice_index: int = 0,
+    ) -> str:
+        """Format a thinking content chunk.
+
+        Args:
+            message_id: Unique identifier for the completion
+            model: Model name being used
+            created: Unix timestamp when the completion was created
+            thinking_text: Thinking text content
+            thinking_type: Type of thinking (thinking or redacted_thinking)
+            choice_index: Index of the choice (usually 0)
+
+        Returns:
+            Formatted SSE string with thinking content
+        """
+        # Format the thinking block as a special comment in the content
+        prefix = "[Thinking]" if thinking_type == "thinking" else "[Redacted Thinking]"
+        formatted_content = f"{prefix}\n{thinking_text}\n---\n"
+
+        data = {
+            "id": message_id,
+            "object": "chat.completion.chunk",
+            "created": created,
+            "model": model,
+            "choices": [
+                {
+                    "index": choice_index,
+                    "delta": {"content": formatted_content},
                     "logprobs": None,
                     "finish_reason": None,
                 }
@@ -274,6 +321,8 @@ class OpenAIStreamProcessor:
         self.accumulated_content = ""
         self.tool_calls: dict[str, dict[str, Any]] = {}
         self.usage_info: dict[str, int] | None = None
+        self.thinking_blocks: dict[str, dict[str, Any]] = {}
+        self.current_thinking_id: str | None = None
 
     async def process_stream(
         self, claude_stream: AsyncIterator[dict[str, Any]]
@@ -345,6 +394,16 @@ class OpenAIStreamProcessor:
                     "name": tool_name,
                     "arguments": "",
                 }
+            elif block.get("type") in ["thinking", "redacted_thinking"]:
+                # Start of thinking block
+                thinking_id = block.get("id", str(len(self.thinking_blocks) + 1))
+                self.current_thinking_id = thinking_id
+                self.thinking_blocks[thinking_id] = {
+                    "id": thinking_id,
+                    "type": block.get("type"),
+                    "thinking": "",
+                    # Let Anthropic generate signature
+                }
 
         elif chunk_type == "content_block_delta":
             delta = chunk.get("delta", {})
@@ -377,6 +436,35 @@ class OpenAIStreamProcessor:
                     latest_tool_id = list(self.tool_calls.keys())[-1]
                     self.tool_calls[latest_tool_id]["arguments"] += partial_json
 
+            elif delta_type == "thinking_delta" and self.current_thinking_id:
+                # Thinking content
+                thinking_text = delta.get("thinking", "")
+                if thinking_text and self.current_thinking_id in self.thinking_blocks:
+                    # Append to the current thinking block
+                    self.thinking_blocks[self.current_thinking_id]["thinking"] += (
+                        thinking_text
+                    )
+                    # Stream the thinking content
+                    thinking_type = self.thinking_blocks[self.current_thinking_id][
+                        "type"
+                    ]
+                    yield self.formatter.format_thinking_chunk(
+                        self.message_id,
+                        self.model,
+                        self.created,
+                        thinking_text,
+                        thinking_type,
+                    )
+
+            elif delta_type == "signature_delta" and self.current_thinking_id:
+                # Signature for thinking block
+                signature = delta.get("signature", "")
+                if signature and self.current_thinking_id in self.thinking_blocks:
+                    # Add signature to the current thinking block
+                    self.thinking_blocks[self.current_thinking_id]["signature"] += (
+                        signature
+                    )
+
         elif chunk_type == "content_block_stop":
             # End of content block
             if self.tool_calls and self.enable_tool_calls:
@@ -390,6 +478,24 @@ class OpenAIStreamProcessor:
                         function_name=tool_call["name"],
                         function_arguments=tool_call["arguments"],
                     )
+
+            # Reset current thinking block tracking after block is complete
+            if (
+                self.current_thinking_id
+                and self.current_thinking_id in self.thinking_blocks
+            ):
+                # The thinking block is complete
+                thinking_block = self.thinking_blocks[self.current_thinking_id]
+                # Log completion of thinking block
+                logger.debug(
+                    "thinking_block_complete",
+                    thinking_id=self.current_thinking_id,
+                    thinking_type=thinking_block["type"],
+                    thinking_length=len(thinking_block["thinking"]),
+                    has_signature=bool(thinking_block["signature"]),
+                )
+                # Reset current thinking ID
+                self.current_thinking_id = None
 
         elif chunk_type == "message_delta":
             # Usage information
