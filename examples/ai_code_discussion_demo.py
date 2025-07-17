@@ -246,98 +246,102 @@ class AICodeDiscussionManager:
         self.tools = [
             {
                 "type": "custom",
-                "name": "read_file",
-                "description": "Read the contents of a file from the project directory to analyze code",
-                "input_schema": {
-                    "type": "object",
-                    "properties": {
-                        "file_path": {
-                            "type": "string",
-                            "description": "Path to the file to read (relative to project root)",
-                        }
+                "custom": {
+                    "name": "read_file",
+                    "description": "Read the contents of a file from the project directory to analyze code",
+                    "input_schema": {
+                        "type": "object",
+                        "properties": {
+                            "file_path": {
+                                "type": "string",
+                                "description": "Path to the file to read (relative to project root)",
+                            }
+                        },
+                        "required": ["file_path"],
                     },
-                    "required": ["file_path"],
                 },
             },
             {
                 "type": "custom",
-                "name": "list_files",
-                "description": "List files and directories in the project directory to explore the codebase",
-                "input_schema": {
-                    "type": "object",
-                    "properties": {
-                        "directory_path": {
-                            "type": "string",
-                            "description": "Path to directory to list (relative to project root, default: '.')",
+                "custom": {
+                    "name": "list_files",
+                    "description": "List files and directories in the project directory to explore the codebase",
+                    "input_schema": {
+                        "type": "object",
+                        "properties": {
+                            "directory_path": {
+                                "type": "string",
+                                "description": "Path to directory to list (relative to project root, default: '.')",
+                            },
+                            "recursive": {
+                                "type": "boolean",
+                                "description": "Whether to list files recursively (default: false)",
+                            },
+                            "limit": {
+                                "type": "integer",
+                                "description": "Maximum number of items to return (default: 50, max: 200)",
+                            },
                         },
-                        "recursive": {
-                            "type": "boolean",
-                            "description": "Whether to list files recursively (default: false)",
-                        },
-                        "limit": {
-                            "type": "integer",
-                            "description": "Maximum number of items to return (default: 50, max: 200)",
-                        },
+                        "required": [],
                     },
-                    "required": [],
                 },
             },
             {
                 "type": "custom",
-                "name": "run_bash",
-                "description": "Execute bash commands for code exploration (allowed: rg, fd, find, cat, xargs, head, tail, wc, grep)",
-                "input_schema": {
-                    "type": "object",
-                    "properties": {
-                        "command": {
-                            "type": "string",
-                            "description": "Bash command to execute (must start with allowed commands)",
-                        }
+                "custom": {
+                    "name": "run_bash",
+                    "description": "Execute bash commands for code exploration (allowed: rg, fd, find, cat, xargs, head, tail, wc, grep)",
+                    "input_schema": {
+                        "type": "object",
+                        "properties": {
+                            "command": {
+                                "type": "string",
+                                "description": "Bash command to execute (must start with allowed commands)",
+                            }
+                        },
+                        "required": ["command"],
                     },
-                    "required": ["command"],
                 },
             },
         ]
 
         # System prompts for beginner/expert roles
-        self.beginner_system_prompt = """You are a curious beginner developer who is learning about code architecture and patterns. Your role is to:
-- Actively explore the codebase using available tools (text editor for reading files, bash for searching)
-- Use multiple tool requests to thoroughly investigate areas of interest
-- Use bash commands like: 'find', 'fd', 'rg', 'cat', 'xargs' to explore the codebase efficiently
-- Use the text editor to read specific files you discover
-- After gathering information with tools, ask thoughtful questions about what you discovered
-- Show genuine curiosity about how things work
-- Ask for clarification when explanations are complex
-- Follow up with related questions to deepen understanding
-- Keep questions focused and specific after your investigation
-- Express enthusiasm for learning
+        self.beginner_system_prompt = """You are a curious beginner developer learning about code architecture. Your role is to:
+- Focus on exploring only 2-3 key files relevant to the topic at hand
+- Use targeted tool requests - start with 'rg' or 'find' to locate specific files, then read them
+- Examine main entry points, configuration files, or core modules related to the discussion topic
+- After reading specific files, ask focused questions about what you discovered
+- Keep exploration concise and targeted to save tokens
+- Ask specific questions about patterns, design choices, or implementation details
 
-Available tools: text editor (read files), bash (rg, fd, find, cat, xargs for searching/exploring)
-Workflow: Use tools → Analyze findings → Ask specific questions based on your discoveries
-Ask questions like "I noticed X pattern in the code, how does this work?", "Why was this approach chosen?", "What are the trade-offs?"
+Available tools: read_file, list_files (use limit parameter), run_bash
+Strategy: Use bash to find 2-3 relevant files → Read those specific files → Ask informed questions
+Focus on quality over quantity - examine key files thoroughly rather than scanning everything.
+Note: read_file shows only the first 5 lines as a preview to save tokens.
 
-Always explore the code first with tools, then ask informed questions about your findings."""
+Always explore strategically first, then ask specific questions about your targeted findings."""
 
-        self.expert_system_prompt = """You are an experienced software architect and mentor who explains code concepts clearly and concisely. Your role is to:
-- First explore the codebase using available tools (text editor for reading files, bash for searching)
-- Use multiple tool requests to thoroughly investigate the areas being discussed
-- Use bash commands like: 'find', 'fd', 'rg', 'cat', 'xargs' to efficiently analyze the codebase
-- Use the text editor to read specific files for detailed analysis
-- After gathering comprehensive information with tools, provide clear, practical explanations
-- Keep responses concise but informative
-- Use simple language and avoid jargon when possible
-- Give concrete examples from the code you examined
-- Always end with a question to encourage further discussion
-- Be patient and encouraging
-- Focus on practical understanding over theoretical details
+        self.expert_system_prompt = """You are an experienced software architect providing focused guidance. Your role is to:
+- Investigate only the most relevant 2-3 files related to the specific question being asked
+- Use targeted searches to locate key implementation files, then read them strategically
+- Focus on answering the specific question with concrete examples from the code
+- Provide concise, practical explanations backed by actual code evidence
+- Keep responses brief (2-3 sentences) but complete and informative
+- End with a follow-up question to encourage continued learning
 
-Available tools: text editor (read files), bash (rg, fd, find, cat, xargs for searching/analyzing)
-Workflow: Use tools to investigate → Analyze the code → Provide informed explanations with examples
-Your explanations should be brief (2-3 sentences) but complete, backed by actual code findings. Always finish with a follow-up question to keep the conversation going."""
+Available tools: read_file, list_files (use limit parameter), run_bash
+Strategy: Target specific files → Read relevant sections → Provide focused explanations with examples
+Be efficient with token usage - investigate precisely what's needed to answer the question.
+
+Always investigate strategically, then provide focused explanations with code examples."""
 
         # Conversation histories - both use OpenAI format now
         self.openai_messages: list[ChatCompletionMessageParam] = []
         self.anthropic_messages: list[ChatCompletionMessageParam] = []
+
+        # Token usage tracking
+        self.total_tokens_used = 0
+        self.turn_tokens = []
 
         logger.debug(
             f"AI Code Discussion Manager initialized: project_root={self.project_root}, "
@@ -494,7 +498,7 @@ Your explanations should be brief (2-3 sentences) but complete, backed by actual
             print("--- End of command output ---")
 
     def render_file_content(self, result: dict[str, Any]) -> None:
-        """Render file content with syntax highlighting."""
+        """Render file content with syntax highlighting (first 5 lines only)."""
         if self.use_rich and self.console:
             # Detect file type for syntax highlighting
             file_path = result["path"]
@@ -519,10 +523,10 @@ Your explanations should be brief (2-3 sentences) but complete, backed by actual
             else:
                 lexer = "text"
 
-            # Truncate very long files for display
             content = result["content"]
-            if len(content) > 5000:
-                content = content[:5000] + "\n\n... (truncated)"
+            lines = content.split("\n")
+            if len(lines) > 5:
+                content = "\n".join(lines[:5]) + f"\n... ({len(lines) - 5} more lines)"
 
             syntax = Syntax(
                 content, lexer, theme="monokai", line_numbers=True, word_wrap=True
@@ -530,7 +534,7 @@ Your explanations should be brief (2-3 sentences) but complete, backed by actual
 
             panel = Panel(
                 syntax,
-                title=f"📄 {result['path']} ({result['size']} bytes)",
+                title=f"📄 {result['path']} ({result['size']} bytes) - First 5 lines",
                 title_align="left",
                 border_style="blue",
                 expand=False,
@@ -538,12 +542,15 @@ Your explanations should be brief (2-3 sentences) but complete, backed by actual
 
             self.console.print(panel)
         else:
-            print(f"\n--- File: {result['path']} ({result['size']} bytes) ---")
+            print(
+                f"\n--- File: {result['path']} ({result['size']} bytes) - First 5 lines ---"
+            )
             content = result["content"]
-            if len(content) > 2000:
-                content = content[:2000] + "\n\n... (truncated)"
+            lines = content.split("\n")
+            if len(lines) > 5:
+                content = "\n".join(lines[:5]) + f"\n... ({len(lines) - 5} more lines)"
             print(content)
-            print("--- End of file ---")
+            print("--- End of preview ---")
 
     def render_directory_listing(self, result: dict[str, Any]) -> None:
         """Render directory listing."""
@@ -622,21 +629,18 @@ Your explanations should be brief (2-3 sentences) but complete, backed by actual
     def add_initial_topic(self, topic: str) -> None:
         """Add initial topic to start the code discussion."""
         # OpenAI will be the beginner (starts the conversation)
-        beginner_initial_message = f"""Let's explore this codebase together: {topic}
+        beginner_initial_message = f"""Let's discuss: {topic}
 
-I have access to tools to read files and explore the project structure. As a beginner, I want to understand:
-- The overall architecture and structure
-- How different components work together
-- What patterns are being used
+I want to understand the key aspects of this topic in the codebase. I'll use tools to find and examine 2-3 relevant files to understand the implementation.
 
-Let me start by exploring the codebase structure to get a better understanding of what we're working with."""
+Let me start by targeting specific files related to {topic}."""
 
         # Anthropic will be the expert (responds to questions)
-        expert_initial_message = f"""I'm here to help you understand this codebase: {topic}
+        expert_initial_message = f"""I'm here to help you understand: {topic}
 
-As an experienced developer, I'll investigate the code thoroughly using the available tools to provide you with detailed explanations about architecture, patterns, and implementation details.
+I'll examine the most relevant files and provide focused explanations with concrete examples from the code.
 
-I'm ready to explore the codebase and share my findings with you!"""
+Ready to investigate and explain the key implementation details!"""
 
         # Add system prompts and initial messages
         self.openai_messages.append(
@@ -655,6 +659,84 @@ I'm ready to explore the codebase and share my findings with you!"""
 
         logger.debug(f"Initial topic added with beginner/expert roles: {topic}")
 
+    def track_token_usage(self, response, turn: int, speaker: str) -> None:
+        """Track token usage from API response."""
+        if hasattr(response, "usage") and response.usage:
+            usage = response.usage
+            input_tokens = getattr(usage, "prompt_tokens", 0) or getattr(
+                usage, "input_tokens", 0
+            )
+            output_tokens = getattr(usage, "completion_tokens", 0) or getattr(
+                usage, "output_tokens", 0
+            )
+            total_tokens = getattr(usage, "total_tokens", 0) or (
+                input_tokens + output_tokens
+            )
+
+            self.turn_tokens.append(
+                {
+                    "turn": turn,
+                    "speaker": speaker,
+                    "input_tokens": input_tokens,
+                    "output_tokens": output_tokens,
+                    "total_tokens": total_tokens,
+                }
+            )
+            self.total_tokens_used += total_tokens
+
+            if self.use_rich and self.console:
+                self.console.print(
+                    f"[dim yellow]💰 {speaker} - Tokens: {input_tokens} in + {output_tokens} out = {total_tokens} total[/dim yellow]"
+                )
+            else:
+                print(
+                    f"💰 {speaker} - Tokens: {input_tokens} in + {output_tokens} out = {total_tokens} total"
+                )
+
+    def print_token_summary(self) -> None:
+        """Print a summary of token usage."""
+        if self.use_rich and self.console:
+            table = Table(show_header=True, header_style="bold cyan")
+            table.add_column("Turn", style="yellow", width=4)
+            table.add_column("Speaker", style="green")
+            table.add_column("Input", style="blue", justify="right")
+            table.add_column("Output", style="magenta", justify="right")
+            table.add_column("Total", style="red", justify="right")
+
+            for usage in self.turn_tokens:
+                table.add_row(
+                    str(usage["turn"]),
+                    usage["speaker"],
+                    str(usage["input_tokens"]),
+                    str(usage["output_tokens"]),
+                    str(usage["total_tokens"]),
+                )
+
+            table.add_section()
+            table.add_row(
+                "", "TOTAL", "", "", str(self.total_tokens_used), style="bold"
+            )
+
+            panel = Panel(
+                table,
+                title="[bold green]Token Usage Summary[/bold green]",
+                border_style="green",
+                title_align="left",
+            )
+            self.console.print()
+            self.console.print(panel)
+        else:
+            print(f"\n{'=' * 60}")
+            print("TOKEN USAGE SUMMARY")
+            print(f"{'=' * 60}")
+            for usage in self.turn_tokens:
+                print(
+                    f"Turn {usage['turn']} ({usage['speaker']}): {usage['input_tokens']} in + {usage['output_tokens']} out = {usage['total_tokens']} total"
+                )
+            print(f"{'=' * 60}")
+            print(f"TOTAL TOKENS USED: {self.total_tokens_used}")
+            print(f"{'=' * 60}")
+
     async def send_to_openai(
         self, messages: list[ChatCompletionMessageParam], turn: int
     ) -> str:
@@ -672,6 +754,9 @@ I'm ready to explore the codebase and share my findings with you!"""
 
             if not response.choices:
                 raise Exception("No choices in OpenAI response")
+
+            # Track token usage
+            self.track_token_usage(response, turn, "OpenAI Beginner")
 
             choice = response.choices[0]
             content = choice.message.content or ""
@@ -713,6 +798,11 @@ I'm ready to explore the codebase and share my findings with you!"""
                     tools=self.tools,  # type: ignore
                     max_tokens=1000,
                     temperature=0.7,
+                )
+
+                # Track follow-up token usage
+                self.track_token_usage(
+                    follow_up_response, turn, "OpenAI Beginner (follow-up)"
                 )
 
                 if follow_up_response.choices:
@@ -757,6 +847,9 @@ I'm ready to explore the codebase and share my findings with you!"""
             if not response.choices:
                 raise Exception("No choices in Anthropic response")
 
+            # Track token usage
+            self.track_token_usage(response, turn, "Anthropic Expert")
+
             choice = response.choices[0]
             content = choice.message.content or ""
 
@@ -797,6 +890,11 @@ I'm ready to explore the codebase and share my findings with you!"""
                     tools=self.tools,  # type: ignore
                     max_tokens=1000,
                     temperature=0.7,
+                )
+
+                # Track follow-up token usage
+                self.track_token_usage(
+                    follow_up_response, turn, "Anthropic Expert (follow-up)"
                 )
 
                 if follow_up_response.choices:
@@ -865,6 +963,7 @@ I'm ready to explore the codebase and share my findings with you!"""
             table.add_row("Total turns:", str(total_turns))
             table.add_row("OpenAI messages:", str(len(self.openai_messages)))
             table.add_row("Anthropic messages:", str(len(self.anthropic_messages)))
+            table.add_row("Total tokens used:", str(self.total_tokens_used))
 
             panel = Panel(
                 table,
@@ -879,7 +978,33 @@ I'm ready to explore the codebase and share my findings with you!"""
             print(f"\n{'=' * 60}")
             print("Discussion completed!")
             print(f"Total turns: {total_turns}")
+            print(f"Total tokens used: {self.total_tokens_used}")
             print(f"{'=' * 60}")
+
+        # Print detailed token summary
+        if self.turn_tokens:
+            self.print_token_summary()
+
+    def _share_tool_interactions(
+        self,
+        from_messages: list,
+        to_messages: list,
+        start_idx: int,
+        final_response: str,
+    ) -> None:
+        """Share tool calls and results between AI conversations."""
+        # Copy any tool interactions that happened since start_idx
+        for i in range(start_idx, len(from_messages)):
+            msg = from_messages[i]
+            if msg.get("role") == "assistant" and msg.get("tool_calls"):
+                # Share the tool calls as context
+                to_messages.append(msg)
+            elif msg.get("role") == "tool":
+                # Share the tool results
+                to_messages.append(msg)
+
+        # Add the final response as user message
+        to_messages.append({"role": "user", "content": final_response})
 
     async def run_code_discussion(self, topic: str, max_turns: int = 6) -> None:
         """Run the bidirectional code discussion."""
@@ -891,16 +1016,22 @@ I'm ready to explore the codebase and share my findings with you!"""
                 if turn % 2 == 1:  # Odd turns: OpenAI speaks
                     logger.debug(f"Turn {turn}: OpenAI speaking")
 
+                    # Remember starting point for tool interaction sharing
+                    openai_start_idx = len(self.openai_messages)
+
                     response = await self.send_to_openai(self.openai_messages, turn)
 
-                    # Add to OpenAI's history
+                    # Add final response to OpenAI's history
                     self.openai_messages.append(
                         {"role": "assistant", "content": response}
                     )
 
-                    # Add to Anthropic's history (with role swap)
-                    self.anthropic_messages.append(
-                        {"role": "user", "content": response}
+                    # Share all tool interactions and final response with Anthropic
+                    self._share_tool_interactions(
+                        self.openai_messages,
+                        self.anthropic_messages,
+                        openai_start_idx,
+                        response,
                     )
 
                     self.render_ai_message(
@@ -910,17 +1041,25 @@ I'm ready to explore the codebase and share my findings with you!"""
                 else:  # Even turns: Anthropic speaks
                     logger.debug(f"Turn {turn}: Anthropic speaking")
 
+                    # Remember starting point for tool interaction sharing
+                    anthropic_start_idx = len(self.anthropic_messages)
+
                     response = await self.send_to_anthropic(
                         self.anthropic_messages, turn
                     )
 
-                    # Add to Anthropic's history
+                    # Add final response to Anthropic's history
                     self.anthropic_messages.append(
                         {"role": "assistant", "content": response}
                     )
 
-                    # Add to OpenAI's history (with role swap)
-                    self.openai_messages.append({"role": "user", "content": response})
+                    # Share all tool interactions and final response with OpenAI
+                    self._share_tool_interactions(
+                        self.anthropic_messages,
+                        self.openai_messages,
+                        anthropic_start_idx,
+                        response,
+                    )
 
                     self.render_ai_message(
                         turn, "Anthropic Expert (via proxy)", response
