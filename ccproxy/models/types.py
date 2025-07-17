@@ -1,6 +1,8 @@
 """Common type aliases used across the ccproxy models."""
 
-from typing import Literal, TypeAlias, TypedDict
+from typing import Literal, TypeAlias
+
+from typing_extensions import TypedDict
 
 
 # Message and content types
