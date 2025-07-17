@@ -43,6 +43,22 @@ class ObservabilitySettings(BaseModel):
         description="Path to DuckDB database file",
     )
 
+    # Stats printing configuration
+    stats_printing_enabled: bool = Field(
+        default=False,
+        description="Enable periodic stats printing to console",
+    )
+
+    stats_printing_interval: float = Field(
+        default=60.0,
+        description="Interval in seconds for printing stats summary",
+    )
+
+    stats_printing_format: str = Field(
+        default="console",
+        description="Format for stats output: 'console', 'rich', 'log', 'json'",
+    )
+
     # Enhanced logging integration
     logging_pipeline_enabled: bool = Field(
         default=True,
@@ -53,6 +69,30 @@ class ObservabilitySettings(BaseModel):
         default="auto",
         description="Logging format for observability: 'rich', 'json', 'auto' (auto-detects based on environment)",
     )
+
+    @field_validator("stats_printing_format")
+    @classmethod
+    def validate_stats_printing_format(cls, v: str) -> str:
+        """Validate and normalize stats printing format."""
+        lower_v = v.lower()
+        valid_formats = ["console", "rich", "log", "json"]
+        if lower_v not in valid_formats:
+            raise ValueError(
+                f"Invalid stats printing format: {v}. Must be one of {valid_formats}"
+            )
+        return lower_v
+
+    @field_validator("stats_printing_interval")
+    @classmethod
+    def validate_stats_printing_interval(cls, v: float) -> float:
+        """Validate stats printing interval is within reasonable bounds."""
+        if v < 1.0:
+            raise ValueError("Stats printing interval must be at least 1 second")
+        if v > 3600:
+            raise ValueError(
+                "Stats printing interval must not exceed 3600 seconds (1 hour)"
+            )
+        return v
 
     @field_validator("logging_format")
     @classmethod
@@ -84,4 +124,5 @@ class ObservabilitySettings(BaseModel):
             or self.pushgateway_enabled
             or self.duckdb_enabled
             or self.logging_pipeline_enabled
+            or self.stats_printing_enabled
         )
