@@ -52,9 +52,9 @@ OPENAI_TO_CLAUDE_MODEL_MAPPING: dict[str, str] = {
     "gpt-4o-2024-11-20": "claude-3-7-sonnet-20250219",
     "gpt-4o-mini": "claude-3-5-haiku-latest",
     "gpt-4o-mini-2024-07-18": "claude-3-5-haiku-latest",
-    # o1 models -> Claude 3.5 Sonnet with thinking
-    "o1": "claude-3-5-sonnet-20241022",
-    "o1-preview": "claude-3-5-sonnet-20241022",
+    # o1 models -> Claude models that support thinking
+    "o1": "claude-opus-4-20250514",
+    "o1-preview": "claude-opus-4-20250514",
     "o1-mini": "claude-sonnet-4-20250514",
     # o3 models -> Claude Opus 4
     "o3-mini": "claude-opus-4-20250514",
@@ -190,22 +190,76 @@ class OpenAIAdapter(APIAdapter):
                 anthropic_request["system"] = system_prompt
 
         # Handle reasoning_effort (o1 models) -> thinking configuration
-        if openai_req.reasoning_effort:
+        # Automatically enable thinking for o1 models even without explicit reasoning_effort
+        if (
+            openai_req.reasoning_effort
+            or openai_req.model.startswith("o1")
+            or openai_req.model.startswith("o3")
+        ):
             # Map reasoning effort to thinking tokens
             thinking_tokens_map = {
                 "low": 1000,
                 "medium": 5000,
                 "high": 10000,
             }
-            thinking_tokens = thinking_tokens_map.get(openai_req.reasoning_effort, 5000)
+
+            # Default thinking tokens based on model if reasoning_effort not specified
+            default_thinking_tokens = 5000  # medium by default
+            if openai_req.model.startswith("o3"):
+                default_thinking_tokens = 10000  # high for o3 models
+            elif openai_req.model == "o1-mini":
+                default_thinking_tokens = 3000  # lower for mini model
+
+            thinking_tokens = (
+                thinking_tokens_map.get(
+                    openai_req.reasoning_effort, default_thinking_tokens
+                )
+                if openai_req.reasoning_effort
+                else default_thinking_tokens
+            )
+
             anthropic_request["thinking"] = {
                 "type": "enabled",
                 "budget_tokens": thinking_tokens,
             }
+
+            # Ensure max_tokens is greater than budget_tokens
+            current_max_tokens = anthropic_request.get("max_tokens", 4096)
+            if current_max_tokens <= thinking_tokens:
+                # Set max_tokens to be 2x thinking tokens + some buffer for response
+                anthropic_request["max_tokens"] = thinking_tokens + max(
+                    thinking_tokens, 4096
+                )
+                logger.debug(
+                    "max_tokens_adjusted_for_thinking",
+                    original_max_tokens=current_max_tokens,
+                    thinking_tokens=thinking_tokens,
+                    new_max_tokens=anthropic_request["max_tokens"],
+                    operation="adapt_request",
+                )
+
+            # When thinking is enabled, temperature must be 1.0
+            if (
+                anthropic_request.get("temperature") is not None
+                and anthropic_request["temperature"] != 1.0
+            ):
+                logger.debug(
+                    "temperature_adjusted_for_thinking",
+                    original_temperature=anthropic_request["temperature"],
+                    new_temperature=1.0,
+                    operation="adapt_request",
+                )
+                anthropic_request["temperature"] = 1.0
+            elif "temperature" not in anthropic_request:
+                # Set default temperature to 1.0 for thinking mode
+                anthropic_request["temperature"] = 1.0
+
             logger.debug(
-                "reasoning_effort_converted",
+                "thinking_enabled",
                 reasoning_effort=openai_req.reasoning_effort,
+                model=openai_req.model,
                 thinking_tokens=thinking_tokens,
+                temperature=anthropic_request["temperature"],
                 operation="adapt_request",
             )
 
@@ -553,7 +607,7 @@ class OpenAIAdapter(APIAdapter):
                     thinking_text = match.group(2)
                     thinking_block: dict[str, Any] = {
                         "type": "thinking",
-                        "text": thinking_text,
+                        "thinking": thinking_text,  # Changed from "text" to "thinking"
                     }
                     if signature and signature != "None":
                         thinking_block["signature"] = signature

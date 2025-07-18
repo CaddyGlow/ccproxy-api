@@ -953,7 +953,8 @@ class TestOpenAIAdapter:
         )
         assert len(result["messages"]) == 4  # Consolidated messages
         assert result["max_tokens"] == 1000
-        assert result["temperature"] == 0.8
+        # Temperature should be forced to 1.0 when thinking is enabled
+        assert result["temperature"] == 1.0
         assert result["top_p"] == 0.95
         assert result["stream"] is True
         assert result["stop_sequences"] == ["END", "STOP"]
