@@ -80,12 +80,17 @@ class AnalyticsResult(TypedDict):
     query_params: dict[str, Any]
 
 
-# Create the router for metrics endpoints
-router = APIRouter(prefix="/metrics", tags=["metrics"])
+# Create separate routers for different concerns
+prometheus_router = APIRouter(tags=["metrics"])
+logs_router = APIRouter(prefix="/logs", tags=["logs"])
+dashboard_router = APIRouter(tags=["dashboard"])
+
+# Backward compatibility - keep the old router name pointing to logs for now
+router = logs_router
 
 
-@router.get("/status")
-async def metrics_status(metrics: ObservabilityMetricsDep) -> dict[str, str]:
+@logs_router.get("/status")
+async def logs_status(metrics: ObservabilityMetricsDep) -> dict[str, str]:
     """Get observability system status."""
     return {
         "status": "healthy",
@@ -94,7 +99,7 @@ async def metrics_status(metrics: ObservabilityMetricsDep) -> dict[str, str]:
     }
 
 
-@router.get("/dashboard")
+@dashboard_router.get("/dashboard")
 async def get_metrics_dashboard() -> HTMLResponse:
     """Serve the metrics dashboard SPA entry point."""
     from pathlib import Path
@@ -141,7 +146,7 @@ async def get_metrics_dashboard() -> HTMLResponse:
         ) from e
 
 
-@router.get("/dashboard/favicon.svg")
+@dashboard_router.get("/dashboard/favicon.svg")
 async def get_dashboard_favicon() -> FileResponse:
     """Serve the dashboard favicon."""
     from pathlib import Path
@@ -163,7 +168,7 @@ async def get_dashboard_favicon() -> FileResponse:
     )
 
 
-@router.get("/prometheus")
+@prometheus_router.get("/metrics")
 async def get_prometheus_metrics(metrics: ObservabilityMetricsDep) -> Response:
     """Export metrics in Prometheus format using native prometheus_client.
 
@@ -220,8 +225,8 @@ async def get_prometheus_metrics(metrics: ObservabilityMetricsDep) -> Response:
         ) from e
 
 
-@router.get("/query")
-async def query_metrics(
+@logs_router.get("/query")
+async def query_logs(
     storage: DuckDBStorageDep,
     limit: int = Query(1000, ge=1, le=10000, description="Maximum number of results"),
     start_time: float | None = Query(None, description="Start timestamp filter"),
@@ -309,8 +314,8 @@ async def query_metrics(
         ) from e
 
 
-@router.get("/analytics")
-async def get_analytics(
+@logs_router.get("/analytics")
+async def get_logs_analytics(
     storage: DuckDBStorageDep,
     start_time: float | None = Query(None, description="Start timestamp (Unix time)"),
     end_time: float | None = Query(None, description="End timestamp (Unix time)"),
@@ -646,8 +651,8 @@ async def get_analytics(
         ) from e
 
 
-@router.get("/stream")
-async def stream_metrics(request: Request) -> StreamingResponse:
+@logs_router.get("/stream")
+async def stream_logs(request: Request) -> StreamingResponse:
     """
     Stream real-time metrics and request logs via Server-Sent Events.
 
@@ -712,8 +717,8 @@ async def stream_metrics(request: Request) -> StreamingResponse:
     )
 
 
-@router.get("/entries")
-async def get_database_entries(
+@logs_router.get("/entries")
+async def get_logs_entries(
     storage: DuckDBStorageDep,
     limit: int = Query(
         50, ge=1, le=1000, description="Maximum number of entries to return"
@@ -840,23 +845,3 @@ async def get_database_entries(
         raise HTTPException(
             status_code=500, detail=f"Failed to retrieve database entries: {str(e)}"
         ) from e
-
-
-@router.get("/health")
-async def get_storage_health(storage: DuckDBStorageDep) -> dict[str, Any]:
-    """Get health status of the storage backend."""
-    try:
-        if not storage:
-            return {
-                "status": "unavailable",
-                "storage_backend": "none",
-                "message": "No storage backend available",
-            }
-
-        health: dict[str, Any] = await storage.health_check()
-        health["storage_backend"] = "duckdb"
-
-        return health
-
-    except Exception as e:
-        return {"status": "error", "storage_backend": "duckdb", "error": str(e)}
