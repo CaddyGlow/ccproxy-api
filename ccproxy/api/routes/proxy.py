@@ -218,9 +218,3 @@ async def list_models() -> dict[str, Any]:
 async def proxy_status() -> dict[str, str]:
     """Get proxy status."""
     return {"status": "proxy API available", "version": "1.0.0"}
-
-
-@router.get("/health")
-async def proxy_health() -> dict[str, str]:
-    """Health check endpoint for the proxy API."""
-    return {"status": "healthy", "service": "claude-proxy-api"}
