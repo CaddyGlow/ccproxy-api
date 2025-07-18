@@ -447,7 +447,7 @@ class TestOpenAIAdapter:
             "content": [
                 {
                     "type": "thinking",
-                    "text": "Let me think about this...",
+                    "thinking": "Let me think about this...",
                     "signature": "test_signature_123",
                 },
                 {"type": "text", "text": "The answer is 42."},
@@ -819,7 +819,7 @@ class TestOpenAIAdapter:
             ("gpt-4o", "claude-3-7-sonnet-20250219"),  # Direct mapping
             ("gpt-4o-mini", "claude-3-5-haiku-latest"),  # Direct mapping
             ("gpt-3.5-turbo", "claude-3-5-haiku-20241022"),  # Direct mapping
-            ("o1-preview", "claude-3-5-sonnet-20241022"),  # Direct mapping
+            ("o1-preview", "claude-opus-4-20250514"),  # Direct mapping
             ("o1-mini", "claude-sonnet-4-20250514"),  # Direct mapping
             ("o3-mini", "claude-opus-4-20250514"),  # Direct mapping
             ("gpt-4-new-version", "claude-3-7-sonnet-20250219"),  # Pattern match
@@ -952,7 +952,9 @@ class TestOpenAIAdapter:
             in result["system"]
         )
         assert len(result["messages"]) == 4  # Consolidated messages
-        assert result["max_tokens"] == 1000
+        assert (
+            result["max_tokens"] == 10000
+        )  # Adjusted because budget_tokens (5000) > original max_tokens (1000)
         # Temperature should be forced to 1.0 when thinking is enabled
         assert result["temperature"] == 1.0
         assert result["top_p"] == 0.95
@@ -1097,7 +1099,7 @@ class TestOpenAIAdapter:
         # Check thinking block
         thinking_block = result["messages"][1]["content"][0]
         assert thinking_block["type"] == "thinking"
-        assert thinking_block["text"] == "I need to check the weather first."
+        assert thinking_block["thinking"] == "I need to check the weather first."
         assert thinking_block["signature"] == "sig1"
 
         # Check text content
@@ -1130,7 +1132,7 @@ class TestOpenAIAdapter:
             "type": "message",
             "role": "assistant",
             "content": [
-                {"type": "thinking", "text": "Thinking without signature"},
+                {"type": "thinking", "thinking": "Thinking without signature"},
                 {"type": "text", "text": "Response text"},
             ],
             "model": "claude-3-5-sonnet-20241022",

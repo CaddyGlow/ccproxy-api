@@ -66,6 +66,8 @@ class ProxyService:
     Pure HTTP forwarding is delegated to BaseProxyClient.
     """
 
+    SENSITIVE_HEADERS = {"authorization", "x-api-key", "cookie", "set-cookie"}
+
     def __init__(
         self,
         proxy_client: BaseProxyClient,
@@ -107,6 +109,17 @@ class ProxyService:
         self._verbose_streaming = (
             os.environ.get("CCPROXY_VERBOSE_STREAMING", "false").lower() == "true"
         )
+        self._verbose_api = (
+            os.environ.get("CCPROXY_VERBOSE_API", "false").lower() == "true"
+        )
+        self._request_log_dir = os.environ.get("CCPROXY_REQUEST_LOG_DIR")
+
+        # Create request log directory if specified
+        if self._request_log_dir and self._verbose_api:
+            Path(self._request_log_dir).mkdir(parents=True, exist_ok=True)
+
+        # Track current request ID for logging
+        self._current_request_id: str | None = None
 
     def _init_proxy_url(self) -> str | None:
         """Initialize proxy URL from environment variables."""
@@ -211,6 +224,9 @@ class ProxyService:
             )
 
         async with context_manager as ctx:
+            # Store the current request ID for file logging
+            self._current_request_id = ctx.request_id
+
             # Record Prometheus metrics
             self.metrics.inc_active_requests()
 
@@ -243,6 +259,9 @@ class ProxyService:
                 else:
                     logger.debug("non_streaming_response_detected")
 
+                # Log the outgoing request if verbose API logging is enabled
+                self._log_verbose_api_request(transformed_request)
+
                 # Handle regular request
                 async with timed_operation("api_call", ctx.request_id) as api_op:
                     start_time = time.perf_counter()
@@ -262,6 +281,11 @@ class ProxyService:
                     end_time = time.perf_counter()
                     api_duration = end_time - start_time
                     api_op["duration_seconds"] = api_duration
+
+                # Log the received response if verbose API logging is enabled
+                self._log_verbose_api_response(
+                    status_code, response_headers, response_body
+                )
 
                 # 4. Response transformation
                 async with timed_operation("response_transform", ctx.request_id):
@@ -372,6 +396,8 @@ class ProxyService:
                 # Let higher layers handle specific error types
                 raise
             finally:
+                # Reset current request ID
+                self._current_request_id = None
                 self.metrics.dec_active_requests()
 
     async def _get_access_token(self) -> str:
@@ -549,6 +575,103 @@ class ProxyService:
             "body": transformed_body,
         }
 
+    def _redact_headers(self, headers: dict[str, str]) -> dict[str, str]:
+        """Redact sensitive information from headers for safe logging."""
+        return {
+            k: "[REDACTED]" if k.lower() in self.SENSITIVE_HEADERS else v
+            for k, v in headers.items()
+        }
+
+    def _log_verbose_api_request(self, request_data: RequestData) -> None:
+        """Log details of an outgoing API request if verbose logging is enabled."""
+        if not self._verbose_api:
+            return
+
+        body = request_data.get("body")
+        body_preview = ""
+        full_body = None
+        if body:
+            try:
+                full_body = body.decode("utf-8", errors="replace")
+                # Truncate at 1024 chars for readability
+                body_preview = full_body[:1024]
+                # Try to parse as JSON for better formatting
+                try:
+                    import json
+
+                    full_body = json.loads(full_body)
+                except json.JSONDecodeError:
+                    pass  # Keep as string
+            except Exception:
+                body_preview = f"<binary data of length {len(body)}>"
+
+        logger.info(
+            "verbose_api_request",
+            method=request_data["method"],
+            url=request_data["url"],
+            headers=self._redact_headers(request_data["headers"]),
+            body_size=len(body) if body else 0,
+            body_preview=body_preview,
+        )
+
+        # Write to individual file if directory is specified
+        # Note: We cannot get request ID here since this is called from multiple places
+        # Request ID will be determined within _write_request_to_file method
+        self._write_request_to_file(
+            "request",
+            {
+                "method": request_data["method"],
+                "url": request_data["url"],
+                "headers": dict(request_data["headers"]),  # Don't redact in file
+                "body": full_body,
+            },
+        )
+
+    def _log_verbose_api_response(
+        self, status_code: int, headers: dict[str, str], body: bytes
+    ) -> None:
+        """Log details of a received API response if verbose logging is enabled."""
+        if not self._verbose_api:
+            return
+
+        body_preview = ""
+        if body:
+            try:
+                # Truncate at 1024 chars for readability
+                body_preview = body.decode("utf-8", errors="replace")[:1024]
+            except Exception:
+                body_preview = f"<binary data of length {len(body)}>"
+
+        logger.info(
+            "verbose_api_response",
+            status_code=status_code,
+            headers=self._redact_headers(headers),
+            body_size=len(body),
+            body_preview=body_preview,
+        )
+
+        # Write to individual file if directory is specified
+        full_body = None
+        if body:
+            try:
+                full_body_str = body.decode("utf-8", errors="replace")
+                # Try to parse as JSON for better formatting
+                try:
+                    full_body = json.loads(full_body_str)
+                except json.JSONDecodeError:
+                    full_body = full_body_str
+            except Exception:
+                full_body = f"<binary data of length {len(body)}>"
+
+        self._write_request_to_file(
+            "response",
+            {
+                "status_code": status_code,
+                "headers": dict(headers),  # Don't redact in file
+                "body": full_body,
+            },
+        )
+
     def _should_stream_response(self, headers: dict[str, str]) -> bool:
         """Check if response should be streamed based on request headers.
 
@@ -603,10 +726,14 @@ class ProxyService:
             request_data: Transformed request data
             original_path: Original request path for context
             timeout: Request timeout
+            ctx: Request context for observability
 
         Returns:
             StreamingResponse
         """
+        # Log the outgoing request if verbose API logging is enabled
+        self._log_verbose_api_request(request_data)
+
         # Store response headers to preserve for errors
         response_headers = {}
         response_status = 200
@@ -650,6 +777,14 @@ class ProxyService:
                         headers=dict(response.headers),
                     )
 
+                    # Log initial stream response headers if verbose
+                    if self._verbose_api:
+                        logger.info(
+                            "verbose_api_stream_response_start",
+                            status_code=response.status_code,
+                            headers=self._redact_headers(dict(response.headers)),
+                        )
+
                     # Store response status and headers
                     nonlocal response_status, response_headers
                     response_status = response.status_code
@@ -658,6 +793,12 @@ class ProxyService:
                     # Check for errors
                     if response.status_code >= 400:
                         error_content = await response.aread()
+
+                        # Log the full error response body
+                        self._log_verbose_api_response(
+                            response.status_code, dict(response.headers), error_content
+                        )
+
                         logger.info(
                             "streaming_error_received",
                             status_code=response.status_code,
@@ -884,6 +1025,43 @@ class ProxyService:
         ):
             sse_line = f"data: {json.dumps(openai_chunk)}\n\n"
             yield sse_line.encode("utf-8")
+
+    def _write_request_to_file(self, data_type: str, data: dict[str, Any]) -> None:
+        """Write request or response data to individual file if logging directory is configured.
+
+        Args:
+            data_type: Type of data ("request" or "response")
+            data: The data to write
+        """
+        if not self._request_log_dir or not self._verbose_api:
+            return
+
+        # Use the current request ID stored during request handling
+        request_id = self._current_request_id or "unknown"
+
+        # Create filename with request ID and data type
+        filename = f"{request_id}_{data_type}.json"
+        file_path = Path(self._request_log_dir) / filename
+
+        try:
+            # Write JSON data to file
+            with file_path.open("w", encoding="utf-8") as f:
+                json.dump(data, f, indent=2, default=str)
+
+            logger.debug(
+                "request_data_logged_to_file",
+                request_id=request_id,
+                data_type=data_type,
+                file_path=str(file_path),
+            )
+
+        except Exception as e:
+            logger.error(
+                "failed_to_write_request_log_file",
+                request_id=request_id,
+                data_type=data_type,
+                error=str(e),
+            )
 
     async def close(self) -> None:
         """Close any resources held by the proxy service."""
