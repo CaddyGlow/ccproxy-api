@@ -82,6 +82,32 @@ class MessageConverter:
         return " ".join(text_parts)
 
     @staticmethod
+    def extract_content_with_thinking(
+        content: list[TextBlock | ToolUseBlock | ToolResultBlock],
+    ) -> str:
+        """
+        Extract content from Claude SDK blocks, preserving thinking blocks.
+
+        Args:
+            content: List of content blocks from Claude SDK
+
+        Returns:
+            Content with thinking blocks preserved
+        """
+        text_parts = []
+
+        for block in content:
+            if isinstance(block, TextBlock):
+                text_parts.append(block.text)
+            elif isinstance(block, ToolUseBlock):
+                # For tool use blocks, include the tool name
+                text_parts.append(f"[Tool: {block.name}]")
+            elif isinstance(block, ToolResultBlock) and isinstance(block.content, str):
+                text_parts.append(block.content)
+
+        return " ".join(text_parts)
+
+    @staticmethod
     def convert_to_anthropic_response(
         assistant_message: AssistantMessage,
         result_message: ResultMessage,
@@ -119,6 +145,20 @@ class MessageConverter:
         logger = get_logger(__name__)
 
         logger.debug(
+            "assistant_message_content",
+            content_blocks=[
+                type(block).__name__ for block in assistant_message.content
+            ],
+            content_count=len(assistant_message.content),
+            first_block_text=(
+                assistant_message.content[0].text[:100]
+                if assistant_message.content
+                and hasattr(assistant_message.content[0], "text")
+                else None
+            ),
+        )
+
+        logger.debug(
             "token_usage_extracted",
             input_tokens=input_tokens,
             output_tokens=output_tokens,
@@ -144,18 +184,73 @@ class MessageConverter:
         if total_cost_usd is not None:
             usage_info["cost_usd"] = total_cost_usd
 
+        # Convert content blocks to Anthropic format, preserving thinking blocks
+        content_blocks = []
+
+        for block in assistant_message.content:
+            if isinstance(block, TextBlock):
+                # Parse text content for thinking blocks
+                text = block.text
+
+                # Check if the text contains thinking blocks
+                import re
+
+                thinking_pattern = r'<thinking signature="([^"]*)">(.*?)</thinking>'
+
+                # Split the text by thinking blocks
+                last_end = 0
+                for match in re.finditer(thinking_pattern, text, re.DOTALL):
+                    # Add any text before the thinking block
+                    before_text = text[last_end : match.start()].strip()
+                    if before_text:
+                        content_blocks.append({"type": "text", "text": before_text})
+
+                    # Add the thinking block
+                    signature, thinking_text = match.groups()
+                    content_blocks.append(
+                        {
+                            "type": "thinking",
+                            "text": thinking_text,
+                            "signature": signature,
+                        }
+                    )
+
+                    last_end = match.end()
+
+                # Add any remaining text after the last thinking block
+                remaining_text = text[last_end:].strip()
+                if remaining_text:
+                    content_blocks.append({"type": "text", "text": remaining_text})
+
+                # If no thinking blocks were found, add the entire text as a text block
+                if last_end == 0 and text:
+                    content_blocks.append({"type": "text", "text": text})
+
+            elif isinstance(block, ToolUseBlock):
+                content_blocks.append(
+                    {
+                        "type": "tool_use",
+                        "id": getattr(block, "id", f"tool_{id(block)}"),
+                        "name": block.name,
+                        "input": getattr(block, "input", {}),
+                    }
+                )
+            elif isinstance(block, ToolResultBlock):
+                content_blocks.append(
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": getattr(block, "tool_use_id", ""),
+                        "content": block.content
+                        if isinstance(block.content, str)
+                        else "",
+                    }
+                )
+
         return {
             "id": f"msg_{result_message.session_id}",
             "type": "message",
             "role": "assistant",
-            "content": [
-                {
-                    "type": "text",
-                    "text": MessageConverter.extract_text_from_content(
-                        assistant_message.content
-                    ),
-                }
-            ],
+            "content": content_blocks,
             "model": model,
             "stop_reason": getattr(result_message, "stop_reason", "end_turn"),
             "stop_sequence": None,

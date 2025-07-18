@@ -319,7 +319,7 @@ class ClaudeSDKService:
                         first_chunk = False
 
                     # Send content delta
-                    text_content = self.message_converter.extract_text_from_content(
+                    text_content = self.message_converter.extract_content_with_thinking(
                         message.content
                     )
                     if text_content:
