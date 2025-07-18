@@ -1,114 +1,127 @@
-# Claude Code Proxy API Examples
+# OpenAI API Examples with Thinking Blocks
 
-This directory contains examples demonstrating how to use the Claude Code Proxy API with various features and formats.
+This directory contains examples demonstrating how to use the OpenAI-compatible API with Claude's thinking blocks feature through the proxy server.
 
-## OpenAI Compatibility Examples
+## What are Thinking Blocks?
 
-### 1. JSON Response Formats
+Thinking blocks are a special feature in Claude that captures the AI's reasoning process. They are formatted as:
 
-#### Simple JSON Object
-```bash
-./openai_json_object_example.sh
+```xml
+<thinking signature="cryptographic_signature">
+  The AI's internal reasoning process...
+</thinking>
 ```
-Demonstrates using `response_format: {"type": "json_object"}` to get structured JSON responses.
 
-#### JSON Schema
-```bash
-./openai_json_schema_example.sh
-```
-Shows how to use `response_format: {"type": "json_schema"}` with a defined schema to get precisely structured JSON responses.
+The proxy server preserves these blocks in multi-turn conversations, allowing you to:
+- See how the AI reasons through problems
+- Verify the authenticity of thinking blocks via signatures
+- Maintain context across conversation turns
 
-#### Claude Code Options with OpenAI Format
-```bash
-./openai_claude_code_options_example.sh
-```
-Example of using the standard `/v1/chat/completions` endpoint with Claude Code specific options like `allowed_tools`, `permission_mode`, and `cwd`.
+## Prerequisites
 
-## Python Examples
-
-### 2. Tool Usage Demonstrations
-
-#### Anthropic Tools Demo
-```bash
-python anthropic_tools_demo.py
-```
-Python example showing how to use tools with the Anthropic API format.
-
-#### OpenAI Tools Demo  
-```bash
-python openai_tools_demo.py
-```
-Python example demonstrating tool usage with OpenAI API format.
-
-### 3. Interactive Applications
-
-#### Textual Chat Agent
-```bash
-python textual_chat_agent.py
-```
-A terminal-based chat interface built with the Textual framework.
-
-#### Simple Client
-```bash
-python client.py
-```
-Basic HTTP client example for making requests to the proxy API.
-
-## Key Features Demonstrated
-
-### OpenAI API Compatibility
-- **Standard Endpoints**: `/v1/chat/completions` works as expected
-- **Response Formats**: Support for `json_object` and `json_schema` response types
-- **Model Mapping**: Automatic mapping from OpenAI model names to Claude models
-
-### Claude Code Extensions
-- **Tools Integration**: `allowed_tools` field for enabling specific tools
-- **Permission Modes**: `permission_mode` for controlling edit permissions
-- **Working Directory**: `cwd` field for setting execution context
-- **Thinking Tokens**: `max_thinking_tokens` for reasoning capacity
-- **System Prompt Extensions**: `append_system_prompt` for additional instructions
-
-### Dual Path Architecture
-- **SDK Path**: Used for requests with tools, uses OAuth authentication
-- **Proxy Path**: Used for simple requests, requires API key authentication
-- **Automatic Routing**: Hybrid service automatically chooses the appropriate path
-
-## Authentication Notes
-
-### For Tool-Enabled Requests (SDK Path)
-- Uses OAuth authentication with Claude Code credentials
-- Supports all Claude Code specific options
-- Automatically detected when `allowed_tools` or similar fields are present
-
-### For Simple Requests (Proxy Path)  
-- Requires Anthropic API key authentication
-- Standard OpenAI/Anthropic API compatibility
-- Used when no Claude Code specific fields are detected
-
-## Getting Started
-
-1. **Start the server**:
+1. **Install dependencies:**
    ```bash
-   uv run python -m ccproxy.main
+   pip install openai
    ```
 
-2. **Run any example**:
+2. **Set your API key:**
    ```bash
-   cd examples
-   ./openai_json_object_example.sh
+   export ANTHROPIC_API_KEY="your-anthropic-api-key"
    ```
 
-3. **Modify for your needs**:
-   - Change the `content` field for different prompts
-   - Adjust `max_tokens` for longer/shorter responses
-   - Add/remove tools in `allowed_tools` array
-   - Modify JSON schemas for different structured outputs
+3. **Start the proxy server:**
+   ```bash
+   uv run python main.py
+   ```
 
-## API Endpoints
+## Examples
 
-- **OpenAI Format**: `/v1/chat/completions` (standard OpenAI compatibility)
-- **OpenAI Format**: `/openai/v1/chat/completions` (explicit OpenAI namespace)
-- **Anthropic Format**: `/v1/messages` (native Anthropic format)
-- **Claude SDK**: `/claude-code/v1/*` (direct Claude SDK integration)
+### 1. Simple Thinking Demo (`simple_thinking_demo.py`)
 
-All examples work with the standard `/v1/chat/completions` endpoint for maximum compatibility.
+A minimal example showing basic thinking block functionality:
+
+```bash
+python examples/simple_thinking_demo.py
+```
+
+Features:
+- Basic thinking block parsing
+- Multi-turn conversation
+- Token usage tracking
+
+### 2. Advanced Demo (`openai_thinking_demo.py`)
+
+Comprehensive examples with multiple scenarios:
+
+```bash
+python examples/openai_thinking_demo.py
+```
+
+Features:
+- **Streaming mode**: See responses in real-time
+- **Non-streaming mode**: Get complete responses
+- **Tool use**: Thinking blocks with function calling
+- **Multi-turn conversations**: Preserved thinking context
+
+### 3. Structured Response Demo (`openai_structured_response_demo.py`)
+
+Shows how to get structured JSON responses:
+
+```bash
+python examples/openai_structured_response_demo.py
+```
+
+## Key Concepts
+
+### Model Mapping
+
+The proxy automatically maps OpenAI models to Claude models with thinking enabled:
+
+- `o1-preview` → Claude with high thinking budget
+- `o1-mini` → Claude with medium thinking budget
+- `gpt-4` → Standard Claude model
+
+### Extracting Thinking Blocks
+
+```python
+import re
+
+# Pattern to match thinking blocks
+thinking_pattern = r'<thinking signature="([^"]*)">(.*?)</thinking>'
+matches = re.findall(thinking_pattern, content, re.DOTALL)
+
+# Remove thinking blocks to get visible content
+visible_content = re.sub(thinking_pattern, '', content, flags=re.DOTALL)
+```
+
+### Multi-turn Conversations
+
+Always include the full content (with thinking blocks) in the conversation history:
+
+```python
+messages = [
+    {"role": "user", "content": "First question"},
+    {"role": "assistant", "content": full_response_with_thinking},  # Important!
+    {"role": "user", "content": "Follow-up question"}
+]
+```
+
+## Tips
+
+1. **Streaming**: When streaming, thinking blocks appear inline with the content
+2. **Signatures**: Use signatures to verify thinking block authenticity
+3. **Context**: Thinking blocks help maintain context across turns
+4. **Models**: Use `o1-*` models to enable thinking features
+5. **Temperature**: When using thinking mode, temperature must be set to 1.0
+
+## Troubleshooting
+
+If you get connection errors:
+1. Ensure the proxy server is running
+2. Check the base URL (default: `http://localhost:8000/openai/v1`)
+3. Verify your API key is set correctly
+
+If thinking blocks don't appear:
+1. Use an appropriate model (`o1-preview`, `o1-mini`)
+2. Check that your prompt encourages reasoning
+3. Ensure you're parsing the content correctly

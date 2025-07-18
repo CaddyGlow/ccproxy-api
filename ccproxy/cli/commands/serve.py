@@ -319,6 +319,11 @@ def api(
         "--log-level",
         help="Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)",
     ),
+    log_file: str = typer.Option(
+        None,
+        "--log-file",
+        help="Path to JSON log file. If specified, logs will be written to this file in JSON format",
+    ),
     auth_token: str = typer.Option(
         None,
         "--auth-token",
@@ -412,6 +417,7 @@ def api(
             port=port,
             reload=reload,
             log_level=log_level,
+            log_file=log_file,
             auth_token=auth_token,
             claude_cli_path=claude_cli_path,
             max_thinking_tokens=max_thinking_tokens,
@@ -439,7 +445,9 @@ def api(
         # Use JSON logs if explicitly requested via env var
         json_logs = os.environ.get("CCPROXY_JSON_LOGS", "").lower() == "true"
         setup_logging(
-            json_logs=json_logs, log_level=log_level or settings.server.log_level
+            json_logs=json_logs,
+            log_level=log_level or settings.server.log_level,
+            log_file=log_file or settings.server.log_file,
         )
 
         # Re-get logger after logging is configured
@@ -467,6 +475,7 @@ def api(
             host=settings.server.host,
             port=settings.server.port,
             log_level=settings.server.log_level,
+            log_file=settings.server.log_file,
             docker_mode=docker,
             docker_image=settings.docker.docker_image if docker else None,
             auth_enabled=bool(settings.security.auth_token),

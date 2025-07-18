@@ -62,7 +62,9 @@ def configure_structlog(json_logs: bool = False, log_level: str = "INFO") -> Non
     )
 
 
-def setup_logging(json_logs: bool = False, log_level: str = "INFO") -> BoundLogger:
+def setup_logging(
+    json_logs: bool = False, log_level: str = "INFO", log_file: str | None = None
+) -> BoundLogger:
     """
     Setup logging for the entire application including uvicorn and fastapi.
     Returns a structlog logger instance.
@@ -76,6 +78,7 @@ def setup_logging(json_logs: bool = False, log_level: str = "INFO") -> BoundLogg
 
     # Create a handler that will format stdlib logs through structlog
     handler = logging.StreamHandler(sys.stdout)
+    handler.setLevel(getattr(logging, log_level.upper(), logging.INFO))
 
     # Use the appropriate renderer based on json_logs setting
     renderer = (
@@ -108,7 +111,28 @@ def setup_logging(json_logs: bool = False, log_level: str = "INFO") -> BoundLogg
     )
 
     # Configure root logger (level already set above)
-    root_logger.handlers = [handler]
+    handlers: list[logging.Handler] = [handler]
+
+    # Add file handler if log_file is specified
+    if log_file:
+        from pathlib import Path
+
+        # Ensure parent directory exists
+        log_path = Path(log_file)
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+
+        # Create a file handler that always outputs JSON
+        file_handler = logging.FileHandler(log_file, encoding="utf-8")
+        file_handler.setLevel(getattr(logging, log_level.upper(), logging.INFO))
+        file_handler.setFormatter(
+            structlog.stdlib.ProcessorFormatter(
+                processor=structlog.processors.JSONRenderer(),
+                foreign_pre_chain=foreign_pre_chain,
+            )
+        )
+        handlers.append(file_handler)
+
+    root_logger.handlers = handlers
 
     # Make sure uvicorn and fastapi loggers use our configuration
     for logger_name in [
@@ -130,8 +154,8 @@ def setup_logging(json_logs: bool = False, log_level: str = "INFO") -> BoundLogg
 
     # Configure httpx logger separately - INFO when app is DEBUG, WARNING otherwise
     httpx_logger = logging.getLogger("httpx")
-    # httpx_logger.handlers = []  # Remove default handlers
-    # httpx_logger.propagate = True  # Use root logger's handlers
+    httpx_logger.handlers = []  # Remove default handlers
+    httpx_logger.propagate = True  # Use root logger's handlers
     if log_level.upper() == "DEBUG":
         httpx_logger.setLevel(logging.INFO)
     else:

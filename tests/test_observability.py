@@ -15,6 +15,7 @@ from unittest.mock import patch
 
 import pytest
 from fastapi.testclient import TestClient
+from pytest_httpx import HTTPXMock
 
 
 @pytest.fixture(autouse=True)
@@ -1136,3 +1137,168 @@ class TestPrometheusClientMethods:
             assert metrics.push_to_gateway() is False
             assert metrics.push_add_to_gateway() is False
             assert metrics.delete_from_gateway() is False
+
+
+@pytest.mark.unit
+class TestErrorMiddlewareMetricsIntegration:
+    """Test error middleware integration with metrics recording."""
+
+    def test_error_middleware_records_404_errors(self, client: TestClient) -> None:
+        """Test that 404 errors are recorded in metrics by the error middleware."""
+        from ccproxy.observability.metrics import get_metrics
+
+        # Reset metrics state for clean test
+        with patch("ccproxy.observability.metrics.PROMETHEUS_AVAILABLE", True):
+            from prometheus_client import CollectorRegistry
+
+            test_registry = CollectorRegistry()
+            metrics = get_metrics(registry=test_registry)
+
+            # Override the registry for this test instance to avoid global state
+            metrics.registry = test_registry
+            metrics._init_metrics()  # Re-initialize metrics with the test registry
+
+            # Make request to non-existent endpoint to trigger 404
+            response = client.get("/nonexistent-endpoint-test")
+
+            # Verify 404 response
+            assert response.status_code == 404
+            assert response.json()["error"]["type"] == "http_error"
+
+            # Check that error was recorded in metrics
+            error_counter = metrics.error_counter
+            error_count = 0
+            starlette_404_count = 0
+
+            for metric in error_counter.collect():
+                for sample in metric.samples:
+                    if sample.name.endswith("_total"):
+                        error_count += int(sample.value)
+                        if sample.labels.get("error_type") == "starlette_http_404":
+                            starlette_404_count += int(sample.value)
+
+            # Should have recorded exactly one error
+            assert error_count == 1
+            assert starlette_404_count == 1
+
+    def test_error_middleware_records_validation_errors(
+        self, client: TestClient, httpx_mock: HTTPXMock
+    ) -> None:
+        """Test that validation errors are recorded in metrics by the error middleware."""
+        from ccproxy.core.errors import ValidationError
+        from ccproxy.observability.metrics import get_metrics
+
+        # Reset metrics state for clean test
+        with patch("ccproxy.observability.metrics.PROMETHEUS_AVAILABLE", True):
+            from prometheus_client import CollectorRegistry
+
+            test_registry = CollectorRegistry()
+            metrics = get_metrics(registry=test_registry)
+
+            # Override the registry for this test instance
+            metrics.registry = test_registry
+            metrics._init_metrics()
+
+            # Mock Claude API to avoid external dependency
+            httpx_mock.add_response(
+                status_code=400,
+                json={
+                    "type": "error",
+                    "error": {
+                        "type": "invalid_request_error",
+                        "message": "model: Field required",
+                    },
+                },
+            )
+
+            # Trigger a validation error by directly raising it via middleware
+            # Since middleware catches and handles ValidationError specifically
+            with patch(
+                "ccproxy.adapters.openai.adapter.OpenAIAdapter.adapt_request"
+            ) as mock_adapt:
+                mock_adapt.side_effect = ValidationError("Test validation error")
+
+                response = client.post(
+                    "/api/v1/chat/completions",
+                    json={
+                        "model": "claude-3-sonnet",
+                        "messages": [{"role": "user", "content": "test"}],
+                    },
+                )
+
+                # Should get error response handled by middleware
+                assert response.status_code == 400
+
+                # Check that error was recorded in metrics
+                error_counter = None
+                for collector in test_registry._collector_to_names:
+                    if (
+                        hasattr(collector, "_name")
+                        and "errors_total" in collector._name
+                    ):
+                        error_counter = collector
+                        break
+
+                assert error_counter is not None, "Error counter metric not found"
+
+                # Collect the samples and count validation errors
+                samples = list(error_counter.collect())[0].samples
+                validation_error_count = 0
+                for sample in samples:
+                    if (
+                        sample.labels.get("error_type") == "validation_error"
+                        and sample.labels.get("service_type") == "middleware"
+                    ):
+                        validation_error_count += int(sample.value)
+
+                # Should have recorded exactly one validation error
+                assert validation_error_count == 1
+
+    def test_error_middleware_metrics_dependency_injection(self) -> None:
+        """Test that error middleware properly gets metrics instance."""
+        from fastapi import FastAPI
+
+        from ccproxy.api.middleware.errors import setup_error_handlers
+        from ccproxy.observability.metrics import get_metrics
+
+        # Create test app
+        app = FastAPI()
+
+        # Setup error handlers (this should inject metrics)
+        setup_error_handlers(app)
+
+        # Verify metrics instance is available globally
+        metrics = get_metrics()
+        assert metrics is not None
+        assert hasattr(metrics, "record_error")
+
+    def test_multiple_errors_accumulate_in_metrics(self, client: TestClient) -> None:
+        """Test that multiple errors accumulate correctly in metrics."""
+        from ccproxy.observability.metrics import get_metrics
+
+        with patch("ccproxy.observability.metrics.PROMETHEUS_AVAILABLE", True):
+            from prometheus_client import CollectorRegistry
+
+            test_registry = CollectorRegistry()
+            metrics = get_metrics(registry=test_registry)
+
+            # Override the registry for this test instance
+            metrics.registry = test_registry
+            metrics._init_metrics()
+
+            # Make multiple 404 requests
+            for i in range(3):
+                response = client.get(f"/nonexistent-endpoint-{i}")
+                assert response.status_code == 404
+
+            # Check accumulated error count
+            error_counter = metrics.error_counter
+            total_errors = 0
+
+            for metric in error_counter.collect():
+                for sample in metric.samples:
+                    if sample.name.endswith("_total"):
+                        total_errors += int(sample.value)
+
+            # Should have 3 errors total
+            assert total_errors == 3

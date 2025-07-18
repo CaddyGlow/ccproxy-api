@@ -1,6 +1,6 @@
 """Message format converter for Claude SDK interactions."""
 
-from typing import Any
+from typing import Any, cast
 
 from ccproxy.core.async_utils import patched_typing
 
@@ -227,13 +227,17 @@ class MessageConverter:
                     content_blocks.append({"type": "text", "text": text})
 
             elif isinstance(block, ToolUseBlock):
+                tool_input = getattr(block, "input", {}) or {}
                 content_blocks.append(
-                    {
-                        "type": "tool_use",
-                        "id": getattr(block, "id", f"tool_{id(block)}"),
-                        "name": block.name,
-                        "input": getattr(block, "input", {}),
-                    }
+                    cast(
+                        dict[str, Any],
+                        {
+                            "type": "tool_use",
+                            "id": getattr(block, "id", f"tool_{id(block)}"),
+                            "name": block.name,
+                            "input": tool_input,
+                        },
+                    )
                 )
             elif isinstance(block, ToolResultBlock):
                 content_blocks.append(

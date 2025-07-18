@@ -473,7 +473,7 @@ class ConfigurationManager:
 
         # Server settings
         server_settings = {}
-        for key in ["host", "port", "reload", "log_level"]:
+        for key in ["host", "port", "reload", "log_level", "log_file"]:
             if cli_args.get(key) is not None:
                 server_settings[key] = cli_args[key]
         if server_settings:

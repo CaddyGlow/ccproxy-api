@@ -224,7 +224,7 @@ class OpenAIAdapter(APIAdapter):
             }
 
             # Ensure max_tokens is greater than budget_tokens
-            current_max_tokens = anthropic_request.get("max_tokens", 4096)
+            current_max_tokens = cast(int, anthropic_request.get("max_tokens", 4096))
             if current_max_tokens <= thinking_tokens:
                 # Set max_tokens to be 2x thinking tokens + some buffer for response
                 anthropic_request["max_tokens"] = thinking_tokens + max(
@@ -361,7 +361,7 @@ class OpenAIAdapter(APIAdapter):
                         content += block.get("text", "")
                     elif block.get("type") == "thinking":
                         # Handle thinking blocks - we can include them with a marker
-                        thinking_text = block.get("text", "")
+                        thinking_text = block.get("thinking", "")
                         signature = block.get("signature")
                         if thinking_text:
                             content += f'<thinking signature="{signature}">{thinking_text}</thinking>'

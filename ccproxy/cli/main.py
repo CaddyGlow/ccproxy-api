@@ -88,6 +88,11 @@ def app_main(
         "--log-level",
         help="Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)",
     ),
+    log_file: str = typer.Option(
+        None,
+        "--log-file",
+        help="Path to JSON log file. If specified, logs will be written to this file in JSON format",
+    ),
     workers: int = typer.Option(
         None, "--workers", help="Number of worker processes", min=1, max=32
     ),
