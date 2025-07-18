@@ -130,7 +130,7 @@ class TestMetricsAPIEndpoints:
                 mock_session.exec.return_value = mock_result
 
                 response = client.get(
-                    "/metrics/query",
+                    "/logs/query",
                     params={
                         "model": "claude-3-sonnet",
                         "limit": 100,
@@ -193,7 +193,7 @@ class TestMetricsAPIEndpoints:
                 # The current implementation doesn't accept raw SQL, only predefined filters
                 # This is actually safer as it prevents SQL injection entirely
                 response = client.get(
-                    "/metrics/query", params={"model": "claude-3-sonnet"}
+                    "/logs/query", params={"model": "claude-3-sonnet"}
                 )
 
                 # Should work with valid filters
@@ -243,7 +243,7 @@ class TestMetricsAPIEndpoints:
                 ]
 
                 for filters in valid_filter_sets:
-                    response = client.get("/metrics/query", params=filters)
+                    response = client.get("/logs/query", params=filters)
                     assert response.status_code == 200
         finally:
             app.dependency_overrides.clear()
@@ -261,7 +261,7 @@ class TestMetricsAPIEndpoints:
 
         try:
             response = client.get(
-                "/metrics/query",
+                "/logs/query",
                 params={"model": "claude-3-sonnet"},
             )
 
@@ -336,7 +336,7 @@ class TestMetricsAPIEndpoints:
 
                 mock_session.exec.side_effect = mock_exec_side_effect
 
-                response = client.get("/metrics/analytics", params={"hours": 24})
+                response = client.get("/logs/analytics", params={"hours": 24})
 
                 assert response.status_code == 200
                 data = response.json()
@@ -391,7 +391,7 @@ class TestMetricsAPIEndpoints:
                 end_time = time.time()
 
                 response = client.get(
-                    "/metrics/analytics",
+                    "/logs/analytics",
                     params={
                         "start_time": start_time,
                         "end_time": end_time,
@@ -443,7 +443,7 @@ class TestMetricsAPIEndpoints:
                 mock_result.all.return_value = []  # Empty services list
                 mock_session.exec.return_value = mock_result
 
-                response = client.get("/metrics/analytics", params={"hours": 48})
+                response = client.get("/logs/analytics", params={"hours": 48})
 
                 assert response.status_code == 200
                 data = response.json()
@@ -471,7 +471,7 @@ class TestMetricsAPIEndpoints:
         app.dependency_overrides[get_duckdb_storage] = get_mock_storage
 
         try:
-            response = client.get("/metrics/analytics")
+            response = client.get("/logs/analytics")
 
             assert response.status_code == 503
             assert (
@@ -480,85 +480,9 @@ class TestMetricsAPIEndpoints:
         finally:
             app.dependency_overrides.clear()
 
-    def test_health_endpoint_healthy_storage(
-        self, client: TestClient, mock_storage: AsyncMock
-    ) -> None:
-        """Test health endpoint with healthy storage."""
-        from ccproxy.api.dependencies import get_duckdb_storage
-
-        # Override the dependency to return the storage
-        async def get_mock_storage(request: Request) -> AsyncMock:
-            return mock_storage
-
-        app: FastAPI = client.app  # type: ignore[assignment]
-        app.dependency_overrides[get_duckdb_storage] = get_mock_storage
-
-        try:
-            response = client.get("/metrics/health")
-
-            assert response.status_code == 200
-            data = response.json()
-
-            assert data["status"] == "healthy"
-            assert data["enabled"] is True
-            assert data["storage_backend"] == "duckdb"
-            assert data["database_path"] == "/tmp/test.duckdb"
-            assert data["request_count"] == 100
-        finally:
-            app.dependency_overrides.clear()
-
-    def test_health_endpoint_no_storage(self, client: TestClient) -> None:
-        """Test health endpoint when storage is not available."""
-        from ccproxy.api.dependencies import get_duckdb_storage
-
-        # Override the dependency to return None
-        async def get_mock_storage(request: Request) -> None:
-            return None
-
-        app: FastAPI = client.app  # type: ignore[assignment]
-        app.dependency_overrides[get_duckdb_storage] = get_mock_storage
-
-        try:
-            response = client.get("/metrics/health")
-
-            assert response.status_code == 200
-            data = response.json()
-
-            assert data["status"] == "unavailable"
-            assert data["storage_backend"] == "none"
-            assert "No storage backend available" in data["message"]
-        finally:
-            app.dependency_overrides.clear()
-
-    def test_health_endpoint_storage_error(self, client: TestClient) -> None:
-        """Test health endpoint when storage health check fails."""
-        from ccproxy.api.dependencies import get_duckdb_storage
-
-        mock_storage = AsyncMock()
-        mock_storage.health_check.side_effect = Exception("Connection failed")
-
-        # Override the dependency to return the storage
-        async def get_mock_storage(request: Request) -> AsyncMock:
-            return mock_storage
-
-        app: FastAPI = client.app  # type: ignore[assignment]
-        app.dependency_overrides[get_duckdb_storage] = get_mock_storage
-
-        try:
-            response = client.get("/metrics/health")
-
-            assert response.status_code == 200
-            data = response.json()
-
-            assert data["status"] == "error"
-            assert data["storage_backend"] == "duckdb"
-            assert "Connection failed" in data["error"]
-        finally:
-            app.dependency_overrides.clear()
-
     def test_status_endpoint(self, client: TestClient) -> None:
         """Test status endpoint returns observability system info."""
-        response = client.get("/metrics/status")
+        response = client.get("/logs/status")
 
         assert response.status_code == 200
         data = response.json()
@@ -575,7 +499,7 @@ class TestMetricsAPIEndpoints:
             # Reset global state to pick up the patched PROMETHEUS_AVAILABLE
             reset_metrics()
 
-            response = client.get("/metrics/prometheus")
+            response = client.get("/metrics")
 
             # Should get 503 due to missing prometheus_client
             assert response.status_code == 503
@@ -596,7 +520,7 @@ class TestSSEStreamingEndpoint:
     def test_sse_stream_endpoint_basic(self, client: TestClient) -> None:
         """Test basic SSE stream endpoint functionality."""
         # Test the new event-driven SSE endpoint
-        with client.stream("GET", "/metrics/stream") as response:
+        with client.stream("GET", "/logs/stream") as response:
             assert response.status_code == 200
             assert response.headers["content-type"] == "text/event-stream"
             assert response.headers["cache-control"] == "no-cache"
@@ -629,7 +553,7 @@ class TestSSEStreamingEndpoint:
 
     def test_sse_stream_endpoint_headers(self, client: TestClient) -> None:
         """Test SSE stream endpoint has correct headers."""
-        response = client.get("/metrics/stream")
+        response = client.get("/logs/stream")
 
         assert response.status_code == 200
         assert response.headers["content-type"] == "text/event-stream"
@@ -689,7 +613,7 @@ class TestSSEStreamingEndpoint:
         mock_manager.add_connection.side_effect = mock_event_stream
 
         # Test streaming
-        with client.stream("GET", "/metrics/stream") as response:
+        with client.stream("GET", "/logs/stream") as response:
             assert response.status_code == 200
 
             events = []
@@ -748,7 +672,7 @@ class TestSSEStreamingEndpoint:
         mock_manager.add_connection.side_effect = mock_failing_stream
 
         # Test streaming with error
-        with client.stream("GET", "/metrics/stream") as response:
+        with client.stream("GET", "/logs/stream") as response:
             assert response.status_code == 200
 
             events = []
@@ -795,7 +719,7 @@ class TestSSEIntegration:
         events = []
 
         async def collect_events() -> None:
-            with client_with_sse.stream("GET", "/metrics/stream") as response:
+            with client_with_sse.stream("GET", "/logs/stream") as response:
                 assert response.status_code == 200
 
                 for line in response.iter_lines():
