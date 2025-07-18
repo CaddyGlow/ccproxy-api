@@ -7,9 +7,11 @@ for converting between OpenAI and Anthropic API formats.
 from __future__ import annotations
 
 import json
+import re
 import time
 import uuid
 from collections.abc import AsyncIterator
+from inspect import signature
 from typing import Any, Literal, cast
 
 import structlog
@@ -306,15 +308,24 @@ class OpenAIAdapter(APIAdapter):
                     elif block.get("type") == "thinking":
                         # Handle thinking blocks - we can include them with a marker
                         thinking_text = block.get("text", "")
+                        signature = block.get("signature")
                         if thinking_text:
-                            content += f"[Thinking]\n{thinking_text}\n---\n"
+                            content += f'<thinking signature="{signature}">{thinking_text}</thinking>'
                     elif block.get("type") == "tool_use":
                         tool_calls.append(format_openai_tool_call(block))
 
             # Create OpenAI message
+            # When there are tool calls but no content, use empty string instead of None
+            # Otherwise, if content is empty string, convert to None
+            final_content: str | None = content
+            if tool_calls and not content:
+                final_content = ""
+            elif content == "":
+                final_content = None
+
             message = OpenAIResponseMessage(
                 role="assistant",
-                content=content or None,
+                content=final_content,
                 tool_calls=tool_calls if tool_calls else None,
             )
 
@@ -519,7 +530,48 @@ class OpenAIAdapter(APIAdapter):
             return ""
 
         if isinstance(content, str):
-            return content
+            # Check if the string contains thinking blocks
+            thinking_pattern = r'<thinking signature="([^"]*)">(.*?)</thinking>'
+            matches = re.findall(thinking_pattern, content, re.DOTALL)
+
+            if matches:
+                # Convert string with thinking blocks to list format
+                anthropic_content: list[dict[str, Any]] = []
+                last_end = 0
+
+                for match in re.finditer(thinking_pattern, content, re.DOTALL):
+                    # Add any text before the thinking block
+                    if match.start() > last_end:
+                        text_before = content[last_end : match.start()].strip()
+                        if text_before:
+                            anthropic_content.append(
+                                {"type": "text", "text": text_before}
+                            )
+
+                    # Add the thinking block
+                    signature = match.group(1)
+                    thinking_text = match.group(2)
+                    thinking_block: dict[str, Any] = {
+                        "type": "thinking",
+                        "text": thinking_text,
+                    }
+                    if signature and signature != "None":
+                        thinking_block["signature"] = signature
+                    anthropic_content.append(thinking_block)
+
+                    last_end = match.end()
+
+                # Add any remaining text after the last thinking block
+                if last_end < len(content):
+                    remaining_text = content[last_end:].strip()
+                    if remaining_text:
+                        anthropic_content.append(
+                            {"type": "text", "text": remaining_text}
+                        )
+
+                return anthropic_content
+            else:
+                return content
 
         # content must be a list at this point
         anthropic_content = []
