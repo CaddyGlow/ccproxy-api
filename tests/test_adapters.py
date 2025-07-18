@@ -445,7 +445,11 @@ class TestOpenAIAdapter:
             "type": "message",
             "role": "assistant",
             "content": [
-                {"type": "thinking", "text": "Let me think about this..."},
+                {
+                    "type": "thinking",
+                    "text": "Let me think about this...",
+                    "signature": "test_signature_123",
+                },
                 {"type": "text", "text": "The answer is 42."},
             ],
             "model": "claude-3-5-sonnet-20241022",
@@ -457,8 +461,10 @@ class TestOpenAIAdapter:
 
         choice = result["choices"][0]
         content = choice["message"]["content"]
-        assert "[Thinking]" in content
+        # Check for thinking block format with signature
+        assert '<thinking signature="' in content
         assert "Let me think about this..." in content
+        assert "</thinking>" in content
         assert "The answer is 42." in content
 
     def test_adapt_response_tool_calls(self, adapter: OpenAIAdapter) -> None:
@@ -1039,3 +1045,102 @@ class TestOpenAIAdapter:
         result = adapter._convert_content_to_anthropic(content)
         # Invalid base64 should be logged but no content added (according to the except block)
         assert result == ""
+
+    def test_multi_turn_conversation_with_thinking(
+        self, adapter: OpenAIAdapter
+    ) -> None:
+        """Test multi-turn conversation with thinking blocks and tool calls."""
+        openai_request = {
+            "model": "gpt-4",
+            "messages": [
+                {"role": "user", "content": "Calculate the weather impact"},
+                {
+                    "role": "assistant",
+                    "content": '<thinking signature="sig1">I need to check the weather first.</thinking>I\'ll check the weather for you.',
+                    "tool_calls": [
+                        {
+                            "id": "call_weather",
+                            "type": "function",
+                            "function": {
+                                "name": "get_weather",
+                                "arguments": '{"location": "NYC"}',
+                            },
+                        }
+                    ],
+                },
+                {
+                    "role": "tool",
+                    "tool_call_id": "call_weather",
+                    "content": "Temperature: 72°F, Sunny",
+                },
+                {"role": "user", "content": "What about tomorrow?"},
+            ],
+            "max_tokens": 100,
+        }
+
+        result = adapter.adapt_request(openai_request)
+
+        # Check message count
+        assert len(result["messages"]) == 4
+
+        # Check first user message
+        assert result["messages"][0]["role"] == "user"
+        assert result["messages"][0]["content"] == "Calculate the weather impact"
+
+        # Check assistant message with thinking preserved
+        assert result["messages"][1]["role"] == "assistant"
+        assert isinstance(result["messages"][1]["content"], list)
+        # Should have thinking block, text, and tool use
+        assert len(result["messages"][1]["content"]) == 3
+
+        # Check thinking block
+        thinking_block = result["messages"][1]["content"][0]
+        assert thinking_block["type"] == "thinking"
+        assert thinking_block["text"] == "I need to check the weather first."
+        assert thinking_block["signature"] == "sig1"
+
+        # Check text content
+        text_block = result["messages"][1]["content"][1]
+        assert text_block["type"] == "text"
+        assert text_block["text"] == "I'll check the weather for you."
+
+        # Check tool use
+        tool_use = result["messages"][1]["content"][2]
+        assert tool_use["type"] == "tool_use"
+        assert tool_use["name"] == "get_weather"
+
+        # Check tool result message
+        assert result["messages"][2]["role"] == "user"
+        assert isinstance(result["messages"][2]["content"], list)
+        tool_result = result["messages"][2]["content"][0]
+        assert tool_result["type"] == "tool_result"
+        assert tool_result["content"] == "Temperature: 72°F, Sunny"
+
+    def test_streaming_with_thinking_blocks(self, adapter: OpenAIAdapter) -> None:
+        """Test streaming response with thinking blocks."""
+        # This test would require mocking the streaming processor
+        # For now, we'll test the format conversion in adapt_response
+        pass  # Placeholder for streaming test
+
+    def test_thinking_block_without_signature(self, adapter: OpenAIAdapter) -> None:
+        """Test handling of thinking blocks without signatures."""
+        anthropic_response = {
+            "id": "msg_123",
+            "type": "message",
+            "role": "assistant",
+            "content": [
+                {"type": "thinking", "text": "Thinking without signature"},
+                {"type": "text", "text": "Response text"},
+            ],
+            "model": "claude-3-5-sonnet-20241022",
+            "stop_reason": "end_turn",
+            "usage": {"input_tokens": 10, "output_tokens": 15},
+        }
+
+        result = adapter.adapt_response(anthropic_response)
+
+        choice = result["choices"][0]
+        content = choice["message"]["content"]
+        # Should handle None signature gracefully
+        assert '<thinking signature="None">' in content
+        assert "Thinking without signature" in content
