@@ -317,7 +317,7 @@ class TestPrometheusEndpoint:
     ) -> None:
         """Test prometheus endpoint when prometheus_client is available."""
         with patch("ccproxy.observability.metrics.PROMETHEUS_AVAILABLE", True):
-            response = client.get("/metrics/prometheus")
+            response = client.get("/metrics")
 
             # Should succeed
             assert response.status_code == 200
@@ -340,7 +340,7 @@ class TestPrometheusEndpoint:
             # Reset global state to pick up the patched PROMETHEUS_AVAILABLE
             reset_metrics()
 
-            response = client.get("/metrics/prometheus")
+            response = client.get("/metrics")
 
             # Should return 503 Service Unavailable
             assert response.status_code == 503
@@ -377,7 +377,7 @@ class TestPrometheusEndpoint:
 
             # Patch the endpoint to use our test registry
             with patch.object(metrics, "registry", test_registry):
-                response = client.get("/metrics/prometheus")
+                response = client.get("/metrics")
 
                 if response.status_code == 200 and metrics.is_enabled():
                     content = response.text
@@ -421,7 +421,7 @@ class TestObservabilityEndpoints:
 
     def test_metrics_status(self, client: TestClient) -> None:
         """Test metrics status endpoint."""
-        response = client.get("/metrics/status")
+        response = client.get("/logs/status")
         assert response.status_code == 200
         data = response.json()
         assert "status" in data
@@ -429,7 +429,7 @@ class TestObservabilityEndpoints:
     def test_metrics_prometheus_headers(self, client: TestClient) -> None:
         """Test prometheus endpoint returns correct headers."""
         with patch("ccproxy.observability.metrics.PROMETHEUS_AVAILABLE", True):
-            response = client.get("/metrics/prometheus")
+            response = client.get("/metrics")
 
             if response.status_code == 200:
                 # Check no-cache headers

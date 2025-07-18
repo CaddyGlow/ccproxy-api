@@ -17,7 +17,11 @@ from ccproxy.api.middleware.request_id import RequestIDMiddleware
 from ccproxy.api.middleware.server_header import ServerHeaderMiddleware
 from ccproxy.api.routes.claude import router as claude_router
 from ccproxy.api.routes.health import router as health_router
-from ccproxy.api.routes.metrics import router as metrics_router
+from ccproxy.api.routes.metrics import (
+    dashboard_router,
+    logs_router,
+    prometheus_router,
+)
 from ccproxy.api.routes.proxy import router as proxy_router
 from ccproxy.auth.oauth.routes import router as oauth_router
 from ccproxy.config.settings import Settings, get_settings
@@ -161,9 +165,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # Include health router (always enabled)
     app.include_router(health_router, tags=["health"])
 
-    # Include metrics router only if enabled
+    # Include observability routers only if enabled
     if settings.observability.metrics_enabled:
-        app.include_router(metrics_router, tags=["metrics"])
+        app.include_router(prometheus_router, tags=["metrics"])
+        app.include_router(logs_router, tags=["logs"])
+        app.include_router(dashboard_router, tags=["dashboard"])
 
     app.include_router(oauth_router, prefix="/oauth", tags=["oauth"])
 

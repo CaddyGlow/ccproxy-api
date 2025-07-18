@@ -269,23 +269,3 @@ async def list_sdk_models(
 async def claude_sdk_status() -> dict[str, str]:
     """Get Claude SDK status."""
     return {"status": "claude sdk endpoint available", "service": "direct"}
-
-
-@router.get("/health")
-async def claude_sdk_health(
-    claude_service: ClaudeSDKService = Depends(get_claude_service),
-) -> dict[str, Any]:
-    """Check Claude SDK health status."""
-    try:
-        health_status = await claude_service.validate_health()
-        return {
-            "status": "healthy" if health_status else "unhealthy",
-            "service": "claude_sdk",
-            "details": health_status,
-        }
-    except Exception as e:
-        return {
-            "status": "unhealthy",
-            "service": "claude_sdk",
-            "error": str(e),
-        }

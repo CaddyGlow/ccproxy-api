@@ -6,14 +6,15 @@ while mocking only external services.
 """
 
 import json
-from collections.abc import AsyncGenerator, Generator
+from collections.abc import AsyncGenerator, Callable, Generator
 
 # Override settings for testing
 from functools import lru_cache
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from unittest.mock import AsyncMock
 
+import httpx
 import pytest
 import pytest_asyncio
 from fastapi import FastAPI
@@ -22,6 +23,11 @@ from httpx import ASGITransport, AsyncClient
 from pytest_httpx import HTTPXMock
 
 from ccproxy.api.app import create_app
+
+
+if TYPE_CHECKING:
+    from tests.factories import FastAPIAppFactory, FastAPIClientFactory
+from ccproxy.auth.manager import AuthManager
 from ccproxy.config.auth import AuthSettings, CredentialStorageSettings
 from ccproxy.config.security import SecuritySettings
 from ccproxy.config.server import ServerSettings
@@ -30,6 +36,46 @@ from ccproxy.docker.adapter import DockerAdapter
 from ccproxy.docker.docker_path import DockerPath, DockerPathSet
 from ccproxy.docker.models import DockerUserContext
 from ccproxy.docker.stream_process import DefaultOutputMiddleware
+
+# Import organized fixture modules
+from tests.fixtures.claude_sdk.internal_mocks import (
+    mock_internal_claude_sdk_service,
+    mock_internal_claude_sdk_service_streaming,
+    mock_internal_claude_sdk_service_unavailable,
+)
+from tests.fixtures.external_apis.anthropic_api import (
+    mock_external_anthropic_api,
+    mock_external_anthropic_api_streaming,
+)
+from tests.fixtures.proxy_service.oauth_mocks import mock_external_oauth_endpoints
+
+
+# =============================================================================
+# BACKWARD COMPATIBILITY ALIASES
+# =============================================================================
+# These aliases maintain compatibility while the new organized fixtures are adopted
+
+# Backward compatibility aliases for Claude SDK internal mocks
+# OLD NAME → NEW NAME (explanation)
+mock_claude_service = (
+    mock_internal_claude_sdk_service  # Internal dependency injection mock
+)
+mock_claude_service_streaming = (
+    mock_internal_claude_sdk_service_streaming  # Internal streaming mock
+)
+mock_claude_service_unavailable = (
+    mock_internal_claude_sdk_service_unavailable  # Internal unavailable mock
+)
+
+# Backward compatibility aliases for external API mocks
+# OLD NAME → NEW NAME (explanation)
+mock_claude = mock_external_anthropic_api  # External HTTP interception mock
+mock_claude_stream = (
+    mock_external_anthropic_api_streaming  # External streaming HTTP mock
+)
+mock_oauth = mock_external_oauth_endpoints  # External OAuth endpoints mock
+
+# =============================================================================
 
 
 @lru_cache
@@ -78,85 +124,10 @@ def app(test_settings: Settings) -> FastAPI:
     return app
 
 
-@pytest.fixture
-def mock_claude_service() -> AsyncMock:
-    """Create a mock Claude SDK service for testing."""
-    from ccproxy.core.errors import ClaudeProxyError
-
-    mock_service = AsyncMock()
-
-    # List of supported models for validation
-    SUPPORTED_MODELS = [
-        "claude-3-5-sonnet-20241022",
-        "claude-3-5-sonnet-20240620",
-        "claude-3-opus-20240229",
-        "claude-3-haiku-20240307",
-    ]
-
-    # Mock create_completion with model validation
-    async def mock_create_completion(*args: Any, **kwargs: Any) -> dict[str, Any]:
-        model = kwargs.get("model", "")
-        if model not in SUPPORTED_MODELS:
-            raise ClaudeProxyError(
-                message=f"Unsupported model: {model}",
-                error_type="invalid_request_error",
-                status_code=400,
-            )
-
-        return {
-            "id": "msg_01234567890",
-            "type": "message",
-            "role": "assistant",
-            "content": [{"type": "text", "text": "Hello! How can I help you?"}],
-            "model": model,
-            "stop_reason": "end_turn",
-            "stop_sequence": None,
-            "usage": {"input_tokens": 10, "output_tokens": 8},
-        }
-
-    mock_service.create_completion = mock_create_completion
-
-    # Mock the list_models method
-    mock_service.list_models.return_value = [
-        {
-            "id": "claude-3-5-sonnet-20241022",
-            "object": "model",
-            "created": 1677610602,
-            "owned_by": "anthropic",
-        },
-        {
-            "id": "claude-3-opus-20240229",
-            "object": "model",
-            "created": 1677610602,
-            "owned_by": "anthropic",
-        },
-    ]
-
-    # Mock the validate_health method
-    mock_service.validate_health.return_value = True
-
-    return mock_service
+# NOTE: mock_claude_service is now an alias to mock_internal_claude_sdk_service (see imports above)
 
 
-@pytest.fixture
-def mock_claude_service_unavailable() -> AsyncMock:
-    """Create a mock Claude SDK service that simulates CLI unavailability."""
-    from ccproxy.core.errors import ServiceUnavailableError
-
-    mock_service = AsyncMock()
-
-    # Mock methods to raise ServiceUnavailableError
-    mock_service.create_completion.side_effect = ServiceUnavailableError(
-        "Claude CLI not available"
-    )
-    mock_service.list_models.side_effect = ServiceUnavailableError(
-        "Claude CLI not available"
-    )
-    mock_service.validate_health.side_effect = ServiceUnavailableError(
-        "Claude CLI not available"
-    )
-
-    return mock_service
+# NOTE: mock_claude_service_unavailable is now an alias to mock_internal_claude_sdk_service_unavailable (see imports above)
 
 
 @pytest.fixture
@@ -196,109 +167,7 @@ def client_with_unavailable_claude(app_with_unavailable_claude: FastAPI) -> Test
     return TestClient(app_with_unavailable_claude)
 
 
-@pytest.fixture
-def mock_claude_service_streaming() -> AsyncMock:
-    """Create a mock Claude SDK service for streaming tests."""
-
-    async def mock_streaming_response() -> AsyncGenerator[dict[str, Any], None]:
-        """Mock streaming response generator."""
-        events = [
-            {
-                "type": "message_start",
-                "message": {
-                    "id": "msg_123",
-                    "type": "message",
-                    "role": "assistant",
-                    "content": [],
-                    "model": "claude-3-5-sonnet-20241022",
-                    "usage": {"input_tokens": 10, "output_tokens": 0},
-                },
-            },
-            {
-                "type": "content_block_start",
-                "index": 0,
-                "content_block": {"type": "text", "text": ""},
-            },
-            {
-                "type": "content_block_delta",
-                "index": 0,
-                "delta": {"type": "text_delta", "text": "Hello"},
-            },
-            {
-                "type": "content_block_delta",
-                "index": 0,
-                "delta": {"type": "text_delta", "text": " world!"},
-            },
-            {"type": "content_block_stop", "index": 0},
-            {
-                "type": "message_delta",
-                "delta": {"stop_reason": "end_turn", "stop_sequence": None},
-                "usage": {"output_tokens": 2},
-            },
-            {"type": "message_stop"},
-        ]
-
-        for event in events:
-            yield event  # type: ignore[misc]
-
-    mock_service = AsyncMock()
-
-    # Mock create_completion as an async function with model validation
-    async def mock_create_completion(*args: Any, **kwargs: Any) -> Any:
-        from ccproxy.core.errors import ClaudeProxyError
-
-        # List of supported models for validation
-        SUPPORTED_MODELS = [
-            "claude-3-5-sonnet-20241022",
-            "claude-3-5-sonnet-20240620",
-            "claude-3-opus-20240229",
-            "claude-3-haiku-20240307",
-        ]
-
-        model = kwargs.get("model", "")
-        if model not in SUPPORTED_MODELS:
-            raise ClaudeProxyError(
-                message=f"Unsupported model: {model}",
-                error_type="invalid_request_error",
-                status_code=400,
-            )
-
-        if kwargs.get("stream", False):
-            return mock_streaming_response()
-        else:
-            return {
-                "id": "msg_01234567890",
-                "type": "message",
-                "role": "assistant",
-                "content": [{"type": "text", "text": "Hello! How can I help you?"}],
-                "model": model,
-                "stop_reason": "end_turn",
-                "stop_sequence": None,
-                "usage": {"input_tokens": 10, "output_tokens": 8},
-            }
-
-    mock_service.create_completion = mock_create_completion
-
-    # Mock the list_models method
-    mock_service.list_models.return_value = [
-        {
-            "id": "claude-3-5-sonnet-20241022",
-            "object": "model",
-            "created": 1677610602,
-            "owned_by": "anthropic",
-        },
-        {
-            "id": "claude-3-opus-20240229",
-            "object": "model",
-            "created": 1677610602,
-            "owned_by": "anthropic",
-        },
-    ]
-
-    # Mock the validate_health method
-    mock_service.validate_health.return_value = True
-
-    return mock_service
+# NOTE: mock_claude_service_streaming is now an alias to mock_internal_claude_sdk_service_streaming (see imports above)
 
 
 @pytest.fixture
@@ -497,111 +366,13 @@ def claude_responses() -> dict[str, Any]:
     }
 
 
-@pytest.fixture
-def mock_claude(httpx_mock: HTTPXMock, claude_responses: dict[str, Any]) -> HTTPXMock:
-    """Mock Claude API responses for standard completion.
-
-    Returns HTTPXMock configured with Claude API responses.
-    """
-    httpx_mock.add_response(
-        url="https://api.anthropic.com/v1/messages",
-        json=claude_responses["standard_completion"],
-        status_code=200,
-        headers={"content-type": "application/json"},
-    )
-    return httpx_mock
+# NOTE: mock_claude is now an alias to mock_external_anthropic_api (see imports above)
 
 
-@pytest.fixture
-def mock_claude_stream(httpx_mock: HTTPXMock) -> HTTPXMock:
-    """Mock Claude API streaming responses.
-
-    Returns HTTPXMock configured for SSE streaming.
-    """
-
-    def stream_generator() -> Generator[str, None, None]:
-        """Generate SSE formatted streaming response."""
-        events = [
-            {
-                "type": "message_start",
-                "message": {
-                    "id": "msg_123",
-                    "type": "message",
-                    "role": "assistant",
-                    "content": [],
-                    "model": "claude-3-5-sonnet-20241022",
-                    "usage": {"input_tokens": 10, "output_tokens": 0},
-                },
-            },
-            {
-                "type": "content_block_start",
-                "index": 0,
-                "content_block": {"type": "text", "text": ""},
-            },
-            {
-                "type": "content_block_delta",
-                "index": 0,
-                "delta": {"type": "text_delta", "text": "Hello"},
-            },
-            {
-                "type": "content_block_delta",
-                "index": 0,
-                "delta": {"type": "text_delta", "text": " world!"},
-            },
-            {"type": "content_block_stop", "index": 0},
-            {
-                "type": "message_delta",
-                "delta": {"stop_reason": "end_turn", "stop_sequence": None},
-                "usage": {"output_tokens": 2},
-            },
-            {"type": "message_stop"},
-        ]
-
-        for event in events:
-            yield f"data: {json.dumps(event)}\n\n"
-
-    httpx_mock.add_response(
-        url="https://api.anthropic.com/v1/messages",
-        content=b"".join(chunk.encode() for chunk in stream_generator()),
-        status_code=200,
-        headers={
-            "content-type": "text/event-stream",
-            "cache-control": "no-cache",
-        },
-    )
-    return httpx_mock
+# NOTE: mock_claude_stream is now an alias to mock_external_anthropic_api_streaming (see imports above)
 
 
-@pytest.fixture
-def mock_oauth(httpx_mock: HTTPXMock) -> HTTPXMock:
-    """Mock OAuth token endpoints.
-
-    Returns HTTPXMock configured with OAuth responses.
-    """
-    # Mock token exchange
-    httpx_mock.add_response(
-        url="https://api.anthropic.com/oauth/token",
-        json={
-            "access_token": "test_access_token",
-            "refresh_token": "test_refresh_token",
-            "expires_in": 3600,
-            "token_type": "Bearer",
-        },
-        status_code=200,
-    )
-
-    # Mock token refresh
-    httpx_mock.add_response(
-        url="https://api.anthropic.com/oauth/refresh",
-        json={
-            "access_token": "new_test_access_token",
-            "expires_in": 3600,
-            "token_type": "Bearer",
-        },
-        status_code=200,
-    )
-
-    return httpx_mock
+# NOTE: mock_oauth is now an alias to mock_external_oauth_endpoints (see imports above)
 
 
 @pytest.fixture
@@ -620,6 +391,363 @@ def auth_headers() -> dict[str, str]:
     Returns headers with test auth token.
     """
     return {"Authorization": "Bearer test-token-12345"}
+
+
+# =============================================================================
+# COMPOSABLE AUTH FIXTURE HIERARCHY
+# =============================================================================
+# New composable auth fixtures that support all auth modes without skipping
+
+
+@pytest.fixture
+def auth_mode_none() -> dict[str, Any]:
+    """Auth mode: No authentication required.
+
+    Returns configuration for testing endpoints without authentication.
+    """
+    return {
+        "mode": "none",
+        "requires_token": False,
+        "has_configured_token": False,
+        "credentials_available": False,
+    }
+
+
+@pytest.fixture
+def auth_mode_bearer_token() -> dict[str, Any]:
+    """Auth mode: Bearer token authentication without configured server token.
+
+    Returns configuration for testing with bearer tokens when server has no auth_token configured.
+    """
+    return {
+        "mode": "bearer_token",
+        "requires_token": True,
+        "has_configured_token": False,
+        "credentials_available": False,
+        "test_token": "test-bearer-token-12345",
+    }
+
+
+@pytest.fixture
+def auth_mode_configured_token() -> dict[str, Any]:
+    """Auth mode: Bearer token with server-configured auth_token.
+
+    Returns configuration for testing with bearer tokens when server has auth_token configured.
+    """
+    return {
+        "mode": "configured_token",
+        "requires_token": True,
+        "has_configured_token": True,
+        "credentials_available": False,
+        "server_token": "server-configured-token-67890",
+        "test_token": "server-configured-token-67890",  # Must match server
+        "invalid_token": "wrong-token-12345",
+    }
+
+
+@pytest.fixture
+def auth_mode_credentials() -> dict[str, Any]:
+    """Auth mode: Credentials-based authentication (OAuth flow).
+
+    Returns configuration for testing with Claude SDK credentials.
+    """
+    return {
+        "mode": "credentials",
+        "requires_token": False,
+        "has_configured_token": False,
+        "credentials_available": True,
+    }
+
+
+@pytest.fixture
+def auth_mode_credentials_with_fallback() -> dict[str, Any]:
+    """Auth mode: Credentials with bearer token fallback.
+
+    Returns configuration for testing both credentials and bearer token support.
+    """
+    return {
+        "mode": "credentials_with_fallback",
+        "requires_token": False,
+        "has_configured_token": False,
+        "credentials_available": True,
+        "test_token": "fallback-bearer-token-12345",
+    }
+
+
+# Auth Settings Factories
+@pytest.fixture
+def auth_settings_factory() -> Callable[[dict[str, Any]], Settings]:
+    """Factory for creating auth-specific settings.
+
+    Returns a function that creates Settings based on auth mode configuration.
+    """
+
+    def _create_settings(auth_config: dict[str, Any]) -> Settings:
+        # Create base test settings
+        settings = Settings(
+            server=ServerSettings(log_level="WARNING"),
+            security=SecuritySettings(auth_token=None),
+            auth=AuthSettings(
+                storage=CredentialStorageSettings(
+                    storage_paths=[Path("/tmp/test/.claude/")]
+                )
+            ),
+        )
+
+        if auth_config.get("has_configured_token"):
+            settings.security.auth_token = auth_config["server_token"]
+        else:
+            settings.security.auth_token = None
+
+        return settings
+
+    return _create_settings
+
+
+# Auth Headers Generators
+@pytest.fixture
+def auth_headers_factory() -> Callable[[dict[str, Any]], dict[str, str]]:
+    """Factory for creating auth headers based on auth mode.
+
+    Returns a function that creates appropriate headers for each auth mode.
+    """
+
+    def _create_headers(auth_config: dict[str, Any]) -> dict[str, str]:
+        if not auth_config.get("requires_token"):
+            return {}
+
+        token = auth_config.get("test_token")
+        if not token:
+            return {}
+
+        return {"Authorization": f"Bearer {token}"}
+
+    return _create_headers
+
+
+@pytest.fixture
+def invalid_auth_headers_factory() -> Callable[[dict[str, Any]], dict[str, str]]:
+    """Factory for creating invalid auth headers for negative testing.
+
+    Returns a function that creates headers with invalid tokens.
+    """
+
+    def _create_invalid_headers(auth_config: dict[str, Any]) -> dict[str, str]:
+        if auth_config["mode"] == "configured_token":
+            return {"Authorization": f"Bearer {auth_config['invalid_token']}"}
+        elif auth_config["mode"] in ["bearer_token", "credentials_with_fallback"]:
+            return {"Authorization": "Bearer invalid-token-99999"}
+        else:
+            return {"Authorization": "Bearer should-fail-12345"}
+
+    return _create_invalid_headers
+
+
+# Composable App Fixtures
+@pytest.fixture
+def app_factory() -> Callable[[dict[str, Any]], FastAPI]:
+    """Factory for creating FastAPI apps with specific auth configurations.
+
+    Returns a function that creates apps based on auth mode configuration.
+    """
+
+    def _create_app(auth_config: dict[str, Any]) -> FastAPI:
+        # Create settings based on auth config
+        settings = Settings(
+            server=ServerSettings(log_level="WARNING"),
+            security=SecuritySettings(auth_token=None),
+            auth=AuthSettings(
+                storage=CredentialStorageSettings(
+                    storage_paths=[Path("/tmp/test/.claude/")]
+                )
+            ),
+        )
+        if auth_config.get("has_configured_token"):
+            settings.security.auth_token = auth_config["server_token"]
+        else:
+            settings.security.auth_token = None
+
+        # Create app with settings
+        app = create_app(settings=settings)
+
+        # Override settings dependency for testing
+        from ccproxy.config.settings import get_settings as original_get_settings
+
+        app.dependency_overrides[original_get_settings] = lambda: settings
+
+        # Override auth manager if needed
+        if auth_config["mode"] != "none":
+            from fastapi.security import HTTPAuthorizationCredentials
+
+            from ccproxy.auth.dependencies import (
+                _get_auth_manager_with_settings,
+                get_auth_manager,
+            )
+
+            async def test_auth_manager(
+                credentials: HTTPAuthorizationCredentials | None = None,
+            ) -> AuthManager:
+                return await _get_auth_manager_with_settings(credentials, settings)
+
+            app.dependency_overrides[get_auth_manager] = test_auth_manager
+
+        return app
+
+    return _create_app
+
+
+@pytest.fixture
+def client_factory() -> Callable[[FastAPI], TestClient]:
+    """Factory for creating test clients from FastAPI apps.
+
+    Returns a function that creates TestClient instances.
+    """
+
+    def _create_client(app: FastAPI) -> TestClient:
+        return TestClient(app)
+
+    return _create_client
+
+
+# Specific Mode Fixtures (for convenience)
+@pytest.fixture
+def app_no_auth(
+    auth_mode_none: dict[str, Any], app_factory: Callable[[dict[str, Any]], FastAPI]
+) -> FastAPI:
+    """FastAPI app with no authentication required."""
+    return app_factory(auth_mode_none)
+
+
+@pytest.fixture
+def app_bearer_auth(
+    auth_mode_bearer_token: dict[str, Any],
+    app_factory: Callable[[dict[str, Any]], FastAPI],
+) -> FastAPI:
+    """FastAPI app with bearer token authentication (no configured token)."""
+    return app_factory(auth_mode_bearer_token)
+
+
+@pytest.fixture
+def app_configured_auth(
+    auth_mode_configured_token: dict[str, Any],
+    app_factory: Callable[[dict[str, Any]], FastAPI],
+) -> FastAPI:
+    """FastAPI app with configured auth token."""
+    return app_factory(auth_mode_configured_token)
+
+
+@pytest.fixture
+def app_credentials_auth(
+    auth_mode_credentials: dict[str, Any],
+    app_factory: Callable[[dict[str, Any]], FastAPI],
+) -> FastAPI:
+    """FastAPI app with credentials-based authentication."""
+    return app_factory(auth_mode_credentials)
+
+
+@pytest.fixture
+def client_no_auth(
+    app_no_auth: FastAPI, client_factory: Callable[[FastAPI], TestClient]
+) -> TestClient:
+    """Test client with no authentication."""
+    return client_factory(app_no_auth)
+
+
+@pytest.fixture
+def client_bearer_auth(
+    app_bearer_auth: FastAPI, client_factory: Callable[[FastAPI], TestClient]
+) -> TestClient:
+    """Test client with bearer token authentication."""
+    return client_factory(app_bearer_auth)
+
+
+@pytest.fixture
+def client_configured_auth(
+    app_configured_auth: FastAPI, client_factory: Callable[[FastAPI], TestClient]
+) -> TestClient:
+    """Test client with configured auth token."""
+    return client_factory(app_configured_auth)
+
+
+@pytest.fixture
+def client_credentials_auth(
+    app_credentials_auth: FastAPI, client_factory: Callable[[FastAPI], TestClient]
+) -> TestClient:
+    """Test client with credentials-based authentication."""
+    return client_factory(app_credentials_auth)
+
+
+# Auth Utilities
+@pytest.fixture
+def auth_test_utils() -> dict[str, Any]:
+    """Utilities for auth testing.
+
+    Returns a collection of helper functions for auth testing.
+    """
+
+    def is_auth_error(response: httpx.Response) -> bool:
+        """Check if response is an authentication error."""
+        return response.status_code == 401
+
+    def is_auth_success(response: httpx.Response) -> bool:
+        """Check if response indicates successful authentication."""
+        return response.status_code not in [401, 403]
+
+    def extract_auth_error_detail(response: httpx.Response) -> str | None:
+        """Extract authentication error detail from response."""
+        if response.status_code == 401:
+            try:
+                detail = response.json().get("detail")
+                return str(detail) if detail is not None else None
+            except Exception:
+                return response.text
+        return None
+
+    return {
+        "is_auth_error": is_auth_error,
+        "is_auth_success": is_auth_success,
+        "extract_auth_error_detail": extract_auth_error_detail,
+    }
+
+
+# OAuth Mock Utilities
+@pytest.fixture
+def oauth_flow_simulator() -> dict[str, Any]:
+    """Utilities for simulating OAuth flows in tests.
+
+    Returns functions for simulating different OAuth scenarios.
+    """
+
+    def simulate_successful_oauth() -> dict[str, str]:
+        """Simulate a successful OAuth flow."""
+        return {
+            "access_token": "oauth-access-token-12345",
+            "refresh_token": "oauth-refresh-token-67890",
+            "token_type": "Bearer",
+            "expires_in": "3600",
+        }
+
+    def simulate_oauth_error() -> dict[str, str]:
+        """Simulate an OAuth error response."""
+        return {
+            "error": "invalid_grant",
+            "error_description": "The provided authorization grant is invalid",
+        }
+
+    def simulate_token_refresh() -> dict[str, str]:
+        """Simulate a successful token refresh."""
+        return {
+            "access_token": "refreshed-access-token-99999",
+            "refresh_token": "new-refresh-token-11111",
+            "token_type": "Bearer",
+            "expires_in": "3600",
+        }
+
+    return {
+        "successful_oauth": simulate_successful_oauth,
+        "oauth_error": simulate_oauth_error,
+        "token_refresh": simulate_token_refresh,
+    }
 
 
 # Docker test fixtures
@@ -860,6 +988,40 @@ def cleanup_observability_state() -> Generator[None, None, None]:
                 asyncio.set_event_loop(None)
     except ImportError:
         pass  # Module not available
+
+
+# Factory pattern fixtures
+@pytest.fixture
+def fastapi_app_factory(test_settings: Settings) -> "FastAPIAppFactory":
+    """Create FastAPI app factory for flexible test app creation."""
+    from tests.factories import FastAPIAppFactory
+
+    return FastAPIAppFactory(default_settings=test_settings)
+
+
+@pytest.fixture
+def fastapi_client_factory(
+    fastapi_app_factory: "FastAPIAppFactory",
+) -> "FastAPIClientFactory":
+    """Create FastAPI client factory for flexible test client creation."""
+    from tests.factories import FastAPIClientFactory
+
+    return FastAPIClientFactory(fastapi_app_factory)
+
+
+@pytest.fixture
+def app_factory_basic(test_settings: Settings) -> FastAPI:
+    """Legacy compatibility fixture - basic app via factory."""
+    from tests.factories import FastAPIAppFactory
+
+    factory = FastAPIAppFactory(default_settings=test_settings)
+    return factory.create_app()
+
+
+@pytest.fixture
+def client_factory_basic(app_factory_basic: FastAPI) -> TestClient:
+    """Legacy compatibility fixture - basic client via factory."""
+    return TestClient(app_factory_basic)
 
 
 # Pytest configuration
