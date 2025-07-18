@@ -274,6 +274,10 @@ class OpenAIStreamProcessor:
         self.accumulated_content = ""
         self.tool_calls: dict[str, dict[str, Any]] = {}
         self.usage_info: dict[str, int] | None = None
+        # Thinking block tracking
+        self.current_thinking_text = ""
+        self.current_thinking_signature: str | None = None
+        self.thinking_block_active = False
 
     async def process_stream(
         self, claude_stream: AsyncIterator[dict[str, Any]]
@@ -336,7 +340,12 @@ class OpenAIStreamProcessor:
 
         elif chunk_type == "content_block_start":
             block = chunk.get("content_block", {})
-            if block.get("type") == "tool_use" and self.enable_tool_calls:
+            if block.get("type") == "thinking":
+                # Start of thinking block
+                self.thinking_block_active = True
+                self.current_thinking_text = ""
+                self.current_thinking_signature = None
+            elif block.get("type") == "tool_use" and self.enable_tool_calls:
                 # Start of tool call
                 tool_id = block.get("id", "")
                 tool_name = block.get("name", "")
@@ -369,6 +378,20 @@ class OpenAIStreamProcessor:
                             self.message_id, self.model, self.created, text
                         )
 
+            elif delta_type == "thinking_delta" and self.thinking_block_active:
+                # Thinking content
+                thinking_text = delta.get("thinking", "")
+                if thinking_text:
+                    self.current_thinking_text += thinking_text
+
+            elif delta_type == "signature_delta" and self.thinking_block_active:
+                # Thinking signature
+                signature = delta.get("signature", "")
+                if signature:
+                    if self.current_thinking_signature is None:
+                        self.current_thinking_signature = ""
+                    self.current_thinking_signature += signature
+
             elif delta_type == "input_json_delta" and self.enable_tool_calls:
                 # Tool call arguments
                 partial_json = delta.get("partial_json", "")
@@ -379,7 +402,20 @@ class OpenAIStreamProcessor:
 
         elif chunk_type == "content_block_stop":
             # End of content block
-            if self.tool_calls and self.enable_tool_calls:
+            if self.thinking_block_active:
+                # Format and send the complete thinking block
+                self.thinking_block_active = False
+                if self.current_thinking_text:
+                    # Format thinking block with signature
+                    thinking_content = f'<thinking signature="{self.current_thinking_signature}">{self.current_thinking_text}</thinking>'
+                    yield self.formatter.format_content_chunk(
+                        self.message_id, self.model, self.created, thinking_content
+                    )
+                # Reset thinking state
+                self.current_thinking_text = ""
+                self.current_thinking_signature = None
+
+            elif self.tool_calls and self.enable_tool_calls:
                 # Send completed tool calls
                 for tool_call in self.tool_calls.values():
                     yield self.formatter.format_tool_call_chunk(
