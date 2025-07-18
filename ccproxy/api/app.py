@@ -117,15 +117,25 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     # Configure logging based on settings BEFORE any module uses logger
     # This is needed for reload mode where the app is re-imported
+    import logging
+
     import structlog
 
     from ccproxy.config.settings import config_manager
 
-    # Only configure if not already configured
-    if not structlog.is_configured():
+    # Only configure if not already configured or if no file handler exists
+    root_logger = logging.getLogger()
+    has_file_handler = any(
+        isinstance(h, logging.FileHandler) for h in root_logger.handlers
+    )
+
+    if not structlog.is_configured() or not has_file_handler:
+        # Only setup logging if not already configured with file handler
         # Always use console output
         json_logs = False
-        setup_logging(json_logs=json_logs, log_level=settings.server.log_level)
+        # Don't override file logging if it was already configured
+        if not has_file_handler:
+            setup_logging(json_logs=json_logs, log_level=settings.server.log_level)
 
     app = FastAPI(
         title="Claude Code Proxy API Server",

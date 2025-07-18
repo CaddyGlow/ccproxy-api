@@ -55,6 +55,11 @@ class ServerSettings(BaseModel):
         description="Optional console width override for Rich output",
     )
 
+    log_file: str | None = Field(
+        default=None,
+        description="Path to JSON log file. If specified, logs will be written to this file in JSON format",
+    )
+
     @field_validator("log_level")
     @classmethod
     def validate_log_level(cls, v: str) -> str:
