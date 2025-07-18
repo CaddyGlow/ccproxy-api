@@ -26,6 +26,7 @@ from ccproxy.core.errors import (
     TransformationError,
     ValidationError,
 )
+from ccproxy.observability.metrics import get_metrics
 
 
 logger = get_logger(__name__)
@@ -38,6 +39,14 @@ def setup_error_handlers(app: FastAPI) -> None:
         app: FastAPI application instance
     """
     logger.debug("error_handlers_setup_start")
+
+    # Get metrics instance for error recording
+    try:
+        metrics = get_metrics()
+        logger.debug("error_handlers_metrics_loaded")
+    except Exception as e:
+        logger.warning("error_handlers_metrics_unavailable", error=str(e))
+        metrics = None
 
     @app.exception_handler(ClaudeProxyError)
     async def claude_proxy_error_handler(
@@ -52,6 +61,15 @@ def setup_error_handlers(app: FastAPI) -> None:
             request_method=request.method,
             request_url=str(request.url.path),
         )
+
+        # Record error in metrics
+        if metrics:
+            metrics.record_error(
+                error_type="claude_proxy_error",
+                endpoint=str(request.url.path),
+                model=None,
+                service_type="middleware",
+            )
         return JSONResponse(
             status_code=exc.status_code,
             content={
@@ -75,6 +93,15 @@ def setup_error_handlers(app: FastAPI) -> None:
             request_method=request.method,
             request_url=str(request.url.path),
         )
+
+        # Record error in metrics
+        if metrics:
+            metrics.record_error(
+                error_type="validation_error",
+                endpoint=str(request.url.path),
+                model=None,
+                service_type="middleware",
+            )
         return JSONResponse(
             status_code=400,
             content={
@@ -438,6 +465,17 @@ def setup_error_handlers(app: FastAPI) -> None:
                 request_url=str(request.url.path),
                 # stack_trace=stack_trace,
             )
+
+        # Record error in metrics
+        if metrics:
+            error_type = "http_404" if exc.status_code == 404 else "http_error"
+            metrics.record_error(
+                error_type=error_type,
+                endpoint=str(request.url.path),
+                model=None,
+                service_type="middleware",
+            )
+
         # TODO: Add when in prod hide details in response
         return JSONResponse(
             status_code=exc.status_code,
@@ -473,6 +511,20 @@ def setup_error_handlers(app: FastAPI) -> None:
                 request_method=request.method,
                 request_url=str(request.url.path),
             )
+
+        # Record error in metrics
+        if metrics:
+            error_type = (
+                "starlette_http_404"
+                if exc.status_code == 404
+                else "starlette_http_error"
+            )
+            metrics.record_error(
+                error_type=error_type,
+                endpoint=str(request.url.path),
+                model=None,
+                service_type="middleware",
+            )
         return JSONResponse(
             status_code=exc.status_code,
             content={
@@ -498,6 +550,15 @@ def setup_error_handlers(app: FastAPI) -> None:
             request_url=str(request.url.path),
             exc_info=True,
         )
+
+        # Record error in metrics
+        if metrics:
+            metrics.record_error(
+                error_type="unhandled_exception",
+                endpoint=str(request.url.path),
+                model=None,
+                service_type="middleware",
+            )
         return JSONResponse(
             status_code=500,
             content={
