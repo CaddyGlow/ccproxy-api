@@ -267,7 +267,6 @@ class OpenAIStreamProcessor:
         self.enable_tool_calls = enable_tool_calls
         self.enable_text_chunking = enable_text_chunking
         self.chunk_size_words = chunk_size_words
-        self.formatter = OpenAISSEFormatter()
 
         # State tracking
         self.role_sent = False
@@ -281,61 +280,87 @@ class OpenAIStreamProcessor:
 
     async def process_stream(
         self, claude_stream: AsyncIterator[dict[str, Any]]
-    ) -> AsyncIterator[str]:
-        """Process a Claude/Anthropic stream into OpenAI format.
+    ) -> AsyncIterator[dict[str, Any]]:
+        """Process a Claude/Anthropic stream into OpenAI format as dict objects.
 
         Args:
             claude_stream: Async iterator of Claude response chunks
 
         Yields:
-            OpenAI-formatted SSE strings
+            OpenAI-formatted response chunks as dict objects
         """
         try:
             async for chunk in claude_stream:
-                async for sse_chunk in self._process_chunk(chunk):
-                    yield sse_chunk
+                async for dict_chunk in self._process_chunk(chunk):
+                    yield dict_chunk
 
             # Send final chunk
+            final_chunk_data = {
+                "id": self.message_id,
+                "object": "chat.completion.chunk",
+                "created": self.created,
+                "model": self.model,
+                "choices": [
+                    {
+                        "index": 0,
+                        "delta": {},
+                        "logprobs": None,
+                        "finish_reason": "stop",
+                    }
+                ],
+            }
             if self.usage_info and self.enable_usage:
-                yield self.formatter.format_final_chunk(
-                    self.message_id,
-                    self.model,
-                    self.created,
-                    finish_reason="stop",
-                    usage=self.usage_info,
-                )
-            else:
-                yield self.formatter.format_final_chunk(
-                    self.message_id, self.model, self.created, finish_reason="stop"
-                )
-
-            # Send DONE event
-            yield self.formatter.format_done()
+                final_chunk_data["usage"] = self.usage_info
+            yield final_chunk_data
 
         except Exception as e:
-            # Send error chunk
-            yield self.formatter.format_error_chunk(
-                self.message_id, self.model, self.created, "error", str(e)
-            )
-            yield self.formatter.format_done()
+            # Send error as dict object
+            yield {
+                "id": self.message_id,
+                "object": "chat.completion.chunk",
+                "created": self.created,
+                "model": self.model,
+                "choices": [
+                    {
+                        "index": 0,
+                        "delta": {},
+                        "logprobs": None,
+                        "finish_reason": "error",
+                    }
+                ],
+                "error": {"type": "error", "message": str(e)},
+            }
 
-    async def _process_chunk(self, chunk: dict[str, Any]) -> AsyncIterator[str]:
+    async def _process_chunk(
+        self, chunk: dict[str, Any]
+    ) -> AsyncIterator[dict[str, Any]]:
         """Process a single chunk from the Claude stream.
 
         Args:
             chunk: Claude response chunk
 
         Yields:
-            OpenAI-formatted SSE strings
+            OpenAI-formatted response chunks as dict objects
         """
         chunk_type = chunk.get("type")
 
         if chunk_type == "message_start":
             # Send initial role chunk
             if not self.role_sent:
-                yield self.formatter.format_first_chunk(
-                    self.message_id, self.model, self.created
-                )
+                yield {
+                    "id": self.message_id,
+                    "object": "chat.completion.chunk",
+                    "created": self.created,
+                    "model": self.model,
+                    "choices": [
+                        {
+                            "index": 0,
+                            "delta": {"role": "assistant"},
+                            "logprobs": None,
+                            "finish_reason": None,
+                        }
+                    ],
+                }
                 self.role_sent = True
 
         elif chunk_type == "content_block_start":
@@ -369,14 +394,36 @@ class OpenAIStreamProcessor:
                         for i in range(0, len(words), self.chunk_size_words):
                             chunk_words = words[i : i + self.chunk_size_words]
                             chunk_text = " ".join(chunk_words)
-                            yield self.formatter.format_content_chunk(
-                                self.message_id, self.model, self.created, chunk_text
-                            )
+                            yield {
+                                "id": self.message_id,
+                                "object": "chat.completion.chunk",
+                                "created": self.created,
+                                "model": self.model,
+                                "choices": [
+                                    {
+                                        "index": 0,
+                                        "delta": {"content": chunk_text},
+                                        "logprobs": None,
+                                        "finish_reason": None,
+                                    }
+                                ],
+                            }
                     else:
                         # Send text as-is
-                        yield self.formatter.format_content_chunk(
-                            self.message_id, self.model, self.created, text
-                        )
+                        yield {
+                            "id": self.message_id,
+                            "object": "chat.completion.chunk",
+                            "created": self.created,
+                            "model": self.model,
+                            "choices": [
+                                {
+                                    "index": 0,
+                                    "delta": {"content": text},
+                                    "logprobs": None,
+                                    "finish_reason": None,
+                                }
+                            ],
+                        }
 
             elif delta_type == "thinking_delta" and self.thinking_block_active:
                 # Thinking content
@@ -408,9 +455,20 @@ class OpenAIStreamProcessor:
                 if self.current_thinking_text:
                     # Format thinking block with signature
                     thinking_content = f'<thinking signature="{self.current_thinking_signature}">{self.current_thinking_text}</thinking>'
-                    yield self.formatter.format_content_chunk(
-                        self.message_id, self.model, self.created, thinking_content
-                    )
+                    yield {
+                        "id": self.message_id,
+                        "object": "chat.completion.chunk",
+                        "created": self.created,
+                        "model": self.model,
+                        "choices": [
+                            {
+                                "index": 0,
+                                "delta": {"content": thinking_content},
+                                "logprobs": None,
+                                "finish_reason": None,
+                            }
+                        ],
+                    }
                 # Reset thinking state
                 self.current_thinking_text = ""
                 self.current_thinking_signature = None
@@ -418,14 +476,32 @@ class OpenAIStreamProcessor:
             elif self.tool_calls and self.enable_tool_calls:
                 # Send completed tool calls
                 for tool_call in self.tool_calls.values():
-                    yield self.formatter.format_tool_call_chunk(
-                        self.message_id,
-                        self.model,
-                        self.created,
-                        tool_call["id"],
-                        function_name=tool_call["name"],
-                        function_arguments=tool_call["arguments"],
-                    )
+                    yield {
+                        "id": self.message_id,
+                        "object": "chat.completion.chunk",
+                        "created": self.created,
+                        "model": self.model,
+                        "choices": [
+                            {
+                                "index": 0,
+                                "delta": {
+                                    "tool_calls": [
+                                        {
+                                            "index": 0,
+                                            "id": tool_call["id"],
+                                            "type": "function",
+                                            "function": {
+                                                "name": tool_call["name"],
+                                                "arguments": tool_call["arguments"],
+                                            },
+                                        }
+                                    ]
+                                },
+                                "logprobs": None,
+                                "finish_reason": None,
+                            }
+                        ],
+                    }
 
         elif chunk_type == "message_delta":
             # Usage information
