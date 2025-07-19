@@ -90,8 +90,8 @@ class SimpleDuckDBStorage:
             # Create SQLModel engine
             self._engine = create_engine(f"duckdb:///{self.database_path}")
 
-            # Create schema using SQLModel
-            await asyncio.to_thread(self._create_schema_sync)
+            # Create schema using SQLModel (synchronous in main thread)
+            self._create_schema_sync()
 
             # Start background worker for queue processing
             self._background_worker_task = asyncio.create_task(
@@ -184,20 +184,65 @@ class SimpleDuckDBStorage:
                 except TimeoutError:
                     continue  # Check shutdown event and continue
 
-                # Process the queued write operation
-                success = await asyncio.to_thread(self._store_request_sync, data)
-                if success:
-                    logger.debug(
-                        "queue_processed_successfully",
+                # Process the queued write operation synchronously
+                try:
+                    success = self._store_request_sync(data)
+                    if success:
+                        logger.debug(
+                            "queue_processed_successfully",
+                            request_id=data.get("request_id"),
+                        )
+                except Exception as e:
+                    logger.error(
+                        "background_worker_error",
+                        error=str(e),
                         request_id=data.get("request_id"),
+                        exc_info=True,
                     )
-
-                # Mark the task as done
-                self._write_queue.task_done()
+                finally:
+                    # Always mark the task as done, regardless of success/failure
+                    self._write_queue.task_done()
 
             except Exception as e:
                 logger.error(
-                    "background_worker_error",
+                    "background_worker_unexpected_error",
+                    error=str(e),
+                    exc_info=True,
+                )
+                # Continue processing other items
+
+        # Process any remaining items in the queue during shutdown
+        logger.debug("processing_remaining_queue_items_on_shutdown")
+        while not self._write_queue.empty():
+            try:
+                # Get remaining items without timeout during shutdown
+                data = self._write_queue.get_nowait()
+
+                # Process the queued write operation synchronously
+                try:
+                    success = self._store_request_sync(data)
+                    if success:
+                        logger.debug(
+                            "shutdown_queue_processed_successfully",
+                            request_id=data.get("request_id"),
+                        )
+                except Exception as e:
+                    logger.error(
+                        "shutdown_background_worker_error",
+                        error=str(e),
+                        request_id=data.get("request_id"),
+                        exc_info=True,
+                    )
+                finally:
+                    # Always mark the task as done, regardless of success/failure
+                    self._write_queue.task_done()
+
+            except asyncio.QueueEmpty:
+                # No more items to process
+                break
+            except Exception as e:
+                logger.error(
+                    "shutdown_background_worker_unexpected_error",
                     error=str(e),
                     exc_info=True,
                 )
