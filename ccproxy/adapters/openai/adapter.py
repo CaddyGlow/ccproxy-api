@@ -457,30 +457,17 @@ class OpenAIAdapter(APIAdapter):
         Raises:
             ValueError: If the stream format is invalid or unsupported
         """
-        # Create stream processor
+        # Create stream processor with dict output
         processor = OpenAIStreamProcessor(
             enable_usage=True,
             enable_tool_calls=True,
-            enable_text_chunking=False,  # Keep text as-is for compatibility
+            enable_text_chunking=False,  # Keep text as-is for real-time streaming
         )
 
         try:
-            # Process the stream and parse SSE format back to dict objects
-            async for sse_chunk in processor.process_stream(stream):
-                if sse_chunk.startswith("data: "):
-                    data_str = sse_chunk[6:].strip()
-                    if data_str and data_str != "[DONE]":
-                        try:
-                            yield json.loads(data_str)
-                        except json.JSONDecodeError:
-                            logger.warning(
-                                "streaming_chunk_parse_failed",
-                                chunk_data=data_str[:100] + "..."
-                                if len(data_str) > 100
-                                else data_str,
-                                operation="adapt_stream",
-                            )
-                            continue
+            # Process the stream directly as dict objects
+            async for chunk in processor.process_stream(stream):
+                yield chunk
         except Exception as e:
             raise ValueError(f"Error processing streaming response: {e}") from e
 
