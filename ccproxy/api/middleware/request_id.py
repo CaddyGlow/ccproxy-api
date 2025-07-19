@@ -38,9 +38,13 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
         # Generate or extract request ID
         request_id = request.headers.get("x-request-id") or str(uuid.uuid4())
 
+        # Get DuckDB storage from app state if available
+        storage = getattr(request.app.state, "duckdb_storage", None)
+
         # Use the proper request context manager to ensure __aexit__ is called
         async with request_context(
             request_id=request_id,
+            storage=storage,
             method=request.method,
             path=str(request.url.path),
             client_ip=request.client.host if request.client else "unknown",

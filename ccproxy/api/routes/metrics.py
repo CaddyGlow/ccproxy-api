@@ -652,13 +652,32 @@ async def get_logs_analytics(
 
 
 @logs_router.get("/stream")
-async def stream_logs(request: Request) -> StreamingResponse:
+async def stream_logs(
+    request: Request,
+    model: str | None = Query(None, description="Filter by model name"),
+    service_type: str | None = Query(
+        None,
+        description="Filter by service type. Supports comma-separated values (e.g., 'proxy_service,sdk_service') and negation with ! prefix (e.g., '!access_log,!sdk_service')",
+    ),
+    min_duration_ms: float | None = Query(
+        None, description="Filter by minimum duration in milliseconds"
+    ),
+    max_duration_ms: float | None = Query(
+        None, description="Filter by maximum duration in milliseconds"
+    ),
+    status_code_min: int | None = Query(
+        None, description="Filter by minimum status code"
+    ),
+    status_code_max: int | None = Query(
+        None, description="Filter by maximum status code"
+    ),
+) -> StreamingResponse:
     """
     Stream real-time metrics and request logs via Server-Sent Events.
 
     Returns a continuous stream of request events using event-driven SSE
     instead of polling. Events are emitted in real-time when requests
-    start, complete, or error.
+    start, complete, or error. Supports filtering similar to analytics and entries endpoints.
     """
     import asyncio
     import uuid
@@ -673,6 +692,76 @@ async def stream_logs(request: Request) -> StreamingResponse:
         # Set streaming flag for access log
         ctx.add_metadata(streaming=True)
         ctx.add_metadata(event_type="streaming_complete")
+
+    # Build filter criteria for event filtering
+    filter_criteria = {
+        "model": model,
+        "service_type": service_type,
+        "min_duration_ms": min_duration_ms,
+        "max_duration_ms": max_duration_ms,
+        "status_code_min": status_code_min,
+        "status_code_max": status_code_max,
+    }
+    # Remove None values
+    filter_criteria = {k: v for k, v in filter_criteria.items() if v is not None}
+
+    def should_include_event(event_data: dict[str, Any]) -> bool:
+        """Check if event matches filter criteria."""
+        if not filter_criteria:
+            return True
+
+        data = event_data.get("data", {})
+
+        # Model filter
+        if "model" in filter_criteria and data.get("model") != filter_criteria["model"]:
+            return False
+
+        # Service type filter with comma-separated and negation support
+        if "service_type" in filter_criteria:
+            service_type_filter = filter_criteria["service_type"]
+            if isinstance(service_type_filter, str):
+                service_filters = [s.strip() for s in service_type_filter.split(",")]
+            else:
+                # Handle non-string types by converting to string
+                service_filters = [str(service_type_filter).strip()]
+            include_filters = [f for f in service_filters if not f.startswith("!")]
+            exclude_filters = [f[1:] for f in service_filters if f.startswith("!")]
+
+            data_service_type = data.get("service_type")
+            if include_filters and data_service_type not in include_filters:
+                return False
+            if exclude_filters and data_service_type in exclude_filters:
+                return False
+
+        # Duration filters
+        duration_ms = data.get("duration_ms")
+        if duration_ms is not None:
+            if (
+                "min_duration_ms" in filter_criteria
+                and duration_ms < filter_criteria["min_duration_ms"]
+            ):
+                return False
+            if (
+                "max_duration_ms" in filter_criteria
+                and duration_ms > filter_criteria["max_duration_ms"]
+            ):
+                return False
+
+        # Status code filters
+        status_code = data.get("status_code")
+        if status_code is not None:
+            if (
+                "status_code_min" in filter_criteria
+                and status_code < filter_criteria["status_code_min"]
+            ):
+                return False
+            if (
+                "status_code_max" in filter_criteria
+                and status_code > filter_criteria["status_code_max"]
+            ):
+                return False
+
+        return True
 
     async def event_stream() -> AsyncIterator[str]:
         """Generate Server-Sent Events for real-time metrics."""
@@ -689,6 +778,27 @@ async def stream_logs(request: Request) -> StreamingResponse:
             async for event_data in sse_manager.add_connection(
                 connection_id, request_id
             ):
+                # Parse event data to check for filtering
+                if event_data.startswith("data: "):
+                    try:
+                        import json
+
+                        json_str = event_data[6:].strip()
+                        if json_str:
+                            event_obj = json.loads(json_str)
+
+                            # Apply filters for data events (not connection/system events)
+                            if (
+                                event_obj.get("type")
+                                in ["request_complete", "request_start"]
+                                and filter_criteria
+                            ) and not should_include_event(event_obj):
+                                continue  # Skip this event
+
+                    except (json.JSONDecodeError, KeyError):
+                        # If we can't parse, pass through (system events)
+                        pass
+
                 yield event_data
 
         except asyncio.CancelledError:
@@ -844,4 +954,53 @@ async def get_logs_entries(
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Failed to retrieve database entries: {str(e)}"
+        ) from e
+
+
+@logs_router.post("/reset")
+async def reset_logs_data(storage: DuckDBStorageDep) -> dict[str, Any]:
+    """
+    Reset all data in the logs storage.
+
+    This endpoint clears all access logs from the database.
+    Use with caution - this action cannot be undone.
+
+    Returns:
+        Dictionary with reset status and timestamp
+    """
+    try:
+        if not storage:
+            raise HTTPException(
+                status_code=503,
+                detail="Storage backend not available. Ensure DuckDB is installed.",
+            )
+
+        # Check if storage has reset_data method
+        if not hasattr(storage, "reset_data"):
+            raise HTTPException(
+                status_code=501,
+                detail="Reset operation not supported by current storage backend",
+            )
+
+        # Perform the reset
+        success = await storage.reset_data()
+
+        if success:
+            return {
+                "status": "success",
+                "message": "All logs data has been reset",
+                "timestamp": time.time(),
+                "backend": "duckdb",
+            }
+        else:
+            raise HTTPException(
+                status_code=500,
+                detail="Reset operation failed",
+            )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Reset operation failed: {str(e)}"
         ) from e
