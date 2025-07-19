@@ -6,6 +6,7 @@ while mocking only external services.
 """
 
 import json
+import time
 from collections.abc import AsyncGenerator, Callable, Generator
 
 # Override settings for testing
@@ -17,12 +18,14 @@ from unittest.mock import AsyncMock
 import httpx
 import pytest
 import pytest_asyncio
+import structlog
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from httpx import ASGITransport, AsyncClient
 from pytest_httpx import HTTPXMock
 
 from ccproxy.api.app import create_app
+from ccproxy.observability.context import RequestContext
 
 
 if TYPE_CHECKING:
@@ -1022,6 +1025,36 @@ def app_factory_basic(test_settings: Settings) -> FastAPI:
 def client_factory_basic(app_factory_basic: FastAPI) -> TestClient:
     """Legacy compatibility fixture - basic client via factory."""
     return TestClient(app_factory_basic)
+
+
+# Test Utilities
+
+
+def create_test_request_context(request_id: str, **metadata: Any) -> "RequestContext":
+    """Create a RequestContext for testing with proper parameters.
+
+    Args:
+        request_id: The request ID for the context
+        **metadata: Additional metadata to include in the context
+
+    Returns:
+        RequestContext: A properly initialized context for testing
+    """
+    # Create a test logger
+    logger = structlog.get_logger(__name__).bind(request_id=request_id)
+
+    # Create context with required parameters
+    context = RequestContext(
+        request_id=request_id,
+        start_time=time.perf_counter(),
+        logger=logger,
+    )
+
+    # Add any metadata
+    if metadata:
+        context.add_metadata(**metadata)
+
+    return context
 
 
 # Pytest configuration

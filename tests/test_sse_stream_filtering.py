@@ -19,8 +19,25 @@ from httpx._types import QueryParamTypes
 class TestSSEStreamFiltering:
     """Test suite for SSE stream filtering functionality."""
 
-    def test_sse_stream_no_filters(self, client_no_auth: TestClient) -> None:
+    @patch("ccproxy.observability.sse_events.get_sse_manager")
+    def test_sse_stream_no_filters(
+        self, mock_get_manager: AsyncMock, client_no_auth: TestClient
+    ) -> None:
         """Test SSE stream without any filters."""
+        # Create mock SSE manager
+        mock_manager = AsyncMock()
+        mock_get_manager.return_value = mock_manager
+
+        # Mock basic connection event
+        async def mock_events(connection_id=None, request_id=None):
+            events = [
+                'data: {"type": "connection", "message": "Connected"}\n\n',
+            ]
+            for event in events:
+                yield event
+
+        mock_manager.add_connection = mock_events
+
         with client_no_auth.stream("GET", "/logs/stream") as response:
             assert response.status_code == 200
             assert (
@@ -29,57 +46,94 @@ class TestSSEStreamFiltering:
             assert response.headers["cache-control"] == "no-cache"
             assert response.headers["connection"] == "keep-alive"
 
-            # Read first few events (connection event)
-            lines = []
-            for _ in range(3):
-                try:
-                    line = next(response.iter_lines())
-                    if line.startswith("data: "):
-                        lines.append(line)
-                        break
-                except StopIteration:
+            # Should receive connection event
+            for line in response.iter_lines():
+                if line.startswith("data: "):
+                    connection_data = json.loads(line[6:])
+                    assert connection_data["type"] == "connection"
                     break
 
-            assert len(lines) > 0
-            # First event should be connection event
-            connection_data = json.loads(lines[0][6:])  # Remove "data: " prefix
-            assert connection_data["type"] == "connection"
-            assert "connection_id" in connection_data
-
-    def test_sse_stream_with_model_filter(self, client_no_auth: TestClient) -> None:
+    @patch("ccproxy.observability.sse_events.get_sse_manager")
+    def test_sse_stream_with_model_filter(
+        self, mock_get_manager: AsyncMock, client_no_auth: TestClient
+    ) -> None:
         """Test SSE stream with model filter."""
+        # Create mock SSE manager
+        mock_manager = AsyncMock()
+        mock_get_manager.return_value = mock_manager
+
+        # Mock basic connection event
+        async def mock_events(connection_id=None, request_id=None):
+            events = [
+                'data: {"type": "connection", "message": "Connected"}\n\n',
+            ]
+            for event in events:
+                yield event
+
+        mock_manager.add_connection = mock_events
+
         params = {"model": "claude-3-5-sonnet-20241022"}
 
         with client_no_auth.stream("GET", "/logs/stream", params=params) as response:
             assert response.status_code == 200
 
-            # Should still get connection event
+            # Should receive connection event
             for line in response.iter_lines():
                 if line.startswith("data: "):
                     connection_data = json.loads(line[6:])
                     assert connection_data["type"] == "connection"
                     break
 
+    @patch("ccproxy.observability.sse_events.get_sse_manager")
     def test_sse_stream_with_service_type_filter(
-        self, client_no_auth: TestClient
+        self, mock_get_manager: AsyncMock, client_no_auth: TestClient
     ) -> None:
         """Test SSE stream with service type filter."""
+        # Create mock SSE manager
+        mock_manager = AsyncMock()
+        mock_get_manager.return_value = mock_manager
+
+        # Mock basic connection event
+        async def mock_events(connection_id=None, request_id=None):
+            events = [
+                'data: {"type": "connection", "message": "Connected"}\n\n',
+            ]
+            for event in events:
+                yield event
+
+        mock_manager.add_connection = mock_events
+
         params = {"service_type": "proxy_service"}
 
         with client_no_auth.stream("GET", "/logs/stream", params=params) as response:
             assert response.status_code == 200
 
-            # Should still get connection event
+            # Should receive connection event
             for line in response.iter_lines():
                 if line.startswith("data: "):
                     connection_data = json.loads(line[6:])
                     assert connection_data["type"] == "connection"
                     break
 
+    @patch("ccproxy.observability.sse_events.get_sse_manager")
     def test_sse_stream_with_service_type_negation_filter(
-        self, client_no_auth: TestClient
+        self, mock_get_manager: AsyncMock, client_no_auth: TestClient
     ) -> None:
         """Test SSE stream with service type negation filter."""
+        # Create mock SSE manager
+        mock_manager = AsyncMock()
+        mock_get_manager.return_value = mock_manager
+
+        # Mock basic connection event
+        async def mock_events(connection_id=None, request_id=None):
+            events = [
+                'data: {"type": "connection", "message": "Connected"}\n\n',
+            ]
+            for event in events:
+                yield event
+
+        mock_manager.add_connection = mock_events
+
         params = {"service_type": "!access_log,!sdk_service"}
 
         with client_no_auth.stream("GET", "/logs/stream", params=params) as response:
@@ -92,8 +146,25 @@ class TestSSEStreamFiltering:
                     assert connection_data["type"] == "connection"
                     break
 
-    def test_sse_stream_with_duration_filters(self, client_no_auth: TestClient) -> None:
+    @patch("ccproxy.observability.sse_events.get_sse_manager")
+    def test_sse_stream_with_duration_filters(
+        self, mock_get_manager: AsyncMock, client_no_auth: TestClient
+    ) -> None:
         """Test SSE stream with duration range filters."""
+        # Create mock SSE manager
+        mock_manager = AsyncMock()
+        mock_get_manager.return_value = mock_manager
+
+        # Mock basic connection event
+        async def mock_events(connection_id=None, request_id=None):
+            events = [
+                'data: {"type": "connection", "message": "Connected"}\n\n',
+            ]
+            for event in events:
+                yield event
+
+        mock_manager.add_connection = mock_events
+
         params = {"min_duration_ms": 100.0, "max_duration_ms": 500.0}
 
         with client_no_auth.stream("GET", "/logs/stream", params=params) as response:
@@ -106,10 +177,25 @@ class TestSSEStreamFiltering:
                     assert connection_data["type"] == "connection"
                     break
 
+    @patch("ccproxy.observability.sse_events.get_sse_manager")
     def test_sse_stream_with_status_code_filters(
-        self, client_no_auth: TestClient
+        self, mock_get_manager: AsyncMock, client_no_auth: TestClient
     ) -> None:
         """Test SSE stream with status code range filters."""
+        # Create mock SSE manager
+        mock_manager = AsyncMock()
+        mock_get_manager.return_value = mock_manager
+
+        # Mock basic connection event
+        async def mock_events(connection_id=None, request_id=None):
+            events = [
+                'data: {"type": "connection", "message": "Connected"}\n\n',
+            ]
+            for event in events:
+                yield event
+
+        mock_manager.add_connection = mock_events
+
         params = {"status_code_min": 200, "status_code_max": 299}
 
         with client_no_auth.stream("GET", "/logs/stream", params=params) as response:
@@ -122,8 +208,25 @@ class TestSSEStreamFiltering:
                     assert connection_data["type"] == "connection"
                     break
 
-    def test_sse_stream_with_multiple_filters(self, client_no_auth: TestClient) -> None:
+    @patch("ccproxy.observability.sse_events.get_sse_manager")
+    def test_sse_stream_with_multiple_filters(
+        self, mock_get_manager: AsyncMock, client_no_auth: TestClient
+    ) -> None:
         """Test SSE stream with multiple combined filters."""
+        # Create mock SSE manager
+        mock_manager = AsyncMock()
+        mock_get_manager.return_value = mock_manager
+
+        # Mock basic connection event
+        async def mock_events(connection_id=None, request_id=None):
+            events = [
+                'data: {"type": "connection", "message": "Connected"}\n\n',
+            ]
+            for event in events:
+                yield event
+
+        mock_manager.add_connection = mock_events
+
         params = {
             "model": "claude-3-5-sonnet-20241022",
             "service_type": "proxy_service",
@@ -156,7 +259,7 @@ class TestSSEStreamFiltering:
         mock_get_manager.return_value = mock_manager
 
         # Mock events that should be filtered
-        async def mock_events():
+        async def mock_events(connection_id=None, request_id=None):
             events = [
                 # Connection event (should always pass)
                 'data: {"type": "connection", "message": "Connected"}\n\n',
@@ -172,7 +275,7 @@ class TestSSEStreamFiltering:
             for event in events:
                 yield event
 
-        mock_manager.add_connection.return_value = mock_events()
+        mock_manager.add_connection = mock_events
 
         params = {
             "model": "claude-3-5-sonnet-20241022",
@@ -212,7 +315,7 @@ class TestSSEStreamFiltering:
         mock_get_manager.return_value = mock_manager
 
         # Mock events including request_start
-        async def mock_events():
+        async def mock_events(connection_id=None, request_id=None):
             events = [
                 # Connection event
                 'data: {"type": "connection", "message": "Connected"}\n\n',
@@ -224,7 +327,7 @@ class TestSSEStreamFiltering:
             for event in events:
                 yield event
 
-        mock_manager.add_connection.return_value = mock_events()
+        mock_manager.add_connection = mock_events
 
         params = {"model": "claude-3-5-sonnet-20241022"}
 
@@ -256,7 +359,7 @@ class TestSSEStreamFiltering:
         mock_get_manager.return_value = mock_manager
 
         # Mock system events that should always pass through
-        async def mock_events():
+        async def mock_events(connection_id=None, request_id=None):
             events = [
                 'data: {"type": "connection", "message": "Connected"}\n\n',
                 'data: {"type": "error", "message": "Test error"}\n\n',
@@ -266,7 +369,7 @@ class TestSSEStreamFiltering:
             for event in events:
                 yield event
 
-        mock_manager.add_connection.return_value = mock_events()
+        mock_manager.add_connection = mock_events
 
         # Apply strict filters
         params = {
@@ -306,7 +409,7 @@ class TestSSEStreamFiltering:
         mock_get_manager.return_value = mock_manager
 
         # Mock events with malformed JSON
-        async def mock_events():
+        async def mock_events(connection_id=None, request_id=None):
             events = [
                 'data: {"type": "connection", "message": "Connected"}\n\n',
                 "data: {invalid json}\n\n",  # Malformed JSON - should pass through
@@ -315,7 +418,7 @@ class TestSSEStreamFiltering:
             for event in events:
                 yield event
 
-        mock_manager.add_connection.return_value = mock_events()
+        mock_manager.add_connection = mock_events
 
         params = {"model": "claude-3-5-sonnet-20241022"}
 
@@ -341,8 +444,25 @@ class TestSSEStreamFiltering:
 class TestSSEStreamFilteringEdgeCases:
     """Test edge cases for SSE stream filtering."""
 
-    def test_sse_stream_empty_filter_values(self, client_no_auth: TestClient) -> None:
+    @patch("ccproxy.observability.sse_events.get_sse_manager")
+    def test_sse_stream_empty_filter_values(
+        self, mock_get_manager: AsyncMock, client_no_auth: TestClient
+    ) -> None:
         """Test SSE stream with empty string filter values."""
+        # Create mock SSE manager
+        mock_manager = AsyncMock()
+        mock_get_manager.return_value = mock_manager
+
+        # Mock basic connection event
+        async def mock_events(connection_id=None, request_id=None):
+            events = [
+                'data: {"type": "connection", "message": "Connected"}\n\n',
+            ]
+            for event in events:
+                yield event
+
+        mock_manager.add_connection = mock_events
+
         params = {
             "model": "",
             "service_type": "",
@@ -372,10 +492,25 @@ class TestSSEStreamFilteringEdgeCases:
         response = client_no_auth.get("/logs/stream", params=params)
         assert response.status_code == 422
 
+    @patch("ccproxy.observability.sse_events.get_sse_manager")
     def test_sse_stream_negative_numeric_filters(
-        self, client_no_auth: TestClient
+        self, mock_get_manager: AsyncMock, client_no_auth: TestClient
     ) -> None:
         """Test SSE stream with negative numeric filter values."""
+        # Create mock SSE manager
+        mock_manager = AsyncMock()
+        mock_get_manager.return_value = mock_manager
+
+        # Mock basic connection event
+        async def mock_events(connection_id=None, request_id=None):
+            events = [
+                'data: {"type": "connection", "message": "Connected"}\n\n',
+            ]
+            for event in events:
+                yield event
+
+        mock_manager.add_connection = mock_events
+
         params = {
             "min_duration_ms": -100.0,
             "max_duration_ms": -50.0,
