@@ -41,8 +41,10 @@ async def storage_with_db(
 @pytest.fixture
 def mock_request_context() -> RequestContext:
     """Create mock request context for testing."""
-    context = RequestContext(request_id="test-context-123")
-    context.add_metadata(
+    from tests.conftest import create_test_request_context
+
+    context = create_test_request_context(
+        request_id="test-context-123",
         method="POST",
         path="/v1/messages",
         endpoint="messages",
@@ -95,7 +97,7 @@ class TestAccessLoggerIntegration:
             assert result.model == "claude-3-5-sonnet-20241022"
             assert result.tokens_input == 100
             assert result.tokens_output == 50
-            assert result.cost_usd == 0.002
+            assert result.cost_usd == pytest.approx(0.002)
 
     async def test_log_request_access_without_storage(
         self, mock_request_context: RequestContext
@@ -114,10 +116,12 @@ class TestAccessLoggerIntegration:
         self, storage_with_db: SimpleDuckDBStorage
     ) -> None:
         """Test multiple concurrent access log calls don't cause deadlocks."""
+        from tests.conftest import create_test_request_context
+
         contexts = []
         for i in range(10):
-            context = RequestContext(request_id=f"concurrent-context-{i}")
-            context.add_metadata(
+            context = create_test_request_context(
+                request_id=f"concurrent-context-{i}",
                 method="POST",
                 path="/v1/messages",
                 endpoint="messages",
@@ -182,9 +186,11 @@ class TestAccessLoggerIntegration:
         self, storage_with_db: SimpleDuckDBStorage
     ) -> None:
         """Test access logging for streaming requests."""
+        from tests.conftest import create_test_request_context
+
         # Create streaming context
-        context = RequestContext(request_id="streaming-test-123")
-        context.add_metadata(
+        context = create_test_request_context(
+            request_id="streaming-test-123",
             method="POST",
             path="/v1/messages",
             endpoint="messages",
@@ -228,9 +234,11 @@ class TestAccessLoggerIntegration:
         self, storage_with_db: SimpleDuckDBStorage
     ) -> None:
         """Test access logger with minimal/partial data."""
+        from tests.conftest import create_test_request_context
+
         # Create minimal context
-        context = RequestContext(request_id="minimal-context-123")
-        context.add_metadata(
+        context = create_test_request_context(
+            request_id="minimal-context-123",
             method="GET",
             path="/api/models",
             endpoint="models",
@@ -264,9 +272,11 @@ class TestAccessLoggerIntegration:
         self, storage_with_db: SimpleDuckDBStorage
     ) -> None:
         """Test that access logger correctly extracts metadata from context."""
+        from tests.conftest import create_test_request_context
+
         # Create context with metadata
-        context = RequestContext(request_id="metadata-test-123")
-        context.add_metadata(
+        context = create_test_request_context(
+            request_id="metadata-test-123",
             method="POST",
             path="/v1/chat/completions",  # OpenAI format path
             endpoint="chat/completions",
@@ -309,8 +319,8 @@ class TestAccessLoggerIntegration:
             assert result.tokens_output == 100
             assert result.cache_read_tokens == 50
             assert result.cache_write_tokens == 25
-            assert result.cost_usd == 0.005
-            assert result.cost_sdk_usd == 0.001
+            assert result.cost_usd == pytest.approx(0.005)
+            assert result.cost_sdk_usd == pytest.approx(0.001)
 
     async def test_access_logger_error_with_message(
         self, storage_with_db: SimpleDuckDBStorage, mock_request_context: RequestContext
@@ -349,13 +359,15 @@ class TestAccessLoggerPerformance:
         self, storage_with_db: SimpleDuckDBStorage
     ) -> None:
         """Test high-volume access logging performance."""
+        from tests.conftest import create_test_request_context
+
         num_logs = 100
         contexts = []
 
         # Generate many contexts
         for i in range(num_logs):
-            context = RequestContext(request_id=f"perf-test-{i}")
-            context.add_metadata(
+            context = create_test_request_context(
+                request_id=f"perf-test-{i}",
                 method="POST",
                 path="/v1/messages",
                 endpoint="messages",
@@ -401,11 +413,13 @@ class TestAccessLoggerPerformance:
         """Test mixed streaming and regular request logging."""
         tasks = []
 
+        from tests.conftest import create_test_request_context
+
         # Create mix of streaming and regular requests
         for i in range(20):
-            context = RequestContext(request_id=f"mixed-test-{i}")
             is_streaming = i % 2 == 0
-            context.add_metadata(
+            context = create_test_request_context(
+                request_id=f"mixed-test-{i}",
                 method="POST",
                 path="/v1/messages",
                 endpoint="messages",

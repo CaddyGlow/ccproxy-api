@@ -50,6 +50,9 @@ class TestDuckDBSettingsIntegration:
             result = await storage.store_request(test_data)
             assert result is True
 
+            # Wait for the background worker to process the queued item
+            await storage._write_queue.join()
+
             # Verify data was stored
             recent = await storage.get_recent_requests(limit=1)
             assert len(recent) == 1
