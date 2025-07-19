@@ -85,13 +85,12 @@ class OptionsHandler:
         Returns:
             List of supported model names
         """
-        # These are the models supported by Claude Code SDK
-        return [
-            "claude-3-5-sonnet-20241022",
-            "claude-3-5-sonnet-20240620",
-            "claude-3-opus-20240229",
-            "claude-3-haiku-20240307",
-        ]
+        # Import here to avoid circular imports
+        from ccproxy.adapters.openai.adapter import OPENAI_TO_CLAUDE_MODEL_MAPPING
+
+        # Extract unique Claude models from OpenAI mapping
+        claude_models = list(set(OPENAI_TO_CLAUDE_MODEL_MAPPING.values()))
+        return sorted(claude_models)
 
     @staticmethod
     def validate_model(model: str) -> bool:
