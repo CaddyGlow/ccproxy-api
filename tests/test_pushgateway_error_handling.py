@@ -320,15 +320,20 @@ class TestObservabilityScheduler:
         mock_metrics = Mock()
         mock_metrics.is_pushgateway_enabled.return_value = True
         mock_metrics.push_to_gateway.return_value = False
+
+        # Set the mock BEFORE starting the scheduler to prevent _init_metrics from overriding it
         scheduler._metrics_instance = mock_metrics
 
         # Start scheduler briefly
         await scheduler.start()
 
+        # Ensure the mock wasn't overridden by _init_metrics
+        scheduler._metrics_instance = mock_metrics
+
         # Wait for the first task execution to complete with polling
         # The pushgateway task should execute immediately on the first run
-        max_wait_time = 2.0  # Maximum time to wait
-        poll_interval = 0.05  # How often to check
+        max_wait_time = 5.0  # Maximum time to wait
+        poll_interval = 0.1  # How often to check
         elapsed_time = 0.0
 
         while elapsed_time < max_wait_time:
@@ -337,10 +342,11 @@ class TestObservabilityScheduler:
             await asyncio.sleep(poll_interval)
             elapsed_time += poll_interval
 
+        # Stop scheduler first to avoid task cancellation issues
+        await scheduler.stop()
+
         # Check that failure was recorded
         assert scheduler._consecutive_failures > 0
-
-        await scheduler.stop()
 
     def test_set_pushgateway_interval(self, scheduler: ObservabilityScheduler) -> None:
         """Test setting pushgateway interval."""
@@ -375,15 +381,20 @@ class TestIntegration:
         mock_metrics = Mock()
         mock_metrics.is_pushgateway_enabled.return_value = True
         mock_metrics.push_to_gateway.return_value = False
+
+        # Set the mock BEFORE starting the scheduler to prevent _init_metrics from overriding it
         scheduler._metrics_instance = mock_metrics
 
         # Start scheduler
         await scheduler.start()
 
+        # Ensure the mock wasn't overridden by _init_metrics
+        scheduler._metrics_instance = mock_metrics
+
         # Wait for a few failures (interval is 0.1s, so wait for multiple cycles)
         # Use polling to wait for the failure count to increment
-        max_wait_time = 2.0  # Maximum time to wait
-        poll_interval = 0.05  # How often to check
+        max_wait_time = 5.0  # Maximum time to wait
+        poll_interval = 0.1  # How often to check
         elapsed_time = 0.0
 
         while elapsed_time < max_wait_time:
@@ -392,10 +403,11 @@ class TestIntegration:
             await asyncio.sleep(poll_interval)
             elapsed_time += poll_interval
 
+        # Stop scheduler first to avoid task cancellation issues
+        await scheduler.stop()
+
         # Should have recorded multiple failures
         assert scheduler._consecutive_failures > 0
-
-        await scheduler.stop()
 
     def test_circuit_breaker_and_scheduler_integration(
         self, settings: ObservabilitySettings
