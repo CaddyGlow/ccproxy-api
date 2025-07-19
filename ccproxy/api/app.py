@@ -195,7 +195,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app_path = dashboard_static_path / "_app"
         if app_path.exists():
             app.mount(
-                "/metrics/dashboard/_app",
+                "/dashboard/_app",
                 StaticFiles(directory=str(app_path)),
                 name="dashboard-assets",
             )

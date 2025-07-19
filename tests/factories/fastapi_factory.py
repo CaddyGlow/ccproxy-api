@@ -264,6 +264,43 @@ class FastAPIClientFactory:
 
         return AsyncClient(transport=ASGITransport(app=app), base_url="http://test")
 
+    def create_client_with_storage(
+        self,
+        storage: Any,
+        settings: Settings | None = None,
+        dependency_overrides: DependencyOverrides | None = None,
+        claude_service_mock: MockService | None = None,
+        auth_enabled: bool = False,
+        **kwargs: Any,
+    ) -> TestClient:
+        """Create a test client with DuckDB storage dependency override.
+
+        Args:
+            storage: Storage instance to use (can be None)
+            settings: Application settings
+            dependency_overrides: Custom dependency overrides
+            claude_service_mock: Mock Claude service
+            auth_enabled: Whether to enable authentication
+            **kwargs: Additional configuration options
+
+        Returns:
+            Configured TestClient with storage override
+        """
+        # Add storage dependency override
+        storage_overrides = dependency_overrides or {}
+
+        from ccproxy.api.dependencies import get_duckdb_storage
+
+        storage_overrides[get_duckdb_storage] = lambda: storage
+
+        return self.create_client(
+            settings=settings,
+            dependency_overrides=storage_overrides,
+            claude_service_mock=claude_service_mock,
+            auth_enabled=auth_enabled,
+            **kwargs,
+        )
+
 
 # Convenience functions for common configurations
 def create_mock_claude_app(

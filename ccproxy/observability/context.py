@@ -69,7 +69,7 @@ class RequestContext:
 
 @asynccontextmanager
 async def request_context(
-    request_id: str | None = None, **initial_context: Any
+    request_id: str | None = None, storage: Any | None = None, **initial_context: Any
 ) -> AsyncGenerator[RequestContext, None]:
     """
     Context manager for tracking complete request lifecycle with timing.
@@ -114,6 +114,7 @@ async def request_context(
         start_time=start_time,
         logger=request_logger,
         metadata=dict(initial_context),
+        storage=storage,
     )
 
     try:
@@ -339,7 +340,7 @@ def get_context_tracker() -> ContextTracker:
 
 @asynccontextmanager
 async def tracked_request_context(
-    request_id: str | None = None, **initial_context: Any
+    request_id: str | None = None, storage: Any | None = None, **initial_context: Any
 ) -> AsyncGenerator[RequestContext, None]:
     """
     Request context manager that also tracks active requests globally.
@@ -356,7 +357,7 @@ async def tracked_request_context(
     """
     tracker = get_context_tracker()
 
-    async with request_context(request_id, **initial_context) as ctx:
+    async with request_context(request_id, storage=storage, **initial_context) as ctx:
         # Add to tracker
         await tracker.add_context(ctx)
 

@@ -5,6 +5,7 @@ connection pooling or batch processing. Suitable for dev environments with
 low request rates (< 10 req/s).
 """
 
+import asyncio
 import time
 from collections.abc import Sequence
 from datetime import datetime
@@ -62,7 +63,7 @@ class AccessLogPayload(TypedDict, total=False):
 
 
 class SimpleDuckDBStorage:
-    """Simple DuckDB storage without pooling or batching."""
+    """Simple DuckDB storage with queue-based writes to prevent deadlocks."""
 
     def __init__(self, database_path: str | Path = "data/metrics.duckdb"):
         """Initialize simple DuckDB storage.
@@ -73,6 +74,9 @@ class SimpleDuckDBStorage:
         self.database_path = Path(database_path)
         self._engine: Engine | None = None
         self._initialized: bool = False
+        self._write_queue: asyncio.Queue[AccessLogPayload] = asyncio.Queue()
+        self._background_worker_task: asyncio.Task[None] | None = None
+        self._shutdown_event = asyncio.Event()
 
     async def initialize(self) -> None:
         """Initialize the storage backend."""
@@ -87,7 +91,12 @@ class SimpleDuckDBStorage:
             self._engine = create_engine(f"duckdb:///{self.database_path}")
 
             # Create schema using SQLModel
-            await self._create_schema()
+            await asyncio.to_thread(self._create_schema_sync)
+
+            # Start background worker for queue processing
+            self._background_worker_task = asyncio.create_task(
+                self._background_worker()
+            )
 
             self._initialized = True
             logger.debug(
@@ -98,17 +107,15 @@ class SimpleDuckDBStorage:
             logger.error("simple_duckdb_init_error", error=str(e), exc_info=True)
             raise
 
-    async def _create_schema(self) -> None:
-        """Create database schema using SQLModel."""
+    def _create_schema_sync(self) -> None:
+        """Create database schema using SQLModel (synchronous)."""
         if not self._engine:
             return
 
         try:
             # Create tables using SQLModel metadata
-            AccessLog.metadata.create_all(self._engine)
-
-            # Check if query column exists and add if missing
-            await self._ensure_query_column()
+            SQLModel.metadata.create_all(self._engine)
+            logger.debug("duckdb_schema_created")
 
         except Exception as e:
             logger.error("simple_duckdb_schema_error", error=str(e))
@@ -142,17 +149,64 @@ class SimpleDuckDBStorage:
             # Continue without failing - the column might already exist or schema might be different
 
     async def store_request(self, data: AccessLogPayload) -> bool:
-        """Store a single request log entry.
+        """Store a single request log entry asynchronously via queue.
 
         Args:
             data: Request data to store
 
         Returns:
-            True if stored successfully
+            True if queued successfully
         """
-        if not self._initialized or not self._engine:
+        if not self._initialized:
             return False
 
+        try:
+            # Add to queue for background processing
+            await self._write_queue.put(data)
+            return True
+        except Exception as e:
+            logger.error(
+                "queue_store_error",
+                error=str(e),
+                request_id=data.get("request_id"),
+            )
+            return False
+
+    async def _background_worker(self) -> None:
+        """Background worker to process queued write operations sequentially."""
+        logger.debug("duckdb_background_worker_started")
+
+        while not self._shutdown_event.is_set():
+            try:
+                # Wait for either a queue item or shutdown with timeout
+                try:
+                    data = await asyncio.wait_for(self._write_queue.get(), timeout=1.0)
+                except TimeoutError:
+                    continue  # Check shutdown event and continue
+
+                # Process the queued write operation
+                success = await asyncio.to_thread(self._store_request_sync, data)
+                if success:
+                    logger.debug(
+                        "queue_processed_successfully",
+                        request_id=data.get("request_id"),
+                    )
+
+                # Mark the task as done
+                self._write_queue.task_done()
+
+            except Exception as e:
+                logger.error(
+                    "background_worker_error",
+                    error=str(e),
+                    exc_info=True,
+                )
+                # Continue processing other items
+
+        logger.debug("duckdb_background_worker_stopped")
+
+    def _store_request_sync(self, data: AccessLogPayload) -> bool:
+        """Synchronous version of store_request for thread pool execution."""
         try:
             # Convert Unix timestamp to datetime if needed
             timestamp_value = data.get("timestamp", time.time())
@@ -185,14 +239,22 @@ class SimpleDuckDBStorage:
                 cost_sdk_usd=data.get("cost_sdk_usd", 0.0),
             )
 
-            # Store using SQLModel session with upsert behavior
+            # Store using SQLModel session
             with Session(self._engine) as session:
-                # Use merge to handle potential duplicates
-                session.merge(access_log)
+                # Add new log entry (no merge needed as each request is unique)
+                session.add(access_log)
                 session.commit()
 
             logger.info(
-                "simple_duckdb_store_success", request_id=data.get("request_id")
+                "simple_duckdb_store_success",
+                request_id=data.get("request_id"),
+                service_type=data.get("service_type", ""),
+                model=data.get("model", ""),
+                tokens_input=data.get("tokens_input", 0),
+                tokens_output=data.get("tokens_output", 0),
+                cost_usd=data.get("cost_usd", 0.0),
+                endpoint=data.get("endpoint", ""),
+                timestamp=timestamp_dt.isoformat() if timestamp_dt else None,
             )
             return True
 
@@ -255,6 +317,16 @@ class SimpleDuckDBStorage:
 
                 session.commit()
 
+            logger.info(
+                "simple_duckdb_batch_store_success",
+                batch_size=len(metrics),
+                service_types=[
+                    m.get("service_type", "") for m in metrics[:3]
+                ],  # First 3 for sampling
+                request_ids=[
+                    m.get("request_id", "") for m in metrics[:3]
+                ],  # First 3 for sampling
+            )
             return True
 
         except Exception as e:
@@ -447,7 +519,28 @@ class SimpleDuckDBStorage:
             return {}
 
     async def close(self) -> None:
-        """Close the database connection."""
+        """Close the database connection and stop background worker."""
+        # Signal shutdown to background worker
+        self._shutdown_event.set()
+
+        # Wait for background worker to finish
+        if self._background_worker_task:
+            try:
+                await asyncio.wait_for(self._background_worker_task, timeout=5.0)
+            except TimeoutError:
+                logger.warning("background_worker_shutdown_timeout")
+                self._background_worker_task.cancel()
+            except Exception as e:
+                logger.error("background_worker_shutdown_error", error=str(e))
+
+        # Process remaining items in queue (with timeout)
+        try:
+            await asyncio.wait_for(self._write_queue.join(), timeout=2.0)
+        except TimeoutError:
+            logger.warning(
+                "queue_drain_timeout", remaining_items=self._write_queue.qsize()
+            )
+
         if self._engine:
             try:
                 self._engine.dispose()
@@ -495,3 +588,33 @@ class SimpleDuckDBStorage:
                 "enabled": False,
                 "error": str(e),
             }
+
+    async def reset_data(self) -> bool:
+        """Reset all data in the storage (useful for testing/debugging).
+
+        Returns:
+            True if reset was successful
+        """
+        if not self._initialized or not self._engine:
+            return False
+
+        try:
+            # Run the reset operation in a thread pool
+            return await asyncio.to_thread(self._reset_data_sync)
+        except Exception as e:
+            logger.error("simple_duckdb_reset_error", error=str(e))
+            return False
+
+    def _reset_data_sync(self) -> bool:
+        """Synchronous version of reset_data for thread pool execution."""
+        try:
+            with Session(self._engine) as session:
+                # Delete all records from access_logs table
+                session.execute(text("DELETE FROM access_logs"))
+                session.commit()
+
+            logger.info("simple_duckdb_reset_success")
+            return True
+        except Exception as e:
+            logger.error("simple_duckdb_reset_sync_error", error=str(e))
+            return False

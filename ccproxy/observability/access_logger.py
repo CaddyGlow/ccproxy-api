@@ -16,7 +16,10 @@ import structlog
 
 if TYPE_CHECKING:
     from ccproxy.observability.context import RequestContext
-    from ccproxy.observability.storage.duckdb_simple import SimpleDuckDBStorage
+    from ccproxy.observability.storage.duckdb_simple import (
+        AccessLogPayload,
+        SimpleDuckDBStorage,
+    )
 
 
 logger = structlog.get_logger(__name__)
@@ -138,9 +141,9 @@ async def _store_access_log(
 
     try:
         # Prepare data for DuckDB storage
-        storage_data = {
+        storage_data: AccessLogPayload = {
             "timestamp": time.time(),
-            "request_id": log_data.get("request_id"),
+            "request_id": log_data.get("request_id") or "",
             "method": log_data.get("method", ""),
             "endpoint": log_data.get("endpoint", log_data.get("path", "")),
             "path": log_data.get("path", ""),
@@ -161,8 +164,9 @@ async def _store_access_log(
             "cost_sdk_usd": log_data.get("cost_sdk_usd", 0.0),
         }
 
-        # Store asynchronously (fire and forget)
-        asyncio.create_task(_write_to_storage(storage, storage_data))
+        # Store asynchronously using queue-based DuckDB (prevents deadlocks)
+        if storage:
+            await storage.store_request(storage_data)
 
     except Exception as e:
         # Log error but don't fail the request
