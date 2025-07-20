@@ -944,55 +944,6 @@ def output_middleware() -> DefaultOutputMiddleware:
     return DefaultOutputMiddleware()
 
 
-@pytest.fixture(autouse=True)
-def cleanup_observability_state() -> Generator[None, None, None]:
-    """Clean up observability global state after each test.
-
-    This fixture ensures that global metrics and scheduler instances
-    are properly reset between tests to prevent duplicate timeseries
-    errors in Prometheus registry.
-    """
-    # Cleanup happens after the test
-    yield
-
-    # Reset global metrics instance
-    try:
-        from ccproxy.observability.metrics import reset_metrics
-
-        reset_metrics()
-    except ImportError:
-        pass  # Module not available
-
-    # Stop and reset global scheduler
-    try:
-        import asyncio
-
-        from ccproxy.observability.scheduler import stop_scheduler
-
-        # Need to handle both sync and async contexts
-        try:
-            # Try to get existing event loop
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                # Create a task to stop the scheduler
-                task = asyncio.create_task(stop_scheduler())
-                # Let the task run in the background
-            else:
-                # Loop is not running, we can run it directly
-                loop.run_until_complete(stop_scheduler())
-        except RuntimeError:
-            # No event loop exists, create a new one
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            try:
-                loop.run_until_complete(stop_scheduler())
-            finally:
-                loop.close()
-                asyncio.set_event_loop(None)
-    except ImportError:
-        pass  # Module not available
-
-
 # Factory pattern fixtures
 @pytest.fixture
 def fastapi_app_factory(test_settings: Settings) -> "FastAPIAppFactory":

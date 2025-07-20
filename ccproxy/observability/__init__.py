@@ -31,13 +31,6 @@ from .pushgateway import (
     get_pushgateway_client,
     reset_pushgateway_client,
 )
-from .scheduler import (
-    ObservabilityScheduler,
-    get_scheduler,
-    scheduler_context,
-    start_scheduler,
-    stop_scheduler,
-)
 
 
 __all__ = [
@@ -63,10 +56,4 @@ __all__ = [
     "PushgatewayClient",
     "get_pushgateway_client",
     "reset_pushgateway_client",
-    # Scheduler
-    "ObservabilityScheduler",
-    "get_scheduler",
-    "scheduler_context",
-    "start_scheduler",
-    "stop_scheduler",
 ]

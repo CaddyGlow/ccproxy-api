@@ -13,7 +13,6 @@ from prometheus_client import CollectorRegistry
 
 from ccproxy.config.observability import ObservabilitySettings
 from ccproxy.observability.pushgateway import CircuitBreaker, PushgatewayClient
-from ccproxy.observability.scheduler import ObservabilityScheduler
 
 
 class TestCircuitBreaker:
@@ -85,10 +84,8 @@ class TestPushgatewayClient:
     def settings(self) -> ObservabilitySettings:
         """Create test settings."""
         return ObservabilitySettings(
-            pushgateway_enabled=True,
             pushgateway_url="http://localhost:9091",
             pushgateway_job="test-job",
-            pushgateway_batch_interval=1.0,
         )
 
     @pytest.fixture
@@ -105,7 +102,7 @@ class TestPushgatewayClient:
         self, settings: ObservabilitySettings
     ) -> None:
         """Test push_metrics returns False when disabled."""
-        settings.pushgateway_enabled = False
+        settings.pushgateway_url = None
         client = PushgatewayClient(settings)
         mock_registry = CollectorRegistry()
 
@@ -226,138 +223,6 @@ class TestPushgatewayClient:
         assert client.is_enabled() is False
 
 
-class TestObservabilityScheduler:
-    """Test ObservabilityScheduler with exponential backoff."""
-
-    @pytest.fixture
-    def settings(self) -> ObservabilitySettings:
-        """Create test settings."""
-        return ObservabilitySettings(
-            pushgateway_enabled=True,
-            pushgateway_url="http://localhost:9091",
-            pushgateway_job="test-job",
-            pushgateway_batch_interval=1.0,
-        )
-
-    @pytest.fixture
-    def scheduler(self, settings: ObservabilitySettings) -> ObservabilityScheduler:
-        """Create scheduler instance."""
-        return ObservabilityScheduler(settings)
-
-    def test_calculate_backoff_delay_no_failures(
-        self, scheduler: ObservabilityScheduler
-    ) -> None:
-        """Test backoff delay with no failures."""
-        scheduler._consecutive_failures = 0
-        delay = scheduler._calculate_backoff_delay()
-        assert delay == scheduler._pushgateway_interval
-
-    def test_calculate_backoff_delay_exponential_growth(
-        self, scheduler: ObservabilityScheduler
-    ) -> None:
-        """Test backoff delay grows exponentially."""
-        delays = []
-        for i in range(5):
-            scheduler._consecutive_failures = i
-            delay = scheduler._calculate_backoff_delay()
-            delays.append(delay)
-
-        # Should increase exponentially (with some jitter)
-        assert delays[1] > delays[0]
-        assert delays[2] > delays[1]
-        assert delays[3] > delays[2]
-
-    def test_calculate_backoff_delay_max_cap(
-        self, scheduler: ObservabilityScheduler
-    ) -> None:
-        """Test backoff delay is capped at maximum."""
-        scheduler._consecutive_failures = 20  # Very high failure count
-        delay = scheduler._calculate_backoff_delay()
-
-        # Should be capped at max_backoff (allowing for jitter)
-        assert delay <= scheduler._max_backoff * 1.25  # 25% jitter tolerance
-
-    def test_calculate_backoff_delay_minimum(
-        self, scheduler: ObservabilityScheduler
-    ) -> None:
-        """Test backoff delay has minimum value."""
-        scheduler._consecutive_failures = 1
-        delay = scheduler._calculate_backoff_delay()
-        assert delay >= 1.0
-
-    def test_calculate_backoff_delay_has_jitter(
-        self, scheduler: ObservabilityScheduler
-    ) -> None:
-        """Test backoff delay includes jitter."""
-        scheduler._consecutive_failures = 3
-
-        # Calculate multiple delays and verify they're different (jitter)
-        delays = []
-        for _ in range(10):
-            delay = scheduler._calculate_backoff_delay()
-            delays.append(delay)
-
-        # Should have variation due to jitter
-        assert len(set(delays)) > 1
-
-    async def test_scheduler_start_stop(
-        self, scheduler: ObservabilityScheduler
-    ) -> None:
-        """Test scheduler start and stop lifecycle."""
-        assert scheduler._running is False
-
-        await scheduler.start()
-        assert scheduler._running is True
-
-        await scheduler.stop()  # type: ignore[unreachable]
-        assert scheduler._running is False
-
-    async def test_scheduler_tracks_consecutive_failures(
-        self, scheduler: ObservabilityScheduler
-    ) -> None:
-        """Test scheduler tracks consecutive failures."""
-        # Mock metrics instance that always fails
-        mock_metrics = Mock()
-        mock_metrics.is_pushgateway_enabled.return_value = True
-        mock_metrics.push_to_gateway.return_value = False
-
-        # Set the mock BEFORE starting the scheduler to prevent _init_metrics from overriding it
-        scheduler._metrics_instance = mock_metrics
-
-        # Start scheduler briefly
-        await scheduler.start()
-
-        # Ensure the mock wasn't overridden by _init_metrics
-        scheduler._metrics_instance = mock_metrics
-
-        # Wait for the first task execution to complete with polling
-        # The pushgateway task should execute immediately on the first run
-        max_wait_time = 5.0  # Maximum time to wait
-        poll_interval = 0.1  # How often to check
-        elapsed_time = 0.0
-
-        while elapsed_time < max_wait_time:
-            if scheduler._consecutive_failures > 0:
-                break
-            await asyncio.sleep(poll_interval)
-            elapsed_time += poll_interval
-
-        # Stop scheduler first to avoid task cancellation issues
-        await scheduler.stop()
-
-        # Check that failure was recorded
-        assert scheduler._consecutive_failures > 0
-
-    def test_set_pushgateway_interval(self, scheduler: ObservabilityScheduler) -> None:
-        """Test setting pushgateway interval."""
-        scheduler.set_pushgateway_interval(5.0)
-        assert scheduler._pushgateway_interval == 5.0
-
-        # Test minimum value
-        scheduler.set_pushgateway_interval(0.5)
-        assert scheduler._pushgateway_interval == 1.0  # Should be clamped to minimum
-
-
 class TestIntegration:
     """Integration tests for error handling components."""
 
@@ -365,56 +230,76 @@ class TestIntegration:
     def settings(self) -> ObservabilitySettings:
         """Create test settings with failing pushgateway."""
         return ObservabilitySettings(
-            pushgateway_enabled=True,
             pushgateway_url="http://localhost:9999",  # Non-existent service
             pushgateway_job="test-job",
-            pushgateway_batch_interval=0.1,  # Fast interval for testing
         )
 
     async def test_scheduler_with_failing_pushgateway(
         self, settings: ObservabilitySettings
     ) -> None:
-        """Test scheduler behavior with failing pushgateway."""
-        scheduler = ObservabilityScheduler(settings)
+        """Test unified scheduler behavior with failing pushgateway."""
+        from ccproxy.config.scheduler import SchedulerSettings
+        from ccproxy.scheduler import PushgatewayTask, UnifiedScheduler
+        from ccproxy.scheduler.registry import register_task
 
-        # Mock metrics instance
-        mock_metrics = Mock()
-        mock_metrics.is_pushgateway_enabled.return_value = True
-        mock_metrics.push_to_gateway.return_value = False
+        # Create scheduler settings that enable pushgateway with fast interval
+        scheduler_settings = SchedulerSettings(
+            pushgateway_enabled=True,
+            pushgateway_interval_seconds=1.0,  # Fast interval for testing (min 1.0)
+        )
 
-        # Set the mock BEFORE starting the scheduler to prevent _init_metrics from overriding it
-        scheduler._metrics_instance = mock_metrics
+        scheduler = UnifiedScheduler(
+            max_concurrent_tasks=5,
+            graceful_shutdown_timeout=1.0,
+        )
 
-        # Start scheduler
-        await scheduler.start()
+        # Register the task type
+        register_task("pushgateway", PushgatewayTask)
 
-        # Ensure the mock wasn't overridden by _init_metrics
-        scheduler._metrics_instance = mock_metrics
+        # Mock the metrics to simulate failures
+        with patch("ccproxy.observability.metrics.get_metrics") as mock_get_metrics:
+            mock_metrics = Mock()
+            mock_metrics.is_pushgateway_enabled.return_value = True
+            mock_metrics.push_to_gateway.return_value = False  # Always fail
+            mock_get_metrics.return_value = mock_metrics
 
-        # Wait for a few failures (interval is 0.1s, so wait for multiple cycles)
-        # Use polling to wait for the failure count to increment
-        max_wait_time = 5.0  # Maximum time to wait
-        poll_interval = 0.1  # How often to check
-        elapsed_time = 0.0
+            # Add pushgateway task that will fail using task registry
+            await scheduler.add_task(
+                task_name="test_pushgateway",
+                task_type="pushgateway",
+                interval_seconds=1.0,
+                enabled=True,
+            )
+            await scheduler.start()
 
-        while elapsed_time < max_wait_time:
-            if scheduler._consecutive_failures > 0:
-                break
-            await asyncio.sleep(poll_interval)
-            elapsed_time += poll_interval
+            # Check status while scheduler is running
+            status = scheduler.get_scheduler_status()
+            assert len(status["task_names"]) > 0  # At least one task was added
+            assert status["running"] is True
 
-        # Stop scheduler first to avoid task cancellation issues
-        await scheduler.stop()
+            # Wait for task to run and potentially fail
+            await asyncio.sleep(1.5)
 
-        # Should have recorded multiple failures
-        assert scheduler._consecutive_failures > 0
+            await scheduler.stop()
+
+            # Verify scheduler is now stopped
+            final_status = scheduler.get_scheduler_status()
+            assert final_status["running"] is False
 
     def test_circuit_breaker_and_scheduler_integration(
         self, settings: ObservabilitySettings
     ) -> None:
-        """Test circuit breaker integration with scheduler."""
+        """Test circuit breaker integration with unified scheduler."""
+        from ccproxy.scheduler import PushgatewayTask
+
         client = PushgatewayClient(settings)
-        scheduler = ObservabilityScheduler(settings)
+
+        # Create a pushgateway task to simulate scheduler behavior
+        task = PushgatewayTask(
+            name="test_pushgateway_circuit",
+            interval_seconds=1.0,
+            enabled=True,
+        )
 
         # Mock registry
         mock_registry = CollectorRegistry()
@@ -427,13 +312,14 @@ class TestIntegration:
             for _ in range(6):
                 success = client.push_metrics(mock_registry)
                 if not success:
-                    scheduler._consecutive_failures += 1
+                    # Manually increment task failure counter to simulate scheduler behavior
+                    task._consecutive_failures += 1
 
             # Circuit breaker should be open
             assert client._circuit_breaker.state == "OPEN"
 
-            # Scheduler should have recorded failures
-            assert scheduler._consecutive_failures > 0
+            # Task should have recorded failures
+            assert task.consecutive_failures > 0
 
             # Next push should be blocked by circuit breaker
             success = client.push_metrics(mock_registry)

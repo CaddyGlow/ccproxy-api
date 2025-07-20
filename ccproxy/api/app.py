@@ -27,8 +27,8 @@ from ccproxy.auth.oauth.routes import router as oauth_router
 from ccproxy.config.settings import Settings, get_settings
 from ccproxy.core.logging import setup_logging
 from ccproxy.observability.config import configure_observability
-from ccproxy.observability.scheduler import get_scheduler, stop_scheduler
 from ccproxy.observability.storage.duckdb_simple import SimpleDuckDBStorage
+from ccproxy.scheduler.manager import start_unified_scheduler, stop_unified_scheduler
 
 
 logger = get_logger(__name__)
@@ -59,13 +59,14 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             "claude_cli_search_paths", paths=settings.claude.get_searched_paths()
         )
 
-    # Configure observability system (scheduler only now)
+    # Start unified scheduler system
     try:
-        scheduler = await get_scheduler()
-        logger.debug("observability_initialized")
+        scheduler = await start_unified_scheduler(settings)
+        app.state.unified_scheduler = scheduler
+        logger.debug("unified_scheduler_initialized")
     except Exception as e:
-        logger.error("observability_initialization_failed", error=str(e))
-        # Continue startup even if observability fails (graceful degradation)
+        logger.error("unified_scheduler_initialization_failed", error=str(e))
+        # Continue startup even if scheduler fails (graceful degradation)
 
     # Initialize DuckDB storage if enabled
     if settings.observability.duckdb_enabled:
@@ -88,15 +89,13 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Shutdown
     logger.debug("server_stop")
 
-    # Stop observability system
+    # Stop unified scheduler system
     try:
-        if "scheduler" in locals():
-            await scheduler.stop()
-        # Also stop global scheduler
-        await stop_scheduler()
-        logger.debug("observability_stopped")
+        scheduler = getattr(app.state, "unified_scheduler", None)
+        await stop_unified_scheduler(scheduler)
+        logger.debug("unified_scheduler_stopped")
     except Exception as e:
-        logger.error("observability_stop_failed", error=str(e))
+        logger.error("unified_scheduler_stop_failed", error=str(e))
 
     # Close DuckDB storage if initialized
     if hasattr(app.state, "duckdb_storage") and app.state.duckdb_storage:

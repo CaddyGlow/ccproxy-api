@@ -204,7 +204,15 @@ docker-compose-down:
 
 # Development server
 dev:
-	uv run fastapi dev ccproxy/main.py
+	# uv run fastapi dev ccproxy/main.py
+	CCPROXY_REQUEST_LOG_DIR=/tmp/ccproxy/request \
+	  CCPROXY_VERBOSE_API=true \
+	  SERVER__LOG_FILE=/tmp/ccproxy/ccproxy.log \
+	  SERVER__LOG_LEVEL=debug \
+		uv run ccproxy serve --reload
+
+prod:
+	uv run ccproxy serve
 
 # Documentation targets
 docs-install:

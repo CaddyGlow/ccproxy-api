@@ -473,7 +473,7 @@ class TestObservabilitySettings:
         settings = ObservabilitySettings()
 
         assert settings.metrics_enabled is True
-        assert settings.pushgateway_enabled is False
+        # pushgateway_enabled removed - now controlled by scheduler config
         assert settings.pushgateway_url is None
         assert settings.pushgateway_job == "ccproxy"
         assert settings.duckdb_enabled is True
@@ -485,7 +485,6 @@ class TestObservabilitySettings:
 
         settings = ObservabilitySettings(
             metrics_enabled=False,
-            pushgateway_enabled=True,
             pushgateway_url="http://pushgateway:9091",
             pushgateway_job="test-job",
             duckdb_enabled=False,
@@ -493,7 +492,7 @@ class TestObservabilitySettings:
         )
 
         assert settings.metrics_enabled is False
-        assert settings.pushgateway_enabled is True
+        # pushgateway_enabled removed - now controlled by scheduler config
         assert settings.pushgateway_url == "http://pushgateway:9091"
         assert settings.pushgateway_job == "test-job"
         assert settings.duckdb_enabled is False
@@ -507,7 +506,6 @@ class TestObservabilitySettings:
 
         config_dict: dict[str, Any] = {
             "metrics_enabled": False,
-            "pushgateway_enabled": True,
             "pushgateway_url": "http://localhost:9091",
             "duckdb_path": "custom/metrics.duckdb",
         }
@@ -515,7 +513,7 @@ class TestObservabilitySettings:
         settings = ObservabilitySettings(**config_dict)
 
         assert settings.metrics_enabled is False
-        assert settings.pushgateway_enabled is True
+        # pushgateway_enabled removed - now controlled by scheduler config
         assert settings.pushgateway_url == "http://localhost:9091"
         assert settings.duckdb_path == "custom/metrics.duckdb"
 
@@ -529,7 +527,7 @@ class TestPushgatewayClient:
         from ccproxy.config.observability import ObservabilitySettings
         from ccproxy.observability.pushgateway import PushgatewayClient
 
-        settings = ObservabilitySettings(pushgateway_enabled=False)
+        settings = ObservabilitySettings()
         client = PushgatewayClient(settings)
 
         assert not client.is_enabled()
@@ -539,7 +537,7 @@ class TestPushgatewayClient:
         from ccproxy.config.observability import ObservabilitySettings
         from ccproxy.observability.pushgateway import PushgatewayClient
 
-        settings = ObservabilitySettings(pushgateway_enabled=True, pushgateway_url=None)
+        settings = ObservabilitySettings(pushgateway_url=None)
         client = PushgatewayClient(settings)
 
         assert not client.is_enabled()
@@ -579,7 +577,6 @@ class TestPushgatewayClient:
         from ccproxy.observability.pushgateway import PushgatewayClient
 
         settings = ObservabilitySettings(
-            pushgateway_enabled=True,
             pushgateway_url="http://pushgateway:9091",
             pushgateway_job="test-job",
         )
@@ -626,7 +623,7 @@ class TestPushgatewayClient:
         from ccproxy.config.observability import ObservabilitySettings
         from ccproxy.observability.pushgateway import PushgatewayClient
 
-        settings = ObservabilitySettings(pushgateway_enabled=False)
+        settings = ObservabilitySettings()
         client = PushgatewayClient(settings)
         mock_registry = Mock()
 
@@ -712,77 +709,8 @@ class TestPrometheusMetricsIntegration:
 
 
 @pytest.mark.unit
-class TestObservabilityScheduler:
-    """Test ObservabilityScheduler functionality."""
-
-    @pytest.fixture
-    def scheduler_settings(self) -> Any:
-        """Mock observability settings for scheduler tests."""
-        from ccproxy.config.observability import ObservabilitySettings
-
-        return ObservabilitySettings(
-            pushgateway_enabled=True,
-            pushgateway_url="http://pushgateway:9091",
-            pushgateway_job="test-job",
-        )
-
-    def test_scheduler_initialization(self, scheduler_settings: Any) -> None:
-        """Test scheduler initialization."""
-        from ccproxy.observability.scheduler import ObservabilityScheduler
-
-        scheduler: ObservabilityScheduler = ObservabilityScheduler(scheduler_settings)
-
-        assert scheduler.settings == scheduler_settings
-        assert not scheduler._running
-        assert scheduler._tasks == []
-
-    @pytest.mark.asyncio
-    async def test_scheduler_start_stop(self, scheduler_settings: Any) -> None:
-        """Test scheduler start and stop."""
-        from ccproxy.observability.scheduler import ObservabilityScheduler
-
-        scheduler: ObservabilityScheduler = ObservabilityScheduler(scheduler_settings)
-
-        await scheduler.start()
-        assert scheduler._running
-
-        await scheduler.stop()
-        assert not scheduler._running
-
-    def test_scheduler_set_pushgateway_interval(self, scheduler_settings: Any) -> None:
-        """Test setting pushgateway interval."""
-        from ccproxy.observability.scheduler import ObservabilityScheduler
-
-        scheduler: ObservabilityScheduler = ObservabilityScheduler(scheduler_settings)
-
-        scheduler.set_pushgateway_interval(60.0)
-        assert scheduler._pushgateway_interval == 60.0
-
-        # Test minimum interval
-        scheduler.set_pushgateway_interval(0.5)
-        assert scheduler._pushgateway_interval == 1.0
-
-    def test_push_metrics_no_url(self) -> None:
-        """Test push metrics when no URL configured."""
-        from unittest.mock import Mock
-
-        from ccproxy.config.observability import ObservabilitySettings
-        from ccproxy.observability.pushgateway import PushgatewayClient
-
-        settings = ObservabilitySettings(pushgateway_enabled=True, pushgateway_url=None)
-
-        with patch("ccproxy.observability.pushgateway.PROMETHEUS_AVAILABLE", True):
-            client = PushgatewayClient(settings)
-            mock_registry = Mock()
-
-            result = client.push_metrics(mock_registry)
-            assert result is False
-
-            result = client.push_add_metrics(mock_registry)
-            assert result is False
-
-            result = client.delete_metrics()
-            assert result is False
+# Note: ObservabilityScheduler tests removed - functionality moved to unified scheduler
+# See tests/test_unified_scheduler.py for comprehensive scheduler testing
 
 
 @pytest.mark.unit
@@ -888,7 +816,6 @@ class TestPushgatewayRemoteWrite:
         )
 
         settings = ObservabilitySettings(
-            pushgateway_enabled=True,
             pushgateway_url="http://victoriametrics:8428/api/v1/write",
             pushgateway_job="test-job",
         )
@@ -925,7 +852,6 @@ class TestPushgatewayRemoteWrite:
         mock_post.return_value = mock_response
 
         settings = ObservabilitySettings(
-            pushgateway_enabled=True,
             pushgateway_url="http://victoriametrics:8428/api/v1/write",
             pushgateway_job="test-job",
         )
@@ -946,7 +872,6 @@ class TestPushgatewayRemoteWrite:
         from ccproxy.observability.pushgateway import PushgatewayClient
 
         settings = ObservabilitySettings(
-            pushgateway_enabled=True,
             pushgateway_url="http://pushgateway:9091",
             pushgateway_job="test-job",
         )
@@ -974,13 +899,11 @@ class TestPushgatewayRemoteWrite:
 
         # Test remote write detection
         settings_remote = ObservabilitySettings(
-            pushgateway_enabled=True,
             pushgateway_url="http://victoriametrics:8428/api/v1/write",
         )
 
         # Test standard pushgateway detection
         settings_standard = ObservabilitySettings(
-            pushgateway_enabled=True,
             pushgateway_url="http://pushgateway:9091",
         )
 
@@ -1011,7 +934,6 @@ class TestPushgatewayRemoteWrite:
         from ccproxy.observability.pushgateway import PushgatewayClient
 
         settings = ObservabilitySettings(
-            pushgateway_enabled=True,
             pushgateway_url="http://pushgateway:9091",
             pushgateway_job="test-job",
         )
@@ -1036,7 +958,6 @@ class TestPushgatewayRemoteWrite:
         from ccproxy.observability.pushgateway import PushgatewayClient
 
         settings = ObservabilitySettings(
-            pushgateway_enabled=True,
             pushgateway_url="http://pushgateway:9091",
             pushgateway_job="test-job",
         )
@@ -1060,7 +981,6 @@ class TestPushgatewayRemoteWrite:
         from ccproxy.observability.pushgateway import PushgatewayClient
 
         settings = ObservabilitySettings(
-            pushgateway_enabled=True,
             pushgateway_url="http://pushgateway:9091",
             pushgateway_job="test-job",
         )

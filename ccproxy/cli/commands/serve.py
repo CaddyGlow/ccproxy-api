@@ -44,6 +44,28 @@ from ..docker.params import (
     user_mapping_option,
     user_uid_option,
 )
+from ..options.claude_options import (
+    ClaudeOptions,
+    allowed_tools_option,
+    append_system_prompt_option,
+    claude_cli_path_option,
+    cwd_option,
+    disallowed_tools_option,
+    max_thinking_tokens_option,
+    max_turns_option,
+    permission_mode_option,
+    permission_prompt_tool_name_option,
+)
+from ..options.core_options import CoreOptions, config_option
+from ..options.security_options import SecurityOptions, auth_token_option
+from ..options.server_options import (
+    ServerOptions,
+    host_option,
+    log_file_option,
+    log_level_option,
+    port_option,
+    reload_option,
+)
 
 
 # Logger will be configured by configuration manager
@@ -284,96 +306,31 @@ def _run_local_server(settings: Settings, cli_overrides: dict[str, Any]) -> None
 
 def api(
     # Configuration
-    config: Path | None = typer.Option(
-        None,
-        "--config",
-        "-c",
-        help="Path to configuration file (TOML, JSON, or YAML)",
-    ),
-    # Core server settings
+    config: Path | None = config_option(),
+    # Server options
+    port: int | None = port_option(),
+    host: str | None = host_option(),
+    reload: bool | None = reload_option(),
+    log_level: str | None = log_level_option(),
+    log_file: str | None = log_file_option(),
+    # Security options
+    auth_token: str | None = auth_token_option(),
+    # Claude options
+    max_thinking_tokens: int | None = max_thinking_tokens_option(),
+    allowed_tools: str | None = allowed_tools_option(),
+    disallowed_tools: str | None = disallowed_tools_option(),
+    claude_cli_path: str | None = claude_cli_path_option(),
+    append_system_prompt: str | None = append_system_prompt_option(),
+    permission_mode: str | None = permission_mode_option(),
+    max_turns: int | None = max_turns_option(),
+    cwd: str | None = cwd_option(),
+    permission_prompt_tool_name: str | None = permission_prompt_tool_name_option(),
+    # Core settings
     docker: bool = typer.Option(
         False,
         "--docker",
         "-d",
         help="Run API server using Docker instead of local execution",
-    ),
-    port: int = typer.Option(
-        None,
-        "--port",
-        "-p",
-        help="Port to run the server on",
-    ),
-    host: str = typer.Option(
-        None,
-        "--host",
-        "-h",
-        help="Host to bind the server to",
-    ),
-    reload: bool = typer.Option(
-        None,
-        "--reload/--no-reload",
-        help="Enable auto-reload for development",
-    ),
-    log_level: str = typer.Option(
-        None,
-        "--log-level",
-        help="Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)",
-    ),
-    log_file: str = typer.Option(
-        None,
-        "--log-file",
-        help="Path to JSON log file. If specified, logs will be written to this file in JSON format",
-    ),
-    auth_token: str = typer.Option(
-        None,
-        "--auth-token",
-        help="Bearer token for API authentication",
-    ),
-    claude_cli_path: str = typer.Option(
-        None,
-        "--claude-cli-path",
-        help="Path to Claude CLI executable",
-    ),
-    # ClaudeCodeOptions parameters
-    max_thinking_tokens: int = typer.Option(
-        None,
-        "--max-thinking-tokens",
-        help="Maximum thinking tokens for Claude Code",
-    ),
-    allowed_tools: str = typer.Option(
-        None,
-        "--allowed-tools",
-        help="List of allowed tools (comma-separated)",
-    ),
-    disallowed_tools: str = typer.Option(
-        None,
-        "--disallowed-tools",
-        help="List of disallowed tools (comma-separated)",
-    ),
-    append_system_prompt: str = typer.Option(
-        None,
-        "--append-system-prompt",
-        help="Additional system prompt to append",
-    ),
-    permission_mode: str = typer.Option(
-        None,
-        "--permission-mode",
-        help="Permission mode: default, acceptEdits, or bypassPermissions",
-    ),
-    max_turns: int = typer.Option(
-        None,
-        "--max-turns",
-        help="Maximum conversation turns",
-    ),
-    cwd: str = typer.Option(
-        None,
-        "--cwd",
-        help="Working directory path",
-    ),
-    permission_prompt_tool_name: str = typer.Option(
-        None,
-        "--permission-prompt-tool-name",
-        help="Permission prompt tool name",
     ),
     # Docker settings using shared parameters
     docker_image: str | None = docker_image_option(),
@@ -411,23 +368,49 @@ def api(
         if config is None:
             config = get_config_path_from_context()
 
-        # Extract CLI overrides from all provided arguments
-        cli_overrides = config_manager.get_cli_overrides_from_args(
-            host=host,
+        # Create option containers for better organization
+        server_options = ServerOptions(
             port=port,
+            host=host,
             reload=reload,
             log_level=log_level,
             log_file=log_file,
-            auth_token=auth_token,
-            claude_cli_path=claude_cli_path,
+        )
+
+        claude_options = ClaudeOptions(
             max_thinking_tokens=max_thinking_tokens,
             allowed_tools=allowed_tools,
             disallowed_tools=disallowed_tools,
+            claude_cli_path=claude_cli_path,
             append_system_prompt=append_system_prompt,
             permission_mode=permission_mode,
             max_turns=max_turns,
-            permission_prompt_tool_name=permission_prompt_tool_name,
             cwd=cwd,
+            permission_prompt_tool_name=permission_prompt_tool_name,
+        )
+
+        security_options = SecurityOptions(auth_token=auth_token)
+
+        # Extract CLI overrides from structured option containers
+        cli_overrides = config_manager.get_cli_overrides_from_args(
+            # Server options
+            host=server_options.host,
+            port=server_options.port,
+            reload=server_options.reload,
+            log_level=server_options.log_level,
+            log_file=server_options.log_file,
+            # Security options
+            auth_token=security_options.auth_token,
+            # Claude options
+            claude_cli_path=claude_options.claude_cli_path,
+            max_thinking_tokens=claude_options.max_thinking_tokens,
+            allowed_tools=claude_options.allowed_tools,
+            disallowed_tools=claude_options.disallowed_tools,
+            append_system_prompt=claude_options.append_system_prompt,
+            permission_mode=claude_options.permission_mode,
+            max_turns=claude_options.max_turns,
+            permission_prompt_tool_name=claude_options.permission_prompt_tool_name,
+            cwd=claude_options.cwd,
         )
 
         # Load settings with CLI overrides
@@ -446,8 +429,8 @@ def api(
         json_logs = os.environ.get("CCPROXY_JSON_LOGS", "").lower() == "true"
         setup_logging(
             json_logs=json_logs,
-            log_level=log_level or settings.server.log_level,
-            log_file=log_file or settings.server.log_file,
+            log_level=server_options.log_level or settings.server.log_level,
+            log_file=server_options.log_file or settings.server.log_file,
         )
 
         # Re-get logger after logging is configured
@@ -456,7 +439,7 @@ def api(
         # Test debug logging
         logger.debug(
             "Debug logging is enabled",
-            effective_log_level=log_level or settings.server.log_level,
+            effective_log_level=server_options.log_level or settings.server.log_level,
         )
 
         # Log CLI command that was deferred
@@ -464,8 +447,8 @@ def api(
             "cli_command_starting",
             command="serve",
             docker=docker,
-            port=port,
-            host=host,
+            port=server_options.port,
+            host=server_options.host,
             config_path=str(config) if config else None,
         )
 
