@@ -102,8 +102,8 @@ def get_observability_metrics() -> PrometheusMetrics:
     return get_metrics()
 
 
-async def get_duckdb_storage(request: Request) -> SimpleDuckDBStorage | None:
-    """Get DuckDB storage from app state.
+async def get_log_storage(request: Request) -> SimpleDuckDBStorage | None:
+    """Get log storage from app state.
 
     Args:
         request: FastAPI request object
@@ -111,7 +111,23 @@ async def get_duckdb_storage(request: Request) -> SimpleDuckDBStorage | None:
     Returns:
         SimpleDuckDBStorage instance if available, None otherwise
     """
-    return getattr(request.app.state, "duckdb_storage", None)
+    return getattr(request.app.state, "log_storage", None)
+
+
+async def get_duckdb_storage(request: Request) -> SimpleDuckDBStorage | None:
+    """Get DuckDB storage from app state (backward compatibility).
+
+    Args:
+        request: FastAPI request object
+
+    Returns:
+        SimpleDuckDBStorage instance if available, None otherwise
+    """
+    # Try new name first, then fall back to old name for backward compatibility
+    storage = getattr(request.app.state, "log_storage", None)
+    if storage is None:
+        storage = getattr(request.app.state, "duckdb_storage", None)
+    return storage
 
 
 # Type aliases for service dependencies
@@ -120,4 +136,5 @@ ProxyServiceDep = Annotated[ProxyService, Depends(get_proxy_service)]
 ObservabilityMetricsDep = Annotated[
     PrometheusMetrics, Depends(get_observability_metrics)
 ]
+LogStorageDep = Annotated[SimpleDuckDBStorage | None, Depends(get_log_storage)]
 DuckDBStorageDep = Annotated[SimpleDuckDBStorage | None, Depends(get_duckdb_storage)]

@@ -17,7 +17,6 @@ Components:
 - pipeline: Observability data pipeline for metrics export and alerting
 """
 
-from .config import configure_observability
 from .context import (
     RequestContext,
     get_context_tracker,
@@ -35,7 +34,6 @@ from .pushgateway import (
 
 __all__ = [
     # Configuration
-    "configure_observability",
     # Context management
     "RequestContext",
     "request_context",
@@ -46,12 +44,6 @@ __all__ = [
     "PrometheusMetrics",
     "get_metrics",
     "reset_metrics",
-    # Log-to-storage pipeline
-    "LogToStoragePipeline",
-    "get_pipeline",
-    "enqueue_log_event",
-    "create_structlog_processor",
-    "pipeline_context",
     # Pushgateway
     "PushgatewayClient",
     "get_pushgateway_client",

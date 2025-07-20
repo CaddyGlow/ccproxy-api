@@ -1,3 +1,4 @@
+# http://localhost:8428/api/v1/write
 services:
   victoria-metrics:
     image: victoriametrics/victoria-metrics:latest

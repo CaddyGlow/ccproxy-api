@@ -459,9 +459,7 @@ def validate_config_with_schema(
     Raises:
         ImportError: If check-jsonschema is not available
         FileNotFoundError: If config file doesn't exist
-        json.JSONDecodeError: If JSON file has invalid syntax
         tomllib.TOMLDecodeError: If TOML file has invalid syntax
-        yaml.YAMLError: If YAML file has invalid syntax
         ValueError: For other validation errors
     """
     import json
@@ -587,63 +585,10 @@ def validate_config_with_schema(
                 Path(temp_schema_path).unlink(missing_ok=True)
             raise ValueError(f"Validation error: {e}") from e
 
-    elif suffix in [".yaml", ".yml"]:
-        try:
-            import yaml
-        except ImportError as e:
-            raise ValueError(
-                "YAML support is not available. Install with: pip install pyyaml"
-            ) from e
-
-        # Parse YAML to validate it's well-formed - let YAML parse errors bubble up
-        with config_path.open("r", encoding="utf-8") as f:
-            yaml.safe_load(f)
-
-        # Get or generate schema
-        if schema_path:
-            temp_schema_path = str(schema_path)
-            cleanup_schema = False
-        else:
-            schema = generate_json_schema()
-            with tempfile.NamedTemporaryFile(
-                mode="w", suffix=".json", delete=False, encoding="utf-8"
-            ) as schema_file:
-                json.dump(schema, schema_file, indent=2)
-                temp_schema_path = schema_file.name
-                cleanup_schema = True
-
-        try:
-            result = subprocess.run(
-                [
-                    "check-jsonschema",
-                    "--schemafile",
-                    temp_schema_path,
-                    str(config_path),
-                ],
-                capture_output=True,
-                text=True,
-                check=False,
-            )
-
-            if cleanup_schema:
-                Path(temp_schema_path).unlink(missing_ok=True)
-
-            return result.returncode == 0
-
-        except FileNotFoundError as e:
-            if cleanup_schema:
-                Path(temp_schema_path).unlink(missing_ok=True)
-            raise ImportError(
-                "check-jsonschema command not found. "
-                "Install with: pip install check-jsonschema"
-            ) from e
-        except Exception as e:
-            if cleanup_schema:
-                Path(temp_schema_path).unlink(missing_ok=True)
-            raise ValueError(f"Validation error: {e}") from e
-
     else:
-        raise ValueError(f"Unsupported config file format: {suffix}")
+        raise ValueError(
+            f"Unsupported config file format: {suffix}. Only TOML (.toml) files are supported."
+        )
 
 
 # TODO: Remove this function or update this function

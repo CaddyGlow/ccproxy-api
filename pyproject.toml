@@ -331,3 +331,6 @@ include = ["ccproxy*"]
 
 [tool.uv]
 package = true
+
+[tool.uv.sources]
+claude-code-sdk = { git = "https://github.com/anthropics/claude-code-sdk-python.git" }

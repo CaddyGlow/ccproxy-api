@@ -331,7 +331,7 @@ security = [
 requires-dist = [
     { name = "aiosqlite", specifier = ">=0.21.0" },
     { name = "check-jsonschema", specifier = ">=0.33.2" },
-    { name = "claude-code-sdk", specifier = ">=0.0.14" },
+    { name = "claude-code-sdk", git = "https://github.com/anthropics/claude-code-sdk-python.git" },
     { name = "duckdb", specifier = ">=1.1.0" },
     { name = "duckdb-engine", specifier = ">=0.17.0" },
     { name = "fastapi", extras = ["standard"], specifier = ">=0.115.14" },
@@ -541,14 +541,10 @@ wheels = [
 [[package]]
 name = "claude-code-sdk"
 version = "0.0.14"
-source = { registry = "https://pypi.org/simple" }
+source = { git = "https://github.com/anthropics/claude-code-sdk-python.git#c4384ead710e2c264f13524ce63a985a31b43e3c" }
 dependencies = [
     { name = "anyio" },
     { name = "typing-extensions", marker = "python_full_version < '3.11'" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/1b/50/489bd1cf9f448d9e06aa6af4a14db8e22ec5f7dbdb5fcc48821b1d8d1680/claude_code_sdk-0.0.14.tar.gz", hash = "sha256:a1c9384b6934c2b8351d7a35c0b7dcfd5fb657017fb456eb98bcf5e0b4f8eccd", size = 13403, upload_time = "2025-07-01T06:07:28.147Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/db/a4/6eb606ccb0988054ca52b9453045b2c2f1bc6fd9c915e0f6cd1f73d6ce2c/claude_code_sdk-0.0.14-py3-none-any.whl", hash = "sha256:83a23a260954bb84e78cf2dc42aaaa0eee778ca392e56f1661276f31ba64992c", size = 10589, upload_time = "2025-07-01T06:07:27.029Z" },
 ]
 
 [[package]]

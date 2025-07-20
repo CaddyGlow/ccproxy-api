@@ -11,8 +11,10 @@ from typing_extensions import TypedDict
 
 from ccproxy.api.dependencies import (
     DuckDBStorageDep,
+    LogStorageDep,
     ObservabilityMetricsDep,
 )
+from ccproxy.config.settings import get_settings
 from ccproxy.observability.storage.models import AccessLog
 
 
@@ -240,6 +242,12 @@ async def query_logs(
     Returns access log entries with optional filtering by time range, model, and service type.
     """
     try:
+        settings = get_settings()
+        if not settings.observability.logs_collection_enabled:
+            raise HTTPException(
+                status_code=503,
+                detail="Logs collection is disabled. Enable with logs_collection_enabled=true",
+            )
         if not storage:
             raise HTTPException(
                 status_code=503,
@@ -334,6 +342,12 @@ async def get_logs_analytics(
     Returns summary statistics, hourly trends, and model breakdowns.
     """
     try:
+        settings = get_settings()
+        if not settings.observability.logs_collection_enabled:
+            raise HTTPException(
+                status_code=503,
+                detail="Logs collection is disabled. Enable with logs_collection_enabled=true",
+            )
         if not storage:
             raise HTTPException(
                 status_code=503,
@@ -850,6 +864,12 @@ async def get_logs_entries(
     Returns individual request entries with full details for analysis.
     """
     try:
+        settings = get_settings()
+        if not settings.observability.logs_collection_enabled:
+            raise HTTPException(
+                status_code=503,
+                detail="Logs collection is disabled. Enable with logs_collection_enabled=true",
+            )
         if not storage:
             raise HTTPException(
                 status_code=503,
@@ -969,6 +989,12 @@ async def reset_logs_data(storage: DuckDBStorageDep) -> dict[str, Any]:
         Dictionary with reset status and timestamp
     """
     try:
+        settings = get_settings()
+        if not settings.observability.logs_collection_enabled:
+            raise HTTPException(
+                status_code=503,
+                detail="Logs collection is disabled. Enable with logs_collection_enabled=true",
+            )
         if not storage:
             raise HTTPException(
                 status_code=503,

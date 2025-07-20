@@ -1,6 +1,5 @@
 """Configuration file loader for ccproxy."""
 
-import json
 import os
 from pathlib import Path
 from typing import Any, Optional
@@ -61,24 +60,16 @@ class ConfigLoader:
             return {}
 
         try:
-            if config_file.suffix.lower() == ".json":
-                return self._load_json_config(config_file)
-            elif config_file.suffix.lower() in [".toml", ".tml"]:
+            if config_file.suffix.lower() in [".toml", ".tml"]:
                 return self._load_toml_config(config_file)
             else:
                 raise ConfigurationError(
-                    f"Unsupported config file format: {config_file.suffix}"
+                    f"Unsupported config file format: {config_file.suffix}. Only TOML (.toml) files are supported."
                 )
         except Exception as e:
             raise ConfigurationError(
                 f"Failed to load config file {config_file}: {e}"
             ) from e
-
-    def _load_json_config(self, config_file: Path) -> dict[str, Any]:
-        """Load JSON configuration file."""
-        with config_file.open(encoding="utf-8") as f:
-            data = json.load(f)
-            return data if isinstance(data, dict) else {}
 
     def _load_toml_config(self, config_file: Path) -> dict[str, Any]:
         """Load TOML configuration file."""

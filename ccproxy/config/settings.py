@@ -8,28 +8,19 @@ import tomllib
 from pathlib import Path
 from typing import Any, Literal
 
-from ccproxy import __version__
-from ccproxy.core.async_utils import format_version
-
-
-try:
-    import yaml
-
-    HAS_YAML = True
-except ImportError:
-    HAS_YAML = False
-
 from pydantic import BaseModel, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from ccproxy import __version__
 from ccproxy.config.discovery import find_toml_config_file, get_claude_cli_config_dir
-from ccproxy.core.async_utils import get_package_dir, patched_typing
+from ccproxy.core.async_utils import format_version, get_package_dir, patched_typing
 
 from .auth import AuthSettings
 from .claude import ClaudeSettings
 from .cors import CORSSettings
 from .docker_settings import DockerSettings
 from .observability import ObservabilitySettings
+from .pricing import PricingSettings
 from .reverse_proxy import ReverseProxySettings
 from .scheduler import SchedulerSettings
 from .security import SecuritySettings
@@ -123,6 +114,12 @@ class Settings(BaseSettings):
     scheduler: SchedulerSettings = Field(
         default_factory=SchedulerSettings,
         description="Task scheduler configuration settings",
+    )
+
+    # Pricing settings
+    pricing: PricingSettings = Field(
+        default_factory=PricingSettings,
+        description="Pricing configuration settings",
     )
 
     @field_validator("server", mode="before")
@@ -244,6 +241,18 @@ class Settings(BaseSettings):
             return SchedulerSettings(**v)
         return v
 
+    @field_validator("pricing", mode="before")
+    @classmethod
+    def validate_pricing(cls, v: Any) -> Any:
+        """Validate and convert pricing settings."""
+        if v is None:
+            return PricingSettings()
+        if isinstance(v, PricingSettings):
+            return v
+        if isinstance(v, dict):
+            return PricingSettings(**v)
+        return v
+
     # validate_pool_settings method removed - connection pooling functionality has been removed
 
     @property
@@ -309,55 +318,6 @@ class Settings(BaseSettings):
             raise ValueError(f"Invalid TOML syntax in {toml_path}: {e}") from e
 
     @classmethod
-    def load_json_config(cls, json_path: Path) -> dict[str, Any]:
-        """Load configuration from a JSON file.
-
-        Args:
-            json_path: Path to the JSON configuration file
-
-        Returns:
-            dict: Configuration data from the JSON file
-
-        Raises:
-            ValueError: If the JSON file is invalid or cannot be read
-        """
-        try:
-            with json_path.open("r", encoding="utf-8") as f:
-                data = json.load(f)
-                return data if isinstance(data, dict) else {}
-        except OSError as e:
-            raise ValueError(f"Cannot read JSON config file {json_path}: {e}") from e
-        except json.JSONDecodeError as e:
-            raise ValueError(f"Invalid JSON syntax in {json_path}: {e}") from e
-
-    @classmethod
-    def load_yaml_config(cls, yaml_path: Path) -> dict[str, Any]:
-        """Load configuration from a YAML file.
-
-        Args:
-            yaml_path: Path to the YAML configuration file
-
-        Returns:
-            dict: Configuration data from the YAML file
-
-        Raises:
-            ValueError: If the YAML file is invalid or cannot be read
-        """
-        if not HAS_YAML:
-            raise ValueError(
-                "YAML support is not available. Install with: pip install pyyaml"
-            )
-
-        try:
-            with yaml_path.open("r", encoding="utf-8") as f:
-                data = yaml.safe_load(f)
-                return data if isinstance(data, dict) else {}
-        except OSError as e:
-            raise ValueError(f"Cannot read YAML config file {yaml_path}: {e}") from e
-        except yaml.YAMLError as e:
-            raise ValueError(f"Invalid YAML syntax in {yaml_path}: {e}") from e
-
-    @classmethod
     def load_config_file(cls, config_path: Path) -> dict[str, Any]:
         """Load configuration from a file based on its extension.
 
@@ -374,14 +334,10 @@ class Settings(BaseSettings):
 
         if suffix in [".toml"]:
             return cls.load_toml_config(config_path)
-        elif suffix in [".json"]:
-            return cls.load_json_config(config_path)
-        elif suffix in [".yaml", ".yml"]:
-            return cls.load_yaml_config(config_path)
         else:
             raise ValueError(
                 f"Unsupported config file format: {suffix}. "
-                "Supported formats: .toml, .json, .yaml, .yml"
+                "Only TOML (.toml) files are supported."
             )
 
     @classmethod

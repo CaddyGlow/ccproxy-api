@@ -127,6 +127,8 @@ def _group_config_rows(
             group_name = "Docker Configuration"
         elif setting.startswith("observability"):
             group_name = "Observability Configuration"
+        elif setting.startswith("scheduler"):
+            group_name = "Scheduler Configuration"
         else:
             group_name = "General Configuration"
 
@@ -225,7 +227,7 @@ def config_init(
         "toml",
         "--format",
         "-f",
-        help="Configuration file format (toml, json, or yaml)",
+        help="Configuration file format (only toml is supported)",
     ),
     output_dir: Path | None = typer.Option(
         None,
@@ -246,16 +248,13 @@ def config_init(
 
     Examples:
         ccproxy config init                      # Create TOML config in default location
-        ccproxy config init --format json        # Create JSON config
-        ccproxy config init --format yaml        # Create YAML config
         ccproxy config init --output-dir ./config  # Create in specific directory
     """
     # Validate format
-    valid_formats = ["toml", "json", "yaml"]
-    if format not in valid_formats:
+    if format != "toml":
         toolkit = get_rich_toolkit()
         toolkit.print(
-            f"Error: Invalid format '{format}'. Must be one of: {', '.join(valid_formats)}",
+            f"Error: Invalid format '{format}'. Only 'toml' format is supported.",
             tag="error",
         )
         raise typer.Exit(1)
@@ -287,39 +286,6 @@ def config_init(
 
             # Write TOML with comments using dynamic generation
             _write_toml_config_with_comments(output_file, example_config, Settings)
-
-        elif format == "json":
-            output_file = output_dir / "config.json"
-            if output_file.exists() and not force:
-                toolkit.print(
-                    f"Error: {output_file} already exists. Use --force to overwrite.",
-                    tag="error",
-                )
-                raise typer.Exit(1)
-
-            # Write JSON with pretty formatting
-            _write_json_config_with_comments(output_file, example_config)
-
-        elif format == "yaml":
-            try:
-                import yaml
-            except ImportError as e:
-                toolkit.print(
-                    "Error: YAML support is not available. Install with: pip install pyyaml",
-                    tag="error",
-                )
-                raise typer.Exit(1) from e
-
-            output_file = output_dir / "config.yaml"
-            if output_file.exists() and not force:
-                toolkit.print(
-                    f"Error: {output_file} already exists. Use --force to overwrite.",
-                    tag="error",
-                )
-                raise typer.Exit(1)
-
-            # Write YAML with comments
-            _write_yaml_config_with_comments(output_file, example_config)
 
         toolkit.print(
             f"Created example configuration file: {output_file}", tag="success"
@@ -362,15 +328,12 @@ def generate_token(
     This command generates a secure authentication token that can be used with
     both Anthropic and OpenAI compatible APIs.
 
-    Use --save to write the token to a configuration file. The command supports
-    TOML, JSON, and YAML formats and will auto-detect the format from the file extension.
+    Use --save to write the token to a TOML configuration file.
 
     Examples:
         ccproxy config generate-token                    # Generate and display token
         ccproxy config generate-token --save             # Generate and save to config
         ccproxy config generate-token --save --config-file custom.toml  # Save to TOML config
-        ccproxy config generate-token --save --config-file config.json  # Save to JSON config
-        ccproxy config generate-token --save --config-file config.yaml  # Save to YAML config
         ccproxy config generate-token --save --force     # Overwrite existing token
     """
     toolkit = get_rich_toolkit()
@@ -518,37 +481,9 @@ def _detect_config_format(config_file: Path) -> str:
     suffix = config_file.suffix.lower()
     if suffix in [".toml"]:
         return "toml"
-    elif suffix in [".json"]:
-        return "json"
-    elif suffix in [".yaml", ".yml"]:
-        return "yaml"
     else:
-        # Default to TOML if unknown extension
+        # Only TOML is supported
         return "toml"
-
-
-def _write_json_config(config_file: Path, config_data: dict[str, Any]) -> None:
-    """Write configuration data to a JSON file with proper formatting."""
-    with config_file.open("w", encoding="utf-8") as f:
-        json.dump(config_data, f, indent=2, sort_keys=True)
-        f.write("\n")
-
-
-def _write_yaml_config(config_file: Path, config_data: dict[str, Any]) -> None:
-    """Write configuration data to a YAML file with proper formatting."""
-    try:
-        import yaml
-
-        with config_file.open("w", encoding="utf-8") as f:
-            f.write("# Claude Code Proxy API Configuration\n")
-            f.write("# Generated by ccproxy config generate-token\n\n")
-            yaml.dump(
-                config_data, f, default_flow_style=False, sort_keys=True, indent=2
-            )
-    except ImportError as e:
-        raise ValueError(
-            "YAML support not available. Install with: pip install pyyaml"
-        ) from e
 
 
 def _generate_default_config_from_model(
@@ -702,57 +637,16 @@ def _write_json_config_with_comments(
         f.write("\n")
 
 
-def _write_yaml_config_with_comments(
-    config_file: Path, config_data: dict[str, Any]
-) -> None:
-    """Write configuration data to a YAML file with comments."""
-    try:
-        import yaml
-
-        with config_file.open("w", encoding="utf-8") as f:
-            f.write("# Claude Code Proxy API Configuration\n")
-            f.write("# This file configures the ccproxy server settings\n")
-            f.write("# Most settings are commented out with their default values\n")
-            f.write("# Uncomment and modify as needed\n\n")
-
-            # Write YAML with comments
-            yaml_content = yaml.dump(
-                config_data, default_flow_style=False, sort_keys=True, indent=2
-            )
-
-            # Comment out all lines except the first few essential ones
-            lines = yaml_content.split("\n")
-            essential_fields = {"host", "port", "log_level"}
-
-            for line in lines:
-                if line.strip():
-                    # Check if this line contains an essential field
-                    is_essential = any(field in line for field in essential_fields)
-                    if is_essential and not line.startswith("#"):
-                        f.write(line + "\n")
-                    else:
-                        f.write(f"# {line}\n" if line.strip() else "\n")
-                else:
-                    f.write(line + "\n")
-
-    except ImportError as e:
-        raise ValueError(
-            "YAML support not available. Install with: pip install pyyaml"
-        ) from e
-
-
 def _write_config_file(
     config_file: Path, config_data: dict[str, Any], file_format: str
 ) -> None:
     """Write configuration data to file in the specified format."""
     if file_format == "toml":
         _write_toml_config_with_comments(config_file, config_data, Settings)
-    elif file_format == "json":
-        _write_json_config_with_comments(config_file, config_data)
-    elif file_format == "yaml":
-        _write_yaml_config_with_comments(config_file, config_data)
     else:
-        raise ValueError(f"Unsupported config format: {file_format}")
+        raise ValueError(
+            f"Unsupported config format: {file_format}. Only TOML is supported."
+        )
 
 
 def _write_toml_config(config_file: Path, config_data: dict[str, Any]) -> None:

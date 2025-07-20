@@ -19,22 +19,17 @@ def config_schema(
         "-o",
         help="Output directory for schema files (default: current directory)",
     ),
-    taplo: bool = typer.Option(
-        False,
-        "--taplo",
-        help="Generate taplo configuration for TOML editor support",
-    ),
 ) -> None:
-    """Generate JSON Schema files for configuration validation.
+    """Generate JSON Schema files and taplo configuration for TOML validation.
 
     This command generates JSON Schema files that can be used by editors
     for configuration file validation, autocomplete, and syntax highlighting.
-    Supports TOML, JSON, and YAML configuration files.
+    Supports TOML, JSON, and YAML configuration files. Automatically generates
+    taplo configuration for enhanced TOML editor support.
 
     Examples:
-        ccproxy config schema                    # Generate schema files in current directory
-        ccproxy config schema --output-dir ./schemas  # Generate in specific directory
-        ccproxy config schema --taplo           # Also generate taplo config
+        ccproxy config schema                         # Generate schema files and taplo config in current directory
+        ccproxy config schema --output-dir ./schemas # Generate in specific directory
     """
     toolkit = get_rich_toolkit()
 
@@ -52,10 +47,9 @@ def config_schema(
         for file_path in generated_files:
             toolkit.print(f"Generated: {file_path}", tag="success")
 
-        if taplo:
-            toolkit.print("Generating taplo configuration...", tag="info")
-            taplo_config = generate_taplo_config(output_dir)
-            toolkit.print(f"Generated: {taplo_config}", tag="success")
+        toolkit.print("Generating taplo configuration...", tag="info")
+        taplo_config = generate_taplo_config(output_dir)
+        toolkit.print(f"Generated: {taplo_config}", tag="success")
 
         toolkit.print_line()
         toolkit.print("Schema files generated successfully!", tag="success")
@@ -68,14 +62,7 @@ def config_schema(
         )
         toolkit.print_line()
         toolkit.print("To use with taplo CLI:", tag="info")
-        if taplo:
-            toolkit.print("  taplo check your-config.toml", tag="command")
-        else:
-            toolkit.print(
-                "  ccproxy config schema --taplo  # Generate taplo config first",
-                tag="command",
-            )
-            toolkit.print("  taplo check your-config.toml", tag="command")
+        toolkit.print("  taplo check your-config.toml", tag="command")
 
     except Exception as e:
         toolkit.print(f"Error generating schema: {e}", tag="error")

@@ -26,7 +26,6 @@ from ccproxy.api.routes.proxy import router as proxy_router
 from ccproxy.auth.oauth.routes import router as oauth_router
 from ccproxy.config.settings import Settings, get_settings
 from ccproxy.core.logging import setup_logging
-from ccproxy.observability.config import configure_observability
 from ccproxy.observability.storage.duckdb_simple import SimpleDuckDBStorage
 from ccproxy.scheduler.manager import start_unified_scheduler, stop_unified_scheduler
 
@@ -68,21 +67,26 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         logger.error("unified_scheduler_initialization_failed", error=str(e))
         # Continue startup even if scheduler fails (graceful degradation)
 
-    # Initialize DuckDB storage if enabled
-    if settings.observability.duckdb_enabled:
+    # Initialize log storage if needed and backend is duckdb
+    if (
+        settings.observability.needs_storage_backend
+        and settings.observability.log_storage_backend == "duckdb"
+    ):
         try:
             storage = SimpleDuckDBStorage(
                 database_path=settings.observability.duckdb_path
             )
             await storage.initialize()
-            app.state.duckdb_storage = storage
+            app.state.log_storage = storage
             logger.debug(
-                "duckdb_storage_initialized",
+                "log_storage_initialized",
+                backend="duckdb",
                 path=str(settings.observability.duckdb_path),
+                collection_enabled=settings.observability.logs_collection_enabled,
             )
         except Exception as e:
-            logger.error("duckdb_storage_initialization_failed", error=str(e))
-            # Continue without DuckDB storage (graceful degradation)
+            logger.error("log_storage_initialization_failed", error=str(e))
+            # Continue without log storage (graceful degradation)
 
     yield
 
@@ -97,13 +101,13 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     except Exception as e:
         logger.error("unified_scheduler_stop_failed", error=str(e))
 
-    # Close DuckDB storage if initialized
-    if hasattr(app.state, "duckdb_storage") and app.state.duckdb_storage:
+    # Close log storage if initialized
+    if hasattr(app.state, "log_storage") and app.state.log_storage:
         try:
-            await app.state.duckdb_storage.close()
-            logger.debug("duckdb_storage_closed")
+            await app.state.log_storage.close()
+            logger.debug("log_storage_closed")
         except Exception as e:
-            logger.error("duckdb_storage_close_failed", error=str(e))
+            logger.error("log_storage_close_failed", error=str(e))
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -164,10 +168,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # Include health router (always enabled)
     app.include_router(health_router, tags=["health"])
 
-    # Include observability routers only if enabled
-    if settings.observability.metrics_enabled:
+    # Include observability routers with granular controls
+    if settings.observability.metrics_endpoint_enabled:
         app.include_router(prometheus_router, tags=["metrics"])
+
+    if settings.observability.logs_endpoints_enabled:
         app.include_router(logs_router, tags=["logs"])
+
+    if settings.observability.dashboard_enabled:
         app.include_router(dashboard_router, tags=["dashboard"])
 
     app.include_router(oauth_router, prefix="/oauth", tags=["oauth"])

@@ -36,9 +36,15 @@ class AccessLogMiddleware(BaseHTTPMiddleware):
         # Record start time
         start_time = time.perf_counter()
 
-        # Store DuckDB storage in request state if available
-        if hasattr(request.app.state, "duckdb_storage"):
-            request.state.duckdb_storage = request.app.state.duckdb_storage
+        # Store log storage in request state if collection is enabled
+        from ccproxy.config.settings import get_settings
+
+        settings = get_settings()
+
+        if settings.observability.logs_collection_enabled and hasattr(
+            request.app.state, "log_storage"
+        ):
+            request.state.log_storage = request.app.state.log_storage
 
         # Extract client info
         client_ip = "unknown"
