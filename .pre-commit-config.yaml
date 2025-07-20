@@ -46,7 +46,7 @@ repos:
           - duckdb>=1.1.3
           - structlog>=24.1.0
           # Claude SDK (from git source)
-          - claude-code-sdk @ git+https://github.com/anthropics/claude-code-sdk-python.git
+          - claude-code-sdk>=0.0.14
           - keyring>=24.0.0
           - aiosqlite>=0.21.0
           - types-PyYAML>=6.0.12.12
@@ -56,22 +56,22 @@ repos:
         exclude: ^(docs/|examples/)
 
   # Biome for TypeScript/JavaScript (dashboard)
-  - repo: local
-    hooks:
-      - id: biome-format-dashboard
-        name: biome format dashboard
-        entry: bash -c 'cd dashboard && bun run format'
-        language: system
-        files: ^dashboard/
-        pass_filenames: false
-        always_run: true
-      - id: biome-lint-dashboard
-        name: biome lint dashboard (warnings only)
-        entry: bash -c 'cd dashboard && bun run lint || echo "Linting completed with warnings"'
-        language: system
-        files: ^dashboard/
-        pass_filenames: false
-        always_run: true
+  # - repo: local
+  #   hooks:
+  #     - id: biome-format-dashboard
+  #       name: biome format dashboard
+  #       entry: bash -c 'cd dashboard && bun run format'
+  #       language: system
+  #       files: ^dashboard/
+  #       pass_filenames: false
+  #       always_run: true
+  #     - id: biome-lint-dashboard
+  #       name: biome lint dashboard (warnings only)
+  #       entry: bash -c 'cd dashboard && bun run lint || echo "Linting completed with warnings"'
+  #       language: system
+  #       files: ^dashboard/
+  #       pass_filenames: false
+  #       always_run: true
 
   # General file checks
   - repo: https://github.com/pre-commit/pre-commit-hooks

@@ -6,6 +6,7 @@ from typing import Any
 import structlog
 from claude_code_sdk import AssistantMessage, ClaudeCodeOptions, ResultMessage
 
+from ccproxy.adapters.openai import adapter
 from ccproxy.auth.manager import AuthManager
 from ccproxy.claude_sdk.client import ClaudeSDKClient
 from ccproxy.claude_sdk.converter import MessageConverter
@@ -104,12 +105,7 @@ class ClaudeSDKService:
         )
 
         # Validate model
-        if not self.options_handler.validate_model(model):
-            raise ClaudeProxyError(
-                message=f"Unsupported model: {model}",
-                error_type="invalid_request_error",
-                status_code=400,
-            )
+        model = adapter.map_openai_model_to_claude(model)
 
         # Convert messages to prompt format
         prompt = self.message_converter.format_messages_to_prompt(messages)

@@ -31,6 +31,7 @@ from .cors import CORSSettings
 from .docker_settings import DockerSettings
 from .observability import ObservabilitySettings
 from .reverse_proxy import ReverseProxySettings
+from .scheduler import SchedulerSettings
 from .security import SecuritySettings
 from .server import ServerSettings
 
@@ -116,6 +117,12 @@ class Settings(BaseSettings):
     observability: ObservabilitySettings = Field(
         default_factory=ObservabilitySettings,
         description="Observability configuration settings",
+    )
+
+    # Scheduler settings
+    scheduler: SchedulerSettings = Field(
+        default_factory=SchedulerSettings,
+        description="Task scheduler configuration settings",
     )
 
     @field_validator("server", mode="before")
@@ -223,6 +230,18 @@ class Settings(BaseSettings):
             return v
         if isinstance(v, dict):
             return ObservabilitySettings(**v)
+        return v
+
+    @field_validator("scheduler", mode="before")
+    @classmethod
+    def validate_scheduler(cls, v: Any) -> Any:
+        """Validate and convert scheduler settings."""
+        if v is None:
+            return SchedulerSettings()
+        if isinstance(v, SchedulerSettings):
+            return v
+        if isinstance(v, dict):
+            return SchedulerSettings(**v)
         return v
 
     # validate_pool_settings method removed - connection pooling functionality has been removed
