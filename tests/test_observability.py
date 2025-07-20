@@ -472,22 +472,25 @@ class TestObservabilitySettings:
 
         settings = ObservabilitySettings()
 
-        assert settings.metrics_enabled is True
+        assert settings.metrics_enabled is False  # Disabled by default
         # pushgateway_enabled removed - now controlled by scheduler config
         assert settings.pushgateway_url is None
         assert settings.pushgateway_job == "ccproxy"
         assert settings.duckdb_enabled is True
-        assert settings.duckdb_path == "data/metrics.duckdb"
+        # Default path is now XDG data directory
+        assert settings.duckdb_path.endswith("ccproxy/metrics.duckdb")
 
     def test_custom_settings(self) -> None:
         """Test custom observability settings."""
         from ccproxy.config.observability import ObservabilitySettings
 
         settings = ObservabilitySettings(
-            metrics_enabled=False,
+            metrics_endpoint_enabled=False,
+            logs_endpoints_enabled=False,
+            logs_collection_enabled=False,
             pushgateway_url="http://pushgateway:9091",
             pushgateway_job="test-job",
-            duckdb_enabled=False,
+            log_storage_backend="none",  # This makes duckdb_enabled=False
             duckdb_path="/custom/path/metrics.duckdb",
         )
 

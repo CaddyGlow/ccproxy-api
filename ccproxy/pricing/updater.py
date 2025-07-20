@@ -6,6 +6,8 @@ from typing import Any
 
 from structlog import get_logger
 
+from ccproxy.config.pricing import PricingSettings
+
 from .cache import PricingCache
 from .loader import PricingLoader
 from .models import PricingData
@@ -19,23 +21,17 @@ class PricingUpdater:
 
     def __init__(
         self,
-        cache: PricingCache | None = None,
-        auto_update: bool = True,
-        fallback_to_embedded: bool = True,
-        memory_cache_ttl: int = 300,  # 5 minutes in memory cache
+        cache: PricingCache,
+        settings: PricingSettings,
     ) -> None:
         """Initialize pricing updater.
 
         Args:
-            cache: Pricing cache instance (creates default if None)
-            auto_update: Whether to auto-update stale cache
-            fallback_to_embedded: Whether to fallback to embedded pricing on failure
-            memory_cache_ttl: Time to live for in-memory cache in seconds
+            cache: Pricing cache instance
+            settings: Pricing configuration settings
         """
-        self.cache = cache or PricingCache()
-        self.auto_update = auto_update
-        self.fallback_to_embedded = fallback_to_embedded
-        self.memory_cache_ttl = memory_cache_ttl
+        self.cache = cache
+        self.settings = settings
         self._cached_pricing: PricingData | None = None
         self._last_load_time: float = 0
         self._last_file_check_time: float = 0
@@ -60,7 +56,7 @@ class PricingUpdater:
         if (
             not force_refresh
             and self._cached_pricing is not None
-            and (current_time - self._last_load_time) < self.memory_cache_ttl
+            and (current_time - self._last_load_time) < self.settings.memory_cache_ttl
         ):
             # Only check file changes every 30 seconds to reduce I/O
             if (current_time - self._last_file_check_time) > 30:
@@ -77,7 +73,7 @@ class PricingUpdater:
 
         # Check if we need to refresh
         should_refresh = force_refresh or (
-            self.auto_update and not self.cache.is_cache_valid()
+            self.settings.auto_update and not self.cache.is_cache_valid()
         )
 
         if should_refresh:
@@ -162,7 +158,7 @@ class PricingUpdater:
                 logger.warning("external_pricing_validation_failed")
 
         # Fallback to embedded pricing
-        if self.fallback_to_embedded:
+        if self.settings.fallback_to_embedded:
             logger.info("using_embedded_pricing_fallback")
             return self._get_embedded_pricing()
         else:
@@ -261,8 +257,8 @@ class PricingUpdater:
         return {
             "models_loaded": len(pricing_data) if pricing_data else 0,
             "model_names": pricing_data.model_names() if pricing_data else [],
-            "auto_update": self.auto_update,
-            "fallback_to_embedded": self.fallback_to_embedded,
+            "auto_update": self.settings.auto_update,
+            "fallback_to_embedded": self.settings.fallback_to_embedded,
             "has_cached_pricing": self._cached_pricing is not None,
         }
 

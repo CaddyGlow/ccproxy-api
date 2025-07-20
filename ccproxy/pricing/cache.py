@@ -1,13 +1,14 @@
 """Pricing cache management for dynamic model pricing."""
 
 import json
-import os
 import time
 from pathlib import Path
 from typing import Any
 
 import httpx
 from structlog import get_logger
+
+from ccproxy.config.pricing import PricingSettings
 
 
 logger = get_logger(__name__)
@@ -16,34 +17,14 @@ logger = get_logger(__name__)
 class PricingCache:
     """Manages caching of model pricing data from external sources."""
 
-    DEFAULT_CACHE_TTL_HOURS = 24
-    DEFAULT_SOURCE_URL = "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json"
-
-    def __init__(
-        self,
-        cache_dir: str | None = None,
-        cache_ttl_hours: int = DEFAULT_CACHE_TTL_HOURS,
-        source_url: str = DEFAULT_SOURCE_URL,
-    ) -> None:
+    def __init__(self, settings: PricingSettings) -> None:
         """Initialize pricing cache.
 
         Args:
-            cache_dir: Directory for cache files (defaults to XDG_CACHE_HOME/ccproxy)
-            cache_ttl_hours: Hours before cache expires
-            source_url: URL to download pricing data from
+            settings: Pricing configuration settings
         """
-        self.cache_ttl_hours = cache_ttl_hours
-        self.source_url = source_url
-
-        # Determine cache directory
-        if cache_dir is None:
-            xdg_cache_home = os.environ.get("XDG_CACHE_HOME")
-            if xdg_cache_home:
-                cache_dir = str(Path(xdg_cache_home) / "ccproxy")
-            else:
-                cache_dir = str(Path("~/.cache/ccproxy").expanduser())
-
-        self.cache_dir = Path(cache_dir)
+        self.settings = settings
+        self.cache_dir = settings.cache_dir
         self.cache_file = self.cache_dir / "model_pricing.json"
 
         # Ensure cache directory exists
@@ -63,7 +44,7 @@ class PricingCache:
             age_seconds = time.time() - stat.st_mtime
             age_hours = age_seconds / 3600
 
-            is_valid = age_hours < self.cache_ttl_hours
+            is_valid = age_hours < self.settings.cache_ttl_hours
             return is_valid
 
         except OSError as e:
@@ -89,20 +70,25 @@ class PricingCache:
             logger.warning("cache_load_failed", error=str(e))
             return None
 
-    async def download_pricing_data(self, timeout: int = 30) -> dict[str, Any] | None:
+    async def download_pricing_data(
+        self, timeout: int | None = None
+    ) -> dict[str, Any] | None:
         """Download fresh pricing data from source URL.
 
         Args:
-            timeout: Request timeout in seconds
+            timeout: Request timeout in seconds (uses settings default if None)
 
         Returns:
             Downloaded pricing data or None if download failed
         """
+        if timeout is None:
+            timeout = self.settings.download_timeout
+
         try:
-            logger.info("pricing_download_start", url=self.source_url)
+            logger.info("pricing_download_start", url=self.settings.source_url)
 
             async with httpx.AsyncClient(timeout=timeout) as client:
-                response = await client.get(self.source_url)
+                response = await client.get(self.settings.source_url)
                 response.raise_for_status()
 
                 data = response.json()
@@ -199,8 +185,8 @@ class PricingCache:
         info = {
             "cache_file": str(self.cache_file),
             "cache_dir": str(self.cache_dir),
-            "source_url": self.source_url,
-            "ttl_hours": self.cache_ttl_hours,
+            "source_url": self.settings.source_url,
+            "ttl_hours": self.settings.cache_ttl_hours,
             "exists": self.cache_file.exists(),
             "valid": False,
             "age_hours": None,
@@ -215,7 +201,7 @@ class PricingCache:
 
                 info.update(
                     {
-                        "valid": age_hours < self.cache_ttl_hours,
+                        "valid": age_hours < self.settings.cache_ttl_hours,
                         "age_hours": age_hours,
                         "size_bytes": stat.st_size,
                     }

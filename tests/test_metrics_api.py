@@ -19,11 +19,8 @@ from ccproxy.config.settings import Settings
 class TestMetricsAPIEndpoints:
     """Test metrics API endpoints functionality."""
 
-    @pytest.fixture
-    def client(self, test_settings: Settings) -> TestClient:
-        """Create test client."""
-        app = create_app(test_settings)
-        return TestClient(app)
+    # Use the global app and client fixtures from conftest.py instead of creating our own
+    # This ensures proper dependency injection of test settings
 
     @pytest.fixture
     def mock_storage(self) -> AsyncMock:

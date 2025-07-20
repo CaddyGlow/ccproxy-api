@@ -42,14 +42,16 @@ def calculate_token_cost(
 
     try:
         # Import pricing system components
+        from ccproxy.config.pricing import PricingSettings
         from ccproxy.pricing.cache import PricingCache
         from ccproxy.pricing.loader import PricingLoader
 
         # Get canonical model name
         canonical_model = PricingLoader.get_canonical_model_name(model)
 
-        # Try to get pricing from cache (synchronous fallback)
-        cache = PricingCache()
+        # Create pricing components with dependency injection
+        settings = PricingSettings()
+        cache = PricingCache(settings)
         cached_data = cache.load_cached_data()
 
         # If cache is expired, try to use stale cache as fallback
@@ -145,14 +147,16 @@ def calculate_cost_breakdown(
 
     try:
         # Import pricing system components
+        from ccproxy.config.pricing import PricingSettings
         from ccproxy.pricing.cache import PricingCache
         from ccproxy.pricing.loader import PricingLoader
 
         # Get canonical model name
         canonical_model = PricingLoader.get_canonical_model_name(model)
 
-        # Try to get pricing from cache (synchronous fallback)
-        cache = PricingCache()
+        # Create pricing components with dependency injection
+        settings = PricingSettings()
+        cache = PricingCache(settings)
         cached_data = cache.load_cached_data()
 
         # If cache is expired, try to use stale cache as fallback

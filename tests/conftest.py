@@ -32,6 +32,7 @@ if TYPE_CHECKING:
     from tests.factories import FastAPIAppFactory, FastAPIClientFactory
 from ccproxy.auth.manager import AuthManager
 from ccproxy.config.auth import AuthSettings, CredentialStorageSettings
+from ccproxy.config.observability import ObservabilitySettings
 from ccproxy.config.security import SecuritySettings
 from ccproxy.config.server import ServerSettings
 from ccproxy.config.settings import Settings, get_settings
@@ -97,7 +98,7 @@ def test_settings(tmp_path: Path) -> Settings:
 
     Returns a Settings instance configured for testing with:
     - Temporary config and cache directories
-    - In-memory metrics storage
+    - Observability endpoints enabled for testing
     - No authentication by default
     - Test environment enabled
     """
@@ -106,6 +107,15 @@ def test_settings(tmp_path: Path) -> Settings:
         security=SecuritySettings(auth_token=None),  # No auth by default
         auth=AuthSettings(
             storage=CredentialStorageSettings(storage_paths=[tmp_path / ".claude/"])
+        ),
+        observability=ObservabilitySettings(
+            # Enable all observability endpoints for testing
+            metrics_endpoint_enabled=True,
+            logs_endpoints_enabled=True,
+            logs_collection_enabled=True,
+            dashboard_enabled=True,
+            log_storage_backend="duckdb",
+            duckdb_path=str(tmp_path / "test_metrics.duckdb"),
         ),
     )
 

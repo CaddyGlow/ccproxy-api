@@ -398,6 +398,7 @@ class PricingCacheUpdateTask(BaseScheduledTask):
         interval_seconds: float,
         enabled: bool = True,
         force_refresh_on_startup: bool = False,
+        pricing_updater: Any | None = None,
     ):
         """
         Initialize pricing cache update task.
@@ -407,6 +408,7 @@ class PricingCacheUpdateTask(BaseScheduledTask):
             interval_seconds: Interval between pricing updates
             enabled: Whether task is enabled
             force_refresh_on_startup: Whether to force refresh on first run
+            pricing_updater: Injected pricing updater instance
         """
         super().__init__(
             name=name,
@@ -414,24 +416,34 @@ class PricingCacheUpdateTask(BaseScheduledTask):
             enabled=enabled,
         )
         self.force_refresh_on_startup = force_refresh_on_startup
-        self._pricing_updater: Any | None = None
+        self._pricing_updater = pricing_updater
         self._first_run = True
 
     async def setup(self) -> None:
-        """Initialize pricing updater instance."""
-        try:
-            from ccproxy.pricing.updater import PricingUpdater
+        """Initialize pricing updater instance if not injected."""
+        if self._pricing_updater is None:
+            try:
+                from ccproxy.config.pricing import PricingSettings
+                from ccproxy.pricing.cache import PricingCache
+                from ccproxy.pricing.updater import PricingUpdater
 
-            self._pricing_updater = PricingUpdater()
-            logger.debug("pricing_update_task_setup_complete", task_name=self.name)
-        except Exception as e:
-            logger.error(
-                "pricing_update_task_setup_failed",
-                task_name=self.name,
-                error=str(e),
-                error_type=type(e).__name__,
+                # Create pricing components with dependency injection
+                settings = PricingSettings()
+                cache = PricingCache(settings)
+                self._pricing_updater = PricingUpdater(cache, settings)
+                logger.debug("pricing_update_task_setup_complete", task_name=self.name)
+            except Exception as e:
+                logger.error(
+                    "pricing_update_task_setup_failed",
+                    task_name=self.name,
+                    error=str(e),
+                    error_type=type(e).__name__,
+                )
+                raise
+        else:
+            logger.debug(
+                "pricing_update_task_using_injected_updater", task_name=self.name
             )
-            raise
 
     async def run(self) -> bool:
         """Execute pricing cache update."""
