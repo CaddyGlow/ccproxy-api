@@ -27,6 +27,7 @@ dependencies = [
   "sqlmodel>=0.0.24",
   "duckdb-engine>=0.17.0",
   "claude-code-sdk>=0.0.14",
+  "git-filter-repo>=2.47.0",
 ]
 
 [build-system]
