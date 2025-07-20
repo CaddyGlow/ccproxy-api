@@ -101,14 +101,15 @@ class PushgatewayClient:
             settings: Observability configuration settings
         """
         self.settings = settings
-        self._enabled = PROMETHEUS_AVAILABLE and settings.pushgateway_enabled
+        # Pushgateway is enabled if URL is configured and prometheus_client is available
+        self._enabled = PROMETHEUS_AVAILABLE and bool(settings.pushgateway_url)
         self._circuit_breaker = CircuitBreaker(
             failure_threshold=5,
             recovery_timeout=60.0,
         )
 
-        # Only log if pushgateway is enabled but prometheus is not available
-        if settings.pushgateway_enabled and not PROMETHEUS_AVAILABLE:
+        # Only log if pushgateway URL is configured but prometheus is not available
+        if settings.pushgateway_url and not PROMETHEUS_AVAILABLE:
             logger.warning(
                 "prometheus_client not available. Pushgateway will be disabled. "
                 "Install with: pip install prometheus-client"
