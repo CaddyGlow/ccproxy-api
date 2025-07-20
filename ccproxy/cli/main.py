@@ -55,7 +55,7 @@ app = typer.Typer(
 logger = get_logger(__name__)
 
 
-# Add global --version option
+# Add global options
 @app.callback()
 def app_main(
     ctx: typer.Context,
@@ -77,150 +77,11 @@ def app_main(
         dir_okay=False,
         readable=True,
     ),
-    # Forward all API command options for default behavior
-    port: int = typer.Option(None, "--port", "-p", help="Port to run the server on"),
-    host: str = typer.Option(None, "--host", "-h", help="Host to bind the server to"),
-    reload: bool = typer.Option(
-        None, "--reload/--no-reload", help="Enable auto-reload for development"
-    ),
-    log_level: str = typer.Option(
-        None,
-        "--log-level",
-        help="Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)",
-    ),
-    log_file: str = typer.Option(
-        None,
-        "--log-file",
-        help="Path to JSON log file. If specified, logs will be written to this file in JSON format",
-    ),
-    workers: int = typer.Option(
-        None, "--workers", help="Number of worker processes", min=1, max=32
-    ),
-    docker: bool = typer.Option(
-        False,
-        "--docker",
-        "-d",
-        help="Run API server using Docker instead of local execution",
-    ),
-    cors_origins: str = typer.Option(
-        None, "--cors-origins", help="CORS allowed origins (comma-separated)"
-    ),
-    auth_token: str = typer.Option(
-        None, "--auth-token", help="Bearer token for API authentication"
-    ),
-    claude_cli_path: str = typer.Option(
-        None, "--claude-cli-path", help="Path to Claude CLI executable"
-    ),
-    max_thinking_tokens: int = typer.Option(
-        None, "--max-thinking-tokens", help="Maximum thinking tokens for Claude Code"
-    ),
-    allowed_tools: str = typer.Option(
-        None, "--allowed-tools", help="List of allowed tools (comma-separated)"
-    ),
-    disallowed_tools: str = typer.Option(
-        None, "--disallowed-tools", help="List of disallowed tools (comma-separated)"
-    ),
-    append_system_prompt: str = typer.Option(
-        None, "--append-system-prompt", help="Additional system prompt to append"
-    ),
-    permission_mode: str = typer.Option(
-        None,
-        "--permission-mode",
-        help="Permission mode: default, acceptEdits, or bypassPermissions",
-    ),
-    continue_conversation: bool = typer.Option(
-        None,
-        "--continue-conversation/--no-continue-conversation",
-        help="Continue previous conversation",
-    ),
-    resume: str = typer.Option(None, "--resume", help="Resume conversation ID"),
-    max_turns: int = typer.Option(
-        None, "--max-turns", help="Maximum conversation turns"
-    ),
-    permission_prompt_tool_name: str = typer.Option(
-        None, "--permission-prompt-tool-name", help="Permission prompt tool name"
-    ),
-    cwd: str = typer.Option(None, "--cwd", help="Working directory path"),
-    docker_image: str | None = typer.Option(
-        None, "--docker-image", help="Docker image to use (overrides config)"
-    ),
-    docker_env: list[str] = typer.Option(
-        [],
-        "--docker-env",
-        help="Environment variables to pass to Docker (KEY=VALUE format, can be used multiple times)",
-    ),
-    docker_volume: list[str] = typer.Option(
-        [],
-        "--docker-volume",
-        help="Volume mounts to add (host:container[:options] format, can be used multiple times)",
-    ),
-    docker_arg: list[str] = typer.Option(
-        [],
-        "--docker-arg",
-        help="Additional Docker run arguments (can be used multiple times)",
-    ),
-    docker_home: str | None = typer.Option(
-        None,
-        "--docker-home",
-        help="Home directory inside Docker container (overrides config)",
-    ),
-    docker_workspace: str | None = typer.Option(
-        None,
-        "--docker-workspace",
-        help="Workspace directory inside Docker container (overrides config)",
-    ),
-    user_mapping_enabled: bool | None = typer.Option(
-        None,
-        "--user-mapping/--no-user-mapping",
-        help="Enable/disable UID/GID mapping (overrides config)",
-    ),
-    user_uid: int | None = typer.Option(
-        None, "--user-uid", help="User ID to run container as (overrides config)", min=0
-    ),
-    user_gid: int | None = typer.Option(
-        None,
-        "--user-gid",
-        help="Group ID to run container as (overrides config)",
-        min=0,
-    ),
 ) -> None:
     """Claude Code Proxy API Server - Anthropic and OpenAI compatible interface for Claude."""
     # Store config path for commands to use
     ctx.ensure_object(dict)
     ctx.obj["config_path"] = config
-
-    # NOTE: Default command routing commented out because it interferes with subcommand handling
-    # The 'serve' command is registered as default=True which handles this automatically
-    # if ctx.invoked_subcommand is None:
-    #     # Forward all parameters to the api command
-    #     ctx.invoke(
-    #         api,
-    #         config=config,
-    #         docker=docker,
-    #         port=port,
-    #         host=host,
-    #         reload=reload,
-    #         log_level=log_level,
-    #         auth_token=auth_token,
-    #         claude_cli_path=claude_cli_path,
-    #         max_thinking_tokens=max_thinking_tokens,
-    #         allowed_tools=allowed_tools,
-    #         disallowed_tools=disallowed_tools,
-    #         append_system_prompt=append_system_prompt,
-    #         permission_mode=permission_mode,
-    #         max_turns=max_turns,
-    #         permission_prompt_tool_name=permission_prompt_tool_name,
-    #         cwd=cwd,
-    #         docker_image=docker_image,
-    #         docker_env=docker_env,
-    #         docker_volume=docker_volume,
-    #         docker_arg=docker_arg,
-    #         docker_home=docker_home,
-    #         docker_workspace=docker_workspace,
-    #         user_mapping_enabled=user_mapping_enabled,
-    #         user_uid=user_uid,
-    #         user_gid=user_gid,
-    #     )
 
 
 # Register config command
@@ -322,36 +183,7 @@ def permission_tool(
 
 
 def main() -> None:
-    #     import sys
-    #
-    #     # Enhanced default command handling
-    #     if len(sys.argv) == 1:
-    #         # No arguments provided, run api command
-    #         sys.argv.append("api")
-    #     elif len(sys.argv) > 1:
-    #         # Check if any argument is a known command
-    #         known_commands = {"api", "claude", "config", "permission_tool"}
-    #
-    #         # Find the first non-option argument that could be a command
-    #         has_command = False
-    #         for arg in sys.argv[1:]:
-    #             if not arg.startswith("-") and arg in known_commands:
-    #                 has_command = True
-    #                 break
-    #
-    #         # If no known command found, but there are arguments,
-    #         # assume they are for the api command
-    #         if (
-    #             not has_command
-    #             and "--help" not in sys.argv
-    #             and "-h" not in sys.argv
-    #             and "--version" not in sys.argv
-    #             and "-V" not in sys.argv
-    #             and "--show-completion" not in sys.argv
-    #             and "--install-completion" not in sys.argv
-    #         ):
-    #             sys.argv.insert(1, "api")
-
+    """Entry point for the CLI application."""
     app()
 
 

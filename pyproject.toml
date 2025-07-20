@@ -7,8 +7,7 @@ readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
   "aiosqlite>=0.21.0",
-  "check-jsonschema>=0.33.2",
-  "claude-code-sdk>=0.0.14", # Using GitHub version with PR #60 fix
+  "check-jsonschema>=0.33.2", # Using GitHub version with PR #60 fix
   "fastapi[standard]>=0.115.14",
   "httpx>=0.28.1",
   "httpx-sse>=0.4.1",
@@ -27,6 +26,7 @@ dependencies = [
   "uvicorn>=0.34.0",
   "sqlmodel>=0.0.24",
   "duckdb-engine>=0.17.0",
+  "claude-code-sdk>=0.0.14",
 ]
 
 [build-system]
@@ -331,6 +331,3 @@ include = ["ccproxy*"]
 
 [tool.uv]
 package = true
-
-[tool.uv.sources]
-claude-code-sdk = { git = "https://github.com/anthropics/claude-code-sdk-python.git" }

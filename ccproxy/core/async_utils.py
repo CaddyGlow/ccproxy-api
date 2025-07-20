@@ -464,26 +464,20 @@ def validate_config_with_schema(
         yaml.YAMLError: If YAML file has invalid syntax
         ValueError: For other validation errors
     """
+    import json
+    import subprocess
+    import tempfile
+    from typing import Any
+
+    # Import tomllib for Python 3.11+ or fallback to tomli
     try:
-        import json
-        import subprocess
-        import tempfile
-        from typing import Any
+        import tomllib
+    except ImportError:
+        import tomli as tomllib  # type: ignore[import-not-found,no-redef]
 
-        # Import tomllib for Python 3.11+ or fallback to tomli
-        try:
-            import tomllib
-        except ImportError:
-            import tomli as tomllib  # type: ignore[no-redef,import-not-found]
+    from ccproxy.config.settings import Settings
 
-        from ccproxy.config.settings import Settings
-    except ImportError as e:
-        raise ImportError(
-            f"Required dependencies not available: {e}. "
-            "Install with: pip install check-jsonschema"
-        ) from e
-
-    config_path = Path(config_path)
+    config_path = Path()
 
     if not config_path.exists():
         raise FileNotFoundError(f"Configuration file not found: {config_path}")
