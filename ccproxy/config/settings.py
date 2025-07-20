@@ -119,7 +119,7 @@ class Settings(BaseSettings):
     # Pricing settings
     pricing: PricingSettings = Field(
         default_factory=PricingSettings,
-        description="Pricing configuration settings",
+        description="Pricing and cost calculation configuration settings",
     )
 
     @field_validator("server", mode="before")
