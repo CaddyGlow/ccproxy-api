@@ -13,8 +13,8 @@ from ccproxy.api.dependencies import (
     DuckDBStorageDep,
     LogStorageDep,
     ObservabilityMetricsDep,
-    SettingsDep,
 )
+from ccproxy.config.settings import get_settings
 from ccproxy.observability.storage.models import AccessLog
 
 
@@ -230,7 +230,6 @@ async def get_prometheus_metrics(metrics: ObservabilityMetricsDep) -> Response:
 @logs_router.get("/query")
 async def query_logs(
     storage: DuckDBStorageDep,
-    settings: SettingsDep,
     limit: int = Query(1000, ge=1, le=10000, description="Maximum number of results"),
     start_time: float | None = Query(None, description="Start timestamp filter"),
     end_time: float | None = Query(None, description="End timestamp filter"),
@@ -243,6 +242,7 @@ async def query_logs(
     Returns access log entries with optional filtering by time range, model, and service type.
     """
     try:
+        settings = get_settings()
         if not settings.observability.logs_collection_enabled:
             raise HTTPException(
                 status_code=503,
@@ -325,7 +325,6 @@ async def query_logs(
 @logs_router.get("/analytics")
 async def get_logs_analytics(
     storage: DuckDBStorageDep,
-    settings: SettingsDep,
     start_time: float | None = Query(None, description="Start timestamp (Unix time)"),
     end_time: float | None = Query(None, description="End timestamp (Unix time)"),
     model: str | None = Query(None, description="Filter by model name"),
@@ -343,6 +342,7 @@ async def get_logs_analytics(
     Returns summary statistics, hourly trends, and model breakdowns.
     """
     try:
+        settings = get_settings()
         if not settings.observability.logs_collection_enabled:
             raise HTTPException(
                 status_code=503,
@@ -844,7 +844,6 @@ async def stream_logs(
 @logs_router.get("/entries")
 async def get_logs_entries(
     storage: DuckDBStorageDep,
-    settings: SettingsDep,
     limit: int = Query(
         50, ge=1, le=1000, description="Maximum number of entries to return"
     ),
@@ -865,6 +864,7 @@ async def get_logs_entries(
     Returns individual request entries with full details for analysis.
     """
     try:
+        settings = get_settings()
         if not settings.observability.logs_collection_enabled:
             raise HTTPException(
                 status_code=503,
@@ -978,9 +978,7 @@ async def get_logs_entries(
 
 
 @logs_router.post("/reset")
-async def reset_logs_data(
-    storage: DuckDBStorageDep, settings: SettingsDep
-) -> dict[str, Any]:
+async def reset_logs_data(storage: DuckDBStorageDep) -> dict[str, Any]:
     """
     Reset all data in the logs storage.
 
@@ -991,6 +989,7 @@ async def reset_logs_data(
         Dictionary with reset status and timestamp
     """
     try:
+        settings = get_settings()
         if not settings.observability.logs_collection_enabled:
             raise HTTPException(
                 status_code=503,

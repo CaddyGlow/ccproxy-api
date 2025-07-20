@@ -129,8 +129,6 @@ def _group_config_rows(
             group_name = "Observability Configuration"
         elif setting.startswith("scheduler"):
             group_name = "Scheduler Configuration"
-        elif setting.startswith("pricing"):
-            group_name = "Pricing Configuration"
         else:
             group_name = "General Configuration"
 
