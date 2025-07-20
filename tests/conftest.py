@@ -558,7 +558,7 @@ def invalid_auth_headers_factory() -> Callable[[dict[str, Any]], dict[str, str]]
 
 # Composable App Fixtures
 @pytest.fixture
-def app_factory() -> Callable[[dict[str, Any]], FastAPI]:
+def app_factory(tmp_path: Path) -> Callable[[dict[str, Any]], FastAPI]:
     """Factory for creating FastAPI apps with specific auth configurations.
 
     Returns a function that creates apps based on auth mode configuration.
@@ -570,9 +570,16 @@ def app_factory() -> Callable[[dict[str, Any]], FastAPI]:
             server=ServerSettings(log_level="WARNING"),
             security=SecuritySettings(auth_token=None),
             auth=AuthSettings(
-                storage=CredentialStorageSettings(
-                    storage_paths=[Path("/tmp/test/.claude/")]
-                )
+                storage=CredentialStorageSettings(storage_paths=[tmp_path / ".claude/"])
+            ),
+            observability=ObservabilitySettings(
+                # Enable all observability endpoints for testing
+                metrics_endpoint_enabled=True,
+                logs_endpoints_enabled=True,
+                logs_collection_enabled=True,
+                dashboard_enabled=True,
+                log_storage_backend="duckdb",
+                duckdb_path=str(tmp_path / "test_metrics.duckdb"),
             ),
         )
         if auth_config.get("has_configured_token"):

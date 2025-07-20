@@ -20,6 +20,7 @@ from .claude import ClaudeSettings
 from .cors import CORSSettings
 from .docker_settings import DockerSettings
 from .observability import ObservabilitySettings
+from .pricing import PricingSettings
 from .reverse_proxy import ReverseProxySettings
 from .scheduler import SchedulerSettings
 from .security import SecuritySettings
@@ -113,6 +114,12 @@ class Settings(BaseSettings):
     scheduler: SchedulerSettings = Field(
         default_factory=SchedulerSettings,
         description="Task scheduler configuration settings",
+    )
+
+    # Pricing settings
+    pricing: PricingSettings = Field(
+        default_factory=PricingSettings,
+        description="Pricing and cost calculation configuration settings",
     )
 
     @field_validator("server", mode="before")
@@ -232,6 +239,18 @@ class Settings(BaseSettings):
             return v
         if isinstance(v, dict):
             return SchedulerSettings(**v)
+        return v
+
+    @field_validator("pricing", mode="before")
+    @classmethod
+    def validate_pricing(cls, v: Any) -> Any:
+        """Validate and convert pricing settings."""
+        if v is None:
+            return PricingSettings()
+        if isinstance(v, PricingSettings):
+            return v
+        if isinstance(v, dict):
+            return PricingSettings(**v)
         return v
 
     # validate_pool_settings method removed - connection pooling functionality has been removed

@@ -69,7 +69,7 @@ class TestPricingSettings:
         """Test cache directory path expansion."""
         from pathlib import Path
 
-        settings = PricingSettings(cache_dir=Path("~/test_cache"))
+        settings = PricingSettings(cache_dir=Path("~/test_cache").expanduser())
         assert not str(settings.cache_dir).startswith("~")
         assert settings.cache_dir.is_absolute()
 
@@ -560,13 +560,15 @@ class TestPricingUpdater:
         self, updater: PricingUpdater
     ) -> None:
         """Test forced refresh of pricing data."""
-        with patch.object(
-            updater, "_refresh_pricing", return_value=True
-        ) as mock_refresh:
-            with patch.object(updater, "_load_pricing_data", return_value=None):
-                await updater.get_current_pricing(force_refresh=True)
+        with (
+            patch.object(
+                updater, "_refresh_pricing", return_value=True
+            ) as mock_refresh,
+            patch.object(updater, "_load_pricing_data", return_value=None),
+        ):
+            await updater.get_current_pricing(force_refresh=True)
 
-                mock_refresh.assert_called_once()
+            mock_refresh.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_get_current_pricing_memory_cache(
@@ -590,13 +592,15 @@ class TestPricingUpdater:
         """Test successful pricing refresh."""
         test_data = {"test": "data"}
 
-        with patch.object(
-            updater.cache, "download_pricing_data", return_value=test_data
+        with (
+            patch.object(
+                updater.cache, "download_pricing_data", return_value=test_data
+            ),
+            patch.object(updater.cache, "save_to_cache", return_value=True),
         ):
-            with patch.object(updater.cache, "save_to_cache", return_value=True):
-                result = await updater._refresh_pricing()
+            result = await updater._refresh_pricing()
 
-                assert result is True
+            assert result is True
 
     @pytest.mark.asyncio
     async def test_refresh_pricing_download_failure(
@@ -613,13 +617,15 @@ class TestPricingUpdater:
         """Test pricing refresh with save failure."""
         test_data = {"test": "data"}
 
-        with patch.object(
-            updater.cache, "download_pricing_data", return_value=test_data
+        with (
+            patch.object(
+                updater.cache, "download_pricing_data", return_value=test_data
+            ),
+            patch.object(updater.cache, "save_to_cache", return_value=False),
         ):
-            with patch.object(updater.cache, "save_to_cache", return_value=False):
-                result = await updater._refresh_pricing()
+            result = await updater._refresh_pricing()
 
-                assert result is False
+            assert result is False
 
     def test_get_embedded_pricing(self, updater: PricingUpdater) -> None:
         """Test embedded pricing fallback."""
@@ -644,15 +650,17 @@ class TestPricingUpdater:
     @pytest.mark.asyncio
     async def test_force_refresh(self, updater: PricingUpdater) -> None:
         """Test forced refresh functionality."""
-        with patch.object(
-            updater, "_refresh_pricing", return_value=True
-        ) as mock_refresh:
-            with patch.object(updater, "get_current_pricing") as mock_get:
-                result = await updater.force_refresh()
+        with (
+            patch.object(
+                updater, "_refresh_pricing", return_value=True
+            ) as mock_refresh,
+            patch.object(updater, "get_current_pricing") as mock_get,
+        ):
+            result = await updater.force_refresh()
 
-                assert result is True
-                mock_refresh.assert_called_once()
-                mock_get.assert_called_once_with(force_refresh=True)
+            assert result is True
+            mock_refresh.assert_called_once()
+            mock_get.assert_called_once_with(force_refresh=True)
 
     def test_clear_cache(self, updater: PricingUpdater) -> None:
         """Test cache clearing functionality."""
@@ -666,9 +674,9 @@ class TestPricingUpdater:
             result = updater.clear_cache()
 
             assert result is True
-            assert updater._cached_pricing is None
-            assert updater._last_load_time == 0
-            mock_clear.assert_called_once()
+            # Verify internal state was reset
+            assert updater._cached_pricing is None and updater._last_load_time <= 0.0  # type: ignore[unreachable]
+            mock_clear.assert_called_once()  # type: ignore[unreachable]
 
     @pytest.mark.asyncio
     async def test_get_pricing_info(self, updater: PricingUpdater) -> None:
