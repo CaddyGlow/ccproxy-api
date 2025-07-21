@@ -20,7 +20,7 @@ CCProxy is a reverse proxy to *api.anthropic.com/v1/messages* that leverages you
 
 This proxy server provides two main access modes:
 
-### Claude Code Mode (Default at `/`)
+### Claude Code Mode (`/sdk` prefix)
 - Uses the official claude-code-sdk for request processing
 - **Advantages**: Access to all tools configured in Claude Code
 - **Limitations**: Cannot directly use ToolCall, limited model settings management
@@ -82,7 +82,8 @@ ccproxy
 
 # Use with your favorite tools
 export ANTHROPIC_API_KEY=dummy
-export ANTHROPIC_BASE_URL=http://127.0.0.1:8000/
+export ANTHROPIC_BASE_URL=http://127.0.0.1:8000/sdk
+# Or for API mode: export ANTHROPIC_BASE_URL=http://127.0.0.1:8000/api
 aider --model claude-sonnet-4-20250514
 ```
 
@@ -96,15 +97,19 @@ Once running, you can point any application that uses OpenAI or Anthropic APIs s
 
 **For OpenAI-compatible applications:**
 ```bash
-# Set base URL to your local proxy
-export OPENAI_BASE_URL="http://localhost:8000/openai/"
+# For Claude Code mode
+export OPENAI_BASE_URL="http://localhost:8000/sdk/"
+# Or for API mode
+export OPENAI_BASE_URL="http://localhost:8000/api/"
 export OPENAI_API_KEY="dummy-key"  # Required by client libraries but not used
 ```
 
 **For Anthropic-compatible applications:**
 ```bash
-# Set base URL to your local proxy
-export ANTHROPIC_BASE_URL="http://localhost:8000"
+# For Claude Code mode
+export ANTHROPIC_BASE_URL="http://localhost:8000/sdk"
+# Or for API mode
+export ANTHROPIC_BASE_URL="http://localhost:8000/api"
 export ANTHROPIC_API_KEY="dummy-key"  # Required by client libraries but not used
 ```
 
@@ -114,17 +119,14 @@ The proxy provides two main access modes:
 
 | Mode | URL Prefix | Description | Use Case |
 |------|------------|-------------|----------|
-| **Claude Code** | `/` or `/cc/` | Uses claude-code-sdk with all tools | When you need Claude Code features |
+| **Claude Code** | `/sdk/` | Uses claude-code-sdk with all tools | When you need Claude Code features |
 | **API** | `/api/` | Direct proxy with header injection | When you need full API control |
-
-All mode provide a compatibility interface with openai under `openai` like `/cc/openai`
 
 #### Anthropic-Compatible Endpoints
 
 **Messages (Claude Code mode):**
 ```http
-POST /v1/messages      # Default route
-POST /cc/v1/messages   # Explicit Claude Code route
+POST /sdk/v1/messages
 ```
 
 **Messages (API mode - direct proxy):**
@@ -150,13 +152,12 @@ POST /api/v1/messages
 
 **Chat Completions (Claude Code mode):**
 ```http
-POST /openai/v1/chat/completions       # Default route
-POST /cc/openai/v1/chat/completions    # Explicit Claude Code route
+POST /sdk/v1/chat/completions
 ```
 
 **Chat Completions (API mode - direct proxy):**
 ```http
-POST /api/openai/v1/chat/completions
+POST /api/v1/chat/completions
 ```
 
 Uses OpenAI format with automatic translation to Claude format.
@@ -170,36 +171,73 @@ GET /health
 
 **Available Models:**
 ```http
-GET /v1/models
-GET /openai/v1/models
+GET /sdk/models        # Claude Code mode
+GET /api/models        # API mode
+```
+
+**Status Endpoints:**
+```http
+GET /sdk/status        # Claude SDK status
+GET /api/status        # Proxy API status
+```
+
+**OAuth Endpoints:**
+```http
+GET /oauth/callback    # OAuth callback endpoint
+```
+
+**Observability Endpoints (Optional):**
+```http
+GET /metrics           # Prometheus metrics (if enabled)
+GET /logs/status       # Logs status (if enabled)
+GET /logs/query        # Query logs (if enabled)
+GET /dashboard         # Metrics dashboard (if enabled)
 ```
 
 ### Supported Models
 
-It supports all Claude models available to your subscription:
+CCProxy supports recent Claude models including Opus, Sonnet, and Haiku variants. The specific models available to you will depend on your Claude account and the features enabled for your subscription.
 
-| Model | Description |
-|-------|-------------|
-| `claude-opus-4-20250514` | Claude 4 Opus (most capable) |
-| `claude-sonnet-4-20250514` | Claude 4 Sonnet (latest, recommended) |
-| `claude-3-7-sonnet-20250219` | Claude 3.7 Sonnet (enhanced) |
-| `claude-3-5-sonnet-20241022` | Claude 3.5 Sonnet (stable) |
-| `claude-3-5-sonnet-20240620` | Claude 3.5 Sonnet (legacy) |
-
-*Available models depend on your Claude subscription level.*
+ * `claude-opus-4-20250514` 
+ * `claude-sonnet-4-20250514`
+ * `claude-3-7-sonnet-20250219`
+ * `claude-3-5-sonnet-20241022` 
+ * `claude-3-5-sonnet-20240620` 
 
 ## Configuration
 
-### Environment Variables
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `PORT` | Local server port | `8000` |
-| `HOST` | Server host (keep as localhost for security) | `127.0.0.1` |
-| `LOG_LEVEL` | Logging level | `INFO` |
-| `AUTH_TOKEN` | Bearer token for API authentication (optional) | None |
+### Configuration Methods
 
-All the settings can be override using environment variable
+Settings can be configured through (in order of precedence):
+1. Command-line arguments
+2. Environment variables 
+3. `.env` file
+4. TOML configuration files (`.ccproxy.toml`, `ccproxy.toml`, or `~/.config/ccproxy/config.toml`)
+5. Default values
+
+### Nested Environment Variables
+
+For more complex configurations, use the nested syntax with `__` delimiter:
+
+```bash
+# Server settings
+SERVER__HOST=0.0.0.0
+SERVER__PORT=8080
+SERVER__LOG_LEVEL=DEBUG
+SERVER__LOG_FORMAT=json
+
+# Security
+SECURITY__AUTH_TOKEN=your-token
+
+# Scheduler settings
+SCHEDULER__ENABLED=true
+SCHEDULER__PRICING_UPDATE_INTERVAL_HOURS=24
+
+# continue with all the field of the config
+```
+
+
 
 ### Claude Authentication
 
@@ -225,18 +263,14 @@ ccproxy auth validate
 # View credential details (auto-renews if expired)
 ccproxy auth info
 ```
-- Credentials stored in system keyring (secure)
-- Fallback to: `~/.config/ccproxy/credentials.json`
+- Credentials stored in  `~/.config/ccproxy/credentials.json`
+- Fallback to: `~/.claude/credentials.json` or `~/.config/claude/credentials.json`
 - Tokens are automatically renewed when using `ccproxy auth info`
-- Works with all Claude subscription types (Pro, Team, Enterprise)
 
 ### API Authentication (Optional)
 
 For added security, you can enable token authentication for your local API access. The proxy supports multiple authentication header formats, allowing you to use the standard Anthropic and OpenAI libraries without modification.
 
-#### Why Multiple Authentication Formats?
-
-The proxy accepts authentication tokens in multiple formats to ensure compatibility with official client libraries:
 - **Anthropic SDK**: Uses `x-api-key` header by default
 - **OpenAI SDK**: Uses `Authorization: Bearer` header by default
 
@@ -276,7 +310,7 @@ When authentication is enabled, include the token in your API requests using any
 curl -H "x-api-key: abc123xyz789..." \
      -H "Content-Type: application/json" \
      -d '{"model":"claude-sonnet-4-20250514","messages":[{"role":"user","content":"Hello"}]}' \
-     http://localhost:8000/v1/messages
+     http://localhost:8000/sdk/v1/messages
 ```
 
 **OpenAI/Bearer Format:**
@@ -284,12 +318,9 @@ curl -H "x-api-key: abc123xyz789..." \
 curl -H "Authorization: Bearer abc123xyz789..." \
      -H "Content-Type: application/json" \
      -d '{"model":"claude-sonnet-4-20250514","messages":[{"role":"user","content":"Hello"}]}' \
-     http://localhost:8000/openai/v1/chat/completions
+     http://localhost:8000/sdk/v1/chat/completions
 ```
 
-**Note:** The `/health` endpoint remains unprotected for monitoring purposes.
-
-```
 
 ## Usage Examples
 
@@ -298,12 +329,13 @@ curl -H "Authorization: Bearer abc123xyz789..." \
 ### curl Example
 
 ```bash
-# Claude Code mode (default)
-curl -X POST http://localhost:8000/v1/messages \
+# Claude Code mode
+curl -X POST http://localhost:8000/sdk/v1/messages \
   -H "Content-Type: application/json" \
   -d '{
     "model": "claude-3-5-sonnet-20241022",
     "messages": [{"role": "user", "content": "Hello!"}],
+    "max_tokens": 100
   }'
 
 # API mode - direct proxy, with all the models settings

@@ -6,26 +6,51 @@ Configure Claude Code Proxy API Server for your local setup and preferences.
 
 The server supports multiple configuration methods with the following priority order:
 
-1. **Environment Variables** (highest priority)
-2. **TOML Configuration Files** (`.ccproxy.toml`, `ccproxy.toml`, or `~/.config/ccproxy/config.toml`)
-3. **JSON Configuration File** (`config.json`)
+1. **Command-line arguments** (highest priority - when using CLI)
+2. **Environment Variables** 
+3. **TOML Configuration Files** (`.ccproxy.toml`, `ccproxy.toml`, or `~/.config/ccproxy/config.toml`)
 4. **Default Values** (lowest priority)
 
 ## Environment Variables
 
+The proxy supports both flat and nested environment variable syntax. For a comprehensive reference, see [CLAUDE.md](/CLAUDE.md).
+
+### Environment Variable Syntax
+
+#### Flat Syntax (Simple)
+```bash
+PORT=8080
+HOST=0.0.0.0
+LOG_LEVEL=DEBUG
+AUTH_TOKEN=your-token
+```
+
+#### Nested Syntax (Recommended)
+Uses `__` (double underscore) as delimiter for nested configuration:
+```bash
+SERVER__PORT=8080
+SERVER__HOST=0.0.0.0
+SERVER__LOG_LEVEL=DEBUG
+SECURITY__AUTH_TOKEN=your-token
+```
+
 ### Server Configuration
 
-| Variable | Description | Default | Example |
-|----------|-------------|---------|---------|
-| `PORT` | Server port | `8000` | `PORT=8080` |
-| `HOST` | Server host | `0.0.0.0` | `HOST=127.0.0.1` |
-| `LOG_LEVEL` | Logging level | `INFO` | `LOG_LEVEL=DEBUG` |
+| Variable | Nested Variable | Description | Default | Example |
+|----------|----------------|-------------|---------|---------|
+| `PORT` | `SERVER__PORT` | Server port | `8000` | `PORT=8080` |
+| `HOST` | `SERVER__HOST` | Server host | `127.0.0.1` | `HOST=0.0.0.0` |
+| `LOG_LEVEL` | `SERVER__LOG_LEVEL` | Logging level | `INFO` | `LOG_LEVEL=DEBUG` |
+| `WORKERS` | `SERVER__WORKERS` | Worker processes | `1` | `WORKERS=4` |
+| `RELOAD` | `SERVER__RELOAD` | Auto-reload | `false` | `RELOAD=true` |
+| - | `SERVER__LOG_FORMAT` | Log format | `auto` | `SERVER__LOG_FORMAT=json` |
+| - | `SERVER__LOG_FILE` | Log file path | - | `SERVER__LOG_FILE=/var/log/app.log` |
 
 ### Security Configuration
 
-| Variable | Description | Default | Example |
-|----------|-------------|---------|---------|
-| `AUTH_TOKEN` | Authentication token for API access | None | `AUTH_TOKEN=abc123xyz789...` |
+| Variable | Nested Variable | Description | Default | Example |
+|----------|----------------|-------------|---------|---------|
+| `AUTH_TOKEN` | `SECURITY__AUTH_TOKEN` | Authentication token for API access | None | `AUTH_TOKEN=abc123xyz789...` |
 
 The proxy accepts authentication tokens in multiple header formats:
 - **Anthropic Format**: `x-api-key: <token>` (takes precedence)
@@ -35,9 +60,21 @@ All formats use the same configured `AUTH_TOKEN` value.
 
 ### Claude CLI Configuration
 
-| Variable | Description | Default | Example |
-|----------|-------------|---------|---------|
-| `CLAUDE_CLI_PATH` | Path to Claude CLI | Auto-detected | `CLAUDE_CLI_PATH=/usr/local/bin/claude` |
+| Variable | Nested Variable | Description | Default | Example |
+|----------|----------------|-------------|---------|---------|
+| `CLAUDE_CLI_PATH` | `CLAUDE__CLI_PATH` | Path to Claude CLI | Auto-detected | `CLAUDE_CLI_PATH=/usr/local/bin/claude` |
+
+### Special Environment Variables
+
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `CONFIG_FILE` | Path to custom TOML config | `CONFIG_FILE=/etc/ccproxy/config.toml` |
+| `CCPROXY_CONFIG_OVERRIDES` | JSON config overrides | `CCPROXY_CONFIG_OVERRIDES='{"server":{"port":9000}}'` |
+| `CCPROXY_VERBOSE_API` | Verbose API logging | `CCPROXY_VERBOSE_API=true` |
+| `CCPROXY_VERBOSE_STREAMING` | Verbose streaming logs | `CCPROXY_VERBOSE_STREAMING=true` |
+| `CCPROXY_REQUEST_LOG_DIR` | Request/response log directory | `CCPROXY_REQUEST_LOG_DIR=/tmp/logs` |
+| `CCPROXY_JSON_LOGS` | Force JSON logging | `CCPROXY_JSON_LOGS=true` |
+| `CCPROXY_TEST_MODE` | Enable test mode | `CCPROXY_TEST_MODE=true` |
 
 ### Example Environment Setup
 
@@ -48,6 +85,12 @@ HOST=0.0.0.0
 LOG_LEVEL=INFO
 AUTH_TOKEN=abc123xyz789abcdef...  # Optional authentication
 CLAUDE_CLI_PATH=/opt/claude/bin/claude
+
+# Advanced settings using nested syntax
+SERVER__LOG_FORMAT=json
+SERVER__LOG_FILE=/var/log/ccproxy/app.log
+SCHEDULER__ENABLED=true
+PRICING__UPDATE_ON_STARTUP=true
 ```
 
 ## TOML Configuration (Recommended)
@@ -77,15 +120,18 @@ docker_image = "custom-claude-image"
 docker_volumes = ["/host/data:/container/data"]
 docker_environment = {CLAUDE_ENV = "production"}
 
-# Connection pool settings
-[pool_settings]
-enabled = true               # Enable/disable connection pooling
-min_size = 2                # Minimum number of instances to maintain
-max_size = 10               # Maximum number of instances allowed
-idle_timeout = 300          # Seconds before idle connections are closed
-warmup_on_startup = true    # Pre-create minimum instances on startup
-health_check_interval = 60  # Seconds between connection health checks
-acquire_timeout = 5.0       # Maximum seconds to wait for an available instance
+# Scheduler settings  
+[scheduler]
+enabled = true
+max_concurrent_tasks = 10
+pricing_update_interval_hours = 24
+pricing_update_enabled = true
+
+# Pricing settings
+[pricing]
+cache_ttl_hours = 24
+update_on_startup = true
+enable_cost_tracking = true
 
 # Claude Code options
 [claude_code_options]
@@ -152,9 +198,6 @@ Controls the FastAPI server behavior:
 }
 ```
 
-### Connection Pool Configuration
-
-For improved performance, see the [Connection Pool Configuration Guide](/user-guide/pool-configuration/) for detailed settings.
 
 ### Claude Configuration
 
@@ -472,12 +515,18 @@ CLAUDE_CLI_PATH=/usr/local/bin/claude
 AUTH_TOKEN=your-secure-token-here
 CORS_ORIGINS=https://yourdomain.com,https://app.yourdomain.com
 
-# Tools handling
-TOOLS_HANDLING=warning
+# Advanced configuration using nested syntax
+SERVER__LOG_FORMAT=json
+SERVER__LOG_FILE=/var/log/ccproxy/app.log
+SCHEDULER__ENABLED=true
+SCHEDULER__PRICING_UPDATE_INTERVAL_HOURS=24
+PRICING__UPDATE_ON_STARTUP=true
+OBSERVABILITY__METRICS__ENABLED=false
 
-# Security settings for subprocess execution
-CLAUDE_USER=claude
-CLAUDE_GROUP=claude
+# Special environment variables
+CONFIG_FILE=/etc/ccproxy/config.toml
+CCPROXY_VERBOSE_API=false
+CCPROXY_JSON_LOGS=true
 ```
 
 #### Complete JSON Configuration Schema
@@ -510,14 +559,15 @@ CLAUDE_GROUP=claude
     "model": "claude-3-5-sonnet-20241022",
     "max_thinking_tokens": 30000
   },
-  "pool_settings": {
+  "scheduler": {
     "enabled": true,
-    "min_size": 2,
-    "max_size": 10,
-    "idle_timeout": 300,
-    "warmup_on_startup": true,
-    "health_check_interval": 60,
-    "acquire_timeout": 5.0
+    "max_concurrent_tasks": 10,
+    "pricing_update_interval_hours": 24
+  },
+  "pricing": {
+    "cache_ttl_hours": 24,
+    "update_on_startup": true,
+    "enable_cost_tracking": true
   }
 }
 ```
