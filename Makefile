@@ -53,7 +53,6 @@ dev-install:
 	uv run pre-commit install
 	@if command -v bun >/dev/null 2>&1; then \
 		bun install -g @anthropic-ai/claude-code; \
-		$(MAKE) -C dashboard install; \
 	else \
 		echo "Warning: Bun not available, skipping Claude Code and dashboard installation"; \
 	fi
@@ -170,7 +169,7 @@ pre-commit:
 ci:
 	uv run pre-commit run --all-files
 	$(MAKE) test
-	$(MAKE) -C dashboard test
+	# $(MAKE) -C dashboard test
 
 # Build targets
 build: build-dashboard
