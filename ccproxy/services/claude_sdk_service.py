@@ -22,7 +22,8 @@ from ccproxy.core.errors import (
     ClaudeProxyError,
     ServiceUnavailableError,
 )
-from ccproxy.observability.context import request_context
+from ccproxy.observability.access_logger import log_request_access
+from ccproxy.observability.context import RequestContext, request_context
 from ccproxy.observability.metrics import PrometheusMetrics
 
 
@@ -132,38 +133,31 @@ class ClaudeSDKService:
             model=model,
             streaming=stream,
             service_type="claude_sdk_service",
+            metrics=self.metrics,  # Pass metrics for active request tracking
         ) as ctx:
-            # Record active request start
-            if self.metrics:
-                self.metrics.inc_active_requests()
-
             try:
                 if stream:
                     # For streaming, return the async iterator directly
-                    # Response time will be handled by the async context manager
-                    return self._stream_completion(prompt, options, model, request_id)
+                    # Pass context to streaming method
+                    return self._stream_completion(
+                        prompt, options, model, request_id, ctx
+                    )
                 else:
                     result = await self._complete_non_streaming(
-                        prompt, options, model, request_id
+                        prompt, options, model, request_id, ctx
                     )
-                    # Record response time after completion
-                    if self.metrics:
-                        self.metrics.record_response_time(
-                            ctx.duration_seconds, model, endpoint, "claude_sdk_service"
-                        )
                     return result
 
             except Exception as e:
-                # Record error metrics if available
-                if self.metrics:
-                    self.metrics.record_error(
-                        type(e).__name__, "messages", model, "claude_sdk_service"
-                    )
+                # Log error via access logger (includes metrics)
+                await log_request_access(
+                    context=ctx,
+                    method="POST",
+                    error_message=str(e),
+                    metrics=self.metrics,
+                    error_type=type(e).__name__,
+                )
                 raise
-            finally:
-                # Record active request end
-                if self.metrics:
-                    self.metrics.dec_active_requests()
 
     async def _complete_non_streaming(
         self,
@@ -171,6 +165,7 @@ class ClaudeSDKService:
         options: ClaudeCodeOptions,
         model: str,
         request_id: str | None = None,
+        ctx: RequestContext | None = None,
     ) -> dict[str, Any]:
         """
         Complete a non-streaming request with business logic.
@@ -249,30 +244,24 @@ class ClaudeSDKService:
             request_id=request_id,
         )
 
-        # Record Prometheus metrics if available
-        if self.metrics:
-            self.metrics.record_request(
-                "POST", "messages", model, "200", "claude_sdk_service"
+        # Update context with metrics if available
+        if ctx:
+            ctx.add_metadata(
+                status_code=200,
+                tokens_input=tokens_input,
+                tokens_output=tokens_output,
+                cache_read_tokens=cache_read_tokens,
+                cache_write_tokens=cache_write_tokens,
+                cost_usd=cost_usd,
             )
 
-            if tokens_input:
-                self.metrics.record_tokens(
-                    tokens_input, "input", model, "claude_sdk_service"
-                )
-            if tokens_output:
-                self.metrics.record_tokens(
-                    tokens_output, "output", model, "claude_sdk_service"
-                )
-            if cache_read_tokens:
-                self.metrics.record_tokens(
-                    cache_read_tokens, "cache_read", model, "claude_sdk_service"
-                )
-            if cache_write_tokens:
-                self.metrics.record_tokens(
-                    cache_write_tokens, "cache_write", model, "claude_sdk_service"
-                )
-            if cost_usd:
-                self.metrics.record_cost(cost_usd, model, "total", "claude_sdk_service")
+            # Log comprehensive access log (includes Prometheus metrics)
+            await log_request_access(
+                context=ctx,
+                status_code=200,
+                method="POST",
+                metrics=self.metrics,
+            )
 
         return response
 
@@ -282,6 +271,7 @@ class ClaudeSDKService:
         options: ClaudeCodeOptions,
         model: str,
         request_id: str | None = None,
+        ctx: RequestContext | None = None,
     ) -> AsyncIterator[dict[str, Any]]:
         """
         Stream completion responses with business logic.
@@ -375,38 +365,25 @@ class ClaudeSDKService:
                         request_id=request_id,
                     )
 
-                    # Record Prometheus metrics if available
-                    if self.metrics:
-                        self.metrics.record_request(
-                            "POST", "messages", model, "200", "claude_sdk_service"
+                    # Update context with metrics if available
+                    if ctx:
+                        ctx.add_metadata(
+                            status_code=200,
+                            tokens_input=tokens_input,
+                            tokens_output=tokens_output,
+                            cache_read_tokens=cache_read_tokens,
+                            cache_write_tokens=cache_write_tokens,
+                            cost_usd=cost_usd,
                         )
 
-                        if tokens_input:
-                            self.metrics.record_tokens(
-                                tokens_input, "input", model, "claude_sdk_service"
-                            )
-                        if tokens_output:
-                            self.metrics.record_tokens(
-                                tokens_output, "output", model, "claude_sdk_service"
-                            )
-                        if cache_read_tokens:
-                            self.metrics.record_tokens(
-                                cache_read_tokens,
-                                "cache_read",
-                                model,
-                                "claude_sdk_service",
-                            )
-                        if cache_write_tokens:
-                            self.metrics.record_tokens(
-                                cache_write_tokens,
-                                "cache_write",
-                                model,
-                                "claude_sdk_service",
-                            )
-                        if cost_usd:
-                            self.metrics.record_cost(
-                                cost_usd, model, "total", "claude_sdk_service"
-                            )
+                        # Log comprehensive access log for streaming completion
+                        await log_request_access(
+                            context=ctx,
+                            status_code=200,
+                            method="POST",
+                            metrics=self.metrics,
+                            event_type="streaming_complete",
+                        )
 
                     # Send final chunk with usage and cost information
                     final_chunk = self.message_converter.create_streaming_end_chunk()

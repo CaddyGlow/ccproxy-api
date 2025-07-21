@@ -137,7 +137,6 @@ class TestOpenAIEndpoints:
 
         assert response.status_code == 422  # Validation error
 
-
     def test_openai_status(self, client: TestClient) -> None:
         """Test OpenAI status endpoint."""
         response = client.get("/api/status")
@@ -236,7 +235,6 @@ class TestAnthropicEndpoints:
 
         assert response.status_code == 422  # Validation error
 
-
     def test_anthropic_status(self, client: TestClient) -> None:
         """Test Anthropic status endpoint."""
         response = client.get("/sdk/status")
@@ -286,7 +284,6 @@ class TestDualOpenAIEndpoints:
         assert "model" in data_sdk
         assert "choices" in data_sdk
         assert "usage" in data_sdk
-
 
 
 class TestAuthenticationEndpoints:
@@ -380,16 +377,12 @@ class TestAuthenticationEndpoints:
         assert response.status_code == 401
 
 
-
 class TestComposableAuthenticationEndpoints:
     """Test API endpoints using the new composable auth fixtures.
 
     This demonstrates the new auth fixture hierarchy working alongside
     existing auth patterns, showing different auth modes without skipping tests.
     """
-
-
-
 
 
 class TestErrorHandling:
