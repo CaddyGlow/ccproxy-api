@@ -30,6 +30,7 @@ from ccproxy.observability import (
     request_context,
     timed_operation,
 )
+from ccproxy.observability.access_logger import log_request_access
 from ccproxy.services.credentials.manager import CredentialsManager
 from ccproxy.testing import RealisticMockResponseGenerator
 
@@ -228,14 +229,12 @@ class ProxyService:
                 model=model,
                 streaming=streaming,
                 service_type="proxy_service",
+                metrics=self.metrics,
             )
 
         async with context_manager as ctx:
             # Store the current request ID for file logging
             self._current_request_id = ctx.request_id
-
-            # Record Prometheus metrics
-            self.metrics.inc_active_requests()
 
             try:
                 # 1. Authentication - get access token
@@ -383,32 +382,13 @@ class ProxyService:
                     cost_usd=cost_usd,
                 )
 
-                # 7. Record Prometheus metrics
-                self.metrics.record_request(
-                    method, endpoint, model, status_code, "proxy_service"
+                # 7. Log comprehensive access log (includes Prometheus metrics)
+                await log_request_access(
+                    context=ctx,
+                    status_code=status_code,
+                    method=method,
+                    metrics=self.metrics,
                 )
-                self.metrics.record_response_time(
-                    ctx.duration_seconds, model, endpoint, "proxy_service"
-                )
-
-                if tokens_input:
-                    self.metrics.record_tokens(
-                        tokens_input, "input", model, "proxy_service"
-                    )
-                if tokens_output:
-                    self.metrics.record_tokens(
-                        tokens_output, "output", model, "proxy_service"
-                    )
-                if cache_read_tokens:
-                    self.metrics.record_tokens(
-                        cache_read_tokens, "cache_read", model, "proxy_service"
-                    )
-                if cache_write_tokens:
-                    self.metrics.record_tokens(
-                        cache_write_tokens, "cache_write", model, "proxy_service"
-                    )
-                if cost_usd:
-                    self.metrics.record_cost(cost_usd, model, "total", "proxy_service")
 
                 return (
                     transformed_response["status_code"],
@@ -417,9 +397,17 @@ class ProxyService:
                 )
 
             except Exception as e:
-                # Record error metrics
+                # Record error metrics via access logger
                 error_type = type(e).__name__
-                self.metrics.record_error(error_type, endpoint, model, "proxy_service")
+
+                # Log the error with access logger (includes metrics)
+                await log_request_access(
+                    context=ctx,
+                    method=method,
+                    error_message=str(e),
+                    metrics=self.metrics,
+                    error_type=error_type,
+                )
 
                 logger.exception(
                     "proxy_request_failed",
@@ -434,7 +422,6 @@ class ProxyService:
             finally:
                 # Reset current request ID
                 self._current_request_id = None
-                self.metrics.dec_active_requests()
 
     async def _get_access_token(self) -> str:
         """Get access token for upstream authentication.
@@ -916,59 +903,10 @@ class ProxyService:
                                     await log_request_access(
                                         context=ctx,
                                         status_code=response_status,
+                                        metrics=self.metrics,
                                         # Additional metadata for streaming completion
                                         event_type="streaming_complete",
                                     )
-
-                                    # Record Prometheus metrics
-                                    endpoint = ctx.metadata.get("endpoint", "unknown")
-
-                                    self.metrics.record_request(
-                                        "POST",
-                                        endpoint,
-                                        model,
-                                        response_status,
-                                        "proxy_service",
-                                    )
-                                    self.metrics.record_response_time(
-                                        ctx.duration_seconds,
-                                        model,
-                                        endpoint,
-                                        "proxy_service",
-                                    )
-
-                                    if final_metrics["tokens_input"]:
-                                        self.metrics.record_tokens(
-                                            final_metrics["tokens_input"],
-                                            "input",
-                                            model,
-                                            "proxy_service",
-                                        )
-                                    if final_metrics["tokens_output"]:
-                                        self.metrics.record_tokens(
-                                            final_metrics["tokens_output"],
-                                            "output",
-                                            model,
-                                            "proxy_service",
-                                        )
-                                    if final_metrics["cache_read_tokens"]:
-                                        self.metrics.record_tokens(
-                                            final_metrics["cache_read_tokens"],
-                                            "cache_read",
-                                            model,
-                                            "proxy_service",
-                                        )
-                                    if final_metrics["cache_write_tokens"]:
-                                        self.metrics.record_tokens(
-                                            final_metrics["cache_write_tokens"],
-                                            "cache_write",
-                                            model,
-                                            "proxy_service",
-                                        )
-                                    if cost_usd:
-                                        self.metrics.record_cost(
-                                            cost_usd, model, "total", "proxy_service"
-                                        )
 
                                 if (
                                     "content_block_delta" in chunk_str
@@ -1217,24 +1155,13 @@ class ProxyService:
             cost_usd=cost_usd,
         )
 
-        # Record Prometheus metrics
-        endpoint = ctx.metadata.get("endpoint", "unknown")
-        self.metrics.record_request("POST", endpoint, model, 200, "proxy_service")
-        self.metrics.record_response_time(
-            ctx.duration_seconds, model, endpoint, "proxy_service"
+        # Log comprehensive access log (includes Prometheus metrics)
+        await log_request_access(
+            context=ctx,
+            status_code=200,
+            method="POST",
+            metrics=self.metrics,
         )
-        self.metrics.record_tokens(input_tokens, "input", model, "proxy_service")
-        self.metrics.record_tokens(output_tokens, "output", model, "proxy_service")
-        if cache_read_tokens:
-            self.metrics.record_tokens(
-                cache_read_tokens, "cache_read", model, "proxy_service"
-            )
-        if cache_write_tokens:
-            self.metrics.record_tokens(
-                cache_write_tokens, "cache_write", model, "proxy_service"
-            )
-        if cost_usd:
-            self.metrics.record_cost(cost_usd, model, "total", "proxy_service")
 
         return 200, headers, response_body
 

@@ -69,7 +69,10 @@ class RequestContext:
 
 @asynccontextmanager
 async def request_context(
-    request_id: str | None = None, storage: Any | None = None, **initial_context: Any
+    request_id: str | None = None,
+    storage: Any | None = None,
+    metrics: Any | None = None,
+    **initial_context: Any,
 ) -> AsyncGenerator[RequestContext, None]:
     """
     Context manager for tracking complete request lifecycle with timing.
@@ -79,6 +82,8 @@ async def request_context(
 
     Args:
         request_id: Unique request identifier (generated if not provided)
+        storage: Optional storage backend for access logs
+        metrics: Optional PrometheusMetrics instance for active request tracking
         **initial_context: Initial context to include in all log events
 
     Yields:
@@ -107,6 +112,10 @@ async def request_context(
 
     # Emit SSE event for real-time dashboard updates
     await _emit_request_start_event(request_id, initial_context)
+
+    # Increment active requests if metrics provided
+    if metrics:
+        metrics.inc_active_requests()
 
     # Create context object
     ctx = RequestContext(
@@ -164,6 +173,10 @@ async def request_context(
 
         # Re-raise the exception
         raise
+    finally:
+        # Decrement active requests if metrics provided
+        if metrics:
+            metrics.dec_active_requests()
 
 
 @asynccontextmanager

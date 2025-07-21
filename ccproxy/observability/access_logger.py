@@ -16,6 +16,7 @@ import structlog
 
 if TYPE_CHECKING:
     from ccproxy.observability.context import RequestContext
+    from ccproxy.observability.metrics import PrometheusMetrics
     from ccproxy.observability.storage.duckdb_simple import (
         AccessLogPayload,
         SimpleDuckDBStorage,
@@ -35,13 +36,14 @@ async def log_request_access(
     query: str | None = None,
     error_message: str | None = None,
     storage: SimpleDuckDBStorage | None = None,
+    metrics: PrometheusMetrics | None = None,
     **additional_metadata: Any,
 ) -> None:
     """Log comprehensive access information for a request.
 
     This function generates a unified access log entry with complete request
     metadata including timing, tokens, costs, and any additional context.
-    Also stores the access log in DuckDB if available.
+    Also stores the access log in DuckDB if available and records Prometheus metrics.
 
     Args:
         context: Request context with timing and metadata
@@ -53,6 +55,7 @@ async def log_request_access(
         query: Query parameters
         error_message: Error message if applicable
         storage: DuckDB storage instance (optional)
+        metrics: PrometheusMetrics instance for recording metrics (optional)
         **additional_metadata: Any additional fields to include
     """
     # Extract basic request info from context metadata if not provided
@@ -125,6 +128,100 @@ async def log_request_access(
 
     # Emit SSE event for real-time dashboard updates
     await _emit_access_event("request_complete", log_data)
+
+    # Record Prometheus metrics if metrics instance is provided
+    if metrics and not error_message:
+        # Extract required values for metrics
+        endpoint = ctx_metadata.get("endpoint", path or "unknown")
+        model = ctx_metadata.get("model")
+        service_type = ctx_metadata.get("service_type")
+
+        # Record request count
+        if method and status_code:
+            metrics.record_request(
+                method=method,
+                endpoint=endpoint,
+                model=model,
+                status=status_code,
+                service_type=service_type,
+            )
+
+        # Record response time
+        if context.duration_seconds > 0:
+            metrics.record_response_time(
+                duration_seconds=context.duration_seconds,
+                model=model,
+                endpoint=endpoint,
+                service_type=service_type,
+            )
+
+        # Record token usage
+        tokens_input = ctx_metadata.get("tokens_input")
+        if tokens_input:
+            metrics.record_tokens(
+                token_count=tokens_input,
+                token_type="input",
+                model=model,
+                service_type=service_type,
+            )
+
+        tokens_output = ctx_metadata.get("tokens_output")
+        if tokens_output:
+            metrics.record_tokens(
+                token_count=tokens_output,
+                token_type="output",
+                model=model,
+                service_type=service_type,
+            )
+
+        cache_read_tokens = ctx_metadata.get("cache_read_tokens")
+        if cache_read_tokens:
+            metrics.record_tokens(
+                token_count=cache_read_tokens,
+                token_type="cache_read",
+                model=model,
+                service_type=service_type,
+            )
+
+        cache_write_tokens = ctx_metadata.get("cache_write_tokens")
+        if cache_write_tokens:
+            metrics.record_tokens(
+                token_count=cache_write_tokens,
+                token_type="cache_write",
+                model=model,
+                service_type=service_type,
+            )
+
+        # Record cost
+        cost_usd = ctx_metadata.get("cost_usd")
+        if cost_usd:
+            metrics.record_cost(
+                cost_usd=cost_usd,
+                model=model,
+                cost_type="total",
+                service_type=service_type,
+            )
+
+    # Record error if there was one
+    if metrics and error_message:
+        endpoint = ctx_metadata.get("endpoint", path or "unknown")
+        model = ctx_metadata.get("model")
+        service_type = ctx_metadata.get("service_type")
+
+        # Extract error type from error message or use generic
+        error_type = additional_metadata.get(
+            "error_type",
+            type(error_message).__name__
+            if hasattr(error_message, "__class__")
+            else "unknown_error",
+        )
+
+        metrics.record_error(
+            error_type=error_type,
+            endpoint=endpoint,
+            model=model,
+            service_type=service_type,
+        )
 
 
 async def _store_access_log(
