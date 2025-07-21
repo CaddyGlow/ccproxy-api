@@ -4,10 +4,11 @@ import json
 from collections.abc import AsyncIterator
 from typing import Any
 
+import structlog
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
-import structlog
 
+from ccproxy.adapters.openai.adapter import OpenAIAdapter
 from ccproxy.api.dependencies import get_claude_service
 from ccproxy.models.messages import MessageCreateParams, MessageResponse
 from ccproxy.models.openai import (
@@ -17,7 +18,6 @@ from ccproxy.models.openai import (
     OpenAIModelsResponse,
 )
 from ccproxy.services.claude_sdk_service import ClaudeSDKService
-from ccproxy.adapters.openai.adapter import OpenAIAdapter
 
 
 # Create the router for Claude SDK endpoints
@@ -26,99 +26,6 @@ router = APIRouter(tags=["claude-sdk"])
 logger = structlog.get_logger(__name__)
 
 
-def _convert_openai_to_anthropic_messages(
-    openai_messages: list[Any],
-) -> list[dict[str, Any]]:
-    """Convert OpenAI message format to Anthropic format.
-
-    Args:
-        openai_messages: List of OpenAI format messages (OpenAIMessage objects or dicts)
-
-    Returns:
-        List of Anthropic format messages
-    """
-    anthropic_messages = []
-
-    for msg in openai_messages:
-        # Handle both Pydantic models and dictionaries
-        if hasattr(msg, "model_dump"):
-            msg_dict = msg.model_dump()
-        else:
-            msg_dict = msg
-
-        role = msg_dict.get("role", "user")
-        content = msg_dict.get("content", "")
-
-        # Map OpenAI roles to Anthropic roles
-        if role == "system":
-            # System messages in Anthropic are handled separately
-            continue
-        elif role == "assistant":
-            anthropic_role = "assistant"
-        else:  # user, function, tool
-            anthropic_role = "user"
-
-        anthropic_messages.append({"role": anthropic_role, "content": content})
-
-    return anthropic_messages
-
-
-def _convert_usage_to_openai(anthropic_usage: dict[str, Any]) -> dict[str, Any]:
-    """Convert Anthropic usage format to OpenAI format.
-
-    Args:
-        anthropic_usage: Anthropic format usage data
-
-    Returns:
-        OpenAI format usage data
-    """
-    return {
-        "prompt_tokens": anthropic_usage.get("input_tokens", 0),
-        "completion_tokens": anthropic_usage.get("output_tokens", 0),
-        "total_tokens": anthropic_usage.get("input_tokens", 0)
-        + anthropic_usage.get("output_tokens", 0),
-    }
-
-
-def _convert_anthropic_to_openai_response(
-    anthropic_response: dict[str, Any],
-) -> dict[str, Any]:
-    """Convert Anthropic response format to OpenAI format.
-
-    Args:
-        anthropic_response: Anthropic format response
-
-    Returns:
-        OpenAI format response
-    """
-    # Extract content from Anthropic response
-    content = ""
-    if "content" in anthropic_response:
-        if isinstance(anthropic_response["content"], list):
-            for block in anthropic_response["content"]:
-                if block.get("type") == "text":
-                    content += block.get("text", "")
-        else:
-            content = str(anthropic_response["content"])
-
-    # Create OpenAI format response
-    return {
-        "id": anthropic_response.get("id", "chatcmpl-unknown"),
-        "object": "chat.completion",
-        "created": anthropic_response.get("created", 1234567890),
-        "model": anthropic_response.get("model", "claude-3-sonnet-20240229"),
-        "choices": [
-            {
-                "index": 0,
-                "message": {
-                    "role": "assistant",
-                    "content": content,
-                },
-                "finish_reason": "stop",
-            }
-        ],
-        "usage": _convert_usage_to_openai(anthropic_response.get("usage", {})),
-    }
 
 
 @router.post("/v1/chat/completions", response_model=None)
@@ -134,10 +41,10 @@ async def create_openai_chat_completion(
     try:
         # Create adapter instance
         adapter = OpenAIAdapter()
-        
+
         # Convert entire OpenAI request to Anthropic format using adapter
         anthropic_request = adapter.adapt_request(request.model_dump())
-        
+
         # Extract stream parameter
         stream = request.stream or False
 
@@ -154,9 +61,6 @@ async def create_openai_chat_completion(
         if stream:
             # Handle streaming response
             async def openai_stream_generator() -> AsyncIterator[bytes]:
-                # Create adapter instance
-                adapter = OpenAIAdapter()
-
                 # Use adapt_stream for streaming responses
                 async for openai_chunk in adapter.adapt_stream(response):  # type: ignore[arg-type]
                     yield f"data: {json.dumps(openai_chunk)}\n\n".encode()
@@ -173,7 +77,6 @@ async def create_openai_chat_completion(
             )
         else:
             # Convert non-streaming response to OpenAI format using adapter
-            adapter = OpenAIAdapter()
             openai_response = adapter.adapt_response(response)  # type: ignore[arg-type]
             return OpenAIChatCompletionResponse.model_validate(openai_response)
 

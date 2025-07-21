@@ -1,6 +1,8 @@
 """Message format converter for Claude SDK interactions."""
 
+import json
 from typing import Any, cast
+from xml.sax.saxutils import escape
 
 import structlog
 
@@ -75,11 +77,19 @@ class MessageConverter:
         if isinstance(content, TextBlock):
             return content.text
         elif isinstance(content, ToolUseBlock):
-            # For tool use contents, include the tool name
-            # return in <tooluseblock>  tag value in xml
-            return f"<toolusecontent>{content.name}<toolusecontent>"
-        elif isinstance(content, ToolResultBlock) and isinstance(content.content, str):
-            return f"<toolusecontent>{content.content}<toolusecontent>"
+            # Return full XML representation of ToolUseBlock
+            tool_id = escape(str(getattr(content, "id", f"tool_{id(content)}")))
+            tool_name = escape(content.name)
+            tool_input = getattr(content, "input", {}) or {}
+            # Convert input dict to JSON string and escape for XML
+            input_json = escape(json.dumps(tool_input, ensure_ascii=False))
+            return f'<tooluseblock id="{tool_id}" name="{tool_name}">{input_json}</tooluseblock>'
+        elif isinstance(content, ToolResultBlock):
+            # Return full XML representation of ToolResultBlock
+            tool_use_id = escape(str(getattr(content, "tool_use_id", "")))
+            result_content = content.content if isinstance(content.content, str) else ""
+            escaped_content = escape(result_content)
+            return f'<toolresultblock tool_use_id="{tool_use_id}">{escaped_content}</toolresultblock>'
 
         return "<error>Unknown content type</error>"
 
