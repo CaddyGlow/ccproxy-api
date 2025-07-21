@@ -48,14 +48,14 @@ curl -X POST http://localhost:8000/api/v1/messages \
 
 ### Base URLs by Mode
 ```
-Claude Code Mode: http://localhost:8000/openai/v1/
-API Mode:         http://localhost:8000/api/openai/v1/
+Claude Code Mode: http://localhost:8000/v1/
+API Mode:         http://localhost:8000/api/v1/
 ```
 
 ### Chat Completions
 ```bash
 # Claude Code mode (default) - with all tools
-curl -X POST http://localhost:8000/openai/v1/chat/completions \
+curl -X POST http://localhost:8000/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
     "model": "claude-3-5-sonnet-20241022",
@@ -65,7 +65,7 @@ curl -X POST http://localhost:8000/openai/v1/chat/completions \
   }'
 
 # API mode - direct proxy for full control
-curl -X POST http://localhost:8000/api/openai/v1/chat/completions \
+curl -X POST http://localhost:8000/api/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
     "model": "claude-3-5-sonnet-20241022",

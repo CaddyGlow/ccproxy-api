@@ -47,7 +47,7 @@ from anthropic import Anthropic
 
 # Claude Code mode (default)
 client = Anthropic(
-    base_url="http://localhost:8000",
+    base_url="http://localhost:8000/sdk",
     api_key="dummy"  # Ignored with OAuth
 )
 
@@ -71,13 +71,13 @@ from openai import OpenAI
 
 # Claude Code mode (default)
 client = OpenAI(
-    base_url="http://localhost:8000/openai/v1",
+    base_url="http://localhost:8000/sdk/v1",
     api_key="dummy"  # Ignored with OAuth
 )
 
 # API mode (direct proxy)
 client = OpenAI(
-    base_url="http://localhost:8000/api/openai/v1",
+    base_url="http://localhost:8000/api/v1",
     api_key="dummy"  # Ignored with OAuth
 )
 
@@ -91,7 +91,7 @@ response = client.chat.completions.create(
 
 ```bash
 # Claude Code mode (default)
-curl -X POST http://localhost:8000/v1/messages \
+curl -X POST http://localhost:8000/sdk/v1/messages \
   -H "Content-Type: application/json" \
   -d '{
     "model": "claude-3-5-sonnet-20241022",

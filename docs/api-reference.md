@@ -27,16 +27,18 @@ POST /cc/v1/messages      # Claude Code mode (explicit)
 
 ### OpenAI Compatibility Layer
 ```
-POST /openai/v1/chat/completions       # Claude Code mode (default)
-POST /api/openai/v1/chat/completions   # API mode (direct proxy)
-POST /cc/openai/v1/chat/completions    # Claude Code mode (explicit)
+POST /v1/chat/completions           # Claude Code mode (default)
+POST /api/v1/chat/completions       # API mode (direct proxy)
+POST /cc/v1/chat/completions        # Claude Code mode (explicit)
+POST /sdk/v1/chat/completions       # Claude SDK mode (explicit)
 ```
 
 ### Utility Endpoints
 ```
 GET /health              # Health check
 GET /v1/models           # List available models
-GET /openai/v1/models    # List models (OpenAI format)
+GET /sdk/models          # List models (SDK mode)
+GET /api/models          # List models (API mode)
 ```
 
 ## Available Models
@@ -92,5 +94,5 @@ Both modes support streaming responses:
 |----------|------------------|----------|
 | Need Claude Code tools | Claude Code mode | `/v1/messages` |
 | Need full API control | API mode | `/api/v1/messages` |
-| Using OpenAI SDK | Either mode | `/openai/v1/chat/completions` |
+| Using OpenAI SDK | Either mode | `/v1/chat/completions` or `/api/v1/chat/completions` |
 | Direct API access | API mode | `/api/v1/messages` |

@@ -60,6 +60,7 @@ nav:
     - API Usage: user-guide/api-usage.md
     - MCP Integration: user-guide/mcp-integration.md
     - Authentication: user-guide/authentication.md
+    - Observability: observability.md
   - API Reference: api-reference.md
   - Examples: examples.md
   - Contributing: contributing.md

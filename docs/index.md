@@ -32,7 +32,7 @@ CCProxy is a lightweight server that runs on your computer and acts as a bridge 
 
 ### 🌐 Universal Compatibility
 - **Anthropic API format** at `/v1/messages`
-- **OpenAI API format** at `/openai/v1/chat/completions`
+- **OpenAI API format** at `/v1/chat/completions`
 - Drop-in replacement for existing applications
 - Streaming support for real-time responses
 

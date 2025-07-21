@@ -382,7 +382,7 @@ Once the server is running, test it with a simple API call:
 
 ### OAuth Users (Claude Subscription)
 
-OAuth users must use full mode (default):
+OAuth users (Claude subscription):
 
 ```bash
 # Using curl
@@ -405,7 +405,7 @@ curl -X POST http://localhost:8000/v1/messages \
 API key users can use any mode:
 
 ```bash
-# Full mode (with Claude Code features)
+# SDK mode (with Claude Code features)
 curl -X POST http://localhost:8000/v1/messages \
   -H "Content-Type: application/json" \
   -H "x-api-key: sk-ant-api03-..." \
@@ -415,8 +415,8 @@ curl -X POST http://localhost:8000/v1/messages \
     "max_tokens": 100
   }'
 
-# Minimal mode (lightweight)
-curl -X POST http://localhost:8000/min/v1/messages \
+# API mode (direct proxy)
+curl -X POST http://localhost:8000/api/v1/messages \
   -H "Content-Type: application/json" \
   -H "x-api-key: sk-ant-api03-..." \
   -d '{
@@ -431,7 +431,7 @@ curl -X POST http://localhost:8000/min/v1/messages \
 ```python
 from anthropic import Anthropic
 
-# OAuth users (Claude subscription) - full mode
+# OAuth users (Claude subscription) - SDK mode
 client = Anthropic(
     base_url="http://localhost:8000",
     api_key="dummy"  # Ignored with OAuth
@@ -439,7 +439,7 @@ client = Anthropic(
 
 # API key users - any mode
 client = Anthropic(
-    base_url="http://localhost:8000/min",  # Minimal mode
+    base_url="http://localhost:8000/api",  # API mode
     api_key="sk-ant-api03-..."
 )
 
@@ -457,15 +457,15 @@ print(response.content[0].text)
 ```python
 from openai import OpenAI
 
-# OAuth users - must use full mode
+# OAuth users - SDK mode
 client = OpenAI(
-    base_url="http://localhost:8000/openai/v1",
+    base_url="http://localhost:8000/v1",
     api_key="dummy"  # Ignored with OAuth
 )
 
 # API key users - can use any mode
 client = OpenAI(
-    base_url="http://localhost:8000/min/openai/v1",  # Minimal mode
+    base_url="http://localhost:8000/api/v1",  # API mode
     api_key="sk-ant-api03-..."
 )
 
@@ -505,17 +505,14 @@ curl http://localhost:8000/v1/models
 
 ## Proxy Modes
 
-The proxy supports three transformation modes:
+The proxy supports two primary modes of operation:
 
 | Mode | URL Prefix | Authentication | Use Case |
 |------|------------|----------------|----------|
-| Full | `/` or `/full/` | OAuth, API Key | Claude Code features, OAuth users |
-| Minimal | `/min/` | API Key only | Lightweight proxy |
-| Passthrough | `/pt/` | API Key only | Direct API access |
+| SDK | `/sdk/` or `/` or `/cc/` | OAuth, API Key | Claude Code features with local tools |
+| API | `/api/` | OAuth, API Key | Direct proxy with full API access |
 
-**Important**: OAuth credentials from Claude Code only work with full mode. Using `/min` or `/pt` with OAuth will result in an authentication error.
-
-For detailed information about proxy modes, see the [Proxy Modes Guide](../user-guide/proxy-modes.md).
+**Note**: The default endpoints (`/v1/messages`, `/v1/chat/completions`) use SDK mode, which provides access to Claude Code tools and features.
 
 ## Using with Aider
 
@@ -533,7 +530,7 @@ If your tool only supports OpenAI settings, ccproxy automatically maps OpenAI mo
 
 ```bash
 export OPENAI_API_KEY=dummy
-export OPENAI_BASE_URL=http://127.0.0.1:8000/cc/openai/v1
+export OPENAI_BASE_URL=http://127.0.0.1:8000/sdk/v1
 aider --model o3-mini
 ```
 
@@ -552,7 +549,7 @@ For minimal interference and direct API access:
 
 ```bash
 export OPENAI_API_KEY=dummy
-export OPENAI_BASE_URL=http://127.0.0.1:8000/api/openai/v1
+export OPENAI_BASE_URL=http://127.0.0.1:8000/api/v1
 aider --model o3-mini
 ```
 
