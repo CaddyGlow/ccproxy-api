@@ -5,7 +5,7 @@ from collections.abc import AsyncIterator
 from typing import Any
 
 import structlog
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
 from ccproxy.adapters.openai.adapter import (
@@ -26,7 +26,8 @@ logger = structlog.get_logger(__name__)
 
 @router.post("/v1/chat/completions", response_model=None)
 async def create_openai_chat_completion(
-    request: OpenAIChatCompletionRequest,
+    request: Request,
+    openai_request: OpenAIChatCompletionRequest,
     claude_service: ClaudeSDKService = Depends(get_claude_service),
 ) -> StreamingResponse | OpenAIChatCompletionResponse:
     """Create a chat completion using Claude SDK with OpenAI-compatible format.
@@ -39,19 +40,25 @@ async def create_openai_chat_completion(
         adapter = OpenAIAdapter()
 
         # Convert entire OpenAI request to Anthropic format using adapter
-        anthropic_request = adapter.adapt_request(request.model_dump())
+        anthropic_request = adapter.adapt_request(openai_request.model_dump())
 
         # Extract stream parameter
-        stream = request.stream or False
+        stream = openai_request.stream or False
 
         # Call Claude SDK service with adapted request
+        if request and hasattr(request, "state") and hasattr(request.state, "context"):
+            # Use existing context from middleware
+            ctx = request.state.context
+            # Add service-specific metadata
+            ctx.add_metadata(streaming=stream)
+
         response = await claude_service.create_completion(
             messages=anthropic_request["messages"],
             model=anthropic_request["model"],
             temperature=anthropic_request.get("temperature"),
             max_tokens=anthropic_request.get("max_tokens"),
             stream=stream,
-            user_id=getattr(request, "user", None),
+            user_id=getattr(openai_request, "user", None),
         )
 
         if stream:

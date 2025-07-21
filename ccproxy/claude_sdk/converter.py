@@ -74,7 +74,6 @@ class MessageConverter:
         Returns:
             Extracted text content
         """
-        logger.info("content", content=content)
         if isinstance(content, TextBlock):
             return content.text
         elif isinstance(content, ToolUseBlock):

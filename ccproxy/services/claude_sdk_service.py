@@ -212,7 +212,7 @@ class ClaudeSDKService:
                 status_code=500,
             )
 
-        logger.info("claude_sdk_completion_received")
+        logger.debug("claude_sdk_completion_received")
         # Convert to Anthropic format
         response = self.message_converter.convert_to_anthropic_response(
             assistant_message, result_message, model
@@ -233,7 +233,7 @@ class ClaudeSDKService:
             response["usage"]["cost_usd"] = cost_usd
 
         # Log metrics for observability
-        logger.info(
+        logger.debug(
             "claude_sdk_completion_completed",
             model=model,
             tokens_input=tokens_input,
@@ -327,7 +327,6 @@ class ClaudeSDKService:
                         message.content
                     )
 
-                    logger.info("text_content", text_content=text_content)
                     if text_content:
                         text_content = f"<assistant>{text_content}</assistant>"
                         yield self.message_converter.create_streaming_delta_chunk(
@@ -353,7 +352,7 @@ class ClaudeSDKService:
                         ) = None
 
                     # Log streaming completion metrics
-                    logger.info(
+                    logger.debug(
                         "streaming_completion_completed",
                         model=model,
                         tokens_input=tokens_input,
@@ -406,7 +405,7 @@ class ClaudeSDKService:
                     break
 
         except asyncio.CancelledError:
-            logger.info("streaming_completion_cancelled", request_id=request_id)
+            logger.debug("streaming_completion_cancelled", request_id=request_id)
             raise
         except Exception as e:
             logger.error(
