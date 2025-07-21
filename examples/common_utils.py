@@ -108,7 +108,7 @@ class LoggingAsyncClient(httpx.AsyncClient):
             url=str(request.url),
             headers=dict(request.headers),
         )
-        if request.content:
+        if hasattr(request, "content"):
             try:
                 content = request.content
                 if isinstance(content, bytes):

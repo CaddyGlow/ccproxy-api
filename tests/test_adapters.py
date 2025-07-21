@@ -23,18 +23,6 @@ from unittest.mock import AsyncMock, Mock, patch
 import pytest
 
 from ccproxy.adapters.openai.adapter import OpenAIAdapter
-from ccproxy.models.openai import (
-    OpenAIChatCompletionRequest,
-    OpenAIChatCompletionResponse,
-    OpenAIChoice,
-    OpenAIFunction,
-    OpenAIMessage,
-    OpenAIMessageContent,
-    OpenAIResponseMessage,
-    OpenAITool,
-    OpenAIToolChoice,
-    OpenAIUsage,
-)
 
 
 class TestOpenAIAdapter:

@@ -7,7 +7,7 @@ Configure Claude Code Proxy API Server for your local setup and preferences.
 The server supports multiple configuration methods with the following priority order:
 
 1. **Command-line arguments** (highest priority - when using CLI)
-2. **Environment Variables** 
+2. **Environment Variables**
 3. **TOML Configuration Files** (`.ccproxy.toml`, `ccproxy.toml`, or `~/.config/ccproxy/config.toml`)
 4. **Default Values** (lowest priority)
 

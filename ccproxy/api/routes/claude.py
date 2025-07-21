@@ -8,15 +8,13 @@ import structlog
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 
-from ccproxy.adapters.openai.adapter import OpenAIAdapter
-from ccproxy.api.dependencies import get_claude_service
-from ccproxy.models.messages import MessageCreateParams, MessageResponse
-from ccproxy.models.openai import (
+from ccproxy.adapters.openai.adapter import (
+    OpenAIAdapter,
     OpenAIChatCompletionRequest,
     OpenAIChatCompletionResponse,
-    OpenAIModelInfo,
-    OpenAIModelsResponse,
 )
+from ccproxy.api.dependencies import get_claude_service
+from ccproxy.models.messages import MessageCreateParams, MessageResponse
 from ccproxy.services.claude_sdk_service import ClaudeSDKService
 
 
@@ -24,8 +22,6 @@ from ccproxy.services.claude_sdk_service import ClaudeSDKService
 router = APIRouter(tags=["claude-sdk"])
 
 logger = structlog.get_logger(__name__)
-
-
 
 
 @router.post("/v1/chat/completions", response_model=None)
@@ -148,30 +144,6 @@ async def create_anthropic_message(
             raise
         raise HTTPException(
             status_code=500, detail=f"Internal server error: {str(e)}"
-        ) from e
-
-
-@router.get("/models", response_model=OpenAIModelsResponse)
-async def list_sdk_models(
-    claude_service: ClaudeSDKService = Depends(get_claude_service),
-) -> OpenAIModelsResponse:
-    """List available Claude models from SDK.
-
-    Returns a list of available Claude models in OpenAI-compatible format.
-    """
-    try:
-        models_data = await claude_service.list_models()
-
-        # Convert to OpenAIModelInfo objects
-        models = [OpenAIModelInfo.model_validate(model) for model in models_data]
-
-        return OpenAIModelsResponse(
-            object="list",
-            data=models,
-        )
-    except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to retrieve models: {str(e)}"
         ) from e
 
 

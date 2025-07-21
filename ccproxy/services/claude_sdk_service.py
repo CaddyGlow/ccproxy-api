@@ -1,10 +1,17 @@
 """Claude SDK service orchestration for business logic."""
 
+import json
 from collections.abc import AsyncIterator
+from dataclasses import asdict, is_dataclass
 from typing import Any
 
 import structlog
-from claude_code_sdk import AssistantMessage, ClaudeCodeOptions, ResultMessage
+from claude_code_sdk import (
+    AssistantMessage,
+    ClaudeCodeOptions,
+    ResultMessage,
+    SystemMessage,
+)
 
 from ccproxy.adapters.openai import adapter
 from ccproxy.auth.manager import AuthManager
@@ -305,28 +312,34 @@ class ClaudeSDKService:
                     request_id=request_id,
                 )
 
-                if isinstance(message, AssistantMessage):
+                if first_chunk:
+                    # Send initial chunk
+                    yield self.message_converter.create_streaming_start_chunk(
+                        f"msg_{id(message)}", model
+                    )
+                    first_chunk = False
+
+                # TODO: instead of creating one message we should create a list of messages
+                # and this will be serialized back in one messsage by the adapter.
+                # to do that we have to create the different type of messsages
+                # in anthropic models
+                if isinstance(message, SystemMessage):
+                    # Serialize dataclass to JSON
+                    text_content = f"<system>{json.dumps(asdict(message))}</system>"
+                    yield self.message_converter.create_streaming_delta_chunk(
+                        text_content
+                    )
+                elif isinstance(message, AssistantMessage):
                     assistant_messages.append(message)
 
-                    if first_chunk:
-                        # Send initial chunk
-                        yield self.message_converter.create_streaming_start_chunk(
-                            f"msg_{id(message)}", model
-                        )
-                        first_chunk = False
-
                     # Send content delta
-                    if isinstance(message.content, list):
-                        text_content = self.message_converter.extract_contents(
-                            message.content
-                        )
-                    else:
-                        text_content = self.message_converter.extract_text_from_content(
-                            message.content
-                        )
+                    text_content = self.message_converter.extract_contents(
+                        message.content
+                    )
 
                     logger.info("text_content", text_content=text_content)
                     if text_content:
+                        text_content = f"<assistant>{text_content}</assistant>"
                         yield self.message_converter.create_streaming_delta_chunk(
                             text_content
                         )

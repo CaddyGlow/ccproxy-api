@@ -9,28 +9,6 @@ from .messages import (
     ThinkingConfig,
     ToolChoiceParams,
 )
-from .openai import (
-    OpenAIChatCompletionRequest,
-    OpenAIChatCompletionResponse,
-    OpenAIChoice,
-    OpenAIErrorDetail,
-    OpenAIErrorResponse,
-    OpenAIFunction,
-    OpenAILogprobs,
-    OpenAIMessage,
-    OpenAIMessageContent,
-    OpenAIModelInfo,
-    OpenAIModelsResponse,
-    OpenAIResponseFormat,
-    OpenAIResponseMessage,
-    OpenAIStreamingChatCompletionResponse,
-    OpenAIStreamingChoice,
-    OpenAIStreamOptions,
-    OpenAITool,
-    OpenAIToolCall,
-    OpenAIToolChoice,
-    OpenAIUsage,
-)
 from .requests import (
     ImageContent,
     Message,

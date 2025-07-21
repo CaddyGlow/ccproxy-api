@@ -1,5 +1,8 @@
 import json
+import logging
 import re
+
+import structlog
 
 
 try:
@@ -13,6 +16,8 @@ try:
     RICH_AVAILABLE = True
 except ImportError:
     RICH_AVAILABLE = False
+
+logger = structlog.get_logger(__name__)
 
 
 class RichConsoleManager:
@@ -140,7 +145,8 @@ class RichConsoleManager:
     def _process_chunk(self, chunk, full_response):
         content = ""
         finish_reason = None
-        if chunk.choices and chunk.choices[0].delta.content:
+        logger.info("Processing chunk", chunk=chunk)
+        if chunk.choices and chunk.choices[0].delta and chunk.choices[0].delta.content:
             content = chunk.choices[0].delta.content
             full_response += content
         if chunk.choices and chunk.choices[0].finish_reason:

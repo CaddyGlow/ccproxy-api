@@ -1,5 +1,6 @@
 """Error handling middleware for Claude Code Proxy API Server."""
 
+import logging
 from typing import Any
 
 import structlog
@@ -580,8 +581,12 @@ def setup_error_handlers(app: FastAPI) -> None:
             )
         else:
             # Log with basic stack trace (no local variables)
-            # import traceback
-            # stack_trace = traceback.format_exc()
+            stack_trace = None
+            if logger.isEnabledFor(logging.DEBUG):
+                import traceback
+
+                stack_trace = traceback.format_exc()
+
             logger.error(
                 "HTTP exception",
                 error_type="http_error",
@@ -589,7 +594,7 @@ def setup_error_handlers(app: FastAPI) -> None:
                 status_code=exc.status_code,
                 request_method=request.method,
                 request_url=str(request.url.path),
-                # stack_trace=stack_trace,
+                stack_trace=stack_trace,
             )
 
         # Record error in metrics

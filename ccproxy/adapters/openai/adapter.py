@@ -17,15 +17,12 @@ from typing import Any, Literal, cast
 import structlog
 
 from ccproxy.core.interfaces import APIAdapter
-from ccproxy.models.openai import OpenAIChatCompletionRequest
-from ccproxy.models.types import ReasoningEffort
 
 from .models import (
+    OpenAIChatCompletionRequest,
     OpenAIChatCompletionResponse,
     OpenAIChoice,
-    OpenAIFunctionCall,
     OpenAIResponseMessage,
-    OpenAIToolCall,
     OpenAIUsage,
     format_openai_tool_call,
     generate_openai_response_id,
@@ -367,6 +364,10 @@ class OpenAIAdapter(APIAdapter):
                             content += f'<thinking signature="{signature}">{thinking_text}</thinking>'
                     elif block.get("type") == "tool_use":
                         tool_calls.append(format_openai_tool_call(block))
+                    else:
+                        logger.warning(
+                            "unsupported_content_block_type", type=block.get("type")
+                        )
 
             # Create OpenAI message
             # When there are tool calls but no content, use empty string instead of None
@@ -437,6 +438,7 @@ class OpenAIAdapter(APIAdapter):
                 input_tokens=usage_info.get("input_tokens", 0),
                 output_tokens=usage_info.get("output_tokens", 0),
                 operation="adapt_response",
+                choice=choice,
             )
             return openai_response.model_dump()
 
@@ -867,6 +869,8 @@ class OpenAIAdapter(APIAdapter):
 
 __all__ = [
     "OpenAIAdapter",
+    "OpenAIChatCompletionRequest",
+    "OpenAIChatCompletionResponse",
     "map_openai_model_to_claude",
     "OPENAI_TO_CLAUDE_MODEL_MAPPING",
 ]

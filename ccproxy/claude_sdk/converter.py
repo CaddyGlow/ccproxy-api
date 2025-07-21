@@ -8,6 +8,7 @@ import structlog
 
 from ccproxy.core.async_utils import patched_typing
 
+
 logger = structlog.get_logger(__name__)
 
 with patched_typing():
@@ -91,14 +92,12 @@ class MessageConverter:
             escaped_content = escape(result_content)
             return f'<toolresultblock tool_use_id="{tool_use_id}">{escaped_content}</toolresultblock>'
 
-        return "<error>Unknown content type</error>"
-
     @staticmethod
     def extract_contents(
         contents: list[TextBlock | ToolUseBlock | ToolResultBlock],
     ) -> str:
         """
-        Extract content from Claude SDK blocks, preserving thinking blocks.
+        Extract content from Claude SDK blocks, preserving custom blocks.
 
         Args:
             content: List of content blocks from Claude SDK

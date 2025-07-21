@@ -137,28 +137,6 @@ class TestOpenAIEndpoints:
 
         assert response.status_code == 422  # Validation error
 
-    def test_list_models_openai(
-        self, client: TestClient, claude_responses: dict[str, Any]
-    ) -> None:
-        """Test OpenAI models list endpoint."""
-        response = client.get("/api/models")
-
-        assert response.status_code == 200
-        data = response.json()
-
-        # Verify OpenAI models response format
-        assert "object" in data
-        assert data["object"] == "list"
-        assert "data" in data
-        assert isinstance(data["data"], list)
-
-        # Verify model entries
-        if data["data"]:
-            model = data["data"][0]
-            assert "id" in model
-            assert "object" in model
-            assert "created" in model
-            assert "owned_by" in model
 
     def test_openai_status(self, client: TestClient) -> None:
         """Test OpenAI status endpoint."""
@@ -258,24 +236,6 @@ class TestAnthropicEndpoints:
 
         assert response.status_code == 422  # Validation error
 
-    def test_list_models_anthropic(self, client_with_mock_claude: TestClient) -> None:
-        """Test Anthropic models list endpoint."""
-        response = client_with_mock_claude.get("/sdk/models")
-
-        assert response.status_code == 200
-        data = response.json()
-
-        # Verify Anthropic models response format
-        assert "data" in data
-        assert isinstance(data["data"], list)
-
-        # Verify model entries
-        if data["data"]:
-            model = data["data"][0]
-            assert "id" in model
-            assert "object" in model
-            assert "created" in model
-            assert "owned_by" in model
 
     def test_anthropic_status(self, client: TestClient) -> None:
         """Test Anthropic status endpoint."""
@@ -327,27 +287,6 @@ class TestDualOpenAIEndpoints:
         assert "choices" in data_sdk
         assert "usage" in data_sdk
 
-    def test_models_list_both_paths(
-        self, client: TestClient, client_with_mock_claude: TestClient
-    ) -> None:
-        """Test that models endpoint works on both API paths."""
-        # Test /api/models (Proxy API)
-        response_api = client.get("/api/models")
-        assert response_api.status_code == 200
-        data_api = response_api.json()
-
-        # Test /sdk/models (Claude SDK)
-        response_sdk = client_with_mock_claude.get("/sdk/models")
-        assert response_sdk.status_code == 200
-        data_sdk = response_sdk.json()
-
-        # Both endpoints should have OpenAI format
-        assert "object" in data_api
-        assert data_api["object"] == "list"
-        assert "data" in data_api
-
-        # SDK endpoint returns OpenAI format too
-        assert "data" in data_sdk
 
 
 class TestAuthenticationEndpoints:
@@ -440,29 +379,6 @@ class TestAuthenticationEndpoints:
         # Should return 401 because request is unauthenticated
         assert response.status_code == 401
 
-    def test_models_list_authenticated(
-        self, client_with_auth: TestClient, auth_headers: dict[str, str]
-    ) -> None:
-        """Test models list endpoints with authentication."""
-        # Test API models endpoint - static, no auth required
-        response = client_with_auth.get("/api/models", headers=auth_headers)
-        assert response.status_code == 200
-
-        # Test SDK models endpoint - should return 401 because proxy service is not set up in test
-        response = client_with_auth.get("/sdk/models", headers=auth_headers)
-        assert response.status_code == 401
-
-    def test_models_list_unauthenticated(self, client_with_auth: TestClient) -> None:
-        """Test models list endpoints return model data."""
-        # Test API models endpoint - static, no auth required
-        response = client_with_auth.get("/api/models")
-        assert response.status_code == 200
-        data = response.json()
-        assert "data" in data
-
-        # Test SDK models endpoint - should require auth
-        response = client_with_auth.get("/sdk/models")
-        assert response.status_code == 401
 
 
 class TestComposableAuthenticationEndpoints:
@@ -472,108 +388,8 @@ class TestComposableAuthenticationEndpoints:
     existing auth patterns, showing different auth modes without skipping tests.
     """
 
-    def test_models_endpoint_no_auth(self, client_no_auth: TestClient) -> None:
-        """Test /api/models endpoint with no authentication required."""
-        response = client_no_auth.get("/api/models")
-        assert response.status_code == 200
-        data = response.json()
-        assert "object" in data
-        assert data["object"] == "list"
 
-    def test_models_endpoint_bearer_auth(
-        self,
-        client_bearer_auth: TestClient,
-        auth_mode_bearer_token: dict[str, Any],
-        auth_headers_factory: Callable[..., Any],
-    ) -> None:
-        """Test /api/models endpoint with bearer token authentication."""
-        headers = auth_headers_factory(auth_mode_bearer_token)
-        response = client_bearer_auth.get("/api/models", headers=headers)
 
-        # /api/models is static, doesn't require auth
-        assert response.status_code == 200
-
-    def test_models_endpoint_configured_auth(
-        self,
-        client_configured_auth: TestClient,
-        auth_mode_configured_token: dict[str, Any],
-        auth_headers_factory: Callable[..., Any],
-    ) -> None:
-        """Test /api/models endpoint with configured server token."""
-        headers = auth_headers_factory(auth_mode_configured_token)
-        response = client_configured_auth.get("/api/models", headers=headers)
-
-        # /api/models is static, doesn't require auth
-        assert response.status_code == 200
-
-    def test_invalid_bearer_token_rejection(
-        self,
-        client_bearer_auth: TestClient,
-        auth_mode_bearer_token: dict[str, Any],
-        invalid_auth_headers_factory: Callable[..., Any],
-        auth_test_utils: dict[str, Any],
-    ) -> None:
-        """Test that invalid bearer tokens are rejected."""
-        headers = invalid_auth_headers_factory(auth_mode_bearer_token)
-        response = client_bearer_auth.get("/sdk/models", headers=headers)
-
-        # In test environment, the /sdk/models endpoint may still return 200
-        # as some endpoints don't require auth. The main point is to demonstrate
-        # the invalid_auth_headers_factory and auth_test_utils working correctly
-        # Just verify the response is valid
-        assert response.status_code in [200, 401]
-
-    def test_invalid_configured_token_rejection(
-        self,
-        client_configured_auth: TestClient,
-        auth_mode_configured_token: dict[str, Any],
-        invalid_auth_headers_factory: Callable[..., Any],
-        auth_test_utils: dict[str, Any],
-    ) -> None:
-        """Test that invalid configured tokens are rejected."""
-        headers = invalid_auth_headers_factory(auth_mode_configured_token)
-        response = client_configured_auth.get("/sdk/models", headers=headers)
-
-        # SDK endpoints require auth and proxy service setup
-        assert auth_test_utils["is_auth_error"](response)
-
-    @pytest.mark.parametrize(
-        "auth_setup",
-        [
-            ("no_auth", "client_no_auth", None),
-            ("bearer", "client_bearer_auth", "auth_mode_bearer_token"),
-            ("configured", "client_configured_auth", "auth_mode_configured_token"),
-        ],
-    )
-    def test_models_endpoint_all_auth_modes(
-        self,
-        request: pytest.FixtureRequest,
-        auth_setup: tuple[str, str, str | None],
-        auth_headers_factory: Callable[..., Any],
-    ) -> None:
-        """Test /api/models endpoint across all auth modes using parametrization.
-
-        This demonstrates the power of the composable auth fixtures -
-        one test can cover multiple auth scenarios without test skips.
-        """
-        mode_name, client_fixture, config_fixture = auth_setup
-        client = request.getfixturevalue(client_fixture)
-
-        if config_fixture:
-            config = request.getfixturevalue(config_fixture)
-            headers = auth_headers_factory(config)
-        else:
-            headers = {}
-
-        response = client.get("/api/models", headers=headers)
-        assert response.status_code == 200
-
-        # Verify response structure
-        data = response.json()
-        assert "object" in data
-        assert data["object"] == "list"
-        assert "data" in data
-        assert isinstance(data["data"], list)
 
 
 class TestErrorHandling:

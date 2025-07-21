@@ -125,17 +125,17 @@ The proxy exposes endpoints under two prefixes, corresponding to its operating m
 
 CCProxy supports recent Claude models including Opus, Sonnet, and Haiku variants. The specific models available to you will depend on your Claude account and the features enabled for your subscription.
 
- * `claude-opus-4-20250514` 
+ * `claude-opus-4-20250514`
  * `claude-sonnet-4-20250514`
  * `claude-3-7-sonnet-20250219`
- * `claude-3-5-sonnet-20241022` 
- * `claude-3-5-sonnet-20240620` 
+ * `claude-3-5-sonnet-20241022`
+ * `claude-3-5-sonnet-20240620`
 
 ## Configuration
 
 Settings can be configured through (in order of precedence):
 1. Command-line arguments
-2. Environment variables 
+2. Environment variables
 3. `.env` file
 4. TOML configuration files (`.ccproxy.toml`, `ccproxy.toml`, or `~/.config/ccproxy/config.toml`)
 5. Default values

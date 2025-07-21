@@ -9,7 +9,7 @@ from typing import Any
 
 import structlog
 
-from ccproxy.models.types import StreamEventType, StreamingTokenMetrics, UsageData
+from ccproxy.models.types import StreamingTokenMetrics, UsageData
 from ccproxy.utils.cost_calculator import calculate_token_cost
 
 
