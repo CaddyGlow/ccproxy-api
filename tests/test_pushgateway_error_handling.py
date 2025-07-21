@@ -237,9 +237,9 @@ class TestIntegration:
     async def test_scheduler_with_failing_pushgateway(
         self, settings: ObservabilitySettings
     ) -> None:
-        """Test unified scheduler behavior with failing pushgateway."""
+        """Test scheduler behavior with failing pushgateway."""
         from ccproxy.config.scheduler import SchedulerSettings
-        from ccproxy.scheduler import PushgatewayTask, UnifiedScheduler
+        from ccproxy.scheduler import PushgatewayTask, Scheduler
         from ccproxy.scheduler.registry import register_task
 
         # Create scheduler settings that enable pushgateway with fast interval
@@ -248,7 +248,7 @@ class TestIntegration:
             pushgateway_interval_seconds=1.0,  # Fast interval for testing (min 1.0)
         )
 
-        scheduler = UnifiedScheduler(
+        scheduler = Scheduler(
             max_concurrent_tasks=5,
             graceful_shutdown_timeout=1.0,
         )
@@ -289,7 +289,7 @@ class TestIntegration:
     def test_circuit_breaker_and_scheduler_integration(
         self, settings: ObservabilitySettings
     ) -> None:
-        """Test circuit breaker integration with unified scheduler."""
+        """Test circuit breaker integration with scheduler."""
         from ccproxy.scheduler import PushgatewayTask
 
         client = PushgatewayClient(settings)

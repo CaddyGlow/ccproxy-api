@@ -7,7 +7,7 @@ import structlog
 
 from ccproxy.config.settings import Settings
 
-from .core import UnifiedScheduler, get_scheduler
+from .core import Scheduler, get_scheduler
 from .registry import register_task
 from .tasks import PricingCacheUpdateTask, PushgatewayTask, StatsPrintingTask
 
@@ -15,14 +15,12 @@ from .tasks import PricingCacheUpdateTask, PushgatewayTask, StatsPrintingTask
 logger = structlog.get_logger(__name__)
 
 
-async def setup_scheduler_tasks(
-    scheduler: UnifiedScheduler, settings: Settings
-) -> None:
+async def setup_scheduler_tasks(scheduler: Scheduler, settings: Settings) -> None:
     """
     Setup and configure all scheduler tasks based on settings.
 
     Args:
-        scheduler: UnifiedScheduler instance
+        scheduler: Scheduler instance
         settings: Application settings
     """
     scheduler_config = settings.scheduler
@@ -113,26 +111,26 @@ def _register_default_tasks() -> None:
         register_task("pricing_cache_update", PricingCacheUpdateTask)
 
 
-async def start_unified_scheduler(settings: Settings) -> UnifiedScheduler | None:
+async def start_scheduler(settings: Settings) -> Scheduler | None:
     """
-    Start the unified scheduler with configured tasks.
+    Start the scheduler with configured tasks.
 
     Args:
         settings: Application settings
 
     Returns:
-        UnifiedScheduler instance if successful, None otherwise
+        Scheduler instance if successful, None otherwise
     """
     try:
         if not settings.scheduler.enabled:
-            logger.info("unified_scheduler_disabled")
+            logger.info("scheduler_disabled")
             return None
 
         # Register task types (only when actually starting scheduler)
         _register_default_tasks()
 
         # Create scheduler with settings
-        scheduler = UnifiedScheduler(
+        scheduler = Scheduler(
             max_concurrent_tasks=settings.scheduler.max_concurrent_tasks,
             graceful_shutdown_timeout=settings.scheduler.graceful_shutdown_timeout,
         )
@@ -144,7 +142,7 @@ async def start_unified_scheduler(settings: Settings) -> UnifiedScheduler | None
         await setup_scheduler_tasks(scheduler, settings)
 
         logger.info(
-            "unified_scheduler_started",
+            "scheduler_started",
             max_concurrent_tasks=settings.scheduler.max_concurrent_tasks,
             active_tasks=scheduler.task_count,
             running_tasks=len(
@@ -160,29 +158,29 @@ async def start_unified_scheduler(settings: Settings) -> UnifiedScheduler | None
 
     except Exception as e:
         logger.error(
-            "unified_scheduler_start_failed",
+            "scheduler_start_failed",
             error=str(e),
             error_type=type(e).__name__,
         )
         return None
 
 
-async def stop_unified_scheduler(scheduler: UnifiedScheduler | None) -> None:
+async def stop_scheduler(scheduler: Scheduler | None) -> None:
     """
-    Stop the unified scheduler gracefully.
+    Stop the scheduler gracefully.
 
     Args:
-        scheduler: UnifiedScheduler instance to stop
+        scheduler: Scheduler instance to stop
     """
     if scheduler is None:
         return
 
     try:
         await scheduler.stop()
-        logger.info("unified_scheduler_stopped")
+        logger.info("scheduler_stopped")
     except Exception as e:
         logger.error(
-            "unified_scheduler_stop_failed",
+            "scheduler_stop_failed",
             error=str(e),
             error_type=type(e).__name__,
         )

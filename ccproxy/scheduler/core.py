@@ -1,4 +1,4 @@
-"""Core unified scheduler for managing periodic tasks."""
+"""Core scheduler for managing periodic tasks."""
 
 import asyncio
 from typing import Any
@@ -18,9 +18,9 @@ from .tasks import BaseScheduledTask
 logger = structlog.get_logger(__name__)
 
 
-class UnifiedScheduler:
+class Scheduler:
     """
-    Unified scheduler for managing multiple periodic tasks.
+    Scheduler for managing multiple periodic tasks.
 
     Provides centralized management of scheduled tasks with:
     - Dynamic task registration and configuration
@@ -36,7 +36,7 @@ class UnifiedScheduler:
         task_registry: TaskRegistry | None = None,
     ):
         """
-        Initialize the unified scheduler.
+        Initialize the scheduler.
 
         Args:
             max_concurrent_tasks: Maximum number of tasks to run concurrently
@@ -302,20 +302,20 @@ class UnifiedScheduler:
 
 
 # Global scheduler instance
-_global_scheduler: UnifiedScheduler | None = None
+_global_scheduler: Scheduler | None = None
 
 
-async def get_scheduler() -> UnifiedScheduler:
+async def get_scheduler() -> Scheduler:
     """
     Get or create the global scheduler instance.
 
     Returns:
-        Global UnifiedScheduler instance
+        Global Scheduler instance
     """
     global _global_scheduler
 
     if _global_scheduler is None:
-        _global_scheduler = UnifiedScheduler()
+        _global_scheduler = Scheduler()
 
     return _global_scheduler
 

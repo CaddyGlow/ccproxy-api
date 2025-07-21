@@ -27,7 +27,7 @@ from ccproxy.auth.oauth.routes import router as oauth_router
 from ccproxy.config.settings import Settings, get_settings
 from ccproxy.core.logging import setup_logging
 from ccproxy.observability.storage.duckdb_simple import SimpleDuckDBStorage
-from ccproxy.scheduler.manager import start_unified_scheduler, stop_unified_scheduler
+from ccproxy.scheduler.manager import start_scheduler, stop_scheduler
 
 
 logger = get_logger(__name__)
@@ -58,13 +58,13 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             "claude_cli_search_paths", paths=settings.claude.get_searched_paths()
         )
 
-    # Start unified scheduler system
+    # Start scheduler system
     try:
-        scheduler = await start_unified_scheduler(settings)
-        app.state.unified_scheduler = scheduler
-        logger.debug("unified_scheduler_initialized")
+        scheduler = await start_scheduler(settings)
+        app.state.scheduler = scheduler
+        logger.debug("scheduler_initialized")
     except Exception as e:
-        logger.error("unified_scheduler_initialization_failed", error=str(e))
+        logger.error("scheduler_initialization_failed", error=str(e))
         # Continue startup even if scheduler fails (graceful degradation)
 
     # Initialize log storage if needed and backend is duckdb
@@ -93,13 +93,13 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Shutdown
     logger.debug("server_stop")
 
-    # Stop unified scheduler system
+    # Stop scheduler system
     try:
-        scheduler = getattr(app.state, "unified_scheduler", None)
-        await stop_unified_scheduler(scheduler)
-        logger.debug("unified_scheduler_stopped")
+        scheduler = getattr(app.state, "scheduler", None)
+        await stop_scheduler(scheduler)
+        logger.debug("scheduler_stopped")
     except Exception as e:
-        logger.error("unified_scheduler_stop_failed", error=str(e))
+        logger.error("scheduler_stop_failed", error=str(e))
 
     # Close log storage if initialized
     if hasattr(app.state, "log_storage") and app.state.log_storage:

@@ -1,4 +1,4 @@
-"""Integration tests for the unified scheduler system."""
+"""Integration tests for the scheduler system."""
 
 import asyncio
 from collections.abc import Generator
@@ -11,13 +11,13 @@ from fastapi.testclient import TestClient
 
 from ccproxy.config.scheduler import SchedulerSettings
 from ccproxy.config.settings import Settings
-from ccproxy.scheduler.core import UnifiedScheduler
+from ccproxy.scheduler.core import Scheduler
 from ccproxy.scheduler.exceptions import (
     SchedulerError,
     TaskNotFoundError,
     TaskRegistrationError,
 )
-from ccproxy.scheduler.manager import start_unified_scheduler, stop_unified_scheduler
+from ccproxy.scheduler.manager import start_scheduler, stop_scheduler
 from ccproxy.scheduler.registry import TaskRegistry, get_task_registry
 from ccproxy.scheduler.tasks import (
     BaseScheduledTask,
@@ -27,11 +27,11 @@ from ccproxy.scheduler.tasks import (
 )
 
 
-class TestUnifiedSchedulerCore:
-    """Test the core UnifiedScheduler functionality."""
+class TestSchedulerCore:
+    """Test the core Scheduler functionality."""
 
     @pytest.fixture
-    def scheduler(self) -> Generator[UnifiedScheduler, None, None]:
+    def scheduler(self) -> Generator[Scheduler, None, None]:
         """Create a test scheduler instance."""
         # Register tasks before creating scheduler
         from ccproxy.scheduler.tasks import (
@@ -48,7 +48,7 @@ class TestUnifiedSchedulerCore:
         registry.register("stats_printing", StatsPrintingTask)
         registry.register("pricing_cache_update", PricingCacheUpdateTask)
 
-        scheduler = UnifiedScheduler(
+        scheduler = Scheduler(
             max_concurrent_tasks=5,
             graceful_shutdown_timeout=1.0,
         )
@@ -58,7 +58,7 @@ class TestUnifiedSchedulerCore:
         registry.clear()
 
     @pytest.mark.asyncio
-    async def test_scheduler_lifecycle(self, scheduler: UnifiedScheduler) -> None:
+    async def test_scheduler_lifecycle(self, scheduler: Scheduler) -> None:
         """Test scheduler start and stop lifecycle."""
         assert not scheduler.is_running
 
@@ -69,7 +69,7 @@ class TestUnifiedSchedulerCore:
         assert not scheduler.is_running
 
     @pytest.mark.asyncio
-    async def test_add_task_success(self, scheduler: UnifiedScheduler) -> None:
+    async def test_add_task_success(self, scheduler: Scheduler) -> None:
         """Test successful task addition."""
         await scheduler.start()
 
@@ -85,7 +85,7 @@ class TestUnifiedSchedulerCore:
         await scheduler.stop()
 
     @pytest.mark.asyncio
-    async def test_add_task_invalid_type(self, scheduler: UnifiedScheduler) -> None:
+    async def test_add_task_invalid_type(self, scheduler: Scheduler) -> None:
         """Test adding task with invalid type raises error."""
         await scheduler.start()
 
@@ -100,7 +100,7 @@ class TestUnifiedSchedulerCore:
         await scheduler.stop()
 
     @pytest.mark.asyncio
-    async def test_remove_task_success(self, scheduler: UnifiedScheduler) -> None:
+    async def test_remove_task_success(self, scheduler: Scheduler) -> None:
         """Test successful task removal."""
         await scheduler.start()
 
@@ -122,7 +122,7 @@ class TestUnifiedSchedulerCore:
         await scheduler.stop()
 
     @pytest.mark.asyncio
-    async def test_remove_nonexistent_task(self, scheduler: UnifiedScheduler) -> None:
+    async def test_remove_nonexistent_task(self, scheduler: Scheduler) -> None:
         """Test removing non-existent task raises error."""
         await scheduler.start()
 
@@ -132,7 +132,7 @@ class TestUnifiedSchedulerCore:
         await scheduler.stop()
 
     @pytest.mark.asyncio
-    async def test_get_task_info(self, scheduler: UnifiedScheduler) -> None:
+    async def test_get_task_info(self, scheduler: Scheduler) -> None:
         """Test getting task information."""
         await scheduler.start()
 
@@ -152,7 +152,7 @@ class TestUnifiedSchedulerCore:
         await scheduler.stop()
 
     @pytest.mark.asyncio
-    async def test_get_scheduler_status(self, scheduler: UnifiedScheduler) -> None:
+    async def test_get_scheduler_status(self, scheduler: Scheduler) -> None:
         """Test getting scheduler status information."""
         await scheduler.start()
 
@@ -452,33 +452,33 @@ class TestSchedulerManagerIntegration:
         registry.clear()
 
     @pytest.mark.asyncio
-    async def test_start_unified_scheduler_success(self) -> None:
+    async def test_start_scheduler_success(self) -> None:
         """Test successful scheduler startup."""
         settings = Settings()
         settings.scheduler.enabled = True
         settings.scheduler.max_concurrent_tasks = 3
         settings.scheduler.graceful_shutdown_timeout = 5.0
 
-        scheduler = await start_unified_scheduler(settings)
+        scheduler = await start_scheduler(settings)
         assert scheduler is not None
         assert scheduler.is_running
 
-        await stop_unified_scheduler(scheduler)
+        await stop_scheduler(scheduler)
 
     @pytest.mark.asyncio
-    async def test_start_unified_scheduler_disabled(self) -> None:
+    async def test_start_scheduler_disabled(self) -> None:
         """Test scheduler startup when disabled."""
         settings = Settings()
         settings.scheduler.enabled = False
 
-        scheduler = await start_unified_scheduler(settings)
+        scheduler = await start_scheduler(settings)
         assert scheduler is None
 
     @pytest.mark.asyncio
-    async def test_stop_unified_scheduler_none(self) -> None:
+    async def test_stop_scheduler_none(self) -> None:
         """Test stopping None scheduler (graceful handling)."""
         # Should not raise any exceptions
-        await stop_unified_scheduler(None)
+        await stop_scheduler(None)
 
     @pytest.mark.asyncio
     async def test_scheduler_with_tasks_configured(self) -> None:
@@ -498,7 +498,7 @@ class TestSchedulerManagerIntegration:
             patch("ccproxy.observability.stats_printer.get_stats_collector"),
             patch("ccproxy.pricing.updater.PricingUpdater"),
         ):
-            scheduler = await start_unified_scheduler(settings)
+            scheduler = await start_scheduler(settings)
             assert scheduler is not None
             assert scheduler.is_running
 
@@ -509,7 +509,7 @@ class TestSchedulerManagerIntegration:
             assert "pricing_cache_update" in task_names
             assert scheduler.task_count == 3
 
-            await stop_unified_scheduler(scheduler)
+            await stop_scheduler(scheduler)
 
 
 class TestSchedulerFastAPIIntegration:
@@ -552,7 +552,7 @@ class TestSchedulerFastAPIIntegration:
             assert response.status_code == 200
 
             # Check that scheduler was initialized (would be in app.state)
-            # Note: In a real test environment, we'd need to check app.state.unified_scheduler
+            # Note: In a real test environment, we'd need to check app.state.scheduler
             # but TestClient context manager handles lifespan events
 
     def test_scheduler_disabled_app_still_works(self) -> None:
@@ -598,7 +598,7 @@ class TestSchedulerErrorScenarios:
     @pytest.mark.asyncio
     async def test_scheduler_task_failure_recovery(self) -> None:
         """Test scheduler handles task failures gracefully."""
-        scheduler = UnifiedScheduler(max_concurrent_tasks=2)
+        scheduler = Scheduler(max_concurrent_tasks=2)
         await scheduler.start()
 
         with patch("ccproxy.observability.metrics.get_metrics") as mock_get_metrics:
@@ -630,7 +630,7 @@ class TestSchedulerErrorScenarios:
     @pytest.mark.asyncio
     async def test_scheduler_concurrent_task_limit(self) -> None:
         """Test scheduler respects concurrent task limits."""
-        scheduler = UnifiedScheduler(max_concurrent_tasks=1)
+        scheduler = Scheduler(max_concurrent_tasks=1)
         await scheduler.start()
 
         # Add first task
@@ -656,7 +656,7 @@ class TestSchedulerErrorScenarios:
     @pytest.mark.asyncio
     async def test_scheduler_graceful_shutdown_timeout(self) -> None:
         """Test scheduler graceful shutdown with timeout."""
-        scheduler = UnifiedScheduler(
+        scheduler = Scheduler(
             max_concurrent_tasks=2,
             graceful_shutdown_timeout=0.1,  # Very short timeout for testing
         )
