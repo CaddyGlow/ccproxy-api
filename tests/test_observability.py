@@ -797,10 +797,9 @@ class TestPushgatewayDependencyInjection:
 class TestPushgatewayRemoteWrite:
     """Test remote write protocol for VictoriaMetrics."""
 
-    @patch("requests.post")
     @patch("prometheus_client.exposition.generate_latest")
     def test_remote_write_success(
-        self, mock_generate_latest: Any, mock_post: Any
+        self, mock_generate_latest: Any, httpx_mock: HTTPXMock
     ) -> None:
         """Test successful remote write push."""
         from unittest.mock import Mock
@@ -809,9 +808,9 @@ class TestPushgatewayRemoteWrite:
         from ccproxy.observability.pushgateway import PushgatewayClient
 
         # Configure mock response
-        mock_response = Mock()
-        mock_response.status_code = 200
-        mock_post.return_value = mock_response
+        httpx_mock.add_response(
+            url="http://victoriametrics:8428/api/v1/import/prometheus", status_code=200
+        )
 
         # Mock prometheus metrics generation
         mock_generate_latest.return_value = (
@@ -830,18 +829,15 @@ class TestPushgatewayRemoteWrite:
             result = client.push_metrics(mock_registry)
 
             assert result is True
-            mock_post.assert_called_once()
-            call_args = mock_post.call_args
-            assert (
-                call_args[0][0]
-                == "http://victoriametrics:8428/api/v1/import/prometheus"
-            )
-            assert (
-                call_args[1]["headers"]["Content-Type"] == "text/plain; charset=utf-8"
-            )
+            request = httpx_mock.get_request()
+            assert request is not None
+            assert request.url == "http://victoriametrics:8428/api/v1/import/prometheus"
+            assert request.headers["content-type"] == "text/plain; charset=utf-8"
 
-    @patch("requests.post")
-    def test_remote_write_failure(self, mock_post: Any) -> None:
+    @patch("prometheus_client.exposition.generate_latest")
+    def test_remote_write_failure(
+        self, mock_generate_latest: Any, httpx_mock: HTTPXMock
+    ) -> None:
         """Test failed remote write push."""
         from unittest.mock import Mock
 
@@ -849,10 +845,16 @@ class TestPushgatewayRemoteWrite:
         from ccproxy.observability.pushgateway import PushgatewayClient
 
         # Configure mock response
-        mock_response = Mock()
-        mock_response.status_code = 400
-        mock_response.text = "Bad Request"
-        mock_post.return_value = mock_response
+        httpx_mock.add_response(
+            url="http://victoriametrics:8428/api/v1/import/prometheus",
+            status_code=400,
+            text="Bad Request",
+        )
+
+        # Mock prometheus metrics generation
+        mock_generate_latest.return_value = (
+            b"# HELP test_metric Test metric\ntest_metric 1.0\n"
+        )
 
         settings = ObservabilitySettings(
             pushgateway_url="http://victoriametrics:8428/api/v1/write",

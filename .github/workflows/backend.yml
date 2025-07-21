@@ -2,23 +2,23 @@ name: Backend CI
 
 on:
   push:
-    branches: [ main, dev ]
+    branches: [main, dev]
     paths:
-      - 'ccproxy/**'
-      - 'tests/**'
-      - 'pyproject.toml'
-      - 'uv.lock'
-      - 'Makefile'
-      - '.github/workflows/backend.yml'
+      - "ccproxy/**"
+      - "tests/**"
+      - "pyproject.toml"
+      - "uv.lock"
+      - "Makefile"
+      - ".github/workflows/backend.yml"
   pull_request:
-    branches: [ main, dev ]
+    branches: [main, dev]
     paths:
-      - 'ccproxy/**'
-      - 'tests/**'
-      - 'pyproject.toml'
-      - 'uv.lock'
-      - 'Makefile'
-      - '.github/workflows/backend.yml'
+      - "ccproxy/**"
+      - "tests/**"
+      - "pyproject.toml"
+      - "uv.lock"
+      - "Makefile"
+      - ".github/workflows/backend.yml"
   workflow_dispatch:
 
 jobs:
@@ -59,7 +59,7 @@ jobs:
 
     strategy:
       matrix:
-        python-version: ["3.10", "3.11", "3.12"]
+        python-version: ["3.11", "3.12"]
 
     steps:
       - name: Checkout code

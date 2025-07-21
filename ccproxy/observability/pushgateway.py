@@ -224,7 +224,7 @@ class PushgatewayClient:
         via the /api/v1/import/prometheus endpoint, which is simpler than
         the full remote write protocol that requires protobuf encoding.
         """
-        import requests  # type: ignore[import-untyped]
+        import httpx
         from prometheus_client.exposition import generate_latest
 
         if not self.settings.pushgateway_url:
@@ -243,32 +243,41 @@ class PushgatewayClient:
             # Fallback - assume it's already the correct import URL
             import_url = self.settings.pushgateway_url
 
-        # VictoriaMetrics import endpoint accepts text/plain exposition format
-        response = requests.post(
-            import_url,
-            data=metrics_data,
-            headers={
-                "Content-Type": "text/plain; charset=utf-8",
-                "User-Agent": "ccproxy-pushgateway-client/1.0",
-            },
-            timeout=30,
-        )
-
-        if response.status_code in (200, 204):
-            logger.debug(
-                "pushgateway_import_success",
-                url=import_url,
-                job=self.settings.pushgateway_job,
-                protocol="victoriametrics_import",
-                status=response.status_code,
+        try:
+            # VictoriaMetrics import endpoint accepts text/plain exposition format
+            response = httpx.post(
+                import_url,
+                content=metrics_data,
+                headers={
+                    "Content-Type": "text/plain; charset=utf-8",
+                    "User-Agent": "ccproxy-pushgateway-client/1.0",
+                },
+                timeout=30,
             )
-            return True
-        else:
+
+            if response.status_code in (200, 204):
+                logger.debug(
+                    "pushgateway_import_success",
+                    url=import_url,
+                    job=self.settings.pushgateway_job,
+                    protocol="victoriametrics_import",
+                    status=response.status_code,
+                )
+                return True
+            else:
+                logger.error(
+                    "pushgateway_import_failed",
+                    url=import_url,
+                    status=response.status_code,
+                    response=response.text[:500] if response.text else "empty",
+                )
+                return False
+        except httpx.RequestError as e:
             logger.error(
-                "pushgateway_import_failed",
+                "pushgateway_import_request_error",
                 url=import_url,
-                status=response.status_code,
-                response=response.text[:500] if response.text else "empty",
+                error=str(e),
+                error_type=type(e).__name__,
             )
             return False
 

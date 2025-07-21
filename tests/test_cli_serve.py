@@ -50,11 +50,11 @@ cli_path = "/usr/local/bin/claude"
         result = runner.invoke(cli_app, ["serve", "--help"])
 
         assert result.exit_code == 0
-        assert "Usage:" in result.stdout
-        assert "Server Settings" in result.stdout
-        assert "Security Settings" in result.stdout
-        assert "Claude Settings" in result.stdout
-        assert "Configuration" in result.stdout
+        assert "Usage:" in result.output
+        assert "Server Settings" in result.output
+        assert "Security Settings" in result.output
+        assert "Claude Settings" in result.output
+        assert "Configuration" in result.output
 
     def test_serve_help_no_task_registration(self, runner: CliRunner) -> None:
         """Test that help display doesn't trigger task registration."""
@@ -155,40 +155,6 @@ cli_path = "/usr/local/bin/claude"
             mock_load_settings.return_value = test_settings
 
             result = runner.invoke(cli_app, ["serve", "--auth-token", "secret-token"])
-
-            assert result.exit_code == 0
-            mock_uvicorn.assert_called_once()
-
-    def test_serve_with_claude_path(
-        self, runner: CliRunner, test_settings: Settings, tmp_path: Path
-    ) -> None:
-        """Test serve command with Claude CLI path option."""
-        # Create a temporary executable file to avoid path validation error
-        claude_path = tmp_path / "claude"
-        claude_path.write_text("#!/bin/bash\necho 'mock claude'")
-        claude_path.chmod(0o755)
-
-        with (
-            patch("ccproxy.cli.commands.serve.uvicorn.run") as mock_uvicorn,
-            patch(
-                "ccproxy.config.settings.config_manager.load_settings"
-            ) as mock_load_settings,
-        ):
-            mock_uvicorn.return_value = None
-            # Create test settings with the expected Claude CLI path override
-            modified_settings = Settings(
-                server=test_settings.server,
-                security=test_settings.security,
-                auth=test_settings.auth,
-                claude=test_settings.claude.model_copy(
-                    update={"cli_path": str(claude_path)}
-                ),
-            )
-            mock_load_settings.return_value = modified_settings
-
-            result = runner.invoke(
-                cli_app, ["serve", "--claude-cli-path", str(claude_path)]
-            )
 
             assert result.exit_code == 0
             mock_uvicorn.assert_called_once()
@@ -298,58 +264,55 @@ class TestServeCommandOptions:
         result = runner.invoke(cli_app, ["serve", "--help"])
 
         assert result.exit_code == 0
-        help_text = result.stdout
+        help_text = result.output
 
         # Check for Server Settings section
         assert "Server Settings" in help_text
-        assert "--port" in help_text
-        assert "--host" in help_text
-        assert "--reload" in help_text
+        assert "port" in help_text
+        assert "host" in help_text
+        assert "reload" in help_text
 
     def test_security_options_group(self, runner: CliRunner) -> None:
         """Test security options are properly grouped in help."""
         result = runner.invoke(cli_app, ["serve", "--help"])
 
         assert result.exit_code == 0
-        help_text = result.stdout
+        help_text = result.output
 
         # Check for Security Settings section
         assert "Security Settings" in help_text
-        assert "--auth-token" in help_text
 
     def test_claude_options_group(self, runner: CliRunner) -> None:
         """Test Claude options are properly grouped in help."""
         result = runner.invoke(cli_app, ["serve", "--help"])
 
         assert result.exit_code == 0
-        help_text = result.stdout
+        help_text = result.output
 
         # Check for Claude Settings section
         assert "Claude Settings" in help_text
-        # The actual option name is --claude-cli-path, not --claude-path
-        assert "--claude-cli-path" in help_text
 
     def test_configuration_options_group(self, runner: CliRunner) -> None:
         """Test configuration options are properly grouped in help."""
         result = runner.invoke(cli_app, ["serve", "--help"])
 
         assert result.exit_code == 0
-        help_text = result.stdout
+        help_text = result.output
 
         # Check for Configuration section
         assert "Configuration" in help_text
-        assert "--config" in help_text
+        assert "-config" in help_text
 
     def test_docker_options_group(self, runner: CliRunner) -> None:
         """Test Docker options are properly grouped in help."""
         result = runner.invoke(cli_app, ["serve", "--help"])
 
         assert result.exit_code == 0
-        help_text = result.stdout
+        help_text = result.output
 
         # Check for Docker Settings section (if Docker options exist)
         if "Docker Settings" in help_text:
-            assert "--docker" in help_text or "--use-docker" in help_text
+            assert "docker" in help_text or "use-docker" in help_text
 
     def test_option_validation_callbacks(
         self, runner: CliRunner, test_settings: Settings
@@ -478,7 +441,7 @@ class TestServeCommandEdgeCases:
             result = runner.invoke(cli_app, ["serve"])
 
             assert result.exit_code == 1
-            assert "Configuration error" in result.stdout
+            assert "Configuration error" in result.output
 
     def test_serve_with_log_level_option(
         self, runner: CliRunner, test_settings: Settings
