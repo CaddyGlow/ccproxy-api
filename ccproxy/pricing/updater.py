@@ -150,9 +150,20 @@ class PricingUpdater:
             pricing_data = PricingLoader.load_pricing_from_data(raw_data, verbose=False)
 
             if pricing_data:
-                logger.info(
-                    "pricing_loaded_from_external", model_count=len(pricing_data)
-                )
+                # Get cache info to display age
+                cache_info = self.cache.get_cache_info()
+                age_hours = cache_info.get("age_hours")
+
+                if age_hours is not None:
+                    logger.info(
+                        "pricing_loaded_from_external",
+                        model_count=len(pricing_data),
+                        cache_age_hours=round(age_hours, 2),
+                    )
+                else:
+                    logger.info(
+                        "pricing_loaded_from_external", model_count=len(pricing_data)
+                    )
                 return pricing_data
             else:
                 logger.warning("external_pricing_validation_failed")
