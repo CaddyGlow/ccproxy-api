@@ -866,6 +866,42 @@ class OpenAIAdapter(APIAdapter):
 
         return mapping.get(stop_reason, "stop")
 
+    def adapt_error(self, error_body: dict[str, Any]) -> dict[str, Any]:
+        """Convert Anthropic error format to OpenAI error format.
+
+        Args:
+            error_body: Anthropic error response
+
+        Returns:
+            OpenAI-formatted error response
+        """
+        # Extract error details from Anthropic format
+        anthropic_error = error_body.get("error", {})
+        error_type = anthropic_error.get("type", "internal_server_error")
+        error_message = anthropic_error.get("message", "An error occurred")
+
+        # Map Anthropic error types to OpenAI error types
+        error_type_mapping = {
+            "invalid_request_error": "invalid_request_error",
+            "authentication_error": "invalid_request_error",
+            "permission_error": "invalid_request_error",
+            "not_found_error": "invalid_request_error",
+            "rate_limit_error": "rate_limit_error",
+            "internal_server_error": "internal_server_error",
+            "overloaded_error": "server_error",
+        }
+
+        openai_error_type = error_type_mapping.get(error_type, "invalid_request_error")
+
+        # Return OpenAI-formatted error
+        return {
+            "error": {
+                "message": error_message,
+                "type": openai_error_type,
+                "code": error_type,  # Preserve original error type as code
+            }
+        }
+
 
 __all__ = [
     "OpenAIAdapter",

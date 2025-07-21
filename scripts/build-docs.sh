@@ -6,10 +6,10 @@ set -e
 echo "Building Claude Code Proxy API documentation..."
 
 # Check if docs dependencies are installed
-if ! command -v mkdocs &>/dev/null; then
-  echo "Installing documentation dependencies..."
-  uv sync --group docs
-fi
+# if ! command -v mkdocs &>/dev/null; then
+#   echo "Installing documentation dependencies..."
+#   uv sync --group docs
+# fi
 
 # Clean previous build
 echo "Cleaning previous build..."

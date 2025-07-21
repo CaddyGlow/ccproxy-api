@@ -415,7 +415,7 @@ class ClaudeSDKService:
                 request_id=request_id,
                 exc_info=True,
             )
-            yield self.message_converter.create_streaming_end_chunk("error")
+            # Don't yield error chunk - let exception propagate for proper HTTP error response
             raise
 
     async def _validate_user_auth(self, user_id: str) -> None:

@@ -325,19 +325,35 @@ class ProxyService:
                 # 4. Response transformation
                 async with timed_operation("response_transform", ctx.request_id):
                     logger.debug("response_transform_start")
-                    # For error responses, skip transformation to preserve upstream error format
+                    # For error responses, transform to OpenAI format if needed
                     transformed_response: ResponseData
                     if status_code >= 400:
                         logger.info(
-                            "upstream_error_preserved",
+                            "upstream_error_received",
                             status_code=status_code,
                             has_body=bool(response_body),
                             content_length=len(response_body) if response_body else 0,
                         )
+
+                        # Transform error to OpenAI format if this is an OpenAI endpoint
+                        transformed_error_body = response_body
+                        if self.response_transformer._is_openai_request(path):
+                            try:
+                                error_data = json.loads(response_body.decode("utf-8"))
+                                openai_error = self.openai_adapter.adapt_error(
+                                    error_data
+                                )
+                                transformed_error_body = json.dumps(
+                                    openai_error
+                                ).encode("utf-8")
+                            except (json.JSONDecodeError, UnicodeDecodeError):
+                                # Keep original error if parsing fails
+                                pass
+
                         transformed_response = ResponseData(
                             status_code=status_code,
                             headers=response_headers,
-                            body=response_body,
+                            body=transformed_error_body,
                         )
                     else:
                         transformed_response = await self._transform_response(
@@ -742,7 +758,7 @@ class ProxyService:
         original_path: str,
         timeout: float,
         ctx: "RequestContext",
-    ) -> StreamingResponse:
+    ) -> StreamingResponse | tuple[int, dict[str, str], bytes]:
         """Handle streaming request with transformation.
 
         Args:
@@ -752,12 +768,79 @@ class ProxyService:
             ctx: Request context for observability
 
         Returns:
-            StreamingResponse
+            StreamingResponse or error response tuple
         """
         # Log the outgoing request if verbose API logging is enabled
         self._log_verbose_api_request(request_data)
 
-        # Store response headers to preserve for errors
+        # First, make the request and check for errors before streaming
+        proxy_url = self._proxy_url
+        verify = self._ssl_context
+
+        async with httpx.AsyncClient(
+            timeout=timeout, proxy=proxy_url, verify=verify
+        ) as client:
+            # Start the request to get headers
+            response = await client.send(
+                client.build_request(
+                    method=request_data["method"],
+                    url=request_data["url"],
+                    headers=request_data["headers"],
+                    content=request_data["body"],
+                ),
+                stream=True,
+            )
+
+            # Check for errors before starting to stream
+            if response.status_code >= 400:
+                error_content = await response.aread()
+
+                # Log the full error response body
+                self._log_verbose_api_response(
+                    response.status_code, dict(response.headers), error_content
+                )
+
+                logger.info(
+                    "streaming_error_received",
+                    status_code=response.status_code,
+                    error_detail=error_content.decode("utf-8", errors="replace"),
+                )
+
+                # Transform error to OpenAI format if this is an OpenAI endpoint
+                transformed_error_body = error_content
+                if self.response_transformer._is_openai_request(original_path):
+                    try:
+                        error_data = json.loads(error_content.decode("utf-8"))
+                        openai_error = self.openai_adapter.adapt_error(error_data)
+                        transformed_error_body = json.dumps(openai_error).encode(
+                            "utf-8"
+                        )
+                    except (json.JSONDecodeError, UnicodeDecodeError):
+                        # Keep original error if parsing fails
+                        pass
+
+                # Update context with error status
+                ctx.add_metadata(status_code=response.status_code)
+
+                # Log access log for error
+                from ccproxy.observability.access_logger import log_request_access
+
+                await log_request_access(
+                    context=ctx,
+                    status_code=response.status_code,
+                    method=request_data["method"],
+                    metrics=self.metrics,
+                )
+
+                # Return error as regular response
+                return (
+                    response.status_code,
+                    dict(response.headers),
+                    transformed_error_body,
+                )
+
+        # If no error, proceed with streaming
+        # Store response headers to preserve for streaming
         response_headers = {}
         response_status = 200
 
@@ -812,25 +895,6 @@ class ProxyService:
                     nonlocal response_status, response_headers
                     response_status = response.status_code
                     response_headers = dict(response.headers)
-
-                    # Check for errors
-                    if response.status_code >= 400:
-                        error_content = await response.aread()
-
-                        # Log the full error response body
-                        self._log_verbose_api_response(
-                            response.status_code, dict(response.headers), error_content
-                        )
-
-                        logger.info(
-                            "streaming_error_received",
-                            status_code=response.status_code,
-                            error_detail=error_content.decode(
-                                "utf-8", errors="replace"
-                            ),
-                        )
-                        yield error_content
-                        return
 
                     # Transform streaming response
                     is_openai = self.response_transformer._is_openai_request(
@@ -946,7 +1010,7 @@ class ProxyService:
 
             except Exception as e:
                 logger.exception("streaming_error", error=str(e), exc_info=True)
-                error_message = f'data: {{"error": "Streaming error: {str(e)}"}}\\n\\n'
+                error_message = f'data: {{"error": "Streaming error: {str(e)}"}}\n\n'
                 yield error_message.encode("utf-8")
 
         # Always use upstream headers as base
