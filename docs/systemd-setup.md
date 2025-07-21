@@ -12,10 +12,13 @@ Run the interactive setup script:
 
 The script will:
 - Detect your `uv` installation
-- Create a systemd user service
-- Configure environment variables
+- Ask for your working directory (defaults to a temp folder)
+- Automatically configure the service with UV_PROJECT pointing to the code
+- Include ~/.local/bin in PATH if it exists
 - Enable auto-start on login (optional)
 - Start the service immediately (optional)
+
+**Note:** The setup is now simplified - you only need to specify the working directory where the service will run. Everything else is configured automatically.
 
 ## Manual Setup
 
@@ -28,10 +31,10 @@ cp systemd/ccproxy.service.template ~/.config/systemd/user/ccproxy.service
 ```
 
 Edit `~/.config/systemd/user/ccproxy.service` and replace the placeholders:
-- `{{WORKING_DIR}}` - Project directory path
+- `{{WORKING_DIR}}` - Working directory where the service runs (can be any directory)
 - `{{UV_PATH}}` - Path to uv executable
-- `{{MAIN_PY_PATH}}` - Full path to main.py
-- `{{USER_PATH}}` - Your PATH environment variable
+- `{{UV_PROJECT}}` - Path to the Claude Code Proxy API project directory
+- `{{USER_PATH}}` - Your PATH environment variable (should include ~/.local/bin if it exists)
 - `{{USER_HOME}}` - Your home directory
 - `{{EXTRA_ENV}}` - Additional environment variables (optional)
 
@@ -85,14 +88,105 @@ The service can be configured using:
 2. `.ccproxy.toml` configuration file
 3. Command-line arguments in `ExecStart`
 
-Example with custom configuration:
+#### Environment Variable Configuration
+
+You can set environment variables directly in the service file using the `Environment=` directive:
 
 ```ini
 [Service]
+# Basic configuration
 Environment="PORT=8080"
+Environment="HOST=0.0.0.0"
 Environment="LOG_LEVEL=DEBUG"
-Environment="CCPROXY_CONFIG=/path/to/custom/config.toml"
+Environment="AUTH_TOKEN=your-secure-token"
+
+# Using nested syntax
+Environment="SERVER__PORT=8080"
+Environment="SERVER__LOG_LEVEL=INFO"
+Environment="SERVER__LOG_FORMAT=json"
+Environment="SECURITY__AUTH_TOKEN=your-secure-token"
+
+# Special environment variables
+Environment="CONFIG_FILE=/etc/ccproxy/config.toml"
+Environment="CCPROXY_VERBOSE_API=true"
+Environment="CCPROXY_JSON_LOGS=true"
+
+# Scheduler and pricing
+Environment="SCHEDULER__ENABLED=true"
+Environment="SCHEDULER__PRICING_UPDATE_INTERVAL_HOURS=24"
+Environment="PRICING__UPDATE_ON_STARTUP=true"
 ```
+
+#### Using an Environment File
+
+For many environment variables, use an `EnvironmentFile`:
+
+```ini
+[Service]
+EnvironmentFile=/etc/ccproxy/environment
+```
+
+Create `/etc/ccproxy/environment`:
+```bash
+# Server configuration
+SERVER__HOST=0.0.0.0
+SERVER__PORT=8000
+SERVER__LOG_LEVEL=INFO
+SERVER__LOG_FORMAT=json
+SERVER__LOG_FILE=/var/log/ccproxy/app.log
+
+# Security
+SECURITY__AUTH_TOKEN=your-secure-token
+
+# Claude configuration
+CLAUDE__CLI_PATH=/usr/local/bin/claude
+
+# Scheduler settings
+SCHEDULER__ENABLED=true
+SCHEDULER__MAX_CONCURRENT_TASKS=10
+SCHEDULER__PRICING_UPDATE_INTERVAL_HOURS=24
+
+# Pricing settings
+PRICING__UPDATE_ON_STARTUP=true
+PRICING__ENABLE_COST_TRACKING=true
+
+# CORS settings
+CORS__ALLOW_ORIGINS=["https://yourdomain.com"]
+```
+
+#### Complete Service File Example
+
+```ini
+[Unit]
+Description=Claude Code Proxy API Server
+After=network.target
+
+[Service]
+Type=exec
+WorkingDirectory=/tmp/ccproxy-workdir
+ExecStart=/home/user/.local/bin/uv run ccproxy serve
+
+# Environment configuration
+Environment="PATH=/home/user/.local/bin:/usr/local/bin:/usr/bin:/bin"
+Environment="HOME=/home/user"
+Environment="UV_PROJECT=/home/user/claude-code-proxy-api"
+
+# Load additional environment from file
+EnvironmentFile=-/etc/ccproxy/environment
+
+# Optional: Override specific settings
+Environment="SERVER__PORT=8080"
+Environment="SERVER__LOG_LEVEL=INFO"
+
+# Restart configuration
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
+```
+
+For a complete list of environment variables, see [CLAUDE.md](/CLAUDE.md).
 
 ## Troubleshooting
 
@@ -111,7 +205,7 @@ Environment="CCPROXY_CONFIG=/path/to/custom/config.toml"
 3. Test manual startup:
    ```bash
    cd /path/to/ccproxy
-   uv run python main.py
+   uv run ccproxy serve
    ```
 
 ### Permission Issues

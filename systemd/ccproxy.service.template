@@ -5,7 +5,7 @@ After=network.target
 [Service]
 Type=simple
 WorkingDirectory={{WORKING_DIR}}
-ExecStart={{UV_PATH}} run python {{MAIN_PY_PATH}}
+ExecStart={{UV_PATH}} run ccproxy serve
 Restart=on-failure
 RestartSec=10
 StandardOutput=journal
@@ -13,6 +13,7 @@ StandardError=journal
 SyslogIdentifier=ccproxy
 Environment="PATH={{USER_PATH}}"
 Environment="HOME={{USER_HOME}}"
+Environment="UV_PROJECT={{UV_PROJECT}}"
 {{EXTRA_ENV}}
 
 [Install]
