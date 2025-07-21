@@ -2,8 +2,11 @@
 
 from typing import Any, cast
 
+import structlog
+
 from ccproxy.core.async_utils import patched_typing
 
+logger = structlog.get_logger(__name__)
 
 with patched_typing():
     from claude_code_sdk import (
@@ -57,7 +60,7 @@ class MessageConverter:
 
     @staticmethod
     def extract_text_from_content(
-        content: list[TextBlock | ToolUseBlock | ToolResultBlock],
+        content: TextBlock | ToolUseBlock | ToolResultBlock,
     ) -> str:
         """
         Extract text content from Claude SDK content blocks.
@@ -68,22 +71,21 @@ class MessageConverter:
         Returns:
             Extracted text content
         """
-        text_parts = []
+        logger.info("content", content=content)
+        if isinstance(content, TextBlock):
+            return content.text
+        elif isinstance(content, ToolUseBlock):
+            # For tool use contents, include the tool name
+            # return in <tooluseblock>  tag value in xml
+            return f"<toolusecontent>{content.name}<toolusecontent>"
+        elif isinstance(content, ToolResultBlock) and isinstance(content.content, str):
+            return f"<toolusecontent>{content.content}<toolusecontent>"
 
-        for block in content:
-            if isinstance(block, TextBlock):
-                text_parts.append(block.text)
-            elif isinstance(block, ToolUseBlock):
-                # For tool use blocks, include the tool name
-                text_parts.append(f"[Tool: {block.name}]")
-            elif isinstance(block, ToolResultBlock) and isinstance(block.content, str):
-                text_parts.append(block.content)
-
-        return " ".join(text_parts)
+        return "<error>Unknown content type</error>"
 
     @staticmethod
-    def extract_content_with_thinking(
-        content: list[TextBlock | ToolUseBlock | ToolResultBlock],
+    def extract_contents(
+        contents: list[TextBlock | ToolUseBlock | ToolResultBlock],
     ) -> str:
         """
         Extract content from Claude SDK blocks, preserving thinking blocks.
@@ -96,14 +98,8 @@ class MessageConverter:
         """
         text_parts = []
 
-        for block in content:
-            if isinstance(block, TextBlock):
-                text_parts.append(block.text)
-            elif isinstance(block, ToolUseBlock):
-                # For tool use blocks, include the tool name
-                text_parts.append(f"[Tool: {block.name}]")
-            elif isinstance(block, ToolResultBlock) and isinstance(block.content, str):
-                text_parts.append(block.content)
+        for block in contents:
+            text_parts.append(MessageConverter.extract_text_from_content(block))
 
         return " ".join(text_parts)
 

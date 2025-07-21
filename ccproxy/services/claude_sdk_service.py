@@ -96,6 +96,10 @@ class ClaudeSDKService:
 
         # Extract system message and create options
         system_message = self.options_handler.extract_system_message(messages)
+
+        # Map model to Claude model
+        model = adapter.map_openai_model_to_claude(model)
+
         options = self.options_handler.create_options(
             model=model,
             temperature=temperature,
@@ -103,9 +107,6 @@ class ClaudeSDKService:
             system_message=system_message,
             **kwargs,
         )
-
-        # Validate model
-        model = adapter.map_openai_model_to_claude(model)
 
         # Convert messages to prompt format
         prompt = self.message_converter.format_messages_to_prompt(messages)
@@ -315,9 +316,16 @@ class ClaudeSDKService:
                         first_chunk = False
 
                     # Send content delta
-                    text_content = self.message_converter.extract_content_with_thinking(
-                        message.content
-                    )
+                    if isinstance(message.content, list):
+                        text_content = self.message_converter.extract_contents(
+                            message.content
+                        )
+                    else:
+                        text_content = self.message_converter.extract_text_from_content(
+                            message.content
+                        )
+
+                    logger.info("text_content", text_content=text_content)
                     if text_content:
                         yield self.message_converter.create_streaming_delta_chunk(
                             text_content

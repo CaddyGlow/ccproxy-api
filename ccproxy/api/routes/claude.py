@@ -6,6 +6,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
+import structlog
 
 from ccproxy.api.dependencies import get_claude_service
 from ccproxy.models.messages import MessageCreateParams, MessageResponse
@@ -16,10 +17,13 @@ from ccproxy.models.openai import (
     OpenAIModelsResponse,
 )
 from ccproxy.services.claude_sdk_service import ClaudeSDKService
+from ccproxy.adapters.openai.adapter import OpenAIAdapter
 
 
 # Create the router for Claude SDK endpoints
 router = APIRouter(tags=["claude-sdk"])
+
+logger = structlog.get_logger(__name__)
 
 
 def _convert_openai_to_anthropic_messages(
@@ -128,21 +132,21 @@ async def create_openai_chat_completion(
     to Anthropic format before using the Claude SDK directly.
     """
     try:
-        # Convert OpenAI messages to Anthropic format
-        anthropic_messages = _convert_openai_to_anthropic_messages(request.messages)
-
-        # Extract parameters from OpenAI request
-        model = request.model
-        temperature = request.temperature
-        max_tokens = request.max_tokens
+        # Create adapter instance
+        adapter = OpenAIAdapter()
+        
+        # Convert entire OpenAI request to Anthropic format using adapter
+        anthropic_request = adapter.adapt_request(request.model_dump())
+        
+        # Extract stream parameter
         stream = request.stream or False
 
-        # Call Claude SDK service
+        # Call Claude SDK service with adapted request
         response = await claude_service.create_completion(
-            messages=anthropic_messages,
-            model=model,
-            temperature=temperature,
-            max_tokens=max_tokens,
+            messages=anthropic_request["messages"],
+            model=anthropic_request["model"],
+            temperature=anthropic_request.get("temperature"),
+            max_tokens=anthropic_request.get("max_tokens"),
             stream=stream,
             user_id=getattr(request, "user", None),
         )
@@ -150,9 +154,11 @@ async def create_openai_chat_completion(
         if stream:
             # Handle streaming response
             async def openai_stream_generator() -> AsyncIterator[bytes]:
-                async for chunk in response:  # type: ignore[union-attr]
-                    # Convert chunk to OpenAI format
-                    openai_chunk = _convert_anthropic_to_openai_response(chunk)
+                # Create adapter instance
+                adapter = OpenAIAdapter()
+
+                # Use adapt_stream for streaming responses
+                async for openai_chunk in adapter.adapt_stream(response):  # type: ignore[arg-type]
                     yield f"data: {json.dumps(openai_chunk)}\n\n".encode()
                 # Send final chunk
                 yield b"data: [DONE]\n\n"
@@ -166,8 +172,9 @@ async def create_openai_chat_completion(
                 },
             )
         else:
-            # Convert non-streaming response to OpenAI format
-            openai_response = _convert_anthropic_to_openai_response(response)  # type: ignore[arg-type]
+            # Convert non-streaming response to OpenAI format using adapter
+            adapter = OpenAIAdapter()
+            openai_response = adapter.adapt_response(response)  # type: ignore[arg-type]
             return OpenAIChatCompletionResponse.model_validate(openai_response)
 
     except Exception as e:
