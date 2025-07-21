@@ -7,7 +7,7 @@ readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
   "aiosqlite>=0.21.0",
-  "check-jsonschema>=0.33.2",            # Using GitHub version with PR #60 fix
+  "jsonschema>=0.33.2",
   "fastapi[standard]>=0.115.14",
   "httpx>=0.28.1",
   "httpx-sse>=0.4.1",
@@ -314,7 +314,7 @@ skips = [
 [tool.tox]
 legacy_tox_ini = """
   [tox]
-  envlist = py310,py311,py312,py313
+  envlist = py311,py312,py313
 
   [testenv]
   deps =
@@ -323,6 +323,8 @@ legacy_tox_ini = """
       pytest-cov
       pytest-timeout
       pytest-env
+      pytest-httpx
+
   commands = pytest {posargs}
   """
 

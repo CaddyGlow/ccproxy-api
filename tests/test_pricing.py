@@ -816,11 +816,14 @@ class TestPricingIntegration:
         """Test integration with cost calculator utility."""
         from ccproxy.utils.cost_calculator import calculate_token_cost
 
-        # First, ensure the pricing cache directory exists and has embedded data
         # PricingSettings will use XDG_CACHE_HOME which is already set by isolated_environment
+        # The default cache_dir will be XDG_CACHE_HOME/ccproxy
         settings = PricingSettings(fallback_to_embedded=True)
         cache = PricingCache(settings)
         updater = PricingUpdater(cache, settings)
+
+        # Ensure the cache directory structure exists
+        cache.cache_dir.mkdir(parents=True, exist_ok=True)
 
         # Load embedded pricing data into cache
         embedded_pricing = updater._get_embedded_pricing()
@@ -839,10 +842,6 @@ class TestPricingIntegration:
                 }
             # Save it to cache so cost_calculator can find it
             cache.save_to_cache(pricing_dict)
-
-        # Debug: Print XDG_CACHE_HOME to verify isolation
-        print(f"XDG_CACHE_HOME: {os.environ.get('XDG_CACHE_HOME')}")
-        print(f"Cache dir: {settings.cache_dir}")
 
         # Test cost calculation (should find the cached data)
         cost = calculate_token_cost(

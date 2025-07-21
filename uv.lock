@@ -235,13 +235,13 @@ name = "ccproxy"
 source = { editable = "." }
 dependencies = [
     { name = "aiosqlite" },
-    { name = "check-jsonschema" },
     { name = "claude-code-sdk" },
     { name = "duckdb" },
     { name = "duckdb-engine" },
     { name = "fastapi", extra = ["standard"] },
     { name = "httpx" },
     { name = "httpx-sse" },
+    { name = "jsonschema" },
     { name = "keyring" },
     { name = "openai" },
     { name = "prometheus-client" },
@@ -301,13 +301,13 @@ security = [
 [package.metadata]
 requires-dist = [
     { name = "aiosqlite", specifier = ">=0.21.0" },
-    { name = "check-jsonschema", specifier = ">=0.33.2" },
     { name = "claude-code-sdk", git = "https://github.com/anthropics/claude-code-sdk-python.git" },
     { name = "duckdb", specifier = ">=1.1.0" },
     { name = "duckdb-engine", specifier = ">=0.17.0" },
     { name = "fastapi", extras = ["standard"], specifier = ">=0.115.14" },
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "httpx-sse", specifier = ">=0.4.1" },
+    { name = "jsonschema", specifier = ">=0.33.2" },
     { name = "keyring", specifier = ">=25.6.0" },
     { name = "openai", specifier = ">=1.93.0" },
     { name = "prometheus-client", specifier = ">=0.22.1" },
