@@ -23,7 +23,7 @@ from ccproxy.config.settings import Settings
 @pytest.fixture
 def cli_runner() -> CliRunner:
     """Create CLI runner for testing."""
-    return CliRunner()
+    return CliRunner(env={"NO_COLOR": "1"})
 
 
 @pytest.fixture

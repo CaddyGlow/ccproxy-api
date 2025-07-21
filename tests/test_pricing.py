@@ -2,7 +2,6 @@
 
 import json
 import os
-import tempfile
 import time
 from collections.abc import Generator
 from decimal import Decimal
@@ -751,18 +750,12 @@ class TestPricingUpdater:
 class TestPricingIntegration:
     """Integration tests for the complete pricing system."""
 
-    @pytest.fixture
-    def temp_dir(self) -> Generator[Path, None, None]:
-        """Create temporary directory for integration tests."""
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            yield Path(tmp_dir)
-
     @pytest.mark.asyncio
-    async def test_full_pricing_workflow(self, temp_dir: Path) -> None:
+    async def test_full_pricing_workflow(self, isolated_environment: Path) -> None:
         """Test complete pricing workflow with dependency injection."""
         # Set up components
         settings = PricingSettings(
-            cache_dir=temp_dir / "cache",
+            cache_dir=isolated_environment / "cache",
             cache_ttl_hours=24,
             auto_update=True,
             fallback_to_embedded=True,
@@ -783,9 +776,11 @@ class TestPricingIntegration:
         assert info["auto_update"] is True
 
     @pytest.mark.asyncio
-    async def test_pricing_with_mock_external_data(self, temp_dir: Path) -> None:
+    async def test_pricing_with_mock_external_data(
+        self, isolated_environment: Path
+    ) -> None:
         """Test pricing with mocked external data download."""
-        settings = PricingSettings(cache_dir=temp_dir / "cache")
+        settings = PricingSettings(cache_dir=isolated_environment / "cache")
         cache = PricingCache(settings)
         updater = PricingUpdater(cache, settings)
 
@@ -817,11 +812,39 @@ class TestPricingIntegration:
             assert model_pricing.cache_write == Decimal("3.75")
             assert model_pricing.cache_read == Decimal("0.30")
 
-    def test_cost_calculator_integration(self, temp_dir: Path) -> None:
+    def test_cost_calculator_integration(self, isolated_environment: Path) -> None:
         """Test integration with cost calculator utility."""
         from ccproxy.utils.cost_calculator import calculate_token_cost
 
-        # Test cost calculation (should use embedded pricing as fallback)
+        # First, ensure the pricing cache directory exists and has embedded data
+        # PricingSettings will use XDG_CACHE_HOME which is already set by isolated_environment
+        settings = PricingSettings(fallback_to_embedded=True)
+        cache = PricingCache(settings)
+        updater = PricingUpdater(cache, settings)
+
+        # Load embedded pricing data into cache
+        embedded_pricing = updater._get_embedded_pricing()
+        if embedded_pricing:
+            # Convert PricingData to dict format for saving
+            pricing_dict = {}
+            for model_name, model_pricing in embedded_pricing.items():
+                pricing_dict[model_name] = {
+                    "litellm_provider": "anthropic",
+                    "input_cost_per_token": float(model_pricing.input) / 1_000_000,
+                    "output_cost_per_token": float(model_pricing.output) / 1_000_000,
+                    "cache_creation_input_token_cost": float(model_pricing.cache_write)
+                    / 1_000_000,
+                    "cache_read_input_token_cost": float(model_pricing.cache_read)
+                    / 1_000_000,
+                }
+            # Save it to cache so cost_calculator can find it
+            cache.save_to_cache(pricing_dict)
+
+        # Debug: Print XDG_CACHE_HOME to verify isolation
+        print(f"XDG_CACHE_HOME: {os.environ.get('XDG_CACHE_HOME')}")
+        print(f"Cache dir: {settings.cache_dir}")
+
+        # Test cost calculation (should find the cached data)
         cost = calculate_token_cost(
             tokens_input=1000, tokens_output=500, model="claude-3-5-sonnet-20241022"
         )
@@ -831,11 +854,11 @@ class TestPricingIntegration:
         assert cost > 0
 
     @pytest.mark.asyncio
-    async def test_scheduler_task_integration(self, temp_dir: Path) -> None:
+    async def test_scheduler_task_integration(self, isolated_environment: Path) -> None:
         """Test integration with scheduler tasks."""
         from ccproxy.scheduler.tasks import PricingCacheUpdateTask
 
-        settings = PricingSettings(cache_dir=temp_dir / "cache")
+        settings = PricingSettings(cache_dir=isolated_environment / "cache")
         cache = PricingCache(settings)
         updater = PricingUpdater(cache, settings)
 

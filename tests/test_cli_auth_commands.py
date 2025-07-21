@@ -41,7 +41,7 @@ class TestAuthCLICommands:
     @pytest.fixture
     def runner(self) -> CliRunner:
         """Create CLI test runner."""
-        return CliRunner()
+        return CliRunner(env={"NO_COLOR": "1"})
 
     @pytest.fixture
     def mock_credentials_manager(self) -> AsyncMock:

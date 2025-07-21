@@ -6,6 +6,7 @@ while mocking only external services.
 """
 
 import json
+import os
 import time
 from collections.abc import AsyncGenerator, Callable, Generator
 
@@ -13,7 +14,7 @@ from collections.abc import AsyncGenerator, Callable, Generator
 from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
 import httpx
 import pytest
@@ -22,7 +23,6 @@ import structlog
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from httpx import ASGITransport, AsyncClient
-from pytest_httpx import HTTPXMock
 
 from ccproxy.api.app import create_app
 from ccproxy.observability.context import RequestContext
@@ -35,7 +35,7 @@ from ccproxy.config.auth import AuthSettings, CredentialStorageSettings
 from ccproxy.config.observability import ObservabilitySettings
 from ccproxy.config.security import SecuritySettings
 from ccproxy.config.server import ServerSettings
-from ccproxy.config.settings import Settings, get_settings
+from ccproxy.config.settings import Settings
 from ccproxy.docker.adapter import DockerAdapter
 from ccproxy.docker.docker_path import DockerPath, DockerPathSet
 from ccproxy.docker.models import DockerUserContext
@@ -93,11 +93,58 @@ FIXTURES_DIR = Path(__file__).parent / "fixtures"
 
 
 @pytest.fixture
-def test_settings(tmp_path: Path) -> Settings:
+def isolated_environment(tmp_path: Path) -> Generator[Path, None, None]:
+    """Create isolated test environment with XDG directories.
+
+    Returns an isolated temporary directory and sets environment variables
+    to ensure complete test isolation for file system operations.
+
+    Sets up:
+    - HOME to point to temporary directory
+    - XDG_CONFIG_HOME, XDG_DATA_HOME, XDG_CACHE_HOME to subdirectories
+    - Creates the necessary directory structure
+    """
+    # Set up XDG base directories within the temp path
+    home_dir = tmp_path / "home"
+    config_dir = tmp_path / "config"
+    data_dir = tmp_path / "data"
+    cache_dir = tmp_path / "cache"
+
+    # Create directories
+    home_dir.mkdir()
+    config_dir.mkdir()
+    data_dir.mkdir()
+    cache_dir.mkdir()
+
+    # Store original environment variables
+    original_env = {
+        "HOME": os.environ.get("HOME"),
+        "XDG_CONFIG_HOME": os.environ.get("XDG_CONFIG_HOME"),
+        "XDG_DATA_HOME": os.environ.get("XDG_DATA_HOME"),
+        "XDG_CACHE_HOME": os.environ.get("XDG_CACHE_HOME"),
+    }
+
+    # Set isolated environment variables
+    with patch.dict(
+        os.environ,
+        {
+            "HOME": str(home_dir),
+            "XDG_CONFIG_HOME": str(config_dir),
+            "XDG_DATA_HOME": str(data_dir),
+            "XDG_CACHE_HOME": str(cache_dir),
+        },
+    ):
+        yield tmp_path
+
+    # Environment variables are automatically restored by patch.dict context manager
+
+
+@pytest.fixture
+def test_settings(isolated_environment: Path) -> Settings:
     """Create isolated test settings with temp directories.
 
     Returns a Settings instance configured for testing with:
-    - Temporary config and cache directories
+    - Temporary config and cache directories using isolated environment
     - Observability endpoints enabled for testing
     - No authentication by default
     - Test environment enabled
@@ -106,7 +153,9 @@ def test_settings(tmp_path: Path) -> Settings:
         server=ServerSettings(log_level="WARNING"),
         security=SecuritySettings(auth_token=None),  # No auth by default
         auth=AuthSettings(
-            storage=CredentialStorageSettings(storage_paths=[tmp_path / ".claude/"])
+            storage=CredentialStorageSettings(
+                storage_paths=[isolated_environment / ".claude/"]
+            )
         ),
         observability=ObservabilitySettings(
             # Enable all observability endpoints for testing
@@ -115,7 +164,7 @@ def test_settings(tmp_path: Path) -> Settings:
             logs_collection_enabled=True,
             dashboard_enabled=True,
             log_storage_backend="duckdb",
-            duckdb_path=str(tmp_path / "test_metrics.duckdb"),
+            duckdb_path=str(isolated_environment / "test_metrics.duckdb"),
         ),
     )
 
