@@ -354,7 +354,7 @@ class ClaudeSDKService:
                     text_content = self._format_as_xml("system", asdict(message))
                     event_type, chunk_data = (
                         self.message_converter.create_streaming_delta_chunk(
-                            text_content
+                            text_content + "\n"
                         )
                     )
                     yield {"event": event_type, "data": chunk_data}
@@ -371,7 +371,7 @@ class ClaudeSDKService:
                         text_content = self._format_as_xml("assistant", text_content)
                         event_type, chunk_data = (
                             self.message_converter.create_streaming_delta_chunk(
-                                text_content
+                                text_content + "\n"
                             )
                         )
                         yield {"event": event_type, "data": chunk_data}

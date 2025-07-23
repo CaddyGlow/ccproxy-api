@@ -2,11 +2,13 @@
 
 import asyncio
 import contextlib
+import sys
+import termios
+import tty
 from typing import Any
 
 from rich.console import Console
 from rich.panel import Panel
-from rich.prompt import Confirm
 from rich.table import Table
 from structlog import get_logger
 

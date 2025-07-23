@@ -3,6 +3,7 @@
 import asyncio
 import contextlib
 import json
+import logging
 from collections.abc import AsyncIterator
 from datetime import datetime
 from typing import Any, Optional
@@ -424,12 +425,30 @@ def connect(
         help="API server URL (defaults to settings)",
     ),
     no_ui: bool = typer.Option(False, "--no-ui", help="Disable UI mode"),
+    verbose: int = typer.Option(
+        0,
+        "-v",
+        "--verbose",
+        count=True,
+        help="Increase verbosity (-v for INFO, -vv for DEBUG)",
+    ),
 ) -> None:
     """Connect to the API server and handle confirmation requests.
 
     This command connects to the CCProxy API server via Server-Sent Events
     and handles permission confirmation requests in the terminal.
     """
+    # Configure logging level based on verbosity
+    if verbose >= 2:
+        log_level = logging.DEBUG
+    elif verbose >= 1:
+        log_level = logging.INFO
+    else:
+        log_level = logging.WARNING
+
+    # Configure root logger level
+    logging.basicConfig(level=log_level)
+
     settings = get_settings()
 
     # Use provided URL or default from settings
