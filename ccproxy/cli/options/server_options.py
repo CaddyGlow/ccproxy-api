@@ -49,6 +49,7 @@ class ServerOptions:
         reload: bool | None = None,
         log_level: str | None = None,
         log_file: str | None = None,
+        use_terminal_confirmation_handler: bool | None = None,
     ):
         """Initialize server options.
 
@@ -58,9 +59,11 @@ class ServerOptions:
             reload: Enable auto-reload for development
             log_level: Logging level
             log_file: Path to JSON log file
+            use_terminal_confirmation_handler: Enable terminal UI for confirmation prompts
         """
         self.port = port
         self.host = host
         self.reload = reload
         self.log_level = log_level
         self.log_file = log_file
+        self.use_terminal_confirmation_handler = use_terminal_confirmation_handler

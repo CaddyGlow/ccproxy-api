@@ -28,6 +28,7 @@ from ccproxy.core.logging import setup_logging
 
 from .commands.auth import app as auth_app
 from .commands.config import app as config_app
+from .commands.confirmation_handler import app as confirmation_handler_app
 from .commands.serve import api
 
 
@@ -97,6 +98,9 @@ app.add_typer(config_app)
 
 # Register auth command
 app.add_typer(auth_app)
+
+# Register confirmation handler command
+app.add_typer(confirmation_handler_app)
 
 
 # Register imported commands

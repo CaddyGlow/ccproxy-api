@@ -27,6 +27,7 @@ dependencies = [
   "sqlmodel>=0.0.24",
   "duckdb-engine>=0.17.0",
   "claude-code-sdk>=0.0.14",
+  "fastapi-mcp",
 ]
 
 [build-system]
@@ -338,3 +339,4 @@ package = true
 
 [tool.uv.sources]
 claude-code-sdk = { git = "https://github.com/anthropics/claude-code-sdk-python.git" }
+fastapi-mcp = { git = "https://github.com/tadata-org/fastapi_mcp.git", rev = "refs/pull/203/head" }

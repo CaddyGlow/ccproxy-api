@@ -17,13 +17,17 @@ from ccproxy.api.middleware.logging import AccessLogMiddleware
 from ccproxy.api.middleware.request_id import RequestIDMiddleware
 from ccproxy.api.middleware.server_header import ServerHeaderMiddleware
 from ccproxy.api.routes.claude import router as claude_router
+from ccproxy.api.routes.confirmations import router as confirmations_router
 from ccproxy.api.routes.health import router as health_router
+from ccproxy.api.routes.mcp import setup_mcp
 from ccproxy.api.routes.metrics import (
     dashboard_router,
     logs_router,
     prometheus_router,
 )
 from ccproxy.api.routes.proxy import router as proxy_router
+from ccproxy.api.services.confirmation_service import get_confirmation_service
+from ccproxy.api.ui.terminal_confirmation_handler import TerminalConfirmationHandler
 from ccproxy.auth.exceptions import CredentialsNotFoundError
 from ccproxy.auth.oauth.routes import router as oauth_router
 from ccproxy.config.settings import Settings, get_settings
@@ -158,6 +162,51 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             logger.error("log_storage_initialization_failed", error=str(e))
             # Continue without log storage (graceful degradation)
 
+    # Initialize confirmation service
+    try:
+        logger.info("Initializing confirmation service...")
+        confirmation_service = get_confirmation_service()
+
+        # Only connect terminal handler if not using external handler
+        if settings.server.use_terminal_confirmation_handler:
+            terminal_handler = TerminalConfirmationHandler()
+
+            # Connect the UI handler to the service
+            confirmation_service.set_confirmation_handler(
+                terminal_handler.handle_confirmation
+            )
+            logger.info(
+                "confirmation_handler_configured",
+                handler_type="terminal",
+                message="Connected terminal handler to confirmation service",
+            )
+            app.state.terminal_handler = terminal_handler
+        else:
+            logger.info(
+                "confirmation_handler_configured",
+                handler_type="external_sse",
+                message="Terminal confirmation handler disabled - use 'ccproxy confirmation-handler connect' to handle confirmations",
+            )
+            logger.warning(
+                "confirmation_handler_required",
+                message="No confirmation handler active. Start external handler with: ccproxy confirmation-handler connect",
+            )
+
+        # Start the confirmation service
+        await confirmation_service.start()
+
+        # Store references in app state
+        app.state.confirmation_service = confirmation_service
+
+        logger.info(
+            "confirmation_service_initialized",
+            timeout_seconds=confirmation_service._timeout_seconds,
+            terminal_handler_enabled=settings.server.use_terminal_confirmation_handler,
+        )
+    except Exception as e:
+        logger.error("confirmation_service_initialization_failed", error=str(e))
+        # Continue without confirmation service (API will work but without prompts)
+
     yield
 
     # Shutdown
@@ -170,6 +219,14 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         logger.debug("scheduler_stopped")
     except Exception as e:
         logger.error("scheduler_stop_failed", error=str(e))
+
+    # Stop confirmation service
+    if hasattr(app.state, "confirmation_service") and app.state.confirmation_service:
+        try:
+            await app.state.confirmation_service.stop()
+            logger.debug("confirmation_service_stopped")
+        except Exception as e:
+            logger.error("confirmation_service_stop_failed", error=str(e))
 
     # Close log storage if initialized
     if hasattr(app.state, "log_storage") and app.state.log_storage:
@@ -221,6 +278,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         lifespan=lifespan,
     )
 
+    # Setup MCP BEFORE adding any middleware
+    # This is necessary because MCP uses Server-Sent Events (SSE) which don't work well
+    # with certain middleware like BaseHTTPMiddleware
+    setup_mcp(app)
+
     # Setup middleware
     setup_cors_middleware(app, settings)
     setup_error_handlers(app)
@@ -255,6 +317,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     # New /api/ routes for proxy endpoints (includes OpenAI-compatible /v1/chat/completions)
     app.include_router(proxy_router, prefix="/api", tags=["proxy-api"])
+
+    # Confirmation endpoints for SSE streaming and responses
+    app.include_router(confirmations_router, tags=["confirmations"])
 
     # Mount static files for dashboard SPA
     from pathlib import Path

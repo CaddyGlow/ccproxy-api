@@ -176,7 +176,34 @@ class PermissionToolDenyResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
-PermissionToolResponse = PermissionToolAllowResponse | PermissionToolDenyResponse
+class PermissionToolPendingResponse(BaseModel):
+    """Response model for pending permission tool requests requiring user confirmation."""
+
+    behavior: Annotated[
+        Literal["pending"], Field(description="Permission behavior")
+    ] = "pending"
+    confirmation_id: Annotated[
+        str,
+        Field(
+            description="Unique identifier for the confirmation request",
+            alias="confirmationId",
+        ),
+    ]
+    message: Annotated[
+        str,
+        Field(
+            description="Instructions for retrying the request after user confirmation"
+        ),
+    ] = "User confirmation required. Please retry with the same confirmation_id."
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+
+PermissionToolResponse = (
+    PermissionToolAllowResponse
+    | PermissionToolDenyResponse
+    | PermissionToolPendingResponse
+)
 
 
 class RateLimitError(APIError):

@@ -52,6 +52,9 @@ repos:
           - types-PyYAML>=6.0.12.12
           - sqlmodel>=0.0.24
           - duckdb-engine>=0.17.0
+          - tomli>=2.0.0
+          - fastapi-mcp>=0.1.0
+          - sse-starlette>=1.0.0
         args: [--config-file=pyproject.toml]
         exclude: ^(docs/|examples/)
 
