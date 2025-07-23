@@ -281,6 +281,22 @@ class ConfirmationService:
             with contextlib.suppress(asyncio.QueueFull):
                 queue.put_nowait(event)
 
+    async def get_pending_requests(self) -> list[ConfirmationRequest]:
+        """Get all pending confirmation requests.
+
+        Returns:
+            List of pending requests
+        """
+        async with self._lock:
+            pending = []
+            now = datetime.utcnow()
+            for request in self._requests.values():
+                if request.is_expired():
+                    request.status = ConfirmationStatus.EXPIRED
+                elif request.status == ConfirmationStatus.PENDING:
+                    pending.append(request)
+            return pending
+
     async def wait_for_confirmation(
         self, request_id: str, timeout_seconds: int | None = None
     ) -> ConfirmationStatus:

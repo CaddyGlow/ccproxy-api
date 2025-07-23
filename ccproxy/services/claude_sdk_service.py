@@ -1,6 +1,7 @@
 """Claude SDK service orchestration for business logic."""
 
 import json
+import xml.etree.ElementTree as ET
 from collections.abc import AsyncIterator
 from dataclasses import asdict, is_dataclass
 from typing import Any
@@ -269,6 +270,33 @@ class ClaudeSDKService:
 
         return response
 
+    def _format_as_xml(self, tag: str, content: dict[str, Any] | str) -> str:
+        """
+        Format content as properly structured XML.
+
+        Args:
+            tag: The XML tag name
+            content: The content to wrap in XML (dict will be JSON serialized)
+
+        Returns:
+            Properly formatted XML string
+        """
+        # Create the root element
+        root = ET.Element(tag)
+
+        if isinstance(content, dict):
+            # For dict content, add as JSON text
+            root.text = json.dumps(content, ensure_ascii=False)
+        else:
+            # For string content, add directly
+            root.text = str(content)
+
+        # Add proper indentation
+        ET.indent(root)
+
+        # Convert to string with proper encoding
+        return ET.tostring(root, encoding="unicode", method="xml")
+
     async def _stream_completion(
         self,
         prompt: str,
@@ -307,10 +335,14 @@ class ClaudeSDKService:
                 )
 
                 if first_chunk:
-                    # Send initial chunk
-                    yield self.message_converter.create_streaming_start_chunk(
-                        f"msg_{id(message)}", model
-                    )
+                    # Send initial chunks with event types
+                    for (
+                        event_type,
+                        chunk_data,
+                    ) in self.message_converter.create_streaming_start_chunks(
+                        f"msg_{id(message)}", model, 100
+                    ):
+                        yield {"event": event_type, "data": chunk_data}
                     first_chunk = False
 
                 # TODO: instead of creating one message we should create a list of messages
@@ -318,11 +350,14 @@ class ClaudeSDKService:
                 # to do that we have to create the different type of messsages
                 # in anthropic models
                 if isinstance(message, SystemMessage):
-                    # Serialize dataclass to JSON
-                    text_content = f"<system>{json.dumps(asdict(message))}</system>"
-                    yield self.message_converter.create_streaming_delta_chunk(
-                        text_content
+                    # Format as proper XML
+                    text_content = self._format_as_xml("system", asdict(message))
+                    event_type, chunk_data = (
+                        self.message_converter.create_streaming_delta_chunk(
+                            text_content
+                        )
                     )
+                    yield {"event": event_type, "data": chunk_data}
                 elif isinstance(message, AssistantMessage):
                     assistant_messages.append(message)
 
@@ -332,10 +367,14 @@ class ClaudeSDKService:
                     )
 
                     if text_content:
-                        text_content = f"<assistant>{text_content}</assistant>"
-                        yield self.message_converter.create_streaming_delta_chunk(
-                            text_content
+                        # Format as proper XML
+                        text_content = self._format_as_xml("assistant", text_content)
+                        event_type, chunk_data = (
+                            self.message_converter.create_streaming_delta_chunk(
+                                text_content
+                            )
                         )
+                        yield {"event": event_type, "data": chunk_data}
 
                 elif isinstance(message, ResultMessage):
                     # Get Claude API call timing
@@ -388,23 +427,26 @@ class ClaudeSDKService:
                             event_type="streaming_complete",
                         )
 
-                    # Send final chunk with usage and cost information
-                    final_chunk = self.message_converter.create_streaming_end_chunk()
+                    # Send final chunks with usage and cost information
+                    final_chunks = self.message_converter.create_streaming_end_chunks()
 
-                    # Add usage information to final chunk
-                    if tokens_input or tokens_output or cost_usd:
-                        usage_info = {}
-                        if tokens_input:
-                            usage_info["input_tokens"] = tokens_input
-                        if tokens_output:
-                            usage_info["output_tokens"] = tokens_output
-                        if cost_usd is not None:
-                            usage_info["cost_usd"] = cost_usd
+                    # Add usage information to message_delta chunk
+                    for event_type, chunk_data in final_chunks:
+                        if chunk_data.get("type") == "message_delta" and (
+                            tokens_input or tokens_output or cost_usd
+                        ):
+                            usage_info = {}
+                            # if tokens_input:
+                            #     usage_info["input_tokens"] = tokens_input
+                            if tokens_output:
+                                usage_info["output_tokens"] = tokens_output
+                            if cost_usd is not None:
+                                usage_info["cost_usd"] = cost_usd
 
-                        # Update the usage in the final chunk
-                        final_chunk["usage"].update(usage_info)
+                            # Update the usage in the message_delta chunk
+                            chunk_data["usage"].update(usage_info)
 
-                    yield final_chunk
+                        yield {"event": event_type, "data": chunk_data}
 
                     break
 

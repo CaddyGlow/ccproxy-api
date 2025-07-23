@@ -266,38 +266,57 @@ class MessageConverter:
         }
 
     @staticmethod
-    def create_streaming_start_chunk(message_id: str, model: str) -> dict[str, Any]:
+    def create_streaming_start_chunks(
+        message_id: str, model: str, input_tokens: int = 0
+    ) -> list[tuple[str, dict[str, Any]]]:
         """
-        Create the initial streaming chunk for Anthropic API format.
+        Create the initial streaming chunks for Anthropic API format.
 
         Args:
             message_id: The message ID
             model: The model name
+            input_tokens: Number of input tokens for the request
 
         Returns:
-            Initial streaming chunk
+            List of tuples (event_type, chunk) for initial streaming chunks
         """
-        return {
-            "id": message_id,
-            "type": "message_start",
-            "message": {
-                "id": message_id,
-                "type": "message",
-                "role": "assistant",
-                "content": [],
-                "model": model,
-                "stop_reason": None,
-                "stop_sequence": None,
-                "usage": {
-                    "input_tokens": 0,
-                    "output_tokens": 0,
-                    "total_tokens": 0,
+        return [
+            # First, send message_start with event type
+            (
+                "message_start",
+                {
+                    "type": "message_start",
+                    "message": {
+                        "id": message_id,
+                        "type": "message",
+                        "role": "assistant",
+                        "model": model,
+                        "content": [],
+                        "stop_reason": None,
+                        "stop_sequence": None,
+                        "usage": {
+                            "input_tokens": input_tokens,
+                            "cache_creation_input_tokens": 0,
+                            "cache_read_input_tokens": 0,
+                            "output_tokens": 1,
+                            "service_tier": "standard",
+                        },
+                    },
                 },
-            },
-        }
+            ),
+            # Then, send content_block_start with event type
+            (
+                "content_block_start",
+                {
+                    "type": "content_block_start",
+                    "index": 0,
+                    "content_block": {"type": "text", "text": ""},
+                },
+            ),
+        ]
 
     @staticmethod
-    def create_streaming_delta_chunk(text: str) -> dict[str, Any]:
+    def create_streaming_delta_chunk(text: str) -> tuple[str, dict[str, Any]]:
         """
         Create a streaming delta chunk for Anthropic API format.
 
@@ -305,27 +324,56 @@ class MessageConverter:
             text: The text content to include
 
         Returns:
-            Delta chunk
+            Tuple of (event_type, chunk)
         """
-        return {
-            "type": "content_block_delta",
-            "index": 0,
-            "delta": {"type": "text_delta", "text": text},
-        }
+        return (
+            "content_block_delta",
+            {
+                "type": "content_block_delta",
+                "index": 0,
+                "delta": {"type": "text_delta", "text": text},
+            },
+        )
 
     @staticmethod
-    def create_streaming_end_chunk(stop_reason: str = "end_turn") -> dict[str, Any]:
+    def create_streaming_end_chunks(
+        stop_reason: str = "end_turn", stop_sequence: str | None = None
+    ) -> list[tuple[str, dict[str, Any]]]:
         """
-        Create the final streaming chunk for Anthropic API format.
+        Create the final streaming chunks for Anthropic API format.
 
         Args:
             stop_reason: The reason for stopping
+            stop_sequence: The stop sequence used (if any)
 
         Returns:
-            Final streaming chunk
+            List of tuples (event_type, chunk) for final streaming chunks
         """
-        return {
-            "type": "message_delta",
-            "delta": {"stop_reason": stop_reason},
-            "usage": {"output_tokens": 0},
-        }
+        return [
+            # First, send content_block_stop
+            ("content_block_stop", {"type": "content_block_stop", "index": 0}),
+            # Then, send message_delta with stop reason and usage
+            (
+                "message_delta",
+                {
+                    "type": "message_delta",
+                    "delta": {
+                        "stop_reason": stop_reason,
+                        "stop_sequence": stop_sequence,
+                    },
+                    "usage": {"output_tokens": 0},
+                },
+            ),
+            # Finally, send message_stop
+            ("message_stop", {"type": "message_stop"}),
+        ]
+
+    @staticmethod
+    def create_ping_chunk() -> tuple[str, dict[str, Any]]:
+        """
+        Create a ping chunk for keeping the connection alive.
+
+        Returns:
+            Tuple of (event_type, chunk)
+        """
+        return ("ping", {"type": "ping"})

@@ -423,7 +423,7 @@ def connect(
         "-u",
         help="API server URL (defaults to settings)",
     ),
-    ui: bool = typer.Option(None, "--ui", "-u", help="Enable UI mode"),
+    no_ui: bool = typer.Option(False, "--no-ui", help="Disable UI mode"),
 ) -> None:
     """Connect to the API server and handle confirmation requests.
 
@@ -441,7 +441,9 @@ def connect(
 
     async def run_handler() -> None:
         """Run the handler with proper resource management."""
-        async with SSEConfirmationHandler(api_url, terminal_handler, ui) as sse_handler:
+        async with SSEConfirmationHandler(
+            api_url, terminal_handler, not no_ui
+        ) as sse_handler:
             await sse_handler.run()
 
     # Run the async handler

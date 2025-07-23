@@ -16,7 +16,7 @@ from ccproxy.core.errors import (
     ConfirmationAlreadyResolvedError,
     ConfirmationNotFoundError,
 )
-from ccproxy.models.confirmations import ConfirmationStatus
+from ccproxy.models.confirmations import ConfirmationEvent, ConfirmationStatus
 
 
 logger = get_logger(__name__)
@@ -62,13 +62,32 @@ async def event_generator(
             "data": json.dumps({"message": "Connected to confirmation stream"}),
         }
 
+        # Send all pending confirmation requests to the newly connected client
+        pending_requests = await service.get_pending_requests()
+        for pending_req in pending_requests:
+            event = ConfirmationEvent(
+                type="confirmation_request",
+                request_id=pending_req.id,
+                tool_name=pending_req.tool_name,
+                input=pending_req.input,
+                created_at=pending_req.created_at.isoformat(),
+                expires_at=pending_req.expires_at.isoformat(),
+                timeout_seconds=int(
+                    (pending_req.expires_at - pending_req.created_at).total_seconds()
+                ),
+            )
+            yield {
+                "event": "confirmation_request",
+                "data": json.dumps(event.model_dump()),
+            }
+
         while not await request.is_disconnected():
             try:
-                event = await asyncio.wait_for(queue.get(), timeout=15.0)
+                event_data = await asyncio.wait_for(queue.get(), timeout=15.0)
 
                 yield {
-                    "event": event.get("type", "message"),
-                    "data": json.dumps(event),
+                    "event": event_data.get("type", "message"),
+                    "data": json.dumps(event_data),
                 }
 
             except TimeoutError:
