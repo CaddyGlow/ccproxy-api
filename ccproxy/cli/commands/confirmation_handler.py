@@ -4,6 +4,7 @@ import asyncio
 import contextlib
 import json
 from collections.abc import AsyncIterator
+from datetime import datetime
 from typing import Any, Optional
 
 import httpx
@@ -35,12 +36,6 @@ class SSEConfirmationHandler:
         terminal_handler: TerminalConfirmationHandler,
         ui: bool = True,
     ):
-        """Initialize the SSE handler.
-
-        Args:
-            api_url: Base URL of the API server
-            terminal_handler: Terminal UI handler for displaying confirmations
-        """
         self.api_url = api_url.rstrip("/")
         self.terminal_handler = terminal_handler
         self.client = httpx.AsyncClient(timeout=300.0)  # 5 minutes
@@ -49,14 +44,9 @@ class SSEConfirmationHandler:
         self.max_delay = 60.0
         self.ui = ui
 
-        # Track ongoing confirmation requests to allow cancellation
         self._ongoing_requests: dict[str, asyncio.Task[bool]] = {}
-        self._resolved_requests: dict[
-            str, tuple[bool, str]
-        ] = {}  # request_id -> (allowed, reason)
-        self._resolved_by_us: set[str] = (
-            set()
-        )  # Track requests resolved by this handler
+        self._resolved_requests: dict[str, tuple[bool, str]] = {}
+        self._resolved_by_us: set[str] = set()
 
     async def handle_event(self, event_type: str, data: dict[str, Any]) -> None:
         """Handle an SSE event.
@@ -65,14 +55,7 @@ class SSEConfirmationHandler:
             event_type: Type of the event
             data: Event data
         """
-        logger.debug(
-            "sse_event_received",
-            event_type=event_type,
-            data_keys=list(data.keys()) if isinstance(data, dict) else "non-dict",
-        )
-
         if event_type == "ping":
-            logger.debug("sse_ping_received", message=data.get("message"))
             return
 
         if event_type == "confirmation_request":
@@ -98,9 +81,6 @@ class SSEConfirmationHandler:
                 tool_name=data.get("tool_name"),
             )
 
-            # Create a ConfirmationRequest object from the event data
-            from datetime import datetime
-
             request = ConfirmationRequest(
                 id=data["request_id"],
                 tool_name=data["tool_name"],
@@ -109,27 +89,17 @@ class SSEConfirmationHandler:
                 expires_at=datetime.fromisoformat(data["expires_at"]),
             )
 
-            # Create a task to handle the confirmation and track it
             if self.ui and request_id is not None:
                 task = asyncio.create_task(
                     self._handle_confirmation_with_cancellation(request)
                 )
                 self._ongoing_requests[request_id] = task
 
-                # Don't await the task here - let it run in the background
-                # This allows the SSE stream to continue processing events
-                logger.debug(
-                    "confirmation_task_started",
-                    request_id=request_id,
-                )
-
         elif event_type == "confirmation_resolved":
             request_id = data.get("request_id")
             allowed = data.get("allowed", False)
 
-            # Only process if we have valid data
             if request_id is not None and allowed is not None:
-                # Store the resolution for any future requests
                 reason = (
                     "approved by another handler"
                     if allowed
@@ -137,12 +107,10 @@ class SSEConfirmationHandler:
                 )
                 self._resolved_requests[request_id] = (allowed, reason)
 
-            # Check if this handler resolved it
             was_resolved_by_us = (
                 request_id is not None and request_id in self._resolved_by_us
             )
 
-            # Cancel any ongoing handling of this request
             if request_id is not None and request_id in self._ongoing_requests:
                 task = self._ongoing_requests[request_id]
                 if not task.done() and not was_resolved_by_us:
@@ -152,43 +120,23 @@ class SSEConfirmationHandler:
                         allowed=allowed,
                     )
 
-                    # Cancel the terminal handler prompt
                     status_text = "approved" if allowed else "denied"
                     self.terminal_handler.cancel_confirmation(
                         request_id, f"{status_text} by another handler"
                     )
 
-                    # Cancel the task
                     task.cancel()
 
-                    # Wait a moment for the task to be cancelled
                     with contextlib.suppress(TimeoutError, asyncio.CancelledError):
                         await asyncio.wait_for(task, timeout=0.1)
 
-                    # Now show the message after cancellation
                     console.print(
-                        f"\n[yellow]✗ Request {request_id[:8]}... {status_text} by another handler[/yellow]\n"
-                    )
-                else:
-                    # Task is already done or we resolved it
-                    logger.debug(
-                        "confirmation_resolved_by_this_handler",
-                        request_id=request_id,
-                        allowed=allowed,
-                        was_resolved_by_us=was_resolved_by_us,
+                        f"\n[yellow]× Request {request_id[:8]}... {status_text} by another handler[/yellow]\n"
                     )
 
-                # Always clean up the task reference after handling resolution
                 if request_id is not None:
                     self._ongoing_requests.pop(request_id, None)
-            else:
-                logger.debug(
-                    "confirmation_resolved_no_ongoing_request",
-                    request_id=request_id,
-                    allowed=allowed,
-                )
 
-            # Clean up our tracking
             if request_id is not None:
                 self._resolved_by_us.discard(request_id)
 
@@ -201,37 +149,30 @@ class SSEConfirmationHandler:
             request: The confirmation request to handle
         """
         try:
-            # Handle the confirmation using the terminal UI
             allowed = await self.terminal_handler.handle_confirmation(request)
 
-            # Check if request was cancelled/resolved while we were processing
             if request.id in self._resolved_requests:
                 logger.info(
                     "confirmation_resolved_while_processing",
                     request_id=request.id,
                     our_result=allowed,
                 )
-                return False  # Don't send response, another handler already did
+                return False
 
-            # Mark that we resolved this request
             self._resolved_by_us.add(request.id)
 
-            # Send the response back to the API
             await self.send_response(request.id, allowed)
 
-            # Keep the task reference alive briefly to allow other handlers to be cancelled
-            # The confirmation_resolved event should arrive soon and clean this up
             await asyncio.sleep(0.5)
 
             return allowed
 
         except asyncio.CancelledError:
-            # Request was cancelled by another handler resolving it
             logger.info(
                 "confirmation_cancelled",
                 request_id=request.id,
             )
-            raise  # Re-raise to properly handle cancellation
+            raise
 
         except Exception as e:
             logger.error(
@@ -240,7 +181,6 @@ class SSEConfirmationHandler:
                 error=str(e),
                 exc_info=True,
             )
-            # Send deny response on error (if not already resolved)
             if request.id not in self._resolved_requests:
                 await self.send_response(request.id, False)
             return False
@@ -295,18 +235,14 @@ class SSEConfirmationHandler:
         async for chunk in response.aiter_text():
             buffer += chunk
 
-            # Normalize line endings - replace \r\n with \n
             buffer = buffer.replace("\r\n", "\n")
 
-            # Process complete events (SSE events are separated by double newlines)
             while "\n\n" in buffer:
                 event_text, buffer = buffer.split("\n\n", 1)
 
-                # Skip empty events
                 if not event_text.strip():
                     continue
 
-                # Parse event
                 event_type = "message"
                 data_lines = []
 
@@ -321,13 +257,6 @@ class SSEConfirmationHandler:
                     try:
                         data_json = " ".join(data_lines)
                         data = json.loads(data_json)
-                        logger.debug(
-                            "sse_event_parsed",
-                            event_type=event_type,
-                            data_preview=str(data)[:100] + "..."
-                            if len(str(data)) > 100
-                            else str(data),
-                        )
                         yield event_type, data
                     except json.JSONDecodeError as e:
                         logger.error(
@@ -431,7 +360,7 @@ class SSEConfirmationHandler:
                     )
                     raise typer.Exit(1)
 
-            console.print("[green]✓ Connected to confirmation stream[/green]")
+            console.print("[green]√ Connected to confirmation stream[/green]")
             console.print("[yellow]Waiting for confirmation requests...[/yellow]\n")
 
             logger.info("sse_connection_established", url=stream_url)

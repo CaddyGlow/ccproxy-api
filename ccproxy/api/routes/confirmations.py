@@ -55,7 +55,6 @@ async def event_generator(
     queue = await service.subscribe_to_events()
 
     try:
-        # Send initial ping to establish connection
         yield {
             "event": "ping",
             "data": json.dumps({"message": "Connected to confirmation stream"}),
@@ -63,24 +62,21 @@ async def event_generator(
 
         while not await request.is_disconnected():
             try:
-                # Wait for events with a timeout to check for disconnection
                 event = await asyncio.wait_for(queue.get(), timeout=15.0)
 
-                # Send the event
                 yield {
                     "event": event["type"],
                     "data": json.dumps(event),
                 }
 
             except TimeoutError:
-                # Send periodic ping to keep connection alive
                 yield {
                     "event": "ping",
                     "data": json.dumps({"message": "keepalive"}),
                 }
 
     except asyncio.CancelledError:
-        logger.info("sse_client_disconnected")
+        pass
     finally:
         await service.unsubscribe_from_events(queue)
 
@@ -98,8 +94,6 @@ async def stream_confirmations(
     Returns:
         EventSourceResponse streaming confirmation events
     """
-    logger.info("confirmation_stream_connected")
-
     return EventSourceResponse(
         event_generator(request),
         headers={
@@ -161,8 +155,6 @@ async def respond_to_confirmation(
         HTTPException: If request not found or already resolved
     """
     service = get_confirmation_service()
-
-    # Check current status
     status = service.get_status(confirmation_id)
     if status is None:
         raise HTTPException(status_code=404, detail="Confirmation request not found")
@@ -173,7 +165,6 @@ async def respond_to_confirmation(
             detail=f"Request already resolved with status: {status.value}",
         )
 
-    # Resolve the request
     success = service.resolve(confirmation_id, response.allowed)
 
     if not success:
