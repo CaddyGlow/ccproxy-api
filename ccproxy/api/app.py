@@ -171,10 +171,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         if settings.server.use_terminal_confirmation_handler:
             terminal_handler = TerminalConfirmationHandler()
 
-            # Connect the UI handler to the service
-            confirmation_service.set_confirmation_handler(
-                terminal_handler.handle_confirmation
-            )
+            # TODO: Terminal handler should subscribe to events from the service
+            # instead of trying to set a handler directly
+            # The service uses an event-based architecture, not direct handlers
+
             logger.info(
                 "confirmation_handler_configured",
                 handler_type="terminal",

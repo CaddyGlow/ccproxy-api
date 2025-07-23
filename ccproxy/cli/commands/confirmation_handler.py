@@ -9,7 +9,6 @@ from typing import Any, Optional
 
 import httpx
 import typer
-from rich.console import Console
 from structlog import get_logger
 
 from ccproxy.api.services.confirmation_service import ConfirmationRequest
@@ -18,7 +17,6 @@ from ccproxy.config.settings import get_settings
 
 
 logger = get_logger(__name__)
-console = Console()
 
 app = typer.Typer(
     name="confirmation-handler",
@@ -38,7 +36,7 @@ class SSEConfirmationHandler:
     ):
         self.api_url = api_url.rstrip("/")
         self.terminal_handler = terminal_handler
-        self.client = httpx.AsyncClient(timeout=300.0)  # 5 minutes
+        self.client: httpx.AsyncClient | None = None
         self.max_retries = 5
         self.base_delay = 1.0
         self.max_delay = 60.0
@@ -47,6 +45,22 @@ class SSEConfirmationHandler:
         self._ongoing_requests: dict[str, asyncio.Task[bool]] = {}
         self._resolved_requests: dict[str, tuple[bool, str]] = {}
         self._resolved_by_us: set[str] = set()
+
+    async def __aenter__(self) -> "SSEConfirmationHandler":
+        """Async context manager entry."""
+        self.client = httpx.AsyncClient(timeout=300.0)  # 5 minutes
+        return self
+
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: Any,
+    ) -> None:
+        """Async context manager exit."""
+        if self.client:
+            await self.client.aclose()
+            self.client = None
 
     async def handle_event(self, event_type: str, data: dict[str, Any]) -> None:
         """Handle an SSE event.
@@ -70,8 +84,10 @@ class SSEConfirmationHandler:
                     allowed=allowed,
                     reason=reason,
                 )
-                console.print(
-                    f"[yellow]Request {request_id[:8]}... already {reason}[/yellow]\n"
+                logger.info(
+                    "confirmation_already_handled",
+                    request_id=request_id[:8],
+                    reason=reason,
                 )
                 return
 
@@ -130,8 +146,10 @@ class SSEConfirmationHandler:
                     with contextlib.suppress(TimeoutError, asyncio.CancelledError):
                         await asyncio.wait_for(task, timeout=0.1)
 
-                    console.print(
-                        f"\n[yellow]× Request {request_id[:8]}... {status_text} by another handler[/yellow]\n"
+                    logger.info(
+                        "confirmation_cancelled_by_other_handler",
+                        request_id=request_id[:8],
+                        status=status_text,
                     )
 
                 if request_id is not None:
@@ -181,8 +199,11 @@ class SSEConfirmationHandler:
                 error=str(e),
                 exc_info=True,
             )
+            # Only send response if not already resolved
             if request.id not in self._resolved_requests:
-                await self.send_response(request.id, False)
+                # If response fails, it might already be resolved
+                with contextlib.suppress(Exception):
+                    await self.send_response(request.id, False)
             return False
 
     async def send_response(self, request_id: str, allowed: bool) -> None:
@@ -192,6 +213,10 @@ class SSEConfirmationHandler:
             request_id: ID of the confirmation request
             allowed: Whether to allow or deny
         """
+        if not self.client:
+            logger.error("send_response_no_client", request_id=request_id)
+            return
+
         try:
             response = await self.client.post(
                 f"{self.api_url}/api/v1/confirmations/{request_id}/respond",
@@ -203,6 +228,13 @@ class SSEConfirmationHandler:
                     "confirmation_response_sent",
                     request_id=request_id,
                     allowed=allowed,
+                )
+            elif response.status_code == 409:
+                # Already resolved by another handler
+                logger.info(
+                    "confirmation_already_resolved",
+                    request_id=request_id,
+                    status_code=response.status_code,
                 )
             else:
                 logger.error(
@@ -268,70 +300,72 @@ class SSEConfirmationHandler:
 
     async def run(self) -> None:
         """Run the SSE client with reconnection logic."""
+        if not self.client:
+            logger.error("run_no_client")
+            return
+
         stream_url = f"{self.api_url}/api/v1/confirmations/stream"
         retry_count = 0
 
-        console.print(
-            f"[cyan]Connecting to confirmation stream at {stream_url}...[/cyan]"
+        logger.info(
+            "connecting_to_confirmation_stream",
+            url=stream_url,
         )
 
-        try:
-            while retry_count <= self.max_retries:
-                try:
-                    await self._connect_and_handle_stream(stream_url)
-                    # If we get here, connection ended gracefully
-                    break
+        while retry_count <= self.max_retries:
+            try:
+                await self._connect_and_handle_stream(stream_url)
+                # If we get here, connection ended gracefully
+                break
 
-                except KeyboardInterrupt:
-                    console.print(
-                        "\n[yellow]Shutting down confirmation handler...[/yellow]"
-                    )
-                    break
+            except KeyboardInterrupt:
+                logger.info("confirmation_handler_shutdown_requested")
+                break
 
-                except (
-                    httpx.ConnectError,
-                    httpx.TimeoutException,
-                    httpx.ReadTimeout,
-                ) as e:
-                    retry_count += 1
-                    if retry_count > self.max_retries:
-                        console.print(
-                            f"[red]Failed to connect after {self.max_retries} attempts[/red]\n"
-                            "[yellow]Make sure the API server is running.[/yellow]"
-                        )
-                        raise typer.Exit(1) from None
-
-                    # Exponential backoff with jitter
-                    delay = min(
-                        self.base_delay * (2 ** (retry_count - 1)), self.max_delay
-                    )
-
-                    logger.warning(
-                        "connection_failed_retrying",
-                        attempt=retry_count,
+            except (
+                httpx.ConnectError,
+                httpx.TimeoutException,
+                httpx.ReadTimeout,
+            ) as e:
+                retry_count += 1
+                if retry_count > self.max_retries:
+                    logger.error(
+                        "connection_failed_max_retries",
                         max_retries=self.max_retries,
-                        retry_delay=delay,
-                        error=str(e),
                     )
+                    raise typer.Exit(1) from None
 
-                    console.print(
-                        f"[yellow]Connection failed (attempt {retry_count}/{self.max_retries}). "
-                        f"Retrying in {delay:.1f}s...[/yellow]"
-                    )
+                # Exponential backoff with jitter
+                delay = min(self.base_delay * (2 ** (retry_count - 1)), self.max_delay)
 
-                    await asyncio.sleep(delay)
-                    continue
+                logger.warning(
+                    "connection_failed_retrying",
+                    attempt=retry_count,
+                    max_retries=self.max_retries,
+                    retry_delay=delay,
+                    error=str(e),
+                )
 
-                except Exception as e:
-                    logger.error("sse_client_error", error=str(e), exc_info=True)
-                    console.print(f"[red]Unexpected error: {e}[/red]")
-                    raise typer.Exit(1) from e
+                logger.warning(
+                    "connection_retry",
+                    attempt=retry_count,
+                    max_retries=self.max_retries,
+                    retry_delay=delay,
+                )
 
-        finally:
-            await self.client.aclose()
+                await asyncio.sleep(delay)
+                continue
+
+            except Exception as e:
+                logger.error("sse_client_error", error=str(e), exc_info=True)
+                raise typer.Exit(1) from e
 
     async def _connect_and_handle_stream(self, stream_url: str) -> None:
         """Connect to the stream and handle events."""
+        if not self.client:
+            logger.error("connect_no_client")
+            return
+
         async with self.client.stream("GET", stream_url) as response:
             if response.status_code != 200:
                 error_text = ""
@@ -354,14 +388,18 @@ class SSEConfirmationHandler:
                     )
                 else:
                     # Client errors - don't retry
-                    console.print(
-                        f"[red]Failed to connect: HTTP {response.status_code}[/red]\n"
-                        f"Response: {error_text}"
+                    logger.error(
+                        "sse_connection_client_error",
+                        status_code=response.status_code,
+                        response=error_text,
                     )
                     raise typer.Exit(1)
 
-            console.print("[green]√ Connected to confirmation stream[/green]")
-            console.print("[yellow]Waiting for confirmation requests...[/yellow]\n")
+            logger.info(
+                "sse_connection_established",
+                url=stream_url,
+                message="Connected to confirmation stream. Waiting for requests...",
+            )
 
             logger.info("sse_connection_established", url=stream_url)
 
@@ -400,15 +438,19 @@ def connect(
 
     # Create handlers
     terminal_handler = TerminalConfirmationHandler()
-    sse_handler = SSEConfirmationHandler(api_url, terminal_handler, ui)
+
+    async def run_handler() -> None:
+        """Run the handler with proper resource management."""
+        async with SSEConfirmationHandler(api_url, terminal_handler, ui) as sse_handler:
+            await sse_handler.run()
 
     # Run the async handler
     try:
-        asyncio.run(sse_handler.run())
+        asyncio.run(run_handler())
     except KeyboardInterrupt:
-        console.print("\n[green]Confirmation handler stopped.[/green]")
+        logger.info("confirmation_handler_stopped")
     except Exception as e:
-        console.print(f"\n[red]Error: {e}[/red]")
+        logger.error("confirmation_handler_error", error=str(e), exc_info=True)
         raise typer.Exit(1) from e
 
 

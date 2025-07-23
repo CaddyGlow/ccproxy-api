@@ -12,3 +12,10 @@ class SecuritySettings(BaseModel):
         default=None,
         description="Bearer token for API authentication (optional)",
     )
+
+    confirmation_timeout_seconds: int = Field(
+        default=30,
+        ge=5,
+        le=300,
+        description="Timeout in seconds for permission confirmation requests (5-300)",
+    )

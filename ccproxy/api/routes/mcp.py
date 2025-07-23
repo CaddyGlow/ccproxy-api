@@ -4,19 +4,16 @@ Provides MCP server functionality including permission checking tools.
 """
 
 import asyncio
-import json
-from typing import Annotated, Any
+from typing import Annotated
 
 from fastapi import Depends, FastAPI
 from fastapi_mcp import FastApiMCP  # type: ignore[import-untyped]
 from pydantic import BaseModel, ConfigDict, Field
 from structlog import get_logger
 
-from ccproxy.api.services.confirmation_service import (
-    ConfirmationStatus,
-    get_confirmation_service,
-)
+from ccproxy.api.services.confirmation_service import get_confirmation_service
 from ccproxy.config.settings import Settings, get_settings
+from ccproxy.models.confirmations import ConfirmationStatus
 from ccproxy.models.responses import (
     PermissionToolAllowResponse,
     PermissionToolDenyResponse,
@@ -33,7 +30,7 @@ class PermissionCheckRequest(BaseModel):
     tool_name: Annotated[
         str, Field(description="Name of the tool to check permissions for")
     ]
-    input: Annotated[dict[str, Any], Field(description="Input parameters for the tool")]
+    input: Annotated[dict[str, str], Field(description="Input parameters for the tool")]
     tool_use_id: Annotated[
         str | None,
         Field(
@@ -73,7 +70,7 @@ async def check_permission(
     confirmation_service = get_confirmation_service()
 
     if request.confirmation_id:
-        status = confirmation_service.get_status(request.confirmation_id)
+        status = await confirmation_service.get_status(request.confirmation_id)
 
         if status == ConfirmationStatus.ALLOWED:
             return PermissionToolAllowResponse(updated_input=request.input)
@@ -94,35 +91,39 @@ async def check_permission(
         input=request.input,
     )
 
+    # Wait for confirmation to be resolved
     try:
-        final_status = await confirmation_service.wait_for_confirmation(confirmation_id)
+        final_status = await confirmation_service.wait_for_confirmation(
+            confirmation_id,
+            timeout_seconds=settings.security.confirmation_timeout_seconds,
+        )
 
         if final_status == ConfirmationStatus.ALLOWED:
+            logger.info(
+                "permission_allowed_after_confirmation",
+                tool_name=request.tool_name,
+                confirmation_id=confirmation_id,
+            )
             return PermissionToolAllowResponse(updated_input=request.input)
-
-        elif final_status == ConfirmationStatus.DENIED:
-            return PermissionToolDenyResponse(message="User denied the operation")
-
-        else:  # EXPIRED
-            return PermissionToolDenyResponse(message="Confirmation request expired")
+        else:
+            logger.info(
+                "permission_denied_after_confirmation",
+                tool_name=request.tool_name,
+                confirmation_id=confirmation_id,
+                status=final_status.value,
+            )
+            return PermissionToolDenyResponse(
+                message=f"User denied the operation (status: {final_status.value})"
+            )
 
     except TimeoutError:
         logger.warning(
-            "permission_wait_timeout",
+            "permission_confirmation_timeout",
             tool_name=request.tool_name,
             confirmation_id=confirmation_id,
+            timeout_seconds=settings.security.confirmation_timeout_seconds,
         )
         return PermissionToolDenyResponse(message="Confirmation request timed out")
-
-    except Exception as e:
-        logger.error(
-            "permission_wait_error",
-            tool_name=request.tool_name,
-            confirmation_id=confirmation_id,
-            error=str(e),
-            exc_info=True,
-        )
-        return PermissionToolDenyResponse(message="Error waiting for confirmation")
 
 
 def setup_mcp(app: FastAPI) -> None:

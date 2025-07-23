@@ -234,6 +234,45 @@ class DockerError(ClaudeProxyError):
         )
 
 
+class ConfirmationError(ClaudeProxyError):
+    """Base exception for confirmation-related errors."""
+
+    pass
+
+
+class ConfirmationNotFoundError(ConfirmationError):
+    """Raised when confirmation request is not found."""
+
+    def __init__(self, confirmation_id: str) -> None:
+        super().__init__(
+            message=f"Confirmation request '{confirmation_id}' not found",
+            error_type="not_found_error",
+            status_code=404,
+        )
+
+
+class ConfirmationExpiredError(ConfirmationError):
+    """Raised when confirmation request has expired."""
+
+    def __init__(self, confirmation_id: str) -> None:
+        super().__init__(
+            message=f"Confirmation request '{confirmation_id}' has expired",
+            error_type="expired_error",
+            status_code=410,
+        )
+
+
+class ConfirmationAlreadyResolvedError(ConfirmationError):
+    """Raised when trying to resolve an already resolved request."""
+
+    def __init__(self, confirmation_id: str, status: str) -> None:
+        super().__init__(
+            message=f"Confirmation request '{confirmation_id}' already resolved with status: {status}",
+            error_type="conflict_error",
+            status_code=409,
+        )
+
+
 __all__ = [
     # Core proxy errors
     "ProxyError",
@@ -253,4 +292,9 @@ __all__ = [
     "TimeoutError",
     "ServiceUnavailableError",
     "DockerError",
+    # Confirmation errors
+    "ConfirmationError",
+    "ConfirmationNotFoundError",
+    "ConfirmationExpiredError",
+    "ConfirmationAlreadyResolvedError",
 ]

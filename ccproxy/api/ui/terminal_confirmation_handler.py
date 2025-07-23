@@ -1,6 +1,7 @@
 """Terminal UI handler for confirmation requests using Rich."""
 
 import asyncio
+import contextlib
 from typing import Any
 
 from rich.console import Console
@@ -126,8 +127,8 @@ class TerminalConfirmationHandler:
             except (KeyboardInterrupt, EOFError):
                 return False
 
-        # run_in_executor returns a Future, not a coroutine
-        prompt_task = loop.run_in_executor(None, prompt_user)
+        # Use run_in_executor to avoid blocking the event loop
+        prompt_task: asyncio.Future[bool] = loop.run_in_executor(None, prompt_user)
 
         timeout_task = asyncio.create_task(asyncio.sleep(request.time_remaining()))
 
@@ -139,6 +140,7 @@ class TerminalConfirmationHandler:
         )
 
         try:
+            # Wait for the first to complete
             awaitables: list[asyncio.Future[Any]] = [
                 prompt_task,
                 timeout_task,
@@ -149,26 +151,35 @@ class TerminalConfirmationHandler:
                 return_when=asyncio.FIRST_COMPLETED,
             )
 
+            # Cancel all pending tasks
             for task in pending:
                 task.cancel()
+                # Wait for cancellation to complete
+                with contextlib.suppress(asyncio.CancelledError):
+                    await task
 
             if prompt_task in done:
                 return bool(prompt_task.result())
             elif cancellation_task in done:
-                if not prompt_task.done():
-                    prompt_task.cancel()  # This won't interrupt the blocking input
-
+                # Request was cancelled by another handler
                 raise asyncio.CancelledError("Request cancelled by another handler")
             else:
-                if not prompt_task.done():
-                    prompt_task.cancel()  # This won't interrupt the blocking input
-
+                # Timeout occurred
                 self._console.print("\n[red]Timeout - request denied[/red]")
                 return False
 
         except Exception:
-            if not prompt_task.done():
-                prompt_task.cancel()
+            # Clean up on any exception
+            tasks_to_cancel: list[asyncio.Future[Any] | asyncio.Task[None]] = [
+                prompt_task,
+                timeout_task,
+                cancellation_task,
+            ]
+            for task in tasks_to_cancel:
+                if not task.done():
+                    task.cancel()
+                    with contextlib.suppress(asyncio.CancelledError):
+                        await task
             raise
 
     def _display_result(self, allowed: bool) -> None:

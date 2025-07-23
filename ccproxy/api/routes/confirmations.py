@@ -3,18 +3,20 @@
 import asyncio
 import json
 from collections.abc import AsyncGenerator
-from typing import Annotated, Any
+from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 from structlog import get_logger
 
-from ccproxy.api.services.confirmation_service import (
-    ConfirmationStatus,
-    get_confirmation_service,
-)
+from ccproxy.api.services.confirmation_service import get_confirmation_service
 from ccproxy.config.settings import Settings, get_settings
+from ccproxy.core.errors import (
+    ConfirmationAlreadyResolvedError,
+    ConfirmationNotFoundError,
+)
+from ccproxy.models.confirmations import ConfirmationStatus
 
 
 logger = get_logger(__name__)
@@ -33,7 +35,7 @@ class ConfirmationRequestInfo(BaseModel):
 
     request_id: str
     tool_name: str
-    input: dict[str, Any]
+    input: dict[str, str]
     status: str
     created_at: str
     expires_at: str
@@ -65,7 +67,7 @@ async def event_generator(
                 event = await asyncio.wait_for(queue.get(), timeout=15.0)
 
                 yield {
-                    "event": event["type"],
+                    "event": event.get("type", "message"),
                     "data": json.dumps(event),
                 }
 
@@ -120,10 +122,14 @@ async def get_confirmation(
         HTTPException: If request not found
     """
     service = get_confirmation_service()
-    request = service.get_request(confirmation_id)
-
-    if not request:
-        raise HTTPException(status_code=404, detail="Confirmation request not found")
+    try:
+        request = await service.get_request(confirmation_id)
+        if not request:
+            raise ConfirmationNotFoundError(confirmation_id)
+    except ConfirmationNotFoundError as e:
+        raise HTTPException(
+            status_code=404, detail="Confirmation request not found"
+        ) from e
 
     return ConfirmationRequestInfo(
         request_id=request.id,
@@ -141,7 +147,7 @@ async def respond_to_confirmation(
     confirmation_id: str,
     response: ConfirmationResponse,
     settings: Annotated[Settings, Depends(get_settings)],
-) -> dict[str, Any]:
+) -> dict[str, str | bool]:
     """Submit a response to a confirmation request.
 
     Args:
@@ -155,17 +161,20 @@ async def respond_to_confirmation(
         HTTPException: If request not found or already resolved
     """
     service = get_confirmation_service()
-    status = service.get_status(confirmation_id)
+    status = await service.get_status(confirmation_id)
     if status is None:
         raise HTTPException(status_code=404, detail="Confirmation request not found")
 
     if status != ConfirmationStatus.PENDING:
-        raise HTTPException(
-            status_code=409,
-            detail=f"Request already resolved with status: {status.value}",
-        )
+        try:
+            raise ConfirmationAlreadyResolvedError(confirmation_id, status.value)
+        except ConfirmationAlreadyResolvedError as e:
+            raise HTTPException(
+                status_code=e.status_code,
+                detail=e.message,
+            ) from e
 
-    success = service.resolve(confirmation_id, response.allowed)
+    success = await service.resolve(confirmation_id, response.allowed)
 
     if not success:
         raise HTTPException(

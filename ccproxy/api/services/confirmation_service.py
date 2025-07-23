@@ -2,71 +2,24 @@
 
 import asyncio
 import contextlib
-import json
-import uuid
-from collections.abc import Awaitable, Callable
-from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from enum import Enum
-from typing import Any, Optional
+from typing import Any
 
 from structlog import get_logger
 
+from ccproxy.core.errors import (
+    ConfirmationAlreadyResolvedError,
+    ConfirmationExpiredError,
+    ConfirmationNotFoundError,
+)
+from ccproxy.models.confirmations import (
+    ConfirmationEvent,
+    ConfirmationRequest,
+    ConfirmationStatus,
+)
+
 
 logger = get_logger(__name__)
-
-
-class ConfirmationStatus(Enum):
-    PENDING = "pending"
-    ALLOWED = "allowed"
-    DENIED = "denied"
-    EXPIRED = "expired"
-
-
-@dataclass
-class ConfirmationRequest:
-    """Represents a permission confirmation request."""
-
-    id: str
-    tool_name: str
-    input: dict[str, Any]
-    created_at: datetime
-    expires_at: datetime
-    status: ConfirmationStatus = ConfirmationStatus.PENDING
-    resolved_at: datetime | None = None
-
-    @classmethod
-    def create(
-        cls, tool_name: str, input: dict[str, Any], timeout_seconds: int = 30
-    ) -> "ConfirmationRequest":
-        now = datetime.now()
-        return cls(
-            id=str(uuid.uuid4()),
-            tool_name=tool_name,
-            input=input,
-            created_at=now,
-            expires_at=now + timedelta(seconds=timeout_seconds),
-        )
-
-    def is_expired(self) -> bool:
-        if self.status != ConfirmationStatus.PENDING:
-            return False
-        return datetime.now() > self.expires_at
-
-    def time_remaining(self) -> int:
-        if self.status != ConfirmationStatus.PENDING:
-            return 0
-        remaining = (self.expires_at - datetime.now()).total_seconds()
-        return max(0, int(remaining))
-
-    def resolve(self, allowed: bool) -> None:
-        if self.status != ConfirmationStatus.PENDING:
-            raise ValueError(f"Cannot resolve request in {self.status} status")
-
-        self.status = (
-            ConfirmationStatus.ALLOWED if allowed else ConfirmationStatus.DENIED
-        )
-        self.resolved_at = datetime.now()
 
 
 class ConfirmationService:
@@ -75,26 +28,10 @@ class ConfirmationService:
     def __init__(self, timeout_seconds: int = 30):
         self._timeout_seconds = timeout_seconds
         self._requests: dict[str, ConfirmationRequest] = {}
-        self._confirmation_handler: (
-            Callable[[ConfirmationRequest], Awaitable[bool]] | None
-        ) = None
         self._expiry_task: asyncio.Task[None] | None = None
         self._shutdown = False
         self._event_queues: list[asyncio.Queue[dict[str, Any]]] = []
         self._lock = asyncio.Lock()
-
-    def set_confirmation_handler(
-        self, handler: Callable[[ConfirmationRequest], Awaitable[bool]]
-    ) -> None:
-        """Set the handler function for confirmation requests.
-
-        The handler should present the request to the user and return
-        True if allowed, False if denied.
-
-        Args:
-            handler: Async function that handles user confirmation
-        """
-        self._confirmation_handler = handler
 
     async def start(self) -> None:
         if self._expiry_task is None:
@@ -110,7 +47,7 @@ class ConfirmationService:
             self._expiry_task = None
         logger.info("confirmation_service_stopped")
 
-    async def request_confirmation(self, tool_name: str, input: dict[str, Any]) -> str:
+    async def request_confirmation(self, tool_name: str, input: dict[str, str]) -> str:
         """Create a new confirmation request.
 
         Args:
@@ -119,14 +56,29 @@ class ConfirmationService:
 
         Returns:
             Confirmation request ID
+
+        Raises:
+            ValueError: If tool_name is empty or input is None
         """
-        request = ConfirmationRequest.create(
-            tool_name=tool_name,
-            input=input,
-            timeout_seconds=self._timeout_seconds,
+        # Input validation
+        if not tool_name or not tool_name.strip():
+            raise ValueError("Tool name cannot be empty")
+        if input is None:
+            raise ValueError("Input parameters cannot be None")
+
+        # Sanitize input - ensure all values are strings
+        sanitized_input = {k: str(v) for k, v in input.items()}
+
+        now = datetime.utcnow()
+        request = ConfirmationRequest(
+            tool_name=tool_name.strip(),
+            input=sanitized_input,
+            created_at=now,
+            expires_at=now + timedelta(seconds=self._timeout_seconds),
         )
 
-        self._requests[request.id] = request
+        async with self._lock:
+            self._requests[request.id] = request
 
         logger.info(
             "confirmation_request_created",
@@ -134,24 +86,20 @@ class ConfirmationService:
             tool_name=tool_name,
         )
 
-        await self._emit_event(
-            {
-                "type": "confirmation_request",
-                "request_id": request.id,
-                "tool_name": request.tool_name,
-                "input": request.input,
-                "created_at": request.created_at.isoformat(),
-                "expires_at": request.expires_at.isoformat(),
-                "timeout_seconds": self._timeout_seconds,
-            }
+        event = ConfirmationEvent(
+            type="confirmation_request",
+            request_id=request.id,
+            tool_name=request.tool_name,
+            input=request.input,
+            created_at=request.created_at.isoformat(),
+            expires_at=request.expires_at.isoformat(),
+            timeout_seconds=self._timeout_seconds,
         )
-
-        if self._confirmation_handler:
-            asyncio.create_task(self._handle_confirmation(request))
+        await self._emit_event(event.model_dump())
 
         return request.id
 
-    def get_status(self, request_id: str) -> ConfirmationStatus | None:
+    async def get_status(self, request_id: str) -> ConfirmationStatus | None:
         """Get the status of a confirmation request.
 
         Args:
@@ -160,16 +108,17 @@ class ConfirmationService:
         Returns:
             Status of the request or None if not found
         """
-        request = self._requests.get(request_id)
-        if not request:
-            return None
+        async with self._lock:
+            request = self._requests.get(request_id)
+            if not request:
+                return None
 
-        if request.is_expired():
-            request.status = ConfirmationStatus.EXPIRED
+            if request.is_expired():
+                request.status = ConfirmationStatus.EXPIRED
 
-        return request.status
+            return request.status
 
-    def get_request(self, request_id: str) -> ConfirmationRequest | None:
+    async def get_request(self, request_id: str) -> ConfirmationRequest | None:
         """Get a confirmation request by ID.
 
         Args:
@@ -178,9 +127,10 @@ class ConfirmationService:
         Returns:
             The request or None if not found
         """
-        return self._requests.get(request_id)
+        async with self._lock:
+            return self._requests.get(request_id)
 
-    def resolve(self, request_id: str, allowed: bool) -> bool:
+    async def resolve(self, request_id: str, allowed: bool) -> bool:
         """Manually resolve a confirmation request.
 
         Args:
@@ -189,88 +139,76 @@ class ConfirmationService:
 
         Returns:
             True if resolved successfully, False if not found or already resolved
+
+        Raises:
+            ValueError: If request_id is empty
         """
-        request = self._requests.get(request_id)
-        if not request or request.status != ConfirmationStatus.PENDING:
-            return False
+        # Input validation
+        if not request_id or not request_id.strip():
+            raise ValueError("Request ID cannot be empty")
 
-        try:
-            request.resolve(allowed)
-            logger.info(
-                "confirmation_request_resolved",
-                request_id=request_id,
-                tool_name=request.tool_name,
-                allowed=allowed,
-            )
+        async with self._lock:
+            request = self._requests.get(request_id.strip())
+            if not request or request.status != ConfirmationStatus.PENDING:
+                return False
 
-            # Emit resolution event
-            asyncio.create_task(
-                self._emit_event(
-                    {
-                        "type": "confirmation_resolved",
-                        "request_id": request_id,
-                        "allowed": allowed,
-                        "resolved_at": request.resolved_at.isoformat()
-                        if request.resolved_at
-                        else None,
-                    }
-                )
-            )
+            try:
+                request.resolve(allowed)
+            except ValueError:
+                return False
 
-            return True
-        except ValueError:
-            return False
+        logger.info(
+            "confirmation_request_resolved",
+            request_id=request_id,
+            tool_name=request.tool_name,
+            allowed=allowed,
+        )
 
-    async def _handle_confirmation(self, request: ConfirmationRequest) -> None:
-        if not self._confirmation_handler:
-            return
+        # Emit resolution event
+        event = ConfirmationEvent(
+            type="confirmation_resolved",
+            request_id=request_id,
+            allowed=allowed,
+            resolved_at=request.resolved_at.isoformat()
+            if request.resolved_at
+            else None,
+        )
+        await self._emit_event(event.model_dump())
 
-        try:
-            timeout = request.time_remaining()
-
-            result = await asyncio.wait_for(
-                self._confirmation_handler(request),
-                timeout=timeout,
-            )
-
-            if request.status == ConfirmationStatus.PENDING:
-                request.resolve(result)
-
-        except TimeoutError:
-            if request.status == ConfirmationStatus.PENDING:
-                request.status = ConfirmationStatus.EXPIRED
-                logger.warning(
-                    "confirmation_handler_timeout",
-                    request_id=request.id,
-                    tool_name=request.tool_name,
-                )
-        except Exception as e:
-            if request.status == ConfirmationStatus.PENDING:
-                request.resolve(False)
-            logger.error(
-                "confirmation_handler_error",
-                request_id=request.id,
-                error=str(e),
-                exc_info=True,
-            )
+        return True
 
     async def _expiry_checker(self) -> None:
         while not self._shutdown:
             try:
                 await asyncio.sleep(5)
 
-                now = datetime.now()
+                now = datetime.utcnow()
                 expired_ids = []
+                expired_events = []
 
-                for req_id, req in self._requests.items():
-                    if req.is_expired() and req.status == ConfirmationStatus.PENDING:
-                        req.status = ConfirmationStatus.EXPIRED
+                async with self._lock:
+                    for req_id, req in self._requests.items():
+                        if (
+                            req.is_expired()
+                            and req.status == ConfirmationStatus.PENDING
+                        ):
+                            req.status = ConfirmationStatus.EXPIRED
+                            event = ConfirmationEvent(
+                                type="confirmation_expired",
+                                request_id=req_id,
+                                expired_at=now.isoformat(),
+                            )
+                            expired_events.append(event.model_dump())
 
-                    if self._should_cleanup_request(req, now):
-                        expired_ids.append(req_id)
+                        if self._should_cleanup_request(req, now):
+                            expired_ids.append(req_id)
 
-                for req_id in expired_ids:
-                    del self._requests[req_id]
+                    for req_id in expired_ids:
+                        del self._requests[req_id]
+
+                # Emit expired events outside the lock
+                for event_data in expired_events:
+                    await self._emit_event(event_data)
 
                 if expired_ids:
                     logger.info(
@@ -327,6 +265,22 @@ class ConfirmationService:
             if queue in self._event_queues:
                 self._event_queues.remove(queue)
 
+    async def _emit_event(self, event: dict[str, Any]) -> None:
+        """Emit an event to all subscribers.
+
+        Args:
+            event: The event data to emit
+        """
+        async with self._lock:
+            queues = list(self._event_queues)
+
+        if not queues:
+            return
+
+        for queue in queues:
+            with contextlib.suppress(asyncio.QueueFull):
+                queue.put_nowait(event)
+
     async def wait_for_confirmation(
         self, request_id: str, timeout_seconds: int | None = None
     ) -> ConfirmationStatus:
@@ -344,14 +298,15 @@ class ConfirmationService:
 
         Raises:
             asyncio.TimeoutError: If timeout is reached before resolution
-            ValueError: If request ID is not found
+            ConfirmationNotFoundError: If request ID is not found
         """
-        request = self._requests.get(request_id)
-        if not request:
-            raise ValueError(f"Confirmation request {request_id} not found")
+        async with self._lock:
+            request = self._requests.get(request_id)
+            if not request:
+                raise ConfirmationNotFoundError(request_id)
 
-        if request.status != ConfirmationStatus.PENDING:
-            return request.status
+            if request.status != ConfirmationStatus.PENDING:
+                return request.status
 
         if timeout_seconds is None:
             timeout_seconds = request.time_remaining()
@@ -360,7 +315,7 @@ class ConfirmationService:
         poll_interval = 0.1
 
         while True:
-            current_status = self.get_status(request_id)
+            current_status = await self.get_status(request_id)
             if current_status is None:
                 return ConfirmationStatus.EXPIRED
             if current_status != ConfirmationStatus.PENDING:
@@ -373,27 +328,14 @@ class ConfirmationService:
                     request_id=request_id,
                     elapsed_seconds=elapsed,
                 )
-                if request.status == ConfirmationStatus.PENDING:
-                    request.status = ConfirmationStatus.EXPIRED
+                async with self._lock:
+                    if request_id in self._requests:
+                        req = self._requests[request_id]
+                        if req.status == ConfirmationStatus.PENDING:
+                            req.status = ConfirmationStatus.EXPIRED
                 raise TimeoutError(f"Confirmation wait timeout after {elapsed:.1f}s")
 
             await asyncio.sleep(poll_interval)
-
-    async def _emit_event(self, event: dict[str, Any]) -> None:
-        """Emit an event to all subscribers.
-
-        Args:
-            event: The event data to emit
-        """
-        async with self._lock:
-            queues = list(self._event_queues)
-
-        if not queues:
-            return
-
-        for queue in queues:
-            with contextlib.suppress(asyncio.QueueFull):
-                queue.put_nowait(event)
 
 
 # Global instance
@@ -406,3 +348,10 @@ def get_confirmation_service() -> ConfirmationService:
     if _confirmation_service is None:
         _confirmation_service = ConfirmationService()
     return _confirmation_service
+
+
+__all__ = [
+    "ConfirmationService",
+    "ConfirmationRequest",
+    "get_confirmation_service",
+]
