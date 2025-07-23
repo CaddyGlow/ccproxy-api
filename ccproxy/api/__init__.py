@@ -12,10 +12,7 @@ from ccproxy.api.dependencies import (
 )
 
 
-app = create_app()
-
 __all__ = [
-    "app",
     "create_app",
     "get_app",
     "get_claude_service",

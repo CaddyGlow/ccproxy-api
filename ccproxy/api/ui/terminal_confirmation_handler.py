@@ -21,6 +21,22 @@ class TerminalConfirmationHandler:
     def __init__(self) -> None:
         """Initialize the terminal handler."""
         self._console = Console()
+        self._cancellation_events: dict[str, asyncio.Event] = {}
+
+    def cancel_confirmation(self, request_id: str, reason: str = "cancelled") -> None:
+        """Cancel an ongoing confirmation request.
+
+        Args:
+            request_id: ID of the request to cancel
+            reason: Reason for cancellation (for display)
+        """
+        if request_id in self._cancellation_events:
+            self._cancellation_events[request_id].set()
+            logger.debug(
+                "terminal_confirmation_cancelled",
+                request_id=request_id,
+                reason=reason,
+            )
 
     async def handle_confirmation(self, request: ConfirmationRequest) -> bool:
         """Handle a confirmation request by prompting the user.
@@ -37,23 +53,39 @@ class TerminalConfirmationHandler:
             tool_name=request.tool_name,
         )
 
+        # Create cancellation event for this request
+        cancellation_event = asyncio.Event()
+        self._cancellation_events[request.id] = cancellation_event
+
         try:
             # Display the request
             self._display_request(request)
 
-            # Get user confirmation with timeout handling
-            result = await self._get_user_confirmation(request)
-
-            # Display result
-            self._display_result(result)
-
-            logger.debug(
-                "terminal_handler_completed",
-                request_id=request.id,
-                result=result,
+            # Get user confirmation with timeout and cancellation handling
+            result = await self._get_user_confirmation_with_cancellation(
+                request, cancellation_event
             )
 
+            # Display result if not cancelled
+            if not cancellation_event.is_set():
+                self._display_result(result)
+
+                logger.debug(
+                    "terminal_handler_completed",
+                    request_id=request.id,
+                    result=result,
+                )
+
             return result
+
+        except asyncio.CancelledError:
+            # Handle cancellation gracefully
+            # Don't print here - the cancellation message was already shown
+            logger.debug(
+                "terminal_handler_cancelled",
+                request_id=request.id,
+            )
+            raise
 
         except Exception as e:
             logger.error(
@@ -64,6 +96,10 @@ class TerminalConfirmationHandler:
             )
             self._console.print("[red]Error handling confirmation request[/red]\n")
             return False  # Deny on error
+
+        finally:
+            # Clean up cancellation event
+            self._cancellation_events.pop(request.id, None)
 
     def _display_request(self, request: ConfirmationRequest) -> None:
         """Display the confirmation request to the user."""
@@ -104,6 +140,82 @@ class TerminalConfirmationHandler:
         if len(value_str) > 60:
             value_str = value_str[:57] + "..."
         return value_str
+
+    async def _get_user_confirmation_with_cancellation(
+        self, request: ConfirmationRequest, cancellation_event: asyncio.Event
+    ) -> bool:
+        """Get user confirmation with timeout and cancellation handling."""
+        loop = asyncio.get_event_loop()
+
+        # Show a clear message that this can be cancelled
+        self._console.print(
+            "\n[dim]Note: This prompt will auto-cancel if another handler responds[/dim]"
+        )
+
+        def prompt_user() -> bool:
+            try:
+                return Confirm.ask(
+                    "\n[bold]Allow this operation?[/bold]",
+                    default=False,
+                )
+            except (KeyboardInterrupt, EOFError):
+                return False
+
+        # Create the prompt task (run_in_executor returns a Future, not a coroutine)
+        prompt_task = loop.run_in_executor(None, prompt_user)
+
+        # Create timeout task
+        timeout_task = asyncio.create_task(asyncio.sleep(request.time_remaining()))
+
+        # Create cancellation task
+        async def wait_for_cancellation() -> None:
+            await cancellation_event.wait()
+
+        cancellation_task: asyncio.Task[None] = asyncio.create_task(
+            wait_for_cancellation()
+        )
+
+        try:
+            # Wait for the first task to complete
+            # Note: prompt_task is a Future from run_in_executor
+            awaitables: list[asyncio.Future[Any]] = [
+                prompt_task,
+                timeout_task,
+                cancellation_task,
+            ]
+            done, pending = await asyncio.wait(
+                awaitables,
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+
+            # Cancel all pending tasks
+            for task in pending:
+                task.cancel()
+
+            # Check which task completed first
+            if prompt_task in done:
+                # User responded
+                return bool(prompt_task.result())
+            elif cancellation_task in done:
+                # Request was cancelled by another handler
+                if not prompt_task.done():
+                    prompt_task.cancel()  # This won't interrupt the blocking input
+
+                # Don't print here - let the SSE handler print after cancellation
+                raise asyncio.CancelledError("Request cancelled by another handler")
+            else:
+                # Timeout occurred
+                if not prompt_task.done():
+                    prompt_task.cancel()  # This won't interrupt the blocking input
+
+                self._console.print("\n[red]Timeout - request denied[/red]")
+                return False
+
+        except Exception:
+            # Make sure prompt task is cancelled on any error
+            if not prompt_task.done():
+                prompt_task.cancel()
+            raise
 
     async def _get_user_confirmation(self, request: ConfirmationRequest) -> bool:
         """Get user confirmation with timeout handling."""
