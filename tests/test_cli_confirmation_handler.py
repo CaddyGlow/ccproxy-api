@@ -3,7 +3,7 @@
 import asyncio
 import json
 from collections.abc import AsyncGenerator
-from typing import Any
+from typing import Any, cast
 from unittest.mock import AsyncMock, Mock, call, patch
 
 import httpx
@@ -17,6 +17,7 @@ from ccproxy.cli.commands.confirmation_handler import (
     connect,
 )
 from ccproxy.config.settings import Settings
+from ccproxy.models.confirmations import ConfirmationEventDict
 
 
 @pytest.fixture
@@ -72,7 +73,13 @@ class TestSSEConfirmationHandler:
     ) -> None:
         """Test that ping events are ignored."""
         # Should not raise any errors
-        await sse_handler.handle_event("ping", {"message": "keepalive"})
+        await sse_handler.handle_event(
+            "ping",
+            cast(
+                ConfirmationEventDict,
+                {"type": "ping", "request_id": "", "message": "keepalive"},
+            ),
+        )
 
     async def test_handle_confirmation_request_event(
         self,
@@ -81,6 +88,7 @@ class TestSSEConfirmationHandler:
     ) -> None:
         """Test handling new confirmation request event."""
         event_data = {
+            "type": "confirmation_request",
             "request_id": "test-id-123",
             "tool_name": "bash",
             "input": {"command": "ls -la"},
@@ -88,7 +96,9 @@ class TestSSEConfirmationHandler:
             "expires_at": "2024-01-01T12:00:30",
         }
 
-        await sse_handler.handle_event("confirmation_request", event_data)
+        await sse_handler.handle_event(
+            "confirmation_request", cast(ConfirmationEventDict, event_data)
+        )
 
         # Should have created a task
         assert "test-id-123" in sse_handler._ongoing_requests
@@ -102,7 +112,7 @@ class TestSSEConfirmationHandler:
         mock_terminal_handler.handle_confirmation.assert_called_once()
         call_args = mock_terminal_handler.handle_confirmation.call_args[0][0]
         assert isinstance(call_args, ConfirmationRequest)
-        assert call_args.id == "test-id-123"
+        assert call_args.id == "test-id-123"  # ID should be preserved now
         assert call_args.tool_name == "bash"
 
     async def test_handle_confirmation_resolved_event(
@@ -113,6 +123,7 @@ class TestSSEConfirmationHandler:
         """Test handling confirmation resolved by another handler."""
         # First create a pending request
         request_event = {
+            "type": "confirmation_request",
             "request_id": "test-id-123",
             "tool_name": "bash",
             "input": {"command": "ls"},
@@ -129,18 +140,23 @@ class TestSSEConfirmationHandler:
 
         mock_terminal_handler.handle_confirmation = slow_handler
 
-        await sse_handler.handle_event("confirmation_request", request_event)
+        await sse_handler.handle_event(
+            "confirmation_request", cast(ConfirmationEventDict, request_event)
+        )
 
         # Ensure task is created
         assert "test-id-123" in sse_handler._ongoing_requests
 
         # Now send resolved event
         resolved_event = {
+            "type": "confirmation_resolved",
             "request_id": "test-id-123",
             "allowed": True,
         }
 
-        await sse_handler.handle_event("confirmation_resolved", resolved_event)
+        await sse_handler.handle_event(
+            "confirmation_resolved", cast(ConfirmationEventDict, resolved_event)
+        )
 
         # Should have cancelled the confirmation
         mock_terminal_handler.cancel_confirmation.assert_called_once_with(
@@ -162,6 +178,7 @@ class TestSSEConfirmationHandler:
         sse_handler._resolved_requests["test-id-123"] = (True, "approved by another")
 
         event_data = {
+            "type": "confirmation_request",
             "request_id": "test-id-123",
             "tool_name": "bash",
             "input": {"command": "ls"},
@@ -169,7 +186,9 @@ class TestSSEConfirmationHandler:
             "expires_at": "2024-01-01T12:00:30",
         }
 
-        await sse_handler.handle_event("confirmation_request", event_data)
+        await sse_handler.handle_event(
+            "confirmation_request", cast(ConfirmationEventDict, event_data)
+        )
 
         # Should not create a task
         assert "test-id-123" not in sse_handler._ongoing_requests
@@ -225,16 +244,15 @@ class TestSSEConfirmationHandler:
         """Test parsing SSE stream data."""
         # Create mock response with SSE data
         sse_data = """event: ping
-data: {"message": "Connected"}
+data: {"type": "ping", "request_id": "", "message": "Connected"}
 
 event: confirmation_request
-data: {"request_id": "123", "tool_name": "bash"}
+data: {"type": "confirmation_request", "request_id": "123", "tool_name": "bash"}
 
-data: {"message": "No event type"}
+data: {"type": "message", "request_id": "", "message": "No event type"}
 
 event: test
-data: {"line1": true,
-data: "line2": false}
+data: {"type": "test", "request_id": "test-123", "allowed": true, "message": "test event"}
 
 """
 
@@ -251,7 +269,7 @@ data: "line2": false}
             events.append((event_type, data))
 
         # Verify parsed events
-        assert len(events) == 3
+        assert len(events) == 4
 
         assert events[0][0] == "ping"
         assert events[0][1]["message"] == "Connected"
@@ -261,6 +279,10 @@ data: "line2": false}
 
         assert events[2][0] == "message"  # Default type
         assert events[2][1]["message"] == "No event type"
+
+        assert events[3][0] == "test"
+        assert events[3][1]["allowed"] is True
+        assert events[3][1]["message"] == "test event"
 
     async def test_parse_sse_stream_invalid_json(
         self,
@@ -377,9 +399,13 @@ data: {invalid json}
 
         mock_terminal_handler.handle_confirmation = slow_handler
 
+        from datetime import datetime, timedelta
+
+        now = datetime.utcnow()
         request = ConfirmationRequest(
             tool_name="bash",
             input={"command": "test"},
+            expires_at=now + timedelta(seconds=30),
         )
 
         # Start handling in background
@@ -418,7 +444,7 @@ class TestCLICommand:
         mock_get_settings.return_value = mock_settings
 
         # Call command
-        connect(api_url=None, ui=True)
+        connect(api_url=None, no_ui=False)
 
         # Verify asyncio.run was called
         mock_asyncio_run.assert_called_once()
@@ -432,7 +458,7 @@ class TestCLICommand:
     ) -> None:
         """Test connect command with custom URL."""
         # Call command with custom URL
-        connect(api_url="http://custom:9090", ui=False)
+        connect(api_url="http://custom:9090", no_ui=True)
 
         # Settings should still be called (for other configs)
         mock_get_settings.assert_called_once()
@@ -459,7 +485,7 @@ class TestCLICommand:
         mock_asyncio_run.side_effect = KeyboardInterrupt()
 
         # Should not raise error
-        connect(api_url=None, ui=True)
+        connect(api_url=None, no_ui=False)
 
     @patch("ccproxy.cli.commands.confirmation_handler.get_settings")
     @patch("ccproxy.cli.commands.confirmation_handler.asyncio.run")
@@ -481,6 +507,6 @@ class TestCLICommand:
 
         # Should raise typer.Exit
         with pytest.raises(typer.Exit) as exc_info:
-            connect(api_url=None, ui=True)
+            connect(api_url=None, no_ui=False)
 
         assert exc_info.value.exit_code == 1

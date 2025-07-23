@@ -50,6 +50,8 @@ def mock_settings() -> Settings:
     settings.server = Mock()
     settings.server.host = "localhost"
     settings.server.port = 8080
+    settings.security = Mock()
+    settings.security.auth_token = None  # No auth by default
     return settings
 
 

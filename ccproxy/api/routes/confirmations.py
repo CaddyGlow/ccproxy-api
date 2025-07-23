@@ -11,6 +11,7 @@ from sse_starlette.sse import EventSourceResponse
 from structlog import get_logger
 
 from ccproxy.api.services.confirmation_service import get_confirmation_service
+from ccproxy.auth.conditional import ConditionalAuthDep
 from ccproxy.config.settings import Settings, get_settings
 from ccproxy.core.errors import (
     ConfirmationAlreadyResolvedError,
@@ -20,6 +21,7 @@ from ccproxy.models.confirmations import ConfirmationEvent, ConfirmationStatus
 
 
 logger = get_logger(__name__)
+
 
 router = APIRouter(prefix="/api/v1/confirmations", tags=["confirmations"])
 
@@ -106,6 +108,7 @@ async def event_generator(
 async def stream_confirmations(
     request: Request,
     settings: Annotated[Settings, Depends(get_settings)],
+    auth: ConditionalAuthDep,
 ) -> EventSourceResponse:
     """Stream confirmation requests via Server-Sent Events.
 
@@ -128,6 +131,7 @@ async def stream_confirmations(
 async def get_confirmation(
     confirmation_id: str,
     settings: Annotated[Settings, Depends(get_settings)],
+    auth: ConditionalAuthDep,
 ) -> ConfirmationRequestInfo:
     """Get information about a specific confirmation request.
 
@@ -166,6 +170,7 @@ async def respond_to_confirmation(
     confirmation_id: str,
     response: ConfirmationResponse,
     settings: Annotated[Settings, Depends(get_settings)],
+    auth: ConditionalAuthDep,
 ) -> dict[str, str | bool]:
     """Submit a response to a confirmation request.
 

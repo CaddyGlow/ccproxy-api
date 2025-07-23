@@ -6,7 +6,6 @@ import json
 import logging
 from collections.abc import AsyncIterator
 from datetime import datetime
-from typing import Any, Optional
 
 import httpx
 import typer
@@ -15,6 +14,7 @@ from structlog import get_logger
 from ccproxy.api.services.confirmation_service import ConfirmationRequest
 from ccproxy.api.ui.terminal_confirmation_handler import TerminalConfirmationHandler
 from ccproxy.config.settings import get_settings
+from ccproxy.models.confirmations import ConfirmationEventDict
 
 
 logger = get_logger(__name__)
@@ -34,6 +34,7 @@ class SSEConfirmationHandler:
         api_url: str,
         terminal_handler: TerminalConfirmationHandler,
         ui: bool = True,
+        auth_token: str | None = None,
     ):
         self.api_url = api_url.rstrip("/")
         self.terminal_handler = terminal_handler
@@ -42,6 +43,7 @@ class SSEConfirmationHandler:
         self.base_delay = 1.0
         self.max_delay = 60.0
         self.ui = ui
+        self.auth_token = auth_token
 
         self._ongoing_requests: dict[str, asyncio.Task[bool]] = {}
         self._resolved_requests: dict[str, tuple[bool, str]] = {}
@@ -49,22 +51,26 @@ class SSEConfirmationHandler:
 
     async def __aenter__(self) -> "SSEConfirmationHandler":
         """Async context manager entry."""
-        self.client = httpx.AsyncClient(timeout=300.0)  # 5 minutes
+        headers = {}
+        if self.auth_token:
+            headers["Authorization"] = f"Bearer {self.auth_token}"
+
+        self.client = httpx.AsyncClient(timeout=300.0, headers=headers)  # 5 minutes
         return self
 
     async def __aexit__(
         self,
         exc_type: type[BaseException] | None,
         exc_val: BaseException | None,
-        exc_tb: Any,
+        exc_tb: object,
     ) -> None:
         """Async context manager exit."""
         if self.client:
             await self.client.aclose()
             self.client = None
 
-    async def handle_event(self, event_type: str, data: dict[str, Any]) -> None:
-        """Handle an SSE event.
+    async def handle_event(self, event_type: str, data: ConfirmationEventDict) -> None:
+        """Handle an SSE event by dispatching to specific handlers.
 
         Args:
             event_type: Type of the event
@@ -73,91 +79,119 @@ class SSEConfirmationHandler:
         if event_type == "ping":
             return
 
-        if event_type == "confirmation_request":
-            request_id = data.get("request_id")
+        handler_map = {
+            "confirmation_request": self._handle_confirmation_request,
+            "confirmation_resolved": self._handle_confirmation_resolved,
+        }
 
-            # Check if this request was already resolved by another handler
-            if request_id in self._resolved_requests:
-                allowed, reason = self._resolved_requests[request_id]
+        handler = handler_map.get(event_type)
+        if handler:
+            await handler(data)
+        else:
+            logger.warning("unhandled_sse_event", event_type=event_type)
+
+    async def _handle_confirmation_request(self, data: ConfirmationEventDict) -> None:
+        """Handle a confirmation request event.
+
+        Args:
+            data: Event data containing request details
+        """
+        request_id = data.get("request_id")
+        if not request_id:
+            logger.warning("confirmation_request_missing_id", data=data)
+            return
+
+        # Check if this request was already resolved by another handler
+        if request_id in self._resolved_requests:
+            allowed, reason = self._resolved_requests[request_id]
+            logger.info(
+                "confirmation_already_resolved_by_other_handler",
+                request_id=request_id,
+                allowed=allowed,
+                reason=reason,
+            )
+            logger.info(
+                "confirmation_already_handled",
+                request_id=request_id[:8],
+                reason=reason,
+            )
+            return
+
+        logger.info(
+            "confirmation_request_received",
+            request_id=request_id,
+            tool_name=data.get("tool_name"),
+        )
+
+        try:
+            # Map request_id to id field for ConfirmationRequest model
+            request_data = dict(data)
+            if "request_id" in request_data:
+                request_data["id"] = request_data.pop("request_id")
+            request = ConfirmationRequest.model_validate(request_data)
+        except Exception as e:
+            logger.error(
+                "confirmation_request_validation_failed", data=data, error=str(e)
+            )
+            return
+
+        if self.ui and request_id is not None:
+            task = asyncio.create_task(
+                self._handle_confirmation_with_cancellation(request)
+            )
+            self._ongoing_requests[request_id] = task
+
+    async def _handle_confirmation_resolved(self, data: ConfirmationEventDict) -> None:
+        """Handle a confirmation resolved event.
+
+        Args:
+            data: Event data containing resolution details
+        """
+        request_id = data.get("request_id")
+        allowed = data.get("allowed", False)
+
+        if request_id is not None and allowed is not None:
+            reason = (
+                "approved by another handler"
+                if allowed
+                else "denied by another handler"
+            )
+            self._resolved_requests[request_id] = (allowed, reason)
+
+        was_resolved_by_us = (
+            request_id is not None and request_id in self._resolved_by_us
+        )
+
+        if request_id is not None and request_id in self._ongoing_requests:
+            task = self._ongoing_requests[request_id]
+            if not task.done() and not was_resolved_by_us:
                 logger.info(
-                    "confirmation_already_resolved_by_other_handler",
+                    "cancelling_ongoing_confirmation",
                     request_id=request_id,
                     allowed=allowed,
-                    reason=reason,
                 )
+
+                status_text = "approved" if allowed else "denied"
+                self.terminal_handler.cancel_confirmation(
+                    request_id, f"{status_text} by another handler"
+                )
+
+                task.cancel()
+
+                with contextlib.suppress(TimeoutError, asyncio.CancelledError):
+                    await asyncio.wait_for(task, timeout=0.1)
+
                 logger.info(
-                    "confirmation_already_handled",
+                    "confirmation_cancelled_by_other_handler",
                     request_id=request_id[:8],
-                    reason=reason,
+                    status=status_text,
                 )
-                return
-
-            logger.info(
-                "confirmation_request_received",
-                request_id=request_id,
-                tool_name=data.get("tool_name"),
-            )
-
-            request = ConfirmationRequest(
-                id=data["request_id"],
-                tool_name=data["tool_name"],
-                input=data["input"],
-                created_at=datetime.fromisoformat(data["created_at"]),
-                expires_at=datetime.fromisoformat(data["expires_at"]),
-            )
-
-            if self.ui and request_id is not None:
-                task = asyncio.create_task(
-                    self._handle_confirmation_with_cancellation(request)
-                )
-                self._ongoing_requests[request_id] = task
-
-        elif event_type == "confirmation_resolved":
-            request_id = data.get("request_id")
-            allowed = data.get("allowed", False)
-
-            if request_id is not None and allowed is not None:
-                reason = (
-                    "approved by another handler"
-                    if allowed
-                    else "denied by another handler"
-                )
-                self._resolved_requests[request_id] = (allowed, reason)
-
-            was_resolved_by_us = (
-                request_id is not None and request_id in self._resolved_by_us
-            )
-
-            if request_id is not None and request_id in self._ongoing_requests:
-                task = self._ongoing_requests[request_id]
-                if not task.done() and not was_resolved_by_us:
-                    logger.info(
-                        "cancelling_ongoing_confirmation",
-                        request_id=request_id,
-                        allowed=allowed,
-                    )
-
-                    status_text = "approved" if allowed else "denied"
-                    self.terminal_handler.cancel_confirmation(
-                        request_id, f"{status_text} by another handler"
-                    )
-
-                    task.cancel()
-
-                    with contextlib.suppress(TimeoutError, asyncio.CancelledError):
-                        await asyncio.wait_for(task, timeout=0.1)
-
-                    logger.info(
-                        "confirmation_cancelled_by_other_handler",
-                        request_id=request_id[:8],
-                        status=status_text,
-                    )
-
-                if request_id is not None:
-                    self._ongoing_requests.pop(request_id, None)
 
             if request_id is not None:
-                self._resolved_by_us.discard(request_id)
+                self._ongoing_requests.pop(request_id, None)
+
+        if request_id is not None:
+            self._resolved_by_us.discard(request_id)
 
     async def _handle_confirmation_with_cancellation(
         self, request: ConfirmationRequest
@@ -255,7 +289,7 @@ class SSEConfirmationHandler:
 
     async def parse_sse_stream(
         self, response: httpx.Response
-    ) -> AsyncIterator[tuple[str, dict[str, Any]]]:
+    ) -> AsyncIterator[tuple[str, ConfirmationEventDict]]:
         """Parse SSE events from the response stream.
 
         Args:
@@ -432,6 +466,13 @@ def connect(
         count=True,
         help="Increase verbosity (-v for INFO, -vv for DEBUG)",
     ),
+    auth_token: str | None = typer.Option(
+        None,
+        "--auth-token",
+        "-t",
+        help="Bearer token for API authentication (overrides config)",
+        envvar="CCPROXY_AUTH_TOKEN",
+    ),
 ) -> None:
     """Connect to the API server and handle confirmation requests.
 
@@ -455,13 +496,16 @@ def connect(
     if not api_url:
         api_url = f"http://{settings.server.host}:{settings.server.port}"
 
+    # Determine auth token: CLI arg > config setting > None
+    token = auth_token or settings.security.auth_token
+
     # Create handlers
     terminal_handler = TerminalConfirmationHandler()
 
     async def run_handler() -> None:
         """Run the handler with proper resource management."""
         async with SSEConfirmationHandler(
-            api_url, terminal_handler, not no_ui
+            api_url, terminal_handler, not no_ui, auth_token=token
         ) as sse_handler:
             await sse_handler.run()
 

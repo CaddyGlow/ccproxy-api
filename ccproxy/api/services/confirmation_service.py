@@ -3,7 +3,7 @@
 import asyncio
 import contextlib
 from datetime import datetime, timedelta
-from typing import Any
+from typing import cast
 
 from structlog import get_logger
 
@@ -14,6 +14,7 @@ from ccproxy.core.errors import (
 )
 from ccproxy.models.confirmations import (
     ConfirmationEvent,
+    ConfirmationEventDict,
     ConfirmationRequest,
     ConfirmationStatus,
 )
@@ -30,7 +31,7 @@ class ConfirmationService:
         self._requests: dict[str, ConfirmationRequest] = {}
         self._expiry_task: asyncio.Task[None] | None = None
         self._shutdown = False
-        self._event_queues: list[asyncio.Queue[dict[str, Any]]] = []
+        self._event_queues: list[asyncio.Queue[ConfirmationEventDict]] = []
         self._lock = asyncio.Lock()
 
     async def start(self) -> None:
@@ -95,7 +96,7 @@ class ConfirmationService:
             expires_at=request.expires_at.isoformat(),
             timeout_seconds=self._timeout_seconds,
         )
-        await self._emit_event(event.model_dump())
+        await self._emit_event(cast(ConfirmationEventDict, event.model_dump()))
 
         return request.id
 
@@ -173,7 +174,7 @@ class ConfirmationService:
             if request.resolved_at
             else None,
         )
-        await self._emit_event(event.model_dump())
+        await self._emit_event(cast(ConfirmationEventDict, event.model_dump()))
 
         return True
 
@@ -193,12 +194,16 @@ class ConfirmationService:
                             and req.status == ConfirmationStatus.PENDING
                         ):
                             req.status = ConfirmationStatus.EXPIRED
+                            # Signal waiting coroutines that the request is resolved (expired)
+                            req._resolved_event.set()
                             event = ConfirmationEvent(
                                 type="confirmation_expired",
                                 request_id=req_id,
                                 expired_at=now.isoformat(),
                             )
-                            expired_events.append(event.model_dump())
+                            expired_events.append(
+                                cast(ConfirmationEventDict, event.model_dump())
+                            )
 
                         if self._should_cleanup_request(req, now):
                             expired_ids.append(req_id)
@@ -242,19 +247,19 @@ class ConfirmationService:
 
         return False
 
-    async def subscribe_to_events(self) -> asyncio.Queue[dict[str, Any]]:
+    async def subscribe_to_events(self) -> asyncio.Queue[ConfirmationEventDict]:
         """Subscribe to confirmation events.
 
         Returns:
             An async queue that will receive events
         """
-        queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
+        queue: asyncio.Queue[ConfirmationEventDict] = asyncio.Queue()
         async with self._lock:
             self._event_queues.append(queue)
         return queue
 
     async def unsubscribe_from_events(
-        self, queue: asyncio.Queue[dict[str, Any]]
+        self, queue: asyncio.Queue[ConfirmationEventDict]
     ) -> None:
         """Unsubscribe from confirmation events.
 
@@ -265,7 +270,7 @@ class ConfirmationService:
             if queue in self._event_queues:
                 self._event_queues.remove(queue)
 
-    async def _emit_event(self, event: dict[str, Any]) -> None:
+    async def _emit_event(self, event: ConfirmationEventDict) -> None:
         """Emit an event to all subscribers.
 
         Args:
@@ -302,8 +307,8 @@ class ConfirmationService:
     ) -> ConfirmationStatus:
         """Wait for a confirmation request to be resolved.
 
-        This method blocks until the confirmation is resolved (allowed/denied/expired)
-        or the timeout is reached.
+        This method efficiently blocks until the confirmation is resolved (allowed/denied/expired)
+        or the timeout is reached using an event-driven approach.
 
         Args:
             request_id: ID of the confirmation request to wait for
@@ -327,31 +332,28 @@ class ConfirmationService:
         if timeout_seconds is None:
             timeout_seconds = request.time_remaining()
 
-        start_time = asyncio.get_event_loop().time()
-        poll_interval = 0.1
+        try:
+            # Efficiently wait for the event to be set
+            await asyncio.wait_for(
+                request._resolved_event.wait(), timeout=timeout_seconds
+            )
+        except TimeoutError as e:
+            logger.warning(
+                "confirmation_wait_timeout",
+                request_id=request_id,
+                timeout_seconds=timeout_seconds,
+            )
+            # Ensure status is updated to EXPIRED on timeout
+            async with self._lock:
+                if request.status == ConfirmationStatus.PENDING:
+                    request.status = ConfirmationStatus.EXPIRED
+                    request._resolved_event.set()  # Signal that it's resolved (as expired)
+            raise TimeoutError(
+                f"Confirmation wait timeout after {timeout_seconds:.1f}s"
+            ) from e
 
-        while True:
-            current_status = await self.get_status(request_id)
-            if current_status is None:
-                return ConfirmationStatus.EXPIRED
-            if current_status != ConfirmationStatus.PENDING:
-                return current_status
-
-            elapsed = asyncio.get_event_loop().time() - start_time
-            if elapsed >= timeout_seconds:
-                logger.warning(
-                    "confirmation_wait_timeout",
-                    request_id=request_id,
-                    elapsed_seconds=elapsed,
-                )
-                async with self._lock:
-                    if request_id in self._requests:
-                        req = self._requests[request_id]
-                        if req.status == ConfirmationStatus.PENDING:
-                            req.status = ConfirmationStatus.EXPIRED
-                raise TimeoutError(f"Confirmation wait timeout after {elapsed:.1f}s")
-
-            await asyncio.sleep(poll_interval)
+        # The event is set, so the status is resolved
+        return await self.get_status(request_id) or ConfirmationStatus.EXPIRED
 
 
 # Global instance

@@ -1,11 +1,12 @@
 """Pydantic models for confirmation system."""
 
+import asyncio
 import uuid
 from datetime import datetime
 from enum import Enum
-from typing import Optional
+from typing import NotRequired, TypedDict
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, PrivateAttr
 
 
 class ConfirmationStatus(Enum):
@@ -38,6 +39,9 @@ class ConfirmationRequest(BaseModel):
     expires_at: datetime
     resolved_at: datetime | None = None
 
+    # Private attribute for event-driven waiting
+    _resolved_event: asyncio.Event = PrivateAttr(default_factory=asyncio.Event)
+
     def is_expired(self) -> bool:
         """Check if the request has expired."""
         if self.status != ConfirmationStatus.PENDING:
@@ -60,6 +64,24 @@ class ConfirmationRequest(BaseModel):
             ConfirmationStatus.ALLOWED if allowed else ConfirmationStatus.DENIED
         )
         self.resolved_at = datetime.utcnow()
+        # Signal waiting coroutines that resolution is complete
+        self._resolved_event.set()
+
+
+class ConfirmationEventDict(TypedDict):
+    """Typed dictionary for confirmation event data."""
+
+    type: str
+    request_id: str
+    tool_name: NotRequired[str]
+    input: NotRequired[dict[str, str]]
+    created_at: NotRequired[str]
+    expires_at: NotRequired[str]
+    timeout_seconds: NotRequired[int]
+    allowed: NotRequired[bool]
+    resolved_at: NotRequired[str]
+    expired_at: NotRequired[str]
+    message: NotRequired[str]
 
 
 class ConfirmationEvent(BaseModel):

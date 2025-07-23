@@ -104,23 +104,19 @@ class TestTerminalConfirmationHandler:
         assert "denied" in print_call.lower()
         assert "red" in print_call
 
-    @patch("ccproxy.api.ui.terminal_confirmation_handler.Confirm.ask")
-    @patch("asyncio.get_event_loop")
+    @patch(
+        "ccproxy.api.ui.terminal_confirmation_handler.TerminalConfirmationHandler._get_async_input"
+    )
     async def test_handle_confirmation_allowed(
         self,
-        mock_get_loop: Mock,
-        mock_confirm: Mock,
+        mock_get_input: AsyncMock,
         terminal_handler: TerminalConfirmationHandler,
         sample_request: ConfirmationRequest,
         mock_console: Mock,
     ) -> None:
         """Test handling confirmation that gets allowed."""
-        # Setup mock event loop and executor
-        mock_loop = Mock()
-        mock_future: asyncio.Future[bool] = asyncio.Future()
-        mock_future.set_result(True)
-        mock_loop.run_in_executor.return_value = mock_future
-        mock_get_loop.return_value = mock_loop
+        # Setup mock to return 'y' for allowed
+        mock_get_input.return_value = "y"
 
         # Handle confirmation
         result = await terminal_handler.handle_confirmation(sample_request)
@@ -131,23 +127,19 @@ class TestTerminalConfirmationHandler:
         # Verify console interactions
         assert mock_console.print.call_count >= 2  # Request display + result
 
-    @patch("ccproxy.api.ui.terminal_confirmation_handler.Confirm.ask")
-    @patch("asyncio.get_event_loop")
+    @patch(
+        "ccproxy.api.ui.terminal_confirmation_handler.TerminalConfirmationHandler._get_async_input"
+    )
     async def test_handle_confirmation_denied(
         self,
-        mock_get_loop: Mock,
-        mock_confirm: Mock,
+        mock_get_input: AsyncMock,
         terminal_handler: TerminalConfirmationHandler,
         sample_request: ConfirmationRequest,
         mock_console: Mock,
     ) -> None:
         """Test handling confirmation that gets denied."""
-        # Setup mock event loop and executor
-        mock_loop = Mock()
-        mock_future: asyncio.Future[bool] = asyncio.Future()
-        mock_future.set_result(False)
-        mock_loop.run_in_executor.return_value = mock_future
-        mock_get_loop.return_value = mock_loop
+        # Setup mock to return 'n' for denied
+        mock_get_input.return_value = "n"
 
         # Handle confirmation
         result = await terminal_handler.handle_confirmation(sample_request)
@@ -159,28 +151,24 @@ class TestTerminalConfirmationHandler:
         last_print_call = mock_console.print.call_args_list[-1]
         assert "denied" in str(last_print_call).lower()
 
-    @patch("ccproxy.api.ui.terminal_confirmation_handler.Confirm.ask")
-    @patch("asyncio.get_event_loop")
+    @patch(
+        "ccproxy.api.ui.terminal_confirmation_handler.TerminalConfirmationHandler._get_async_input"
+    )
     async def test_handle_confirmation_with_executor(
         self,
-        mock_get_loop: Mock,
-        mock_confirm: Mock,
+        mock_get_input: AsyncMock,
         terminal_handler: TerminalConfirmationHandler,
         sample_request: ConfirmationRequest,
     ) -> None:
-        """Test that confirmation uses executor for blocking I/O."""
-        # Setup mock event loop and executor
-        mock_loop = Mock()
-        mock_future: asyncio.Future[bool] = asyncio.Future()
-        mock_future.set_result(True)
-        mock_loop.run_in_executor.return_value = mock_future
-        mock_get_loop.return_value = mock_loop
+        """Test that confirmation uses async input handling."""
+        # Setup mock to return 'y' for allowed
+        mock_get_input.return_value = "y"
 
         # Handle confirmation
         result = await terminal_handler.handle_confirmation(sample_request)
 
-        # Verify executor was used
-        mock_loop.run_in_executor.assert_called_once()
+        # Verify async input was called
+        mock_get_input.assert_called_once()
         assert result is True
 
     async def test_handle_confirmation_timeout(
@@ -252,23 +240,19 @@ class TestTerminalConfirmationHandler:
 
         await cancel_task
 
-    @patch("ccproxy.api.ui.terminal_confirmation_handler.Confirm.ask")
-    @patch("asyncio.get_event_loop")
+    @patch(
+        "ccproxy.api.ui.terminal_confirmation_handler.TerminalConfirmationHandler._get_async_input"
+    )
     async def test_handle_confirmation_error_handling(
         self,
-        mock_get_loop: Mock,
-        mock_confirm: Mock,
+        mock_get_input: AsyncMock,
         terminal_handler: TerminalConfirmationHandler,
         sample_request: ConfirmationRequest,
         mock_console: Mock,
     ) -> None:
         """Test error handling during confirmation."""
         # Setup mock to raise exception
-        mock_loop = Mock()
-        mock_future: asyncio.Future[bool] = asyncio.Future()
-        mock_future.set_exception(Exception("Test error"))
-        mock_loop.run_in_executor.return_value = mock_future
-        mock_get_loop.return_value = mock_loop
+        mock_get_input.side_effect = Exception("Test error")
 
         # Handle confirmation - should return False on error
         result = await terminal_handler.handle_confirmation(sample_request)

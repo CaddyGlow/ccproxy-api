@@ -3,9 +3,17 @@
 import asyncio
 import contextlib
 import sys
-import termios
-import tty
-from typing import Any
+
+
+# Platform-specific imports for terminal handling
+try:
+    import termios
+    import tty
+
+    HAS_TERMIOS = True
+except ImportError:
+    # Windows doesn't have termios/tty
+    HAS_TERMIOS = False
 
 from rich.console import Console
 from rich.panel import Panel
@@ -105,65 +113,45 @@ class TerminalConfirmationHandler:
             f"(auto-deny if no response)[/yellow]"
         )
 
-    def _format_value(self, value: Any) -> str:
+    def _format_value(self, value: str) -> str:
         """Format a value for display."""
-        s = str(value)
-        return s if len(s) <= 60 else s[:57] + "..."
+        return value if len(value) <= 60 else value[:57] + "..."
 
     async def _get_user_confirmation_with_cancellation(
         self, request: ConfirmationRequest, cancellation_event: asyncio.Event
     ) -> bool:
         """Get user confirmation with timeout and cancellation handling."""
-        loop = asyncio.get_event_loop()
-
         self._console.print(
             "\n[dim]Note: This prompt will auto-cancel if another handler responds[/dim]"
         )
+        self._console.print("\n[bold]Allow this operation? (y/N):[/bold] ", end="")
 
-        def prompt_user() -> bool:
-            try:
-                return Confirm.ask(
-                    "\n[bold]Allow this operation?[/bold]",
-                    default=False,
-                )
-            except (KeyboardInterrupt, EOFError):
-                return False
-
-        # Use run_in_executor to avoid blocking the event loop
-        prompt_task: asyncio.Future[bool] = loop.run_in_executor(None, prompt_user)
-
+        # Create async tasks for different completion conditions
+        input_task = asyncio.create_task(self._get_async_input())
         timeout_task = asyncio.create_task(asyncio.sleep(request.time_remaining()))
-
-        async def wait_for_cancellation() -> None:
-            await cancellation_event.wait()
-
-        cancellation_task: asyncio.Task[None] = asyncio.create_task(
-            wait_for_cancellation()
-        )
+        cancellation_task = asyncio.create_task(cancellation_event.wait())
 
         try:
             # Wait for the first to complete
-            awaitables: list[asyncio.Future[Any]] = [
-                prompt_task,
-                timeout_task,
-                cancellation_task,
-            ]
             done, pending = await asyncio.wait(
-                awaitables,
+                [input_task, timeout_task, cancellation_task],
                 return_when=asyncio.FIRST_COMPLETED,
             )
 
             # Cancel all pending tasks
             for task in pending:
                 task.cancel()
-                # Wait for cancellation to complete
                 with contextlib.suppress(asyncio.CancelledError):
                     await task
 
-            if prompt_task in done:
-                return bool(prompt_task.result())
+            if input_task in done:
+                user_input = input_task.result()
+                result = user_input.lower().startswith("y")
+                self._console.print()  # Add newline after input
+                return result
             elif cancellation_task in done:
                 # Request was cancelled by another handler
+                self._console.print("[yellow]cancelled by another handler[/yellow]")
                 raise asyncio.CancelledError("Request cancelled by another handler")
             else:
                 # Timeout occurred
@@ -172,17 +160,55 @@ class TerminalConfirmationHandler:
 
         except Exception:
             # Clean up on any exception
-            tasks_to_cancel: list[asyncio.Future[Any] | asyncio.Task[None]] = [
-                prompt_task,
-                timeout_task,
-                cancellation_task,
-            ]
-            for task in tasks_to_cancel:
+            for task in [input_task, timeout_task, cancellation_task]:
                 if not task.done():
                     task.cancel()
                     with contextlib.suppress(asyncio.CancelledError):
                         await task
             raise
+
+    async def _get_async_input(self) -> str:
+        """Get user input asynchronously without blocking the event loop."""
+        loop = asyncio.get_event_loop()
+
+        def get_input() -> str:
+            try:
+                # Use platform-appropriate single character input
+                if HAS_TERMIOS and sys.stdin.isatty():
+                    # Unix-like systems with termios support
+                    old_settings = termios.tcgetattr(sys.stdin.fileno())
+                    tty.setraw(sys.stdin.fileno())
+
+                    try:
+                        # Read a single character
+                        char = sys.stdin.read(1)
+                        # Print the character so user sees what they typed
+                        sys.stdout.write(char)
+                        sys.stdout.flush()
+                        return char
+                    finally:
+                        # Restore terminal settings
+                        termios.tcsetattr(
+                            sys.stdin.fileno(), termios.TCSADRAIN, old_settings
+                        )
+                elif sys.platform.startswith("win"):
+                    # Windows-specific single character input
+                    import msvcrt
+
+                    char = msvcrt.getch().decode("utf-8", errors="ignore")
+                    # Print the character so user sees what they typed
+                    sys.stdout.write(char)
+                    sys.stdout.flush()
+                    return char
+                else:
+                    # Fallback for other environments or non-TTY
+                    return input().strip()
+            except (KeyboardInterrupt, EOFError):
+                return "n"
+            except Exception:
+                return "n"
+
+        return await loop.run_in_executor(None, get_input)
 
     def _display_result(self, allowed: bool) -> None:
         """Display the confirmation result."""
