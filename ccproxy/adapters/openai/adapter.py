@@ -15,6 +15,7 @@ from inspect import signature
 from typing import Any, Literal, cast
 
 import structlog
+from pydantic import ValidationError
 
 from ccproxy.core.interfaces import APIAdapter
 
@@ -125,7 +126,7 @@ class OpenAIAdapter(APIAdapter):
         try:
             # Parse OpenAI request
             openai_req = OpenAIChatCompletionRequest(**request)
-        except Exception as e:
+        except ValidationError as e:
             raise ValueError(f"Invalid OpenAI request format: {e}") from e
 
         # Map OpenAI model to Claude model
@@ -445,7 +446,7 @@ class OpenAIAdapter(APIAdapter):
             )
             return openai_response.model_dump()
 
-        except Exception as e:
+        except ValidationError as e:
             raise ValueError(f"Invalid Anthropic response format: {e}") from e
 
     async def adapt_stream(
@@ -486,7 +487,7 @@ class OpenAIAdapter(APIAdapter):
                                 operation="adapt_stream",
                             )
                             continue
-        except Exception as e:
+        except (ValueError, json.JSONDecodeError) as e:
             raise ValueError(f"Error processing streaming response: {e}") from e
 
     def _convert_messages_to_anthropic(

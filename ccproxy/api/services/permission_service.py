@@ -1,43 +1,43 @@
-"""Confirmation service for handling permission requests without UI dependencies."""
+"""Permission service for handling permission requests without UI dependencies."""
 
 import asyncio
 import contextlib
 from datetime import datetime, timedelta
-from typing import cast
+from typing import Any, cast
 
 from structlog import get_logger
 
 from ccproxy.core.errors import (
-    ConfirmationAlreadyResolvedError,
-    ConfirmationExpiredError,
-    ConfirmationNotFoundError,
+    PermissionAlreadyResolvedError,
+    PermissionExpiredError,
+    PermissionNotFoundError,
 )
-from ccproxy.models.confirmations import (
-    ConfirmationEvent,
-    ConfirmationEventDict,
-    ConfirmationRequest,
-    ConfirmationStatus,
+from ccproxy.models.permissions import (
+    EventType,
+    PermissionEvent,
+    PermissionRequest,
+    PermissionStatus,
 )
 
 
 logger = get_logger(__name__)
 
 
-class ConfirmationService:
-    """Service for managing permission confirmation requests without UI dependencies."""
+class PermissionService:
+    """Service for managing permission requests without UI dependencies."""
 
     def __init__(self, timeout_seconds: int = 30):
         self._timeout_seconds = timeout_seconds
-        self._requests: dict[str, ConfirmationRequest] = {}
+        self._requests: dict[str, PermissionRequest] = {}
         self._expiry_task: asyncio.Task[None] | None = None
         self._shutdown = False
-        self._event_queues: list[asyncio.Queue[ConfirmationEventDict]] = []
+        self._event_queues: list[asyncio.Queue[dict[str, Any]]] = []
         self._lock = asyncio.Lock()
 
     async def start(self) -> None:
         if self._expiry_task is None:
             self._expiry_task = asyncio.create_task(self._expiry_checker())
-            logger.info("confirmation_service_started")
+            logger.info("permission_service_started")
 
     async def stop(self) -> None:
         self._shutdown = True
@@ -46,17 +46,17 @@ class ConfirmationService:
             with contextlib.suppress(asyncio.CancelledError):
                 await self._expiry_task
             self._expiry_task = None
-        logger.info("confirmation_service_stopped")
+        logger.info("permission_service_stopped")
 
-    async def request_confirmation(self, tool_name: str, input: dict[str, str]) -> str:
-        """Create a new confirmation request.
+    async def request_permission(self, tool_name: str, input: dict[str, str]) -> str:
+        """Create a new permission request.
 
         Args:
             tool_name: Name of the tool requesting permission
             input: Input parameters for the tool
 
         Returns:
-            Confirmation request ID
+            Permission request ID
 
         Raises:
             ValueError: If tool_name is empty or input is None
@@ -71,7 +71,7 @@ class ConfirmationService:
         sanitized_input = {k: str(v) for k, v in input.items()}
 
         now = datetime.utcnow()
-        request = ConfirmationRequest(
+        request = PermissionRequest(
             tool_name=tool_name.strip(),
             input=sanitized_input,
             created_at=now,
@@ -82,13 +82,13 @@ class ConfirmationService:
             self._requests[request.id] = request
 
         logger.info(
-            "confirmation_request_created",
+            "permission_request_created",
             request_id=request.id,
             tool_name=tool_name,
         )
 
-        event = ConfirmationEvent(
-            type="confirmation_request",
+        event = PermissionEvent(
+            type=EventType.PERMISSION_REQUEST,
             request_id=request.id,
             tool_name=request.tool_name,
             input=request.input,
@@ -96,15 +96,15 @@ class ConfirmationService:
             expires_at=request.expires_at.isoformat(),
             timeout_seconds=self._timeout_seconds,
         )
-        await self._emit_event(cast(ConfirmationEventDict, event.model_dump()))
+        await self._emit_event(event.model_dump(mode="json"))
 
         return request.id
 
-    async def get_status(self, request_id: str) -> ConfirmationStatus | None:
-        """Get the status of a confirmation request.
+    async def get_status(self, request_id: str) -> PermissionStatus | None:
+        """Get the status of a permission request.
 
         Args:
-            request_id: ID of the confirmation request
+            request_id: ID of the permission request
 
         Returns:
             Status of the request or None if not found
@@ -115,15 +115,15 @@ class ConfirmationService:
                 return None
 
             if request.is_expired():
-                request.status = ConfirmationStatus.EXPIRED
+                request.status = PermissionStatus.EXPIRED
 
             return request.status
 
-    async def get_request(self, request_id: str) -> ConfirmationRequest | None:
-        """Get a confirmation request by ID.
+    async def get_request(self, request_id: str) -> PermissionRequest | None:
+        """Get a permission request by ID.
 
         Args:
-            request_id: ID of the confirmation request
+            request_id: ID of the permission request
 
         Returns:
             The request or None if not found
@@ -132,10 +132,10 @@ class ConfirmationService:
             return self._requests.get(request_id)
 
     async def resolve(self, request_id: str, allowed: bool) -> bool:
-        """Manually resolve a confirmation request.
+        """Manually resolve a permission request.
 
         Args:
-            request_id: ID of the confirmation request
+            request_id: ID of the permission request
             allowed: Whether to allow or deny the request
 
         Returns:
@@ -150,7 +150,7 @@ class ConfirmationService:
 
         async with self._lock:
             request = self._requests.get(request_id.strip())
-            if not request or request.status != ConfirmationStatus.PENDING:
+            if not request or request.status != PermissionStatus.PENDING:
                 return False
 
             try:
@@ -159,22 +159,22 @@ class ConfirmationService:
                 return False
 
         logger.info(
-            "confirmation_request_resolved",
+            "permission_request_resolved",
             request_id=request_id,
             tool_name=request.tool_name,
             allowed=allowed,
         )
 
         # Emit resolution event
-        event = ConfirmationEvent(
-            type="confirmation_resolved",
+        event = PermissionEvent(
+            type=EventType.PERMISSION_RESOLVED,
             request_id=request_id,
             allowed=allowed,
             resolved_at=request.resolved_at.isoformat()
             if request.resolved_at
             else None,
         )
-        await self._emit_event(cast(ConfirmationEventDict, event.model_dump()))
+        await self._emit_event(event.model_dump(mode="json"))
 
         return True
 
@@ -189,21 +189,16 @@ class ConfirmationService:
 
                 async with self._lock:
                     for req_id, req in self._requests.items():
-                        if (
-                            req.is_expired()
-                            and req.status == ConfirmationStatus.PENDING
-                        ):
-                            req.status = ConfirmationStatus.EXPIRED
+                        if req.is_expired() and req.status == PermissionStatus.PENDING:
+                            req.status = PermissionStatus.EXPIRED
                             # Signal waiting coroutines that the request is resolved (expired)
                             req._resolved_event.set()
-                            event = ConfirmationEvent(
-                                type="confirmation_expired",
+                            event = PermissionEvent(
+                                type=EventType.PERMISSION_EXPIRED,
                                 request_id=req_id,
                                 expired_at=now.isoformat(),
                             )
-                            expired_events.append(
-                                cast(ConfirmationEventDict, event.model_dump())
-                            )
+                            expired_events.append(event.model_dump(mode="json"))
 
                         if self._should_cleanup_request(req, now):
                             expired_ids.append(req_id)
@@ -231,10 +226,10 @@ class ConfirmationService:
                 )
 
     def _should_cleanup_request(
-        self, request: ConfirmationRequest, now: datetime
+        self, request: PermissionRequest, now: datetime
     ) -> bool:
         """Check if a resolved request should be cleaned up."""
-        if request.status == ConfirmationStatus.PENDING:
+        if request.status == PermissionStatus.PENDING:
             return False
 
         cleanup_after = timedelta(minutes=5)
@@ -242,26 +237,26 @@ class ConfirmationService:
         if request.resolved_at:
             return (now - request.resolved_at) > cleanup_after
 
-        if request.status == ConfirmationStatus.EXPIRED:
+        if request.status == PermissionStatus.EXPIRED:
             return (now - request.expires_at) > cleanup_after
 
         return False
 
-    async def subscribe_to_events(self) -> asyncio.Queue[ConfirmationEventDict]:
-        """Subscribe to confirmation events.
+    async def subscribe_to_events(self) -> asyncio.Queue[dict[str, Any]]:
+        """Subscribe to permission events.
 
         Returns:
             An async queue that will receive events
         """
-        queue: asyncio.Queue[ConfirmationEventDict] = asyncio.Queue()
+        queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
         async with self._lock:
             self._event_queues.append(queue)
         return queue
 
     async def unsubscribe_from_events(
-        self, queue: asyncio.Queue[ConfirmationEventDict]
+        self, queue: asyncio.Queue[dict[str, Any]]
     ) -> None:
-        """Unsubscribe from confirmation events.
+        """Unsubscribe from permission events.
 
         Args:
             queue: The queue to unsubscribe
@@ -270,7 +265,7 @@ class ConfirmationService:
             if queue in self._event_queues:
                 self._event_queues.remove(queue)
 
-    async def _emit_event(self, event: ConfirmationEventDict) -> None:
+    async def _emit_event(self, event: dict[str, Any]) -> None:
         """Emit an event to all subscribers.
 
         Args:
@@ -286,8 +281,8 @@ class ConfirmationService:
             with contextlib.suppress(asyncio.QueueFull):
                 queue.put_nowait(event)
 
-    async def get_pending_requests(self) -> list[ConfirmationRequest]:
-        """Get all pending confirmation requests.
+    async def get_pending_requests(self) -> list[PermissionRequest]:
+        """Get all pending permission requests.
 
         Returns:
             List of pending requests
@@ -297,36 +292,36 @@ class ConfirmationService:
             now = datetime.utcnow()
             for request in self._requests.values():
                 if request.is_expired():
-                    request.status = ConfirmationStatus.EXPIRED
-                elif request.status == ConfirmationStatus.PENDING:
+                    request.status = PermissionStatus.EXPIRED
+                elif request.status == PermissionStatus.PENDING:
                     pending.append(request)
             return pending
 
-    async def wait_for_confirmation(
+    async def wait_for_permission(
         self, request_id: str, timeout_seconds: int | None = None
-    ) -> ConfirmationStatus:
-        """Wait for a confirmation request to be resolved.
+    ) -> PermissionStatus:
+        """Wait for a permission request to be resolved.
 
-        This method efficiently blocks until the confirmation is resolved (allowed/denied/expired)
+        This method efficiently blocks until the permission is resolved (allowed/denied/expired)
         or the timeout is reached using an event-driven approach.
 
         Args:
-            request_id: ID of the confirmation request to wait for
+            request_id: ID of the permission request to wait for
             timeout_seconds: Optional timeout in seconds. If None, uses request expiration time
 
         Returns:
-            The final status of the confirmation request
+            The final status of the permission request
 
         Raises:
             asyncio.TimeoutError: If timeout is reached before resolution
-            ConfirmationNotFoundError: If request ID is not found
+            PermissionNotFoundError: If request ID is not found
         """
         async with self._lock:
             request = self._requests.get(request_id)
             if not request:
-                raise ConfirmationNotFoundError(request_id)
+                raise PermissionNotFoundError(request_id)
 
-            if request.status != ConfirmationStatus.PENDING:
+            if request.status != PermissionStatus.PENDING:
                 return request.status
 
         if timeout_seconds is None:
@@ -339,37 +334,37 @@ class ConfirmationService:
             )
         except TimeoutError as e:
             logger.warning(
-                "confirmation_wait_timeout",
+                "permission_wait_timeout",
                 request_id=request_id,
                 timeout_seconds=timeout_seconds,
             )
             # Ensure status is updated to EXPIRED on timeout
             async with self._lock:
-                if request.status == ConfirmationStatus.PENDING:
-                    request.status = ConfirmationStatus.EXPIRED
+                if request.status == PermissionStatus.PENDING:
+                    request.status = PermissionStatus.EXPIRED
                     request._resolved_event.set()  # Signal that it's resolved (as expired)
             raise TimeoutError(
                 f"Confirmation wait timeout after {timeout_seconds:.1f}s"
             ) from e
 
         # The event is set, so the status is resolved
-        return await self.get_status(request_id) or ConfirmationStatus.EXPIRED
+        return await self.get_status(request_id) or PermissionStatus.EXPIRED
 
 
 # Global instance
-_confirmation_service: ConfirmationService | None = None
+_permission_service: PermissionService | None = None
 
 
-def get_confirmation_service() -> ConfirmationService:
-    """Get the global confirmation service instance."""
-    global _confirmation_service
-    if _confirmation_service is None:
-        _confirmation_service = ConfirmationService()
-    return _confirmation_service
+def get_permission_service() -> PermissionService:
+    """Get the global permission service instance."""
+    global _permission_service
+    if _permission_service is None:
+        _permission_service = PermissionService()
+    return _permission_service
 
 
 __all__ = [
-    "ConfirmationService",
-    "ConfirmationRequest",
-    "get_confirmation_service",
+    "PermissionService",
+    "PermissionRequest",
+    "get_permission_service",
 ]

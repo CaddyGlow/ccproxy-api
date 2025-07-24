@@ -9,12 +9,12 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from ccproxy.api.routes.mcp import PermissionCheckRequest, check_permission
-from ccproxy.api.services.confirmation_service import (
-    ConfirmationService,
-    get_confirmation_service,
+from ccproxy.api.services.permission_service import (
+    PermissionService,
+    get_permission_service,
 )
 from ccproxy.config.settings import Settings, get_settings
-from ccproxy.models.confirmations import ConfirmationStatus
+from ccproxy.models.permissions import PermissionStatus
 from ccproxy.models.responses import (
     PermissionToolAllowResponse,
     PermissionToolDenyResponse,
@@ -25,8 +25,8 @@ from ccproxy.models.responses import (
 @pytest.fixture
 def mock_confirmation_service() -> Mock:
     """Create a mock confirmation service."""
-    service = Mock(spec=ConfirmationService)
-    service.request_confirmation = AsyncMock(return_value="test-confirmation-id")
+    service = Mock(spec=PermissionService)
+    service.request_permission = AsyncMock(return_value="test-confirmation-id")
     service.wait_for_confirmation = AsyncMock()
     service.get_status = AsyncMock()
     return service
@@ -52,13 +52,11 @@ class TestMCPPermissionCheck:
         """Test that check-permission waits for confirmation and returns allow."""
         # Setup mock to return allowed status after waiting
         mock_confirmation_service.wait_for_confirmation.return_value = (
-            ConfirmationStatus.ALLOWED
+            PermissionStatus.ALLOWED
         )
 
         # Patch the service getter
-        with patch(
-            "ccproxy.api.routes.mcp.get_confirmation_service"
-        ) as mock_get_service:
+        with patch("ccproxy.api.routes.mcp.get_permission_service") as mock_get_service:
             mock_get_service.return_value = mock_confirmation_service
 
             # Create request
@@ -75,7 +73,7 @@ class TestMCPPermissionCheck:
             assert response.updated_input == {"command": "ls -la"}
 
             # Verify service was called
-            mock_confirmation_service.request_confirmation.assert_called_once_with(
+            mock_confirmation_service.request_permission.assert_called_once_with(
                 tool_name="bash",
                 input={"command": "ls -la"},
             )
@@ -91,11 +89,9 @@ class TestMCPPermissionCheck:
     ) -> None:
         """Test checking permission with existing allowed confirmation."""
         # Setup mock to return allowed status
-        mock_confirmation_service.get_status.return_value = ConfirmationStatus.ALLOWED
+        mock_confirmation_service.get_status.return_value = PermissionStatus.ALLOWED
 
-        with patch(
-            "ccproxy.api.routes.mcp.get_confirmation_service"
-        ) as mock_get_service:
+        with patch("ccproxy.api.routes.mcp.get_permission_service") as mock_get_service:
             mock_get_service.return_value = mock_confirmation_service
 
             # Create request with confirmation ID
@@ -122,11 +118,9 @@ class TestMCPPermissionCheck:
     ) -> None:
         """Test checking permission with existing denied confirmation."""
         # Setup mock to return denied status
-        mock_confirmation_service.get_status.return_value = ConfirmationStatus.DENIED
+        mock_confirmation_service.get_status.return_value = PermissionStatus.DENIED
 
-        with patch(
-            "ccproxy.api.routes.mcp.get_confirmation_service"
-        ) as mock_get_service:
+        with patch("ccproxy.api.routes.mcp.get_permission_service") as mock_get_service:
             mock_get_service.return_value = mock_confirmation_service
 
             # Create request with confirmation ID
@@ -150,11 +144,9 @@ class TestMCPPermissionCheck:
     ) -> None:
         """Test checking permission with expired confirmation."""
         # Setup mock to return expired status
-        mock_confirmation_service.get_status.return_value = ConfirmationStatus.EXPIRED
+        mock_confirmation_service.get_status.return_value = PermissionStatus.EXPIRED
 
-        with patch(
-            "ccproxy.api.routes.mcp.get_confirmation_service"
-        ) as mock_get_service:
+        with patch("ccproxy.api.routes.mcp.get_permission_service") as mock_get_service:
             mock_get_service.return_value = mock_confirmation_service
 
             # Create request with confirmation ID
@@ -169,7 +161,7 @@ class TestMCPPermissionCheck:
 
             # Verify response
             assert isinstance(response, PermissionToolDenyResponse)
-            assert response.message == "Confirmation request expired"
+            assert response.message == "Permission request expired"
 
     async def test_check_permission_waits_and_denies(
         self,
@@ -179,12 +171,10 @@ class TestMCPPermissionCheck:
         """Test that check-permission waits for confirmation and returns deny."""
         # Setup mock to return denied status after waiting
         mock_confirmation_service.wait_for_confirmation.return_value = (
-            ConfirmationStatus.DENIED
+            PermissionStatus.DENIED
         )
 
-        with patch(
-            "ccproxy.api.routes.mcp.get_confirmation_service"
-        ) as mock_get_service:
+        with patch("ccproxy.api.routes.mcp.get_permission_service") as mock_get_service:
             mock_get_service.return_value = mock_confirmation_service
 
             # Create request
@@ -210,9 +200,7 @@ class TestMCPPermissionCheck:
         # Setup mock to raise TimeoutError
         mock_confirmation_service.wait_for_confirmation.side_effect = TimeoutError()
 
-        with patch(
-            "ccproxy.api.routes.mcp.get_confirmation_service"
-        ) as mock_get_service:
+        with patch("ccproxy.api.routes.mcp.get_permission_service") as mock_get_service:
             mock_get_service.return_value = mock_confirmation_service
 
             # Create request
@@ -226,7 +214,7 @@ class TestMCPPermissionCheck:
 
             # Verify response
             assert isinstance(response, PermissionToolDenyResponse)
-            assert response.message == "Confirmation request timed out"
+            assert response.message == "Permission request timed out"
 
     async def test_check_permission_empty_tool_name(
         self,
@@ -236,12 +224,10 @@ class TestMCPPermissionCheck:
         """Test that empty tool name is handled."""
         # Setup mock to return allowed status after waiting
         mock_confirmation_service.wait_for_confirmation.return_value = (
-            ConfirmationStatus.ALLOWED
+            PermissionStatus.ALLOWED
         )
 
-        with patch(
-            "ccproxy.api.routes.mcp.get_confirmation_service"
-        ) as mock_get_service:
+        with patch("ccproxy.api.routes.mcp.get_permission_service") as mock_get_service:
             mock_get_service.return_value = mock_confirmation_service
 
             # Create request with empty tool name - this is allowed by the model
@@ -264,12 +250,10 @@ class TestMCPPermissionCheck:
         """Test that permission checks are logged."""
         # Setup mock to return allowed status after waiting
         mock_confirmation_service.wait_for_confirmation.return_value = (
-            ConfirmationStatus.ALLOWED
+            PermissionStatus.ALLOWED
         )
 
-        with patch(
-            "ccproxy.api.routes.mcp.get_confirmation_service"
-        ) as mock_get_service:
+        with patch("ccproxy.api.routes.mcp.get_permission_service") as mock_get_service:
             mock_get_service.return_value = mock_confirmation_service
 
             with patch("ccproxy.api.routes.mcp.logger") as mock_logger:
@@ -290,14 +274,14 @@ class TestMCPPermissionCheck:
                 )
 
                 mock_logger.info.assert_any_call(
-                    "permission_requires_confirmation",
+                    "permission_requires_authorization",
                     tool_name="python",
                 )
 
                 mock_logger.info.assert_any_call(
-                    "permission_allowed_after_confirmation",
+                    "permission_allowed_after_authorization",
                     tool_name="python",
-                    confirmation_id="test-confirmation-id",
+                    permission_id="test-confirmation-id",
                 )
 
     async def test_check_permission_with_tool_use_id(
@@ -308,12 +292,10 @@ class TestMCPPermissionCheck:
         """Test permission check with tool_use_id."""
         # Setup mock to return allowed status after waiting
         mock_confirmation_service.wait_for_confirmation.return_value = (
-            ConfirmationStatus.ALLOWED
+            PermissionStatus.ALLOWED
         )
 
-        with patch(
-            "ccproxy.api.routes.mcp.get_confirmation_service"
-        ) as mock_get_service:
+        with patch("ccproxy.api.routes.mcp.get_permission_service") as mock_get_service:
             mock_get_service.return_value = mock_confirmation_service
 
             # Create request with tool_use_id
@@ -338,19 +320,17 @@ class TestMCPPermissionCheck:
         # Setup mock to return different IDs
         call_count = 0
 
-        async def mock_request_confirmation(*args, **kwargs):
+        async def mock_request_permission(*args, **kwargs):
             nonlocal call_count
             call_count += 1
             return f"confirmation-{call_count}"
 
-        mock_confirmation_service.request_confirmation = mock_request_confirmation
+        mock_confirmation_service.request_permission = mock_request_permission
         mock_confirmation_service.wait_for_confirmation.return_value = (
-            ConfirmationStatus.ALLOWED
+            PermissionStatus.ALLOWED
         )
 
-        with patch(
-            "ccproxy.api.routes.mcp.get_confirmation_service"
-        ) as mock_get_service:
+        with patch("ccproxy.api.routes.mcp.get_permission_service") as mock_get_service:
             mock_get_service.return_value = mock_confirmation_service
 
             # Create multiple requests

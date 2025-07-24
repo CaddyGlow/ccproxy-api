@@ -12,8 +12,8 @@ from pydantic import BaseModel, ConfigDict, Field
 from structlog import get_logger
 
 from ccproxy.api.dependencies import SettingsDep
-from ccproxy.api.services.confirmation_service import get_confirmation_service
-from ccproxy.models.confirmations import ConfirmationStatus
+from ccproxy.api.services.permission_service import get_permission_service
+from ccproxy.models.permissions import PermissionStatus
 from ccproxy.models.responses import (
     PermissionToolAllowResponse,
     PermissionToolDenyResponse,
@@ -37,11 +37,11 @@ class PermissionCheckRequest(BaseModel):
             description="Id of the tool execution",
         ),
     ] = None
-    confirmation_id: Annotated[
+    permission_id: Annotated[
         str | None,
         Field(
-            description="ID of a previous confirmation request for retry",
-            alias="confirmationId",
+            description="ID of a previous permission request for retry",
+            alias="permissionId",
         ),
     ] = None
 
@@ -64,52 +64,52 @@ async def check_permission(
     logger.info(
         "permission_check",
         tool_name=request.tool_name,
-        retry=request.confirmation_id is not None,
+        retry=request.permission_id is not None,
     )
 
-    confirmation_service = get_confirmation_service()
+    permission_service = get_permission_service()
 
-    if request.confirmation_id:
-        status = await confirmation_service.get_status(request.confirmation_id)
+    if request.permission_id:
+        status = await permission_service.get_status(request.permission_id)
 
-        if status == ConfirmationStatus.ALLOWED:
+        if status == PermissionStatus.ALLOWED:
             return PermissionToolAllowResponse(updated_input=request.input)
 
-        elif status == ConfirmationStatus.DENIED:
+        elif status == PermissionStatus.DENIED:
             return PermissionToolDenyResponse(message="User denied the operation")
 
-        elif status == ConfirmationStatus.EXPIRED:
-            return PermissionToolDenyResponse(message="Confirmation request expired")
+        elif status == PermissionStatus.EXPIRED:
+            return PermissionToolDenyResponse(message="Permission request expired")
 
     logger.info(
-        "permission_requires_confirmation",
+        "permission_requires_authorization",
         tool_name=request.tool_name,
     )
 
-    confirmation_id = await confirmation_service.request_confirmation(
+    permission_id = await permission_service.request_permission(
         tool_name=request.tool_name,
         input=request.input,
     )
 
-    # Wait for confirmation to be resolved
+    # Wait for permission to be resolved
     try:
-        final_status = await confirmation_service.wait_for_confirmation(
-            confirmation_id,
+        final_status = await permission_service.wait_for_permission(
+            permission_id,
             timeout_seconds=settings.security.confirmation_timeout_seconds,
         )
 
-        if final_status == ConfirmationStatus.ALLOWED:
+        if final_status == PermissionStatus.ALLOWED:
             logger.info(
-                "permission_allowed_after_confirmation",
+                "permission_allowed_after_authorization",
                 tool_name=request.tool_name,
-                confirmation_id=confirmation_id,
+                permission_id=permission_id,
             )
             return PermissionToolAllowResponse(updated_input=request.input)
         else:
             logger.info(
-                "permission_denied_after_confirmation",
+                "permission_denied_after_authorization",
                 tool_name=request.tool_name,
-                confirmation_id=confirmation_id,
+                permission_id=permission_id,
                 status=final_status.value,
             )
             return PermissionToolDenyResponse(
@@ -118,12 +118,12 @@ async def check_permission(
 
     except TimeoutError:
         logger.warning(
-            "permission_confirmation_timeout",
+            "permission_authorization_timeout",
             tool_name=request.tool_name,
-            confirmation_id=confirmation_id,
+            permission_id=permission_id,
             timeout_seconds=settings.security.confirmation_timeout_seconds,
         )
-        return PermissionToolDenyResponse(message="Confirmation request timed out")
+        return PermissionToolDenyResponse(message="Permission request timed out")
 
 
 def setup_mcp(app: FastAPI) -> None:

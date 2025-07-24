@@ -1,4 +1,4 @@
-"""API routes for confirmation request handling via SSE and REST."""
+"""API routes for permission request handling via SSE and REST."""
 
 import asyncio
 import json
@@ -11,29 +11,29 @@ from sse_starlette.sse import EventSourceResponse
 from structlog import get_logger
 
 from ccproxy.api.dependencies import SettingsDep
-from ccproxy.api.services.confirmation_service import get_confirmation_service
+from ccproxy.api.services.permission_service import get_permission_service
 from ccproxy.auth.conditional import ConditionalAuthDep
 from ccproxy.core.errors import (
-    ConfirmationAlreadyResolvedError,
-    ConfirmationNotFoundError,
+    PermissionAlreadyResolvedError,
+    PermissionNotFoundError,
 )
-from ccproxy.models.confirmations import ConfirmationEvent, ConfirmationStatus
+from ccproxy.models.permissions import EventType, PermissionEvent, PermissionStatus
 
 
 logger = get_logger(__name__)
 
 
-router = APIRouter(tags=["confirmations"])
+router = APIRouter(tags=["permissions"])
 
 
-class ConfirmationResponse(BaseModel):
-    """Response to a confirmation request."""
+class PermissionResponse(BaseModel):
+    """Response to a permission request."""
 
     allowed: bool
 
 
-class ConfirmationRequestInfo(BaseModel):
-    """Information about a confirmation request."""
+class PermissionRequestInfo(BaseModel):
+    """Information about a permission request."""
 
     request_id: str
     tool_name: str
@@ -47,7 +47,7 @@ class ConfirmationRequestInfo(BaseModel):
 async def event_generator(
     request: Request,
 ) -> AsyncGenerator[dict[str, str], None]:
-    """Generate SSE events for confirmation requests.
+    """Generate SSE events for permission requests.
 
     Args:
         request: The FastAPI request object
@@ -55,20 +55,20 @@ async def event_generator(
     Yields:
         Dict with event data for SSE
     """
-    service = get_confirmation_service()
+    service = get_permission_service()
     queue = await service.subscribe_to_events()
 
     try:
         yield {
             "event": "ping",
-            "data": json.dumps({"message": "Connected to confirmation stream"}),
+            "data": json.dumps({"message": "Connected to permission stream"}),
         }
 
-        # Send all pending confirmation requests to the newly connected client
+        # Send all pending permission requests to the newly connected client
         pending_requests = await service.get_pending_requests()
         for pending_req in pending_requests:
-            event = ConfirmationEvent(
-                type="confirmation_request",
+            event = PermissionEvent(
+                type=EventType.PERMISSION_REQUEST,
                 request_id=pending_req.id,
                 tool_name=pending_req.tool_name,
                 input=pending_req.input,
@@ -79,8 +79,8 @@ async def event_generator(
                 ),
             )
             yield {
-                "event": "confirmation_request",
-                "data": json.dumps(event.model_dump()),
+                "event": EventType.PERMISSION_REQUEST.value,
+                "data": json.dumps(event.model_dump(mode="json")),
             }
 
         while not await request.is_disconnected():
@@ -105,18 +105,18 @@ async def event_generator(
 
 
 @router.get("/stream")
-async def stream_confirmations(
+async def stream_permissions(
     request: Request,
     settings: SettingsDep,
     auth: ConditionalAuthDep,
 ) -> EventSourceResponse:
-    """Stream confirmation requests via Server-Sent Events.
+    """Stream permission requests via Server-Sent Events.
 
-    This endpoint streams new confirmation requests as they are created,
-    allowing external tools to handle user confirmations.
+    This endpoint streams new permission requests as they are created,
+    allowing external tools to handle user permissions.
 
     Returns:
-        EventSourceResponse streaming confirmation events
+        EventSourceResponse streaming permission events
     """
     return EventSourceResponse(
         event_generator(request),
@@ -127,34 +127,34 @@ async def stream_confirmations(
     )
 
 
-@router.get("/{confirmation_id}")
-async def get_confirmation(
-    confirmation_id: str,
+@router.get("/{permission_id}")
+async def get_permission(
+    permission_id: str,
     settings: SettingsDep,
     auth: ConditionalAuthDep,
-) -> ConfirmationRequestInfo:
-    """Get information about a specific confirmation request.
+) -> PermissionRequestInfo:
+    """Get information about a specific permission request.
 
     Args:
-        confirmation_id: ID of the confirmation request
+        permission_id: ID of the permission request
 
     Returns:
-        Information about the confirmation request
+        Information about the permission request
 
     Raises:
         HTTPException: If request not found
     """
-    service = get_confirmation_service()
+    service = get_permission_service()
     try:
-        request = await service.get_request(confirmation_id)
+        request = await service.get_request(permission_id)
         if not request:
-            raise ConfirmationNotFoundError(confirmation_id)
-    except ConfirmationNotFoundError as e:
+            raise PermissionNotFoundError(permission_id)
+    except PermissionNotFoundError as e:
         raise HTTPException(
-            status_code=404, detail="Confirmation request not found"
+            status_code=404, detail="Permission request not found"
         ) from e
 
-    return ConfirmationRequestInfo(
+    return PermissionRequestInfo(
         request_id=request.id,
         tool_name=request.tool_name,
         input=request.input,
@@ -165,17 +165,17 @@ async def get_confirmation(
     )
 
 
-@router.post("/{confirmation_id}/respond")
-async def respond_to_confirmation(
-    confirmation_id: str,
-    response: ConfirmationResponse,
+@router.post("/{permission_id}/respond")
+async def respond_to_permission(
+    permission_id: str,
+    response: PermissionResponse,
     settings: SettingsDep,
     auth: ConditionalAuthDep,
 ) -> dict[str, str | bool]:
-    """Submit a response to a confirmation request.
+    """Submit a response to a permission request.
 
     Args:
-        confirmation_id: ID of the confirmation request
+        permission_id: ID of the permission request
         response: The allow/deny response
 
     Returns:
@@ -184,35 +184,35 @@ async def respond_to_confirmation(
     Raises:
         HTTPException: If request not found or already resolved
     """
-    service = get_confirmation_service()
-    status = await service.get_status(confirmation_id)
+    service = get_permission_service()
+    status = await service.get_status(permission_id)
     if status is None:
-        raise HTTPException(status_code=404, detail="Confirmation request not found")
+        raise HTTPException(status_code=404, detail="Permission request not found")
 
-    if status != ConfirmationStatus.PENDING:
+    if status != PermissionStatus.PENDING:
         try:
-            raise ConfirmationAlreadyResolvedError(confirmation_id, status.value)
-        except ConfirmationAlreadyResolvedError as e:
+            raise PermissionAlreadyResolvedError(permission_id, status.value)
+        except PermissionAlreadyResolvedError as e:
             raise HTTPException(
                 status_code=e.status_code,
                 detail=e.message,
             ) from e
 
-    success = await service.resolve(confirmation_id, response.allowed)
+    success = await service.resolve(permission_id, response.allowed)
 
     if not success:
         raise HTTPException(
-            status_code=409, detail="Failed to resolve confirmation request"
+            status_code=409, detail="Failed to resolve permission request"
         )
 
     logger.info(
-        "confirmation_resolved_via_api",
-        confirmation_id=confirmation_id,
+        "permission_resolved_via_api",
+        permission_id=permission_id,
         allowed=response.allowed,
     )
 
     return {
         "status": "success",
-        "confirmation_id": confirmation_id,
+        "permission_id": permission_id,
         "allowed": response.allowed,
     }

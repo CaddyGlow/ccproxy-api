@@ -11,26 +11,26 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from httpx import AsyncClient
 
-from ccproxy.api.routes.confirmations import router as confirmation_router
-from ccproxy.api.services.confirmation_service import (
-    ConfirmationService,
-    get_confirmation_service,
+from ccproxy.api.routes.permissions import router as confirmation_router
+from ccproxy.api.services.permission_service import (
+    PermissionService,
+    get_permission_service,
 )
 from ccproxy.config.settings import Settings, get_settings
-from ccproxy.models.confirmations import ConfirmationStatus
+from ccproxy.models.permissions import PermissionStatus
 
 
 @pytest.fixture
-async def confirmation_service() -> AsyncGenerator[ConfirmationService, None]:
+async def confirmation_service() -> AsyncGenerator[PermissionService, None]:
     """Create and start a test confirmation service."""
-    service = ConfirmationService(timeout_seconds=5)
+    service = PermissionService(timeout_seconds=5)
     await service.start()
     yield service
     await service.stop()
 
 
 @pytest.fixture
-def app(confirmation_service: ConfirmationService) -> FastAPI:
+def app(confirmation_service: PermissionService) -> FastAPI:
     """Create a FastAPI app with real confirmation service."""
     from pydantic import BaseModel
 
@@ -40,7 +40,7 @@ def app(confirmation_service: ConfirmationService) -> FastAPI:
     app.include_router(confirmation_router, prefix="/confirmations")
 
     # Override to use test service
-    app.dependency_overrides[get_confirmation_service] = lambda: confirmation_service
+    app.dependency_overrides[get_permission_service] = lambda: confirmation_service
 
     # Mock settings
     mock_settings = Mock(spec=Settings)
@@ -63,8 +63,8 @@ def app(confirmation_service: ConfirmationService) -> FastAPI:
             raise HTTPException(status_code=400, detail="Tool name is required")
 
         # Use the same confirmation service instance
-        service = app.dependency_overrides[get_confirmation_service]()
-        confirmation_id = await service.request_confirmation(
+        service = app.dependency_overrides[get_permission_service]()
+        confirmation_id = await service.request_permission(
             tool_name=request.tool,
             input=request.input,
         )
@@ -86,12 +86,12 @@ def test_client(app: FastAPI) -> TestClient:
 class TestConfirmationIntegration:
     """Integration tests for the confirmation system."""
 
-    @patch("ccproxy.api.routes.confirmations.get_confirmation_service")
+    @patch("ccproxy.api.routes.permissions.get_permission_service")
     async def test_mcp_permission_flow(
         self,
         mock_get_service: Mock,
         test_client: TestClient,
-        confirmation_service: ConfirmationService,
+        confirmation_service: PermissionService,
     ) -> None:
         """Test the full MCP permission flow."""
         # Make the patched function return our test service
@@ -119,7 +119,7 @@ class TestConfirmationIntegration:
 
         # Should have received event
         event = await asyncio.wait_for(event_queue.get(), timeout=1.0)
-        assert event["type"] == "confirmation_request"
+        assert event["type"] == "permission_request"
         assert event["request_id"] == confirmation_id
         assert event["tool_name"] == "bash"
 
@@ -139,13 +139,13 @@ class TestConfirmationIntegration:
 
         # Should have received resolution event
         resolution_event = await asyncio.wait_for(event_queue.get(), timeout=1.0)
-        assert resolution_event["type"] == "confirmation_resolved"
+        assert resolution_event["type"] == "permission_resolved"
         assert resolution_event["request_id"] == confirmation_id
         assert resolution_event["allowed"] is True
 
         # Verify status is now allowed
         status = await confirmation_service.get_status(confirmation_id)
-        assert status == ConfirmationStatus.ALLOWED
+        assert status == PermissionStatus.ALLOWED
 
         # Cleanup
         await confirmation_service.unsubscribe_from_events(event_queue)
@@ -153,7 +153,7 @@ class TestConfirmationIntegration:
     async def test_sse_streaming_multiple_clients(
         self,
         test_client: TestClient,
-        confirmation_service: ConfirmationService,
+        confirmation_service: PermissionService,
     ) -> None:
         """Test SSE streaming with multiple clients."""
         # For SSE streaming tests, we'll use the confirmation service directly
@@ -165,7 +165,7 @@ class TestConfirmationIntegration:
 
         try:
             # Create confirmation request
-            request_id = await confirmation_service.request_confirmation(
+            request_id = await confirmation_service.request_permission(
                 "bash", {"command": "echo test"}
             )
 
@@ -174,8 +174,8 @@ class TestConfirmationIntegration:
             event2 = await asyncio.wait_for(queue2.get(), timeout=1.0)
 
             # Verify both got the same event
-            assert event1["type"] == "confirmation_request"
-            assert event2["type"] == "confirmation_request"
+            assert event1["type"] == "permission_request"
+            assert event2["type"] == "permission_request"
             assert event1["request_id"] == request_id
             assert event2["request_id"] == request_id
 
@@ -184,7 +184,7 @@ class TestConfirmationIntegration:
             await confirmation_service.unsubscribe_from_events(queue1)
             await confirmation_service.unsubscribe_from_events(queue2)
 
-    @patch("ccproxy.api.routes.confirmations.get_confirmation_service")
+    @patch("ccproxy.api.routes.permissions.get_permission_service")
     async def test_confirmation_expiration(
         self,
         mock_get_service: Mock,
@@ -192,7 +192,7 @@ class TestConfirmationIntegration:
     ) -> None:
         """Test that confirmations expire correctly."""
         # Create service with very short timeout
-        service = ConfirmationService(timeout_seconds=1)
+        service = PermissionService(timeout_seconds=1)
         await service.start()
 
         # Make the patched function return our test service
@@ -202,10 +202,10 @@ class TestConfirmationIntegration:
             # Override service in app
             app = FastAPI()
             app.include_router(confirmation_router, prefix="/confirmations")
-            app.dependency_overrides[get_confirmation_service] = lambda: service
+            app.dependency_overrides[get_permission_service] = lambda: service
 
             # Create confirmation
-            request_id = await service.request_confirmation("bash", {"command": "test"})
+            request_id = await service.request_permission("bash", {"command": "test"})
 
             # Wait for expiration
             await asyncio.sleep(2)
@@ -223,12 +223,12 @@ class TestConfirmationIntegration:
         finally:
             await service.stop()
 
-    @patch("ccproxy.api.routes.confirmations.get_confirmation_service")
+    @patch("ccproxy.api.routes.permissions.get_permission_service")
     async def test_concurrent_confirmations(
         self,
         mock_get_service: Mock,
         test_client: TestClient,
-        confirmation_service: ConfirmationService,
+        confirmation_service: PermissionService,
     ) -> None:
         """Test handling multiple concurrent confirmations."""
         # Make the patched function return our test service
@@ -266,16 +266,16 @@ class TestConfirmationIntegration:
         for i, request_id in enumerate(request_ids):
             status = await confirmation_service.get_status(request_id)
             expected = (
-                ConfirmationStatus.ALLOWED if i % 2 == 0 else ConfirmationStatus.DENIED
+                PermissionStatus.ALLOWED if i % 2 == 0 else PermissionStatus.DENIED
             )
             assert status == expected
 
-    @patch("ccproxy.api.routes.confirmations.get_confirmation_service")
+    @patch("ccproxy.api.routes.permissions.get_permission_service")
     async def test_duplicate_resolution_attempts(
         self,
         mock_get_service: Mock,
         test_client: TestClient,
-        confirmation_service: ConfirmationService,
+        confirmation_service: PermissionService,
     ) -> None:
         """Test that duplicate resolution attempts are rejected."""
         # Make the patched function return our test service
@@ -308,7 +308,7 @@ class TestConfirmationIntegration:
 
         # Status should still be allowed (from first resolution)
         status = await confirmation_service.get_status(request_id)
-        assert status == ConfirmationStatus.ALLOWED
+        assert status == PermissionStatus.ALLOWED
 
 
 class TestConfirmationEdgeCases:
@@ -345,11 +345,11 @@ class TestConfirmationEdgeCases:
 
     async def test_service_shutdown_during_request(
         self,
-        confirmation_service: ConfirmationService,
+        confirmation_service: PermissionService,
     ) -> None:
         """Test behavior when service shuts down during active requests."""
         # Create a request
-        request_id = await confirmation_service.request_confirmation(
+        request_id = await confirmation_service.request_permission(
             "bash", {"command": "test"}
         )
 
@@ -358,7 +358,7 @@ class TestConfirmationEdgeCases:
 
         # Try to get status - should still work (data in memory)
         status = await confirmation_service.get_status(request_id)
-        assert status == ConfirmationStatus.PENDING
+        assert status == PermissionStatus.PENDING
 
         # Try to resolve - should still work
         success = await confirmation_service.resolve(request_id, True)

@@ -17,7 +17,6 @@ from ccproxy.api.middleware.logging import AccessLogMiddleware
 from ccproxy.api.middleware.request_id import RequestIDMiddleware
 from ccproxy.api.middleware.server_header import ServerHeaderMiddleware
 from ccproxy.api.routes.claude import router as claude_router
-from ccproxy.api.routes.confirmations import router as confirmations_router
 from ccproxy.api.routes.health import router as health_router
 from ccproxy.api.routes.mcp import setup_mcp
 from ccproxy.api.routes.metrics import (
@@ -25,9 +24,10 @@ from ccproxy.api.routes.metrics import (
     logs_router,
     prometheus_router,
 )
+from ccproxy.api.routes.permissions import router as permissions_router
 from ccproxy.api.routes.proxy import router as proxy_router
-from ccproxy.api.services.confirmation_service import get_confirmation_service
-from ccproxy.api.ui.terminal_confirmation_handler import TerminalConfirmationHandler
+from ccproxy.api.services.permission_service import get_permission_service
+from ccproxy.api.ui.terminal_permission_handler import TerminalPermissionHandler
 from ccproxy.auth.credentials_adapter import CredentialsAuthManager
 from ccproxy.auth.exceptions import CredentialsNotFoundError
 from ccproxy.auth.oauth.routes import router as oauth_router
@@ -35,6 +35,7 @@ from ccproxy.config.settings import Settings, get_settings
 from ccproxy.core.logging import setup_logging
 from ccproxy.observability import get_metrics
 from ccproxy.observability.storage.duckdb_simple import SimpleDuckDBStorage
+from ccproxy.scheduler.errors import SchedulerError
 from ccproxy.scheduler.manager import start_scheduler, stop_scheduler
 from ccproxy.services.claude_sdk_service import ClaudeSDKService
 from ccproxy.services.credentials import CredentialsManager
@@ -118,6 +119,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             "auth_token_validation_error",
             error=str(e),
             message="Failed to validate authentication token. The server will continue without authentication.",
+            exc_info=True,
         )
 
     # Validate Claude binary at startup
@@ -165,7 +167,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         scheduler = await start_scheduler(settings)
         app.state.scheduler = scheduler
         logger.debug("scheduler_initialized")
-    except Exception as e:
+    except SchedulerError as e:
         logger.error("scheduler_initialization_failed", error=str(e))
         # Continue startup even if scheduler fails (graceful degradation)
 
@@ -190,50 +192,50 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             logger.error("log_storage_initialization_failed", error=str(e))
             # Continue without log storage (graceful degradation)
 
-    # Initialize confirmation service
+    # Initialize permission service
     try:
-        logger.info("Initializing confirmation service...")
-        confirmation_service = get_confirmation_service()
+        logger.info("Initializing permission service...")
+        permission_service = get_permission_service()
 
         # Only connect terminal handler if not using external handler
-        if settings.server.use_terminal_confirmation_handler:
-            terminal_handler = TerminalConfirmationHandler()
+        if settings.server.use_terminal_permission_handler:
+            terminal_handler = TerminalPermissionHandler()
 
             # TODO: Terminal handler should subscribe to events from the service
             # instead of trying to set a handler directly
             # The service uses an event-based architecture, not direct handlers
 
             logger.info(
-                "confirmation_handler_configured",
+                "permission_handler_configured",
                 handler_type="terminal",
-                message="Connected terminal handler to confirmation service",
+                message="Connected terminal handler to permission service",
             )
             app.state.terminal_handler = terminal_handler
         else:
             logger.info(
-                "confirmation_handler_configured",
+                "permission_handler_configured",
                 handler_type="external_sse",
-                message="Terminal confirmation handler disabled - use 'ccproxy confirmation-handler connect' to handle confirmations",
+                message="Terminal permission handler disabled - use 'ccproxy permission-handler connect' to handle permissions",
             )
             logger.warning(
-                "confirmation_handler_required",
-                message="No confirmation handler active. Start external handler with: ccproxy confirmation-handler connect",
+                "permission_handler_required",
+                message="No permission handler active. Start external handler with: ccproxy permission-handler connect",
             )
 
-        # Start the confirmation service
-        await confirmation_service.start()
+        # Start the permission service
+        await permission_service.start()
 
         # Store references in app state
-        app.state.confirmation_service = confirmation_service
+        app.state.permission_service = permission_service
 
         logger.info(
-            "confirmation_service_initialized",
-            timeout_seconds=confirmation_service._timeout_seconds,
-            terminal_handler_enabled=settings.server.use_terminal_confirmation_handler,
+            "permission_service_initialized",
+            timeout_seconds=permission_service._timeout_seconds,
+            terminal_handler_enabled=settings.server.use_terminal_permission_handler,
         )
     except Exception as e:
-        logger.error("confirmation_service_initialization_failed", error=str(e))
-        # Continue without confirmation service (API will work but without prompts)
+        logger.error("permission_service_initialization_failed", error=str(e))
+        # Continue without permission service (API will work but without prompts)
 
     yield
 
@@ -245,16 +247,16 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         scheduler = getattr(app.state, "scheduler", None)
         await stop_scheduler(scheduler)
         logger.debug("scheduler_stopped")
-    except Exception as e:
+    except SchedulerError as e:
         logger.error("scheduler_stop_failed", error=str(e))
 
-    # Stop confirmation service
-    if hasattr(app.state, "confirmation_service") and app.state.confirmation_service:
+    # Stop permission service
+    if hasattr(app.state, "permission_service") and app.state.permission_service:
         try:
-            await app.state.confirmation_service.stop()
-            logger.debug("confirmation_service_stopped")
+            await app.state.permission_service.stop()
+            logger.debug("permission_service_stopped")
         except Exception as e:
-            logger.error("confirmation_service_stop_failed", error=str(e))
+            logger.error("permission_service_stop_failed", error=str(e))
 
     # Close log storage if initialized
     if hasattr(app.state, "log_storage") and app.state.log_storage:
@@ -341,9 +343,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(proxy_router, prefix="/api", tags=["proxy-api"])
 
     # Confirmation endpoints for SSE streaming and responses
-    app.include_router(
-        confirmations_router, prefix="/confirmations", tags=["confirmations"]
-    )
+    app.include_router(permissions_router, prefix="/permissions", tags=["permissions"])
 
     setup_mcp(app)
 

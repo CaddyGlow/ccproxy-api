@@ -5,7 +5,7 @@ from typing import Any
 
 import structlog
 
-from .exceptions import (
+from .errors import (
     SchedulerError,
     SchedulerShutdownError,
     TaskNotFoundError,

@@ -1,6 +1,6 @@
 """Services for CCProxy API."""
 
-from .confirmation_service import ConfirmationService, get_confirmation_service
+from .permission_service import PermissionService, get_permission_service
 
 
-__all__ = ["ConfirmationService", "get_confirmation_service"]
+__all__ = ["PermissionService", "get_permission_service"]

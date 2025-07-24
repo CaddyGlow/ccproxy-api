@@ -12,7 +12,7 @@ from fastapi.testclient import TestClient
 from ccproxy.config.scheduler import SchedulerSettings
 from ccproxy.config.settings import Settings
 from ccproxy.scheduler.core import Scheduler
-from ccproxy.scheduler.exceptions import (
+from ccproxy.scheduler.errors import (
     SchedulerError,
     TaskNotFoundError,
     TaskRegistrationError,

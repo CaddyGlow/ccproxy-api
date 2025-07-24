@@ -10,21 +10,21 @@ import httpx
 import pytest
 import typer
 
-from ccproxy.api.services.confirmation_service import ConfirmationRequest
-from ccproxy.api.ui.terminal_confirmation_handler import TerminalConfirmationHandler
-from ccproxy.cli.commands.confirmation_handler import (
+from ccproxy.api.services.permission_service import PermissionRequest
+from ccproxy.api.ui.terminal_permission_handler import TerminalPermissionHandler
+from ccproxy.cli.commands.permission_handler import (
     SSEConfirmationHandler,
     connect,
 )
 from ccproxy.config.settings import Settings
-from ccproxy.models.confirmations import ConfirmationEventDict
+from ccproxy.models.permissions import EventType
 
 
 @pytest.fixture
 def mock_terminal_handler() -> Mock:
     """Create a mock terminal handler."""
-    handler = Mock(spec=TerminalConfirmationHandler)
-    handler.handle_confirmation = AsyncMock(return_value=True)
+    handler = Mock(spec=TerminalPermissionHandler)
+    handler.handle_permission = AsyncMock(return_value=True)
     handler.cancel_confirmation = Mock()
     return handler
 
@@ -76,19 +76,19 @@ class TestSSEConfirmationHandler:
         await sse_handler.handle_event(
             "ping",
             cast(
-                ConfirmationEventDict,
+                dict[str, Any],
                 {"type": "ping", "request_id": "", "message": "keepalive"},
             ),
         )
 
-    async def test_handle_confirmation_request_event(
+    async def test_handle_permission_request_event(
         self,
         sse_handler: SSEConfirmationHandler,
         mock_terminal_handler: Mock,
     ) -> None:
         """Test handling new confirmation request event."""
         event_data = {
-            "type": "confirmation_request",
+            "type": "permission_request",
             "request_id": "test-id-123",
             "tool_name": "bash",
             "input": {"command": "ls -la"},
@@ -97,7 +97,7 @@ class TestSSEConfirmationHandler:
         }
 
         await sse_handler.handle_event(
-            "confirmation_request", cast(ConfirmationEventDict, event_data)
+            "permission_request", cast(dict[str, Any], event_data)
         )
 
         # Should have created a task
@@ -109,13 +109,13 @@ class TestSSEConfirmationHandler:
         await asyncio.sleep(0.1)
 
         # Terminal handler should have been called
-        mock_terminal_handler.handle_confirmation.assert_called_once()
-        call_args = mock_terminal_handler.handle_confirmation.call_args[0][0]
-        assert isinstance(call_args, ConfirmationRequest)
+        mock_terminal_handler.handle_permission.assert_called_once()
+        call_args = mock_terminal_handler.handle_permission.call_args[0][0]
+        assert isinstance(call_args, PermissionRequest)
         assert call_args.id == "test-id-123"  # ID should be preserved now
         assert call_args.tool_name == "bash"
 
-    async def test_handle_confirmation_resolved_event(
+    async def test_handle_permission_resolved_event(
         self,
         sse_handler: SSEConfirmationHandler,
         mock_terminal_handler: Mock,
@@ -123,7 +123,7 @@ class TestSSEConfirmationHandler:
         """Test handling confirmation resolved by another handler."""
         # First create a pending request
         request_event = {
-            "type": "confirmation_request",
+            "type": "permission_request",
             "request_id": "test-id-123",
             "tool_name": "bash",
             "input": {"command": "ls"},
@@ -134,14 +134,14 @@ class TestSSEConfirmationHandler:
         # Make terminal handler wait so we can cancel it
         wait_event = asyncio.Event()
 
-        async def slow_handler(request: ConfirmationRequest) -> bool:
+        async def slow_handler(request: PermissionRequest) -> bool:
             await wait_event.wait()
             return True
 
-        mock_terminal_handler.handle_confirmation = slow_handler
+        mock_terminal_handler.handle_permission = slow_handler
 
         await sse_handler.handle_event(
-            "confirmation_request", cast(ConfirmationEventDict, request_event)
+            "permission_request", cast(dict[str, Any], request_event)
         )
 
         # Ensure task is created
@@ -149,13 +149,13 @@ class TestSSEConfirmationHandler:
 
         # Now send resolved event
         resolved_event = {
-            "type": "confirmation_resolved",
+            "type": "permission_resolved",
             "request_id": "test-id-123",
             "allowed": True,
         }
 
         await sse_handler.handle_event(
-            "confirmation_resolved", cast(ConfirmationEventDict, resolved_event)
+            "permission_resolved", cast(dict[str, Any], resolved_event)
         )
 
         # Should have cancelled the confirmation
@@ -178,7 +178,7 @@ class TestSSEConfirmationHandler:
         sse_handler._resolved_requests["test-id-123"] = (True, "approved by another")
 
         event_data = {
-            "type": "confirmation_request",
+            "type": "permission_request",
             "request_id": "test-id-123",
             "tool_name": "bash",
             "input": {"command": "ls"},
@@ -187,7 +187,7 @@ class TestSSEConfirmationHandler:
         }
 
         await sse_handler.handle_event(
-            "confirmation_request", cast(ConfirmationEventDict, event_data)
+            "permission_request", cast(dict[str, Any], event_data)
         )
 
         # Should not create a task
@@ -208,7 +208,7 @@ class TestSSEConfirmationHandler:
         await sse_handler.send_response("test-id", True)
 
         mock_httpx_client.post.assert_called_once_with(
-            "http://localhost:8080/confirmations/test-id/respond",
+            "http://localhost:8080/permissions/test-id/respond",
             json={"allowed": True},
         )
 
@@ -246,8 +246,8 @@ class TestSSEConfirmationHandler:
         sse_data = """event: ping
 data: {"type": "ping", "request_id": "", "message": "Connected"}
 
-event: confirmation_request
-data: {"type": "confirmation_request", "request_id": "123", "tool_name": "bash"}
+event: permission_request
+data: {"type": "permission_request", "request_id": "123", "tool_name": "bash"}
 
 data: {"type": "message", "request_id": "", "message": "No event type"}
 
@@ -274,7 +274,7 @@ data: {"type": "test", "request_id": "test-123", "allowed": true, "message": "te
         assert events[0][0] == "ping"
         assert events[0][1]["message"] == "Connected"
 
-        assert events[1][0] == "confirmation_request"
+        assert events[1][0] == "permission_request"
         assert events[1][1]["request_id"] == "123"
 
         assert events[2][0] == "message"  # Default type
@@ -343,7 +343,7 @@ data: {invalid json}
 
         # Verify stream was called
         mock_client.stream.assert_called_once_with(
-            "GET", "http://localhost:8080/confirmations/stream"
+            "GET", "http://localhost:8080/permissions/stream"
         )
 
     @patch("httpx.AsyncClient")
@@ -384,7 +384,7 @@ data: {invalid json}
         # Should have been called twice
         assert mock_client.stream.call_count == 2
 
-    async def test_handle_confirmation_with_cancellation(
+    async def test_handle_permission_with_cancellation(
         self,
         sse_handler: SSEConfirmationHandler,
         mock_terminal_handler: Mock,
@@ -393,16 +393,16 @@ data: {invalid json}
         # Create a slow confirmation handler
         wait_event = asyncio.Event()
 
-        async def slow_handler(request: ConfirmationRequest) -> bool:
+        async def slow_handler(request: PermissionRequest) -> bool:
             await wait_event.wait()
             return True
 
-        mock_terminal_handler.handle_confirmation = slow_handler
+        mock_terminal_handler.handle_permission = slow_handler
 
         from datetime import datetime, timedelta
 
         now = datetime.utcnow()
-        request = ConfirmationRequest(
+        request = PermissionRequest(
             tool_name="bash",
             input={"command": "test"},
             expires_at=now + timedelta(seconds=30),
@@ -410,7 +410,7 @@ data: {invalid json}
 
         # Start handling in background
         task = asyncio.create_task(
-            sse_handler._handle_confirmation_with_cancellation(request)
+            sse_handler._handle_permission_with_cancellation(request)
         )
 
         # Cancel after a short delay
@@ -428,8 +428,8 @@ data: {invalid json}
 class TestCLICommand:
     """Test the CLI command function."""
 
-    @patch("ccproxy.cli.commands.confirmation_handler.get_settings")
-    @patch("ccproxy.cli.commands.confirmation_handler.asyncio.run")
+    @patch("ccproxy.cli.commands.permission_handler.get_settings")
+    @patch("ccproxy.cli.commands.permission_handler.asyncio.run")
     def test_connect_command_default_url(
         self,
         mock_asyncio_run: Mock,
@@ -449,8 +449,8 @@ class TestCLICommand:
         # Verify asyncio.run was called
         mock_asyncio_run.assert_called_once()
 
-    @patch("ccproxy.cli.commands.confirmation_handler.get_settings")
-    @patch("ccproxy.cli.commands.confirmation_handler.asyncio.run")
+    @patch("ccproxy.cli.commands.permission_handler.get_settings")
+    @patch("ccproxy.cli.commands.permission_handler.asyncio.run")
     def test_connect_command_custom_url(
         self,
         mock_asyncio_run: Mock,
@@ -466,8 +466,8 @@ class TestCLICommand:
         # Verify asyncio.run was called
         mock_asyncio_run.assert_called_once()
 
-    @patch("ccproxy.cli.commands.confirmation_handler.get_settings")
-    @patch("ccproxy.cli.commands.confirmation_handler.asyncio.run")
+    @patch("ccproxy.cli.commands.permission_handler.get_settings")
+    @patch("ccproxy.cli.commands.permission_handler.asyncio.run")
     def test_connect_command_keyboard_interrupt(
         self,
         mock_asyncio_run: Mock,
@@ -487,8 +487,8 @@ class TestCLICommand:
         # Should not raise error
         connect(api_url=None, no_ui=False)
 
-    @patch("ccproxy.cli.commands.confirmation_handler.get_settings")
-    @patch("ccproxy.cli.commands.confirmation_handler.asyncio.run")
+    @patch("ccproxy.cli.commands.permission_handler.get_settings")
+    @patch("ccproxy.cli.commands.permission_handler.asyncio.run")
     def test_connect_command_general_error(
         self,
         mock_asyncio_run: Mock,

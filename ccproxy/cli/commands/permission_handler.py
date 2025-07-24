@@ -6,20 +6,20 @@ import json
 import logging
 from collections.abc import AsyncIterator
 from datetime import datetime
+from typing import Any
 
 import httpx
 import structlog
 import typer
 from structlog import get_logger
 
-from ccproxy.api.services.confirmation_service import ConfirmationRequest
-from ccproxy.api.ui.confirmation_handler_protocol import ConfirmationHandlerProtocol
-from ccproxy.api.ui.terminal_confirmation_handler import TerminalConfirmationHandler
-from ccproxy.api.ui.terminal_confirmation_handler_textual import (
-    TerminalConfirmationHandler as TextualConfirmationHandler,
+from ccproxy.api.services.permission_service import PermissionRequest
+from ccproxy.api.ui.permission_handler_protocol import ConfirmationHandlerProtocol
+from ccproxy.api.ui.terminal_permission_handler import TerminalPermissionHandler
+from ccproxy.api.ui.terminal_permission_handler import (
+    TerminalPermissionHandler as TextualPermissionHandler,
 )
 from ccproxy.config.settings import get_settings
-from ccproxy.models.confirmations import ConfirmationEventDict
 
 
 logger = get_logger(__name__)
@@ -76,7 +76,7 @@ class SSEConfirmationHandler:
             await self.client.aclose()
             self.client = None
 
-    async def handle_event(self, event_type: str, data: ConfirmationEventDict) -> None:
+    async def handle_event(self, event_type: str, data: dict[str, Any]) -> None:
         """Handle an SSE event by dispatching to specific handlers.
 
         Args:
@@ -86,9 +86,11 @@ class SSEConfirmationHandler:
         if event_type == "ping":
             return
 
+        from ccproxy.models.permissions import EventType
+
         handler_map = {
-            "confirmation_request": self._handle_confirmation_request,
-            "confirmation_resolved": self._handle_confirmation_resolved,
+            EventType.PERMISSION_REQUEST.value: self._handle_permission_request,
+            EventType.PERMISSION_RESOLVED.value: self._handle_permission_resolved,
         }
 
         handler = handler_map.get(event_type)
@@ -97,7 +99,7 @@ class SSEConfirmationHandler:
         else:
             logger.warning("unhandled_sse_event", event_type=event_type)
 
-    async def _handle_confirmation_request(self, data: ConfirmationEventDict) -> None:
+    async def _handle_permission_request(self, data: dict[str, Any]) -> None:
         """Handle a confirmation request event.
 
         Args:
@@ -105,50 +107,50 @@ class SSEConfirmationHandler:
         """
         request_id = data.get("request_id")
         if not request_id:
-            logger.warning("confirmation_request_missing_id", data=data)
+            logger.warning("permission_request_missing_id", data=data)
             return
 
         # Check if this request was already resolved by another handler
         if request_id in self._resolved_requests:
             allowed, reason = self._resolved_requests[request_id]
             logger.info(
-                "confirmation_already_resolved_by_other_handler",
+                "permission_already_resolved_by_other_handler",
                 request_id=request_id,
                 allowed=allowed,
                 reason=reason,
             )
             logger.info(
-                "confirmation_already_handled",
+                "permission_already_handled",
                 request_id=request_id[:8],
                 reason=reason,
             )
             return
 
         logger.info(
-            "confirmation_request_received",
+            "permission_request_received",
             request_id=request_id,
             tool_name=data.get("tool_name"),
         )
 
         try:
-            # Map request_id to id field for ConfirmationRequest model
+            # Map request_id to id field for PermissionRequest model
             request_data = dict(data)
             if "request_id" in request_data:
                 request_data["id"] = request_data.pop("request_id")
-            request = ConfirmationRequest.model_validate(request_data)
+            request = PermissionRequest.model_validate(request_data)
         except Exception as e:
             logger.error(
-                "confirmation_request_validation_failed", data=data, error=str(e)
+                "permission_request_validation_failed", data=data, error=str(e)
             )
             return
 
         if self.ui and request_id is not None:
             task = asyncio.create_task(
-                self._handle_confirmation_with_cancellation(request)
+                self._handle_permission_with_cancellation(request)
             )
             self._ongoing_requests[request_id] = task
 
-    async def _handle_confirmation_resolved(self, data: ConfirmationEventDict) -> None:
+    async def _handle_permission_resolved(self, data: dict[str, Any]) -> None:
         """Handle a confirmation resolved event.
 
         Args:
@@ -189,7 +191,7 @@ class SSEConfirmationHandler:
                     await asyncio.wait_for(task, timeout=0.1)
 
                 logger.info(
-                    "confirmation_cancelled_by_other_handler",
+                    "permission_cancelled_by_other_handler",
                     request_id=request_id[:8],
                     status=status_text,
                 )
@@ -200,20 +202,20 @@ class SSEConfirmationHandler:
         if request_id is not None:
             self._resolved_by_us.discard(request_id)
 
-    async def _handle_confirmation_with_cancellation(
-        self, request: ConfirmationRequest
+    async def _handle_permission_with_cancellation(
+        self, request: PermissionRequest
     ) -> bool:
-        """Handle confirmation with cancellation support.
+        """Handle permission with cancellation support.
 
         Args:
-            request: The confirmation request to handle
+            request: The permission request to handle
         """
         try:
-            allowed = await self.terminal_handler.handle_confirmation(request)
+            allowed = await self.terminal_handler.handle_permission(request)
 
             if request.id in self._resolved_requests:
                 logger.info(
-                    "confirmation_resolved_while_processing",
+                    "permission_resolved_while_processing",
                     request_id=request.id,
                     our_result=allowed,
                 )
@@ -229,14 +231,14 @@ class SSEConfirmationHandler:
 
         except asyncio.CancelledError:
             logger.info(
-                "confirmation_cancelled",
+                "permission_cancelled",
                 request_id=request.id,
             )
             raise
 
         except Exception as e:
             logger.error(
-                "confirmation_handling_error",
+                "permission_handling_error",
                 request_id=request.id,
                 error=str(e),
                 exc_info=True,
@@ -261,26 +263,26 @@ class SSEConfirmationHandler:
 
         try:
             response = await self.client.post(
-                f"{self.api_url}/confirmations/{request_id}/respond",
+                f"{self.api_url}/permissions/{request_id}/respond",
                 json={"allowed": allowed},
             )
 
             if response.status_code == 200:
                 logger.info(
-                    "confirmation_response_sent",
+                    "permission_response_sent",
                     request_id=request_id,
                     allowed=allowed,
                 )
             elif response.status_code == 409:
                 # Already resolved by another handler
                 logger.info(
-                    "confirmation_already_resolved",
+                    "permission_already_resolved",
                     request_id=request_id,
                     status_code=response.status_code,
                 )
             else:
                 logger.error(
-                    "confirmation_response_failed",
+                    "permission_response_failed",
                     request_id=request_id,
                     status_code=response.status_code,
                     response=response.text,
@@ -288,7 +290,7 @@ class SSEConfirmationHandler:
 
         except Exception as e:
             logger.error(
-                "confirmation_response_error",
+                "permission_response_error",
                 request_id=request_id,
                 error=str(e),
                 exc_info=True,
@@ -296,7 +298,7 @@ class SSEConfirmationHandler:
 
     async def parse_sse_stream(
         self, response: httpx.Response
-    ) -> AsyncIterator[tuple[str, ConfirmationEventDict]]:
+    ) -> AsyncIterator[tuple[str, dict[str, Any]]]:
         """Parse SSE events from the response stream.
 
         Args:
@@ -346,11 +348,11 @@ class SSEConfirmationHandler:
             logger.error("run_no_client")
             return
 
-        stream_url = f"{self.api_url}/confirmations/stream"
+        stream_url = f"{self.api_url}/permissions/stream"
         retry_count = 0
 
         logger.info(
-            "connecting_to_confirmation_stream",
+            "connecting_to_permission_stream",
             url=stream_url,
         )
         print(f"Connecting to confirmation stream at {stream_url}...")
@@ -370,7 +372,7 @@ class SSEConfirmationHandler:
                     break
 
             except KeyboardInterrupt:
-                logger.info("confirmation_handler_shutdown_requested")
+                logger.info("permission_handler_shutdown_requested")
                 break
 
             except (
@@ -471,11 +473,6 @@ def connect(
         help="API server URL (defaults to settings)",
     ),
     no_ui: bool = typer.Option(False, "--no-ui", help="Disable UI mode"),
-    textual: bool = typer.Option(
-        False,
-        "--textual",
-        help="Use Textual TUI for confirmations (full-screen modal dialogs)",
-    ),
     verbose: int = typer.Option(
         0,
         "-v",
@@ -501,9 +498,6 @@ def connect(
     This command connects to the CCProxy API server via Server-Sent Events
     and handles permission confirmation requests in the terminal.
 
-    Two UI modes are available:
-    - Default: Rich Live display with single-key input
-    - --textual: Full-screen Textual TUI with modal dialogs
     """
     # Configure logging level based on verbosity
     # Handle case where verbose might be OptionInfo (in tests) or int (runtime)
@@ -534,10 +528,7 @@ def connect(
     token = auth_token or settings.security.auth_token
 
     # Create handlers based on UI mode selection
-    if textual:
-        terminal_handler: ConfirmationHandlerProtocol = TextualConfirmationHandler()
-    else:
-        terminal_handler = TerminalConfirmationHandler()
+    terminal_handler: ConfirmationHandlerProtocol = TextualPermissionHandler()
 
     async def run_handler() -> None:
         """Run the handler with proper resource management."""
@@ -554,9 +545,9 @@ def connect(
     try:
         asyncio.run(run_handler())
     except KeyboardInterrupt:
-        logger.info("confirmation_handler_stopped")
+        logger.info("permission_handler_stopped")
     except Exception as e:
-        logger.error("confirmation_handler_error", error=str(e), exc_info=True)
+        logger.error("permission_handler_error", error=str(e), exc_info=True)
         raise typer.Exit(1) from e
 
 

@@ -12,33 +12,33 @@ from fastapi.testclient import TestClient
 from httpx import AsyncClient
 from pydantic import BaseModel
 
-from ccproxy.api.routes.confirmations import (
-    ConfirmationRequestInfo,
-    ConfirmationResponse,
+from ccproxy.api.routes.permissions import (
+    PermissionRequestInfo,
+    PermissionResponse,
     event_generator,
     router,
 )
-from ccproxy.api.services.confirmation_service import (
-    ConfirmationService,
-    get_confirmation_service,
+from ccproxy.api.services.permission_service import (
+    PermissionService,
+    get_permission_service,
 )
 from ccproxy.config.settings import Settings, get_settings
-from ccproxy.models.confirmations import (
-    ConfirmationRequest,
-    ConfirmationStatus,
+from ccproxy.models.permissions import (
+    PermissionRequest,
+    PermissionStatus,
 )
 
 
 @pytest.fixture
 def mock_confirmation_service() -> Mock:
     """Create a mock confirmation service."""
-    service = Mock(spec=ConfirmationService)
+    service = Mock(spec=PermissionService)
     service.subscribe_to_events = AsyncMock()
     service.unsubscribe_from_events = AsyncMock()
     service.get_request = AsyncMock()
     service.get_status = AsyncMock()
     service.resolve = AsyncMock()
-    service.request_confirmation = AsyncMock()
+    service.request_permission = AsyncMock()
     service.wait_for_confirmation = AsyncMock()
     return service
 
@@ -76,13 +76,13 @@ def test_client(app: FastAPI) -> TestClient:
 
 
 def patch_confirmation_service(test_func: Callable[..., Any]) -> Callable[..., Any]:
-    """Decorator to patch get_confirmation_service for tests."""
+    """Decorator to patch get_permission_service for tests."""
 
     def wrapper(
         self: Any, test_client: TestClient, mock_confirmation_service: Any
     ) -> Any:
         with patch(
-            "ccproxy.api.routes.confirmations.get_confirmation_service"
+            "ccproxy.api.routes.permissions.get_permission_service"
         ) as mock_get_service:
             mock_get_service.return_value = mock_confirmation_service
             return test_func(self, test_client, mock_confirmation_service)
@@ -104,7 +104,7 @@ class TestConfirmationRoutes:
         from datetime import datetime, timedelta
 
         now = datetime.utcnow()
-        mock_request = ConfirmationRequest(
+        mock_request = PermissionRequest(
             tool_name="bash",
             input={"command": "ls -la"},
             created_at=now,
@@ -153,7 +153,7 @@ class TestConfirmationRoutes:
     ) -> None:
         """Test responding to allow a confirmation request."""
         # Setup mock
-        mock_confirmation_service.get_status.return_value = ConfirmationStatus.PENDING
+        mock_confirmation_service.get_status.return_value = PermissionStatus.PENDING
         mock_confirmation_service.resolve.return_value = True
 
         # Make request
@@ -166,7 +166,7 @@ class TestConfirmationRoutes:
         assert response.status_code == 200
         data = response.json()
         assert data["status"] == "success"
-        assert data["confirmation_id"] == "test-id"
+        assert data["permission_id"] == "test-id"
         assert data["allowed"] is True
 
         # Verify service was called
@@ -180,7 +180,7 @@ class TestConfirmationRoutes:
     ) -> None:
         """Test responding to deny a confirmation request."""
         # Setup mock
-        mock_confirmation_service.get_status.return_value = ConfirmationStatus.PENDING
+        mock_confirmation_service.get_status.return_value = PermissionStatus.PENDING
         mock_confirmation_service.resolve.return_value = True
 
         # Make request
@@ -193,7 +193,7 @@ class TestConfirmationRoutes:
         assert response.status_code == 200
         data = response.json()
         assert data["status"] == "success"
-        assert data["confirmation_id"] == "test-id"
+        assert data["permission_id"] == "test-id"
         assert data["allowed"] is False
 
         # Verify service was called
@@ -227,7 +227,7 @@ class TestConfirmationRoutes:
     ) -> None:
         """Test responding to an already resolved confirmation."""
         # Setup mock
-        mock_confirmation_service.get_status.return_value = ConfirmationStatus.ALLOWED
+        mock_confirmation_service.get_status.return_value = PermissionStatus.ALLOWED
 
         # Make request
         response = test_client.post(
@@ -247,7 +247,7 @@ class TestConfirmationRoutes:
     ) -> None:
         """Test when resolve returns False (shouldn't happen but handled)."""
         # Setup mock
-        mock_confirmation_service.get_status.return_value = ConfirmationStatus.PENDING
+        mock_confirmation_service.get_status.return_value = PermissionStatus.PENDING
         mock_confirmation_service.resolve.return_value = False
 
         # Make request
@@ -281,9 +281,9 @@ class TestSSEEventGenerator:
         queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
         mock_confirmation_service.subscribe_to_events.return_value = queue
 
-        # Patch get_confirmation_service at module level
+        # Patch get_permission_service at module level
         with patch(
-            "ccproxy.api.routes.confirmations.get_confirmation_service"
+            "ccproxy.api.routes.permissions.get_permission_service"
         ) as mock_get_service:
             mock_get_service.return_value = mock_confirmation_service
 
@@ -327,9 +327,9 @@ class TestSSEEventGenerator:
 
         mock_request.is_disconnected = is_disconnected
 
-        # Patch get_confirmation_service
+        # Patch get_permission_service
         with patch(
-            "ccproxy.api.routes.confirmations.get_confirmation_service"
+            "ccproxy.api.routes.permissions.get_permission_service"
         ) as mock_get_service:
             mock_get_service.return_value = mock_confirmation_service
 
@@ -374,9 +374,9 @@ class TestSSEEventGenerator:
 
         mock_request.is_disconnected = is_disconnected
 
-        # Patch get_confirmation_service
+        # Patch get_permission_service
         with patch(
-            "ccproxy.api.routes.confirmations.get_confirmation_service"
+            "ccproxy.api.routes.permissions.get_permission_service"
         ) as mock_get_service:
             mock_get_service.return_value = mock_confirmation_service
 
@@ -418,9 +418,9 @@ class TestSSEEventGenerator:
 
         mock_request.is_disconnected = is_disconnected
 
-        # Patch get_confirmation_service
+        # Patch get_permission_service
         with patch(
-            "ccproxy.api.routes.confirmations.get_confirmation_service"
+            "ccproxy.api.routes.permissions.get_permission_service"
         ) as mock_get_service:
             mock_get_service.return_value = mock_confirmation_service
 
@@ -445,9 +445,9 @@ class TestSSEEventGenerator:
         queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
         mock_confirmation_service.subscribe_to_events.return_value = queue
 
-        # Patch get_confirmation_service
+        # Patch get_permission_service
         with patch(
-            "ccproxy.api.routes.confirmations.get_confirmation_service"
+            "ccproxy.api.routes.permissions.get_permission_service"
         ) as mock_get_service:
             mock_get_service.return_value = mock_confirmation_service
 
@@ -482,9 +482,7 @@ async def test_sse_stream_endpoint(
     app.include_router(router)
 
     # Override dependencies
-    app.dependency_overrides[get_confirmation_service] = (
-        lambda: mock_confirmation_service
-    )
+    app.dependency_overrides[get_permission_service] = lambda: mock_confirmation_service
     app.dependency_overrides[get_settings] = lambda: mock_settings
 
     # Setup mock queue

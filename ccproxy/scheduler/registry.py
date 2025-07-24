@@ -4,7 +4,7 @@ from typing import Any
 
 import structlog
 
-from .exceptions import TaskRegistrationError
+from .errors import TaskRegistrationError
 from .tasks import BaseScheduledTask
 
 

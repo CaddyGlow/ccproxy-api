@@ -1,6 +1,6 @@
 """UI components for CCProxy API."""
 
-from .terminal_confirmation_handler import TerminalConfirmationHandler
+from .terminal_permission_handler import TerminalPermissionHandler
 
 
-__all__ = ["TerminalConfirmationHandler"]
+__all__ = ["TerminalPermissionHandler"]

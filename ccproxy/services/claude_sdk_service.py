@@ -21,6 +21,7 @@ from ccproxy.claude_sdk.converter import MessageConverter
 from ccproxy.claude_sdk.options import OptionsHandler
 from ccproxy.config.settings import Settings
 from ccproxy.core.errors import (
+    AuthenticationError,
     ClaudeProxyError,
     ServiceUnavailableError,
 )
@@ -154,7 +155,7 @@ class ClaudeSDKService:
                     )
                     return result
 
-            except Exception as e:
+            except (ClaudeProxyError, ServiceUnavailableError) as e:
                 # Log error via access logger (includes metrics)
                 await log_request_access(
                     context=ctx,
@@ -162,6 +163,15 @@ class ClaudeSDKService:
                     error_message=str(e),
                     metrics=self.metrics,
                     error_type=type(e).__name__,
+                )
+                raise
+            except AuthenticationError as e:
+                logger.error(
+                    "authentication_failed",
+                    user_id=user_id,
+                    error=str(e),
+                    error_type=type(e).__name__,
+                    exc_info=True,
                 )
                 raise
 

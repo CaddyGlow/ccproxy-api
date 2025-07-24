@@ -9,7 +9,7 @@ from typing import Any
 
 import structlog
 
-from .exceptions import TaskExecutionError
+from .errors import TaskExecutionError
 
 
 logger = structlog.get_logger(__name__)

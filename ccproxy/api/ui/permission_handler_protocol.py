@@ -2,7 +2,7 @@
 
 from typing import Protocol
 
-from ccproxy.api.services.confirmation_service import ConfirmationRequest
+from ccproxy.api.services.permission_service import PermissionRequest
 
 
 class ConfirmationHandlerProtocol(Protocol):
@@ -12,11 +12,11 @@ class ConfirmationHandlerProtocol(Protocol):
     must implement to be compatible with the CLI confirmation system.
     """
 
-    async def handle_confirmation(self, request: ConfirmationRequest) -> bool:
-        """Handle a confirmation request.
+    async def handle_permission(self, request: PermissionRequest) -> bool:
+        """Handle a permission request.
 
         Args:
-            request: The confirmation request to handle
+            request: The permission request to handle
 
         Returns:
             bool: True if the user confirmed, False otherwise

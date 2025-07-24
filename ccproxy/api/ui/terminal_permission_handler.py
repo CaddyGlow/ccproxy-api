@@ -20,8 +20,8 @@ from textual.screen import ModalScreen
 from textual.timer import Timer
 from textual.widgets import Label, RichLog, Static
 
-from ccproxy.api.services.confirmation_service import ConfirmationRequest
-from ccproxy.api.ui.confirmation_handler_protocol import ConfirmationHandlerProtocol
+from ccproxy.api.services.permission_service import PermissionRequest
+from ccproxy.api.ui.permission_handler_protocol import ConfirmationHandlerProtocol
 
 
 logger = get_logger(__name__)
@@ -31,7 +31,7 @@ logger = get_logger(__name__)
 class PendingRequest:
     """Represents a pending confirmation request with its response future."""
 
-    request: ConfirmationRequest
+    request: PermissionRequest
     future: asyncio.Future[bool]
     cancelled: bool = False
 
@@ -47,7 +47,7 @@ class ConfirmationScreen(ModalScreen[bool]):
         ("ctrl+c", "cancel", "Cancel"),
     ]
 
-    def __init__(self, request: ConfirmationRequest) -> None:
+    def __init__(self, request: PermissionRequest) -> None:
         super().__init__()
         self.request = request
         self.start_time = time.time()
@@ -226,7 +226,7 @@ class ConfirmationApp(App[bool]):
         ("ctrl+c", "cancel", "Cancel"),
     ]
 
-    def __init__(self, request: ConfirmationRequest) -> None:
+    def __init__(self, request: PermissionRequest) -> None:
         super().__init__()
         self.theme = "textual-ansi"
         self.request = request
@@ -351,7 +351,7 @@ class ConfirmationApp(App[bool]):
             raise KeyboardInterrupt("User cancelled confirmation")
 
 
-class TerminalConfirmationHandler:
+class TerminalPermissionHandler:
     """Handles confirmation requests in the terminal using Textual with request stacking.
 
     Implements ConfirmationHandlerProtocol for type safety and interoperability.
@@ -360,9 +360,8 @@ class TerminalConfirmationHandler:
     def __init__(self) -> None:
         """Initialize the terminal confirmation handler."""
         self._request_queue: asyncio.Queue[
-            tuple[ConfirmationRequest, asyncio.Future[bool]]
+            tuple[PermissionRequest, asyncio.Future[bool]]
         ] = asyncio.Queue()
-        self._processing = False
         self._cancelled_requests: set[str] = set()
         self._processing_task: asyncio.Task[None] | None = None
         self._active_apps: dict[str, ConfirmationApp] = {}
@@ -415,64 +414,88 @@ class TerminalConfirmationHandler:
             try:
                 request, future = await self._request_queue.get()
 
-                # Check if cancelled before processing
-                if request.id in self._cancelled_requests:
-                    self._safe_set_future_result(future, False)
-                    self._cancelled_requests.discard(request.id)
+                # Check if request is valid for processing
+                if not self._is_request_processable(request, future):
                     continue
 
-                # Check if expired
-                if request.time_remaining() <= 0:
-                    self._safe_set_future_result(future, False)
-                    continue
-
-                try:
-                    # Create and run a simple app for this request
-                    app = ConfirmationApp(request)
-
-                    # Store active app reference for potential cancellation
-                    self._active_apps[request.id] = app
-
-                    try:
-                        app_result = await app.run_async(
-                            inline=True, inline_no_clear=True
-                        )
-                        result = bool(app_result) if app_result is not None else False
-
-                        # Check if cancelled during processing
-                        if request.id in self._cancelled_requests:
-                            result = False
-                            self._cancelled_requests.discard(request.id)
-
-                        self._safe_set_future_result(future, result)
-                    finally:
-                        # Always cleanup app reference
-                        self._active_apps.pop(request.id, None)
-
-                except KeyboardInterrupt:
-                    # User pressed Ctrl+C, forward it up
-                    self._safe_set_future_exception(
-                        future, KeyboardInterrupt("User cancelled confirmation")
-                    )
-                except Exception as e:
-                    logger.error(
-                        "confirmation_app_error",
-                        request_id=request.id,
-                        error=str(e),
-                        exc_info=True,
-                    )
-                    self._safe_set_future_result(future, False)
+                # Process the request
+                await self._process_single_request(request, future)
 
             except asyncio.CancelledError:
                 break
             except Exception as e:
                 logger.error("queue_processing_error", error=str(e), exc_info=True)
 
-    async def handle_confirmation(self, request: ConfirmationRequest) -> bool:
-        """Handle a confirmation request.
+    def _is_request_processable(
+        self, request: PermissionRequest, future: asyncio.Future[bool]
+    ) -> bool:
+        """Check if a request can be processed."""
+        # Check if cancelled before processing
+        if request.id in self._cancelled_requests:
+            self._safe_set_future_result(future, False)
+            self._cancelled_requests.discard(request.id)
+            return False
+
+        # Check if expired
+        if request.time_remaining() <= 0:
+            self._safe_set_future_result(future, False)
+            return False
+
+        return True
+
+    async def _process_single_request(
+        self, request: PermissionRequest, future: asyncio.Future[bool]
+    ) -> None:
+        """Process a single permission request."""
+        app = None
+        try:
+            # Create and run a simple app for this request
+            app = ConfirmationApp(request)
+            self._active_apps[request.id] = app
+
+            app_result = await app.run_async(inline=True, inline_no_clear=True)
+            result = bool(app_result) if app_result is not None else False
+
+            # Apply cancellation if it occurred during processing
+            if request.id in self._cancelled_requests:
+                result = False
+                self._cancelled_requests.discard(request.id)
+
+            self._safe_set_future_result(future, result)
+
+        except KeyboardInterrupt:
+            self._safe_set_future_exception(
+                future, KeyboardInterrupt("User cancelled confirmation")
+            )
+        except Exception as e:
+            logger.error(
+                "confirmation_app_error",
+                request_id=request.id,
+                error=str(e),
+                exc_info=True,
+            )
+            self._safe_set_future_result(future, False)
+        finally:
+            # Always cleanup app reference
+            if app:
+                self._active_apps.pop(request.id, None)
+
+    def _ensure_processing_task_running(self) -> None:
+        """Ensure the processing task is running."""
+        if self._processing_task is None or self._processing_task.done():
+            self._processing_task = asyncio.create_task(self._process_queue())
+
+    async def _queue_and_wait_for_result(self, request: PermissionRequest) -> bool:
+        """Queue a request and wait for its result."""
+        future: asyncio.Future[bool] = asyncio.Future()
+        await self._request_queue.put((request, future))
+        return await future
+
+    async def handle_permission(self, request: PermissionRequest) -> bool:
+        """Handle a permission request.
 
         Args:
-            request: The confirmation request to handle
+            request: The permission request to handle
 
         Returns:
             bool: True if the user confirmed, False otherwise
@@ -490,18 +513,11 @@ class TerminalConfirmationHandler:
                 logger.info("confirmation_request_expired", request_id=request.id)
                 return False
 
-            # Start processing task if not already running
-            if self._processing_task is None or self._processing_task.done():
-                self._processing_task = asyncio.create_task(self._process_queue())
+            # Ensure processing task is running
+            self._ensure_processing_task_running()
 
-            # Create future for this request
-            future: asyncio.Future[bool] = asyncio.Future()
-
-            # Add to queue
-            await self._request_queue.put((request, future))
-
-            # Wait for result
-            result = await future
+            # Queue request and wait for result
+            result = await self._queue_and_wait_for_result(request)
 
             logger.info(
                 "confirmation_request_completed", request_id=request.id, result=result
