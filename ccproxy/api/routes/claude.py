@@ -13,9 +13,8 @@ from ccproxy.adapters.openai.adapter import (
     OpenAIChatCompletionRequest,
     OpenAIChatCompletionResponse,
 )
-from ccproxy.api.dependencies import get_claude_service
+from ccproxy.api.dependencies import ClaudeServiceDep
 from ccproxy.models.messages import MessageCreateParams, MessageResponse
-from ccproxy.services.claude_sdk_service import ClaudeSDKService
 
 
 # Create the router for Claude SDK endpoints
@@ -28,7 +27,7 @@ logger = structlog.get_logger(__name__)
 async def create_openai_chat_completion(
     request: Request,
     openai_request: OpenAIChatCompletionRequest,
-    claude_service: ClaudeSDKService = Depends(get_claude_service),
+    claude_service: ClaudeServiceDep,
 ) -> StreamingResponse | OpenAIChatCompletionResponse:
     """Create a chat completion using Claude SDK with OpenAI-compatible format.
 
@@ -97,7 +96,7 @@ async def create_openai_chat_completion(
 @router.post("/v1/messages", response_model=None)
 async def create_anthropic_message(
     request: MessageCreateParams,
-    claude_service: ClaudeSDKService = Depends(get_claude_service),
+    claude_service: ClaudeServiceDep,
 ) -> StreamingResponse | MessageResponse:
     """Create a message using Claude SDK with Anthropic format.
 
@@ -166,7 +165,7 @@ async def create_anthropic_message(
 
 @router.get("/v1/models", response_model=None)
 async def list_models(
-    claude_service: ClaudeSDKService = Depends(get_claude_service),
+    claude_service: ClaudeServiceDep,
 ) -> dict[str, Any]:
     """List available models using Claude SDK service.
 

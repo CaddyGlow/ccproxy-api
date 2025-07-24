@@ -28,12 +28,15 @@ from ccproxy.api.routes.metrics import (
 from ccproxy.api.routes.proxy import router as proxy_router
 from ccproxy.api.services.confirmation_service import get_confirmation_service
 from ccproxy.api.ui.terminal_confirmation_handler import TerminalConfirmationHandler
+from ccproxy.auth.credentials_adapter import CredentialsAuthManager
 from ccproxy.auth.exceptions import CredentialsNotFoundError
 from ccproxy.auth.oauth.routes import router as oauth_router
 from ccproxy.config.settings import Settings, get_settings
 from ccproxy.core.logging import setup_logging
+from ccproxy.observability import get_metrics
 from ccproxy.observability.storage.duckdb_simple import SimpleDuckDBStorage
 from ccproxy.scheduler.manager import start_scheduler, stop_scheduler
+from ccproxy.services.claude_sdk_service import ClaudeSDKService
 from ccproxy.services.credentials import CredentialsManager
 
 
@@ -134,6 +137,28 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             searched_paths=searched_paths,
             install_command="npm install -g @anthropic-ai/claude-code",
         )
+
+    # Initialize ClaudeSDKService and store in app state
+    try:
+        # Create auth manager with settings
+        auth_manager = CredentialsAuthManager()
+
+        # Get global metrics instance
+        metrics = get_metrics()
+
+        # Create ClaudeSDKService instance
+        claude_service = ClaudeSDKService(
+            auth_manager=auth_manager,
+            metrics=metrics,
+            settings=settings,
+        )
+
+        # Store in app state for reuse in dependencies
+        app.state.claude_service = claude_service
+        logger.debug("claude_sdk_service_initialized")
+    except Exception as e:
+        logger.error("claude_sdk_service_initialization_failed", error=str(e))
+        # Continue startup even if ClaudeSDKService fails (graceful degradation)
 
     # Start scheduler system
     try:

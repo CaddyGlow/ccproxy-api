@@ -11,8 +11,8 @@ from fastapi_mcp import FastApiMCP  # type: ignore[import-untyped]
 from pydantic import BaseModel, ConfigDict, Field
 from structlog import get_logger
 
+from ccproxy.api.dependencies import SettingsDep
 from ccproxy.api.services.confirmation_service import get_confirmation_service
-from ccproxy.config.settings import Settings, get_settings
 from ccproxy.models.confirmations import ConfirmationStatus
 from ccproxy.models.responses import (
     PermissionToolAllowResponse,
@@ -50,7 +50,7 @@ class PermissionCheckRequest(BaseModel):
 
 async def check_permission(
     request: PermissionCheckRequest,
-    settings: Annotated[Settings, Depends(get_settings)],
+    settings: SettingsDep,
 ) -> (
     PermissionToolAllowResponse
     | PermissionToolDenyResponse
@@ -153,7 +153,7 @@ def setup_mcp(app: FastAPI) -> None:
     )
     async def permission_endpoint(
         request: PermissionCheckRequest,
-        settings: Annotated[Settings, Depends(get_settings)],
+        settings: SettingsDep,
     ) -> (
         PermissionToolAllowResponse
         | PermissionToolDenyResponse

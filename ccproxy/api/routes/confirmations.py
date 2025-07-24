@@ -10,9 +10,9 @@ from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 from structlog import get_logger
 
+from ccproxy.api.dependencies import SettingsDep
 from ccproxy.api.services.confirmation_service import get_confirmation_service
 from ccproxy.auth.conditional import ConditionalAuthDep
-from ccproxy.config.settings import Settings, get_settings
 from ccproxy.core.errors import (
     ConfirmationAlreadyResolvedError,
     ConfirmationNotFoundError,
@@ -107,7 +107,7 @@ async def event_generator(
 @router.get("/stream")
 async def stream_confirmations(
     request: Request,
-    settings: Annotated[Settings, Depends(get_settings)],
+    settings: SettingsDep,
     auth: ConditionalAuthDep,
 ) -> EventSourceResponse:
     """Stream confirmation requests via Server-Sent Events.
@@ -130,7 +130,7 @@ async def stream_confirmations(
 @router.get("/{confirmation_id}")
 async def get_confirmation(
     confirmation_id: str,
-    settings: Annotated[Settings, Depends(get_settings)],
+    settings: SettingsDep,
     auth: ConditionalAuthDep,
 ) -> ConfirmationRequestInfo:
     """Get information about a specific confirmation request.
@@ -169,7 +169,7 @@ async def get_confirmation(
 async def respond_to_confirmation(
     confirmation_id: str,
     response: ConfirmationResponse,
-    settings: Annotated[Settings, Depends(get_settings)],
+    settings: SettingsDep,
     auth: ConditionalAuthDep,
 ) -> dict[str, str | bool]:
     """Submit a response to a confirmation request.

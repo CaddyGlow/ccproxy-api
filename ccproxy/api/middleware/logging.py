@@ -8,6 +8,8 @@ from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.types import ASGIApp
 
+from ccproxy.api.dependencies import get_cached_settings
+
 
 logger = structlog.get_logger(__name__)
 
@@ -37,9 +39,8 @@ class AccessLogMiddleware(BaseHTTPMiddleware):
         start_time = time.perf_counter()
 
         # Store log storage in request state if collection is enabled
-        from ccproxy.config.settings import get_settings
 
-        settings = get_settings()
+        settings = get_cached_settings(request)
 
         if settings.observability.logs_collection_enabled and hasattr(
             request.app.state, "log_storage"
