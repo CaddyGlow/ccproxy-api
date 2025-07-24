@@ -2,12 +2,16 @@
 
 from typing import Any
 
+import structlog
+
 from ccproxy.config.settings import Settings
 from ccproxy.core.async_utils import patched_typing
 
 
 with patched_typing():
     from claude_code_sdk import ClaudeCodeOptions
+
+logger = structlog.get_logger(__name__)
 
 
 class OptionsHandler:
@@ -30,7 +34,7 @@ class OptionsHandler:
         temperature: float | None = None,
         max_tokens: int | None = None,
         system_message: str | None = None,
-        **kwargs: Any,
+        **additional_options: Any,
     ) -> ClaudeCodeOptions:
         """
         Create Claude SDK options from API parameters.
@@ -40,36 +44,79 @@ class OptionsHandler:
             temperature: Temperature for response generation
             max_tokens: Maximum tokens in response
             system_message: System message to include
-            **kwargs: Additional options
+            **additional_options: Additional options to set on the ClaudeCodeOptions instance
 
         Returns:
             Configured ClaudeCodeOptions instance
         """
-        options = ClaudeCodeOptions(model=model)
-
-        # First apply settings from configuration if available
+        # Start with configured defaults if available, otherwise create fresh instance
         if self.settings and self.settings.claude.code_options:
-            code_opts = self.settings.claude.code_options
+            # Use the configured options as base - this preserves all default settings
+            # including complex objects like mcp_servers and permission_prompt_tool_name
+            configured_opts = self.settings.claude.code_options
 
-            # Apply settings from configuration
-            for attr_name in dir(code_opts):
-                if not attr_name.startswith("_"):
-                    value = getattr(code_opts, attr_name, None)
-                    if value is not None and hasattr(options, attr_name):
-                        setattr(options, attr_name, value)
+            # Create a new instance with the same configuration
+            # We need to extract the configuration values properly with type safety
 
-        # Then apply API parameters (these override settings)
-        if temperature is not None:
-            options.temperature = temperature  # type: ignore[attr-defined]
+            # Extract configuration values with proper types
+            mcp_servers = (
+                configured_opts.mcp_servers.copy()
+                if configured_opts.mcp_servers
+                else {}
+            )
+            permission_prompt_tool_name = configured_opts.permission_prompt_tool_name
+            max_thinking_tokens = getattr(configured_opts, "max_thinking_tokens", None)
+            allowed_tools = getattr(configured_opts, "allowed_tools", None)
+            disallowed_tools = getattr(configured_opts, "disallowed_tools", None)
+            cwd = getattr(configured_opts, "cwd", None)
+            append_system_prompt = getattr(
+                configured_opts, "append_system_prompt", None
+            )
+            max_turns = getattr(configured_opts, "max_turns", None)
+            continue_conversation = getattr(
+                configured_opts, "continue_conversation", None
+            )
+            permission_mode = getattr(configured_opts, "permission_mode", None)
 
-        if max_tokens is not None:
-            options.max_tokens = max_tokens  # type: ignore[attr-defined]
+            # Build ClaudeCodeOptions with proper type handling
+            # Start with a basic instance and set attributes individually for type safety
+            options = ClaudeCodeOptions(
+                mcp_servers=mcp_servers,
+                permission_prompt_tool_name=permission_prompt_tool_name,
+            )
 
+            # Set additional attributes if they exist and are not None
+            if max_thinking_tokens is not None:
+                options.max_thinking_tokens = int(max_thinking_tokens)
+            if allowed_tools is not None:
+                options.allowed_tools = list(allowed_tools)
+            if disallowed_tools is not None:
+                options.disallowed_tools = list(disallowed_tools)
+            if cwd is not None:
+                options.cwd = cwd
+            if append_system_prompt is not None:
+                options.append_system_prompt = append_system_prompt
+            if max_turns is not None:
+                options.max_turns = max_turns
+            if continue_conversation is not None:
+                options.continue_conversation = bool(continue_conversation)
+            if permission_mode is not None:
+                options.permission_mode = permission_mode
+        else:
+            options = ClaudeCodeOptions()
+
+        # Override the model (API parameter takes precedence)
+        options.model = model
+
+        # Apply system message if provided (this is supported by ClaudeCodeOptions)
         if system_message is not None:
             options.system_prompt = system_message
 
-        # Handle other options as needed
-        for key, value in kwargs.items():
+        # Note: temperature and max_tokens are API-level parameters, not ClaudeCodeOptions parameters
+        # These are handled at the API request level, not in the options object
+
+        # Handle additional options as needed
+        for key, value in additional_options.items():
             if hasattr(options, key):
                 setattr(options, key, value)
 
@@ -130,10 +177,10 @@ class OptionsHandler:
     @staticmethod
     def get_default_options() -> dict[str, Any]:
         """
-        Get default options for Claude SDK.
+        Get default options for API parameters.
 
         Returns:
-            Dictionary of default options
+            Dictionary of default API parameter values
         """
         return {
             "model": "claude-3-5-sonnet-20241022",

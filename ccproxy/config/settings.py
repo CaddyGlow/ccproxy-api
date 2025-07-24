@@ -8,6 +8,7 @@ import tomllib
 from pathlib import Path
 from typing import Any, Literal
 
+import structlog
 from pydantic import BaseModel, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -508,6 +509,8 @@ class ConfigurationManager:
 # Global configuration manager instance
 config_manager = ConfigurationManager()
 
+logger = structlog.get_logger(__name__)
+
 
 def get_settings(config_path: Path | str | None = None) -> Settings:
     """Get the global settings instance with configuration file support.
@@ -527,7 +530,8 @@ def get_settings(config_path: Path | str | None = None) -> Settings:
             with contextlib.suppress(json.JSONDecodeError):
                 cli_overrides = json.loads(cli_overrides_json)
 
-        return Settings.from_config(config_path=config_path, **cli_overrides)
+        settings = Settings.from_config(config_path=config_path, **cli_overrides)
+        return settings
     except Exception as e:
         # If settings can't be loaded (e.g., missing API key),
         # this will be handled by the caller

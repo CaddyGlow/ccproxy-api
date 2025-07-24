@@ -582,10 +582,10 @@ def setup_error_handlers(app: FastAPI) -> None:
         else:
             # Log with basic stack trace (no local variables)
             stack_trace = None
-            if logger.isEnabledFor(logging.DEBUG):
-                import traceback
+            # For structlog, we can always include traceback since structlog handles filtering
+            import traceback
 
-                stack_trace = traceback.format_exc()
+            stack_trace = traceback.format_exc()
 
             logger.error(
                 "HTTP exception",

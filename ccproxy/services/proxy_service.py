@@ -483,7 +483,7 @@ class ProxyService:
                     logger.debug(
                         "credential_check_failed",
                         error=str(e),
-                        exc_info=logger.isEnabledFor(logging.DEBUG),
+                        exc_info=True,
                     )
 
                 raise HTTPException(

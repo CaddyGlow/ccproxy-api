@@ -93,6 +93,7 @@ class ClaudeSDKService:
             ClaudeProxyError: If request fails
             ServiceUnavailableError: If service is unavailable
         """
+
         # Validate authentication if auth manager is configured
         if self.auth_manager and user_id:
             try:

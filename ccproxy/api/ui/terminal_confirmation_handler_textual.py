@@ -177,12 +177,12 @@ class ConfirmationApp(App[bool]):
     }
 
     #confirmation-dialog {
-        width: 88;
-        # max-height: 35;
-        border: solid $accent;
+        width: 60;
+        height: 18;
+        border: round solid $accent;
         background: $surface;
         padding: 1;
-        box-sizing: content-box;
+        box-sizing: border-box;
     }
 
     #title {

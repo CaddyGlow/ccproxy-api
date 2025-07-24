@@ -45,6 +45,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Application lifespan manager."""
     settings = get_settings()
 
+    # Store settings in app state for reuse in dependencies
+    app.state.settings = settings
+
     # Startup
     logger.info(
         "server_start",
@@ -248,7 +251,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     """
     if settings is None:
         settings = get_settings()
-
     # Configure logging based on settings BEFORE any module uses logger
     # This is needed for reload mode where the app is re-imported
     import logging
