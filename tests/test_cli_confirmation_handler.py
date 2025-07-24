@@ -208,7 +208,7 @@ class TestSSEConfirmationHandler:
         await sse_handler.send_response("test-id", True)
 
         mock_httpx_client.post.assert_called_once_with(
-            "http://localhost:8080/api/v1/confirmations/test-id/respond",
+            "http://localhost:8080/confirmations/test-id/respond",
             json={"allowed": True},
         )
 
@@ -343,7 +343,7 @@ data: {invalid json}
 
         # Verify stream was called
         mock_client.stream.assert_called_once_with(
-            "GET", "http://localhost:8080/api/v1/confirmations/stream"
+            "GET", "http://localhost:8080/confirmations/stream"
         )
 
     @patch("httpx.AsyncClient")

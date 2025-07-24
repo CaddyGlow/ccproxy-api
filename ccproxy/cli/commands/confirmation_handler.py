@@ -40,6 +40,7 @@ class SSEConfirmationHandler:
         terminal_handler: ConfirmationHandlerProtocol,
         ui: bool = True,
         auth_token: str | None = None,
+        auto_reconnect: bool = True,
     ):
         self.api_url = api_url.rstrip("/")
         self.terminal_handler = terminal_handler
@@ -49,6 +50,7 @@ class SSEConfirmationHandler:
         self.max_delay = 60.0
         self.ui = ui
         self.auth_token = auth_token
+        self.auto_reconnect = auto_reconnect
 
         self._ongoing_requests: dict[str, asyncio.Task[bool]] = {}
         self._resolved_requests: dict[str, tuple[bool, str]] = {}
@@ -259,7 +261,7 @@ class SSEConfirmationHandler:
 
         try:
             response = await self.client.post(
-                f"{self.api_url}/api/v1/confirmations/{request_id}/respond",
+                f"{self.api_url}/confirmations/{request_id}/respond",
                 json={"allowed": allowed},
             )
 
@@ -344,19 +346,28 @@ class SSEConfirmationHandler:
             logger.error("run_no_client")
             return
 
-        stream_url = f"{self.api_url}/api/v1/confirmations/stream"
+        stream_url = f"{self.api_url}/confirmations/stream"
         retry_count = 0
 
         logger.info(
             "connecting_to_confirmation_stream",
             url=stream_url,
         )
+        print(f"Connecting to confirmation stream at {stream_url}...")
 
         while retry_count <= self.max_retries:
             try:
                 await self._connect_and_handle_stream(stream_url)
                 # If we get here, connection ended gracefully
-                break
+                if self.auto_reconnect:
+                    # Reset retry count and reconnect
+                    retry_count = 0
+                    print("Connection closed. Reconnecting...")
+                    await asyncio.sleep(1.0)  # Brief pause before reconnecting
+                    continue
+                else:
+                    print("Connection closed. Exiting (auto-reconnect disabled).")
+                    break
 
             except KeyboardInterrupt:
                 logger.info("confirmation_handler_shutdown_requested")
@@ -386,11 +397,8 @@ class SSEConfirmationHandler:
                     error=str(e),
                 )
 
-                logger.warning(
-                    "connection_retry",
-                    attempt=retry_count,
-                    max_retries=self.max_retries,
-                    retry_delay=delay,
+                print(
+                    f"Connection failed (attempt {retry_count}/{self.max_retries}). Retrying in {delay}s..."
                 )
 
                 await asyncio.sleep(delay)
@@ -440,8 +448,7 @@ class SSEConfirmationHandler:
                 url=stream_url,
                 message="Connected to confirmation stream. Waiting for requests...",
             )
-
-            logger.info("sse_connection_established", url=stream_url)
+            print("✓ Connected to confirmation stream. Waiting for requests...")
 
             async for event_type, data in self.parse_sse_stream(response):
                 try:
@@ -483,6 +490,11 @@ def connect(
         help="Bearer token for API authentication (overrides config)",
         envvar="CCPROXY_AUTH_TOKEN",
     ),
+    no_reconnect: bool = typer.Option(
+        False,
+        "--no-reconnect",
+        help="Disable automatic reconnection when connection is lost",
+    ),
 ) -> None:
     """Connect to the API server and handle confirmation requests.
 
@@ -494,9 +506,12 @@ def connect(
     - --textual: Full-screen Textual TUI with modal dialogs
     """
     # Configure logging level based on verbosity
-    if verbose >= 2:
+    # Handle case where verbose might be OptionInfo (in tests) or int (runtime)
+    verbose_count = verbose if isinstance(verbose, int) else 0
+
+    if verbose_count >= 2:
         log_level = logging.DEBUG
-    elif verbose >= 1:
+    elif verbose_count >= 1:
         log_level = logging.INFO
     else:
         log_level = logging.WARNING
@@ -527,7 +542,11 @@ def connect(
     async def run_handler() -> None:
         """Run the handler with proper resource management."""
         async with SSEConfirmationHandler(
-            api_url, terminal_handler, not no_ui, auth_token=token
+            api_url,
+            terminal_handler,
+            not no_ui,
+            auth_token=token,
+            auto_reconnect=not no_reconnect,
         ) as sse_handler:
             await sse_handler.run()
 
