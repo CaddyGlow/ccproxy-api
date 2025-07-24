@@ -118,7 +118,7 @@ class TestConfirmationRoutes:
         mock_confirmation_service.get_request.side_effect = mock_get_request
 
         # Make request
-        response = test_client.get("/api/v1/confirmations/test-id")
+        response = test_client.get("/test-id")
 
         # Verify
         assert response.status_code == 200
@@ -139,7 +139,7 @@ class TestConfirmationRoutes:
         mock_confirmation_service.get_request.return_value = None
 
         # Make request
-        response = test_client.get("/api/v1/confirmations/non-existent-id")
+        response = test_client.get("/non-existent-id")
 
         # Verify
         assert response.status_code == 404
@@ -158,7 +158,7 @@ class TestConfirmationRoutes:
 
         # Make request
         response = test_client.post(
-            "/api/v1/confirmations/test-id/respond",
+            "/test-id/respond",
             json={"allowed": True},
         )
 
@@ -185,7 +185,7 @@ class TestConfirmationRoutes:
 
         # Make request
         response = test_client.post(
-            "/api/v1/confirmations/test-id/respond",
+            "/test-id/respond",
             json={"allowed": False},
         )
 
@@ -211,7 +211,7 @@ class TestConfirmationRoutes:
 
         # Make request
         response = test_client.post(
-            "/api/v1/confirmations/non-existent-id/respond",
+            "/non-existent-id/respond",
             json={"allowed": True},
         )
 
@@ -231,7 +231,7 @@ class TestConfirmationRoutes:
 
         # Make request
         response = test_client.post(
-            "/api/v1/confirmations/test-id/respond",
+            "/test-id/respond",
             json={"allowed": False},
         )
 
@@ -252,7 +252,7 @@ class TestConfirmationRoutes:
 
         # Make request
         response = test_client.post(
-            "/api/v1/confirmations/test-id/respond",
+            "/test-id/respond",
             json={"allowed": True},
         )
 
@@ -496,7 +496,7 @@ async def test_sse_stream_endpoint(
         # Just verify the endpoint responds correctly
         # Streaming behavior is tested in event_generator tests
         response = test_client.get(
-            "/api/v1/confirmations/stream",
+            "/stream",
             headers={"Accept": "text/event-stream"},
         )
         assert response.status_code == 200

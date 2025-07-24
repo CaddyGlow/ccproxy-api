@@ -305,11 +305,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         lifespan=lifespan,
     )
 
-    # Setup MCP BEFORE adding any middleware
-    # This is necessary because MCP uses Server-Sent Events (SSE) which don't work well
-    # with certain middleware like BaseHTTPMiddleware
-    setup_mcp(app)
-
     # Setup middleware
     setup_cors_middleware(app, settings)
     setup_error_handlers(app)
@@ -332,7 +327,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.include_router(prometheus_router, tags=["metrics"])
 
     if settings.observability.logs_endpoints_enabled:
-        app.include_router(logs_router, tags=["logs"])
+        app.include_router(logs_router, prefix="/logs", tags=["logs"])
 
     if settings.observability.dashboard_enabled:
         app.include_router(dashboard_router, tags=["dashboard"])
@@ -346,7 +341,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(proxy_router, prefix="/api", tags=["proxy-api"])
 
     # Confirmation endpoints for SSE streaming and responses
-    app.include_router(confirmations_router, tags=["confirmations"])
+    app.include_router(
+        confirmations_router, prefix="/confirmations", tags=["confirmations"]
+    )
+
+    setup_mcp(app)
 
     # Mount static files for dashboard SPA
     from pathlib import Path

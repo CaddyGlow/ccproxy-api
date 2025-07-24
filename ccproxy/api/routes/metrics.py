@@ -84,11 +84,8 @@ class AnalyticsResult(TypedDict):
 
 # Create separate routers for different concerns
 prometheus_router = APIRouter(tags=["metrics"])
-logs_router = APIRouter(prefix="/logs", tags=["logs"])
+logs_router = APIRouter(tags=["logs"])
 dashboard_router = APIRouter(tags=["dashboard"])
-
-# Backward compatibility - keep the old router name pointing to logs for now
-router = logs_router
 
 
 @logs_router.get("/status")

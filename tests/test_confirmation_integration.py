@@ -37,7 +37,7 @@ def app(confirmation_service: ConfirmationService) -> FastAPI:
     from ccproxy.models.responses import PermissionToolPendingResponse
 
     app = FastAPI()
-    app.include_router(confirmation_router)
+    app.include_router(confirmation_router, prefix="/confirmations")
 
     # Override to use test service
     app.dependency_overrides[get_confirmation_service] = lambda: confirmation_service
@@ -124,7 +124,7 @@ class TestConfirmationIntegration:
         assert event["tool_name"] == "bash"
 
         # Get confirmation details
-        get_response = test_client.get(f"/api/v1/confirmations/{confirmation_id}")
+        get_response = test_client.get(f"/confirmations/{confirmation_id}")
         assert get_response.status_code == 200
         get_data = get_response.json()
         assert get_data["status"] == "pending"
@@ -132,7 +132,7 @@ class TestConfirmationIntegration:
 
         # Approve confirmation
         approve_response = test_client.post(
-            f"/api/v1/confirmations/{confirmation_id}/respond",
+            f"/confirmations/{confirmation_id}/respond",
             json={"allowed": True},
         )
         assert approve_response.status_code == 200
@@ -201,7 +201,7 @@ class TestConfirmationIntegration:
         try:
             # Override service in app
             app = FastAPI()
-            app.include_router(confirmation_router)
+            app.include_router(confirmation_router, prefix="/confirmations")
             app.dependency_overrides[get_confirmation_service] = lambda: service
 
             # Create confirmation
@@ -213,7 +213,7 @@ class TestConfirmationIntegration:
             # Try to respond - should fail
             with TestClient(app) as client:
                 response = client.post(
-                    f"/api/v1/confirmations/{request_id}/respond",
+                    f"/confirmations/{request_id}/respond",
                     json={"allowed": True},
                 )
 
@@ -252,7 +252,7 @@ class TestConfirmationIntegration:
             """Resolve a single confirmation."""
             allowed = index % 2 == 0  # Even indices allowed, odd denied
             response = test_client.post(
-                f"/api/v1/confirmations/{request_id}/respond",
+                f"/confirmations/{request_id}/respond",
                 json={"allowed": allowed},
             )
             assert response.status_code == 200
@@ -293,14 +293,14 @@ class TestConfirmationIntegration:
 
         # First resolution should succeed
         response1 = test_client.post(
-            f"/api/v1/confirmations/{request_id}/respond",
+            f"/confirmations/{request_id}/respond",
             json={"allowed": True},
         )
         assert response1.status_code == 200
 
         # Second resolution should fail
         response2 = test_client.post(
-            f"/api/v1/confirmations/{request_id}/respond",
+            f"/confirmations/{request_id}/respond",
             json={"allowed": False},
         )
         assert response2.status_code == 409
@@ -333,12 +333,12 @@ class TestConfirmationEdgeCases:
     def test_confirmation_api_validation(self, test_client: TestClient) -> None:
         """Test confirmation API input validation."""
         # Invalid confirmation ID format
-        response = test_client.get("/api/v1/confirmations/")
+        response = test_client.get("/confirmations/")
         assert response.status_code == 404
 
         # Missing allowed field
         response = test_client.post(
-            "/api/v1/confirmations/test-id/respond",
+            "/confirmations/test-id/respond",
             json={},
         )
         assert response.status_code == 422

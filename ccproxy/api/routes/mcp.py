@@ -170,5 +170,3 @@ def setup_mcp(app: FastAPI) -> None:
     )
 
     mcp.mount(app, mount_path="/mcp")
-
-    logger.info("mcp_app_mounted", mount_path="/mcp")

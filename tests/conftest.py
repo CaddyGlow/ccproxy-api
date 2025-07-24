@@ -20,7 +20,7 @@ import httpx
 import pytest
 import pytest_asyncio
 import structlog
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
 from httpx import ASGITransport, AsyncClient
 
@@ -94,7 +94,7 @@ FIXTURES_DIR = Path(__file__).parent / "fixtures"
 
 @pytest.fixture
 def isolated_environment(tmp_path: Path) -> Generator[Path, None, None]:
-    """Create isolated test environment with XDG directories.
+    """Create isolated test environment with XDG directories and working directory.
 
     Returns an isolated temporary directory and sets environment variables
     to ensure complete test isolation for file system operations.
@@ -102,6 +102,7 @@ def isolated_environment(tmp_path: Path) -> Generator[Path, None, None]:
     Sets up:
     - HOME to point to temporary directory
     - XDG_CONFIG_HOME, XDG_DATA_HOME, XDG_CACHE_HOME to subdirectories
+    - Changes working directory to the temporary directory (for Claude SDK)
     - Creates the necessary directory structure
     """
     # Set up XDG base directories within the temp path
@@ -116,27 +117,58 @@ def isolated_environment(tmp_path: Path) -> Generator[Path, None, None]:
     data_dir.mkdir()
     cache_dir.mkdir()
 
-    # Store original environment variables
+    # Store original environment variables and working directory
     original_env = {
         "HOME": os.environ.get("HOME"),
         "XDG_CONFIG_HOME": os.environ.get("XDG_CONFIG_HOME"),
         "XDG_DATA_HOME": os.environ.get("XDG_DATA_HOME"),
         "XDG_CACHE_HOME": os.environ.get("XDG_CACHE_HOME"),
     }
+    original_cwd = Path.cwd()
 
-    # Set isolated environment variables
-    with patch.dict(
-        os.environ,
-        {
-            "HOME": str(home_dir),
-            "XDG_CONFIG_HOME": str(config_dir),
-            "XDG_DATA_HOME": str(data_dir),
-            "XDG_CACHE_HOME": str(cache_dir),
-        },
-    ):
-        yield tmp_path
+    try:
+        # Change to isolated working directory (important for Claude SDK)
+        os.chdir(tmp_path)
+
+        # Set isolated environment variables
+        with patch.dict(
+            os.environ,
+            {
+                "HOME": str(home_dir),
+                "XDG_CONFIG_HOME": str(config_dir),
+                "XDG_DATA_HOME": str(data_dir),
+                "XDG_CACHE_HOME": str(cache_dir),
+            },
+        ):
+            yield tmp_path
+    finally:
+        # Restore original working directory
+        os.chdir(original_cwd)
 
     # Environment variables are automatically restored by patch.dict context manager
+
+
+@pytest.fixture
+def claude_sdk_environment(isolated_environment: Path) -> Path:
+    """Create Claude SDK-specific test environment with MCP configuration.
+
+    This fixture extends isolated_environment to create a proper Claude SDK
+    test environment with:
+    - Basic MCP configuration file
+    - Claude configuration directory
+    - Proper working directory setup
+    """
+    # Create Claude config directory structure
+    claude_config_dir = isolated_environment / ".claude"
+    claude_config_dir.mkdir(exist_ok=True)
+
+    # Create a minimal MCP configuration to prevent errors
+    mcp_config = {"mcpServers": {"test": {"command": "echo", "args": ["test"]}}}
+
+    mcp_config_file = isolated_environment / ".mcp.json"
+    mcp_config_file.write_text(json.dumps(mcp_config))
+
+    return isolated_environment
 
 
 @pytest.fixture
@@ -179,9 +211,15 @@ def app(test_settings: Settings) -> FastAPI:
     app = create_app(settings=test_settings)
 
     # Override the settings dependency for testing
+    from ccproxy.api.dependencies import get_cached_settings
     from ccproxy.config.settings import get_settings as original_get_settings
 
     app.dependency_overrides[original_get_settings] = lambda: test_settings
+
+    def mock_get_cached_settings_for_test(request: Request):
+        return test_settings
+
+    app.dependency_overrides[get_cached_settings] = mock_get_cached_settings_for_test
 
     return app
 
@@ -204,18 +242,23 @@ def app_with_unavailable_claude(
     app = create_app(settings=test_settings)
 
     # Override the settings dependency for testing
-    from ccproxy.api.dependencies import get_claude_service
+    from ccproxy.api.dependencies import get_cached_claude_service, get_cached_settings
     from ccproxy.config.settings import get_settings as original_get_settings
 
     app.dependency_overrides[original_get_settings] = lambda: test_settings
 
-    # Override dependency with a function that returns unavailable service
-    def mock_get_claude_service_unavailable(
-        auth_manager: Any = None, metrics_collector: Any = None
-    ) -> AsyncMock:
+    def mock_get_cached_settings_for_test(request: Request):
+        return test_settings
+
+    app.dependency_overrides[get_cached_settings] = mock_get_cached_settings_for_test
+
+    # Override the actual dependency being used (get_cached_claude_service)
+    def mock_get_cached_claude_service_unavailable(request: Request) -> AsyncMock:
         return mock_claude_service_unavailable
 
-    app.dependency_overrides[get_claude_service] = mock_get_claude_service_unavailable
+    app.dependency_overrides[get_cached_claude_service] = (
+        mock_get_cached_claude_service_unavailable
+    )
 
     return app
 
@@ -244,18 +287,23 @@ def app_with_mock_claude_streaming(
     app = create_app(settings=test_settings)
 
     # Override the settings dependency for testing
-    from ccproxy.api.dependencies import get_claude_service
+    from ccproxy.api.dependencies import get_cached_claude_service, get_cached_settings
     from ccproxy.config.settings import get_settings as original_get_settings
 
     app.dependency_overrides[original_get_settings] = lambda: test_settings
 
-    # Override dependency with a function that accepts dependencies but returns mock
-    def mock_get_claude_service_streaming(
-        auth_manager: Any = None, metrics_collector: Any = None
-    ) -> AsyncMock:
+    def mock_get_cached_settings_for_test(request: Request):
+        return test_settings
+
+    app.dependency_overrides[get_cached_settings] = mock_get_cached_settings_for_test
+
+    # Override the actual dependency being used (get_cached_claude_service)
+    def mock_get_cached_claude_service_streaming(request: Request) -> AsyncMock:
         return mock_claude_service_streaming
 
-    app.dependency_overrides[get_claude_service] = mock_get_claude_service_streaming
+    app.dependency_overrides[get_cached_claude_service] = (
+        mock_get_cached_claude_service_streaming
+    )
 
     return app
 
@@ -298,20 +346,75 @@ def app_with_mock_claude(
     app = create_app(settings=test_settings)
 
     # Override the settings dependency for testing
-    from ccproxy.api.dependencies import get_claude_service
+    from ccproxy.api.dependencies import get_cached_claude_service, get_cached_settings
     from ccproxy.config.settings import get_settings as original_get_settings
 
     app.dependency_overrides[original_get_settings] = lambda: test_settings
 
-    # Override dependency with a function that accepts dependencies but returns mock
-    def mock_get_claude_service(
-        auth_manager: Any = None, metrics_collector: Any = None
-    ) -> AsyncMock:
+    def mock_get_cached_settings_for_test(request: Request):
+        return test_settings
+
+    app.dependency_overrides[get_cached_settings] = mock_get_cached_settings_for_test
+
+    # Override the actual dependency being used (get_cached_claude_service)
+    def mock_get_cached_claude_service(request: Request) -> AsyncMock:
         return mock_claude_service
 
-    app.dependency_overrides[get_claude_service] = mock_get_claude_service
+    app.dependency_overrides[get_cached_claude_service] = mock_get_cached_claude_service
 
     return app
+
+
+@pytest.fixture
+def app_with_claude_sdk_environment(
+    claude_sdk_environment: Path,
+    test_settings: Settings,
+    mock_claude_service: AsyncMock,
+) -> FastAPI:
+    """Create test FastAPI application with Claude SDK environment and mocked service.
+
+    This fixture provides a properly configured Claude SDK environment with:
+    - Isolated working directory
+    - MCP configuration files
+    - Environment variables set up
+    - Mocked Claude service to prevent actual CLI execution
+    """
+    # Create app
+    app = create_app(settings=test_settings)
+
+    # Override the settings dependency for testing
+    from ccproxy.api.dependencies import get_cached_claude_service, get_cached_settings
+    from ccproxy.config.settings import get_settings as original_get_settings
+
+    app.dependency_overrides[original_get_settings] = lambda: test_settings
+
+    def mock_get_cached_settings_for_claude_sdk(request: Request):
+        return test_settings
+
+    app.dependency_overrides[get_cached_settings] = (
+        mock_get_cached_settings_for_claude_sdk
+    )
+
+    # Override the actual dependency being used (get_cached_claude_service)
+    def mock_get_cached_claude_service_for_sdk(request: Request) -> AsyncMock:
+        return mock_claude_service
+
+    app.dependency_overrides[get_cached_claude_service] = (
+        mock_get_cached_claude_service_for_sdk
+    )
+
+    return app
+
+
+@pytest.fixture
+def client_with_claude_sdk_environment(
+    app_with_claude_sdk_environment: FastAPI,
+) -> TestClient:
+    """Create test client with Claude SDK environment setup.
+
+    Returns a TestClient configured with proper Claude SDK environment isolation.
+    """
+    return TestClient(app_with_claude_sdk_environment)
 
 
 @pytest.fixture
@@ -366,6 +469,7 @@ def app_with_auth(auth_settings: Settings) -> FastAPI:
     # Override the settings dependency for testing
     from fastapi.security import HTTPAuthorizationCredentials
 
+    from ccproxy.api.dependencies import get_cached_settings
     from ccproxy.auth.dependencies import (
         _get_auth_manager_with_settings,
         get_auth_manager,
@@ -374,6 +478,13 @@ def app_with_auth(auth_settings: Settings) -> FastAPI:
     from ccproxy.config.settings import get_settings as original_get_settings
 
     app.dependency_overrides[original_get_settings] = lambda: auth_settings
+
+    def mock_get_cached_settings_for_auth_test(request: Request):
+        return auth_settings
+
+    app.dependency_overrides[get_cached_settings] = (
+        mock_get_cached_settings_for_auth_test
+    )
 
     # Also override the auth manager to use the test settings
     async def test_auth_manager(
@@ -640,9 +751,17 @@ def app_factory(tmp_path: Path) -> Callable[[dict[str, Any]], FastAPI]:
         app = create_app(settings=settings)
 
         # Override settings dependency for testing
+        from ccproxy.api.dependencies import get_cached_settings
         from ccproxy.config.settings import get_settings as original_get_settings
 
         app.dependency_overrides[original_get_settings] = lambda: settings
+
+        def mock_get_cached_settings_for_factory(request: Request):
+            return settings
+
+        app.dependency_overrides[get_cached_settings] = (
+            mock_get_cached_settings_for_factory
+        )
 
         # Override auth manager if needed
         if auth_config["mode"] != "none":

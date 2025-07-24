@@ -23,7 +23,7 @@ from ccproxy.models.confirmations import ConfirmationEvent, ConfirmationStatus
 logger = get_logger(__name__)
 
 
-router = APIRouter(prefix="/api/v1/confirmations", tags=["confirmations"])
+router = APIRouter(tags=["confirmations"])
 
 
 class ConfirmationResponse(BaseModel):

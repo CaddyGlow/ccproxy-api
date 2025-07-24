@@ -1,7 +1,7 @@
 """
 Tests for reset endpoint functionality.
 
-This module tests the POST /logs/reset endpoint that clears all data
+This module tests the POST /reset endpoint that clears all data
 from the DuckDB storage backend.
 """
 
@@ -221,7 +221,7 @@ class TestResetEndpointWithFiltering:
         assert reset_response.status_code == 200
 
         # Query after reset should return empty results
-        query_response = client.get("/logs/query", params={"limit": 100})
+        query_response = client.get("/query", params={"limit": 100})
         assert query_response.status_code == 200
 
         data: dict[str, Any] = query_response.json()
@@ -240,7 +240,7 @@ class TestResetEndpointWithFiltering:
 
         # Analytics after reset should return zero metrics
         analytics_response = client.get(
-            "/logs/analytics",
+            "/analytics",
             params={
                 "service_type": "proxy_service",
                 "model": "claude-3-5-sonnet-20241022",
@@ -267,7 +267,7 @@ class TestResetEndpointWithFiltering:
 
         # Entries after reset should return empty list
         entries_response = client.get(
-            "/logs/entries",
+            "/entries",
             params={
                 "limit": 50,
                 "service_type": "proxy_service",
