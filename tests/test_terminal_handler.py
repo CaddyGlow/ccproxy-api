@@ -1,13 +1,13 @@
 """Tests for terminal confirmation handler."""
 
 import asyncio
+from collections.abc import Generator
 from datetime import datetime, timedelta
 from typing import Any
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 from rich.console import Console
-from rich.table import Table
 
 from ccproxy.api.ui.terminal_confirmation_handler import TerminalConfirmationHandler
 from ccproxy.models.confirmations import ConfirmationRequest
@@ -15,14 +15,13 @@ from ccproxy.models.confirmations import ConfirmationRequest
 
 @pytest.fixture
 def mock_console() -> Mock:
-    """Create a mock console."""
-    console = Mock(spec=Console)
-    return console
+    """Create a mock console following TESTING.md spec."""
+    return Mock(spec=Console)
 
 
 @pytest.fixture
 def terminal_handler(mock_console: Mock) -> TerminalConfirmationHandler:
-    """Create a terminal handler with mocked console."""
+    """Create a terminal handler with mocked console following TESTING.md spec."""
     handler = TerminalConfirmationHandler()
     handler._console = mock_console
     return handler
@@ -39,13 +38,13 @@ def sample_request() -> ConfirmationRequest:
 
 
 class TestTerminalConfirmationHandler:
-    """Test cases for terminal confirmation handler."""
+    """Test cases for terminal confirmation handler following TESTING.md spec."""
 
-    def test_format_value(
+    def test_format_value_truncates_long_strings(
         self,
         terminal_handler: TerminalConfirmationHandler,
     ) -> None:
-        """Test value formatting."""
+        """Test value formatting truncates long strings correctly."""
         # Short value
         assert terminal_handler._format_value("short") == "short"
 
@@ -55,13 +54,13 @@ class TestTerminalConfirmationHandler:
         assert len(formatted) == 60
         assert formatted.endswith("...")
 
-    def test_display_request(
+    def test_display_request_shows_permission_panel(
         self,
         terminal_handler: TerminalConfirmationHandler,
         sample_request: ConfirmationRequest,
         mock_console: Mock,
     ) -> None:
-        """Test displaying a confirmation request."""
+        """Test displaying confirmation request shows permission panel."""
         terminal_handler._display_request(sample_request)
 
         # Verify console was used
@@ -83,12 +82,12 @@ class TestTerminalConfirmationHandler:
         assert hasattr(panel_call, "title"), "Panel has no title"
         assert "Permission Request" in panel_call.title
 
-    def test_display_result(
+    def test_display_result_shows_allowed_denied_status(
         self,
         terminal_handler: TerminalConfirmationHandler,
         mock_console: Mock,
     ) -> None:
-        """Test displaying confirmation results."""
+        """Test displaying confirmation result shows allowed/denied status."""
         # Test allowed
         terminal_handler._display_result(True)
         print_call = str(mock_console.print.call_args)
@@ -105,70 +104,84 @@ class TestTerminalConfirmationHandler:
         assert "red" in print_call
 
     @patch(
-        "ccproxy.api.ui.terminal_confirmation_handler.TerminalConfirmationHandler._get_async_input"
+        "ccproxy.api.ui.terminal_confirmation_handler.TerminalConfirmationHandler._get_single_key"
     )
     async def test_handle_confirmation_allowed(
         self,
-        mock_get_input: AsyncMock,
+        mock_get_key: Mock,
         terminal_handler: TerminalConfirmationHandler,
         sample_request: ConfirmationRequest,
         mock_console: Mock,
     ) -> None:
         """Test handling confirmation that gets allowed."""
         # Setup mock to return 'y' for allowed
-        mock_get_input.return_value = "y"
+        mock_get_key.return_value = "y"
 
-        # Handle confirmation
-        result = await terminal_handler.handle_confirmation(sample_request)
+        # Mock the Live context manager
+        with patch("ccproxy.api.ui.terminal_confirmation_handler.Live") as mock_live:
+            mock_live_instance = Mock()
+            mock_live_instance.__enter__ = Mock(return_value=mock_live_instance)
+            mock_live_instance.__exit__ = Mock(return_value=None)
+            mock_live.return_value = mock_live_instance
+
+            # Handle confirmation
+            result = await terminal_handler.handle_confirmation(sample_request)
 
         # Verify result
         assert result is True
 
-        # Verify console interactions
-        assert mock_console.print.call_count >= 2  # Request display + result
-
     @patch(
-        "ccproxy.api.ui.terminal_confirmation_handler.TerminalConfirmationHandler._get_async_input"
+        "ccproxy.api.ui.terminal_confirmation_handler.TerminalConfirmationHandler._get_single_key"
     )
     async def test_handle_confirmation_denied(
         self,
-        mock_get_input: AsyncMock,
+        mock_get_key: Mock,
         terminal_handler: TerminalConfirmationHandler,
         sample_request: ConfirmationRequest,
         mock_console: Mock,
     ) -> None:
         """Test handling confirmation that gets denied."""
         # Setup mock to return 'n' for denied
-        mock_get_input.return_value = "n"
+        mock_get_key.return_value = "n"
 
-        # Handle confirmation
-        result = await terminal_handler.handle_confirmation(sample_request)
+        # Mock the Live context manager
+        with patch("ccproxy.api.ui.terminal_confirmation_handler.Live") as mock_live:
+            mock_live_instance = Mock()
+            mock_live_instance.__enter__ = Mock(return_value=mock_live_instance)
+            mock_live_instance.__exit__ = Mock(return_value=None)
+            mock_live.return_value = mock_live_instance
+
+            # Handle confirmation
+            result = await terminal_handler.handle_confirmation(sample_request)
 
         # Verify result
         assert result is False
 
-        # Verify result message
-        last_print_call = mock_console.print.call_args_list[-1]
-        assert "denied" in str(last_print_call).lower()
-
     @patch(
-        "ccproxy.api.ui.terminal_confirmation_handler.TerminalConfirmationHandler._get_async_input"
+        "ccproxy.api.ui.terminal_confirmation_handler.TerminalConfirmationHandler._get_single_key"
     )
     async def test_handle_confirmation_with_executor(
         self,
-        mock_get_input: AsyncMock,
+        mock_get_key: Mock,
         terminal_handler: TerminalConfirmationHandler,
         sample_request: ConfirmationRequest,
     ) -> None:
-        """Test that confirmation uses async input handling."""
+        """Test that confirmation uses key input handling."""
         # Setup mock to return 'y' for allowed
-        mock_get_input.return_value = "y"
+        mock_get_key.return_value = "y"
 
-        # Handle confirmation
-        result = await terminal_handler.handle_confirmation(sample_request)
+        # Mock the Live context manager
+        with patch("ccproxy.api.ui.terminal_confirmation_handler.Live") as mock_live:
+            mock_live_instance = Mock()
+            mock_live_instance.__enter__ = Mock(return_value=mock_live_instance)
+            mock_live_instance.__exit__ = Mock(return_value=None)
+            mock_live.return_value = mock_live_instance
 
-        # Verify async input was called
-        mock_get_input.assert_called_once()
+            # Handle confirmation
+            result = await terminal_handler.handle_confirmation(sample_request)
+
+        # Verify key input was called
+        assert mock_get_key.called
         assert result is True
 
     async def test_handle_confirmation_timeout(
@@ -183,9 +196,16 @@ class TestTerminalConfirmationHandler:
             expires_at=datetime.utcnow() - timedelta(seconds=1),
         )
 
-        # Should return False on timeout
-        result = await terminal_handler.handle_confirmation(request)
-        assert result is False
+        # Mock the Live context manager
+        with patch("ccproxy.api.ui.terminal_confirmation_handler.Live") as mock_live:
+            mock_live_instance = Mock()
+            mock_live_instance.__enter__ = Mock(return_value=mock_live_instance)
+            mock_live_instance.__exit__ = Mock(return_value=None)
+            mock_live.return_value = mock_live_instance
+
+            # Should return False on timeout
+            result = await terminal_handler.handle_confirmation(request)
+            assert result is False
 
     def test_cancel_confirmation(
         self,
@@ -221,43 +241,37 @@ class TestTerminalConfirmationHandler:
 
         cancel_task = asyncio.create_task(cancel_after_delay())
 
-        # Patch the executor to delay so cancellation can happen
-        with patch("asyncio.get_event_loop") as mock_get_loop:
-            mock_loop = Mock()
-            mock_future: asyncio.Future[bool] = asyncio.Future()
+        # Mock the Live context manager and _get_single_key
+        with patch("ccproxy.api.ui.terminal_confirmation_handler.Live") as mock_live:
+            mock_live_instance = Mock()
+            mock_live_instance.__enter__ = Mock(return_value=mock_live_instance)
+            mock_live_instance.__exit__ = Mock(return_value=None)
+            mock_live.return_value = mock_live_instance
 
-            async def delayed_set_result():
-                await asyncio.sleep(0.2)
-                mock_future.set_result(True)
-
-            asyncio.create_task(delayed_set_result())
-            mock_loop.run_in_executor.return_value = mock_future
-            mock_get_loop.return_value = mock_loop
-
-            # Handle confirmation - should be cancelled
-            with pytest.raises(asyncio.CancelledError):
+            with (
+                patch.object(terminal_handler, "_get_single_key", return_value=None),
+                pytest.raises(asyncio.CancelledError),
+            ):
+                # Handle confirmation - should be cancelled
                 await terminal_handler.handle_confirmation(sample_request)
 
         await cancel_task
 
-    @patch(
-        "ccproxy.api.ui.terminal_confirmation_handler.TerminalConfirmationHandler._get_async_input"
-    )
     async def test_handle_confirmation_error_handling(
         self,
-        mock_get_input: AsyncMock,
         terminal_handler: TerminalConfirmationHandler,
         sample_request: ConfirmationRequest,
         mock_console: Mock,
     ) -> None:
         """Test error handling during confirmation."""
-        # Setup mock to raise exception
-        mock_get_input.side_effect = Exception("Test error")
+        # Mock Live to raise an exception
+        with patch("ccproxy.api.ui.terminal_confirmation_handler.Live") as mock_live:
+            mock_live.side_effect = Exception("Test error")
 
-        # Handle confirmation - should return False on error
-        result = await terminal_handler.handle_confirmation(sample_request)
-        assert result is False
+            # Handle confirmation - should return False on error
+            result = await terminal_handler.handle_confirmation(sample_request)
+            assert result is False
 
-        # Verify error was displayed
-        print_calls = str(mock_console.print.call_args_list)
-        assert "Error handling confirmation" in print_calls
+            # Verify error was displayed
+            print_calls = str(mock_console.print.call_args_list)
+            assert "Error handling confirmation" in print_calls

@@ -8,11 +8,16 @@ from collections.abc import AsyncIterator
 from datetime import datetime
 
 import httpx
+import structlog
 import typer
 from structlog import get_logger
 
 from ccproxy.api.services.confirmation_service import ConfirmationRequest
+from ccproxy.api.ui.confirmation_handler_protocol import ConfirmationHandlerProtocol
 from ccproxy.api.ui.terminal_confirmation_handler import TerminalConfirmationHandler
+from ccproxy.api.ui.terminal_confirmation_handler_textual import (
+    TerminalConfirmationHandler as TextualConfirmationHandler,
+)
 from ccproxy.config.settings import get_settings
 from ccproxy.models.confirmations import ConfirmationEventDict
 
@@ -32,7 +37,7 @@ class SSEConfirmationHandler:
     def __init__(
         self,
         api_url: str,
-        terminal_handler: TerminalConfirmationHandler,
+        terminal_handler: ConfirmationHandlerProtocol,
         ui: bool = True,
         auth_token: str | None = None,
     ):
@@ -459,6 +464,11 @@ def connect(
         help="API server URL (defaults to settings)",
     ),
     no_ui: bool = typer.Option(False, "--no-ui", help="Disable UI mode"),
+    textual: bool = typer.Option(
+        False,
+        "--textual",
+        help="Use Textual TUI for confirmations (full-screen modal dialogs)",
+    ),
     verbose: int = typer.Option(
         0,
         "-v",
@@ -478,6 +488,10 @@ def connect(
 
     This command connects to the CCProxy API server via Server-Sent Events
     and handles permission confirmation requests in the terminal.
+
+    Two UI modes are available:
+    - Default: Rich Live display with single-key input
+    - --textual: Full-screen Textual TUI with modal dialogs
     """
     # Configure logging level based on verbosity
     if verbose >= 2:
@@ -490,6 +504,11 @@ def connect(
     # Configure root logger level
     logging.basicConfig(level=log_level)
 
+    # Configure structlog to respect the same log level
+    structlog.configure(
+        wrapper_class=structlog.make_filtering_bound_logger(log_level),
+    )
+
     settings = get_settings()
 
     # Use provided URL or default from settings
@@ -499,8 +518,11 @@ def connect(
     # Determine auth token: CLI arg > config setting > None
     token = auth_token or settings.security.auth_token
 
-    # Create handlers
-    terminal_handler = TerminalConfirmationHandler()
+    # Create handlers based on UI mode selection
+    if textual:
+        terminal_handler: ConfirmationHandlerProtocol = TextualConfirmationHandler()
+    else:
+        terminal_handler = TerminalConfirmationHandler()
 
     async def run_handler() -> None:
         """Run the handler with proper resource management."""

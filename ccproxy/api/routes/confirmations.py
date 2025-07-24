@@ -85,7 +85,7 @@ async def event_generator(
 
         while not await request.is_disconnected():
             try:
-                event_data = await asyncio.wait_for(queue.get(), timeout=15.0)
+                event_data = await asyncio.wait_for(queue.get(), timeout=30.0)
 
                 yield {
                     "event": event_data.get("type", "message"),

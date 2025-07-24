@@ -28,6 +28,7 @@ dependencies = [
   "duckdb-engine>=0.17.0",
   "claude-code-sdk>=0.0.14",
   "fastapi-mcp",
+  "textual>=3.7.1",
 ]
 
 [build-system]

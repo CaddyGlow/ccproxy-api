@@ -2,7 +2,7 @@
 
 import asyncio
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import Enum
 from typing import NotRequired, TypedDict
 
@@ -46,13 +46,41 @@ class ConfirmationRequest(BaseModel):
         """Check if the request has expired."""
         if self.status != ConfirmationStatus.PENDING:
             return False
-        return datetime.utcnow() > self.expires_at
+
+        # Handle both timezone-aware and naive datetimes
+        now = datetime.utcnow()
+        expires_at = self.expires_at
+
+        # If expires_at is timezone-aware, convert now to timezone-aware
+        if expires_at.tzinfo is not None:
+            from datetime import timezone
+
+            now = now.replace(tzinfo=UTC)
+        # If expires_at is naive but now is timezone-aware, make expires_at timezone-aware
+        elif hasattr(now, "tzinfo") and now.tzinfo is not None:
+            expires_at = expires_at.replace(tzinfo=UTC)
+
+        return now > expires_at
 
     def time_remaining(self) -> int:
         """Get time remaining in seconds."""
         if self.status != ConfirmationStatus.PENDING:
             return 0
-        remaining = (self.expires_at - datetime.utcnow()).total_seconds()
+
+        # Handle both timezone-aware and naive datetimes
+        now = datetime.utcnow()
+        expires_at = self.expires_at
+
+        # If expires_at is timezone-aware, convert now to timezone-aware
+        if expires_at.tzinfo is not None:
+            from datetime import timezone
+
+            now = now.replace(tzinfo=UTC)
+        # If expires_at is naive but now is timezone-aware, make expires_at timezone-aware
+        elif hasattr(now, "tzinfo") and now.tzinfo is not None:
+            expires_at = expires_at.replace(tzinfo=UTC)
+
+        remaining = (expires_at - now).total_seconds()
         return max(0, int(remaining))
 
     def resolve(self, allowed: bool) -> None:
