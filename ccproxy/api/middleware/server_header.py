@@ -1,9 +1,5 @@
 """Server header middleware to set a default server header for non-proxy routes."""
 
-from typing import Any
-
-from fastapi import Request, Response
-from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 

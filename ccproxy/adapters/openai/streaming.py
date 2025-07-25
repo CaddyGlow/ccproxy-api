@@ -8,16 +8,11 @@ from __future__ import annotations
 
 import json
 import time
-from collections.abc import AsyncGenerator, AsyncIterator
+from collections.abc import AsyncIterator
 from typing import Any
 
 from .models import (
-    OpenAIStreamingChatCompletionResponse,
-    OpenAIStreamingChoice,
-    OpenAIStreamingDelta,
-    OpenAIUsage,
     generate_openai_response_id,
-    generate_openai_system_fingerprint,
 )
 
 

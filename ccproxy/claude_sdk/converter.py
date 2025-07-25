@@ -1,8 +1,6 @@
 """Message format converter for Claude SDK interactions."""
 
-import json
 from typing import Any, cast
-from xml.sax.saxutils import escape
 
 import structlog
 
@@ -60,56 +58,6 @@ class MessageConverter:
                 continue
 
         return "\n\n".join(prompt_parts)
-
-    @staticmethod
-    def extract_text_from_content(
-        content: TextBlock | ToolUseBlock | ToolResultBlock,
-    ) -> str:
-        """
-        Extract text content from Claude SDK content blocks.
-
-        Args:
-            content: List of content blocks from Claude SDK
-
-        Returns:
-            Extracted text content
-        """
-        if isinstance(content, TextBlock):
-            return content.text
-        elif isinstance(content, ToolUseBlock):
-            # Return full XML representation of ToolUseBlock
-            tool_id = escape(str(getattr(content, "id", f"tool_{id(content)}")))
-            tool_name = escape(content.name)
-            tool_input = getattr(content, "input", {}) or {}
-            # Convert input dict to JSON string and escape for XML
-            input_json = escape(json.dumps(tool_input, ensure_ascii=False))
-            return f'<tooluseblock id="{tool_id}" name="{tool_name}">{input_json}</tooluseblock>'
-        elif isinstance(content, ToolResultBlock):
-            # Return full XML representation of ToolResultBlock
-            tool_use_id = escape(str(getattr(content, "tool_use_id", "")))
-            result_content = content.content if isinstance(content.content, str) else ""
-            escaped_content = escape(result_content)
-            return f'<toolresultblock tool_use_id="{tool_use_id}">{escaped_content}</toolresultblock>'
-
-    @staticmethod
-    def extract_contents(
-        contents: list[TextBlock | ToolUseBlock | ToolResultBlock],
-    ) -> str:
-        """
-        Extract content from Claude SDK blocks, preserving custom blocks.
-
-        Args:
-            content: List of content blocks from Claude SDK
-
-        Returns:
-            Content with thinking blocks preserved
-        """
-        text_parts = []
-
-        for block in contents:
-            text_parts.append(MessageConverter.extract_text_from_content(block))
-
-        return "\n".join(text_parts)
 
     @staticmethod
     def convert_to_anthropic_response(
@@ -304,15 +252,6 @@ class MessageConverter:
                     },
                 },
             ),
-            # Then, send content_block_start with event type
-            (
-                "content_block_start",
-                {
-                    "type": "content_block_start",
-                    "index": 0,
-                    "content_block": {"type": "text", "text": ""},
-                },
-            ),
         ]
 
     @staticmethod
@@ -350,8 +289,6 @@ class MessageConverter:
             List of tuples (event_type, chunk) for final streaming chunks
         """
         return [
-            # First, send content_block_stop
-            ("content_block_stop", {"type": "content_block_stop", "index": 0}),
             # Then, send message_delta with stop reason and usage
             (
                 "message_delta",

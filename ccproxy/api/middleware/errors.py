@@ -1,9 +1,5 @@
 """Error handling middleware for CCProxy API Server."""
 
-import logging
-from typing import Any
-
-import structlog
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException

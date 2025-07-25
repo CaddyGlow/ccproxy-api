@@ -1,7 +1,6 @@
 """Integration tests for the confirmation system."""
 
 import asyncio
-import json
 from collections.abc import AsyncGenerator
 from typing import Any
 from unittest.mock import Mock, patch
@@ -9,7 +8,6 @@ from unittest.mock import Mock, patch
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from httpx import AsyncClient
 
 from ccproxy.api.routes.permissions import router as confirmation_router
 from ccproxy.api.services.permission_service import (
@@ -33,8 +31,6 @@ async def confirmation_service() -> AsyncGenerator[PermissionService, None]:
 def app(confirmation_service: PermissionService) -> FastAPI:
     """Create a FastAPI app with real confirmation service."""
     from pydantic import BaseModel
-
-    from ccproxy.models.responses import PermissionToolPendingResponse
 
     app = FastAPI()
     app.include_router(confirmation_router, prefix="/confirmations")

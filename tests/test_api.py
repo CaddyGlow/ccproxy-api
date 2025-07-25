@@ -4,12 +4,8 @@ Tests all HTTP endpoints, request/response validation, authentication,
 and error handling without mocking internal components.
 """
 
-from collections.abc import Callable
-from typing import Any
-
 import pytest
 from fastapi.testclient import TestClient
-from pytest_httpx import HTTPXMock
 
 
 class TestOpenAIEndpoints:

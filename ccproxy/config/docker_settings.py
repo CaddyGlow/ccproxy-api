@@ -1,7 +1,6 @@
 """Docker settings configuration for CCProxy API."""
 
 import os
-from typing import Any
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 

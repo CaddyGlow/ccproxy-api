@@ -3,11 +3,10 @@
 import json
 import os
 import time
-from collections.abc import Generator
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import Mock, patch
 
 import httpx
 import pytest
@@ -15,7 +14,7 @@ import pytest
 from ccproxy.config.pricing import PricingSettings
 from ccproxy.pricing.cache import PricingCache
 from ccproxy.pricing.loader import PricingLoader
-from ccproxy.pricing.models import ModelPricing, PricingData
+from ccproxy.pricing.models import PricingData
 from ccproxy.pricing.updater import PricingUpdater
 
 

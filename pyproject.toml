@@ -178,6 +178,7 @@ exclude = [
 quote-style = "double"
 indent-style = "space"
 
+
 [tool.ruff.lint.isort]
 known-first-party = ["ccproxy"]
 force-single-line = false

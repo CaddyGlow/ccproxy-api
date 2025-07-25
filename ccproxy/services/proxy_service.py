@@ -2,7 +2,6 @@
 
 import asyncio
 import json
-import logging
 import os
 import random
 import time
@@ -15,7 +14,6 @@ import httpx
 import structlog
 from fastapi import HTTPException, Request
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
 from typing_extensions import TypedDict
 
 from ccproxy.config.settings import Settings

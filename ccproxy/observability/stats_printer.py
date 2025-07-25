@@ -9,10 +9,9 @@ from __future__ import annotations
 
 import json
 import time
-from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import datetime, timedelta
-from typing import Any, Optional
+from datetime import datetime
+from typing import Any
 
 import structlog
 
@@ -524,7 +523,6 @@ class StatsCollector:
             from rich import box
             from rich.console import Console
             from rich.table import Table
-            from rich.text import Text
 
             output_buffer = StringIO()
             console = Console(file=output_buffer, width=80, force_terminal=True)

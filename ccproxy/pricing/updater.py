@@ -1,6 +1,5 @@
 """Pricing updater for managing periodic refresh of pricing data."""
 
-import asyncio
 from decimal import Decimal
 from typing import Any
 

@@ -3,13 +3,11 @@
 import asyncio
 import contextlib
 from datetime import UTC, datetime, timedelta
-from typing import Any, cast
+from typing import Any
 
 from structlog import get_logger
 
 from ccproxy.core.errors import (
-    PermissionAlreadyResolvedError,
-    PermissionExpiredError,
     PermissionNotFoundError,
 )
 from ccproxy.models.permissions import (
@@ -70,7 +68,7 @@ class PermissionService:
         # Sanitize input - ensure all values are strings
         sanitized_input = {k: str(v) for k, v in input.items()}
 
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
         request = PermissionRequest(
             tool_name=tool_name.strip(),
             input=sanitized_input,
@@ -289,7 +287,7 @@ class PermissionService:
         """
         async with self._lock:
             pending = []
-            now = datetime.utcnow()
+            now = datetime.now(UTC)
             for request in self._requests.values():
                 if request.is_expired():
                     request.status = PermissionStatus.EXPIRED

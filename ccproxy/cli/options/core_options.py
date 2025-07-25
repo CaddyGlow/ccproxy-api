@@ -1,9 +1,6 @@
 """Core CLI options for configuration and global settings."""
 
 from pathlib import Path
-from typing import Any
-
-import typer
 
 
 # Factory functions removed - use Annotated syntax directly in commands

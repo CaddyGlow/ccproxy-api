@@ -6,10 +6,10 @@ providing a single location for defining contracts and protocols.
 
 from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator
-from typing import Any, Optional, Protocol, TypeVar, runtime_checkable
+from typing import Any, Protocol, TypeVar, runtime_checkable
 
 from ccproxy.auth.models import ClaudeCredentials
-from ccproxy.core.types import ProxyRequest, ProxyResponse, TransformContext
+from ccproxy.core.types import TransformContext
 
 
 __all__ = [

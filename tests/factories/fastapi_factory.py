@@ -5,11 +5,10 @@ in FastAPI test fixtures by allowing flexible composition of different
 configurations and dependency overrides.
 """
 
-from collections.abc import AsyncGenerator, Awaitable, Callable
-from typing import Any, Protocol, TypeAlias
+from collections.abc import Callable
+from typing import Any, TypeAlias
 from unittest.mock import AsyncMock
 
-import pytest_asyncio
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from httpx import ASGITransport, AsyncClient

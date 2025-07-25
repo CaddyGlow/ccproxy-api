@@ -10,7 +10,6 @@ This module tests the CLI serve command functionality including:
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
 from unittest.mock import patch
 
 import pytest

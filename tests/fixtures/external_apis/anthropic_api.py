@@ -9,7 +9,6 @@ from collections.abc import Generator
 from typing import Any
 
 import pytest
-from httpx import HTTPError
 from pytest_httpx import HTTPXMock
 
 

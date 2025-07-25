@@ -1,10 +1,7 @@
 """Configuration file loader for ccproxy."""
 
-import os
 from pathlib import Path
-from typing import Any, Optional
-
-from pydantic import BaseModel
+from typing import Any
 
 from ccproxy.config.discovery import find_toml_config_file
 from ccproxy.config.settings import Settings

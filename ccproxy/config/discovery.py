@@ -1,5 +1,4 @@
 from pathlib import Path
-from typing import Optional
 
 from ccproxy.core.system import get_xdg_config_home
 

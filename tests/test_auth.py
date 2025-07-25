@@ -7,21 +7,16 @@ including token validation, credential storage, and API endpoint access control.
 import asyncio
 import json
 from pathlib import Path
-from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi import HTTPException, status
 from fastapi.testclient import TestClient
-from pytest_httpx import HTTPXMock
 
 from ccproxy.auth.bearer import BearerTokenAuthManager
 from ccproxy.auth.credentials_adapter import CredentialsAuthManager
 from ccproxy.auth.dependencies import (
     get_access_token,
-    get_auth_manager,
-    get_bearer_auth_manager,
-    get_credentials_auth_manager,
     require_auth,
 )
 from ccproxy.auth.exceptions import (
@@ -41,10 +36,8 @@ from ccproxy.auth.models import (
     AccountInfo,
     ClaudeCredentials,
     OAuthToken,
-    OrganizationInfo,
     UserProfile,
 )
-from ccproxy.config.settings import Settings
 from ccproxy.services.credentials.manager import CredentialsManager
 
 

@@ -1,13 +1,10 @@
 """OS keyring storage implementation for token storage."""
 
 import json
-from typing import Optional
 
-import keyring
 from structlog import get_logger
 
 from ccproxy.auth.exceptions import (
-    CredentialsInvalidError,
     CredentialsStorageError,
 )
 from ccproxy.auth.models import ClaudeCredentials

@@ -1,7 +1,7 @@
 """Core proxy abstractions for handling HTTP and WebSocket connections."""
 
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Any, Optional, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 from ccproxy.core.types import ProxyRequest, ProxyResponse
 

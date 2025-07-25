@@ -3,9 +3,8 @@
 import asyncio
 import json
 from collections.abc import AsyncGenerator
-from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 from structlog import get_logger

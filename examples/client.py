@@ -3,9 +3,8 @@
 
 import asyncio
 import json
-import sys
 from collections.abc import AsyncGenerator
-from typing import Any, Optional, cast
+from typing import Any, cast
 
 import httpx
 import typer
@@ -14,7 +13,6 @@ from rich.live import Live
 from rich.markdown import Markdown
 from rich.panel import Panel
 from rich.prompt import Prompt
-from rich.spinner import Spinner
 from rich.status import Status
 
 

@@ -2,7 +2,6 @@
 
 import asyncio
 from collections.abc import Generator
-from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -13,14 +12,12 @@ from ccproxy.config.scheduler import SchedulerSettings
 from ccproxy.config.settings import Settings
 from ccproxy.scheduler.core import Scheduler
 from ccproxy.scheduler.errors import (
-    SchedulerError,
     TaskNotFoundError,
     TaskRegistrationError,
 )
 from ccproxy.scheduler.manager import start_scheduler, stop_scheduler
 from ccproxy.scheduler.registry import TaskRegistry, get_task_registry
 from ccproxy.scheduler.tasks import (
-    BaseScheduledTask,
     PricingCacheUpdateTask,
     PushgatewayTask,
     StatsPrintingTask,

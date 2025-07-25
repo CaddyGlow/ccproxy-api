@@ -2,16 +2,15 @@
 
 import time
 from datetime import datetime as dt
-from typing import Any, Optional, cast
+from typing import Any, cast
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
+from fastapi import APIRouter, HTTPException, Query, Request, Response
 from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 from sqlmodel import Session, col, desc, func, select
 from typing_extensions import TypedDict
 
 from ccproxy.api.dependencies import (
     DuckDBStorageDep,
-    LogStorageDep,
     ObservabilityMetricsDep,
     SettingsDep,
 )
@@ -197,7 +196,7 @@ async def get_prometheus_metrics(metrics: ObservabilityMetricsDep) -> Response:
             )
 
         # Generate prometheus format using the registry
-        from prometheus_client import REGISTRY, CollectorRegistry
+        from prometheus_client import REGISTRY
 
         # Use the global registry if metrics.registry is None (default behavior)
         registry = metrics.registry if metrics.registry is not None else REGISTRY

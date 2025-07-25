@@ -9,25 +9,21 @@ from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
+from claude_code_sdk import (
+    AssistantMessage,
+    ResultMessage,
+    TextBlock,
+    ToolResultBlock,
+    ToolUseBlock,
+)
+
+from ccproxy.core.errors import ClaudeProxyError
 
 
 @pytest.fixture
 def mock_internal_claude_sdk_service() -> AsyncMock:
-    """Create a mock Claude SDK service for internal dependency injection.
-
-    This fixture creates an AsyncMock that replaces ClaudeSDKService in the
-    dependency injection container. Use this for testing API endpoints that
-    depend on Claude SDK without making actual HTTP calls.
-
-    Mocking Strategy: Internal service mocking via AsyncMock
-    Use Case: Testing API endpoints with dependency injection
-    HTTP Calls: None (internal mocking only)
-    """
-    from ccproxy.core.errors import ClaudeProxyError
-
+    """Create a mock Claude SDK service for internal dependency injection."""
     mock_service = AsyncMock()
-
-    # List of supported models for validation
     SUPPORTED_MODELS = [
         "claude-3-5-sonnet-20241022",
         "claude-3-5-sonnet-20240620",
@@ -35,7 +31,6 @@ def mock_internal_claude_sdk_service() -> AsyncMock:
         "claude-3-haiku-20240307",
     ]
 
-    # Mock create_completion with model validation
     async def mock_create_completion(*args: Any, **kwargs: Any) -> dict[str, Any]:
         model = kwargs.get("model", "")
         if model not in SUPPORTED_MODELS:
@@ -44,7 +39,6 @@ def mock_internal_claude_sdk_service() -> AsyncMock:
                 error_type="invalid_request_error",
                 status_code=400,
             )
-
         return {
             "id": "msg_01234567890",
             "type": "message",
@@ -57,8 +51,6 @@ def mock_internal_claude_sdk_service() -> AsyncMock:
         }
 
     mock_service.create_completion = mock_create_completion
-
-    # Mock the list_models method
     mock_service.list_models.return_value = [
         {
             "id": "claude-3-5-sonnet-20241022",
@@ -73,29 +65,15 @@ def mock_internal_claude_sdk_service() -> AsyncMock:
             "owned_by": "anthropic",
         },
     ]
-
-    # Mock the validate_health method
     mock_service.validate_health.return_value = True
-
     return mock_service
 
 
 @pytest.fixture
 def mock_internal_claude_sdk_service_unavailable() -> AsyncMock:
-    """Create a mock Claude SDK service that simulates service unavailability.
-
-    This fixture creates an AsyncMock that raises errors to simulate when
-    the Claude SDK service is unavailable or misconfigured.
-
-    Mocking Strategy: Internal service mocking via AsyncMock
-    Use Case: Testing error handling when Claude SDK is unavailable
-    HTTP Calls: None (internal mocking only)
-    """
-    from ccproxy.core.errors import ClaudeProxyError
-
+    """Create a mock Claude SDK service that simulates service unavailability."""
     mock_service = AsyncMock()
 
-    # Mock create_completion to raise an error
     async def mock_create_completion_error(*args: Any, **kwargs: Any) -> None:
         raise ClaudeProxyError(
             message="Claude SDK service is currently unavailable",
@@ -104,28 +82,17 @@ def mock_internal_claude_sdk_service_unavailable() -> AsyncMock:
         )
 
     mock_service.create_completion = mock_create_completion_error
-
-    # Mock the validate_health method to return False
     mock_service.validate_health.return_value = False
-
     return mock_service
 
 
 @pytest.fixture
 def mock_internal_claude_sdk_service_streaming() -> AsyncMock:
-    """Create a mock Claude SDK service for streaming response testing.
-
-    This fixture creates an AsyncMock that supports both regular and streaming
-    responses for comprehensive testing of the streaming functionality.
-
-    Mocking Strategy: Internal service mocking via AsyncMock
-    Use Case: Testing streaming API endpoints with dependency injection
-    HTTP Calls: None (internal mocking only)
-    """
+    """Create a mock Claude SDK service for streaming response testing."""
 
     async def mock_streaming_response() -> AsyncGenerator[dict[str, Any], None]:
         """Mock streaming response generator."""
-        events = [
+        events: list[dict[str, Any]] = [
             {
                 "type": "message_start",
                 "message": {
@@ -160,24 +127,18 @@ def mock_internal_claude_sdk_service_streaming() -> AsyncMock:
             },
             {"type": "message_stop"},
         ]
-
         for event in events:
-            yield event  # type: ignore[misc]
+            yield event
 
     mock_service = AsyncMock()
 
-    # Mock create_completion as an async function with model validation
     async def mock_create_completion(*args: Any, **kwargs: Any) -> Any:
-        from ccproxy.core.errors import ClaudeProxyError
-
-        # List of supported models for validation
         SUPPORTED_MODELS = [
             "claude-3-5-sonnet-20241022",
             "claude-3-5-sonnet-20240620",
             "claude-3-opus-20240229",
             "claude-3-haiku-20240307",
         ]
-
         model = kwargs.get("model", "")
         if model not in SUPPORTED_MODELS:
             raise ClaudeProxyError(
@@ -185,7 +146,6 @@ def mock_internal_claude_sdk_service_streaming() -> AsyncMock:
                 error_type="invalid_request_error",
                 status_code=400,
             )
-
         if kwargs.get("stream", False):
             return mock_streaming_response()
         else:
@@ -201,8 +161,6 @@ def mock_internal_claude_sdk_service_streaming() -> AsyncMock:
             }
 
     mock_service.create_completion = mock_create_completion
-
-    # Mock the list_models method
     mock_service.list_models.return_value = [
         {
             "id": "claude-3-5-sonnet-20241022",
@@ -217,8 +175,65 @@ def mock_internal_claude_sdk_service_streaming() -> AsyncMock:
             "owned_by": "anthropic",
         },
     ]
-
-    # Mock the validate_health method
     mock_service.validate_health.return_value = True
-
     return mock_service
+
+
+@pytest.fixture
+def mock_claude_sdk_client_streaming() -> AsyncMock:
+    """Create a mock Claude SDK client for streaming response testing."""
+    mock_client = AsyncMock()
+
+    async def mock_query_completion(
+        *args: Any, **kwargs: Any
+    ) -> AsyncGenerator[Any, None]:
+        yield AssistantMessage(
+            content=[TextBlock(text="Hello")],
+            session_id="test_session",
+            stop_reason=None,
+            stop_sequences=None,
+            model="claude-3-5-sonnet-20241022",
+            message_id="msg_123",
+        )
+        yield AssistantMessage(
+            content=[TextBlock(text=" world!")],
+            session_id="test_session",
+            stop_reason=None,
+            stop_sequences=None,
+            model="claude-3-5-sonnet-20241022",
+            message_id="msg_123",
+        )
+        yield AssistantMessage(
+            content=[
+                ToolUseBlock(id="tool_123", name="test_tool", input={"arg": "value"})
+            ],
+            session_id="test_session",
+            stop_reason=None,
+            stop_sequences=None,
+            model="claude-3-5-sonnet-20241022",
+            message_id="msg_123",
+        )
+        # Yield a tool result block
+        yield AssistantMessage(
+            content=[ToolResultBlock(tool_use_id="tool_123", content="tool output")],
+            session_id="test_session",
+            stop_reason=None,
+            stop_sequences=None,
+            model="claude-3-5-sonnet-20241022",
+            message_id="msg_123",
+        )
+        yield ResultMessage(
+            session_id="test_session",
+            stop_reason="end_turn",
+            total_cost_usd=0.001,
+            usage={
+                "input_tokens": 10,
+                "output_tokens": 5,
+                "cache_read_input_tokens": 0,
+                "cache_creation_input_tokens": 0,
+            },
+        )
+
+    mock_client.query_completion = mock_query_completion
+    mock_client.get_last_api_call_time_ms.return_value = 123.45
+    return mock_client

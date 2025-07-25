@@ -82,8 +82,6 @@ def validate_docker_home(
     if value is None:
         return None
 
-    from pathlib import Path
-
     from ccproxy.config.docker_settings import validate_host_path
 
     try:
@@ -115,8 +113,6 @@ def validate_docker_workspace(
     """Validate Docker workspace directory."""
     if value is None:
         return None
-
-    from pathlib import Path
 
     from ccproxy.config.docker_settings import validate_host_path
 

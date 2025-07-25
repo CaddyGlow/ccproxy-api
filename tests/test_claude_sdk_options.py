@@ -1,7 +1,5 @@
 """Tests for Claude SDK options handling."""
 
-import pytest
-
 from ccproxy.claude_sdk.options import OptionsHandler
 from ccproxy.config.claude import ClaudeSettings
 from ccproxy.config.settings import Settings

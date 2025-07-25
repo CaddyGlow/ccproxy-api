@@ -12,7 +12,6 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from fastapi.testclient import TestClient
 from sqlmodel import Session, select
 
 from ccproxy.observability.storage.duckdb_simple import (

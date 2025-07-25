@@ -8,7 +8,6 @@ This module tests the new observability architecture including:
 """
 
 import asyncio
-import time
 from collections.abc import Generator
 from typing import Any
 from unittest.mock import patch

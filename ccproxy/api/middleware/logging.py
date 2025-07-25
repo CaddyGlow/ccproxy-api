@@ -1,7 +1,7 @@
 """Access logging middleware for structured HTTP request/response logging."""
 
 import time
-from typing import Any, Optional
+from typing import Any
 
 import structlog
 from fastapi import Request, Response

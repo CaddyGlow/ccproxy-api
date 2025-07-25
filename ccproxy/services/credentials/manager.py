@@ -22,7 +22,6 @@ from ccproxy.auth.models import (
 from ccproxy.auth.storage import JsonFileTokenStorage as JsonFileStorage
 from ccproxy.auth.storage import TokenStorage as CredentialsStorageBackend
 from ccproxy.config.auth import AuthSettings
-from ccproxy.services.credentials.config import CredentialsConfig
 from ccproxy.services.credentials.oauth_client import OAuthClient
 
 

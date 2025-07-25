@@ -19,7 +19,7 @@ from common_utils import (
     handle_tool_call,
     setup_logging,
 )
-from console_utils import RICH_AVAILABLE, RichConsoleManager
+from console_utils import RichConsoleManager
 from openai.types.chat import (
     ChatCompletionAssistantMessageParam,
     ChatCompletionMessageParam,

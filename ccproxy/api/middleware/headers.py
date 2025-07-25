@@ -1,7 +1,5 @@
 """Header preservation middleware to maintain proxy response headers."""
 
-from collections.abc import Callable
-
 from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.types import ASGIApp

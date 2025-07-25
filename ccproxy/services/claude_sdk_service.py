@@ -1,9 +1,6 @@
 """Claude SDK service orchestration for business logic."""
 
-import json
-import xml.etree.ElementTree as ET
 from collections.abc import AsyncIterator
-from dataclasses import asdict, is_dataclass
 from typing import Any
 
 import structlog
@@ -281,33 +278,6 @@ class ClaudeSDKService:
 
         return response
 
-    def _format_as_xml(self, tag: str, content: dict[str, Any] | str) -> str:
-        """
-        Format content as properly structured XML.
-
-        Args:
-            tag: The XML tag name
-            content: The content to wrap in XML (dict will be JSON serialized)
-
-        Returns:
-            Properly formatted XML string
-        """
-        # Create the root element
-        root = ET.Element(tag)
-
-        if isinstance(content, dict):
-            # For dict content, add as JSON text
-            root.text = json.dumps(content, ensure_ascii=False)
-        else:
-            # For string content, add directly
-            root.text = str(content)
-
-        # Add proper indentation
-        ET.indent(root)
-
-        # Convert to string with proper encoding
-        return ET.tostring(root, encoding="unicode", method="xml")
-
     async def _stream_completion(
         self,
         prompt: str,
@@ -329,6 +299,8 @@ class ClaudeSDKService:
         """
         import asyncio
 
+        from claude_code_sdk import TextBlock, ToolResultBlock, ToolUseBlock
+
         first_chunk = True
         message_count = 0
         assistant_messages = []
@@ -346,46 +318,100 @@ class ClaudeSDKService:
                 )
 
                 if first_chunk:
-                    # Send initial chunks with event types
+                    # Send initial message_start chunk
+                    # We don't have input tokens here, so we pass 0.
+                    # The SDK does not provide it at this stage.
+                    # The input tokens will be updated in a final message_delta event.
                     for (
                         event_type,
                         chunk_data,
                     ) in self.message_converter.create_streaming_start_chunks(
-                        f"msg_{id(message)}", model, 100
+                        f"msg_{request_id}", model, 0
                     ):
                         yield {"event": event_type, "data": chunk_data}
                     first_chunk = False
 
-                # TODO: instead of creating one message we should create a list of messages
-                # and this will be serialized back in one messsage by the adapter.
-                # to do that we have to create the different type of messsages
-                # in anthropic models
-                if isinstance(message, SystemMessage):
-                    # Format as proper XML
-                    text_content = self._format_as_xml("system", asdict(message))
-                    event_type, chunk_data = (
-                        self.message_converter.create_streaming_delta_chunk(
-                            text_content + "\n"
-                        )
-                    )
-                    yield {"event": event_type, "data": chunk_data}
-                elif isinstance(message, AssistantMessage):
+                if isinstance(message, AssistantMessage):
                     assistant_messages.append(message)
 
-                    # Send content delta
-                    text_content = self.message_converter.extract_contents(
-                        message.content
-                    )
+                    # Iterate through content blocks and yield structured chunks for each
+                    for i, block in enumerate(message.content):
+                        # --- Handle Text Blocks ---
+                        if isinstance(block, TextBlock) and block.text:
+                            # 1. Start a new text block
+                            yield {
+                                "event": "content_block_start",
+                                "data": {
+                                    "type": "content_block_start",
+                                    "index": i,
+                                    "content_block": {"type": "text", "text": ""},
+                                },
+                            }
+                            # 2. Send the text content in a delta
+                            yield {
+                                "event": "content_block_delta",
+                                "data": {
+                                    "type": "content_block_delta",
+                                    "index": i,
+                                    "delta": {"type": "text_delta", "text": block.text},
+                                },
+                            }
+                            # 3. Stop the text block
+                            yield {
+                                "event": "content_block_stop",
+                                "data": {"type": "content_block_stop", "index": i},
+                            }
 
-                    if text_content:
-                        # Format as proper XML
-                        text_content = self._format_as_xml("assistant", text_content)
-                        event_type, chunk_data = (
-                            self.message_converter.create_streaming_delta_chunk(
-                                text_content + "\n"
-                            )
-                        )
-                        yield {"event": event_type, "data": chunk_data}
+                        # --- Handle Tool Use Blocks ---
+                        elif isinstance(block, ToolUseBlock):
+                            tool_input = getattr(block, "input", {}) or {}
+                            # 1. Start a new tool_use block with all its data
+                            yield {
+                                "event": "content_block_start",
+                                "data": {
+                                    "type": "content_block_start",
+                                    "index": i,
+                                    "content_block": {
+                                        "type": "tool_use",
+                                        "id": getattr(block, "id", f"tool_{id(block)}"),
+                                        "name": block.name,
+                                        "input": tool_input,
+                                    },
+                                },
+                            }
+                            # 2. Immediately stop the block (since we get it all at once)
+                            yield {
+                                "event": "content_block_stop",
+                                "data": {"type": "content_block_stop", "index": i},
+                            }
+
+                        # --- Handle Tool Result Blocks ---
+                        elif isinstance(block, ToolResultBlock):
+                            # 1. Start a new tool_result block
+                            yield {
+                                "event": "content_block_start",
+                                "data": {
+                                    "type": "content_block_start",
+                                    "index": i,
+                                    "content_block": {
+                                        "type": "tool_result",
+                                        "tool_use_id": block.tool_use_id,
+                                        "content": block.content,
+                                    },
+                                },
+                            }
+                            # 2. Immediately stop the block
+                            yield {
+                                "event": "content_block_stop",
+                                "data": {"type": "content_block_stop", "index": i},
+                            }
+
+                elif isinstance(message, SystemMessage):
+                    # System messages are part of the input, not the response stream.
+                    logger.warning(
+                        "Ignoring unexpected SystemMessage in streaming response."
+                    )
+                    continue
 
                 elif isinstance(message, ResultMessage):
                     # Get Claude API call timing
@@ -439,25 +465,37 @@ class ClaudeSDKService:
                         )
 
                     # Send final chunks with usage and cost information
-                    final_chunks = self.message_converter.create_streaming_end_chunks()
+                    final_chunks = self.message_converter.create_streaming_end_chunks(
+                        stop_reason=getattr(message, "stop_reason", "end_turn")
+                    )
 
                     # Add usage information to message_delta chunk
                     for event_type, chunk_data in final_chunks:
-                        if chunk_data.get("type") == "message_delta" and (
-                            tokens_input or tokens_output or cost_usd
-                        ):
+                        if chunk_data.get("type") == "message_delta":
                             usage_info = {}
-                            # if tokens_input:
-                            #     usage_info["input_tokens"] = tokens_input
                             if tokens_output:
                                 usage_info["output_tokens"] = tokens_output
                             if cost_usd is not None:
                                 usage_info["cost_usd"] = cost_usd
 
                             # Update the usage in the message_delta chunk
+                            if "usage" not in chunk_data:
+                                chunk_data["usage"] = {}
                             chunk_data["usage"].update(usage_info)
 
                         yield {"event": event_type, "data": chunk_data}
+
+                    # Update the input tokens in the initial message_start message
+                    # This is a workaround to provide complete usage data.
+                    if tokens_input:
+                        yield {
+                            "event": "message_delta",
+                            "data": {
+                                "type": "message_delta",
+                                "delta": {},
+                                "usage": {"input_tokens": tokens_input},
+                            },
+                        }
 
                     break
 

@@ -10,10 +10,9 @@ import argparse
 import json
 import logging
 import sys
-from typing import Optional
 
 import openai
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 
 # Configure structured logging

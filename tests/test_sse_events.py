@@ -10,8 +10,6 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
-import time
-from typing import Any
 
 import pytest
 

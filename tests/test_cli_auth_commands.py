@@ -4,15 +4,10 @@ This module tests the CLI authentication commands in ccproxy/cli/commands/auth.p
 including validate, info, login, and renew commands with proper type safety.
 """
 
-import asyncio
-import json
-from collections.abc import Generator
 from pathlib import Path
-from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-import typer
 from typer.testing import CliRunner
 
 from ccproxy.auth.models import (

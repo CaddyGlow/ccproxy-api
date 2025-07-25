@@ -1,6 +1,5 @@
 """HTTP-level transformers for proxy service."""
 
-import json
 from typing import TYPE_CHECKING, Any
 
 import structlog

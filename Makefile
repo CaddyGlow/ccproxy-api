@@ -146,8 +146,15 @@ lint:
 	uv run ruff check .
 
 lint-fix: format
-	uv run ruff check --fix .
+	# fix F401 (unused import) errors
+	uv run ruff check --select F401 --fix .
+	# fix sort (import) errors
 	uv run ruff check --select I --fix .
+	# classic fix
+	uv run ruff check --fix .
+	# unsafe fix
+	uv run ruff check --unsafe-fixes --fix .
+	uv run ruff format .
 
 typecheck:
 	uv run mypy .

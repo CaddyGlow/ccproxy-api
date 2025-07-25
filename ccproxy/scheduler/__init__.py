@@ -32,6 +32,7 @@ from .tasks import (
 __all__ = [
     "Scheduler",
     "TaskRegistry",
+    "register_task",
     "BaseScheduledTask",
     "PushgatewayTask",
     "StatsPrintingTask",

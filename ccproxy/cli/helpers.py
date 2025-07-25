@@ -1,12 +1,10 @@
 """CLI helper utilities for CCProxy API."""
 
-import logging
 from pathlib import Path
 from typing import Any
 
 from rich_toolkit import RichToolkit, RichToolkitTheme
 from rich_toolkit.styles import TaggedStyle
-from uvicorn.logging import DefaultFormatter
 
 from ccproxy.core.async_utils import patched_typing
 

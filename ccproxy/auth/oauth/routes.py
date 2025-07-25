@@ -1,11 +1,9 @@
 """OAuth authentication routes for Anthropic OAuth login."""
 
-import asyncio
-import logging
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, Query, Request
 from fastapi.responses import HTMLResponse
 from structlog import get_logger
 

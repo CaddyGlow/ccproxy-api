@@ -4,13 +4,12 @@ import asyncio
 import base64
 import hashlib
 import secrets
-import time
 import urllib.parse
 import webbrowser
 from datetime import UTC, datetime
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from threading import Thread
-from typing import Any, Optional
+from typing import Any
 from urllib.parse import parse_qs, urlparse
 
 import httpx

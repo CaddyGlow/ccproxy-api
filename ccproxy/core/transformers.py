@@ -1,7 +1,7 @@
 """Core transformer abstractions for request/response transformation."""
 
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Any, Optional, Protocol, TypeVar, runtime_checkable
+from typing import TYPE_CHECKING, Any, Protocol, TypeVar, runtime_checkable
 
 from structlog import get_logger
 

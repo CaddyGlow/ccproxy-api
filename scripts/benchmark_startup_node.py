@@ -2,15 +2,13 @@
 """Benchmark different approaches to reduce Claude CLI startup time."""
 
 import asyncio
-import json
 import os
 import subprocess
-import sys
 import time
 from collections.abc import Callable
 from pathlib import Path
 from statistics import mean, stdev
-from typing import Any, Optional
+from typing import Any
 
 
 # Number of runs for each benchmark

@@ -1,24 +1,19 @@
 """Tests for MCP permission checking functionality."""
 
 import asyncio
-from typing import Any
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
-from fastapi import FastAPI
-from fastapi.testclient import TestClient
 
 from ccproxy.api.routes.mcp import PermissionCheckRequest, check_permission
 from ccproxy.api.services.permission_service import (
     PermissionService,
-    get_permission_service,
 )
-from ccproxy.config.settings import Settings, get_settings
+from ccproxy.config.settings import Settings
 from ccproxy.models.permissions import PermissionStatus
 from ccproxy.models.responses import (
     PermissionToolAllowResponse,
     PermissionToolDenyResponse,
-    PermissionToolPendingResponse,
 )
 
 

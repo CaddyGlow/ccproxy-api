@@ -14,27 +14,21 @@ to create a natural conversation flow between the two AI models.
 
 import argparse
 import asyncio
-import json
 import logging
 import os
-import re
-from typing import Any, Optional
 
 import anthropic
-import httpx
 import openai
 from anthropic.types import MessageParam
 from openai.types.chat import ChatCompletionMessageParam
 
 
 try:
-    from rich.align import Align
     from rich.console import Console
     from rich.live import Live
     from rich.markdown import Markdown
     from rich.panel import Panel
     from rich.table import Table
-    from rich.text import Text
 
     RICH_AVAILABLE = True
 except ImportError:

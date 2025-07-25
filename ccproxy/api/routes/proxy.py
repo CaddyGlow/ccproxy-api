@@ -2,17 +2,14 @@
 
 import json
 from collections.abc import AsyncIterator
-from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request, Response
 from fastapi.responses import StreamingResponse
-from starlette.background import BackgroundTask
 
 from ccproxy.adapters.openai.adapter import OpenAIAdapter
 from ccproxy.api.dependencies import ProxyServiceDep
 from ccproxy.api.responses import ProxyResponse
 from ccproxy.auth.conditional import ConditionalAuthDep
-from ccproxy.core.errors import ProxyHTTPException
 
 
 # Create the router for proxy endpoints

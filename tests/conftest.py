@@ -1086,7 +1086,7 @@ def docker_path_set_fixture(tmp_path: Path) -> DockerPathSet:
 
     Returns a DockerPathSet configured with test directories.
     """
-    from ccproxy.docker.docker_path import DockerPath, DockerPathSet
+    from ccproxy.docker.docker_path import DockerPathSet
 
     # Create multiple test directories
     host_dir1 = tmp_path / "host_dir1"
@@ -1213,3 +1213,41 @@ def pytest_collection_modifyitems(
         # Add unit marker to tests not marked as real_api
         if not any(marker.name == "real_api" for marker in item.iter_markers()):
             item.add_marker(pytest.mark.unit)
+
+
+@pytest.fixture
+def app_with_mock_sdk_client_streaming(
+    test_settings: Settings, mock_claude_sdk_client_streaming: AsyncMock
+) -> FastAPI:
+    """Create test FastAPI application with mocked Claude SDK client for streaming."""
+    from ccproxy.services.claude_sdk_service import ClaudeSDKService
+
+    # Create an instance of the real service
+    claude_service = ClaudeSDKService(
+        sdk_client=mock_claude_sdk_client_streaming, settings=test_settings
+    )
+
+    # Create app
+    app = create_app(settings=test_settings)
+
+    # Override the dependency to return the real service with the mocked client
+    from ccproxy.api.dependencies import get_cached_claude_service
+
+    def mock_get_cached_claude_service_for_sdk_client_streaming(
+        request: Request,
+    ) -> ClaudeSDKService:
+        return claude_service
+
+    app.dependency_overrides[get_cached_claude_service] = (
+        mock_get_cached_claude_service_for_sdk_client_streaming
+    )
+
+    return app
+
+
+@pytest.fixture
+def client_with_mock_sdk_client_streaming(
+    app_with_mock_sdk_client_streaming: FastAPI,
+) -> TestClient:
+    """Create test client with mocked Claude SDK client for streaming."""
+    return TestClient(app_with_mock_sdk_client_streaming)

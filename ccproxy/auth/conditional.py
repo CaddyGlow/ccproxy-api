@@ -5,11 +5,10 @@ from typing import Annotated
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
-from ccproxy.api.dependencies import SettingsDep, get_cached_settings
+from ccproxy.api.dependencies import SettingsDep
 from ccproxy.auth.bearer import BearerTokenAuthManager
 from ccproxy.auth.exceptions import AuthenticationError
 from ccproxy.auth.manager import AuthManager
-from ccproxy.config.settings import Settings
 
 
 # FastAPI security scheme for bearer tokens

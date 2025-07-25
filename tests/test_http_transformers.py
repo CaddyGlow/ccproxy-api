@@ -8,7 +8,7 @@ Tests follow the TESTING.md requirements with proper type hints and no internal 
 """
 
 import json
-from typing import Any, Union, cast
+from typing import Any, cast
 from unittest.mock import patch
 
 import pytest

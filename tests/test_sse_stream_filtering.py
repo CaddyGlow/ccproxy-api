@@ -5,13 +5,10 @@ This module tests the GET /logs/stream endpoint with filtering capabilities
 similar to analytics and entries endpoints.
 """
 
-import asyncio
 import json
-import time
-from typing import Any, cast
+from typing import cast
 from unittest.mock import AsyncMock, patch
 
-import pytest
 from fastapi.testclient import TestClient
 from httpx._types import QueryParamTypes
 

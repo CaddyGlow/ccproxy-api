@@ -1,6 +1,5 @@
 """Mock response generation for realistic testing."""
 
-import json
 import random
 import time
 from typing import Any

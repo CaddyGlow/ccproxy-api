@@ -3,25 +3,18 @@
 import asyncio
 import contextlib
 import time
-from collections.abc import AsyncGenerator
 from dataclasses import dataclass
-from datetime import datetime
-from io import StringIO
-from typing import Any
 
-from rich.console import Console
-from rich.text import Text
 from structlog import get_logger
 from textual.app import App, ComposeResult
-from textual.containers import Container, ScrollableContainer, Vertical
+from textual.containers import Container, Vertical
 from textual.events import Key
 from textual.reactive import reactive
 from textual.screen import ModalScreen
 from textual.timer import Timer
-from textual.widgets import Label, RichLog, Static
+from textual.widgets import Label, Static
 
 from ccproxy.api.services.permission_service import PermissionRequest
-from ccproxy.api.ui.permission_handler_protocol import ConfirmationHandlerProtocol
 
 
 logger = get_logger(__name__)

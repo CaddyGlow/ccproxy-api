@@ -2,9 +2,6 @@
 
 import asyncio
 from collections.abc import AsyncGenerator
-from datetime import datetime, timedelta
-from typing import Any
-from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
@@ -13,13 +10,9 @@ from ccproxy.api.services.permission_service import (
     get_permission_service,
 )
 from ccproxy.core.errors import (
-    PermissionAlreadyResolvedError,
-    PermissionExpiredError,
     PermissionNotFoundError,
 )
 from ccproxy.models.permissions import (
-    PermissionEvent,
-    PermissionRequest,
     PermissionStatus,
 )
 

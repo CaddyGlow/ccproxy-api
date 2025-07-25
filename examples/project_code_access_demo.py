@@ -12,22 +12,16 @@ controlled access to read files and list directories within the project root.
 
 import argparse
 import asyncio
-import json
 import logging
 import os
 import pathlib
-from typing import Any, Optional, Union
+from typing import Any
 
 import anthropic
-import httpx
-import openai
-from anthropic.types import MessageParam
-from openai.types.chat import ChatCompletionMessageParam
 
 
 try:
     from rich.console import Console
-    from rich.markdown import Markdown
     from rich.panel import Panel
     from rich.syntax import Syntax
     from rich.table import Table

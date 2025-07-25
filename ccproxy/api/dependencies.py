@@ -5,7 +5,7 @@ from typing import Annotated
 from fastapi import Depends, Request
 from structlog import get_logger
 
-from ccproxy.auth.dependencies import AuthManagerDep, get_auth_manager
+from ccproxy.auth.dependencies import AuthManagerDep
 from ccproxy.config.settings import Settings, get_settings
 from ccproxy.core.http import BaseProxyClient
 from ccproxy.observability import PrometheusMetrics, get_metrics

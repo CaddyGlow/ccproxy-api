@@ -6,7 +6,6 @@ using SQLModel to ensure type safety and eliminate column name repetition.
 """
 
 from datetime import datetime
-from typing import Optional
 
 from sqlmodel import Field, SQLModel
 

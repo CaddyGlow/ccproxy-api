@@ -1,6 +1,6 @@
 """Configuration models for testing utilities."""
 
-from datetime import UTC, datetime
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Literal
 

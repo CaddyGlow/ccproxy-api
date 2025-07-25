@@ -9,9 +9,7 @@ from __future__ import annotations
 import json
 import re
 import time
-import uuid
 from collections.abc import AsyncIterator
-from inspect import signature
 from typing import Any, Literal, cast
 
 import structlog

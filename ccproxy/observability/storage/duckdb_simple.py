@@ -10,7 +10,7 @@ import time
 from collections.abc import Sequence
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 import structlog
 from sqlalchemy import text

@@ -1,10 +1,9 @@
 """Authentication and credential management commands."""
 
 import asyncio
-import json
-from datetime import UTC, datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Annotated, Optional
+from typing import Annotated
 
 import typer
 from rich import box
@@ -12,7 +11,6 @@ from rich.console import Console
 from rich.table import Table
 from structlog import get_logger
 
-from ccproxy.auth.models import ValidationResult
 from ccproxy.cli.helpers import get_rich_toolkit
 from ccproxy.config.settings import get_settings
 from ccproxy.core.async_utils import get_claude_docker_home_dir

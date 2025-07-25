@@ -15,7 +15,6 @@ from common_utils import LoggingAsyncClient, setup_logging
 from console_utils import RICH_AVAILABLE, ThinkingRenderer
 from openai import AsyncOpenAI
 from openai.types.chat import (
-    ChatCompletionAssistantMessageParam,
     ChatCompletionMessageParam,
     ChatCompletionToolMessageParam,
     ChatCompletionUserMessageParam,

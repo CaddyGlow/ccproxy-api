@@ -3,18 +3,15 @@
 import contextlib
 import json
 import os
-import shutil
 import tomllib
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any
 
 import structlog
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from ccproxy import __version__
-from ccproxy.config.discovery import find_toml_config_file, get_claude_cli_config_dir
-from ccproxy.core.async_utils import format_version, get_package_dir, patched_typing
+from ccproxy.config.discovery import find_toml_config_file
 
 from .auth import AuthSettings
 from .claude import ClaudeSettings

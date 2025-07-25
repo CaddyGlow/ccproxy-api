@@ -13,7 +13,7 @@ import asyncio
 import functools
 import shutil
 import time
-from datetime import UTC, datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import APIRouter, Response, status

@@ -5,7 +5,6 @@ import contextlib
 import json
 import logging
 from collections.abc import AsyncIterator
-from datetime import datetime
 from typing import Any
 
 import httpx
@@ -15,7 +14,6 @@ from structlog import get_logger
 
 from ccproxy.api.services.permission_service import PermissionRequest
 from ccproxy.api.ui.permission_handler_protocol import ConfirmationHandlerProtocol
-from ccproxy.api.ui.terminal_permission_handler import TerminalPermissionHandler
 from ccproxy.api.ui.terminal_permission_handler import (
     TerminalPermissionHandler as TextualPermissionHandler,
 )

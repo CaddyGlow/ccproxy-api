@@ -22,7 +22,7 @@ import json
 import logging
 import os
 import pathlib
-from typing import Any, Optional
+from typing import Any
 
 import openai
 from openai.types.chat import ChatCompletionMessageParam

@@ -2,19 +2,15 @@
 
 import asyncio
 import json
-from collections.abc import AsyncGenerator, Callable
+from collections.abc import Callable
 from typing import Any
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
-from httpx import AsyncClient
-from pydantic import BaseModel
 
 from ccproxy.api.routes.permissions import (
-    PermissionRequestInfo,
-    PermissionResponse,
     event_generator,
     router,
 )

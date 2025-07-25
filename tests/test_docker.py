@@ -4,10 +4,7 @@ Tests Docker adapter, path utilities, validation, streaming processes,
 and middleware components following the testing patterns from TESTING.md.
 """
 
-import asyncio
-from collections.abc import Generator
 from pathlib import Path
-from typing import Any, Union
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -18,7 +15,6 @@ from ccproxy.docker.middleware import LoggerOutputMiddleware, create_logger_midd
 from ccproxy.docker.models import DockerUserContext
 from ccproxy.docker.stream_process import (
     DefaultOutputMiddleware,
-    OutputMiddleware,
     run_command,
 )
 from ccproxy.docker.validators import create_docker_error, validate_port_spec

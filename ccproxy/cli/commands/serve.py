@@ -10,7 +10,6 @@ import uvicorn
 from click import get_current_context
 from structlog import get_logger
 
-from ccproxy._version import __version__
 from ccproxy.cli.helpers import (
     get_rich_toolkit,
     is_running_in_docker,
@@ -601,7 +600,6 @@ def api(
 
         # Set up logging once with the effective log level
         # Import here to avoid circular import
-        import structlog
 
         from ccproxy.core.logging import setup_logging
 

@@ -5,7 +5,7 @@ from collections.abc import AsyncIterator
 from typing import Any
 
 import structlog
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
 from ccproxy.adapters.openai.adapter import (

@@ -1,7 +1,6 @@
 """Claude-specific CLI options."""
 
 from pathlib import Path
-from typing import Any
 
 import typer
 

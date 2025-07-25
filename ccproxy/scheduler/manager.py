@@ -1,13 +1,10 @@
 """Scheduler management for FastAPI integration."""
 
-import asyncio
-from typing import Any
-
 import structlog
 
 from ccproxy.config.settings import Settings
 
-from .core import Scheduler, get_scheduler
+from .core import Scheduler
 from .registry import register_task
 from .tasks import PricingCacheUpdateTask, PushgatewayTask, StatsPrintingTask
 

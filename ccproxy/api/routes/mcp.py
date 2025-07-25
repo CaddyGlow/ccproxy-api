@@ -3,10 +3,9 @@
 Provides MCP server functionality including permission checking tools.
 """
 
-import asyncio
 from typing import Annotated
 
-from fastapi import Depends, FastAPI
+from fastapi import FastAPI
 from fastapi_mcp import FastApiMCP  # type: ignore[import-untyped]
 from pydantic import BaseModel, ConfigDict, Field
 from structlog import get_logger

@@ -1,10 +1,9 @@
 """Tests for CLI confirmation handler SSE client."""
 
 import asyncio
-import json
 from collections.abc import AsyncGenerator
 from typing import Any, cast
-from unittest.mock import AsyncMock, Mock, call, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 import httpx
 import pytest
@@ -17,7 +16,6 @@ from ccproxy.cli.commands.permission_handler import (
     connect,
 )
 from ccproxy.config.settings import Settings
-from ccproxy.models.permissions import EventType
 
 
 @pytest.fixture

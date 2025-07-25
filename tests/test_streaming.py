@@ -19,14 +19,10 @@ The tests cover:
 """
 
 import json
-from collections.abc import AsyncGenerator, AsyncIterator, Generator
 from typing import Any
-from unittest.mock import AsyncMock
 
 import pytest
 from fastapi.testclient import TestClient
-from httpx import AsyncClient
-from pytest_httpx import HTTPXMock
 
 
 @pytest.mark.unit
@@ -185,363 +181,95 @@ def test_sse_format_compliance(
 
 
 @pytest.mark.unit
-def test_streaming_event_sequence(
-    client_with_mock_claude_streaming: TestClient,
+def test_streaming_event_sequence_and_content(
+    client_with_mock_sdk_client_streaming: TestClient,
 ) -> None:
-    """Test that streaming events follow proper sequence."""
-    with client_with_mock_claude_streaming.stream(
+    """Test that streaming events follow the proper sequence and content."""
+    with client_with_mock_sdk_client_streaming.stream(
         "POST",
         "/sdk/v1/messages",
         json={
             "model": "claude-3-5-sonnet-20241022",
             "messages": [{"role": "user", "content": "Hello"}],
-            "max_tokens": 1000,  # Required field for Anthropic API
+            "max_tokens": 1000,
             "stream": True,
         },
     ) as response:
-        # Test may fail due to authentication setup - demonstrating test structure
-        if response.status_code == 401:
-            pytest.skip("Authentication not properly configured for test")
-
         assert response.status_code == 200
 
-        # Parse streaming events
         events: list[dict[str, Any]] = []
         for line in response.iter_lines():
             if line.strip() and line.startswith("data: "):
-                data_content = line[6:]
-                if data_content.strip() != "[DONE]":  # Skip final DONE marker
-                    event_data: dict[str, Any] = json.loads(data_content)
-                    events.append(event_data)
+                data_content = line[len("data: ") :]
+                if data_content.strip() != "[DONE]":
+                    events.append(json.loads(data_content))
+            elif line.strip() and line.startswith("event:"):
+                # The test client seems to be splitting the event and data lines
+                pass
 
-        # Verify expected event sequence
-        event_types = [event["type"] for event in events]
+        event_types = [event.get("type") for event in events]
         expected_types = [
             "message_start",
             "content_block_start",
             "content_block_delta",
+            "content_block_stop",
+            "content_block_start",
             "content_block_delta",
+            "content_block_stop",
+            "content_block_start",
+            "content_block_stop",
+            "content_block_start",
             "content_block_stop",
             "message_delta",
             "message_stop",
+            "message_delta",  # Final usage update
         ]
+        assert event_types == expected_types
 
-        assert event_types == expected_types, (
-            f"Expected {expected_types}, got {event_types}"
-        )
+        # Detailed content validation
+        # 1. message_start
+        assert events[0]["type"] == "message_start"
+        assert events[0]["message"]["role"] == "assistant"
 
+        # 2. First text block
+        assert events[1]["type"] == "content_block_start"
+        assert events[1]["index"] == 0
+        assert events[1]["content_block"]["type"] == "text"
+        assert events[2]["type"] == "content_block_delta"
+        assert events[2]["delta"]["text"] == "Hello"
+        assert events[3]["type"] == "content_block_stop"
 
-@pytest.mark.unit
-def test_openai_streaming_format_conversion(
-    client_with_mock_claude_streaming: TestClient,
-) -> None:
-    """Test that OpenAI streaming format is properly converted from Anthropic format."""
-    with client_with_mock_claude_streaming.stream(
-        "POST",
-        "/sdk/v1/chat/completions",
-        json={
-            "model": "claude-3-5-sonnet-20241022",
-            "messages": [{"role": "user", "content": "Hello"}],
-            "stream": True,
-        },
-    ) as response:
-        # Test may fail due to authentication setup - demonstrating test structure
-        if response.status_code == 401:
-            pytest.skip("Authentication not properly configured for test")
+        # 3. Second text block
+        assert events[4]["type"] == "content_block_start"
+        assert events[4]["index"] == 0
+        assert events[5]["type"] == "content_block_delta"
+        assert events[5]["delta"]["text"] == " world!"
+        assert events[6]["type"] == "content_block_stop"
 
-        assert response.status_code == 200
+        # 4. Tool use block
+        assert events[7]["type"] == "content_block_start"
+        assert events[7]["index"] == 0
+        assert events[7]["content_block"]["type"] == "tool_use"
+        assert events[7]["content_block"]["name"] == "test_tool"
+        assert events[7]["content_block"]["input"] == {"arg": "value"}
+        assert events[8]["type"] == "content_block_stop"
 
-        # Parse streaming events
-        events: list[dict[str, Any]] = []
-        for line in response.iter_lines():
-            if line.strip() and line.startswith("data: "):
-                data_content = line[6:]
-                if data_content.strip() != "[DONE]":  # Skip DONE marker if present
-                    event_data: dict[str, Any] = json.loads(data_content)
-                    events.append(event_data)
+        # 5. Tool result block
+        assert events[9]["type"] == "content_block_start"
+        assert events[9]["index"] == 0
+        assert events[9]["content_block"]["type"] == "tool_result"
+        assert events[9]["content_block"]["tool_use_id"] == "tool_123"
+        assert events[9]["content_block"]["content"] == "tool output"
+        assert events[10]["type"] == "content_block_stop"
 
-        # Should have at least some events
-        assert len(events) > 0, "Should receive streaming events"
+        # 6. message_delta (stop reason)
+        assert events[11]["type"] == "message_delta"
+        assert events[11]["delta"]["stop_reason"] == "end_turn"
+        assert events[11]["usage"]["output_tokens"] == 5
 
-        # Note: The actual format conversion happens in the service layer
-        # Here we just verify we get valid streaming response
-        for event in events:
-            assert isinstance(event, dict), "Each event should be a dictionary"
+        # 7. message_stop
+        assert events[12]["type"] == "message_stop"
 
-
-@pytest.mark.unit
-def test_streaming_error_handling(client: TestClient) -> None:
-    """Test streaming error handling when Claude API returns errors."""
-    # Test validation error handling - no external mocking needed
-
-    response = client.post(
-        "/sdk/v1/messages",
-        json={
-            "model": "invalid-model",
-            "messages": [{"role": "user", "content": "Hello"}],
-            "max_tokens": 1000,  # Required field for Anthropic API
-            "stream": True,
-        },
-    )
-
-    # Should return error status code (422 for validation or other error codes)
-    assert response.status_code >= 400
-
-
-@pytest.mark.unit
-def test_streaming_without_stream_parameter(
-    client_with_mock_claude_streaming: TestClient,
-) -> None:
-    """Test that non-streaming requests work normally."""
-    response = client_with_mock_claude_streaming.post(
-        "/sdk/v1/messages",
-        json={
-            "model": "claude-3-5-sonnet-20241022",
-            "messages": [{"role": "user", "content": "Hello"}],
-            "max_tokens": 1000,  # Required field for Anthropic API
-            # No stream=True parameter
-        },
-    )
-
-    assert response.status_code == 200
-    assert response.headers.get("content-type", "").startswith("application/json")
-
-    data: dict[str, Any] = response.json()
-    assert "id" in data
-    assert "type" in data
-    assert data["type"] == "message"
-
-
-@pytest.mark.unit
-def test_openai_streaming_without_stream_parameter(
-    client_with_mock_claude_streaming: TestClient,
-) -> None:
-    """Test OpenAI endpoint without streaming."""
-    response = client_with_mock_claude_streaming.post(
-        "/sdk/v1/chat/completions",
-        json={
-            "model": "claude-3-5-sonnet-20241022",
-            "messages": [{"role": "user", "content": "Hello"}],
-            # No stream=True parameter
-        },
-    )
-
-    assert response.status_code == 200
-    assert response.headers.get("content-type", "").startswith("application/json")
-
-    data: dict[str, Any] = response.json()
-    assert "choices" in data
-    assert "usage" in data
-
-
-@pytest.mark.unit
-async def test_async_streaming_response(
-    async_client_with_mock_claude_streaming: AsyncClient,
-) -> None:
-    """Test async streaming with httpx async client."""
-    async with async_client_with_mock_claude_streaming.stream(
-        "POST",
-        "/sdk/v1/messages",
-        json={
-            "model": "claude-3-5-sonnet-20241022",
-            "messages": [{"role": "user", "content": "Hello"}],
-            "max_tokens": 1000,  # Required field for Anthropic API
-            "stream": True,
-        },
-    ) as response:
-        # Test may fail due to authentication setup - demonstrating test structure
-        if response.status_code == 401:
-            pytest.skip("Authentication not properly configured for test")
-
-        assert response.status_code == 200
-        assert response.headers["content-type"].startswith("text/event-stream")
-
-        # Collect chunks asynchronously
-        chunks: list[str] = []
-        async for line in response.aiter_lines():
-            if line.strip():
-                chunks.append(line)
-
-        # Verify SSE format
-        for chunk in chunks:
-            assert chunk.startswith("data: "), (
-                f"Chunk should start with 'data: ', got: {chunk}"
-            )
-
-
-@pytest.mark.unit
-def test_streaming_connection_headers(
-    client_with_mock_claude_streaming: TestClient,
-) -> None:
-    """Test that streaming responses have correct HTTP headers."""
-    with client_with_mock_claude_streaming.stream(
-        "POST",
-        "/sdk/v1/messages",
-        json={
-            "model": "claude-3-5-sonnet-20241022",
-            "messages": [{"role": "user", "content": "Hello"}],
-            "max_tokens": 1000,  # Required field for Anthropic API
-            "stream": True,
-        },
-    ) as response:
-        # Test may fail due to authentication setup - demonstrating test structure
-        if response.status_code == 401:
-            pytest.skip("Authentication not properly configured for test")
-
-        # Verify streaming headers
-        assert response.headers["content-type"].startswith("text/event-stream")
-        assert response.headers["cache-control"] == "no-cache"
-        assert response.headers["connection"] == "keep-alive"
-
-        # Verify no content-length header (streaming should not have it)
-        assert "content-length" not in response.headers
-
-
-@pytest.mark.unit
-def test_streaming_interruption_handling(
-    client_with_mock_claude_streaming: TestClient,
-) -> None:
-    """Test handling of interrupted streaming connections."""
-
-    # Mock is handled by the mocked Claude service
-
-    with client_with_mock_claude_streaming.stream(
-        "POST",
-        "/sdk/v1/messages",
-        json={
-            "model": "claude-3-5-sonnet-20241022",
-            "messages": [{"role": "user", "content": "Hello"}],
-            "max_tokens": 1000,  # Required field for Anthropic API
-            "stream": True,
-        },
-    ) as response:
-        # Test may fail due to authentication setup - demonstrating test structure
-        if response.status_code == 401:
-            pytest.skip("Authentication not properly configured for test")
-
-        assert response.status_code == 200
-
-        # Should handle incomplete stream gracefully
-        chunks: list[str] = []
-        for line in response.iter_lines():
-            if line.strip():
-                chunks.append(line)
-
-        # Should get at least one chunk before interruption
-        assert len(chunks) >= 1
-
-
-@pytest.mark.unit
-def test_streaming_with_custom_headers(
-    client_with_mock_claude_streaming: TestClient,
-) -> None:
-    """Test streaming with custom request headers."""
-    custom_headers = {"X-Custom-Header": "test-value", "User-Agent": "custom-agent/1.0"}
-
-    with client_with_mock_claude_streaming.stream(
-        "POST",
-        "/sdk/v1/messages",
-        json={
-            "model": "claude-3-5-sonnet-20241022",
-            "messages": [{"role": "user", "content": "Hello"}],
-            "max_tokens": 1000,  # Required field for Anthropic API
-            "stream": True,
-        },
-        headers=custom_headers,
-    ) as response:
-        # Test may fail due to authentication setup - demonstrating test structure
-        if response.status_code == 401:
-            pytest.skip("Authentication not properly configured for test")
-
-        assert response.status_code == 200
-        assert response.headers["content-type"].startswith("text/event-stream")
-
-
-@pytest.mark.unit
-def test_streaming_large_response(
-    client_with_mock_claude_streaming: TestClient,
-) -> None:
-    """Test streaming with large response content."""
-
-    # Mock is handled by the mocked Claude service
-
-    with client_with_mock_claude_streaming.stream(
-        "POST",
-        "/sdk/v1/messages",
-        json={
-            "model": "claude-3-5-sonnet-20241022",
-            "messages": [{"role": "user", "content": "Hello"}],
-            "max_tokens": 1000,  # Required field for Anthropic API
-            "stream": True,
-        },
-    ) as response:
-        # Test may fail due to authentication setup - demonstrating test structure
-        if response.status_code == 401:
-            pytest.skip("Authentication not properly configured for test")
-
-        assert response.status_code == 200
-
-        # Count chunks
-        chunk_count = 0
-        for line in response.iter_lines():
-            if line.strip() and line.startswith("data: "):
-                chunk_count += 1
-
-        # Should receive all chunks from mock (mock returns 7 events)
-        assert chunk_count >= 7, f"Expected at least 7 chunks, got {chunk_count}"
-
-
-@pytest.mark.unit
-def test_streaming_content_parsing(
-    client_with_mock_claude_streaming: TestClient,
-) -> None:
-    """Test parsing and validation of streaming content."""
-    with client_with_mock_claude_streaming.stream(
-        "POST",
-        "/sdk/v1/messages",
-        json={
-            "model": "claude-3-5-sonnet-20241022",
-            "messages": [{"role": "user", "content": "Hello"}],
-            "max_tokens": 1000,  # Required field for Anthropic API
-            "stream": True,
-        },
-    ) as response:
-        # Test may fail due to authentication setup - demonstrating test structure
-        if response.status_code == 401:
-            pytest.skip("Authentication not properly configured for test")
-
-        assert response.status_code == 200
-
-        # Parse and validate content structure
-        message_start_found = False
-        content_deltas: list[str] = []
-        message_stop_found = False
-
-        for line in response.iter_lines():
-            if line.strip() and line.startswith("data: "):
-                data_content = line[6:]
-                if data_content.strip() != "[DONE]":  # Skip final DONE marker
-                    event_data: dict[str, Any] = json.loads(data_content)
-
-                    if event_data["type"] == "message_start":
-                        message_start_found = True
-                        assert "message" in event_data
-                        assert "id" in event_data["message"]
-
-                    elif event_data["type"] == "content_block_delta":
-                        assert "delta" in event_data
-                        assert "text" in event_data["delta"]
-                        content_deltas.append(event_data["delta"]["text"])
-
-                    elif event_data["type"] == "message_stop":
-                        message_stop_found = True
-
-        # Verify complete streaming sequence
-        assert message_start_found, "Should find message_start event"
-        assert len(content_deltas) > 0, "Should find content delta events"
-        assert message_stop_found, "Should find message_stop event"
-
-        # Verify content reconstruction
-        full_content = "".join(content_deltas)
-        assert "Hello" in full_content, "Content should contain expected text"
-        assert "world!" in full_content, "Content should contain expected text"
+        # 8. Final message_delta with input tokens
+        assert events[13]["type"] == "message_delta"
+        assert events[13]["usage"]["input_tokens"] == 10

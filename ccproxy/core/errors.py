@@ -1,6 +1,6 @@
 """Core error types for the proxy system."""
 
-from typing import Any, Optional
+from typing import Any
 
 from fastapi import HTTPException
 

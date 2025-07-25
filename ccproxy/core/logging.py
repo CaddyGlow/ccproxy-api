@@ -1,7 +1,5 @@
 import logging
 import sys
-from collections.abc import MutableMapping
-from typing import Any
 
 import structlog
 from structlog.stdlib import BoundLogger

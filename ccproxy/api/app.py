@@ -3,10 +3,8 @@
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
-from typing import Any
 
-from fastapi import FastAPI, HTTPException
-from fastapi.responses import JSONResponse
+from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from structlog import get_logger
 
@@ -283,8 +281,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     import logging
 
     import structlog
-
-    from ccproxy.config.settings import config_manager
 
     # Only configure if not already configured or if no file handler exists
     root_logger = logging.getLogger()

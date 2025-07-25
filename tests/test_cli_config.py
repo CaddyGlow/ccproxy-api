@@ -1,6 +1,5 @@
 """Tests for CLI config commands."""
 
-import json
 import tempfile
 from collections.abc import Generator
 from pathlib import Path
@@ -8,15 +7,9 @@ from typing import Any
 from unittest.mock import patch
 
 import pytest
-import typer
 from typer.testing import CliRunner
 
-from ccproxy.cli.commands.config import app, config_list
-from ccproxy.cli.commands.config.commands import (
-    config_init,
-    generate_token,
-)
-from ccproxy.cli.commands.config.schema_commands import config_schema, config_validate
+from ccproxy.cli.commands.config import app
 from ccproxy.config.settings import Settings
 
 

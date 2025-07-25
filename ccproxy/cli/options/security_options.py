@@ -1,7 +1,5 @@
 """Security-related CLI options."""
 
-from typing import Any
-
 import typer
 
 

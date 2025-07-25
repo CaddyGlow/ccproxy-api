@@ -4,7 +4,7 @@ from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from .requests import MessageContent, Usage
+from .requests import Usage
 
 
 class ToolCall(BaseModel):

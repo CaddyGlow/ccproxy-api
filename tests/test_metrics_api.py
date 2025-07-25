@@ -1,18 +1,12 @@
 """Tests for metrics API endpoints with DuckDB storage."""
 
-import asyncio
-import json
 import time
-from collections.abc import AsyncGenerator
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
-
-from ccproxy.api.app import create_app
-from ccproxy.config.settings import Settings
 
 
 @pytest.mark.unit

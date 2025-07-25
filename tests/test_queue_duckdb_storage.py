@@ -9,8 +9,7 @@ import asyncio
 import time
 from collections.abc import Generator
 from pathlib import Path
-from typing import Any
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
 import pytest
 from sqlmodel import Session, select

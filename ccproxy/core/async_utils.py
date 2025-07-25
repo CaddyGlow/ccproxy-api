@@ -465,15 +465,12 @@ def validate_config_with_schema(
     import json
     import subprocess
     import tempfile
-    from typing import Any
 
     # Import tomllib for Python 3.11+ or fallback to tomli
     try:
         import tomllib
     except ImportError:
         import tomli as tomllib  # type: ignore[no-redef]
-
-    from ccproxy.config.settings import Settings
 
     config_path = Path()
 

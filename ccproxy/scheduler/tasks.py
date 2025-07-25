@@ -9,8 +9,6 @@ from typing import Any
 
 import structlog
 
-from .errors import TaskExecutionError
-
 
 logger = structlog.get_logger(__name__)
 

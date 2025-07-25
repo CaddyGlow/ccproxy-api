@@ -15,10 +15,9 @@ These are focused unit tests that test the adapter logic without HTTP calls.
 from __future__ import annotations
 
 import json
-import time
 from collections.abc import AsyncIterator
 from typing import Any
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import Mock, patch
 
 import pytest
 
