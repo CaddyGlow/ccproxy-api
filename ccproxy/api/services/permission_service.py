@@ -2,7 +2,7 @@
 
 import asyncio
 import contextlib
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any, cast
 
 from structlog import get_logger
@@ -183,7 +183,7 @@ class PermissionService:
             try:
                 await asyncio.sleep(5)
 
-                now = datetime.utcnow()
+                now = datetime.now(UTC)
                 expired_ids = []
                 expired_events = []
 

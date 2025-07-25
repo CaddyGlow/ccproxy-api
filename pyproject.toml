@@ -231,6 +231,7 @@ disable_error_code = ["call-arg"]
 
 [tool.pytest.ini_options]
 minversion = "6.0"
+timeout = 30
 addopts = [
   "-ra",
   "--strict-markers",

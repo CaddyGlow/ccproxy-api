@@ -107,9 +107,9 @@ def map_openai_model_to_claude(openai_model: str) -> str:
 class OpenAIAdapter(APIAdapter):
     """OpenAI API adapter for converting between OpenAI and Anthropic formats."""
 
-    def __init__(self) -> None:
+    def __init__(self, include_sdk_content_as_xml: bool = False) -> None:
         """Initialize the OpenAI adapter."""
-        pass
+        self.include_sdk_content_as_xml = include_sdk_content_as_xml
 
     def adapt_request(self, request: dict[str, Any]) -> dict[str, Any]:
         """Convert OpenAI request format to Anthropic format.
