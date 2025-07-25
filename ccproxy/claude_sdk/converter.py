@@ -347,6 +347,129 @@ class MessageConverter:
         }
 
     @staticmethod
+    def convert_sdk_messages_to_anthropic_response(
+        sdk_messages: list[Any],
+        model: str,
+        mode: SystemMessageMode = SystemMessageMode.FORWARD,
+        pretty_format: bool = True,
+    ) -> dict[str, Any]:
+        """
+        Convert a full list of Claude SDK messages to Anthropic API response format.
+
+        This method processes all SDK messages from a non-streaming response and
+        consolidates them into a single Anthropic API response, handling system
+        messages and other SDK-specific content based on the specified mode.
+
+        Args:
+            sdk_messages: List of SDK messages (AssistantMessage, SystemMessage, ResultMessage, etc.)
+            model: The model name used
+            mode: System message handling mode (forward, ignore, formatted)
+            pretty_format: Whether to use pretty formatting for XML content
+
+        Returns:
+            Response in Anthropic API format
+        """
+        from claude_code_sdk import (
+            AssistantMessage,
+            ResultMessage,
+            SystemMessage,
+            UserMessage,
+        )
+
+        assistant_messages = []
+        system_messages = []
+        result_message = None
+
+        # Separate message types
+        for message in sdk_messages:
+            if isinstance(message, AssistantMessage):
+                assistant_messages.append(message)
+            elif isinstance(message, SystemMessage):
+                system_messages.append(message)
+            elif isinstance(message, ResultMessage):
+                result_message = message
+            elif isinstance(message, UserMessage):
+                # UserMessage might contain tool results in some cases
+                pass
+
+        # If we have no assistant messages, create a minimal response
+        if not assistant_messages:
+            if result_message:
+                usage = getattr(result_message, "usage", {})
+                return {
+                    "id": f"msg_{getattr(result_message, 'session_id', 'unknown')}",
+                    "type": "message",
+                    "role": "assistant",
+                    "content": [],
+                    "model": model,
+                    "stop_reason": getattr(result_message, "stop_reason", "end_turn"),
+                    "stop_sequence": None,
+                    "usage": usage or {},
+                }
+            else:
+                return {
+                    "id": "msg_unknown",
+                    "type": "message",
+                    "role": "assistant",
+                    "content": [],
+                    "model": model,
+                    "stop_reason": "end_turn",
+                    "stop_sequence": None,
+                    "usage": {},
+                }
+
+        # Process the first assistant message as the main response
+        main_assistant_message = assistant_messages[0]
+
+        # If we have a result message, use the existing conversion method
+        if result_message:
+            response = MessageConverter.convert_to_anthropic_response(
+                main_assistant_message, result_message, model, mode, pretty_format
+            )
+        else:
+            # Fallback for cases without result message
+            response = {
+                "id": "msg_unknown",
+                "type": "message",
+                "role": "assistant",
+                "content": [],
+                "model": model,
+                "stop_reason": "end_turn",
+                "stop_sequence": None,
+                "usage": {},
+            }
+
+        # Add system messages if mode is not IGNORE
+        if mode != SystemMessageMode.IGNORE and system_messages:
+            for system_message in system_messages:
+                system_text = system_message.data.get("text", str(system_message.data))
+
+                # Create system message content block
+                system_content_block = (
+                    MessageConverter.create_system_message_content_block(
+                        system_text,
+                        mode,
+                        source="claude_code_sdk",
+                        pretty_format=pretty_format,
+                    )
+                )
+
+                # Add to the beginning of content blocks
+                response["content"].insert(0, system_content_block)
+
+        # If we have multiple assistant messages, append their content
+        if len(assistant_messages) > 1:
+            for additional_message in assistant_messages[1:]:
+                # Convert additional assistant message content
+                for block in additional_message.content:
+                    # Process each content block similar to the main conversion
+                    # This is simplified - in practice you might want more sophisticated merging
+                    if hasattr(block, "text"):
+                        response["content"].append({"type": "text", "text": block.text})
+
+        return response
+
+    @staticmethod
     def create_streaming_start_chunks(
         message_id: str, model: str, input_tokens: int = 0
     ) -> list[tuple[str, dict[str, Any]]]:

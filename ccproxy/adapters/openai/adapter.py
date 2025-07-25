@@ -331,93 +331,6 @@ class OpenAIAdapter(APIAdapter):
         )
         return anthropic_request
 
-    def _parse_formatted_sdk_content(self, text: str) -> tuple[str, list[Any]]:
-        """Parse XML-formatted SDK content from text blocks.
-
-        Args:
-            text: Text content that may contain XML-formatted SDK data
-
-        Returns:
-            Tuple of (cleaned_text, tool_calls)
-        """
-        import json
-        import re
-
-        tool_calls = []
-        cleaned_text = text
-
-        # Parse system_message XML tags
-        system_pattern = r"<system_message>(.*?)</system_message>"
-        for match in re.finditer(system_pattern, text, re.DOTALL):
-            try:
-                system_data = json.loads(match.group(1))
-                source = system_data.get("source", "claude_code_sdk")
-                system_text = system_data.get("text", "")
-                formatted_content = f"[{source}]: {system_text}"
-                cleaned_text = cleaned_text.replace(match.group(0), formatted_content)
-            except json.JSONDecodeError:
-                # Keep original if parsing fails
-                pass
-
-        # Parse tool_use_sdk XML tags
-        tool_use_pattern = r"<tool_use_sdk>(.*?)</tool_use_sdk>"
-        for match in re.finditer(tool_use_pattern, text, re.DOTALL):
-            try:
-                tool_data = json.loads(match.group(1))
-                tool_call_block = {
-                    "type": "tool_use",
-                    "id": tool_data.get("id", ""),
-                    "name": tool_data.get("name", ""),
-                    "input": tool_data.get("input", {}),
-                }
-                tool_calls.append(format_openai_tool_call(tool_call_block))
-                # Remove the XML tag from text
-                cleaned_text = cleaned_text.replace(match.group(0), "")
-            except json.JSONDecodeError:
-                # Keep original if parsing fails
-                pass
-
-        # Parse tool_result_sdk XML tags
-        tool_result_pattern = r"<tool_result_sdk>(.*?)</tool_result_sdk>"
-        for match in re.finditer(tool_result_pattern, text, re.DOTALL):
-            try:
-                result_data = json.loads(match.group(1))
-                tool_use_id = result_data.get("tool_use_id", "")
-                result_content = result_data.get("content", "")
-                is_error = result_data.get("is_error", False)
-                error_indicator = " (ERROR)" if is_error else ""
-                formatted_content = f"[claude_code_sdk tool_result {tool_use_id}{error_indicator}]: {result_content}"
-                cleaned_text = cleaned_text.replace(match.group(0), formatted_content)
-            except json.JSONDecodeError:
-                # Keep original if parsing fails
-                pass
-
-        # Parse result_message XML tags
-        result_message_pattern = r"<result_message>(.*?)</result_message>"
-        for match in re.finditer(result_message_pattern, text, re.DOTALL):
-            try:
-                result_data = json.loads(match.group(1))
-                source = result_data.get("source", "claude_code_sdk")
-                session_id = result_data.get("session_id", "")
-                stop_reason = result_data.get("stop_reason", "")
-                usage = result_data.get("usage", {})
-                cost_usd = result_data.get("total_cost_usd")
-                formatted_content = f"[{source} result {session_id}]: stop_reason={stop_reason}, usage={usage}"
-                if cost_usd is not None:
-                    formatted_content += f", cost_usd={cost_usd}"
-                cleaned_text = cleaned_text.replace(match.group(0), formatted_content)
-            except json.JSONDecodeError:
-                # Keep original if parsing fails
-                pass
-
-        # Parse <text></text> tags and extract the inner content
-        text_pattern = r"<text>\n?(.*?)\n?</text>"
-        for match in re.finditer(text_pattern, text, re.DOTALL):
-            inner_text = match.group(1).strip()
-            cleaned_text = cleaned_text.replace(match.group(0), inner_text)
-
-        return cleaned_text.strip(), tool_calls
-
     def adapt_response(self, response: dict[str, Any]) -> dict[str, Any]:
         """Convert Anthropic response format to OpenAI format.
 
@@ -445,12 +358,8 @@ class OpenAIAdapter(APIAdapter):
                 for block in response["content"]:
                     if block.get("type") == "text":
                         text_content = block.get("text", "")
-                        # Parse any XML-formatted SDK content from the text
-                        parsed_text, parsed_tool_calls = (
-                            self._parse_formatted_sdk_content(text_content)
-                        )
-                        content += parsed_text
-                        tool_calls.extend(parsed_tool_calls)
+                        # Forward text content as-is (already formatted if needed)
+                        content += text_content
                     elif block.get("type") == "system_message":
                         # Handle custom system_message content blocks
                         system_text = block.get("text", "")
@@ -590,31 +499,25 @@ class OpenAIAdapter(APIAdapter):
         Raises:
             ValueError: If the stream format is invalid or unsupported
         """
-        # Create stream processor
+        # Create stream processor with dict output format
         processor = OpenAIStreamProcessor(
             enable_usage=True,
             enable_tool_calls=True,
-            enable_text_chunking=False,  # Keep text as-is for compatibility
+            output_format="dict",  # Output dict objects instead of SSE strings
         )
 
         try:
-            # Process the stream and parse SSE format back to dict objects
-            async for sse_chunk in processor.process_stream(stream):
-                if sse_chunk.startswith("data: "):
-                    data_str = sse_chunk[6:].strip()
-                    if data_str and data_str != "[DONE]":
-                        try:
-                            yield json.loads(data_str)
-                        except json.JSONDecodeError:
-                            logger.warning(
-                                "streaming_chunk_parse_failed",
-                                chunk_data=data_str[:100] + "..."
-                                if len(data_str) > 100
-                                else data_str,
-                                operation="adapt_stream",
-                            )
-                            continue
-        except (ValueError, json.JSONDecodeError) as e:
+            # Process the stream - now yields dict objects directly
+            async for chunk in processor.process_stream(stream):
+                yield chunk  # type: ignore[misc]  # chunk is guaranteed to be dict when output_format="dict"
+        except Exception as e:
+            logger.error(
+                "streaming_conversion_failed",
+                error=str(e),
+                error_type=type(e).__name__,
+                operation="adapt_stream",
+                exc_info=True,
+            )
             raise ValueError(f"Error processing streaming response: {e}") from e
 
     def _convert_messages_to_anthropic(

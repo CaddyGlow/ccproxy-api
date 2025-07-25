@@ -1046,12 +1046,21 @@ class ProxyService:
 
         # Parse SSE chunks from response into dict stream
         async def sse_to_dict_stream() -> AsyncGenerator[dict[str, object], None]:
+            chunk_count = 0
             async for line in response.aiter_lines():
                 if line.startswith("data: "):
                     data_str = line[6:].strip()
                     if data_str and data_str != "[DONE]":
                         try:
-                            yield json.loads(data_str)
+                            chunk_data = json.loads(data_str)
+                            chunk_count += 1
+                            logger.debug(
+                                "proxy_anthropic_chunk_received",
+                                chunk_count=chunk_count,
+                                chunk_type=chunk_data.get("type"),
+                                chunk=chunk_data,
+                            )
+                            yield chunk_data
                         except json.JSONDecodeError:
                             logger.warning("sse_parse_failed", data=data_str)
                             continue
