@@ -340,6 +340,38 @@ class OpenAIStreamProcessor:
                 self.thinking_block_active = True
                 self.current_thinking_text = ""
                 self.current_thinking_signature = None
+            elif block.get("type") == "system_message":
+                # Handle system message content block
+                system_text = block.get("text", "")
+                source = block.get("source", "claude_code_sdk")
+                # Format as text with clear source attribution
+                formatted_text = f"[{source}]: {system_text}"
+                yield self.formatter.format_content_chunk(
+                    self.message_id, self.model, self.created, formatted_text
+                )
+            elif block.get("type") == "tool_use_sdk" and self.enable_tool_calls:
+                # Handle custom tool_use_sdk content block
+                tool_id = block.get("id", "")
+                tool_name = block.get("name", "")
+                tool_input = block.get("input", {})
+                source = block.get("source", "claude_code_sdk")
+                self.tool_calls[tool_id] = {
+                    "id": tool_id,
+                    "name": tool_name,
+                    "arguments": tool_input,
+                    "source": source,
+                }
+            elif block.get("type") == "tool_result_sdk":
+                # Handle custom tool_result_sdk content block
+                source = block.get("source", "claude_code_sdk")
+                tool_use_id = block.get("tool_use_id", "")
+                result_content = block.get("content", "")
+                is_error = block.get("is_error", False)
+                error_indicator = " (ERROR)" if is_error else ""
+                formatted_text = f"[{source} tool_result {tool_use_id}{error_indicator}]: {result_content}"
+                yield self.formatter.format_content_chunk(
+                    self.message_id, self.model, self.created, formatted_text
+                )
             elif block.get("type") == "tool_use" and self.enable_tool_calls:
                 # Start of tool call
                 tool_id = block.get("id", "")

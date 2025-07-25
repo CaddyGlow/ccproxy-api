@@ -198,6 +198,7 @@ class ClaudeSDKService:
         messages = []
         result_message = None
         assistant_message = None
+        system_messages = []
 
         async for message in self.sdk_client.query_completion(
             prompt, options, request_id
@@ -207,6 +208,17 @@ class ClaudeSDKService:
                 assistant_message = message
             elif isinstance(message, ResultMessage):
                 result_message = message
+            elif isinstance(message, SystemMessage):
+                # Collect SystemMessages for processing if configured
+                if (
+                    self.settings
+                    and self.settings.claude.include_system_messages_in_stream
+                ):
+                    system_messages.append(message)
+                else:
+                    logger.debug(
+                        "Ignoring SystemMessage in non-streaming response (configured to ignore)."
+                    )
 
         # Get Claude API call timing
         claude_api_call_ms = self.sdk_client.get_last_api_call_time_ms()
@@ -230,6 +242,16 @@ class ClaudeSDKService:
         response = self.message_converter.convert_to_anthropic_response(
             assistant_message, result_message, model
         )
+
+        # Add SystemMessages to response content if any were collected
+        if system_messages and "content" in response:
+            for system_message in system_messages:
+                system_content_block = (
+                    self.message_converter.create_system_message_content_block(
+                        f"{system_message.subtype}: {system_message.data}"
+                    )
+                )
+                response["content"].append(system_content_block)
 
         # Extract token usage and cost from result message using direct access
         cost_usd = result_message.total_cost_usd
@@ -336,9 +358,9 @@ class ClaudeSDKService:
 
                     # Iterate through content blocks and yield structured chunks for each
                     for i, block in enumerate(message.content):
-                        # --- Handle Text Blocks ---
+                        # Handle Text Blocks
                         if isinstance(block, TextBlock) and block.text:
-                            # 1. Start a new text block
+                            # Start a new text block
                             yield {
                                 "event": "content_block_start",
                                 "data": {
@@ -347,7 +369,7 @@ class ClaudeSDKService:
                                     "content_block": {"type": "text", "text": ""},
                                 },
                             }
-                            # 2. Send the text content in a delta
+                            # Send the text content in a delta
                             yield {
                                 "event": "content_block_delta",
                                 "data": {
@@ -356,7 +378,7 @@ class ClaudeSDKService:
                                     "delta": {"type": "text_delta", "text": block.text},
                                 },
                             }
-                            # 3. Stop the text block
+                            # Stop the text block
                             yield {
                                 "event": "content_block_stop",
                                 "data": {"type": "content_block_stop", "index": i},
@@ -365,17 +387,18 @@ class ClaudeSDKService:
                         # --- Handle Tool Use Blocks ---
                         elif isinstance(block, ToolUseBlock):
                             tool_input = getattr(block, "input", {}) or {}
-                            # 1. Start a new tool_use block with all its data
+                            # Start a new tool_use_sdk block with all its data
                             yield {
                                 "event": "content_block_start",
                                 "data": {
                                     "type": "content_block_start",
                                     "index": i,
                                     "content_block": {
-                                        "type": "tool_use",
+                                        "type": "tool_use_sdk",
                                         "id": getattr(block, "id", f"tool_{id(block)}"),
                                         "name": block.name,
                                         "input": tool_input,
+                                        "source": "claude_code_sdk",
                                     },
                                 },
                             }
@@ -387,16 +410,21 @@ class ClaudeSDKService:
 
                         # --- Handle Tool Result Blocks ---
                         elif isinstance(block, ToolResultBlock):
-                            # 1. Start a new tool_result block
+                            is_error = getattr(block, "is_error", None)
+                            # 1. Start a new tool_result_sdk block
                             yield {
                                 "event": "content_block_start",
                                 "data": {
                                     "type": "content_block_start",
                                     "index": i,
                                     "content_block": {
-                                        "type": "tool_result",
+                                        "type": "tool_result_sdk",
                                         "tool_use_id": block.tool_use_id,
                                         "content": block.content,
+                                        "is_error": is_error
+                                        if is_error is not None
+                                        else False,
+                                        "source": "claude_code_sdk",
                                     },
                                 },
                             }
@@ -407,10 +435,67 @@ class ClaudeSDKService:
                             }
 
                 elif isinstance(message, SystemMessage):
-                    # System messages are part of the input, not the response stream.
-                    logger.warning(
-                        "Ignoring unexpected SystemMessage in streaming response."
-                    )
+                    # Handle SystemMessage based on configuration
+                    if (
+                        self.settings
+                        and self.settings.claude.include_system_messages_in_stream
+                    ):
+                        # Process SystemMessage as a special text block with SDK indicator
+                        system_text = f"{message.subtype}: {message.data}"
+                        index = (
+                            len(
+                                [
+                                    block
+                                    for am in assistant_messages
+                                    for block in getattr(am, "content", [])
+                                ]
+                            ),
+                        )[0]
+
+                        yield {
+                            "event": "content_block_start",
+                            "data": {
+                                "type": "content_block_start",
+                                "index": index,
+                                "content_block": {"type": "text", "text": ""},
+                            },
+                        }
+                        # 2. Send the text content in a delta
+                        yield {
+                            "event": "content_block_delta",
+                            "data": {
+                                "type": "content_block_delta",
+                                "index": index,
+                                "delta": {"type": "text_delta", "text": system_text},
+                            },
+                        }
+                        # 3. Stop the text block
+                        yield {
+                            "event": "content_block_stop",
+                            "data": {"type": "content_block_stop", "index": index},
+                        }
+
+                        # system_chunks = (
+                        #     self.message_converter.create_system_message_chunks(
+                        #         system_text,
+                        #         index=len(
+                        #             [
+                        #                 block
+                        #                 for am in assistant_messages
+                        #                 for block in getattr(am, "content", [])
+                        #             ]
+                        #         ),
+                        #     )
+                        # )
+
+                        # Yield the system message chunks
+                        # for event_type, chunk_data in system_chunks:
+                        #     yield {"event": event_type, "data": chunk_data}
+                    else:
+                        # Legacy behavior: ignore with debug logging
+                        logger.debug(
+                            "Ignoring SystemMessage in streaming response (configured to ignore)."
+                        )
                     continue
 
                 elif isinstance(message, ResultMessage):

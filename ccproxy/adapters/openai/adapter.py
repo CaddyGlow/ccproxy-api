@@ -358,6 +358,29 @@ class OpenAIAdapter(APIAdapter):
                 for block in response["content"]:
                     if block.get("type") == "text":
                         content += block.get("text", "")
+                    elif block.get("type") == "system_message":
+                        # Handle custom system_message content blocks
+                        system_text = block.get("text", "")
+                        source = block.get("source", "claude_code_sdk")
+                        # Format as text with clear source attribution
+                        content += f"[{source}]: {system_text}"
+                    elif block.get("type") == "tool_use_sdk":
+                        # Handle custom tool_use_sdk content blocks - convert to standard tool_calls
+                        tool_call_block = {
+                            "type": "tool_use",
+                            "id": block.get("id", ""),
+                            "name": block.get("name", ""),
+                            "input": block.get("input", {}),
+                        }
+                        tool_calls.append(format_openai_tool_call(tool_call_block))
+                    elif block.get("type") == "tool_result_sdk":
+                        # Handle custom tool_result_sdk content blocks - add as text with source attribution
+                        source = block.get("source", "claude_code_sdk")
+                        tool_use_id = block.get("tool_use_id", "")
+                        result_content = block.get("content", "")
+                        is_error = block.get("is_error", False)
+                        error_indicator = " (ERROR)" if is_error else ""
+                        content += f"[{source} tool_result {tool_use_id}{error_indicator}]: {result_content}"
                     elif block.get("type") == "thinking":
                         # Handle thinking blocks - we can include them with a marker
                         thinking_text = block.get("thinking", "")
@@ -365,6 +388,7 @@ class OpenAIAdapter(APIAdapter):
                         if thinking_text:
                             content += f'<thinking signature="{signature}">{thinking_text}</thinking>'
                     elif block.get("type") == "tool_use":
+                        # Handle legacy tool_use content blocks
                         tool_calls.append(format_openai_tool_call(block))
                     else:
                         logger.warning(

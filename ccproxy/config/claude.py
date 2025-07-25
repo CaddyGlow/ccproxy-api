@@ -41,6 +41,11 @@ class ClaudeSettings(BaseModel):
         description="Claude Code SDK options configuration",
     )
 
+    include_system_messages_in_stream: bool = Field(
+        default=True,
+        description="Include system messages in streaming responses with [claude_code_sdk] prefix. Default: True (process messages), False (ignore messages - legacy behavior)",
+    )
+
     @field_validator("cli_path")
     @classmethod
     def validate_claude_cli_path(cls, v: str | None) -> str | None:

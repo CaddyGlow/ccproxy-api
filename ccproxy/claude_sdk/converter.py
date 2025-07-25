@@ -184,23 +184,24 @@ class MessageConverter:
                     cast(
                         dict[str, Any],
                         {
-                            "type": "tool_use",
+                            "type": "tool_use_sdk",
                             "id": getattr(block, "id", f"tool_{id(block)}"),
                             "name": block.name,
                             "input": tool_input,
+                            "source": "claude_code_sdk",
                         },
                     )
                 )
             elif isinstance(block, ToolResultBlock):
-                content_blocks.append(
-                    {
-                        "type": "tool_result",
-                        "tool_use_id": getattr(block, "tool_use_id", ""),
-                        "content": block.content
-                        if isinstance(block.content, str)
-                        else "",
-                    }
-                )
+                is_error = getattr(block, "is_error", None)
+                tool_result_block: dict[str, Any] = {
+                    "type": "tool_result_sdk",
+                    "tool_use_id": getattr(block, "tool_use_id", ""),
+                    "content": block.content if isinstance(block.content, str) else "",
+                    "is_error": is_error if is_error is not None else False,
+                    "source": "claude_code_sdk",
+                }
+                content_blocks.append(tool_result_block)
 
         return {
             "id": f"msg_{result_message.session_id}",
@@ -314,3 +315,59 @@ class MessageConverter:
             Tuple of (event_type, chunk)
         """
         return ("ping", {"type": "ping"})
+
+    @staticmethod
+    def create_system_message_content_block(
+        message_text: str, source: str = "claude_code_sdk"
+    ) -> dict[str, Any]:
+        """
+        Create a system_message content block for non-streaming responses.
+
+        Args:
+            message_text: The system message text content
+            source: The source of the system message (default: "claude_code_sdk")
+
+        Returns:
+            Content block dict for system message
+        """
+        return {
+            "type": "system_message",
+            "text": message_text,
+            "source": source,
+        }
+
+    @staticmethod
+    def create_system_message_chunks(
+        message_text: str, index: int = 0
+    ) -> list[tuple[str, dict[str, Any]]]:
+        """
+        Create streaming chunks for system messages using custom content block type.
+
+        Args:
+            message_text: The system message text content
+            index: The content block index for the system message
+
+        Returns:
+            List of tuples (event_type, chunk) for system message streaming chunks
+        """
+        return [
+            (
+                "content_block_start",
+                {
+                    "type": "content_block_start",
+                    "index": index,
+                    "content_block": {
+                        "type": "system_message",
+                        "text": message_text,
+                        "source": "claude_code_sdk",
+                    },
+                },
+            ),
+            (
+                "content_block_stop",
+                {
+                    "type": "content_block_stop",
+                    "index": index,
+                },
+            ),
+        ]
