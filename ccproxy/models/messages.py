@@ -4,6 +4,8 @@ from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from ccproxy.claude_sdk.models import CustomContentBlock
+
 from .requests import Message, ToolDefinition, Usage
 from .types import ContentBlockType, ServiceTier, StopReason, ToolChoiceType
 
@@ -213,6 +215,9 @@ class MessageContentBlock(BaseModel):
     ] = None
 
 
+CCProxyContentBlock = MessageContentBlock | CustomContentBlock
+
+
 class MessageResponse(BaseModel):
     """Response model for Anthropic Messages API endpoint."""
 
@@ -222,7 +227,7 @@ class MessageResponse(BaseModel):
         "assistant"
     )
     content: Annotated[
-        list[MessageContentBlock],
+        list[CCProxyContentBlock],
         Field(description="Array of content blocks in the response"),
     ]
     model: Annotated[str, Field(description="The model used for the response")]
