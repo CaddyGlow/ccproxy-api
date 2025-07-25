@@ -4,6 +4,7 @@ from typing import Any, cast
 
 import structlog
 
+from ccproxy.config.claude import SystemMessageMode
 from ccproxy.core.async_utils import patched_typing
 
 
@@ -23,6 +24,51 @@ class MessageConverter:
     """
     Handles conversion between Anthropic API format and Claude SDK format.
     """
+
+    @staticmethod
+    def _format_json_data(
+        data: dict[str, Any],
+        pretty_format: bool = True,
+    ) -> str:
+        """
+        Format JSON data with optional indentation and newlines.
+
+        Args:
+            data: Dictionary to format as JSON
+            pretty_format: Whether to use pretty formatting (indented JSON with spacing)
+
+        Returns:
+            Formatted JSON string
+        """
+        import json
+
+        if pretty_format:
+            # Pretty format with indentation and proper spacing
+            return json.dumps(data, indent=2, separators=(", ", ": "))
+        else:
+            # Compact format without indentation or spacing
+            return json.dumps(data, separators=(",", ":"))
+
+    @staticmethod
+    def _escape_content_for_xml(content: str, pretty_format: bool = True) -> str:
+        """
+        Escape content for inclusion in XML tags.
+
+        Args:
+            content: Content to escape
+            pretty_format: Whether to use pretty formatting (no escaping) or compact (escaped)
+
+        Returns:
+            Escaped or unescaped content based on formatting mode
+        """
+        if pretty_format:
+            # Pretty format: no escaping, content as-is
+            return content
+        else:
+            # Compact format: escape special XML characters
+            import html
+
+            return html.escape(content)
 
     @staticmethod
     def format_messages_to_prompt(messages: list[dict[str, Any]]) -> str:
@@ -64,6 +110,8 @@ class MessageConverter:
         assistant_message: AssistantMessage,
         result_message: ResultMessage,
         model: str,
+        mode: SystemMessageMode = SystemMessageMode.FORWARD,
+        pretty_format: bool = True,
     ) -> dict[str, Any]:
         """
         Convert Claude SDK messages to Anthropic API response format.
@@ -72,6 +120,8 @@ class MessageConverter:
             assistant_message: The assistant message from Claude SDK
             result_message: The result message from Claude SDK
             model: The model name used
+            mode: System message handling mode (forward, ignore, formatted)
+            pretty_format: Whether to use pretty formatting (true: indented JSON with newlines, false: compact with escaped content)
 
         Returns:
             Response in Anthropic API format
@@ -155,7 +205,20 @@ class MessageConverter:
                     # Add any text before the thinking block
                     before_text = text[last_end : match.start()].strip()
                     if before_text:
-                        content_blocks.append({"type": "text", "text": before_text})
+                        if mode == SystemMessageMode.FORMATTED:
+                            # Wrap text in <text></text> tags with formatting
+                            escaped_text = MessageConverter._escape_content_for_xml(
+                                before_text, pretty_format
+                            )
+                            if pretty_format:
+                                formatted_text = f"<text>\n{escaped_text}\n</text>\n"
+                            else:
+                                formatted_text = f"<text>{escaped_text}</text>"
+                            content_blocks.append(
+                                {"type": "text", "text": formatted_text}
+                            )
+                        else:
+                            content_blocks.append({"type": "text", "text": before_text})
 
                     # Add the thinking block
                     signature, thinking_text = match.groups()
@@ -172,36 +235,105 @@ class MessageConverter:
                 # Add any remaining text after the last thinking block
                 remaining_text = text[last_end:].strip()
                 if remaining_text:
-                    content_blocks.append({"type": "text", "text": remaining_text})
-
-                # If no thinking blocks were found, add the entire text as a text block
-                if last_end == 0 and text:
-                    content_blocks.append({"type": "text", "text": text})
+                    if mode == SystemMessageMode.FORMATTED:
+                        # Wrap text in <text></text> tags with formatting
+                        escaped_text = MessageConverter._escape_content_for_xml(
+                            remaining_text, pretty_format
+                        )
+                        if pretty_format:
+                            formatted_text = f"<text>\n{escaped_text}\n</text>\n"
+                        else:
+                            formatted_text = f"<text>{escaped_text}</text>"
+                        content_blocks.append({"type": "text", "text": formatted_text})
+                    else:
+                        content_blocks.append({"type": "text", "text": remaining_text})
+                elif last_end == 0 and text:
+                    # If no thinking blocks were found AND no remaining text was processed, add the entire text as a text block
+                    if mode == SystemMessageMode.FORMATTED:
+                        # Wrap text in <text></text> tags with formatting
+                        escaped_text = MessageConverter._escape_content_for_xml(
+                            text, pretty_format
+                        )
+                        if pretty_format:
+                            formatted_text = f"<text>\n{escaped_text}\n</text>\n"
+                        else:
+                            formatted_text = f"<text>{escaped_text}</text>"
+                        content_blocks.append({"type": "text", "text": formatted_text})
+                    else:
+                        content_blocks.append({"type": "text", "text": text})
 
             elif isinstance(block, ToolUseBlock):
-                tool_input = getattr(block, "input", {}) or {}
-                content_blocks.append(
-                    cast(
-                        dict[str, Any],
-                        {
-                            "type": "tool_use_sdk",
-                            "id": getattr(block, "id", f"tool_{id(block)}"),
-                            "name": block.name,
-                            "input": tool_input,
-                            "source": "claude_code_sdk",
-                        },
+                if mode == SystemMessageMode.FORWARD:
+                    tool_input = getattr(block, "input", {}) or {}
+                    content_blocks.append(
+                        cast(
+                            dict[str, Any],
+                            {
+                                "type": "tool_use_sdk",
+                                "id": getattr(block, "id", f"tool_{id(block)}"),
+                                "name": block.name,
+                                "input": tool_input,
+                                "source": "claude_code_sdk",
+                            },
+                        )
                     )
-                )
+                elif mode == SystemMessageMode.FORMATTED:
+                    tool_data = {
+                        "id": getattr(block, "id", f"tool_{id(block)}"),
+                        "name": block.name,
+                        "input": getattr(block, "input", {}) or {},
+                    }
+                    formatted_json = MessageConverter._format_json_data(
+                        tool_data, pretty_format
+                    )
+                    escaped_json = MessageConverter._escape_content_for_xml(
+                        formatted_json, pretty_format
+                    )
+                    if pretty_format:
+                        formatted_text = (
+                            f"<tool_use_sdk>\n{escaped_json}\n</tool_use_sdk>\n"
+                        )
+                    else:
+                        formatted_text = f"<tool_use_sdk>{escaped_json}</tool_use_sdk>"
+                    content_blocks.append({"type": "text", "text": formatted_text})
+                # elif mode == SystemMessageMode.IGNORE: skip entirely
             elif isinstance(block, ToolResultBlock):
-                is_error = getattr(block, "is_error", None)
-                tool_result_block: dict[str, Any] = {
-                    "type": "tool_result_sdk",
-                    "tool_use_id": getattr(block, "tool_use_id", ""),
-                    "content": block.content if isinstance(block.content, str) else "",
-                    "is_error": is_error if is_error is not None else False,
-                    "source": "claude_code_sdk",
-                }
-                content_blocks.append(tool_result_block)
+                if mode == SystemMessageMode.FORWARD:
+                    is_error = getattr(block, "is_error", None)
+                    tool_result_block: dict[str, Any] = {
+                        "type": "tool_result_sdk",
+                        "tool_use_id": getattr(block, "tool_use_id", ""),
+                        "content": block.content
+                        if isinstance(block.content, str)
+                        else "",
+                        "is_error": is_error if is_error is not None else False,
+                        "source": "claude_code_sdk",
+                    }
+                    content_blocks.append(tool_result_block)
+                elif mode == SystemMessageMode.FORMATTED:
+                    tool_result_data = {
+                        "tool_use_id": getattr(block, "tool_use_id", ""),
+                        "content": block.content
+                        if isinstance(block.content, str)
+                        else "",
+                        "is_error": getattr(block, "is_error", False),
+                    }
+                    formatted_json = MessageConverter._format_json_data(
+                        tool_result_data, pretty_format
+                    )
+                    escaped_json = MessageConverter._escape_content_for_xml(
+                        formatted_json, pretty_format
+                    )
+                    if pretty_format:
+                        formatted_text = (
+                            f"<tool_result_sdk>\n{escaped_json}\n</tool_result_sdk>\n"
+                        )
+                    else:
+                        formatted_text = (
+                            f"<tool_result_sdk>{escaped_json}</tool_result_sdk>"
+                        )
+                    content_blocks.append({"type": "text", "text": formatted_text})
+                # elif mode == SystemMessageMode.IGNORE: skip entirely
 
         return {
             "id": f"msg_{result_message.session_id}",
@@ -318,56 +450,290 @@ class MessageConverter:
 
     @staticmethod
     def create_system_message_content_block(
-        message_text: str, source: str = "claude_code_sdk"
-    ) -> dict[str, Any]:
+        message_text: str,
+        mode: SystemMessageMode = SystemMessageMode.FORWARD,
+        source: str = "claude_code_sdk",
+        pretty_format: bool = True,
+    ) -> dict[str, Any] | None:
         """
         Create a system_message content block for non-streaming responses.
 
         Args:
             message_text: The system message text content
+            mode: System message handling mode
             source: The source of the system message (default: "claude_code_sdk")
+            pretty_format: Whether to use pretty formatting
 
         Returns:
-            Content block dict for system message
+            Content block dict for system message, or None if mode is IGNORE
         """
-        return {
-            "type": "system_message",
-            "text": message_text,
-            "source": source,
-        }
+        if mode == SystemMessageMode.IGNORE:
+            return None
+        elif mode == SystemMessageMode.FORWARD:
+            return {
+                "type": "system_message",
+                "text": message_text,
+                "source": source,
+            }
+        elif mode == SystemMessageMode.FORMATTED:
+            system_data = {
+                "text": message_text,
+                "source": source,
+            }
+            formatted_json = MessageConverter._format_json_data(
+                system_data, pretty_format
+            )
+            escaped_json = MessageConverter._escape_content_for_xml(
+                formatted_json, pretty_format
+            )
+            if pretty_format:
+                formatted_text = (
+                    f"<system_message>\n{escaped_json}\n</system_message>\n"
+                )
+            else:
+                formatted_text = f"<system_message>{escaped_json}</system_message>"
+            return {
+                "type": "text",
+                "text": formatted_text,
+            }
 
     @staticmethod
     def create_system_message_chunks(
-        message_text: str, index: int = 0
+        message_text: str,
+        mode: SystemMessageMode = SystemMessageMode.FORWARD,
+        index: int = 0,
+        source: str = "claude_code_sdk",
+        pretty_format: bool = True,
     ) -> list[tuple[str, dict[str, Any]]]:
         """
-        Create streaming chunks for system messages using custom content block type.
+        Create streaming chunks for system messages using specified mode.
 
         Args:
             message_text: The system message text content
+            mode: System message handling mode
             index: The content block index for the system message
+            source: The source of the system message
 
         Returns:
             List of tuples (event_type, chunk) for system message streaming chunks
         """
-        return [
-            (
-                "content_block_start",
-                {
-                    "type": "content_block_start",
-                    "index": index,
-                    "content_block": {
-                        "type": "system_message",
-                        "text": message_text,
-                        "source": "claude_code_sdk",
+        if mode == SystemMessageMode.IGNORE:
+            return []
+        elif mode == SystemMessageMode.FORWARD:
+            return [
+                (
+                    "content_block_start",
+                    {
+                        "type": "content_block_start",
+                        "index": index,
+                        "content_block": {
+                            "type": "system_message",
+                            "text": message_text,
+                            "source": source,
+                        },
                     },
-                },
-            ),
-            (
-                "content_block_stop",
-                {
-                    "type": "content_block_stop",
-                    "index": index,
-                },
-            ),
-        ]
+                ),
+                (
+                    "content_block_stop",
+                    {
+                        "type": "content_block_stop",
+                        "index": index,
+                    },
+                ),
+            ]
+        elif mode == SystemMessageMode.FORMATTED:
+            system_data = {
+                "text": message_text,
+                "source": source,
+            }
+            formatted_json = MessageConverter._format_json_data(
+                system_data, pretty_format
+            )
+            escaped_json = MessageConverter._escape_content_for_xml(
+                formatted_json, pretty_format
+            )
+            if pretty_format:
+                formatted_text = (
+                    f"<system_message>\n{escaped_json}\n</system_message>\n"
+                )
+            else:
+                formatted_text = f"<system_message>{escaped_json}</system_message>"
+            return [
+                (
+                    "content_block_start",
+                    {
+                        "type": "content_block_start",
+                        "index": index,
+                        "content_block": {"type": "text", "text": ""},
+                    },
+                ),
+                (
+                    "content_block_delta",
+                    {
+                        "type": "content_block_delta",
+                        "index": index,
+                        "delta": {"type": "text_delta", "text": formatted_text},
+                    },
+                ),
+                (
+                    "content_block_stop",
+                    {
+                        "type": "content_block_stop",
+                        "index": index,
+                    },
+                ),
+            ]
+
+    @staticmethod
+    def create_result_message_content_block(
+        result_message: ResultMessage,
+        mode: SystemMessageMode = SystemMessageMode.FORWARD,
+        source: str = "claude_code_sdk",
+        pretty_format: bool = True,
+    ) -> dict[str, Any] | None:
+        """
+        Create a result_message content block for non-streaming responses.
+
+        Args:
+            result_message: The ResultMessage from Claude SDK
+            mode: System message handling mode
+            source: The source of the result message (default: "claude_code_sdk")
+
+        Returns:
+            Content block dict for result message, or None if mode is IGNORE
+        """
+        if mode == SystemMessageMode.IGNORE:
+            return None
+        elif mode == SystemMessageMode.FORWARD:
+            # Extract key information from ResultMessage
+            result_data = {
+                "session_id": getattr(result_message, "session_id", ""),
+                "stop_reason": getattr(result_message, "stop_reason", "end_turn"),
+                "usage": getattr(result_message, "usage", {}),
+                "total_cost_usd": getattr(result_message, "total_cost_usd", None),
+            }
+            return {
+                "type": "result_message",
+                "data": result_data,
+                "source": source,
+            }
+        elif mode == SystemMessageMode.FORMATTED:
+            result_data = {
+                "session_id": getattr(result_message, "session_id", ""),
+                "stop_reason": getattr(result_message, "stop_reason", "end_turn"),
+                "usage": getattr(result_message, "usage", {}),
+                "total_cost_usd": getattr(result_message, "total_cost_usd", None),
+                "source": source,
+            }
+            formatted_json = MessageConverter._format_json_data(
+                result_data, pretty_format
+            )
+            escaped_json = MessageConverter._escape_content_for_xml(
+                formatted_json, pretty_format
+            )
+            if pretty_format:
+                formatted_text = (
+                    f"<result_message>\n{escaped_json}\n</result_message>\n"
+                )
+            else:
+                formatted_text = f"<result_message>{escaped_json}</result_message>"
+            return {
+                "type": "text",
+                "text": formatted_text,
+            }
+
+    @staticmethod
+    def create_result_message_chunks(
+        result_message: ResultMessage,
+        mode: SystemMessageMode = SystemMessageMode.FORWARD,
+        index: int = 0,
+        source: str = "claude_code_sdk",
+        pretty_format: bool = True,
+    ) -> list[tuple[str, dict[str, Any]]]:
+        """
+        Create streaming chunks for result messages using specified mode.
+
+        Args:
+            result_message: The ResultMessage from Claude SDK
+            mode: System message handling mode
+            index: The content block index for the result message
+            source: The source of the result message
+
+        Returns:
+            List of tuples (event_type, chunk) for result message streaming chunks
+        """
+        if mode == SystemMessageMode.IGNORE:
+            return []
+        elif mode == SystemMessageMode.FORWARD:
+            result_data = {
+                "session_id": getattr(result_message, "session_id", ""),
+                "stop_reason": getattr(result_message, "stop_reason", "end_turn"),
+                "usage": getattr(result_message, "usage", {}),
+                "total_cost_usd": getattr(result_message, "total_cost_usd", None),
+            }
+            return [
+                (
+                    "content_block_start",
+                    {
+                        "type": "content_block_start",
+                        "index": index,
+                        "content_block": {
+                            "type": "result_message",
+                            "data": result_data,
+                            "source": source,
+                        },
+                    },
+                ),
+                (
+                    "content_block_stop",
+                    {
+                        "type": "content_block_stop",
+                        "index": index,
+                    },
+                ),
+            ]
+        elif mode == SystemMessageMode.FORMATTED:
+            result_data = {
+                "session_id": getattr(result_message, "session_id", ""),
+                "stop_reason": getattr(result_message, "stop_reason", "end_turn"),
+                "usage": getattr(result_message, "usage", {}),
+                "total_cost_usd": getattr(result_message, "total_cost_usd", None),
+                "source": source,
+            }
+            formatted_json = MessageConverter._format_json_data(
+                result_data, pretty_format
+            )
+            escaped_json = MessageConverter._escape_content_for_xml(
+                formatted_json, pretty_format
+            )
+            if pretty_format:
+                formatted_text = (
+                    f"<result_message>\n{escaped_json}\n</result_message>\n"
+                )
+            else:
+                formatted_text = f"<result_message>{escaped_json}</result_message>"
+            return [
+                (
+                    "content_block_start",
+                    {
+                        "type": "content_block_start",
+                        "index": index,
+                        "content_block": {"type": "text", "text": ""},
+                    },
+                ),
+                (
+                    "content_block_delta",
+                    {
+                        "type": "content_block_delta",
+                        "index": index,
+                        "delta": {"type": "text_delta", "text": formatted_text},
+                    },
+                ),
+                (
+                    "content_block_stop",
+                    {
+                        "type": "content_block_stop",
+                        "index": index,
+                    },
+                ),
+            ]

@@ -372,6 +372,20 @@ class OpenAIStreamProcessor:
                 yield self.formatter.format_content_chunk(
                     self.message_id, self.model, self.created, formatted_text
                 )
+            elif block.get("type") == "result_message":
+                # Handle custom result_message content block
+                source = block.get("source", "claude_code_sdk")
+                result_data = block.get("data", {})
+                session_id = result_data.get("session_id", "")
+                stop_reason = result_data.get("stop_reason", "")
+                usage = result_data.get("usage", {})
+                cost_usd = result_data.get("total_cost_usd")
+                formatted_text = f"[{source} result {session_id}]: stop_reason={stop_reason}, usage={usage}"
+                if cost_usd is not None:
+                    formatted_text += f", cost_usd={cost_usd}"
+                yield self.formatter.format_content_chunk(
+                    self.message_id, self.model, self.created, formatted_text
+                )
             elif block.get("type") == "tool_use" and self.enable_tool_calls:
                 # Start of tool call
                 tool_id = block.get("id", "")
@@ -390,9 +404,12 @@ class OpenAIStreamProcessor:
                 # Text content
                 text = delta.get("text", "")
                 if text:
+                    # Parse formatted XML content if it exists
+                    processed_text = self._parse_formatted_sdk_content(text)
+
                     if self.enable_text_chunking:
                         # Chunk the text
-                        words = text.split()
+                        words = processed_text.split()
                         for i in range(0, len(words), self.chunk_size_words):
                             chunk_words = words[i : i + self.chunk_size_words]
                             chunk_text = " ".join(chunk_words)
@@ -402,7 +419,7 @@ class OpenAIStreamProcessor:
                     else:
                         # Send text as-is
                         yield self.formatter.format_content_chunk(
-                            self.message_id, self.model, self.created, text
+                            self.message_id, self.model, self.created, processed_text
                         )
 
             elif delta_type == "thinking_delta" and self.thinking_block_active:
@@ -468,6 +485,90 @@ class OpenAIStreamProcessor:
         elif chunk_type == "message_stop":
             # End of message - handled in main process_stream method
             pass
+
+    def _parse_formatted_sdk_content(self, text: str) -> str:
+        """Parse XML-formatted SDK content from text blocks.
+
+        This method handles the 'formatted' mode where SDK content is embedded
+        as XML tags with JSON data in text deltas.
+
+        Args:
+            text: The text content that may contain XML-formatted SDK blocks
+
+        Returns:
+            Processed text with XML-formatted SDK content converted to readable format
+        """
+        import re
+
+        cleaned_text = text
+
+        # Parse system_message XML tags
+        system_pattern = r"<system_message>(.*?)</system_message>"
+        for match in re.finditer(system_pattern, text, re.DOTALL):
+            try:
+                system_data = json.loads(match.group(1))
+                source = system_data.get("source", "claude_code_sdk")
+                system_text = system_data.get("text", "")
+                formatted_content = f"[{source}]: {system_text}"
+                cleaned_text = cleaned_text.replace(match.group(0), formatted_content)
+            except json.JSONDecodeError:
+                # If JSON parsing fails, leave the XML tag as-is
+                pass
+
+        # Parse tool_use_sdk XML tags
+        tool_use_pattern = r"<tool_use_sdk>(.*?)</tool_use_sdk>"
+        for match in re.finditer(tool_use_pattern, text, re.DOTALL):
+            try:
+                tool_data = json.loads(match.group(1))
+                tool_id = tool_data.get("id", "")
+                tool_name = tool_data.get("name", "")
+                tool_input = tool_data.get("input", {})
+                formatted_content = f"[claude_code_sdk tool_use {tool_id}]: {tool_name}({json.dumps(tool_input)})"
+                cleaned_text = cleaned_text.replace(match.group(0), formatted_content)
+            except json.JSONDecodeError:
+                # If JSON parsing fails, leave the XML tag as-is
+                pass
+
+        # Parse tool_result_sdk XML tags
+        tool_result_pattern = r"<tool_result_sdk>(.*?)</tool_result_sdk>"
+        for match in re.finditer(tool_result_pattern, text, re.DOTALL):
+            try:
+                result_data = json.loads(match.group(1))
+                tool_use_id = result_data.get("tool_use_id", "")
+                result_content = result_data.get("content", "")
+                is_error = result_data.get("is_error", False)
+                error_indicator = " (ERROR)" if is_error else ""
+                formatted_content = f"[claude_code_sdk tool_result {tool_use_id}{error_indicator}]: {result_content}"
+                cleaned_text = cleaned_text.replace(match.group(0), formatted_content)
+            except json.JSONDecodeError:
+                # If JSON parsing fails, leave the XML tag as-is
+                pass
+
+        # Parse result_message XML tags
+        result_message_pattern = r"<result_message>(.*?)</result_message>"
+        for match in re.finditer(result_message_pattern, text, re.DOTALL):
+            try:
+                result_data = json.loads(match.group(1))
+                source = result_data.get("source", "claude_code_sdk")
+                session_id = result_data.get("session_id", "")
+                stop_reason = result_data.get("stop_reason", "")
+                usage = result_data.get("usage", {})
+                cost_usd = result_data.get("total_cost_usd")
+                formatted_content = f"[{source} result {session_id}]: stop_reason={stop_reason}, usage={usage}"
+                if cost_usd is not None:
+                    formatted_content += f", cost_usd={cost_usd}"
+                cleaned_text = cleaned_text.replace(match.group(0), formatted_content)
+            except json.JSONDecodeError:
+                # If JSON parsing fails, leave the XML tag as-is
+                pass
+
+        # Parse <text></text> tags and extract the inner content
+        text_pattern = r"<text>\n?(.*?)\n?</text>"
+        for match in re.finditer(text_pattern, text, re.DOTALL):
+            inner_text = match.group(1).strip()
+            cleaned_text = cleaned_text.replace(match.group(0), inner_text)
+
+        return cleaned_text
 
 
 __all__ = [

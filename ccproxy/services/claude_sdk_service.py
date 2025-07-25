@@ -9,6 +9,8 @@ from claude_code_sdk import (
     ClaudeCodeOptions,
     ResultMessage,
     SystemMessage,
+    ToolResultBlock,
+    UserMessage,
 )
 
 from ccproxy.adapters.openai import adapter
@@ -16,6 +18,7 @@ from ccproxy.auth.manager import AuthManager
 from ccproxy.claude_sdk.client import ClaudeSDKClient
 from ccproxy.claude_sdk.converter import MessageConverter
 from ccproxy.claude_sdk.options import OptionsHandler
+from ccproxy.config.claude import SystemMessageMode
 from ccproxy.config.settings import Settings
 from ccproxy.core.errors import (
     AuthenticationError,
@@ -199,25 +202,42 @@ class ClaudeSDKService:
         result_message = None
         assistant_message = None
         system_messages = []
+        user_messages = []
 
         async for message in self.sdk_client.query_completion(
             prompt, options, request_id
         ):
             messages.append(message)
+
             if isinstance(message, AssistantMessage):
                 assistant_message = message
             elif isinstance(message, ResultMessage):
                 result_message = message
             elif isinstance(message, SystemMessage):
-                # Collect SystemMessages for processing if configured
-                if (
-                    self.settings
-                    and self.settings.claude.include_system_messages_in_stream
-                ):
+                # Collect SystemMessages for processing based on mode
+                mode = (
+                    self.settings.claude.system_message_mode
+                    if self.settings
+                    else SystemMessageMode.FORWARD
+                )
+                if mode != SystemMessageMode.IGNORE:
                     system_messages.append(message)
                 else:
                     logger.debug(
-                        "Ignoring SystemMessage in non-streaming response (configured to ignore)."
+                        "Ignoring SystemMessage in non-streaming response (mode: ignore)."
+                    )
+            elif isinstance(message, UserMessage):
+                # Collect UserMessages (which contain ToolResultBlocks)
+                mode = (
+                    self.settings.claude.system_message_mode
+                    if self.settings
+                    else SystemMessageMode.FORWARD
+                )
+                if mode != SystemMessageMode.IGNORE:
+                    user_messages.append(message)
+                else:
+                    logger.debug(
+                        "Ignoring UserMessage in non-streaming response (mode: ignore)."
                     )
 
         # Get Claude API call timing
@@ -238,20 +258,95 @@ class ClaudeSDKService:
             )
 
         logger.debug("claude_sdk_completion_received")
-        # Convert to Anthropic format
+        # Get system message mode
+        mode = (
+            self.settings.claude.system_message_mode
+            if self.settings
+            else SystemMessageMode.FORWARD
+        )
+
+        # Get formatting settings
+        pretty_format = self.settings.claude.pretty_format if self.settings else True
+
+        # Convert to Anthropic format with mode and formatting
         response = self.message_converter.convert_to_anthropic_response(
-            assistant_message, result_message, model
+            assistant_message, result_message, model, mode, pretty_format
         )
 
         # Add SystemMessages to response content if any were collected
         if system_messages and "content" in response:
             for system_message in system_messages:
+                # Extract text from system message data
+                system_text = system_message.data.get("text", str(system_message.data))
                 system_content_block = (
                     self.message_converter.create_system_message_content_block(
-                        f"{system_message.subtype}: {system_message.data}"
+                        system_text,
+                        mode,
+                        "claude_code_sdk",
+                        pretty_format,
                     )
                 )
-                response["content"].append(system_content_block)
+                if (
+                    system_content_block is not None
+                ):  # Handle IGNORE mode returning None
+                    response["content"].append(system_content_block)
+
+        # Add UserMessages (containing ToolResultBlocks) to response content if any were collected
+        if mode != SystemMessageMode.IGNORE and user_messages and "content" in response:
+            for user_message in user_messages:
+                # Process content blocks within UserMessage
+                if (
+                    hasattr(user_message, "content")
+                    and hasattr(user_message.content, "__iter__")
+                    and not isinstance(user_message.content, str)
+                ):
+                    for block in user_message.content:  # type: ignore[unreachable]
+                        if isinstance(block, ToolResultBlock):
+                            if mode == SystemMessageMode.FORWARD:
+                                is_error = getattr(block, "is_error", None)
+                                tool_result_content_block = {
+                                    "type": "tool_result_sdk",
+                                    "tool_use_id": block.tool_use_id,
+                                    "content": block.content
+                                    if isinstance(block.content, str)
+                                    else "",
+                                    "is_error": is_error
+                                    if is_error is not None
+                                    else False,
+                                    "source": "claude_code_sdk",
+                                }
+                                response["content"].append(tool_result_content_block)
+                            elif mode == SystemMessageMode.FORMATTED:
+                                tool_result_data = {
+                                    "tool_use_id": block.tool_use_id,
+                                    "content": block.content
+                                    if isinstance(block.content, str)
+                                    else "",
+                                    "is_error": getattr(block, "is_error", False),
+                                }
+                                formatted_json = MessageConverter._format_json_data(
+                                    tool_result_data, pretty_format
+                                )
+                                escaped_json = MessageConverter._escape_content_for_xml(
+                                    formatted_json, pretty_format
+                                )
+                                if pretty_format:
+                                    formatted_text = f"<tool_result_sdk>\n{escaped_json}\n</tool_result_sdk>\n"
+                                else:
+                                    formatted_text = f"<tool_result_sdk>{escaped_json}</tool_result_sdk>"
+                                response["content"].append(
+                                    {"type": "text", "text": formatted_text}
+                                )
+
+        # Add ResultMessage to response content based on mode
+        if mode != SystemMessageMode.IGNORE and "content" in response:
+            result_content_block = (
+                self.message_converter.create_result_message_content_block(
+                    result_message, mode, "claude_code_sdk", pretty_format
+                )
+            )
+            if result_content_block is not None:  # Handle IGNORE mode returning None
+                response["content"].append(result_content_block)
 
         # Extract token usage and cost from result message using direct access
         cost_usd = result_message.total_cost_usd
@@ -326,6 +421,9 @@ class ClaudeSDKService:
         first_chunk = True
         message_count = 0
         assistant_messages = []
+        global_content_block_index = (
+            0  # Track global content block index across all messages
+        )
 
         try:
             async for message in self.sdk_client.query_completion(
@@ -337,6 +435,7 @@ class ClaudeSDKService:
                     message_count=message_count,
                     message_type=type(message).__name__,
                     request_id=request_id,
+                    message=message,
                 )
 
                 if first_chunk:
@@ -354,18 +453,48 @@ class ClaudeSDKService:
                     first_chunk = False
 
                 if isinstance(message, AssistantMessage):
-                    assistant_messages.append(message)
+                    assistant_message = message
+                    assistant_messages.append(assistant_message)
 
                     # Iterate through content blocks and yield structured chunks for each
-                    for i, block in enumerate(message.content):
+                    for block in assistant_message.content:
+                        logger.debug("streaming_content_block", block=block)
+
                         # Handle Text Blocks
-                        if isinstance(block, TextBlock) and block.text:
+                        if isinstance(block, TextBlock) and getattr(
+                            block, "text", None
+                        ):
+                            # Get system message mode for text formatting
+                            mode = (
+                                self.settings.claude.system_message_mode
+                                if self.settings
+                                else SystemMessageMode.FORWARD
+                            )
+
+                            # Format text content based on mode
+                            text_block = block
+                            text_content = text_block.text
+                            if mode == SystemMessageMode.FORMATTED:
+                                # Get formatting settings
+                                pretty_format = (
+                                    self.settings.claude.pretty_format
+                                    if self.settings
+                                    else True
+                                )
+                                escaped_text = MessageConverter._escape_content_for_xml(
+                                    text_block.text, pretty_format
+                                )
+                                if pretty_format:
+                                    text_content = f"<text>\n{escaped_text}\n</text>\n"
+                                else:
+                                    text_content = f"<text>{escaped_text}</text>"
+
                             # Start a new text block
                             yield {
                                 "event": "content_block_start",
                                 "data": {
                                     "type": "content_block_start",
-                                    "index": i,
+                                    "index": global_content_block_index,
                                     "content_block": {"type": "text", "text": ""},
                                 },
                             }
@@ -374,141 +503,439 @@ class ClaudeSDKService:
                                 "event": "content_block_delta",
                                 "data": {
                                     "type": "content_block_delta",
-                                    "index": i,
-                                    "delta": {"type": "text_delta", "text": block.text},
+                                    "index": global_content_block_index,
+                                    "delta": {
+                                        "type": "text_delta",
+                                        "text": text_content,
+                                    },
                                 },
                             }
                             # Stop the text block
                             yield {
                                 "event": "content_block_stop",
-                                "data": {"type": "content_block_stop", "index": i},
+                                "data": {
+                                    "type": "content_block_stop",
+                                    "index": global_content_block_index,
+                                },
                             }
+                            global_content_block_index += 1
 
                         # --- Handle Tool Use Blocks ---
                         elif isinstance(block, ToolUseBlock):
-                            tool_input = getattr(block, "input", {}) or {}
-                            # Start a new tool_use_sdk block with all its data
-                            yield {
-                                "event": "content_block_start",
-                                "data": {
-                                    "type": "content_block_start",
-                                    "index": i,
-                                    "content_block": {
-                                        "type": "tool_use_sdk",
-                                        "id": getattr(block, "id", f"tool_{id(block)}"),
-                                        "name": block.name,
-                                        "input": tool_input,
-                                        "source": "claude_code_sdk",
+                            mode = (
+                                self.settings.claude.system_message_mode
+                                if self.settings
+                                else SystemMessageMode.FORWARD
+                            )
+
+                            if mode == SystemMessageMode.FORWARD:
+                                # Handle ToolUseBlock
+                                tool_use_block = block
+                                tool_input = getattr(tool_use_block, "input", {}) or {}
+                                # Start a new tool_use_sdk block with all its data
+                                yield {
+                                    "event": "content_block_start",
+                                    "data": {
+                                        "type": "content_block_start",
+                                        "index": global_content_block_index,
+                                        "content_block": {
+                                            "type": "tool_use_sdk",
+                                            "id": getattr(
+                                                tool_use_block,
+                                                "id",
+                                                f"tool_{id(tool_use_block)}",
+                                            ),
+                                            "name": tool_use_block.name,
+                                            "input": tool_input,
+                                            "source": "claude_code_sdk",
+                                        },
                                     },
-                                },
-                            }
-                            # 2. Immediately stop the block (since we get it all at once)
-                            yield {
-                                "event": "content_block_stop",
-                                "data": {"type": "content_block_stop", "index": i},
-                            }
+                                }
+                                # 2. Immediately stop the block (since we get it all at once)
+                                yield {
+                                    "event": "content_block_stop",
+                                    "data": {
+                                        "type": "content_block_stop",
+                                        "index": global_content_block_index,
+                                    },
+                                }
+                                global_content_block_index += 1
+                            elif mode == SystemMessageMode.FORMATTED:
+                                # Get formatting settings
+                                pretty_format = (
+                                    self.settings.claude.pretty_format
+                                    if self.settings
+                                    else True
+                                )
+
+                                # Handle ToolUseBlock for FORMATTED mode
+                                tool_use_block = block
+                                tool_data = {
+                                    "id": getattr(
+                                        tool_use_block,
+                                        "id",
+                                        f"tool_{id(tool_use_block)}",
+                                    ),
+                                    "name": tool_use_block.name,
+                                    "input": getattr(tool_use_block, "input", {}) or {},
+                                }
+                                formatted_json = MessageConverter._format_json_data(
+                                    tool_data, pretty_format
+                                )
+                                escaped_json = MessageConverter._escape_content_for_xml(
+                                    formatted_json, pretty_format
+                                )
+                                if pretty_format:
+                                    formatted_text = f"<tool_use_sdk>\n{escaped_json}\n</tool_use_sdk>\n"
+                                else:
+                                    formatted_text = (
+                                        f"<tool_use_sdk>{escaped_json}</tool_use_sdk>"
+                                    )
+                                # Send as text delta
+                                yield {
+                                    "event": "content_block_start",
+                                    "data": {
+                                        "type": "content_block_start",
+                                        "index": global_content_block_index,
+                                        "content_block": {"type": "text", "text": ""},
+                                    },
+                                }
+                                yield {
+                                    "event": "content_block_delta",
+                                    "data": {
+                                        "type": "content_block_delta",
+                                        "index": global_content_block_index,
+                                        "delta": {
+                                            "type": "text_delta",
+                                            "text": formatted_text,
+                                        },
+                                    },
+                                }
+                                yield {
+                                    "event": "content_block_stop",
+                                    "data": {
+                                        "type": "content_block_stop",
+                                        "index": global_content_block_index,
+                                    },
+                                }
+                                global_content_block_index += 1
+                            # mode == SystemMessageMode.IGNORE: skip entirely
 
                         # --- Handle Tool Result Blocks ---
                         elif isinstance(block, ToolResultBlock):
-                            is_error = getattr(block, "is_error", None)
-                            # 1. Start a new tool_result_sdk block
-                            yield {
-                                "event": "content_block_start",
-                                "data": {
-                                    "type": "content_block_start",
-                                    "index": i,
-                                    "content_block": {
-                                        "type": "tool_result_sdk",
-                                        "tool_use_id": block.tool_use_id,
-                                        "content": block.content,
-                                        "is_error": is_error
-                                        if is_error is not None
-                                        else False,
-                                        "source": "claude_code_sdk",
+                            mode = (
+                                self.settings.claude.system_message_mode
+                                if self.settings
+                                else SystemMessageMode.FORWARD
+                            )
+
+                            if mode == SystemMessageMode.FORWARD:
+                                # Handle ToolResultBlock
+                                tool_result_block = block
+                                is_error = getattr(tool_result_block, "is_error", None)
+                                # 1. Start a new tool_result_sdk block
+                                yield {
+                                    "event": "content_block_start",
+                                    "data": {
+                                        "type": "content_block_start",
+                                        "index": global_content_block_index,
+                                        "content_block": {
+                                            "type": "tool_result_sdk",
+                                            "tool_use_id": tool_result_block.tool_use_id,
+                                            "content": tool_result_block.content,
+                                            "is_error": is_error
+                                            if is_error is not None
+                                            else False,
+                                            "source": "claude_code_sdk",
+                                        },
                                     },
-                                },
-                            }
-                            # 2. Immediately stop the block
-                            yield {
-                                "event": "content_block_stop",
-                                "data": {"type": "content_block_stop", "index": i},
-                            }
+                                }
+                                # 2. Immediately stop the block
+                                yield {
+                                    "event": "content_block_stop",
+                                    "data": {
+                                        "type": "content_block_stop",
+                                        "index": global_content_block_index,
+                                    },
+                                }
+                                global_content_block_index += 1
+                            elif mode == SystemMessageMode.FORMATTED:
+                                # Get formatting settings
+                                pretty_format = (
+                                    self.settings.claude.pretty_format
+                                    if self.settings
+                                    else True
+                                )
+
+                                # Handle ToolResultBlock for FORMATTED mode
+                                tool_result_block = block
+                                tool_result_data = {
+                                    "tool_use_id": tool_result_block.tool_use_id,
+                                    "content": tool_result_block.content,
+                                    "is_error": getattr(
+                                        tool_result_block, "is_error", False
+                                    ),
+                                }
+                                formatted_json = MessageConverter._format_json_data(
+                                    tool_result_data, pretty_format
+                                )
+                                escaped_json = MessageConverter._escape_content_for_xml(
+                                    formatted_json, pretty_format
+                                )
+                                if pretty_format:
+                                    formatted_text = f"<tool_result_sdk>\n{escaped_json}\n</tool_result_sdk>\n"
+                                else:
+                                    formatted_text = f"<tool_result_sdk>{escaped_json}</tool_result_sdk>"
+                                # Send as text delta
+                                yield {
+                                    "event": "content_block_start",
+                                    "data": {
+                                        "type": "content_block_start",
+                                        "index": global_content_block_index,
+                                        "content_block": {"type": "text", "text": ""},
+                                    },
+                                }
+                                yield {
+                                    "event": "content_block_delta",
+                                    "data": {
+                                        "type": "content_block_delta",
+                                        "index": global_content_block_index,
+                                        "delta": {
+                                            "type": "text_delta",
+                                            "text": formatted_text,
+                                        },
+                                    },
+                                }
+                                yield {
+                                    "event": "content_block_stop",
+                                    "data": {
+                                        "type": "content_block_stop",
+                                        "index": global_content_block_index,
+                                    },
+                                }
+                                global_content_block_index += 1
+                            # mode == SystemMessageMode.IGNORE: skip entirely
+                        else:
+                            logger.warning(
+                                "streaming_content_block_unsupported_block_type",
+                                block=block,
+                            )
 
                 elif isinstance(message, SystemMessage):
-                    # Handle SystemMessage based on configuration
-                    if (
-                        self.settings
-                        and self.settings.claude.include_system_messages_in_stream
-                    ):
-                        # Process SystemMessage as a special text block with SDK indicator
-                        system_text = f"{message.subtype}: {message.data}"
-                        index = (
-                            len(
-                                [
-                                    block
-                                    for am in assistant_messages
-                                    for block in getattr(am, "content", [])
-                                ]
-                            ),
-                        )[0]
+                    # Handle SystemMessage based on mode
+                    mode = (
+                        self.settings.claude.system_message_mode
+                        if self.settings
+                        else SystemMessageMode.FORWARD
+                    )
 
-                        yield {
-                            "event": "content_block_start",
-                            "data": {
-                                "type": "content_block_start",
-                                "index": index,
-                                "content_block": {"type": "text", "text": ""},
-                            },
-                        }
-                        # 2. Send the text content in a delta
-                        yield {
-                            "event": "content_block_delta",
-                            "data": {
-                                "type": "content_block_delta",
-                                "index": index,
-                                "delta": {"type": "text_delta", "text": system_text},
-                            },
-                        }
-                        # 3. Stop the text block
-                        yield {
-                            "event": "content_block_stop",
-                            "data": {"type": "content_block_stop", "index": index},
-                        }
+                    if mode == SystemMessageMode.IGNORE:
+                        logger.debug(
+                            "Ignoring SystemMessage in streaming response (mode: ignore)."
+                        )
+                    else:
+                        # Process using the converter
+                        system_message = message
+                        # Extract text from system message data
+                        system_text = system_message.data.get(
+                            "text", str(system_message.data)
+                        )
 
-                        # system_chunks = (
-                        #     self.message_converter.create_system_message_chunks(
-                        #         system_text,
-                        #         index=len(
-                        #             [
-                        #                 block
-                        #                 for am in assistant_messages
-                        #                 for block in getattr(am, "content", [])
-                        #             ]
-                        #         ),
-                        #     )
-                        # )
+                        # Get formatting settings
+                        pretty_format = (
+                            self.settings.claude.pretty_format
+                            if self.settings
+                            else True
+                        )
+
+                        # Use the message converter to create chunks based on mode
+                        system_chunks = (
+                            self.message_converter.create_system_message_chunks(
+                                system_text,
+                                mode,
+                                index=global_content_block_index,
+                                source="claude_code_sdk",
+                                pretty_format=pretty_format,
+                            )
+                        )
 
                         # Yield the system message chunks
-                        # for event_type, chunk_data in system_chunks:
-                        #     yield {"event": event_type, "data": chunk_data}
-                    else:
-                        # Legacy behavior: ignore with debug logging
+                        for event_type, chunk_data in system_chunks:
+                            yield {"event": event_type, "data": chunk_data}
+                        global_content_block_index += 1
+                    continue
+
+                elif isinstance(message, UserMessage):
+                    # Handle UserMessage (which contains ToolResultBlocks)
+                    mode = (
+                        self.settings.claude.system_message_mode
+                        if self.settings
+                        else SystemMessageMode.FORWARD
+                    )
+
+                    if mode == SystemMessageMode.IGNORE:
                         logger.debug(
-                            "Ignoring SystemMessage in streaming response (configured to ignore)."
+                            "Ignoring UserMessage in streaming response (mode: ignore)."
                         )
+                    else:
+                        # UserMessage content should be checked differently
+                        # UserMessage may have tool results in a different structure
+                        if (
+                            hasattr(message, "content")
+                            and hasattr(message.content, "__iter__")
+                            and not isinstance(message.content, str)
+                        ):
+                            # Process content blocks within UserMessage if they exist
+                            for block in message.content:  # type: ignore[unreachable]
+                                if block.get("type") == "tool_result":
+                                    tool_result_block = ToolResultBlock(
+                                        tool_use_id=block.get("tool_use_id", ""),
+                                        content=block.get("content"),
+                                        is_error=block.get("is_error"),
+                                    )
+                                    # if isinstance(block, ToolResultBlock):
+                                    if mode == SystemMessageMode.FORWARD:
+                                        # Handle ToolResultBlock in FORWARD mode
+                                        is_error = getattr(
+                                            tool_result_block, "is_error", None
+                                        )
+                                        # 1. Start a new tool_result_sdk tool_result_block
+                                        yield {
+                                            "event": "content_block_start",
+                                            "data": {
+                                                "type": "content_block_start",
+                                                "index": global_content_block_index,
+                                                "content_block": {
+                                                    "type": "tool_result_sdk",
+                                                    "tool_use_id": tool_result_block.tool_use_id,
+                                                    "content": tool_result_block.content,
+                                                    "is_error": is_error
+                                                    if is_error is not None
+                                                    else False,
+                                                    "source": "claude_code_sdk",
+                                                },
+                                            },
+                                        }
+                                        # 2. Immediately stop the tool_result_block
+                                        yield {
+                                            "event": "content_block_stop",
+                                            "data": {
+                                                "type": "content_block_stop",
+                                                "index": global_content_block_index,
+                                            },
+                                        }
+                                        global_content_block_index += 1
+                                    elif mode == SystemMessageMode.FORMATTED:
+                                        # Get formatting settings
+                                        pretty_format = (
+                                            self.settings.claude.pretty_format
+                                            if self.settings
+                                            else True
+                                        )
+
+                                        # Handle ToolResultBlock for FORMATTED mode
+                                        tool_result_data = {
+                                            "tool_use_id": tool_result_block.tool_use_id,
+                                            "content": tool_result_block.content,
+                                            "is_error": getattr(
+                                                tool_result_block, "is_error", False
+                                            ),
+                                        }
+                                        formatted_json = (
+                                            MessageConverter._format_json_data(
+                                                tool_result_data, pretty_format
+                                            )
+                                        )
+                                        escaped_json = (
+                                            MessageConverter._escape_content_for_xml(
+                                                formatted_json, pretty_format
+                                            )
+                                        )
+                                        if pretty_format:
+                                            formatted_text = f"<tool_result_sdk>\n{escaped_json}\n</tool_result_sdk>\n"
+                                        else:
+                                            formatted_text = f"<tool_result_sdk>{escaped_json}</tool_result_sdk>"
+                                        # Send as text delta
+                                        yield {
+                                            "event": "content_block_start",
+                                            "data": {
+                                                "type": "content_block_start",
+                                                "index": global_content_block_index,
+                                                "content_block": {
+                                                    "type": "text",
+                                                    "text": "",
+                                                },
+                                            },
+                                        }
+                                        yield {
+                                            "event": "content_block_delta",
+                                            "data": {
+                                                "type": "content_block_delta",
+                                                "index": global_content_block_index,
+                                                "delta": {
+                                                    "type": "text_delta",
+                                                    "text": formatted_text,
+                                                },
+                                            },
+                                        }
+                                        yield {
+                                            "event": "content_block_stop",
+                                            "data": {
+                                                "type": "content_block_stop",
+                                                "index": global_content_block_index,
+                                            },
+                                        }
+                                        global_content_block_index += 1
+                                    # mode == SystemMessageMode.IGNORE: skip entirely
                     continue
 
                 elif isinstance(message, ResultMessage):
+                    # Process ResultMessage
+                    result_message = message
+
                     # Get Claude API call timing
                     claude_api_call_ms = self.sdk_client.get_last_api_call_time_ms()
 
+                    # Handle ResultMessage based on mode (before processing usage)
+                    mode = (
+                        self.settings.claude.system_message_mode
+                        if self.settings
+                        else SystemMessageMode.FORWARD
+                    )
+
+                    if mode != SystemMessageMode.IGNORE:
+                        # Get formatting settings
+                        pretty_format = (
+                            self.settings.claude.pretty_format
+                            if self.settings
+                            else True
+                        )
+
+                        # Use the message converter to create chunks based on mode
+                        result_chunks = (
+                            self.message_converter.create_result_message_chunks(
+                                result_message,
+                                mode,
+                                index=global_content_block_index,
+                                source="claude_code_sdk",
+                                pretty_format=pretty_format,
+                            )
+                        )
+
+                        # Yield the result message chunks
+                        for event_type, chunk_data in result_chunks:
+                            yield {"event": event_type, "data": chunk_data}
+                        global_content_block_index += 1
+
                     # Extract cost and tokens from result message using direct access
-                    cost_usd = message.total_cost_usd
-                    if message.usage:
-                        tokens_input = message.usage.get("input_tokens")
-                        tokens_output = message.usage.get("output_tokens")
-                        cache_read_tokens = message.usage.get("cache_read_input_tokens")
-                        cache_write_tokens = message.usage.get(
+                    cost_usd = result_message.total_cost_usd
+                    if result_message.usage:
+                        tokens_input = result_message.usage.get("input_tokens")
+                        tokens_output = result_message.usage.get("output_tokens")
+                        cache_read_tokens = result_message.usage.get(
+                            "cache_read_input_tokens"
+                        )
+                        cache_write_tokens = result_message.usage.get(
                             "cache_creation_input_tokens"
                         )
                     else:
@@ -551,17 +978,14 @@ class ClaudeSDKService:
 
                     # Send final chunks with usage and cost information
                     final_chunks = self.message_converter.create_streaming_end_chunks(
-                        stop_reason=getattr(message, "stop_reason", "end_turn")
+                        stop_reason=getattr(result_message, "stop_reason", "end_turn")
                     )
 
                     # Add usage information to message_delta chunk
                     for event_type, chunk_data in final_chunks:
                         if chunk_data.get("type") == "message_delta":
-                            usage_info = {}
-                            if tokens_output:
-                                usage_info["output_tokens"] = tokens_output
-                            if cost_usd is not None:
-                                usage_info["cost_usd"] = cost_usd
+                            # usage_info = {}
+                            usage_info = result_message.usage
 
                             # Update the usage in the message_delta chunk
                             if "usage" not in chunk_data:

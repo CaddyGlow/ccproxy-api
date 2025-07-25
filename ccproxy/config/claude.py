@@ -2,6 +2,7 @@
 
 import os
 import shutil
+from enum import Enum
 from pathlib import Path
 from typing import Any
 
@@ -28,6 +29,19 @@ def _create_default_claude_code_options() -> ClaudeCodeOptions:
     )
 
 
+class SystemMessageMode(str, Enum):
+    """Modes for handling system messages from Claude SDK.
+
+    - forward: Forward SDK content blocks directly with original types and metadata
+    - ignore: Skip SystemMessages and SDK blocks completely
+    - formatted: Format as XML tags with JSON data in text deltas
+    """
+
+    FORWARD = "forward"
+    IGNORE = "ignore"
+    FORMATTED = "formatted"
+
+
 class ClaudeSettings(BaseModel):
     """Claude-specific configuration settings."""
 
@@ -41,9 +55,14 @@ class ClaudeSettings(BaseModel):
         description="Claude Code SDK options configuration",
     )
 
-    include_system_messages_in_stream: bool = Field(
+    system_message_mode: SystemMessageMode = Field(
+        default=SystemMessageMode.FORMATTED,
+        description="Mode for handling system messages from Claude SDK. Options: forward (direct SDK blocks), ignore (skip blocks), formatted (XML tags with JSON data)",
+    )
+
+    pretty_format: bool = Field(
         default=True,
-        description="Include system messages in streaming responses with [claude_code_sdk] prefix. Default: True (process messages), False (ignore messages - legacy behavior)",
+        description="Whether to use pretty formatting (indented JSON, newlines after XML tags, unescaped content). When false: compact JSON, no newlines, escaped content between XML tags",
     )
 
     @field_validator("cli_path")

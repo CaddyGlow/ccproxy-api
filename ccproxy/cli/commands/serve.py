@@ -340,11 +340,11 @@ def api(
             rich_help_panel="Server Settings",
         ),
     ] = None,
-    no_terminal_handler: Annotated[
+    use_terminal_permission_handler: Annotated[
         bool,
         typer.Option(
-            "--no-terminal-handler",
-            help="Disable terminal confirmation handler. Use external handler via SSE instead",
+            "--terminal-permission-handler",
+            help="Enable terminal permission terminal handler",
             rich_help_panel="Server Settings",
         ),
     ] = False,
@@ -553,7 +553,7 @@ def api(
             reload=reload,
             log_level=log_level,
             log_file=log_file,
-            use_terminal_confirmation_handler=not no_terminal_handler,
+            use_terminal_confirmation_handler=use_terminal_permission_handler,
         )
 
         claude_options = ClaudeOptions(
