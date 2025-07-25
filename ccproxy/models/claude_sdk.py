@@ -9,9 +9,13 @@ Based on: https://github.com/anthropics/claude-code-sdk-python/blob/main/src/cla
 
 from __future__ import annotations
 
-from typing import Annotated, Any, Literal, TypeVar
+from typing import Annotated, Any, Literal, TypeVar, cast
 
-from pydantic import BaseModel, ConfigDict, Field
+# Import Claude SDK types for isinstance checks
+from claude_code_sdk import TextBlock as SDKTextBlock
+from claude_code_sdk import ToolResultBlock as SDKToolResultBlock
+from claude_code_sdk import ToolUseBlock as SDKToolUseBlock
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from ccproxy.models.requests import Usage
 
@@ -58,6 +62,16 @@ class ToolUseBlock(BaseModel):
 
     model_config = ConfigDict(extra="allow")
 
+    def to_sdk_block(self) -> dict[str, Any]:
+        """Convert to ToolUseSDKBlock format for streaming."""
+        return {
+            "type": "tool_use_sdk",
+            "id": self.id,
+            "name": self.name,
+            "input": self.input,
+            "source": "claude_code_sdk",
+        }
+
 
 class ToolResultBlock(BaseModel):
     """Tool result content block from Claude SDK."""
@@ -74,6 +88,16 @@ class ToolResultBlock(BaseModel):
     )
 
     model_config = ConfigDict(extra="allow")
+
+    def to_sdk_block(self) -> dict[str, Any]:
+        """Convert to ToolResultSDKBlock format for streaming."""
+        return {
+            "type": "tool_result_sdk",
+            "tool_use_id": self.tool_use_id,
+            "content": self.content,
+            "is_error": self.is_error,
+            "source": "claude_code_sdk",
+        }
 
 
 # Union type for basic content blocks
@@ -93,6 +117,48 @@ class UserMessage(BaseModel):
 
     model_config = ConfigDict(extra="allow")
 
+    @field_validator("content", mode="before")
+    @classmethod
+    def convert_content_blocks(cls, v: Any) -> list[Any]:
+        """Convert Claude SDK dataclass blocks to Pydantic models."""
+        if not isinstance(v, list):
+            return []
+
+        converted_blocks = []
+        for block in v:
+            if isinstance(block, SDKTextBlock | SDKToolUseBlock | SDKToolResultBlock):
+                # Convert Claude SDK dataclass to dict and add type field
+                if isinstance(block, SDKTextBlock):
+                    converted_blocks.append({"type": "text", "text": block.text})
+                elif isinstance(block, SDKToolUseBlock):
+                    converted_blocks.append(
+                        cast(
+                            Any,
+                            {
+                                "type": "tool_use",
+                                "id": str(block.id),
+                                "name": str(block.name),
+                                "input": dict(block.input),
+                            },
+                        )
+                    )
+                elif isinstance(block, SDKToolResultBlock):
+                    converted_blocks.append(
+                        cast(
+                            Any,
+                            {
+                                "type": "tool_result",
+                                "tool_use_id": str(block.tool_use_id),
+                                "content": block.content,
+                                "is_error": block.is_error,
+                            },
+                        )
+                    )
+            else:
+                converted_blocks.append(block)
+
+        return converted_blocks
+
 
 class AssistantMessage(BaseModel):
     """Assistant message from Claude SDK."""
@@ -103,12 +169,56 @@ class AssistantMessage(BaseModel):
 
     model_config = ConfigDict(extra="allow")
 
+    @field_validator("content", mode="before")
+    @classmethod
+    def convert_content_blocks(cls, v: Any) -> list[Any]:
+        """Convert Claude SDK dataclass blocks to Pydantic models."""
+        if not isinstance(v, list):
+            return []
+
+        converted_blocks = []
+        for block in v:
+            if isinstance(block, SDKTextBlock | SDKToolUseBlock | SDKToolResultBlock):
+                # Convert Claude SDK dataclass to dict and add type field
+                if isinstance(block, SDKTextBlock):
+                    converted_blocks.append({"type": "text", "text": block.text})
+                elif isinstance(block, SDKToolUseBlock):
+                    converted_blocks.append(
+                        cast(
+                            Any,
+                            {
+                                "type": "tool_use",
+                                "id": str(block.id),
+                                "name": str(block.name),
+                                "input": dict(block.input),
+                            },
+                        )
+                    )
+                elif isinstance(block, SDKToolResultBlock):
+                    converted_blocks.append(
+                        cast(
+                            Any,
+                            {
+                                "type": "tool_result",
+                                "tool_use_id": str(block.tool_use_id),
+                                "content": block.content,
+                                "is_error": block.is_error,
+                            },
+                        )
+                    )
+            else:
+                converted_blocks.append(block)
+
+        return converted_blocks
+
 
 class SystemMessage(BaseModel):
     """System message from Claude SDK."""
 
-    subtype: str = Field(..., description="Subtype of the system message")
-    data: dict[str, Any] = Field(..., description="System message data")
+    subtype: str = Field(default="", description="Subtype of the system message")
+    data: dict[str, Any] = Field(
+        default_factory=dict, description="System message data"
+    )
 
     model_config = ConfigDict(extra="allow")
 
@@ -116,10 +226,34 @@ class SystemMessage(BaseModel):
 class ResultMessage(BaseModel):
     """Result message from Claude SDK."""
 
-    session_id: str = Field(..., description="Session ID for the result")
-    stop_reason: str = Field(..., description="Reason why generation stopped")
-    usage: Usage = Field(default_factory=Usage, description="Token usage information")
+    subtype: str = Field(default="", description="Subtype of the result message")
+    duration_ms: int = Field(default=0, description="Total duration in milliseconds")
+    duration_api_ms: int = Field(default=0, description="API duration in milliseconds")
+    is_error: bool = Field(
+        default=False, description="Whether this result represents an error"
+    )
+    num_turns: int = Field(default=0, description="Number of conversation turns")
+    session_id: str = Field(default="", description="Session ID for the result")
     total_cost_usd: float | None = Field(None, description="Total cost in USD")
+    usage: dict[str, Any] | None = Field(
+        None, description="Usage information dictionary"
+    )
+    result: str | None = Field(None, description="Result string if available")
+
+    # Add computed properties for backward compatibility
+    @property
+    def stop_reason(self) -> str:
+        """Get stop reason from result or default to end_turn."""
+        if self.is_error:
+            return "error"
+        return "end_turn"
+
+    @property
+    def usage_model(self) -> Usage:
+        """Get usage information as a Usage model for backward compatibility."""
+        if self.usage is None:
+            return Usage()
+        return Usage.model_validate(self.usage)
 
     model_config = ConfigDict(extra="allow")
 
@@ -213,16 +347,26 @@ def convert_sdk_system_message(subtype: str, data: dict[str, Any]) -> SystemMess
 
 def convert_sdk_result_message(
     session_id: str,
-    stop_reason: str,
+    subtype: str = "",
+    duration_ms: int = 0,
+    duration_api_ms: int = 0,
+    is_error: bool = False,
+    num_turns: int = 0,
     usage: dict[str, Any] | None = None,
     total_cost_usd: float | None = None,
+    result: str | None = None,
 ) -> ResultMessage:
     """Convert raw result message data to ResultMessage model."""
     return ResultMessage(
         session_id=session_id,
-        stop_reason=stop_reason,
-        usage=Usage.model_validate(usage),
+        subtype=subtype,
+        duration_ms=duration_ms,
+        duration_api_ms=duration_api_ms,
+        is_error=is_error,
+        num_turns=num_turns,
+        usage=usage,
         total_cost_usd=total_cost_usd,
+        result=result,
     )
 
 

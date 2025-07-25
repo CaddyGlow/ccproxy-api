@@ -1,14 +1,17 @@
 """Message format converter for Claude SDK interactions."""
 
 import re
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import structlog
 
-from ccproxy.claude_sdk import models as sdk_models
 from ccproxy.config.claude import SystemMessageMode
 from ccproxy.core.async_utils import patched_typing
-from ccproxy.models.messages import MessageResponse
+from ccproxy.models import claude_sdk as sdk_models
+
+
+if TYPE_CHECKING:
+    from ccproxy.models.messages import MessageResponse
 
 
 logger = structlog.get_logger(__name__)
@@ -109,7 +112,7 @@ class MessageConverter:
         model: str,
         mode: SystemMessageMode = SystemMessageMode.FORWARD,
         pretty_format: bool = True,
-    ) -> MessageResponse:
+    ) -> "MessageResponse":
         """
         Convert Claude SDK messages to Anthropic API response format.
 
@@ -124,7 +127,7 @@ class MessageConverter:
             Response in Anthropic API format
         """
         # Extract token usage from result message
-        usage = result_message.usage
+        usage = result_message.usage_model
 
         # Log token extraction for debugging
         # logger.debug(
@@ -216,11 +219,7 @@ class MessageConverter:
 
             elif isinstance(block, sdk_models.ToolUseBlock):
                 if mode == SystemMessageMode.FORWARD:
-                    content_blocks.append(
-                        sdk_models.ToolUseSDKBlock(
-                            **block.model_dump(),
-                        ).model_dump(exclude_none=True)
-                    )
+                    content_blocks.append(block.to_sdk_block())
                 elif mode == SystemMessageMode.FORMATTED:
                     tool_data = block.model_dump()
                     formatted_json = MessageConverter._format_json_data(
@@ -238,11 +237,7 @@ class MessageConverter:
 
             elif isinstance(block, sdk_models.ToolResultBlock):
                 if mode == SystemMessageMode.FORWARD:
-                    content_blocks.append(
-                        sdk_models.ToolResultSDKBlock(
-                            **block.model_dump(),
-                        ).model_dump(exclude_none=True)
-                    )
+                    content_blocks.append(block.to_sdk_block())
                 elif mode == SystemMessageMode.FORMATTED:
                     tool_result_data = block.model_dump()
                     formatted_json = MessageConverter._format_json_data(
@@ -257,6 +252,9 @@ class MessageConverter:
                         else f"<tool_result_sdk>{escaped_json}</tool_result_sdk>"
                     )
                     content_blocks.append({"type": "text", "text": formatted_text})
+
+        # Import here to avoid circular import
+        from ccproxy.models.messages import MessageResponse
 
         return MessageResponse.model_validate(
             {
@@ -282,7 +280,7 @@ class MessageConverter:
         model: str,
         mode: SystemMessageMode = SystemMessageMode.FORWARD,
         pretty_format: bool = True,
-    ) -> MessageResponse:
+    ) -> "MessageResponse":
         """
         Convert a full list of Claude SDK messages to Anthropic API response format.
 
@@ -312,6 +310,9 @@ class MessageConverter:
         # If we have no assistant messages, create a minimal response
         if not assistant_messages:
             if result_message:
+                # Import here to avoid circular import
+                from ccproxy.models.messages import MessageResponse
+
                 return MessageResponse.model_validate(
                     {
                         "id": f"msg_{result_message.session_id}",
@@ -321,10 +322,13 @@ class MessageConverter:
                         "model": model,
                         "stop_reason": result_message.stop_reason,
                         "stop_sequence": None,
-                        "usage": result_message.usage.model_dump(),
+                        "usage": result_message.usage_model.model_dump(),
                     }
                 )
             else:
+                # Import here to avoid circular import
+                from ccproxy.models.messages import MessageResponse
+
                 return MessageResponse.model_validate(
                     {
                         "id": "msg_unknown",
@@ -346,8 +350,11 @@ class MessageConverter:
             response_data = MessageConverter.convert_to_anthropic_response(
                 main_assistant_message, result_message, model, mode, pretty_format
             )
-            response = MessageResponse.model_validate(response_data)
+            response = response_data
         else:
+            # Import here to avoid circular import
+            from ccproxy.models.messages import MessageResponse
+
             # Fallback for cases without result message
             response = MessageResponse.model_validate(
                 {
@@ -634,6 +641,162 @@ class MessageConverter:
             ]
 
     @staticmethod
+    def create_tool_use_chunks(
+        tool_use_block: sdk_models.ToolUseBlock,
+        mode: SystemMessageMode = SystemMessageMode.FORWARD,
+        index: int = 0,
+        pretty_format: bool = True,
+    ) -> list[tuple[str, dict[str, Any]]]:
+        """
+        Create streaming chunks for tool use blocks using specified mode.
+
+        Args:
+            tool_use_block: The ToolUseBlock from Claude SDK
+            mode: System message handling mode
+            index: The content block index for the tool use block
+            pretty_format: Whether to use pretty formatting
+
+        Returns:
+            List of tuples (event_type, chunk) for tool use streaming chunks
+        """
+        if mode == SystemMessageMode.IGNORE:
+            return []
+        elif mode == SystemMessageMode.FORWARD:
+            return [
+                (
+                    "content_block_start",
+                    {
+                        "type": "content_block_start",
+                        "index": index,
+                        "content_block": tool_use_block.to_sdk_block(),
+                    },
+                ),
+                (
+                    "content_block_stop",
+                    {
+                        "type": "content_block_stop",
+                        "index": index,
+                    },
+                ),
+            ]
+        elif mode == SystemMessageMode.FORMATTED:
+            tool_data = tool_use_block.model_dump()
+            formatted_json = MessageConverter._format_json_data(
+                tool_data, pretty_format
+            )
+            escaped_json = MessageConverter._escape_content_for_xml(
+                formatted_json, pretty_format
+            )
+            formatted_text = (
+                f"<tool_use_sdk>\n{escaped_json}\n</tool_use_sdk>\n"
+                if pretty_format
+                else f"<tool_use_sdk>{escaped_json}</tool_use_sdk>"
+            )
+            return [
+                (
+                    "content_block_start",
+                    {
+                        "type": "content_block_start",
+                        "index": index,
+                        "content_block": {"type": "text", "text": ""},
+                    },
+                ),
+                (
+                    "content_block_delta",
+                    {
+                        "type": "content_block_delta",
+                        "index": index,
+                        "delta": {"type": "text_delta", "text": formatted_text},
+                    },
+                ),
+                (
+                    "content_block_stop",
+                    {
+                        "type": "content_block_stop",
+                        "index": index,
+                    },
+                ),
+            ]
+
+    @staticmethod
+    def create_tool_result_chunks(
+        tool_result_block: sdk_models.ToolResultBlock,
+        mode: SystemMessageMode = SystemMessageMode.FORWARD,
+        index: int = 0,
+        pretty_format: bool = True,
+    ) -> list[tuple[str, dict[str, Any]]]:
+        """
+        Create streaming chunks for tool result blocks using specified mode.
+
+        Args:
+            tool_result_block: The ToolResultBlock from Claude SDK
+            mode: System message handling mode
+            index: The content block index for the tool result block
+            pretty_format: Whether to use pretty formatting
+
+        Returns:
+            List of tuples (event_type, chunk) for tool result streaming chunks
+        """
+        if mode == SystemMessageMode.IGNORE:
+            return []
+        elif mode == SystemMessageMode.FORWARD:
+            return [
+                (
+                    "content_block_start",
+                    {
+                        "type": "content_block_start",
+                        "index": index,
+                        "content_block": tool_result_block.to_sdk_block(),
+                    },
+                ),
+                (
+                    "content_block_stop",
+                    {
+                        "type": "content_block_stop",
+                        "index": index,
+                    },
+                ),
+            ]
+        elif mode == SystemMessageMode.FORMATTED:
+            tool_result_data = tool_result_block.model_dump()
+            formatted_json = MessageConverter._format_json_data(
+                tool_result_data, pretty_format
+            )
+            escaped_json = MessageConverter._escape_content_for_xml(
+                formatted_json, pretty_format
+            )
+            formatted_text = (
+                f"<tool_result_sdk>\n{escaped_json}\n</tool_result_sdk>\n"
+                if pretty_format
+                else f"<tool_result_sdk>{escaped_json}</tool_result_sdk>"
+            )
+            return [
+                (
+                    "content_block_start",
+                    {
+                        "type": "content_block_start",
+                        "index": index,
+                        "content_block": {"type": "text", "text": ""},
+                    },
+                ),
+                (
+                    "content_block_delta",
+                    {
+                        "type": "content_block_delta",
+                        "index": index,
+                        "delta": {"type": "text_delta", "text": formatted_text},
+                    },
+                ),
+                (
+                    "content_block_stop",
+                    {
+                        "type": "content_block_stop",
+                        "index": index,
+                    },
+                ),
+            ]
+
+    @staticmethod
     def create_result_message_content_block(
         result_message: sdk_models.ResultMessage,
         mode: SystemMessageMode = SystemMessageMode.FORWARD,
@@ -657,7 +820,7 @@ class MessageConverter:
         result_data = {
             "session_id": result_message.session_id,
             "stop_reason": result_message.stop_reason,
-            "usage": result_message.usage.model_dump(),
+            "usage": result_message.usage_model.model_dump(),
             "total_cost_usd": result_message.total_cost_usd,
             "source": source,
         }
@@ -708,7 +871,7 @@ class MessageConverter:
         result_data = {
             "session_id": result_message.session_id,
             "stop_reason": result_message.stop_reason,
-            "usage": result_message.usage.model_dump(),
+            "usage": result_message.usage_model.model_dump(),
             "total_cost_usd": result_message.total_cost_usd,
             "source": source,
         }

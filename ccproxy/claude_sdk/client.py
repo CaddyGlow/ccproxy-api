@@ -6,9 +6,9 @@ from typing import Any
 import structlog
 from pydantic import BaseModel
 
-from ccproxy.claude_sdk import models as sdk_models
 from ccproxy.core.async_utils import patched_typing
 from ccproxy.core.errors import ClaudeProxyError, ServiceUnavailableError
+from ccproxy.models import claude_sdk as sdk_models
 from ccproxy.observability import timed_operation
 
 
@@ -92,6 +92,16 @@ class ClaudeSDKClient:
                 async for message in query(prompt=prompt, options=options):
                     message_count += 1
 
+                    logger.debug(
+                        "claude_sdk_raw_message_received",
+                        message_type=type(message).__name__,
+                        message_count=message_count,
+                        request_id=request_id,
+                        has_content=hasattr(message, "content")
+                        and bool(getattr(message, "content", None)),
+                        content_preview=str(message)[:150],
+                    )
+
                     model_class: type[BaseModel] | None = None
                     if isinstance(message, SDKUserMessage):
                         model_class = sdk_models.UserMessage
@@ -102,7 +112,53 @@ class ClaudeSDKClient:
                     elif isinstance(message, SDKResultMessage):
                         model_class = sdk_models.ResultMessage
 
-                    yield model_class.model_validate(message.model_dump())  # type: ignore
+                    # Convert Claude SDK message to our Pydantic model
+                    try:
+                        if hasattr(message, "__dict__"):
+                            converted_message = model_class.model_validate(
+                                vars(message)
+                            )
+                        else:
+                            # For dataclass objects, use dataclass.asdict equivalent
+                            message_dict = {}
+                            if hasattr(message, "__dataclass_fields__"):
+                                message_dict = {
+                                    field: getattr(message, field)
+                                    for field in message.__dataclass_fields__
+                                }
+                            else:
+                                # Try to extract common attributes
+                                for attr in [
+                                    "content",
+                                    "subtype",
+                                    "data",
+                                    "session_id",
+                                    "stop_reason",
+                                    "usage",
+                                    "total_cost_usd",
+                                ]:
+                                    if hasattr(message, attr):
+                                        message_dict[attr] = getattr(message, attr)
+
+                            converted_message = model_class.model_validate(message_dict)
+
+                        logger.debug(
+                            "claude_sdk_message_converted_successfully",
+                            original_type=type(message).__name__,
+                            converted_type=type(converted_message).__name__,
+                            message_count=message_count,
+                            request_id=request_id,
+                        )
+                        yield converted_message
+                    except Exception as e:
+                        logger.warning(
+                            "claude_sdk_message_conversion_failed",
+                            message_type=type(message).__name__,
+                            model_class=model_class.__name__,
+                            error=str(e),
+                        )
+                        # Skip invalid messages rather than crashing
+                        continue
 
                 # Store final metrics
                 op["message_count"] = message_count

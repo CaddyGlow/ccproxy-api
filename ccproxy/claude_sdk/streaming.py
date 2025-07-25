@@ -6,9 +6,9 @@ from uuid import uuid4
 
 import structlog
 
-from ccproxy.claude_sdk import models as sdk_models
 from ccproxy.claude_sdk.converter import MessageConverter
 from ccproxy.config.claude import SystemMessageMode
+from ccproxy.models import claude_sdk as sdk_models
 from ccproxy.observability.context import RequestContext
 from ccproxy.observability.metrics import PrometheusMetrics
 
@@ -72,7 +72,22 @@ class ClaudeStreamProcessor:
             yield chunk
 
         async for message in sdk_stream:
+            logger.debug(
+                "sdk_message_received",
+                message_type=type(message).__name__,
+                request_id=request_id,
+                message_content=message.model_dump()
+                if hasattr(message, "model_dump")
+                else str(message)[:200],
+            )
+
             if isinstance(message, sdk_models.SystemMessage):
+                logger.debug(
+                    "sdk_system_message_processing",
+                    mode=sdk_message_mode.value,
+                    message_text=message.data.get("text", "")[:100],
+                    request_id=request_id,
+                )
                 if sdk_message_mode != SystemMessageMode.IGNORE:
                     chunks = self.message_converter.create_system_message_chunks(
                         message_text=message.data.get("text", ""),
@@ -85,8 +100,21 @@ class ClaudeStreamProcessor:
                     content_block_index += 1
 
             elif isinstance(message, sdk_models.AssistantMessage):
+                logger.debug(
+                    "sdk_assistant_message_processing",
+                    content_blocks_count=len(message.content),
+                    block_types=[type(block).__name__ for block in message.content],
+                    request_id=request_id,
+                )
                 for block in message.content:
                     if isinstance(block, sdk_models.TextBlock):
+                        logger.debug(
+                            "sdk_text_block_processing",
+                            text_length=len(block.text),
+                            text_preview=block.text[:50],
+                            block_index=content_block_index,
+                            request_id=request_id,
+                        )
                         yield {
                             "type": "content_block_start",
                             "index": content_block_index,
@@ -100,17 +128,71 @@ class ClaudeStreamProcessor:
                             "index": content_block_index,
                         }
                         content_block_index += 1
-                    # TODO: Handle other block types like ToolUseBlock in streaming
+                    elif isinstance(block, sdk_models.ToolUseBlock):
+                        logger.debug(
+                            "sdk_tool_use_block_processing",
+                            tool_id=block.id,
+                            tool_name=block.name,
+                            input_keys=list(block.input.keys()) if block.input else [],
+                            block_index=content_block_index,
+                            mode=sdk_message_mode.value,
+                            request_id=request_id,
+                        )
+                        chunks = self.message_converter.create_tool_use_chunks(
+                            tool_use_block=block,
+                            mode=sdk_message_mode,
+                            index=content_block_index,
+                            pretty_format=pretty_format,
+                        )
+                        for _, chunk in chunks:
+                            yield chunk
+                        content_block_index += 1
+                    elif isinstance(block, sdk_models.ToolResultBlock):
+                        logger.debug(
+                            "sdk_tool_result_block_processing",
+                            tool_use_id=block.tool_use_id,
+                            is_error=block.is_error,
+                            content_type=type(block.content).__name__
+                            if block.content
+                            else "None",
+                            content_preview=str(block.content)[:100]
+                            if block.content
+                            else None,
+                            block_index=content_block_index,
+                            mode=sdk_message_mode.value,
+                            request_id=request_id,
+                        )
+                        chunks = self.message_converter.create_tool_result_chunks(
+                            tool_result_block=block,
+                            mode=sdk_message_mode,
+                            index=content_block_index,
+                            pretty_format=pretty_format,
+                        )
+                        for _, chunk in chunks:
+                            yield chunk
+                        content_block_index += 1
 
             elif isinstance(message, sdk_models.ResultMessage):
+                logger.debug(
+                    "sdk_result_message_processing",
+                    session_id=message.session_id,
+                    stop_reason=message.stop_reason,
+                    is_error=message.is_error,
+                    duration_ms=message.duration_ms,
+                    num_turns=message.num_turns,
+                    total_cost_usd=message.total_cost_usd,
+                    usage_available=message.usage is not None,
+                    request_id=request_id,
+                )
                 # Final message, contains metrics
                 if ctx:
+                    usage_model = message.usage_model
                     ctx.add_metadata(
                         status_code=200,
-                        tokens_input=message.usage.input_tokens,
-                        tokens_output=message.usage.output_tokens,
-                        cache_read_tokens=message.usage.cache_read_input_tokens,
-                        cache_write_tokens=message.usage.cache_creation_input_tokens,
+                        tokens_input=usage_model.input_tokens,
+                        tokens_output=usage_model.output_tokens,
+                        cache_read_tokens=usage_model.cache_read_input_tokens,
+                        cache_write_tokens=usage_model.cache_creation_input_tokens,
                         cost_usd=message.total_cost_usd,
                     )
 
@@ -119,10 +201,19 @@ class ClaudeStreamProcessor:
                 )
                 # Update usage in the delta chunk
                 delta_chunk = end_chunks[0][1]
-                delta_chunk["usage"] = {"output_tokens": message.usage.output_tokens}
+                delta_chunk["usage"] = {
+                    "output_tokens": message.usage_model.output_tokens
+                }
 
                 yield delta_chunk
                 yield end_chunks[1][1]  # message_stop
                 break  # End of stream
+            else:
+                logger.warning(
+                    "sdk_unknown_message_type",
+                    message_type=type(message).__name__,
+                    message_content=str(message)[:200],
+                    request_id=request_id,
+                )
 
         logger.debug("claude_sdk_stream_processing_completed", request_id=request_id)

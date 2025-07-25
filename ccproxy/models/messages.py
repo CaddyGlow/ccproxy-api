@@ -1,12 +1,15 @@
 """Message models for Anthropic Messages API endpoint."""
 
-from typing import Annotated, Any, Literal
+from typing import TYPE_CHECKING, Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from ccproxy.claude_sdk.models import SDKContentBlock
-
+from .claude_sdk import SDKContentBlock
 from .requests import Message, ToolDefinition, Usage
+
+
+if TYPE_CHECKING:
+    pass
 from .types import ServiceTier, StopReason, ToolChoiceType
 
 

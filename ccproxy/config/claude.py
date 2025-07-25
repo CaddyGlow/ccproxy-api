@@ -56,7 +56,7 @@ class ClaudeSettings(BaseModel):
     )
 
     sdk_message_mode: SystemMessageMode = Field(
-        default=SystemMessageMode.FORMATTED,
+        default=SystemMessageMode.FORWARD,
         description="Mode for handling SDK messages from Claude SDK. Options: forward (direct SDK blocks), ignore (skip blocks), formatted (XML tags with JSON data)",
     )
 

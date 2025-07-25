@@ -8,7 +8,6 @@ from claude_code_sdk import ClaudeCodeOptions
 
 from ccproxy.adapters.openai import adapter
 from ccproxy.auth.manager import AuthManager
-from ccproxy.claude_sdk import models as sdk_models
 from ccproxy.claude_sdk.client import ClaudeSDKClient
 from ccproxy.claude_sdk.converter import MessageConverter
 from ccproxy.claude_sdk.options import OptionsHandler
@@ -20,6 +19,7 @@ from ccproxy.core.errors import (
     ClaudeProxyError,
     ServiceUnavailableError,
 )
+from ccproxy.models import claude_sdk as sdk_models
 from ccproxy.models.messages import MessageResponse
 from ccproxy.observability.access_logger import log_request_access
 from ccproxy.observability.context import RequestContext, request_context
@@ -262,7 +262,7 @@ class ClaudeSDKService:
                             response.content.append(block)
 
         cost_usd = result_message.total_cost_usd
-        usage = result_message.usage
+        usage = result_message.usage_model
 
         # if cost_usd is not None and response.usage:
         #     response.usage.cost_usd = cost_usd
