@@ -352,12 +352,20 @@ class TerminalPermissionHandler:
 
     def __init__(self) -> None:
         """Initialize the terminal confirmation handler."""
-        self._request_queue: asyncio.Queue[
-            tuple[PermissionRequest, asyncio.Future[bool]]
-        ] = asyncio.Queue()
+        self._request_queue: (
+            asyncio.Queue[tuple[PermissionRequest, asyncio.Future[bool]]] | None
+        ) = None
         self._cancelled_requests: set[str] = set()
         self._processing_task: asyncio.Task[None] | None = None
         self._active_apps: dict[str, ConfirmationApp] = {}
+
+    def _get_request_queue(
+        self,
+    ) -> asyncio.Queue[tuple[PermissionRequest, asyncio.Future[bool]]]:
+        """Lazily initialize and return the request queue."""
+        if self._request_queue is None:
+            self._request_queue = asyncio.Queue()
+        return self._request_queue
 
     def _safe_set_future_result(
         self, future: asyncio.Future[bool], result: bool
@@ -405,7 +413,7 @@ class TerminalPermissionHandler:
         """Process requests from the queue one by one."""
         while True:
             try:
-                request, future = await self._request_queue.get()
+                request, future = await self._get_request_queue().get()
 
                 # Check if request is valid for processing
                 if not self._is_request_processable(request, future):
@@ -481,7 +489,7 @@ class TerminalPermissionHandler:
     async def _queue_and_wait_for_result(self, request: PermissionRequest) -> bool:
         """Queue a request and wait for its result."""
         future: asyncio.Future[bool] = asyncio.Future()
-        await self._request_queue.put((request, future))
+        await self._get_request_queue().put((request, future))
         return await future
 
     async def handle_permission(self, request: PermissionRequest) -> bool:

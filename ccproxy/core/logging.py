@@ -139,6 +139,7 @@ def setup_logging(
         "uvicorn.error",
         "fastapi",
         "ccproxy",
+        # "fastapi_mcp",
     ]:
         logger = logging.getLogger(logger_name)
         logger.handlers = []  # Remove default handlers
@@ -172,6 +173,9 @@ def setup_logging(
         "aiohttp",
         "httpcore",
         "httpcore.http11",
+        "fastapi_mcp",
+        "sse_starlette",
+        "mcp",
     ]:
         noisy_logger = logging.getLogger(noisy_logger_name)
         noisy_logger.handlers = []  # Remove default handlers
