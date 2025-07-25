@@ -30,10 +30,10 @@ def _create_default_claude_code_options() -> ClaudeCodeOptions:
 
 
 class SystemMessageMode(str, Enum):
-    """Modes for handling system messages from Claude SDK.
+    """Modes for handling SDK messages from Claude SDK.
 
     - forward: Forward SDK content blocks directly with original types and metadata
-    - ignore: Skip SystemMessages and SDK blocks completely
+    - ignore: Skip SDK messages and blocks completely
     - formatted: Format as XML tags with JSON data in text deltas
     """
 
@@ -55,9 +55,9 @@ class ClaudeSettings(BaseModel):
         description="Claude Code SDK options configuration",
     )
 
-    system_message_mode: SystemMessageMode = Field(
+    sdk_message_mode: SystemMessageMode = Field(
         default=SystemMessageMode.FORMATTED,
-        description="Mode for handling system messages from Claude SDK. Options: forward (direct SDK blocks), ignore (skip blocks), formatted (XML tags with JSON data)",
+        description="Mode for handling SDK messages from Claude SDK. Options: forward (direct SDK blocks), ignore (skip blocks), formatted (XML tags with JSON data)",
     )
 
     pretty_format: bool = Field(

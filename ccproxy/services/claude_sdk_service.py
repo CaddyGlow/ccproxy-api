@@ -216,7 +216,7 @@ class ClaudeSDKService:
             elif isinstance(message, SystemMessage):
                 # Collect SystemMessages for processing based on mode
                 mode = (
-                    self.settings.claude.system_message_mode
+                    self.settings.claude.sdk_message_mode
                     if self.settings
                     else SystemMessageMode.FORWARD
                 )
@@ -229,7 +229,7 @@ class ClaudeSDKService:
             elif isinstance(message, UserMessage):
                 # Collect UserMessages (which contain ToolResultBlocks)
                 mode = (
-                    self.settings.claude.system_message_mode
+                    self.settings.claude.sdk_message_mode
                     if self.settings
                     else SystemMessageMode.FORWARD
                 )
@@ -260,7 +260,7 @@ class ClaudeSDKService:
         logger.debug("claude_sdk_completion_received")
         # Get system message mode
         mode = (
-            self.settings.claude.system_message_mode
+            self.settings.claude.sdk_message_mode
             if self.settings
             else SystemMessageMode.FORWARD
         )
@@ -466,7 +466,7 @@ class ClaudeSDKService:
                         ):
                             # Get system message mode for text formatting
                             mode = (
-                                self.settings.claude.system_message_mode
+                                self.settings.claude.sdk_message_mode
                                 if self.settings
                                 else SystemMessageMode.FORWARD
                             )
@@ -523,7 +523,7 @@ class ClaudeSDKService:
                         # --- Handle Tool Use Blocks ---
                         elif isinstance(block, ToolUseBlock):
                             mode = (
-                                self.settings.claude.system_message_mode
+                                self.settings.claude.sdk_message_mode
                                 if self.settings
                                 else SystemMessageMode.FORWARD
                             )
@@ -624,7 +624,7 @@ class ClaudeSDKService:
                         # --- Handle Tool Result Blocks ---
                         elif isinstance(block, ToolResultBlock):
                             mode = (
-                                self.settings.claude.system_message_mode
+                                self.settings.claude.sdk_message_mode
                                 if self.settings
                                 else SystemMessageMode.FORWARD
                             )
@@ -724,7 +724,7 @@ class ClaudeSDKService:
                 elif isinstance(message, SystemMessage):
                     # Handle SystemMessage based on mode
                     mode = (
-                        self.settings.claude.system_message_mode
+                        self.settings.claude.sdk_message_mode
                         if self.settings
                         else SystemMessageMode.FORWARD
                     )
@@ -768,7 +768,7 @@ class ClaudeSDKService:
                 elif isinstance(message, UserMessage):
                     # Handle UserMessage (which contains ToolResultBlocks)
                     mode = (
-                        self.settings.claude.system_message_mode
+                        self.settings.claude.sdk_message_mode
                         if self.settings
                         else SystemMessageMode.FORWARD
                     )
@@ -898,7 +898,7 @@ class ClaudeSDKService:
 
                     # Handle ResultMessage based on mode (before processing usage)
                     mode = (
-                        self.settings.claude.system_message_mode
+                        self.settings.claude.sdk_message_mode
                         if self.settings
                         else SystemMessageMode.FORWARD
                     )

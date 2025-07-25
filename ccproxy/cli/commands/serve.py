@@ -35,6 +35,7 @@ from ..options.claude_options import (
     validate_max_thinking_tokens,
     validate_max_turns,
     validate_permission_mode,
+    validate_sdk_message_mode,
 )
 from ..options.security_options import SecurityOptions, validate_auth_token
 from ..options.server_options import (
@@ -436,6 +437,15 @@ def api(
             rich_help_panel="Claude Settings",
         ),
     ] = None,
+    sdk_message_mode: Annotated[
+        str | None,
+        typer.Option(
+            "--sdk-message-mode",
+            help="SDK message handling mode: forward (direct SDK blocks), ignore (skip blocks), formatted (XML tags with JSON data)",
+            callback=validate_sdk_message_mode,
+            rich_help_panel="Claude Settings",
+        ),
+    ] = None,
     # Core settings
     docker: Annotated[
         bool,
@@ -566,6 +576,7 @@ def api(
             max_turns=max_turns,
             cwd=cwd,
             permission_prompt_tool_name=permission_prompt_tool_name,
+            sdk_message_mode=sdk_message_mode,
         )
 
         security_options = SecurityOptions(auth_token=auth_token)
@@ -591,6 +602,7 @@ def api(
             max_turns=claude_options.max_turns,
             permission_prompt_tool_name=claude_options.permission_prompt_tool_name,
             cwd=claude_options.cwd,
+            sdk_message_mode=claude_options.sdk_message_mode,
         )
 
         # Load settings with CLI overrides

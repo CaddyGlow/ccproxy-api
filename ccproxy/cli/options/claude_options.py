@@ -77,6 +77,22 @@ def validate_cwd(
     return value
 
 
+def validate_sdk_message_mode(
+    ctx: typer.Context, param: typer.CallbackParam, value: str | None
+) -> str | None:
+    """Validate SDK message mode."""
+    if value is None:
+        return None
+
+    valid_modes = {"forward", "ignore", "formatted"}
+    if value not in valid_modes:
+        raise typer.BadParameter(
+            f"SDK message mode must be one of: {', '.join(valid_modes)}"
+        )
+
+    return value
+
+
 # Factory functions removed - use Annotated syntax directly in commands
 
 
@@ -98,6 +114,7 @@ class ClaudeOptions:
         max_turns: int | None = None,
         cwd: str | None = None,
         permission_prompt_tool_name: str | None = None,
+        sdk_message_mode: str | None = None,
     ):
         """Initialize Claude options.
 
@@ -111,6 +128,7 @@ class ClaudeOptions:
             max_turns: Maximum conversation turns
             cwd: Working directory path
             permission_prompt_tool_name: Permission prompt tool name
+            sdk_message_mode: SDK message handling mode
         """
         self.max_thinking_tokens = max_thinking_tokens
         self.allowed_tools = allowed_tools
@@ -121,3 +139,4 @@ class ClaudeOptions:
         self.max_turns = max_turns
         self.cwd = cwd
         self.permission_prompt_tool_name = permission_prompt_tool_name
+        self.sdk_message_mode = sdk_message_mode
