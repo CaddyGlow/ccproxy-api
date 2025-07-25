@@ -4,10 +4,10 @@ from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from ccproxy.claude_sdk.models import CustomContentBlock
+from ccproxy.claude_sdk.models import SDKContentBlock
 
 from .requests import Message, ToolDefinition, Usage
-from .types import ContentBlockType, ServiceTier, StopReason, ToolChoiceType
+from .types import ServiceTier, StopReason, ToolChoiceType
 
 
 class SystemMessage(BaseModel):
@@ -197,25 +197,37 @@ class MessageCreateParams(BaseModel):
     model_config = ConfigDict(extra="forbid", validate_assignment=True)
 
 
-class MessageContentBlock(BaseModel):
-    """Content block in a message response."""
+class TextContentBlock(BaseModel):
+    """Text content block."""
 
-    type: Annotated[ContentBlockType, Field(description="Type of content block")]
-    text: Annotated[
-        str | None, Field(description="Text content (for text/thinking blocks)")
-    ] = None
-    id: Annotated[str | None, Field(description="Unique ID (for tool_use blocks)")] = (
-        None
-    )
-    name: Annotated[
-        str | None, Field(description="Tool name (for tool_use blocks)")
-    ] = None
-    input: Annotated[
-        dict[str, Any] | None, Field(description="Tool input (for tool_use blocks)")
-    ] = None
+    type: Literal["text"]
+    text: str
 
 
-CCProxyContentBlock = MessageContentBlock | CustomContentBlock
+class ToolUseContentBlock(BaseModel):
+    """Tool use content block."""
+
+    type: Literal["tool_use"]
+    id: str
+    name: str
+    input: dict[str, Any]
+
+
+class ThinkingContentBlock(BaseModel):
+    """Thinking content block."""
+
+    type: Literal["thinking"]
+    text: str
+    signature: str | None = None
+
+
+MessageContentBlock = Annotated[
+    TextContentBlock | ToolUseContentBlock | ThinkingContentBlock,
+    Field(discriminator="type"),
+]
+
+
+CCProxyContentBlock = MessageContentBlock | SDKContentBlock
 
 
 class MessageResponse(BaseModel):

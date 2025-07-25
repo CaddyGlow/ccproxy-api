@@ -1,23 +1,20 @@
 """Message format converter for Claude SDK interactions."""
 
-from typing import Any, cast
+import re
+from typing import Any
 
 import structlog
 
+from ccproxy.claude_sdk import models as sdk_models
 from ccproxy.config.claude import SystemMessageMode
 from ccproxy.core.async_utils import patched_typing
+from ccproxy.models.messages import MessageResponse
 
 
 logger = structlog.get_logger(__name__)
 
 with patched_typing():
-    from claude_code_sdk import (
-        AssistantMessage,
-        ResultMessage,
-        TextBlock,
-        ToolResultBlock,
-        ToolUseBlock,
-    )
+    pass
 
 
 class MessageConverter:
@@ -107,12 +104,12 @@ class MessageConverter:
 
     @staticmethod
     def convert_to_anthropic_response(
-        assistant_message: AssistantMessage,
-        result_message: ResultMessage,
+        assistant_message: sdk_models.AssistantMessage,
+        result_message: sdk_models.ResultMessage,
         model: str,
         mode: SystemMessageMode = SystemMessageMode.FORWARD,
         pretty_format: bool = True,
-    ) -> dict[str, Any]:
+    ) -> MessageResponse:
         """
         Convert Claude SDK messages to Anthropic API response format.
 
@@ -127,100 +124,58 @@ class MessageConverter:
             Response in Anthropic API format
         """
         # Extract token usage from result message
-        # First try to get usage from the usage field (preferred method)
-        usage = getattr(result_message, "usage", {})
-        if usage:
-            input_tokens = usage.get("input_tokens", 0)
-            output_tokens = usage.get("output_tokens", 0)
-            cache_read_tokens = usage.get("cache_read_input_tokens", 0)
-            cache_write_tokens = usage.get("cache_creation_input_tokens", 0)
-        else:
-            # Fallback to direct attributes
-            input_tokens = getattr(result_message, "input_tokens", 0)
-            output_tokens = getattr(result_message, "output_tokens", 0)
-            cache_read_tokens = getattr(result_message, "cache_read_tokens", 0)
-            cache_write_tokens = getattr(result_message, "cache_write_tokens", 0)
+        usage = result_message.usage
 
         # Log token extraction for debugging
-        from structlog import get_logger
-
-        logger = get_logger(__name__)
-
-        logger.debug(
-            "assistant_message_content",
-            content_blocks=[
-                type(block).__name__ for block in assistant_message.content
-            ],
-            content_count=len(assistant_message.content),
-            first_block_text=(
-                assistant_message.content[0].text[:100]
-                if assistant_message.content
-                and hasattr(assistant_message.content[0], "text")
-                else None
-            ),
-        )
+        # logger.debug(
+        #     "assistant_message_content",
+        #     content_blocks=[block.type for block in assistant_message.content],
+        #     content_count=len(assistant_message.content),
+        # )
 
         logger.debug(
             "token_usage_extracted",
-            input_tokens=input_tokens,
-            output_tokens=output_tokens,
-            cache_read_tokens=cache_read_tokens,
-            cache_write_tokens=cache_write_tokens,
+            input_tokens=usage.input_tokens,
+            output_tokens=usage.output_tokens,
+            cache_read_tokens=usage.cache_read_input_tokens,
+            cache_write_tokens=usage.cache_creation_input_tokens,
             source="claude_sdk",
         )
 
-        # Calculate total tokens
-        total_tokens = input_tokens + output_tokens
-
         # Build usage information
-        usage_info = {
-            "input_tokens": input_tokens,
-            "output_tokens": output_tokens,
-            "cache_read_tokens": cache_read_tokens,
-            "cache_write_tokens": cache_write_tokens,
-            "total_tokens": total_tokens,
-        }
+        usage_info = usage.model_dump()
 
         # Add cost information if available
-        total_cost_usd = getattr(result_message, "total_cost_usd", None)
-        if total_cost_usd is not None:
-            usage_info["cost_usd"] = total_cost_usd
+        if result_message.total_cost_usd is not None:
+            usage_info["cost_usd"] = result_message.total_cost_usd
 
         # Convert content blocks to Anthropic format, preserving thinking blocks
         content_blocks = []
 
         for block in assistant_message.content:
-            if isinstance(block, TextBlock):
+            if isinstance(block, sdk_models.TextBlock):
                 # Parse text content for thinking blocks
                 text = block.text
-
-                # Check if the text contains thinking blocks
-                import re
-
                 thinking_pattern = r'<thinking signature="([^"]*)">(.*?)</thinking>'
-
-                # Split the text by thinking blocks
                 last_end = 0
                 for match in re.finditer(thinking_pattern, text, re.DOTALL):
-                    # Add any text before the thinking block
                     before_text = text[last_end : match.start()].strip()
                     if before_text:
                         if mode == SystemMessageMode.FORMATTED:
-                            # Wrap text in <text></text> tags with formatting
                             escaped_text = MessageConverter._escape_content_for_xml(
                                 before_text, pretty_format
                             )
-                            if pretty_format:
-                                formatted_text = f"<text>\n{escaped_text}\n</text>\n"
-                            else:
-                                formatted_text = f"<text>{escaped_text}</text>"
+                            formatted_text = (
+                                f"<text>\n{escaped_text}\n</text>\n"
+                                if pretty_format
+                                else f"<text>{escaped_text}</text>"
+                            )
                             content_blocks.append(
                                 {"type": "text", "text": formatted_text}
                             )
                         else:
                             content_blocks.append({"type": "text", "text": before_text})
 
-                    # Add the thinking block
                     signature, thinking_text = match.groups()
                     content_blocks.append(
                         {
@@ -229,130 +184,105 @@ class MessageConverter:
                             "signature": signature,
                         }
                     )
-
                     last_end = match.end()
 
-                # Add any remaining text after the last thinking block
                 remaining_text = text[last_end:].strip()
                 if remaining_text:
                     if mode == SystemMessageMode.FORMATTED:
-                        # Wrap text in <text></text> tags with formatting
                         escaped_text = MessageConverter._escape_content_for_xml(
                             remaining_text, pretty_format
                         )
-                        if pretty_format:
-                            formatted_text = f"<text>\n{escaped_text}\n</text>\n"
-                        else:
-                            formatted_text = f"<text>{escaped_text}</text>"
+                        formatted_text = (
+                            f"<text>\n{escaped_text}\n</text>\n"
+                            if pretty_format
+                            else f"<text>{escaped_text}</text>"
+                        )
                         content_blocks.append({"type": "text", "text": formatted_text})
                     else:
                         content_blocks.append({"type": "text", "text": remaining_text})
                 elif last_end == 0 and text:
-                    # If no thinking blocks were found AND no remaining text was processed, add the entire text as a text block
                     if mode == SystemMessageMode.FORMATTED:
-                        # Wrap text in <text></text> tags with formatting
                         escaped_text = MessageConverter._escape_content_for_xml(
                             text, pretty_format
                         )
-                        if pretty_format:
-                            formatted_text = f"<text>\n{escaped_text}\n</text>\n"
-                        else:
-                            formatted_text = f"<text>{escaped_text}</text>"
+                        formatted_text = (
+                            f"<text>\n{escaped_text}\n</text>\n"
+                            if pretty_format
+                            else f"<text>{escaped_text}</text>"
+                        )
                         content_blocks.append({"type": "text", "text": formatted_text})
                     else:
                         content_blocks.append({"type": "text", "text": text})
 
-            elif isinstance(block, ToolUseBlock):
+            elif isinstance(block, sdk_models.ToolUseBlock):
                 if mode == SystemMessageMode.FORWARD:
-                    tool_input = getattr(block, "input", {}) or {}
                     content_blocks.append(
-                        cast(
-                            dict[str, Any],
-                            {
-                                "type": "tool_use_sdk",
-                                "id": getattr(block, "id", f"tool_{id(block)}"),
-                                "name": block.name,
-                                "input": tool_input,
-                                "source": "claude_code_sdk",
-                            },
-                        )
+                        sdk_models.ToolUseSDKBlock(
+                            **block.model_dump(),
+                        ).model_dump(exclude_none=True)
                     )
                 elif mode == SystemMessageMode.FORMATTED:
-                    tool_data = {
-                        "id": getattr(block, "id", f"tool_{id(block)}"),
-                        "name": block.name,
-                        "input": getattr(block, "input", {}) or {},
-                    }
+                    tool_data = block.model_dump()
                     formatted_json = MessageConverter._format_json_data(
                         tool_data, pretty_format
                     )
                     escaped_json = MessageConverter._escape_content_for_xml(
                         formatted_json, pretty_format
                     )
-                    if pretty_format:
-                        formatted_text = (
-                            f"<tool_use_sdk>\n{escaped_json}\n</tool_use_sdk>\n"
-                        )
-                    else:
-                        formatted_text = f"<tool_use_sdk>{escaped_json}</tool_use_sdk>"
+                    formatted_text = (
+                        f"<tool_use_sdk>\n{escaped_json}\n</tool_use_sdk>\n"
+                        if pretty_format
+                        else f"<tool_use_sdk>{escaped_json}</tool_use_sdk>"
+                    )
                     content_blocks.append({"type": "text", "text": formatted_text})
-                # elif mode == SystemMessageMode.IGNORE: skip entirely
-            elif isinstance(block, ToolResultBlock):
+
+            elif isinstance(block, sdk_models.ToolResultBlock):
                 if mode == SystemMessageMode.FORWARD:
-                    is_error = getattr(block, "is_error", None)
-                    tool_result_block: dict[str, Any] = {
-                        "type": "tool_result_sdk",
-                        "tool_use_id": getattr(block, "tool_use_id", ""),
-                        "content": block.content
-                        if isinstance(block.content, str)
-                        else "",
-                        "is_error": is_error if is_error is not None else False,
-                        "source": "claude_code_sdk",
-                    }
-                    content_blocks.append(tool_result_block)
+                    content_blocks.append(
+                        sdk_models.ToolResultSDKBlock(
+                            **block.model_dump(),
+                        ).model_dump(exclude_none=True)
+                    )
                 elif mode == SystemMessageMode.FORMATTED:
-                    tool_result_data = {
-                        "tool_use_id": getattr(block, "tool_use_id", ""),
-                        "content": block.content
-                        if isinstance(block.content, str)
-                        else "",
-                        "is_error": getattr(block, "is_error", False),
-                    }
+                    tool_result_data = block.model_dump()
                     formatted_json = MessageConverter._format_json_data(
                         tool_result_data, pretty_format
                     )
                     escaped_json = MessageConverter._escape_content_for_xml(
                         formatted_json, pretty_format
                     )
-                    if pretty_format:
-                        formatted_text = (
-                            f"<tool_result_sdk>\n{escaped_json}\n</tool_result_sdk>\n"
-                        )
-                    else:
-                        formatted_text = (
-                            f"<tool_result_sdk>{escaped_json}</tool_result_sdk>"
-                        )
+                    formatted_text = (
+                        f"<tool_result_sdk>\n{escaped_json}\n</tool_result_sdk>\n"
+                        if pretty_format
+                        else f"<tool_result_sdk>{escaped_json}</tool_result_sdk>"
+                    )
                     content_blocks.append({"type": "text", "text": formatted_text})
-                # elif mode == SystemMessageMode.IGNORE: skip entirely
 
-        return {
-            "id": f"msg_{result_message.session_id}",
-            "type": "message",
-            "role": "assistant",
-            "content": content_blocks,
-            "model": model,
-            "stop_reason": getattr(result_message, "stop_reason", "end_turn"),
-            "stop_sequence": None,
-            "usage": usage_info,
-        }
+        return MessageResponse.model_validate(
+            {
+                "id": f"msg_{result_message.session_id}",
+                "type": "message",
+                "role": "assistant",
+                "content": content_blocks,
+                "model": model,
+                "stop_reason": result_message.stop_reason,
+                "stop_sequence": None,
+                "usage": usage_info,
+            }
+        )
 
     @staticmethod
     def convert_sdk_messages_to_anthropic_response(
-        sdk_messages: list[Any],
+        sdk_messages: list[
+            sdk_models.AssistantMessage
+            | sdk_models.SystemMessage
+            | sdk_models.ResultMessage
+            | sdk_models.UserMessage
+        ],
         model: str,
         mode: SystemMessageMode = SystemMessageMode.FORWARD,
         pretty_format: bool = True,
-    ) -> dict[str, Any]:
+    ) -> MessageResponse:
         """
         Convert a full list of Claude SDK messages to Anthropic API response format.
 
@@ -369,45 +299,58 @@ class MessageConverter:
         Returns:
             Response in Anthropic API format
         """
-        from claude_code_sdk import (
-            AssistantMessage,
-            ResultMessage,
-            SystemMessage,
-            UserMessage,
+        assistant_messages = [
+            m for m in sdk_messages if isinstance(m, sdk_models.AssistantMessage)
+        ]
+        system_messages = [
+            m for m in sdk_messages if isinstance(m, sdk_models.SystemMessage)
+        ]
+        result_message = next(
+            (m for m in sdk_messages if isinstance(m, sdk_models.ResultMessage)), None
         )
-
-        assistant_messages = []
-        system_messages = []
-        result_message = None
-
-        # Separate message types
-        for message in sdk_messages:
-            if isinstance(message, AssistantMessage):
-                assistant_messages.append(message)
-            elif isinstance(message, SystemMessage):
-                system_messages.append(message)
-            elif isinstance(message, ResultMessage):
-                result_message = message
-            elif isinstance(message, UserMessage):
-                # UserMessage might contain tool results in some cases
-                pass
 
         # If we have no assistant messages, create a minimal response
         if not assistant_messages:
             if result_message:
-                usage = getattr(result_message, "usage", {})
-                return {
-                    "id": f"msg_{getattr(result_message, 'session_id', 'unknown')}",
-                    "type": "message",
-                    "role": "assistant",
-                    "content": [],
-                    "model": model,
-                    "stop_reason": getattr(result_message, "stop_reason", "end_turn"),
-                    "stop_sequence": None,
-                    "usage": usage or {},
-                }
+                return MessageResponse.model_validate(
+                    {
+                        "id": f"msg_{result_message.session_id}",
+                        "type": "message",
+                        "role": "assistant",
+                        "content": [],
+                        "model": model,
+                        "stop_reason": result_message.stop_reason,
+                        "stop_sequence": None,
+                        "usage": result_message.usage.model_dump(),
+                    }
+                )
             else:
-                return {
+                return MessageResponse.model_validate(
+                    {
+                        "id": "msg_unknown",
+                        "type": "message",
+                        "role": "assistant",
+                        "content": [],
+                        "model": model,
+                        "stop_reason": "end_turn",
+                        "stop_sequence": None,
+                        "usage": {},
+                    }
+                )
+
+        # Process the first assistant message as the main response
+        main_assistant_message = assistant_messages[0]
+
+        # If we have a result message, use the existing conversion method
+        if result_message:
+            response_data = MessageConverter.convert_to_anthropic_response(
+                main_assistant_message, result_message, model, mode, pretty_format
+            )
+            response = MessageResponse.model_validate(response_data)
+        else:
+            # Fallback for cases without result message
+            response = MessageResponse.model_validate(
+                {
                     "id": "msg_unknown",
                     "type": "message",
                     "role": "assistant",
@@ -417,34 +360,12 @@ class MessageConverter:
                     "stop_sequence": None,
                     "usage": {},
                 }
-
-        # Process the first assistant message as the main response
-        main_assistant_message = assistant_messages[0]
-
-        # If we have a result message, use the existing conversion method
-        if result_message:
-            response = MessageConverter.convert_to_anthropic_response(
-                main_assistant_message, result_message, model, mode, pretty_format
             )
-        else:
-            # Fallback for cases without result message
-            response = {
-                "id": "msg_unknown",
-                "type": "message",
-                "role": "assistant",
-                "content": [],
-                "model": model,
-                "stop_reason": "end_turn",
-                "stop_sequence": None,
-                "usage": {},
-            }
 
         # Add system messages if mode is not IGNORE
         if mode != SystemMessageMode.IGNORE and system_messages:
             for system_message in system_messages:
                 system_text = system_message.data.get("text", str(system_message.data))
-
-                # Create system message content block
                 system_content_block = (
                     MessageConverter.create_system_message_content_block(
                         system_text,
@@ -453,19 +374,24 @@ class MessageConverter:
                         pretty_format=pretty_format,
                     )
                 )
-
-                # Add to the beginning of content blocks
-                response["content"].insert(0, system_content_block)
+                if system_content_block:
+                    response.content.insert(
+                        0,
+                        sdk_models.SystemMessageBlock.model_validate(
+                            system_content_block
+                        ),
+                    )
 
         # If we have multiple assistant messages, append their content
         if len(assistant_messages) > 1:
             for additional_message in assistant_messages[1:]:
-                # Convert additional assistant message content
                 for block in additional_message.content:
-                    # Process each content block similar to the main conversion
-                    # This is simplified - in practice you might want more sophisticated merging
-                    if hasattr(block, "text"):
-                        response["content"].append({"type": "text", "text": block.text})
+                    if isinstance(block, sdk_models.TextBlock):
+                        response.content.append(
+                            sdk_models.TextBlock.model_validate(
+                                {"type": "text", "text": block.text}
+                            )
+                        )
 
         return response
 
@@ -709,7 +635,7 @@ class MessageConverter:
 
     @staticmethod
     def create_result_message_content_block(
-        result_message: ResultMessage,
+        result_message: sdk_models.ResultMessage,
         mode: SystemMessageMode = SystemMessageMode.FORWARD,
         source: str = "claude_code_sdk",
         pretty_format: bool = True,
@@ -727,47 +653,38 @@ class MessageConverter:
         """
         if mode == SystemMessageMode.IGNORE:
             return None
-        elif mode == SystemMessageMode.FORWARD:
-            # Extract key information from ResultMessage
-            result_data = {
-                "session_id": getattr(result_message, "session_id", ""),
-                "stop_reason": getattr(result_message, "stop_reason", "end_turn"),
-                "usage": getattr(result_message, "usage", {}),
-                "total_cost_usd": getattr(result_message, "total_cost_usd", None),
-            }
+
+        result_data = {
+            "session_id": result_message.session_id,
+            "stop_reason": result_message.stop_reason,
+            "usage": result_message.usage.model_dump(),
+            "total_cost_usd": result_message.total_cost_usd,
+            "source": source,
+        }
+
+        if mode == SystemMessageMode.FORWARD:
             return {
                 "type": "result_message",
                 "data": result_data,
                 "source": source,
             }
         elif mode == SystemMessageMode.FORMATTED:
-            result_data = {
-                "session_id": getattr(result_message, "session_id", ""),
-                "stop_reason": getattr(result_message, "stop_reason", "end_turn"),
-                "usage": getattr(result_message, "usage", {}),
-                "total_cost_usd": getattr(result_message, "total_cost_usd", None),
-                "source": source,
-            }
             formatted_json = MessageConverter._format_json_data(
                 result_data, pretty_format
             )
             escaped_json = MessageConverter._escape_content_for_xml(
                 formatted_json, pretty_format
             )
-            if pretty_format:
-                formatted_text = (
-                    f"<result_message>\n{escaped_json}\n</result_message>\n"
-                )
-            else:
-                formatted_text = f"<result_message>{escaped_json}</result_message>"
-            return {
-                "type": "text",
-                "text": formatted_text,
-            }
+            formatted_text = (
+                f"<result_message>\n{escaped_json}\n</result_message>\n"
+                if pretty_format
+                else f"<result_message>{escaped_json}</result_message>"
+            )
+            return {"type": "text", "text": formatted_text}
 
     @staticmethod
     def create_result_message_chunks(
-        result_message: ResultMessage,
+        result_message: sdk_models.ResultMessage,
         mode: SystemMessageMode = SystemMessageMode.FORWARD,
         index: int = 0,
         source: str = "claude_code_sdk",
@@ -787,13 +704,16 @@ class MessageConverter:
         """
         if mode == SystemMessageMode.IGNORE:
             return []
-        elif mode == SystemMessageMode.FORWARD:
-            result_data = {
-                "session_id": getattr(result_message, "session_id", ""),
-                "stop_reason": getattr(result_message, "stop_reason", "end_turn"),
-                "usage": getattr(result_message, "usage", {}),
-                "total_cost_usd": getattr(result_message, "total_cost_usd", None),
-            }
+
+        result_data = {
+            "session_id": result_message.session_id,
+            "stop_reason": result_message.stop_reason,
+            "usage": result_message.usage.model_dump(),
+            "total_cost_usd": result_message.total_cost_usd,
+            "source": source,
+        }
+
+        if mode == SystemMessageMode.FORWARD:
             return [
                 (
                     "content_block_start",
@@ -816,25 +736,17 @@ class MessageConverter:
                 ),
             ]
         elif mode == SystemMessageMode.FORMATTED:
-            result_data = {
-                "session_id": getattr(result_message, "session_id", ""),
-                "stop_reason": getattr(result_message, "stop_reason", "end_turn"),
-                "usage": getattr(result_message, "usage", {}),
-                "total_cost_usd": getattr(result_message, "total_cost_usd", None),
-                "source": source,
-            }
             formatted_json = MessageConverter._format_json_data(
                 result_data, pretty_format
             )
             escaped_json = MessageConverter._escape_content_for_xml(
                 formatted_json, pretty_format
             )
-            if pretty_format:
-                formatted_text = (
-                    f"<result_message>\n{escaped_json}\n</result_message>\n"
-                )
-            else:
-                formatted_text = f"<result_message>{escaped_json}</result_message>"
+            formatted_text = (
+                f"<result_message>\n{escaped_json}\n</result_message>\n"
+                if pretty_format
+                else f"<result_message>{escaped_json}</result_message>"
+            )
             return [
                 (
                     "content_block_start",

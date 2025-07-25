@@ -4,7 +4,9 @@ from collections.abc import AsyncIterator
 from typing import Any
 
 import structlog
+from pydantic import BaseModel
 
+from ccproxy.claude_sdk import models as sdk_models
 from ccproxy.core.async_utils import patched_typing
 from ccproxy.core.errors import ClaudeProxyError, ServiceUnavailableError
 from ccproxy.observability import timed_operation
@@ -12,17 +14,26 @@ from ccproxy.observability import timed_operation
 
 with patched_typing():
     from claude_code_sdk import (
-        AssistantMessage,
+        AssistantMessage as SDKAssistantMessage,
+    )
+    from claude_code_sdk import (
         ClaudeCodeOptions,
         CLIConnectionError,
         CLIJSONDecodeError,
         CLINotFoundError,
         ProcessError,
-        ResultMessage,
-        SystemMessage,
-        UserMessage,
         query,
     )
+    from claude_code_sdk import (
+        ResultMessage as SDKResultMessage,
+    )
+    from claude_code_sdk import (
+        SystemMessage as SDKSystemMessage,
+    )
+    from claude_code_sdk import (
+        UserMessage as SDKUserMessage,
+    )
+
 
 logger = structlog.get_logger(__name__)
 
@@ -53,9 +64,14 @@ class ClaudeSDKClient:
 
     async def query_completion(
         self, prompt: str, options: ClaudeCodeOptions, request_id: str | None = None
-    ) -> AsyncIterator[UserMessage | AssistantMessage | SystemMessage | ResultMessage]:
+    ) -> AsyncIterator[
+        sdk_models.UserMessage
+        | sdk_models.AssistantMessage
+        | sdk_models.SystemMessage
+        | sdk_models.ResultMessage
+    ]:
         """
-        Execute a query using the Claude Code SDK.
+        Execute a query using the Claude Code SDK and yields strongly-typed Pydantic models.
 
         Args:
             prompt: The prompt string to send to Claude
@@ -63,7 +79,7 @@ class ClaudeSDKClient:
             request_id: Optional request ID for correlation
 
         Yields:
-            Messages from the Claude Code SDK
+            Strongly-typed Pydantic messages from ccproxy.claude_sdk.models
 
         Raises:
             ClaudeSDKError: If the query fails
@@ -75,7 +91,18 @@ class ClaudeSDKClient:
                 message_count = 0
                 async for message in query(prompt=prompt, options=options):
                     message_count += 1
-                    yield message
+
+                    model_class: type[BaseModel] | None = None
+                    if isinstance(message, SDKUserMessage):
+                        model_class = sdk_models.UserMessage
+                    elif isinstance(message, SDKAssistantMessage):
+                        model_class = sdk_models.AssistantMessage
+                    elif isinstance(message, SDKSystemMessage):
+                        model_class = sdk_models.SystemMessage
+                    elif isinstance(message, SDKResultMessage):
+                        model_class = sdk_models.ResultMessage
+
+                    yield model_class.model_validate(message.model_dump())  # type: ignore
 
                 # Store final metrics
                 op["message_count"] = message_count

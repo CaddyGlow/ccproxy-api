@@ -9,7 +9,7 @@ Based on: https://github.com/anthropics/claude-code-sdk-python/blob/main/src/cla
 
 from __future__ import annotations
 
-from typing import Any, Literal, TypeVar
+from typing import Annotated, Any, Literal, TypeVar
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -42,18 +42,16 @@ def to_sdk_variant(base_model: BaseModel, sdk_class: type[T]) -> T:
 class TextBlock(BaseModel):
     """Text content block from Claude SDK."""
 
+    type: Literal["text"] = "text"
     text: str = Field(..., description="Text content")
 
     model_config = ConfigDict(extra="allow")
 
 
-class TextSDKBlock(TextBlock):
-    type: Literal["text"] = "text"
-
-
 class ToolUseBlock(BaseModel):
     """Tool use content block from Claude SDK."""
 
+    type: Literal["tool_use"] = "tool_use"
     id: str = Field(..., description="Unique identifier for the tool use")
     name: str = Field(..., description="Name of the tool being used")
     input: dict[str, Any] = Field(..., description="Input parameters for the tool")
@@ -64,6 +62,7 @@ class ToolUseBlock(BaseModel):
 class ToolResultBlock(BaseModel):
     """Tool result content block from Claude SDK."""
 
+    type: Literal["tool_result"] = "tool_result"
     tool_use_id: str = Field(
         ..., description="ID of the tool use this result corresponds to"
     )
@@ -78,14 +77,19 @@ class ToolResultBlock(BaseModel):
 
 
 # Union type for basic content blocks
-ContentBlock = TextBlock | ToolUseBlock | ToolResultBlock
+ContentBlock = Annotated[
+    TextBlock | ToolUseBlock | ToolResultBlock,
+    Field(discriminator="type"),
+]
 
 
 # Message Types
 class UserMessage(BaseModel):
     """User message from Claude SDK."""
 
-    content: str = Field(..., description="User message content")
+    content: list[ContentBlock] = Field(
+        ..., description="List of content blocks in the message"
+    )
 
     model_config = ConfigDict(extra="allow")
 
@@ -125,40 +129,59 @@ class SystemMessageBlock(SystemMessage):
     """Custom content block for system messages with source attribution."""
 
     type: Literal["system_message"] = "system_message"
+    source: str = "claude_code_sdk"
 
     model_config = ConfigDict(extra="allow")
 
 
-class ToolUseSDKBlock(ToolUseBlock):
+class ToolUseSDKBlock(BaseModel):
     """Custom content block for tool use with SDK metadata."""
 
     type: Literal["tool_use_sdk"] = "tool_use_sdk"
+    id: str = Field(..., description="Unique identifier for the tool use")
+    name: str = Field(..., description="Name of the tool being used")
+    input: dict[str, Any] = Field(..., description="Input parameters for the tool")
+    source: str = "claude_code_sdk"
 
 
-class ToolResultSDKBlock(ToolResultBlock):
+class ToolResultSDKBlock(BaseModel):
     """Custom content block for tool results with SDK metadata."""
 
     type: Literal["tool_result_sdk"] = "tool_result_sdk"
+    tool_use_id: str = Field(
+        ..., description="ID of the tool use this result corresponds to"
+    )
+    content: str | list[dict[str, Any]] | None = Field(
+        None, description="Result content from the tool"
+    )
+    is_error: bool | None = Field(
+        None, description="Whether this result represents an error"
+    )
+    source: str = "claude_code_sdk"
 
 
 class ResultMessageBlock(ResultMessage):
     """Custom content block for result messages with session data."""
 
     type: Literal["result_message"] = "result_message"
+    source: str = "claude_code_sdk"
 
 
 # Union type for all custom content blocks
-CustomContentBlock = (
-    TextSDKBlock
+SDKContentBlock = Annotated[
+    TextBlock
+    | ToolUseBlock
+    | ToolResultBlock
     | SystemMessageBlock
     | ToolUseSDKBlock
     | ToolResultSDKBlock
-    | ResultMessageBlock
-)
+    | ResultMessageBlock,
+    Field(discriminator="type"),
+]
 
 
 # Extended content block type that includes both SDK and custom blocks
-ExtendedContentBlock = ContentBlock | CustomContentBlock
+ExtendedContentBlock = SDKContentBlock
 
 
 # Conversion Functions
@@ -203,63 +226,11 @@ def convert_sdk_result_message(
     )
 
 
-# Format Conversion Functions
-def convert_to_anthropic_content_format(
-    content_blocks: list[ExtendedContentBlock],
-) -> list[dict[str, Any]]:
-    """Convert our typed content blocks to Anthropic API format."""
-    anthropic_content = []
-
-    for block in content_blocks:
-        if isinstance(block, TextBlock):
-            anthropic_content.append(to_sdk_variant(block, TextSDKBlock).model_dump())
-        elif isinstance(block, ToolUseBlock):
-            anthropic_content.append(
-                to_sdk_variant(block, ToolUseSDKBlock).model_dump()
-            )
-        elif isinstance(block, ToolResultBlock):
-            anthropic_content.append(
-                to_sdk_variant(block, ToolResultSDKBlock).model_dump()
-            )
-        elif isinstance(block, SystemMessageBlock | ResultMessageBlock):
-            anthropic_content.append(block.model_dump())
-
-    return anthropic_content
-
-
-def parse_anthropic_content_to_blocks(
-    content: list[dict[str, Any]],
-) -> list[ExtendedContentBlock]:
-    """Parse Anthropic API content format to our typed content blocks."""
-    blocks: list[ExtendedContentBlock] = []
-
-    for item in content:
-        block_type = item.get("type")
-
-        if block_type == "text":
-            blocks.append(TextBlock.model_validate(item))
-        elif block_type == "tool_use":
-            blocks.append(ToolUseBlock.model_validate(item))
-        elif block_type == "tool_result":
-            blocks.append(ToolResultBlock.model_validate(item))
-        elif block_type == "system_message":
-            blocks.append(SystemMessageBlock.model_validate(item))
-        elif block_type == "tool_use_sdk":
-            blocks.append(ToolUseSDKBlock.model_validate(item))
-        elif block_type == "tool_result_sdk":
-            blocks.append(ToolResultSDKBlock.model_validate(item))
-        elif block_type == "result_message":
-            blocks.append(ResultMessageBlock.model_validate(item))
-
-    return blocks
-
-
 __all__ = [
     # Generic conversion
     "to_sdk_variant",
     # Content blocks
     "TextBlock",
-    "TextSDKBlock",
     "ToolUseBlock",
     "ToolResultBlock",
     "ContentBlock",
@@ -273,7 +244,7 @@ __all__ = [
     "ToolUseSDKBlock",
     "ToolResultSDKBlock",
     "ResultMessageBlock",
-    "CustomContentBlock",
+    "SDKContentBlock",
     "ExtendedContentBlock",
     # Conversion functions
     "convert_sdk_text_block",
@@ -281,7 +252,4 @@ __all__ = [
     "convert_sdk_tool_result_block",
     "convert_sdk_system_message",
     "convert_sdk_result_message",
-    # Format conversion
-    "convert_to_anthropic_content_format",
-    "parse_anthropic_content_to_blocks",
 ]

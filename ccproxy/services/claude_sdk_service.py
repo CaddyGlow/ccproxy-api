@@ -4,17 +4,11 @@ from collections.abc import AsyncIterator
 from typing import Any
 
 import structlog
-from claude_code_sdk import (
-    AssistantMessage,
-    ClaudeCodeOptions,
-    ResultMessage,
-    SystemMessage,
-    ToolResultBlock,
-    UserMessage,
-)
+from claude_code_sdk import ClaudeCodeOptions
 
 from ccproxy.adapters.openai import adapter
 from ccproxy.auth.manager import AuthManager
+from ccproxy.claude_sdk import models as sdk_models
 from ccproxy.claude_sdk.client import ClaudeSDKClient
 from ccproxy.claude_sdk.converter import MessageConverter
 from ccproxy.claude_sdk.options import OptionsHandler
@@ -26,6 +20,7 @@ from ccproxy.core.errors import (
     ClaudeProxyError,
     ServiceUnavailableError,
 )
+from ccproxy.models.messages import MessageResponse
 from ccproxy.observability.access_logger import log_request_access
 from ccproxy.observability.context import RequestContext, request_context
 from ccproxy.observability.metrics import PrometheusMetrics
@@ -79,7 +74,7 @@ class ClaudeSDKService:
         stream: bool = False,
         user_id: str | None = None,
         **kwargs: Any,
-    ) -> dict[str, Any] | AsyncIterator[dict[str, Any]]:
+    ) -> MessageResponse | AsyncIterator[dict[str, Any]]:
         """
         Create a completion using Claude SDK with business logic orchestration.
 
@@ -160,6 +155,15 @@ class ClaudeSDKService:
                     )
                     return result
 
+            except AuthenticationError as e:
+                logger.error(
+                    "authentication_failed",
+                    user_id=user_id,
+                    error=str(e),
+                    error_type=type(e).__name__,
+                    exc_info=True,
+                )
+                raise
             except (ClaudeProxyError, ServiceUnavailableError) as e:
                 # Log error via access logger (includes metrics)
                 await log_request_access(
@@ -170,24 +174,15 @@ class ClaudeSDKService:
                     error_type=type(e).__name__,
                 )
                 raise
-            except AuthenticationError as e:
-                logger.error(
-                    "authentication_failed",
-                    user_id=user_id,
-                    error=str(e),
-                    error_type=type(e).__name__,
-                    exc_info=True,
-                )
-                raise
 
     async def _complete_non_streaming(
         self,
         prompt: str,
-        options: ClaudeCodeOptions,
+        options: "ClaudeCodeOptions",
         model: str,
         request_id: str | None = None,
         ctx: RequestContext | None = None,
-    ) -> dict[str, Any]:
+    ) -> MessageResponse:
         """
         Complete a non-streaming request with business logic.
 
@@ -203,50 +198,17 @@ class ClaudeSDKService:
         Raises:
             ClaudeProxyError: If completion fails
         """
-        messages = []
-        result_message = None
-        assistant_message = None
-        system_messages = []
-        user_messages = []
+        messages = [
+            m
+            async for m in self.sdk_client.query_completion(prompt, options, request_id)
+        ]
 
-        async for message in self.sdk_client.query_completion(
-            prompt, options, request_id
-        ):
-            messages.append(message)
-
-            if isinstance(message, AssistantMessage):
-                assistant_message = message
-            elif isinstance(message, ResultMessage):
-                result_message = message
-            elif isinstance(message, SystemMessage):
-                # Collect SystemMessages for processing based on mode
-                mode = (
-                    self.settings.claude.sdk_message_mode
-                    if self.settings
-                    else SystemMessageMode.FORWARD
-                )
-                if mode != SystemMessageMode.IGNORE:
-                    system_messages.append(message)
-                else:
-                    logger.debug(
-                        "Ignoring SystemMessage in non-streaming response (mode: ignore)."
-                    )
-            elif isinstance(message, UserMessage):
-                # Collect UserMessages (which contain ToolResultBlocks)
-                mode = (
-                    self.settings.claude.sdk_message_mode
-                    if self.settings
-                    else SystemMessageMode.FORWARD
-                )
-                if mode != SystemMessageMode.IGNORE:
-                    user_messages.append(message)
-                else:
-                    logger.debug(
-                        "Ignoring UserMessage in non-streaming response (mode: ignore)."
-                    )
-
-        # Get Claude API call timing
-        claude_api_call_ms = self.sdk_client.get_last_api_call_time_ms()
+        result_message = next(
+            (m for m in messages if isinstance(m, sdk_models.ResultMessage)), None
+        )
+        assistant_message = next(
+            (m for m in messages if isinstance(m, sdk_models.AssistantMessage)), None
+        )
 
         if result_message is None:
             raise ClaudeProxyError(
@@ -263,139 +225,70 @@ class ClaudeSDKService:
             )
 
         logger.debug("claude_sdk_completion_received")
-        # Get system message mode
         mode = (
             self.settings.claude.sdk_message_mode
             if self.settings
             else SystemMessageMode.FORWARD
         )
-
-        # Get formatting settings
         pretty_format = self.settings.claude.pretty_format if self.settings else True
 
-        # Convert to Anthropic format with mode and formatting
         response = self.message_converter.convert_to_anthropic_response(
             assistant_message, result_message, model, mode, pretty_format
         )
 
-        # Add SystemMessages to response content if any were collected
-        if system_messages and "content" in response:
-            for system_message in system_messages:
-                # Extract text from system message data
-                system_text = system_message.data.get("text", str(system_message.data))
-                system_content_block = (
-                    self.message_converter.create_system_message_content_block(
-                        system_text,
-                        mode,
-                        "claude_code_sdk",
-                        pretty_format,
+        # Add other message types to the content block
+        all_messages = [
+            m
+            for m in messages
+            if not isinstance(m, sdk_models.AssistantMessage | sdk_models.ResultMessage)
+        ]
+
+        if mode != SystemMessageMode.IGNORE and response.content:
+            for message in all_messages:
+                if isinstance(message, sdk_models.SystemMessage):
+                    system_text = message.data.get("text", str(message.data))
+                    content_block = (
+                        self.message_converter.create_system_message_content_block(
+                            system_text, mode, "claude_code_sdk", pretty_format
+                        )
                     )
-                )
-                if (
-                    system_content_block is not None
-                ):  # Handle IGNORE mode returning None
-                    response["content"].append(system_content_block)
+                    if content_block:
+                        response.content.append(
+                            sdk_models.SystemMessageBlock.model_validate(content_block)
+                        )
+                elif isinstance(message, sdk_models.UserMessage):
+                    for block in message.content:
+                        if isinstance(block, sdk_models.ToolResultBlock):
+                            response.content.append(block)
 
-        # Add UserMessages (containing ToolResultBlocks) to response content if any were collected
-        if mode != SystemMessageMode.IGNORE and user_messages and "content" in response:
-            for user_message in user_messages:
-                # Process content blocks within UserMessage
-                if (
-                    hasattr(user_message, "content")
-                    and hasattr(user_message.content, "__iter__")
-                    and not isinstance(user_message.content, str)
-                ):
-                    for block in user_message.content:  # type: ignore[unreachable]
-                        if isinstance(block, ToolResultBlock):
-                            if mode == SystemMessageMode.FORWARD:
-                                is_error = getattr(block, "is_error", None)
-                                tool_result_content_block = {
-                                    "type": "tool_result_sdk",
-                                    "tool_use_id": block.tool_use_id,
-                                    "content": block.content
-                                    if isinstance(block.content, str)
-                                    else "",
-                                    "is_error": is_error
-                                    if is_error is not None
-                                    else False,
-                                    "source": "claude_code_sdk",
-                                }
-                                response["content"].append(tool_result_content_block)
-                            elif mode == SystemMessageMode.FORMATTED:
-                                tool_result_data = {
-                                    "tool_use_id": block.tool_use_id,
-                                    "content": block.content
-                                    if isinstance(block.content, str)
-                                    else "",
-                                    "is_error": getattr(block, "is_error", False),
-                                }
-                                formatted_json = MessageConverter._format_json_data(
-                                    tool_result_data, pretty_format
-                                )
-                                escaped_json = MessageConverter._escape_content_for_xml(
-                                    formatted_json, pretty_format
-                                )
-                                if pretty_format:
-                                    formatted_text = f"<tool_result_sdk>\n{escaped_json}\n</tool_result_sdk>\n"
-                                else:
-                                    formatted_text = f"<tool_result_sdk>{escaped_json}</tool_result_sdk>"
-                                response["content"].append(
-                                    {"type": "text", "text": formatted_text}
-                                )
-
-        # Add ResultMessage to response content based on mode
-        if mode != SystemMessageMode.IGNORE and "content" in response:
-            result_content_block = (
-                self.message_converter.create_result_message_content_block(
-                    result_message, mode, "claude_code_sdk", pretty_format
-                )
-            )
-            if result_content_block is not None:  # Handle IGNORE mode returning None
-                response["content"].append(result_content_block)
-
-        # Extract token usage and cost from result message using direct access
         cost_usd = result_message.total_cost_usd
-        if result_message.usage:
-            tokens_input = result_message.usage.get("input_tokens")
-            tokens_output = result_message.usage.get("output_tokens")
-            cache_read_tokens = result_message.usage.get("cache_read_input_tokens")
-            cache_write_tokens = result_message.usage.get("cache_creation_input_tokens")
-        else:
-            tokens_input = tokens_output = cache_read_tokens = cache_write_tokens = None
+        usage = result_message.usage
 
-        # Add cost to response usage section if available
-        if cost_usd is not None and "usage" in response:
-            response["usage"]["cost_usd"] = cost_usd
+        # if cost_usd is not None and response.usage:
+        #     response.usage.cost_usd = cost_usd
 
-        # Log metrics for observability
         logger.debug(
             "claude_sdk_completion_completed",
             model=model,
-            tokens_input=tokens_input,
-            tokens_output=tokens_output,
-            cache_read_tokens=cache_read_tokens,
-            cache_write_tokens=cache_write_tokens,
+            tokens_input=usage.input_tokens,
+            tokens_output=usage.output_tokens,
+            cache_read_tokens=usage.cache_read_input_tokens,
+            cache_write_tokens=usage.cache_creation_input_tokens,
             cost_usd=cost_usd,
             request_id=request_id,
         )
 
-        # Update context with metrics if available
         if ctx:
             ctx.add_metadata(
                 status_code=200,
-                tokens_input=tokens_input,
-                tokens_output=tokens_output,
-                cache_read_tokens=cache_read_tokens,
-                cache_write_tokens=cache_write_tokens,
+                tokens_input=usage.input_tokens,
+                tokens_output=usage.output_tokens,
+                cache_read_tokens=usage.cache_read_input_tokens,
+                cache_write_tokens=usage.cache_creation_input_tokens,
                 cost_usd=cost_usd,
             )
-
-            # Log comprehensive access log (includes Prometheus metrics)
             await log_request_access(
-                context=ctx,
-                status_code=200,
-                method="POST",
-                metrics=self.metrics,
+                context=ctx, status_code=200, method="POST", metrics=self.metrics
             )
 
         return response
@@ -403,7 +296,7 @@ class ClaudeSDKService:
     async def _stream_completion(
         self,
         prompt: str,
-        options: ClaudeCodeOptions,
+        options: "ClaudeCodeOptions",
         model: str,
         request_id: str | None = None,
         ctx: RequestContext | None = None,
@@ -421,7 +314,6 @@ class ClaudeSDKService:
         Yields:
             Response chunks in Anthropic format
         """
-        # Get SDK message mode and formatting settings
         sdk_message_mode = (
             self.settings.claude.sdk_message_mode
             if self.settings
@@ -429,10 +321,8 @@ class ClaudeSDKService:
         )
         pretty_format = self.settings.claude.pretty_format if self.settings else True
 
-        # Get the SDK stream
         sdk_stream = self.sdk_client.query_completion(prompt, options, request_id)
 
-        # Process the stream using the dedicated stream processor
         async for chunk in self.stream_processor.process_stream(
             sdk_stream=sdk_stream,
             model=model,
@@ -455,41 +345,7 @@ class ClaudeSDKService:
         """
         if not self.auth_manager:
             return
-
-        # Implement authentication validation logic
-        # This is a placeholder for future auth integration
         logger.debug("user_auth_validation_start", user_id=user_id)
-
-    def _calculate_cost(
-        self,
-        tokens_input: int | None,
-        tokens_output: int | None,
-        model: str | None,
-        cache_read_tokens: int | None = None,
-        cache_write_tokens: int | None = None,
-    ) -> float | None:
-        """
-        Calculate cost in USD for the given token usage including cache tokens.
-
-        Note: This method is provided for consistency, but the Claude SDK already
-        provides accurate cost calculation in ResultMessage.total_cost_usd which
-        should be preferred when available.
-
-        Args:
-            tokens_input: Number of input tokens
-            tokens_output: Number of output tokens
-            model: Model name for pricing lookup
-            cache_read_tokens: Number of cache read tokens
-            cache_write_tokens: Number of cache write tokens
-
-        Returns:
-            Cost in USD or None if calculation not possible
-        """
-        from ccproxy.utils.cost_calculator import calculate_token_cost
-
-        return calculate_token_cost(
-            tokens_input, tokens_output, model, cache_read_tokens, cache_write_tokens
-        )
 
     async def list_models(self) -> dict[str, Any]:
         """
