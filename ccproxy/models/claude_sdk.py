@@ -215,6 +215,8 @@ class AssistantMessage(BaseModel):
 class SystemMessage(BaseModel):
     """System message from Claude SDK."""
 
+    type: Literal["system_message"] = "system_message"
+
     subtype: str = Field(default="", description="Subtype of the system message")
     data: dict[str, Any] = Field(
         default_factory=dict, description="System message data"
@@ -225,6 +227,8 @@ class SystemMessage(BaseModel):
 
 class ResultMessage(BaseModel):
     """Result message from Claude SDK."""
+
+    type: Literal["result_message"] = "result_message"
 
     subtype: str = Field(default="", description="Subtype of the result message")
     duration_ms: int = Field(default=0, description="Total duration in milliseconds")
@@ -259,7 +263,7 @@ class ResultMessage(BaseModel):
 
 
 # Custom Content Block Types for Internal Use
-class SystemMessageBlock(SystemMessage):
+class SDKMessageMode(SystemMessage):
     """Custom content block for system messages with source attribution."""
 
     type: Literal["system_message"] = "system_message"
@@ -306,7 +310,7 @@ SDKContentBlock = Annotated[
     TextBlock
     | ToolUseBlock
     | ToolResultBlock
-    | SystemMessageBlock
+    | SDKMessageMode
     | ToolUseSDKBlock
     | ToolResultSDKBlock
     | ResultMessageBlock,
@@ -384,7 +388,7 @@ __all__ = [
     "SystemMessage",
     "ResultMessage",
     # Custom content blocks
-    "SystemMessageBlock",
+    "SDKMessageMode",
     "ToolUseSDKBlock",
     "ToolResultSDKBlock",
     "ResultMessageBlock",

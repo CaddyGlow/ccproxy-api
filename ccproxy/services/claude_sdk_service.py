@@ -12,7 +12,7 @@ from ccproxy.claude_sdk.client import ClaudeSDKClient
 from ccproxy.claude_sdk.converter import MessageConverter
 from ccproxy.claude_sdk.options import OptionsHandler
 from ccproxy.claude_sdk.streaming import ClaudeStreamProcessor
-from ccproxy.config.claude import SystemMessageMode
+from ccproxy.config.claude import SDKMessageMode
 from ccproxy.config.settings import Settings
 from ccproxy.core.errors import (
     AuthenticationError,
@@ -228,7 +228,7 @@ class ClaudeSDKService:
         mode = (
             self.settings.claude.sdk_message_mode
             if self.settings
-            else SystemMessageMode.FORWARD
+            else SDKMessageMode.FORWARD
         )
         pretty_format = self.settings.claude.pretty_format if self.settings else True
 
@@ -243,18 +243,22 @@ class ClaudeSDKService:
             if not isinstance(m, sdk_models.AssistantMessage | sdk_models.ResultMessage)
         ]
 
-        if mode != SystemMessageMode.IGNORE and response.content:
+        if mode != SDKMessageMode.IGNORE and response.content:
             for message in all_messages:
                 if isinstance(message, sdk_models.SystemMessage):
-                    system_text = message.data.get("text", str(message.data))
-                    content_block = (
-                        self.message_converter.create_system_message_content_block(
-                            system_text, mode, "claude_code_sdk", pretty_format
-                        )
+                    content_block = self.message_converter._create_sdk_content_block(
+                        sdk_object=message,
+                        mode=mode,
+                        pretty_format=pretty_format,
+                        xml_tag="system_message",
+                        forward_converter=lambda obj: {
+                            "type": "system_message",
+                            "text": obj.model_dump_json(separators=(",", ":")),
+                        },
                     )
                     if content_block:
                         response.content.append(
-                            sdk_models.SystemMessageBlock.model_validate(content_block)
+                            sdk_models.SDKMessageMode.model_validate(content_block)
                         )
                 elif isinstance(message, sdk_models.UserMessage):
                     for block in message.content:
@@ -317,7 +321,7 @@ class ClaudeSDKService:
         sdk_message_mode = (
             self.settings.claude.sdk_message_mode
             if self.settings
-            else SystemMessageMode.FORWARD
+            else SDKMessageMode.FORWARD
         )
         pretty_format = self.settings.claude.pretty_format if self.settings else True
 
