@@ -29,7 +29,7 @@ def _create_default_claude_code_options() -> ClaudeCodeOptions:
     )
 
 
-class SystemMessageMode(str, Enum):
+class SDKMessageMode(str, Enum):
     """Modes for handling SDK messages from Claude SDK.
 
     - forward: Forward SDK content blocks directly with original types and metadata
@@ -55,8 +55,8 @@ class ClaudeSettings(BaseModel):
         description="Claude Code SDK options configuration",
     )
 
-    sdk_message_mode: SystemMessageMode = Field(
-        default=SystemMessageMode.FORWARD,
+    sdk_message_mode: SDKMessageMode = Field(
+        default=SDKMessageMode.FORWARD,
         description="Mode for handling SDK messages from Claude SDK. Options: forward (direct SDK blocks), ignore (skip blocks), formatted (XML tags with JSON data)",
     )
 
