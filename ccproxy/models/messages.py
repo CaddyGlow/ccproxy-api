@@ -116,6 +116,13 @@ class MessageCreateParams(BaseModel):
             max_length=4,
         ),
     ] = None
+    stop_reason: Annotated[
+        list[str] | None,
+        Field(
+            description="Custom sequences where the model should stop generating",
+            max_length=4,
+        ),
+    ] = None
     stream: Annotated[
         bool | None,
         Field(description="Whether to stream the response"),

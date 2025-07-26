@@ -126,17 +126,15 @@ async def create_anthropic_message(
             async def anthropic_stream_generator() -> AsyncIterator[bytes]:
                 async for chunk in response:  # type: ignore[union-attr]
                     if chunk:
-                        # Check if chunk has event information
-                        if (
-                            isinstance(chunk, dict)
-                            and "event" in chunk
-                            and "data" in chunk
-                        ):
-                            # Format with event line
-                            yield f"event: {chunk['event']}\n".encode()
-                            yield f"data: {json.dumps(chunk['data'])}\n\n".encode()
+                        # All chunks from Claude SDK streaming should be dict format
+                        # and need proper SSE event formatting
+                        if isinstance(chunk, dict):
+                            # Determine event type from chunk type
+                            event_type = chunk.get("type", "message_delta")
+                            yield f"event: {event_type}\n".encode()
+                            yield f"data: {json.dumps(chunk)}\n\n".encode()
                         else:
-                            # Fallback to regular data line
+                            # Fallback for unexpected format
                             yield f"data: {json.dumps(chunk)}\n\n".encode()
                 # No final [DONE] chunk for Anthropic format
 
