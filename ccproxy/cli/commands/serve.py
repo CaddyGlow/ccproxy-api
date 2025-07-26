@@ -45,10 +45,6 @@ from ..options.server_options import (
 )
 
 
-# Logger will be configured by configuration manager
-logger = get_logger(__name__)
-
-
 def get_config_path_from_context() -> Path | None:
     """Get config path from typer context if available."""
     try:
@@ -617,11 +613,11 @@ def api(
 
         # Always reconfigure logging to ensure log level changes are picked up
         # Use JSON logs if explicitly requested via env var
-        json_logs = os.environ.get("CCPROXY_JSON_LOGS", "").lower() == "true"
+        print(f"{settings.server.log_level} {settings.server.log_file}")
         setup_logging(
-            json_logs=json_logs,
-            log_level=server_options.log_level or settings.server.log_level,
-            log_file=server_options.log_file or settings.server.log_file,
+            json_logs=settings.server.log_format == "json",
+            log_level_name=settings.server.log_level,
+            log_file=settings.server.log_file,
         )
 
         # Re-get logger after logging is configured
@@ -798,6 +794,8 @@ def claude(
     toolkit = get_rich_toolkit()
 
     try:
+        # Logger will be configured by configuration manager
+        logger = get_logger(__name__)
         # Log CLI command execution start
         logger.info(
             "cli_command_starting",

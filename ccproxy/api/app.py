@@ -278,23 +278,26 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         settings = get_settings()
     # Configure logging based on settings BEFORE any module uses logger
     # This is needed for reload mode where the app is re-imported
-    import logging
 
     import structlog
 
     # Only configure if not already configured or if no file handler exists
-    root_logger = logging.getLogger()
-    has_file_handler = any(
-        isinstance(h, logging.FileHandler) for h in root_logger.handlers
-    )
+    # okay we have the first debug line but after uvicorn start they are not show root_logger = logging.getLogger()
+    # for h in root_logger.handlers:
+    #     print(h)
+    # has_file_handler = any(
+    #     isinstance(h, logging.FileHandler) for h in root_logger.handlers
+    # )
 
-    if not structlog.is_configured() or not has_file_handler:
-        # Only setup logging if not already configured with file handler
-        # Always use console output
+    if not structlog.is_configured():
+        # Only setup logging if structlog is not configured at all
+        # Always use console output, but respect file logging from settings
         json_logs = False
-        # Don't override file logging if it was already configured
-        if not has_file_handler:
-            setup_logging(json_logs=json_logs, log_level=settings.server.log_level)
+        setup_logging(
+            json_logs=json_logs,
+            log_level_name=settings.server.log_level,
+            log_file=settings.server.log_file,
+        )
 
     app = FastAPI(
         title="CCProxy API Server",

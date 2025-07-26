@@ -9,16 +9,13 @@ and a textual GUI with vim mode for input.
 import asyncio
 import os
 from collections.abc import AsyncGenerator
-from typing import Any, Optional, Union
+from typing import Any
 
 from anthropic import AsyncAnthropic
 from anthropic.types import MessageParam
-from rich.console import Console
-from rich.markdown import Markdown
 from textual.app import App, ComposeResult
-from textual.containers import Container, Horizontal, Vertical
+from textual.containers import Container, Horizontal
 from textual.events import Key
-from textual.message import Message
 from textual.widgets import Button, Input, RichLog, Static
 
 
