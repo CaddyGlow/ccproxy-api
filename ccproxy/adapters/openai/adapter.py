@@ -135,7 +135,7 @@ class OpenAIAdapter(APIAdapter):
             openai_req.messages
         )
 
-        # Build Anthropic request
+        # Build base Anthropic request
         anthropic_request = {
             "model": model,
             "messages": messages,
@@ -147,6 +147,44 @@ class OpenAIAdapter(APIAdapter):
             anthropic_request["system"] = system_prompt
 
         # Add optional parameters
+        self._handle_optional_parameters(openai_req, anthropic_request)
+
+        # Handle metadata
+        self._handle_metadata(openai_req, anthropic_request)
+
+        # Handle response format
+        anthropic_request = self._handle_response_format(openai_req, anthropic_request)
+
+        # Handle thinking configuration
+        anthropic_request = self._handle_thinking_parameters(
+            openai_req, anthropic_request
+        )
+
+        # Log unsupported parameters
+        self._log_unsupported_parameters(openai_req)
+
+        # Handle tools and tool choice
+        self._handle_tools(openai_req, anthropic_request)
+
+        logger.debug(
+            "format_conversion_completed",
+            from_format="openai",
+            to_format="anthropic",
+            original_model=openai_req.model,
+            anthropic_model=anthropic_request.get("model"),
+            has_tools=bool(anthropic_request.get("tools")),
+            has_system=bool(anthropic_request.get("system")),
+            message_count=len(cast(list[Any], anthropic_request["messages"])),
+            operation="adapt_request",
+        )
+        return anthropic_request
+
+    def _handle_optional_parameters(
+        self,
+        openai_req: OpenAIChatCompletionRequest,
+        anthropic_request: dict[str, Any],
+    ) -> None:
+        """Handle optional parameters like temperature, top_p, stream, and stop."""
         if openai_req.temperature is not None:
             anthropic_request["temperature"] = openai_req.temperature
 
@@ -162,7 +200,12 @@ class OpenAIAdapter(APIAdapter):
             else:
                 anthropic_request["stop_sequences"] = openai_req.stop
 
-        # Handle metadata - combine user field and metadata
+    def _handle_metadata(
+        self,
+        openai_req: OpenAIChatCompletionRequest,
+        anthropic_request: dict[str, Any],
+    ) -> None:
+        """Handle metadata and user field combination."""
         metadata = {}
         if openai_req.user:
             metadata["user_id"] = openai_req.user
@@ -171,11 +214,17 @@ class OpenAIAdapter(APIAdapter):
         if metadata:
             anthropic_request["metadata"] = metadata
 
-        # Handle response format - add to system prompt for JSON mode
+    def _handle_response_format(
+        self,
+        openai_req: OpenAIChatCompletionRequest,
+        anthropic_request: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Handle response format by modifying system prompt for JSON mode."""
         if openai_req.response_format:
             format_type = (
                 openai_req.response_format.type if openai_req.response_format else None
             )
+            system_prompt = anthropic_request.get("system")
 
             if format_type == "json_object" and system_prompt is not None:
                 system_prompt += "\nYou must respond with valid JSON only."
@@ -188,7 +237,14 @@ class OpenAIAdapter(APIAdapter):
                     system_prompt += f"\nYou must respond with valid JSON that conforms to this schema: {openai_req.response_format.json_schema}"
                 anthropic_request["system"] = system_prompt
 
-        # Handle reasoning_effort (o1 models) -> thinking configuration
+        return anthropic_request
+
+    def _handle_thinking_parameters(
+        self,
+        openai_req: OpenAIChatCompletionRequest,
+        anthropic_request: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Handle reasoning_effort and thinking configuration for o1/o3 models."""
         # Automatically enable thinking for o1 models even without explicit reasoning_effort
         if (
             openai_req.reasoning_effort
@@ -262,7 +318,12 @@ class OpenAIAdapter(APIAdapter):
                 operation="adapt_request",
             )
 
-        # Note: seed, logprobs, top_logprobs, and store don't have direct Anthropic equivalents
+        return anthropic_request
+
+    def _log_unsupported_parameters(
+        self, openai_req: OpenAIChatCompletionRequest
+    ) -> None:
+        """Log warnings for unsupported OpenAI parameters."""
         if openai_req.seed is not None:
             logger.debug(
                 "unsupported_parameter_ignored",
@@ -286,6 +347,12 @@ class OpenAIAdapter(APIAdapter):
                 operation="adapt_request",
             )
 
+    def _handle_tools(
+        self,
+        openai_req: OpenAIChatCompletionRequest,
+        anthropic_request: dict[str, Any],
+    ) -> None:
+        """Handle tools, functions, and tool choice conversion."""
         # Handle tools/functions
         if openai_req.tools:
             anthropic_request["tools"] = self._convert_tools_to_anthropic(
@@ -297,6 +364,7 @@ class OpenAIAdapter(APIAdapter):
                 openai_req.functions
             )
 
+        # Handle tool choice
         if openai_req.tool_choice:
             # Convert tool choice - can be string or OpenAIToolChoice object
             if isinstance(openai_req.tool_choice, str):
@@ -318,19 +386,6 @@ class OpenAIAdapter(APIAdapter):
                 openai_req.function_call
             )
 
-        logger.debug(
-            "format_conversion_completed",
-            from_format="openai",
-            to_format="anthropic",
-            original_model=openai_req.model,
-            anthropic_model=anthropic_request.get("model"),
-            has_tools=bool(anthropic_request.get("tools")),
-            has_system=bool(anthropic_request.get("system")),
-            message_count=len(cast(list[Any], anthropic_request["messages"])),
-            operation="adapt_request",
-        )
-        return anthropic_request
-
     def adapt_response(self, response: dict[str, Any]) -> dict[str, Any]:
         """Convert Anthropic response format to OpenAI format.
 
@@ -350,112 +405,19 @@ class OpenAIAdapter(APIAdapter):
             # Generate response ID
             request_id = generate_openai_response_id()
 
-            # Convert content
-            content = ""
-            tool_calls: list[Any] = []
-
-            if "content" in response and response["content"]:
-                for block in response["content"]:
-                    if block.get("type") == "text":
-                        text_content = block.get("text", "")
-                        # Forward text content as-is (already formatted if needed)
-                        content += text_content
-                    elif block.get("type") == "system_message":
-                        # Handle custom system_message content blocks
-                        system_text = block.get("text", "")
-                        source = block.get("source", "claude_code_sdk")
-                        # Format as text with clear source attribution
-                        content += f"[{source}]: {system_text}"
-                    elif block.get("type") == "tool_use_sdk":
-                        # Handle custom tool_use_sdk content blocks - convert to standard tool_calls
-                        tool_call_block = {
-                            "type": "tool_use",
-                            "id": block.get("id", ""),
-                            "name": block.get("name", ""),
-                            "input": block.get("input", {}),
-                        }
-                        tool_calls.append(format_openai_tool_call(tool_call_block))
-                    elif block.get("type") == "tool_result_sdk":
-                        # Handle custom tool_result_sdk content blocks - add as text with source attribution
-                        source = block.get("source", "claude_code_sdk")
-                        tool_use_id = block.get("tool_use_id", "")
-                        result_content = block.get("content", "")
-                        is_error = block.get("is_error", False)
-                        error_indicator = " (ERROR)" if is_error else ""
-                        content += f"[{source} tool_result {tool_use_id}{error_indicator}]: {result_content}"
-                    elif block.get("type") == "result_message":
-                        # Handle custom result_message content blocks - add as text with source attribution
-                        source = block.get("source", "claude_code_sdk")
-                        result_data = block.get("data", {})
-                        session_id = result_data.get("session_id", "")
-                        stop_reason = result_data.get("stop_reason", "")
-                        usage = result_data.get("usage", {})
-                        cost_usd = result_data.get("total_cost_usd")
-                        formatted_text = f"[{source} result {session_id}]: stop_reason={stop_reason}, usage={usage}"
-                        if cost_usd is not None:
-                            formatted_text += f", cost_usd={cost_usd}"
-                        content += formatted_text
-                    elif block.get("type") == "thinking":
-                        # Handle thinking blocks - we can include them with a marker
-                        thinking_text = block.get("thinking", "")
-                        signature = block.get("signature")
-                        if thinking_text:
-                            content += f'<thinking signature="{signature}">{thinking_text}</thinking>'
-                    elif block.get("type") == "tool_use":
-                        # Handle legacy tool_use content blocks
-                        tool_calls.append(format_openai_tool_call(block))
-                    else:
-                        logger.warning(
-                            "unsupported_content_block_type", type=block.get("type")
-                        )
+            # Convert content and extract tool calls
+            content, tool_calls = self._convert_content_blocks(response)
 
             # Create OpenAI message
-            # When there are tool calls but no content, use empty string instead of None
-            # Otherwise, if content is empty string, convert to None
-            final_content: str | None = content
-            if tool_calls and not content:
-                final_content = ""
-            elif content == "":
-                final_content = None
+            message = self._create_openai_message(content, tool_calls)
 
-            message = OpenAIResponseMessage(
-                role="assistant",
-                content=final_content,
-                tool_calls=tool_calls if tool_calls else None,
-            )
+            # Create choice with proper finish reason
+            choice = self._create_openai_choice(message, response)
 
-            # Map stop reason
-            finish_reason = self._convert_stop_reason_to_openai(
-                response.get("stop_reason")
-            )
+            # Create usage information
+            usage = self._create_openai_usage(response)
 
-            # Ensure finish_reason is a valid literal type
-            if finish_reason not in ["stop", "length", "tool_calls", "content_filter"]:
-                finish_reason = "stop"
-
-            # Cast to proper literal type
-            valid_finish_reason = cast(
-                Literal["stop", "length", "tool_calls", "content_filter"], finish_reason
-            )
-
-            # Create choice
-            choice = OpenAIChoice(
-                index=0,
-                message=message,
-                finish_reason=valid_finish_reason,
-                logprobs=None,  # Anthropic doesn't support logprobs
-            )
-
-            # Create usage
-            usage_info = response.get("usage", {})
-            usage = OpenAIUsage(
-                prompt_tokens=usage_info.get("input_tokens", 0),
-                completion_tokens=usage_info.get("output_tokens", 0),
-                total_tokens=usage_info.get("input_tokens", 0)
-                + usage_info.get("output_tokens", 0),
-            )
-
-            # Create OpenAI response
+            # Create final OpenAI response
             openai_response = OpenAIChatCompletionResponse(
                 id=request_id,
                 object="chat.completion",
@@ -472,11 +434,11 @@ class OpenAIAdapter(APIAdapter):
                 to_format="openai",
                 response_id=request_id,
                 original_model=original_model,
-                finish_reason=valid_finish_reason,
+                finish_reason=choice.finish_reason,
                 content_length=len(content) if content else 0,
                 tool_calls_count=len(tool_calls),
-                input_tokens=usage_info.get("input_tokens", 0),
-                output_tokens=usage_info.get("output_tokens", 0),
+                input_tokens=usage.prompt_tokens,
+                output_tokens=usage.completion_tokens,
                 operation="adapt_response",
                 choice=choice,
             )
@@ -484,6 +446,121 @@ class OpenAIAdapter(APIAdapter):
 
         except ValidationError as e:
             raise ValueError(f"Invalid Anthropic response format: {e}") from e
+
+    def _convert_content_blocks(
+        self, response: dict[str, Any]
+    ) -> tuple[str, list[Any]]:
+        """Convert Anthropic content blocks to OpenAI format content and tool calls."""
+        content = ""
+        tool_calls: list[Any] = []
+
+        if "content" in response and response["content"]:
+            for block in response["content"]:
+                if block.get("type") == "text":
+                    text_content = block.get("text", "")
+                    # Forward text content as-is (already formatted if needed)
+                    content += text_content
+                elif block.get("type") == "system_message":
+                    # Handle custom system_message content blocks
+                    system_text = block.get("text", "")
+                    source = block.get("source", "claude_code_sdk")
+                    # Format as text with clear source attribution
+                    content += f"[{source}]: {system_text}"
+                elif block.get("type") == "tool_use_sdk":
+                    # Handle custom tool_use_sdk content blocks - convert to standard tool_calls
+                    tool_call_block = {
+                        "type": "tool_use",
+                        "id": block.get("id", ""),
+                        "name": block.get("name", ""),
+                        "input": block.get("input", {}),
+                    }
+                    tool_calls.append(format_openai_tool_call(tool_call_block))
+                elif block.get("type") == "tool_result_sdk":
+                    # Handle custom tool_result_sdk content blocks - add as text with source attribution
+                    source = block.get("source", "claude_code_sdk")
+                    tool_use_id = block.get("tool_use_id", "")
+                    result_content = block.get("content", "")
+                    is_error = block.get("is_error", False)
+                    error_indicator = " (ERROR)" if is_error else ""
+                    content += f"[{source} tool_result {tool_use_id}{error_indicator}]: {result_content}"
+                elif block.get("type") == "result_message":
+                    # Handle custom result_message content blocks - add as text with source attribution
+                    source = block.get("source", "claude_code_sdk")
+                    result_data = block.get("data", {})
+                    session_id = result_data.get("session_id", "")
+                    stop_reason = result_data.get("stop_reason", "")
+                    usage = result_data.get("usage", {})
+                    cost_usd = result_data.get("total_cost_usd")
+                    formatted_text = f"[{source} result {session_id}]: stop_reason={stop_reason}, usage={usage}"
+                    if cost_usd is not None:
+                        formatted_text += f", cost_usd={cost_usd}"
+                    content += formatted_text
+                elif block.get("type") == "thinking":
+                    # Handle thinking blocks - we can include them with a marker
+                    thinking_text = block.get("thinking", "")
+                    signature = block.get("signature")
+                    if thinking_text:
+                        content += f'<thinking signature="{signature}">{thinking_text}</thinking>'
+                elif block.get("type") == "tool_use":
+                    # Handle legacy tool_use content blocks
+                    tool_calls.append(format_openai_tool_call(block))
+                else:
+                    logger.warning(
+                        "unsupported_content_block_type", type=block.get("type")
+                    )
+
+        return content, tool_calls
+
+    def _create_openai_message(
+        self, content: str, tool_calls: list[Any]
+    ) -> OpenAIResponseMessage:
+        """Create OpenAI message with proper content handling."""
+        # When there are tool calls but no content, use empty string instead of None
+        # Otherwise, if content is empty string, convert to None
+        final_content: str | None = content
+        if tool_calls and not content:
+            final_content = ""
+        elif content == "":
+            final_content = None
+
+        return OpenAIResponseMessage(
+            role="assistant",
+            content=final_content,
+            tool_calls=tool_calls if tool_calls else None,
+        )
+
+    def _create_openai_choice(
+        self, message: OpenAIResponseMessage, response: dict[str, Any]
+    ) -> OpenAIChoice:
+        """Create OpenAI choice with proper finish reason handling."""
+        # Map stop reason
+        finish_reason = self._convert_stop_reason_to_openai(response.get("stop_reason"))
+
+        # Ensure finish_reason is a valid literal type
+        if finish_reason not in ["stop", "length", "tool_calls", "content_filter"]:
+            finish_reason = "stop"
+
+        # Cast to proper literal type
+        valid_finish_reason = cast(
+            Literal["stop", "length", "tool_calls", "content_filter"], finish_reason
+        )
+
+        return OpenAIChoice(
+            index=0,
+            message=message,
+            finish_reason=valid_finish_reason,
+            logprobs=None,  # Anthropic doesn't support logprobs
+        )
+
+    def _create_openai_usage(self, response: dict[str, Any]) -> OpenAIUsage:
+        """Create OpenAI usage information from Anthropic response."""
+        usage_info = response.get("usage", {})
+        return OpenAIUsage(
+            prompt_tokens=usage_info.get("input_tokens", 0),
+            completion_tokens=usage_info.get("output_tokens", 0),
+            total_tokens=usage_info.get("input_tokens", 0)
+            + usage_info.get("output_tokens", 0),
+        )
 
     async def adapt_stream(
         self, stream: AsyncIterator[dict[str, Any]]
