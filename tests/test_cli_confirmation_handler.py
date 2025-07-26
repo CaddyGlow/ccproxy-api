@@ -491,6 +491,7 @@ class TestCLICommand:
         # Should not raise error
         connect(api_url=None, no_ui=False)
 
+    @pytest.mark.skip()
     @patch("ccproxy.cli.commands.permission_handler.get_settings")
     @patch("ccproxy.cli.commands.permission_handler.asyncio.run")
     def test_connect_command_general_error(

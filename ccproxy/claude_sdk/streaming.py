@@ -276,7 +276,7 @@ class ClaudeStreamProcessor:
                 yield end_chunks[1][1]  # message_stop
                 break  # End of stream
             else:
-                logger.warning(
+                logger.warning(  # type: ignore[unreachable]
                     "sdk_unknown_message_type",
                     message_type=type(message).__name__,
                     message_content=str(message)[:200],
