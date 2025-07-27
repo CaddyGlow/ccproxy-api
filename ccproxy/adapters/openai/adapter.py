@@ -16,6 +16,7 @@ import structlog
 from pydantic import ValidationError
 
 from ccproxy.core.interfaces import APIAdapter
+from ccproxy.utils.model_mapping import map_model_to_claude
 
 from .models import (
     OpenAIChatCompletionRequest,
@@ -31,75 +32,6 @@ from .streaming import OpenAIStreamProcessor
 
 
 logger = structlog.get_logger(__name__)
-
-
-# Model mapping from OpenAI to Claude
-OPENAI_TO_CLAUDE_MODEL_MAPPING: dict[str, str] = {
-    # GPT-4 models -> Claude 3.5 Sonnet (most comparable)
-    "gpt-4": "claude-3-5-sonnet-20241022",
-    "gpt-4-turbo": "claude-3-5-sonnet-20241022",
-    "gpt-4-turbo-preview": "claude-3-5-sonnet-20241022",
-    "gpt-4-1106-preview": "claude-3-5-sonnet-20241022",
-    "gpt-4-0125-preview": "claude-3-5-sonnet-20241022",
-    "gpt-4-turbo-2024-04-09": "claude-3-5-sonnet-20241022",
-    "gpt-4o": "claude-3-7-sonnet-20250219",
-    "gpt-4o-2024-05-13": "claude-3-7-sonnet-20250219",
-    "gpt-4o-2024-08-06": "claude-3-7-sonnet-20250219",
-    "gpt-4o-2024-11-20": "claude-3-7-sonnet-20250219",
-    "gpt-4o-mini": "claude-3-5-haiku-latest",
-    "gpt-4o-mini-2024-07-18": "claude-3-5-haiku-latest",
-    # o1 models -> Claude models that support thinking
-    "o1": "claude-opus-4-20250514",
-    "o1-preview": "claude-opus-4-20250514",
-    "o1-mini": "claude-sonnet-4-20250514",
-    # o3 models -> Claude Opus 4
-    "o3-mini": "claude-opus-4-20250514",
-    # GPT-3.5 models -> Claude 3.5 Haiku (faster, cheaper)
-    "gpt-3.5-turbo": "claude-3-5-haiku-20241022",
-    "gpt-3.5-turbo-16k": "claude-3-5-haiku-20241022",
-    "gpt-3.5-turbo-1106": "claude-3-5-haiku-20241022",
-    "gpt-3.5-turbo-0125": "claude-3-5-haiku-20241022",
-    # Generic fallback
-    "text-davinci-003": "claude-3-5-sonnet-20241022",
-    "text-davinci-002": "claude-3-5-sonnet-20241022",
-}
-
-
-def map_openai_model_to_claude(openai_model: str) -> str:
-    """Map OpenAI model name to Claude model name.
-
-    Args:
-        openai_model: OpenAI model identifier
-
-    Returns:
-        Claude model identifier
-    """
-    # Direct mapping first
-    claude_model = OPENAI_TO_CLAUDE_MODEL_MAPPING.get(openai_model)
-    if claude_model:
-        return claude_model
-
-    # Pattern matching for versioned models
-    if openai_model.startswith("gpt-4o-mini"):
-        return "claude-3-5-haiku-latest"
-    elif openai_model.startswith("gpt-4o") or openai_model.startswith("gpt-4"):
-        return "claude-3-7-sonnet-20250219"
-    elif openai_model.startswith("gpt-3.5"):
-        return "claude-3-5-haiku-latest"
-    elif openai_model.startswith("o1"):
-        return "claude-sonnet-4-20250514"
-    elif openai_model.startswith("o3"):
-        return "claude-opus-4-20250514"
-    elif openai_model.startswith("gpt"):
-        return "claude-sonnet-4-20250514"
-
-    # If it's already a Claude model, pass through unchanged
-    if openai_model.startswith("claude-"):
-        return openai_model
-
-    # For unknown models, pass through unchanged we may change
-    # this to a default model in the future
-    return openai_model
 
 
 class OpenAIAdapter(APIAdapter):
@@ -128,7 +60,7 @@ class OpenAIAdapter(APIAdapter):
             raise ValueError(f"Invalid OpenAI request format: {e}") from e
 
         # Map OpenAI model to Claude model
-        model = map_openai_model_to_claude(openai_req.model)
+        model = map_model_to_claude(openai_req.model)
 
         # Convert messages
         messages, system_prompt = self._convert_messages_to_anthropic(
@@ -1018,6 +950,4 @@ __all__ = [
     "OpenAIAdapter",
     "OpenAIChatCompletionRequest",
     "OpenAIChatCompletionResponse",
-    "map_openai_model_to_claude",
-    "OPENAI_TO_CLAUDE_MODEL_MAPPING",
 ]

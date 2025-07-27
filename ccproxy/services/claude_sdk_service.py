@@ -6,7 +6,6 @@ from typing import Any
 import structlog
 from claude_code_sdk import ClaudeCodeOptions
 
-from ccproxy.adapters.openai import adapter
 from ccproxy.auth.manager import AuthManager
 from ccproxy.claude_sdk.client import ClaudeSDKClient
 from ccproxy.claude_sdk.converter import MessageConverter
@@ -24,6 +23,7 @@ from ccproxy.models.messages import MessageResponse
 from ccproxy.observability.access_logger import log_request_access
 from ccproxy.observability.context import RequestContext, request_context
 from ccproxy.observability.metrics import PrometheusMetrics
+from ccproxy.utils.model_mapping import map_model_to_claude
 from ccproxy.utils.simple_request_logger import write_request_log
 
 
@@ -114,7 +114,7 @@ class ClaudeSDKService:
         system_message = self.options_handler.extract_system_message(messages)
 
         # Map model to Claude model
-        model = adapter.map_openai_model_to_claude(model)
+        model = map_model_to_claude(model)
 
         options = self.options_handler.create_options(
             model=model,

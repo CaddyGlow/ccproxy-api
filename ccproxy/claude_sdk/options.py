@@ -155,11 +155,11 @@ class OptionsHandler:
             List of supported model names
         """
         # Import here to avoid circular imports
-        from ccproxy.adapters.openai.adapter import OPENAI_TO_CLAUDE_MODEL_MAPPING
+        from ccproxy.utils.model_mapping import get_supported_claude_models
 
-        # Extract unique Claude models from OpenAI mapping
-        claude_models = list(set(OPENAI_TO_CLAUDE_MODEL_MAPPING.values()))
-        return sorted(claude_models)
+        # Get supported Claude models
+        claude_models = get_supported_claude_models()
+        return claude_models
 
     @staticmethod
     def validate_model(model: str) -> bool:

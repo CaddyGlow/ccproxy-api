@@ -4,7 +4,7 @@ This module provides the OpenAI adapter implementation for converting
 between OpenAI and Anthropic API formats.
 """
 
-from .adapter import OpenAIAdapter, map_openai_model_to_claude
+from .adapter import OpenAIAdapter
 from .models import (
     OpenAIChatCompletionResponse,
     OpenAIChoice,
@@ -24,7 +24,6 @@ from .streaming import OpenAISSEFormatter, OpenAIStreamProcessor
 __all__ = [
     # Adapter
     "OpenAIAdapter",
-    "map_openai_model_to_claude",
     # Models
     "OpenAIMessage",
     "OpenAIMessageContent",

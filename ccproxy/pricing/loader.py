@@ -6,6 +6,8 @@ from typing import Any
 from pydantic import ValidationError
 from structlog import get_logger
 
+from ccproxy.utils.model_mapping import get_claude_aliases_mapping, map_model_to_claude
+
 from .models import PricingData
 
 
@@ -14,22 +16,6 @@ logger = get_logger(__name__)
 
 class PricingLoader:
     """Loads and converts pricing data from LiteLLM format to internal format."""
-
-    # Claude model name mappings for different versions
-    CLAUDE_MODEL_MAPPINGS = {
-        # Map versioned models to their canonical names
-        "claude-3-5-sonnet-latest": "claude-3-5-sonnet-20241022",
-        "claude-3-5-sonnet-20240620": "claude-3-5-sonnet-20240620",
-        "claude-3-5-sonnet-20241022": "claude-3-5-sonnet-20241022",
-        "claude-3-5-haiku-latest": "claude-3-5-haiku-20241022",
-        "claude-3-5-haiku-20241022": "claude-3-5-haiku-20241022",
-        "claude-3-opus": "claude-3-opus-20240229",
-        "claude-3-opus-20240229": "claude-3-opus-20240229",
-        "claude-3-sonnet": "claude-3-sonnet-20240229",
-        "claude-3-sonnet-20240229": "claude-3-sonnet-20240229",
-        "claude-3-haiku": "claude-3-haiku-20240307",
-        "claude-3-haiku-20240307": "claude-3-haiku-20240307",
-    }
 
     @staticmethod
     def extract_claude_models(
@@ -112,9 +98,7 @@ class PricingLoader:
                     pricing["cache_read"] = Decimal(str(cache_read_cost * 1_000_000))
 
                 # Map to canonical model name if needed
-                canonical_name = PricingLoader.CLAUDE_MODEL_MAPPINGS.get(
-                    model_name, model_name
-                )
+                canonical_name = map_model_to_claude(model_name)
                 internal_format[canonical_name] = pricing
 
                 if verbose:
@@ -252,7 +236,7 @@ class PricingLoader:
         Returns:
             Dictionary mapping aliases to canonical model names
         """
-        return PricingLoader.CLAUDE_MODEL_MAPPINGS.copy()
+        return get_claude_aliases_mapping()
 
     @staticmethod
     def get_canonical_model_name(model_name: str) -> str:
@@ -264,4 +248,4 @@ class PricingLoader:
         Returns:
             Canonical model name
         """
-        return PricingLoader.CLAUDE_MODEL_MAPPINGS.get(model_name, model_name)
+        return map_model_to_claude(model_name)
