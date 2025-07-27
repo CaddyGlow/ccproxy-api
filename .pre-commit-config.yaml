@@ -56,6 +56,8 @@ repos:
           - fastapi-mcp>=0.1.0
           - sse-starlette>=1.0.0
           - textual>=3.7.1
+          - aiofiles>=24.1.0
+          - types-aiofiles>=24.0.0
         args: [--config-file=pyproject.toml]
         exclude: ^(docs/|examples/)
 

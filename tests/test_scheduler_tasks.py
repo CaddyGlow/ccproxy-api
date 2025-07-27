@@ -1,6 +1,7 @@
 """Unit tests for individual scheduler task implementations."""
 
 import asyncio
+from datetime import UTC
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -11,6 +12,7 @@ from ccproxy.scheduler.tasks import (
     PricingCacheUpdateTask,
     PushgatewayTask,
     StatsPrintingTask,
+    VersionUpdateCheckTask,
 )
 
 
@@ -546,6 +548,256 @@ class TestPricingCacheUpdateTask:
             mock_pricing_updater.get_current_pricing.assert_called_once()
 
             await task.cleanup()
+
+
+class TestVersionUpdateCheckTask:
+    """Test VersionUpdateCheckTask specific functionality."""
+
+    @pytest.mark.asyncio
+    async def test_version_check_task_creation(self) -> None:
+        """Test VersionUpdateCheckTask creation."""
+        task = VersionUpdateCheckTask(
+            name="version_check_test",
+            interval_seconds=3600.0,
+            enabled=True,
+            startup_max_age_hours=2.0,
+        )
+
+        assert task.name == "version_check_test"
+        assert task.interval_seconds == 3600.0
+        assert task.enabled is True
+        assert task.startup_max_age_hours == 2.0
+        assert task._first_run is True
+
+    @pytest.mark.asyncio
+    async def test_version_check_task_successful_check_with_update(self) -> None:
+        """Test version check task when update is available."""
+        with (
+            patch(
+                "ccproxy.utils.version_checker.fetch_latest_github_version"
+            ) as mock_fetch,
+            patch("ccproxy.utils.version_checker.get_current_version") as mock_current,
+            patch("ccproxy.utils.version_checker.compare_versions") as mock_compare,
+            patch("ccproxy.utils.version_checker.save_check_state") as mock_save,
+            patch("ccproxy.utils.version_checker.load_check_state") as mock_load,
+        ):
+            # Mock successful fetch with newer version
+            mock_fetch.return_value = "1.5.0"
+            mock_current.return_value = "1.0.0"
+            mock_compare.return_value = True  # Update available
+            mock_load.return_value = None  # No previous state
+            mock_save.return_value = None
+
+            task = VersionUpdateCheckTask(
+                name="version_update_test",
+                interval_seconds=3600.0,
+                enabled=True,
+                startup_max_age_hours=1.0,
+            )
+
+            result = await task.run()
+
+            assert result is True
+            mock_fetch.assert_called_once()
+            mock_current.assert_called_once()
+            mock_compare.assert_called_once_with("1.0.0", "1.5.0")
+            mock_save.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_version_check_task_no_update_available(self) -> None:
+        """Test version check task when no update is available."""
+        with (
+            patch(
+                "ccproxy.utils.version_checker.fetch_latest_github_version"
+            ) as mock_fetch,
+            patch("ccproxy.utils.version_checker.get_current_version") as mock_current,
+            patch("ccproxy.utils.version_checker.compare_versions") as mock_compare,
+            patch("ccproxy.utils.version_checker.save_check_state") as mock_save,
+            patch("ccproxy.utils.version_checker.load_check_state") as mock_load,
+        ):
+            # Mock successful fetch with same version
+            mock_fetch.return_value = "1.0.0"
+            mock_current.return_value = "1.0.0"
+            mock_compare.return_value = False  # No update available
+            mock_load.return_value = None  # No previous state
+            mock_save.return_value = None
+
+            task = VersionUpdateCheckTask(
+                name="version_no_update_test",
+                interval_seconds=3600.0,
+                enabled=True,
+                startup_max_age_hours=1.0,
+            )
+
+            result = await task.run()
+
+            assert result is True
+            mock_fetch.assert_called_once()
+            mock_current.assert_called_once()
+            mock_compare.assert_called_once_with("1.0.0", "1.0.0")
+            mock_save.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_version_check_task_fetch_failure(self) -> None:
+        """Test version check task when GitHub fetch fails."""
+        with (
+            patch(
+                "ccproxy.utils.version_checker.fetch_latest_github_version"
+            ) as mock_fetch,
+            patch("ccproxy.utils.version_checker.load_check_state") as mock_load,
+        ):
+            # Mock failed fetch
+            mock_fetch.return_value = None
+            mock_load.return_value = None  # No previous state
+
+            task = VersionUpdateCheckTask(
+                name="version_fetch_fail_test",
+                interval_seconds=3600.0,
+                enabled=True,
+                startup_max_age_hours=1.0,
+            )
+
+            result = await task.run()
+
+            assert result is False
+            mock_fetch.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_version_check_task_startup_skip_recent_check(self) -> None:
+        """Test version check task skips startup check if recent check exists."""
+        from datetime import datetime
+
+        from ccproxy.utils.version_checker import VersionCheckState
+
+        # Create recent state (30 minutes ago)
+        recent_time = datetime.now(UTC).replace(minute=30)
+        recent_state = VersionCheckState(
+            last_check_at=recent_time,
+            latest_version_found="1.0.0",
+        )
+
+        with (
+            patch("ccproxy.utils.version_checker.load_check_state") as mock_load,
+            patch(
+                "ccproxy.utils.version_checker.fetch_latest_github_version"
+            ) as mock_fetch,
+        ):
+            mock_load.return_value = recent_state
+
+            task = VersionUpdateCheckTask(
+                name="version_skip_test",
+                interval_seconds=3600.0,
+                enabled=True,
+                startup_max_age_hours=1.0,  # 1 hour threshold
+            )
+
+            result = await task.run()
+
+            # Should skip because recent check was less than 1 hour ago
+            assert result is True
+            mock_load.assert_called_once()
+            mock_fetch.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_version_check_task_startup_run_old_check(self) -> None:
+        """Test version check task runs startup check if old check exists."""
+        from datetime import datetime, timedelta
+
+        from ccproxy.utils.version_checker import VersionCheckState
+
+        # Create old state (2 hours ago)
+        old_time = datetime.now(UTC) - timedelta(hours=2)
+        old_state = VersionCheckState(
+            last_check_at=old_time,
+            latest_version_found="1.0.0",
+        )
+
+        with (
+            patch("ccproxy.utils.version_checker.load_check_state") as mock_load,
+            patch(
+                "ccproxy.utils.version_checker.fetch_latest_github_version"
+            ) as mock_fetch,
+            patch("ccproxy.utils.version_checker.get_current_version") as mock_current,
+            patch("ccproxy.utils.version_checker.compare_versions") as mock_compare,
+            patch("ccproxy.utils.version_checker.save_check_state") as mock_save,
+        ):
+            mock_load.return_value = old_state
+            mock_fetch.return_value = "1.1.0"
+            mock_current.return_value = "1.0.0"
+            mock_compare.return_value = True
+            mock_save.return_value = None
+
+            task = VersionUpdateCheckTask(
+                name="version_old_test",
+                interval_seconds=3600.0,
+                enabled=True,
+                startup_max_age_hours=1.0,  # 1 hour threshold
+            )
+
+            result = await task.run()
+
+            # Should run because old check was more than 1 hour ago
+            assert result is True
+            mock_load.assert_called_once()
+            mock_fetch.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_version_check_task_second_run_normal(self) -> None:
+        """Test version check task second run behavior (non-startup)."""
+        with (
+            patch("ccproxy.utils.version_checker.load_check_state") as mock_load,
+            patch(
+                "ccproxy.utils.version_checker.fetch_latest_github_version"
+            ) as mock_fetch,
+            patch("ccproxy.utils.version_checker.get_current_version") as mock_current,
+            patch("ccproxy.utils.version_checker.compare_versions") as mock_compare,
+            patch("ccproxy.utils.version_checker.save_check_state") as mock_save,
+        ):
+            mock_load.return_value = None  # No previous state
+            mock_fetch.return_value = "1.1.0"
+            mock_current.return_value = "1.0.0"
+            mock_compare.return_value = True
+            mock_save.return_value = None
+
+            task = VersionUpdateCheckTask(
+                name="version_second_run_test",
+                interval_seconds=3600.0,
+                enabled=True,
+                startup_max_age_hours=1.0,
+            )
+
+            # First run (startup logic)
+            result1 = await task.run()
+            assert result1 is True
+            assert task._first_run is False
+
+            # Second run (normal logic, should skip startup checks)
+            result2 = await task.run()
+            assert result2 is True
+
+            # Should have called fetch twice (once for each run)
+            assert mock_fetch.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_version_check_task_error_handling(self) -> None:
+        """Test version check task error handling."""
+        with (
+            patch("ccproxy.utils.version_checker.load_check_state") as mock_load,
+        ):
+            # Mock exception during load
+            mock_load.side_effect = Exception("File system error")
+
+            task = VersionUpdateCheckTask(
+                name="version_error_test",
+                interval_seconds=3600.0,
+                enabled=True,
+                startup_max_age_hours=1.0,
+            )
+
+            result = await task.run()
+
+            assert result is False
+            mock_load.assert_called_once()
 
 
 if __name__ == "__main__":

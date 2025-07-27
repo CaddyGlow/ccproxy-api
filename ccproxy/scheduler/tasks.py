@@ -5,6 +5,7 @@ import contextlib
 import random
 import time
 from abc import ABC, abstractmethod
+from datetime import UTC
 from typing import Any
 
 import structlog
@@ -475,6 +476,132 @@ class PricingCacheUpdateTask(BaseScheduledTask):
         except Exception as e:
             logger.error(
                 "pricing_update_task_error",
+                task_name=self.name,
+                error=str(e),
+                error_type=type(e).__name__,
+            )
+            return False
+
+
+class VersionUpdateCheckTask(BaseScheduledTask):
+    """Task for checking version updates periodically."""
+
+    def __init__(
+        self,
+        name: str,
+        interval_seconds: float,
+        enabled: bool = True,
+        startup_max_age_hours: float = 1.0,
+    ):
+        """
+        Initialize version update check task.
+
+        Args:
+            name: Task name
+            interval_seconds: Interval between version checks
+            enabled: Whether task is enabled
+            startup_max_age_hours: Maximum age in hours before running startup check
+        """
+        super().__init__(
+            name=name,
+            interval_seconds=interval_seconds,
+            enabled=enabled,
+        )
+        self.startup_max_age_hours = startup_max_age_hours
+        self._first_run = True
+
+    async def run(self) -> bool:
+        """Execute version update check."""
+        try:
+            from datetime import datetime
+
+            from ccproxy.utils.version_checker import (
+                VersionCheckState,
+                compare_versions,
+                fetch_latest_github_version,
+                get_current_version,
+                get_version_check_state_path,
+                load_check_state,
+                save_check_state,
+            )
+
+            state_path = get_version_check_state_path()
+            current_time = datetime.now(UTC)
+
+            # Check if we should run based on startup logic
+            if self._first_run:
+                self._first_run = False
+                should_run_startup_check = False
+
+                # Load existing state if available
+                existing_state = await load_check_state(state_path)
+                if existing_state:
+                    # Check age of last check
+                    time_diff = current_time - existing_state.last_check_at
+                    age_hours = time_diff.total_seconds() / 3600
+
+                    if age_hours > self.startup_max_age_hours:
+                        should_run_startup_check = True
+                        logger.debug(
+                            "version_check_startup_needed",
+                            task_name=self.name,
+                            age_hours=age_hours,
+                            max_age_hours=self.startup_max_age_hours,
+                        )
+                    else:
+                        logger.debug(
+                            "version_check_startup_skipped",
+                            task_name=self.name,
+                            age_hours=age_hours,
+                            max_age_hours=self.startup_max_age_hours,
+                        )
+                        return True  # Skip this run
+                else:
+                    # No previous state, run check
+                    should_run_startup_check = True
+                    logger.debug("version_check_startup_no_state", task_name=self.name)
+
+                if not should_run_startup_check:
+                    return True
+
+            # Fetch latest version from GitHub
+            latest_version = await fetch_latest_github_version()
+            if latest_version is None:
+                logger.warning("version_check_fetch_failed", task_name=self.name)
+                return False
+
+            # Get current version
+            current_version = get_current_version()
+
+            # Save state
+            new_state = VersionCheckState(
+                last_check_at=current_time,
+                latest_version_found=latest_version,
+            )
+            await save_check_state(state_path, new_state)
+
+            # Compare versions
+            if compare_versions(current_version, latest_version):
+                logger.info(
+                    "version_update_available",
+                    task_name=self.name,
+                    current_version=current_version,
+                    latest_version=latest_version,
+                    message=f"New version {latest_version} available! You are running {current_version}",
+                )
+            else:
+                logger.debug(
+                    "version_check_complete_no_update",
+                    task_name=self.name,
+                    current_version=current_version,
+                    latest_version=latest_version,
+                )
+
+            return True
+
+        except Exception as e:
+            logger.error(
+                "version_check_task_error",
                 task_name=self.name,
                 error=str(e),
                 error_type=type(e).__name__,

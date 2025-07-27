@@ -504,7 +504,7 @@ class TestSchedulerManagerIntegration:
             assert "pushgateway" in task_names
             assert "stats_printing" in task_names
             assert "pricing_cache_update" in task_names
-            assert scheduler.task_count == 3
+            assert scheduler.task_count == 4
 
             await stop_scheduler(scheduler)
 

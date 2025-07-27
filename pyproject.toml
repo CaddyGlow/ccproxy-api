@@ -6,6 +6,7 @@ description = "API server that provides an Anthropic and OpenAI compatible inter
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
+  "aiofiles>=24.1.0",
   "aiosqlite>=0.21.0",
   "jsonschema>=0.33.2",
   "fastapi[standard]>=0.115.14",
@@ -72,6 +73,7 @@ dev = [
   "textual-dev>=1.7.0",
   "pytest-httpx>=0.35.0",
   "types-pyyaml>=6.0.12.20250516",
+  "types-aiofiles>=24.0.0",
 ]
 security = [
   "keyring>=25.0.0", # Optional keyring support for secure credential storage
