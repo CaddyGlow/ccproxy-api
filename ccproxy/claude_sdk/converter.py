@@ -2,7 +2,6 @@
 
 import html
 import json
-import re
 from collections.abc import Callable
 from typing import Any
 
@@ -232,65 +231,20 @@ class MessageConverter:
 
         for block in assistant_message.content:
             if isinstance(block, sdk_models.TextBlock):
-                # Parse text content for thinking blocks
+                # Handle text content directly without thinking block parsing
                 text = block.text
-                thinking_pattern = r'<thinking signature="([^"]*)">(.*?)</thinking>'
-                last_end = 0
-                for match in re.finditer(thinking_pattern, text, re.DOTALL):
-                    before_text = text[last_end : match.start()].strip()
-                    if before_text:
-                        if mode == SDKMessageMode.FORMATTED:
-                            escaped_text = MessageConverter._escape_content_for_xml(
-                                before_text, pretty_format
-                            )
-                            formatted_text = (
-                                f"<text>\n{escaped_text}\n</text>\n"
-                                if pretty_format
-                                else f"<text>{escaped_text}</text>"
-                            )
-                            content_blocks.append(
-                                {"type": "text", "text": formatted_text}
-                            )
-                        else:
-                            content_blocks.append({"type": "text", "text": before_text})
-
-                    signature, thinking_text = match.groups()
-                    content_blocks.append(
-                        {
-                            "type": "thinking",
-                            "text": thinking_text,
-                            "signature": signature,
-                        }
+                if mode == SDKMessageMode.FORMATTED:
+                    escaped_text = MessageConverter._escape_content_for_xml(
+                        text, pretty_format
                     )
-                    last_end = match.end()
-
-                remaining_text = text[last_end:].strip()
-                if remaining_text:
-                    if mode == SDKMessageMode.FORMATTED:
-                        escaped_text = MessageConverter._escape_content_for_xml(
-                            remaining_text, pretty_format
-                        )
-                        formatted_text = (
-                            f"<text>\n{escaped_text}\n</text>\n"
-                            if pretty_format
-                            else f"<text>{escaped_text}</text>"
-                        )
-                        content_blocks.append({"type": "text", "text": formatted_text})
-                    else:
-                        content_blocks.append({"type": "text", "text": remaining_text})
-                elif last_end == 0 and text:
-                    if mode == SDKMessageMode.FORMATTED:
-                        escaped_text = MessageConverter._escape_content_for_xml(
-                            text, pretty_format
-                        )
-                        formatted_text = (
-                            f"<text>\n{escaped_text}\n</text>\n"
-                            if pretty_format
-                            else f"<text>{escaped_text}</text>"
-                        )
-                        content_blocks.append({"type": "text", "text": formatted_text})
-                    else:
-                        content_blocks.append({"type": "text", "text": text})
+                    formatted_text = (
+                        f"<text>\n{escaped_text}\n</text>\n"
+                        if pretty_format
+                        else f"<text>{escaped_text}</text>"
+                    )
+                    content_blocks.append({"type": "text", "text": formatted_text})
+                else:
+                    content_blocks.append({"type": "text", "text": text})
 
             elif isinstance(block, sdk_models.ToolUseBlock):
                 if mode == SDKMessageMode.FORWARD:
@@ -326,6 +280,36 @@ class MessageConverter:
                         if pretty_format
                         else f"<tool_result_sdk>{escaped_json}</tool_result_sdk>"
                     )
+                    content_blocks.append({"type": "text", "text": formatted_text})
+
+            elif isinstance(block, sdk_models.ThinkingBlock):
+                if mode == SDKMessageMode.FORWARD:
+                    thinking_block = {
+                        "type": "thinking",
+                        "thinking": block.thinking,
+                    }
+                    if block.signature is not None:
+                        thinking_block["signature"] = block.signature
+                    content_blocks.append(thinking_block)
+                elif mode == SDKMessageMode.FORMATTED:
+                    # Format thinking block with signature in XML tag attribute
+                    signature_attr = (
+                        f' signature="{block.signature}"' if block.signature else ""
+                    )
+                    if pretty_format:
+                        escaped_text = MessageConverter._escape_content_for_xml(
+                            block.thinking, pretty_format
+                        )
+                        formatted_text = (
+                            f"<thinking{signature_attr}>\n{escaped_text}\n</thinking>\n"
+                        )
+                    else:
+                        escaped_text = MessageConverter._escape_content_for_xml(
+                            block.thinking, pretty_format
+                        )
+                        formatted_text = (
+                            f"<thinking{signature_attr}>{escaped_text}</thinking>"
+                        )
                     content_blocks.append({"type": "text", "text": formatted_text})
 
         return MessageResponse.model_validate(

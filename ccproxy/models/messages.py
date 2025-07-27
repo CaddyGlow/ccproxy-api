@@ -227,7 +227,7 @@ class ThinkingContentBlock(BaseModel):
     """Thinking content block."""
 
     type: Literal["thinking"]
-    text: str
+    thinking: str
     signature: str | None = None
 
 

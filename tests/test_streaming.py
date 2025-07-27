@@ -53,8 +53,11 @@ def test_openai_streaming_response(
             if line.strip():
                 chunks.append(line)
 
-        # Verify SSE format compliance
+        # Verify SSE format compliance - check only data lines
         for chunk in chunks:
+            # Skip event: lines, only check data: lines
+            if chunk.startswith("event:"):
+                continue
             assert chunk.startswith("data: "), (
                 f"Chunk should start with 'data: ', got: {chunk}"
             )
@@ -91,8 +94,11 @@ def test_anthropic_streaming_response(
             if line.strip():
                 chunks.append(line)
 
-        # Verify SSE format compliance
+        # Verify SSE format compliance - check only data lines
         for chunk in chunks:
+            # Skip event: lines, only check data: lines
+            if chunk.startswith("event:"):
+                continue
             assert chunk.startswith("data: "), (
                 f"Chunk should start with 'data: ', got: {chunk}"
             )
@@ -129,8 +135,11 @@ def test_claude_sdk_streaming_response(
             if line.strip():
                 chunks.append(line)
 
-        # Verify SSE format compliance
+        # Verify SSE format compliance - check only data lines
         for chunk in chunks:
+            # Skip event: lines, only check data: lines
+            if chunk.startswith("event:"):
+                continue
             assert chunk.startswith("data: "), (
                 f"Chunk should start with 'data: ', got: {chunk}"
             )

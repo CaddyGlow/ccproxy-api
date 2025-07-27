@@ -61,7 +61,7 @@ def mock_external_anthropic_api_streaming(httpx_mock: HTTPXMock) -> HTTPXMock:
 
     def stream_generator() -> Generator[str, None, None]:
         """Generate SSE formatted streaming response."""
-        events = [
+        events: list[dict[str, Any]] = [
             {
                 "type": "message_start",
                 "message": {
@@ -98,6 +98,8 @@ def mock_external_anthropic_api_streaming(httpx_mock: HTTPXMock) -> HTTPXMock:
         ]
 
         for event in events:
+            event_type = event.get("type", "message")
+            yield f"event: {event_type}\n"
             yield f"data: {json.dumps(event)}\n\n"
 
     httpx_mock.add_response(

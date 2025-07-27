@@ -100,9 +100,24 @@ class ToolResultBlock(BaseModel):
         }
 
 
+class ThinkingBlock(BaseModel):
+    """Thinking content block from Claude SDK.
+
+    Note: Thinking blocks are not normally sent by Claude Code SDK, but this model
+    is included for defensive programming to handle any future SDK changes or edge cases
+    where thinking content might be included in SDK responses.
+    """
+
+    type: Literal["thinking"] = "thinking"
+    thinking: str = Field(..., description="Thinking content text")
+    signature: str | None = Field(None, description="Optional thinking signature")
+
+    model_config = ConfigDict(extra="allow")
+
+
 # Union type for basic content blocks
 ContentBlock = Annotated[
-    TextBlock | ToolUseBlock | ToolResultBlock,
+    TextBlock | ToolUseBlock | ToolResultBlock | ThinkingBlock,
     Field(discriminator="type"),
 ]
 
@@ -310,6 +325,7 @@ SDKContentBlock = Annotated[
     TextBlock
     | ToolUseBlock
     | ToolResultBlock
+    | ThinkingBlock
     | SDKMessageMode
     | ToolUseSDKBlock
     | ToolResultSDKBlock
@@ -381,6 +397,7 @@ __all__ = [
     "TextBlock",
     "ToolUseBlock",
     "ToolResultBlock",
+    "ThinkingBlock",
     "ContentBlock",
     # Messages
     "UserMessage",

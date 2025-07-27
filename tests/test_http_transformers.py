@@ -89,7 +89,7 @@ class TestHTTPRequestTransformer:
 
         # Check Claude CLI identity headers
         assert result["x-app"] == "cli"
-        assert result["User-Agent"] == "claude-cli/1.0.43 (external, cli)"
+        assert result["User-Agent"] == "claude-cli/1.0.60 (external, cli)"
 
         # Check Anthropic API headers
         assert "anthropic-beta" in result
