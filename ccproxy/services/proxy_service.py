@@ -31,6 +31,10 @@ from ccproxy.observability import (
 from ccproxy.observability.access_logger import log_request_access
 from ccproxy.services.credentials.manager import CredentialsManager
 from ccproxy.testing import RealisticMockResponseGenerator
+from ccproxy.utils.simple_request_logger import (
+    append_streaming_log,
+    write_request_log,
+)
 
 
 if TYPE_CHECKING:
@@ -118,14 +122,10 @@ class ProxyService:
         self._verbose_api = (
             os.environ.get("CCPROXY_VERBOSE_API", "false").lower() == "true"
         )
-        self._request_log_dir = os.environ.get("CCPROXY_REQUEST_LOG_DIR")
+        # Note: Request logging is now handled by simple_request_logger utility
+        # which checks CCPROXY_LOG_REQUESTS and CCPROXY_REQUEST_LOG_DIR independently
 
-        # Create request log directory if specified
-        if self._request_log_dir and self._verbose_api:
-            Path(self._request_log_dir).mkdir(parents=True, exist_ok=True)
-
-        # Track current request ID for logging
-        self._current_request_id: str | None = None
+        # Request context is now passed as parameters to methods
 
     def _init_proxy_url(self) -> str | None:
         """Initialize proxy URL from environment variables."""
@@ -235,9 +235,6 @@ class ProxyService:
             )
 
         async with context_manager as ctx:
-            # Store the current request ID for file logging
-            self._current_request_id = ctx.request_id
-
             try:
                 # 1. Authentication - get access token
                 async with timed_operation("oauth_token", ctx.request_id):
@@ -297,7 +294,7 @@ class ProxyService:
                     logger.debug("non_streaming_response_detected")
 
                 # Log the outgoing request if verbose API logging is enabled
-                self._log_verbose_api_request(transformed_request)
+                await self._log_verbose_api_request(transformed_request, ctx)
 
                 # Handle regular request
                 async with timed_operation("api_call", ctx.request_id) as api_op:
@@ -320,8 +317,8 @@ class ProxyService:
                     api_op["duration_seconds"] = api_duration
 
                 # Log the received response if verbose API logging is enabled
-                self._log_verbose_api_response(
-                    status_code, response_headers, response_body
+                await self._log_verbose_api_response(
+                    status_code, response_headers, response_body, ctx
                 )
 
                 # 4. Response transformation
@@ -437,9 +434,6 @@ class ProxyService:
                 # Re-raise the exception without transformation
                 # Let higher layers handle specific error types
                 raise
-            finally:
-                # Reset current request ID
-                self._current_request_id = None
 
     async def _get_access_token(self) -> str:
         """Get access token for upstream authentication.
@@ -622,7 +616,9 @@ class ProxyService:
             for k, v in headers.items()
         }
 
-    def _log_verbose_api_request(self, request_data: RequestData) -> None:
+    async def _log_verbose_api_request(
+        self, request_data: RequestData, ctx: "RequestContext"
+    ) -> None:
         """Log details of an outgoing API request if verbose logging is enabled."""
         if not self._verbose_api:
             return
@@ -654,21 +650,27 @@ class ProxyService:
             body_preview=body_preview,
         )
 
-        # Write to individual file if directory is specified
-        # Note: We cannot get request ID here since this is called from multiple places
-        # Request ID will be determined within _write_request_to_file method
-        self._write_request_to_file(
-            "request",
-            {
+        # Use new request logging system
+        request_id = ctx.request_id
+        timestamp = ctx.get_log_timestamp_prefix()
+        await write_request_log(
+            request_id=request_id,
+            log_type="upstream_request",
+            data={
                 "method": request_data["method"],
                 "url": request_data["url"],
                 "headers": dict(request_data["headers"]),  # Don't redact in file
                 "body": full_body,
             },
+            timestamp=timestamp,
         )
 
-    def _log_verbose_api_response(
-        self, status_code: int, headers: dict[str, str], body: bytes
+    async def _log_verbose_api_response(
+        self,
+        status_code: int,
+        headers: dict[str, str],
+        body: bytes,
+        ctx: "RequestContext",
     ) -> None:
         """Log details of a received API response if verbose logging is enabled."""
         if not self._verbose_api:
@@ -690,7 +692,7 @@ class ProxyService:
             body_preview=body_preview,
         )
 
-        # Write to individual file if directory is specified
+        # Use new request logging system
         full_body = None
         if body:
             try:
@@ -703,13 +705,18 @@ class ProxyService:
             except Exception:
                 full_body = f"<binary data of length {len(body)}>"
 
-        self._write_request_to_file(
-            "response",
-            {
+        # Use new request logging system
+        request_id = ctx.request_id
+        timestamp = ctx.get_log_timestamp_prefix()
+        await write_request_log(
+            request_id=request_id,
+            log_type="upstream_response",
+            data={
                 "status_code": status_code,
                 "headers": dict(headers),  # Don't redact in file
                 "body": full_body,
             },
+            timestamp=timestamp,
         )
 
     def _should_stream_response(self, headers: dict[str, str]) -> bool:
@@ -772,7 +779,7 @@ class ProxyService:
             StreamingResponse or error response tuple
         """
         # Log the outgoing request if verbose API logging is enabled
-        self._log_verbose_api_request(request_data)
+        await self._log_verbose_api_request(request_data, ctx)
 
         # First, make the request and check for errors before streaming
         proxy_url = self._proxy_url
@@ -797,8 +804,8 @@ class ProxyService:
                 error_content = await response.aread()
 
                 # Log the full error response body
-                self._log_verbose_api_response(
-                    response.status_code, dict(response.headers), error_content
+                await self._log_verbose_api_response(
+                    response.status_code, dict(response.headers), error_content, ctx
                 )
 
                 logger.info(
@@ -897,6 +904,25 @@ class ProxyService:
                     response_status = response.status_code
                     response_headers = dict(response.headers)
 
+                    # Log upstream response headers for streaming
+                    if self._verbose_api:
+                        request_id = ctx.request_id
+                        timestamp = ctx.get_log_timestamp_prefix()
+                        await write_request_log(
+                            request_id=request_id,
+                            log_type="upstream_response_headers",
+                            data={
+                                "status_code": response.status_code,
+                                "headers": dict(response.headers),
+                                "stream_type": "anthropic_sse"
+                                if not self.response_transformer._is_openai_request(
+                                    original_path
+                                )
+                                else "openai_sse",
+                            },
+                            timestamp=timestamp,
+                        )
+
                     # Transform streaming response
                     is_openai = self.response_transformer._is_openai_request(
                         original_path
@@ -909,11 +935,23 @@ class ProxyService:
                         # Transform Anthropic SSE to OpenAI SSE format using adapter
                         logger.debug("sse_transform_start", path=original_path)
 
+                        # Get timestamp once for all streaming chunks
+                        request_id = ctx.request_id
+                        timestamp = ctx.get_log_timestamp_prefix()
+
                         async for (
                             transformed_chunk
                         ) in self._transform_anthropic_to_openai_stream(
                             response, original_path
                         ):
+                            # Log transformed streaming chunk
+                            await append_streaming_log(
+                                request_id=request_id,
+                                log_type="upstream_streaming",
+                                data=transformed_chunk,
+                                timestamp=timestamp,
+                            )
+
                             logger.debug(
                                 "transformed_chunk_yielded",
                                 chunk_size=len(transformed_chunk),
@@ -928,9 +966,21 @@ class ProxyService:
                         # Use cached verbose streaming configuration
                         verbose_streaming = self._verbose_streaming
 
+                        # Get timestamp once for all streaming chunks
+                        request_id = ctx.request_id
+                        timestamp = ctx.get_log_timestamp_prefix()
+
                         async for chunk in response.aiter_bytes():
                             if chunk:
                                 chunk_count += 1
+
+                                # Log raw streaming chunk
+                                await append_streaming_log(
+                                    request_id=request_id,
+                                    log_type="upstream_streaming",
+                                    data=chunk,
+                                    timestamp=timestamp,
+                                )
 
                                 # Compact logging for content_block_delta events
                                 chunk_str = chunk.decode("utf-8", errors="replace")
@@ -1071,43 +1121,6 @@ class ProxyService:
         ):
             sse_line = f"data: {json.dumps(openai_chunk)}\n\n"
             yield sse_line.encode("utf-8")
-
-    def _write_request_to_file(self, data_type: str, data: dict[str, Any]) -> None:
-        """Write request or response data to individual file if logging directory is configured.
-
-        Args:
-            data_type: Type of data ("request" or "response")
-            data: The data to write
-        """
-        if not self._request_log_dir or not self._verbose_api:
-            return
-
-        # Use the current request ID stored during request handling
-        request_id = self._current_request_id or "unknown"
-
-        # Create filename with request ID and data type
-        filename = f"{request_id}_{data_type}.json"
-        file_path = Path(self._request_log_dir) / filename
-
-        try:
-            # Write JSON data to file
-            with file_path.open("w", encoding="utf-8") as f:
-                json.dump(data, f, indent=2, default=str)
-
-            logger.debug(
-                "request_data_logged_to_file",
-                request_id=request_id,
-                data_type=data_type,
-                file_path=str(file_path),
-            )
-
-        except Exception as e:
-            logger.error(
-                "failed_to_write_request_log_file",
-                request_id=request_id,
-                data_type=data_type,
-                error=str(e),
-            )
 
     def _extract_message_type_from_body(self, body: bytes | None) -> str:
         """Extract message type from request body for realistic response generation."""

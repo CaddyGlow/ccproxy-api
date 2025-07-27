@@ -17,6 +17,8 @@ logger = structlog.get_logger(__name__)
 # Claude Code system prompt constants
 claude_code_prompt = "You are Claude Code, Anthropic's official CLI for Claude."
 
+# claude_code_prompt = "<system-reminder>\nAs you answer the user's questions, you can use the following context:\n# important-instruction-reminders\nDo what has been asked; nothing more, nothing less.\nNEVER create files unless they're absolutely necessary for achieving your goal.\nALWAYS prefer editing an existing file to creating a new one.\nNEVER proactively create documentation files (*.md) or README files. Only create documentation files if explicitly requested by the User.\n\n      \n      IMPORTANT: this context may or may not be relevant to your tasks. You should not respond to this context unless it is highly relevant to your task.\n</system-reminder>\n"
+
 
 def get_claude_code_prompt() -> dict[str, Any]:
     """Get the Claude Code system prompt with cache control."""
@@ -178,7 +180,7 @@ class HTTPRequestTransformer(RequestTransformer):
 
         # Claude CLI identity headers
         proxy_headers["x-app"] = "cli"
-        proxy_headers["User-Agent"] = "claude-cli/1.0.43 (external, cli)"
+        proxy_headers["User-Agent"] = "claude-cli/1.0.60 (external, cli)"
 
         # Stainless SDK compatibility headers
         proxy_headers["X-Stainless-Lang"] = "js"
@@ -188,7 +190,7 @@ class HTTPRequestTransformer(RequestTransformer):
         proxy_headers["X-Stainless-OS"] = "Linux"
         proxy_headers["X-Stainless-Arch"] = "x64"
         proxy_headers["X-Stainless-Runtime"] = "node"
-        proxy_headers["X-Stainless-Runtime-Version"] = "v22.14.0"
+        proxy_headers["X-Stainless-Runtime-Version"] = "v24.3.0"
 
         # Standard HTTP headers for proper API interaction
         proxy_headers["accept-language"] = "*"

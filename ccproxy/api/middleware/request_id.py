@@ -1,6 +1,7 @@
 """Request ID middleware for generating and tracking request IDs."""
 
 import uuid
+from datetime import UTC, datetime
 from typing import Any
 
 import structlog
@@ -38,6 +39,9 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
         # Generate or extract request ID
         request_id = request.headers.get("x-request-id") or str(uuid.uuid4())
 
+        # Generate datetime for consistent logging across all layers
+        log_timestamp = datetime.now(UTC)
+
         # Get DuckDB storage from app state if available
         storage = getattr(request.app.state, "duckdb_storage", None)
 
@@ -45,6 +49,7 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
         async with request_context(
             request_id=request_id,
             storage=storage,
+            log_timestamp=log_timestamp,
             method=request.method,
             path=str(request.url.path),
             client_ip=request.client.host if request.client else "unknown",

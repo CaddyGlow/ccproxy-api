@@ -12,6 +12,9 @@ from ccproxy import __version__
 from ccproxy.api.middleware.cors import setup_cors_middleware
 from ccproxy.api.middleware.errors import setup_error_handlers
 from ccproxy.api.middleware.logging import AccessLogMiddleware
+from ccproxy.api.middleware.request_content_logging import (
+    RequestContentLoggingMiddleware,
+)
 from ccproxy.api.middleware.request_id import RequestIDMiddleware
 from ccproxy.api.middleware.server_header import ServerHeaderMiddleware
 from ccproxy.api.routes.claude import router as claude_router
@@ -240,6 +243,15 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Shutdown
     logger.debug("server_stop")
 
+    # Flush any remaining streaming log batches
+    try:
+        from ccproxy.utils.simple_request_logger import flush_all_streaming_batches
+
+        await flush_all_streaming_batches()
+        logger.debug("streaming_batches_flushed")
+    except Exception as e:
+        logger.error("streaming_batches_flush_failed", error=str(e))
+
     # Stop scheduler system
     try:
         scheduler = getattr(app.state, "scheduler", None)
@@ -310,10 +322,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     setup_cors_middleware(app, settings)
     setup_error_handlers(app)
 
-    # Add custom access log middleware first (will run second due to middleware order)
+    # Add request content logging middleware first (will run third due to middleware order)
+    app.add_middleware(RequestContentLoggingMiddleware)
+
+    # Add custom access log middleware second (will run second due to middleware order)
     app.add_middleware(AccessLogMiddleware)
 
-    # Add request ID middleware second (will run first to initialize context)
+    # Add request ID middleware third (will run first to initialize context)
     app.add_middleware(RequestIDMiddleware)
 
     # Add server header middleware (for non-proxy routes)

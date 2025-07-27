@@ -21,6 +21,7 @@ import uuid
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from typing import Any
 
 import structlog
@@ -43,6 +44,7 @@ class RequestContext:
     logger: structlog.BoundLogger
     metadata: dict[str, Any] = field(default_factory=dict)
     storage: Any | None = None  # Optional DuckDB storage instance
+    log_timestamp: datetime | None = None  # Datetime for consistent logging filenames
 
     @property
     def duration_ms(self) -> float:
@@ -66,12 +68,25 @@ class RequestContext:
             event, request_id=self.request_id, duration_ms=self.duration_ms, **kwargs
         )
 
+    def get_log_timestamp_prefix(self) -> str:
+        """Get timestamp prefix for consistent log filenames.
+
+        Returns:
+            Timestamp string in YYYYMMDDhhmmss format (UTC)
+        """
+        if self.log_timestamp:
+            return self.log_timestamp.strftime("%Y%m%d%H%M%S")
+        else:
+            # Fallback to current time if not set
+            return datetime.now(UTC).strftime("%Y%m%d%H%M%S")
+
 
 @asynccontextmanager
 async def request_context(
     request_id: str | None = None,
     storage: Any | None = None,
     metrics: Any | None = None,
+    log_timestamp: datetime | None = None,
     **initial_context: Any,
 ) -> AsyncGenerator[RequestContext, None]:
     """
@@ -124,6 +139,7 @@ async def request_context(
         logger=request_logger,
         metadata=dict(initial_context),
         storage=storage,
+        log_timestamp=log_timestamp,
     )
 
     try:

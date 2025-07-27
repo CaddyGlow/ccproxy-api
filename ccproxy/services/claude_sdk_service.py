@@ -24,6 +24,7 @@ from ccproxy.models.messages import MessageResponse
 from ccproxy.observability.access_logger import log_request_access
 from ccproxy.observability.context import RequestContext, request_context
 from ccproxy.observability.metrics import PrometheusMetrics
+from ccproxy.utils.simple_request_logger import write_request_log
 
 
 logger = structlog.get_logger(__name__)
@@ -143,15 +144,21 @@ class ClaudeSDKService:
             metrics=self.metrics,  # Pass metrics for active request tracking
         ) as ctx:
             try:
+                # Log SDK request parameters
+                timestamp = ctx.get_log_timestamp_prefix() if ctx else None
+                await self._log_sdk_request(
+                    request_id, prompt, options, model, stream, timestamp
+                )
+
                 if stream:
                     # For streaming, return the async iterator directly
                     # Pass context to streaming method
                     return self._stream_completion(
-                        prompt, options, model, request_id, ctx
+                        prompt, options, model, request_id, ctx, timestamp
                     )
                 else:
                     result = await self._complete_non_streaming(
-                        prompt, options, model, request_id, ctx
+                        prompt, options, model, request_id, ctx, timestamp
                     )
                     return result
 
@@ -182,6 +189,7 @@ class ClaudeSDKService:
         model: str,
         request_id: str | None = None,
         ctx: RequestContext | None = None,
+        timestamp: str | None = None,
     ) -> MessageResponse:
         """
         Complete a non-streaming request with business logic.
@@ -198,6 +206,8 @@ class ClaudeSDKService:
         Raises:
             ClaudeProxyError: If completion fails
         """
+        # SDK request already logged in create_completion
+
         messages = [
             m
             async for m in self.sdk_client.query_completion(prompt, options, request_id)
@@ -257,9 +267,23 @@ class ClaudeSDKService:
                         },
                     )
                     if content_block:
-                        response.content.append(
-                            sdk_models.SDKMessageMode.model_validate(content_block)
-                        )
+                        # Only validate as SDKMessageMode if it's a system_message type
+                        if content_block.get("type") == "system_message":
+                            response.content.append(
+                                sdk_models.SDKMessageMode.model_validate(content_block)
+                            )
+                        else:
+                            # For other types (like text blocks in FORMATTED mode), create appropriate content block
+                            if content_block.get("type") == "text":
+                                response.content.append(
+                                    sdk_models.TextBlock.model_validate(content_block)
+                                )
+                            else:
+                                # Fallback for other content block types
+                                logger.warning(
+                                    "unknown_content_block_type",
+                                    content_block_type=content_block.get("type"),
+                                )
                 elif isinstance(message, sdk_models.UserMessage):
                     for block in message.content:
                         if isinstance(block, sdk_models.ToolResultBlock):
@@ -295,6 +319,10 @@ class ClaudeSDKService:
                 context=ctx, status_code=200, method="POST", metrics=self.metrics
             )
 
+        # Log SDK response
+        if request_id:
+            await self._log_sdk_response(request_id, response, timestamp)
+
         return response
 
     async def _stream_completion(
@@ -304,6 +332,7 @@ class ClaudeSDKService:
         model: str,
         request_id: str | None = None,
         ctx: RequestContext | None = None,
+        timestamp: str | None = None,
     ) -> AsyncIterator[dict[str, Any]]:
         """
         Stream completion responses with business logic.
@@ -335,6 +364,9 @@ class ClaudeSDKService:
             sdk_message_mode=sdk_message_mode,
             pretty_format=pretty_format,
         ):
+            # Log streaming chunk
+            if request_id:
+                await self._log_sdk_streaming_chunk(request_id, chunk, timestamp)
             yield chunk
 
     async def _validate_user_auth(self, user_id: str) -> None:
@@ -350,6 +382,102 @@ class ClaudeSDKService:
         if not self.auth_manager:
             return
         logger.debug("user_auth_validation_start", user_id=user_id)
+
+    async def _log_sdk_request(
+        self,
+        request_id: str,
+        prompt: str,
+        options: "ClaudeCodeOptions",
+        model: str,
+        stream: bool,
+        timestamp: str | None = None,
+    ) -> None:
+        """Log SDK input parameters as JSON dump.
+
+        Args:
+            request_id: Request identifier
+            prompt: The formatted prompt
+            options: Claude SDK options
+            model: The model being used
+            stream: Whether streaming is enabled
+            timestamp: Optional timestamp prefix
+        """
+        # timestamp is already provided from context, no need for fallback
+
+        # JSON dump of the parameters passed to SDK completion
+        sdk_request_data = {
+            "prompt": prompt,
+            "options": options.model_dump()
+            if hasattr(options, "model_dump")
+            else str(options),
+            "model": model,
+            "stream": stream,
+            "request_id": request_id,
+        }
+
+        await write_request_log(
+            request_id=request_id,
+            log_type="sdk_request",
+            data=sdk_request_data,
+            timestamp=timestamp,
+        )
+
+    async def _log_sdk_response(
+        self,
+        request_id: str,
+        result: Any,
+        timestamp: str | None = None,
+    ) -> None:
+        """Log SDK response result as JSON dump.
+
+        Args:
+            request_id: Request identifier
+            result: The result from _complete_non_streaming
+            timestamp: Optional timestamp prefix
+        """
+        # timestamp is already provided from context, no need for fallback
+
+        # JSON dump of the result from _complete_non_streaming
+        sdk_response_data = {
+            "result": result.model_dump()
+            if hasattr(result, "model_dump")
+            else str(result),
+        }
+
+        await write_request_log(
+            request_id=request_id,
+            log_type="sdk_response",
+            data=sdk_response_data,
+            timestamp=timestamp,
+        )
+
+    async def _log_sdk_streaming_chunk(
+        self,
+        request_id: str,
+        chunk: dict[str, Any],
+        timestamp: str | None = None,
+    ) -> None:
+        """Log streaming chunk as JSON dump.
+
+        Args:
+            request_id: Request identifier
+            chunk: The streaming chunk from process_stream
+            timestamp: Optional timestamp prefix
+        """
+        # timestamp is already provided from context, no need for fallback
+
+        # Append streaming chunk as JSON to raw file
+        import json
+
+        from ccproxy.utils.simple_request_logger import append_streaming_log
+
+        chunk_data = json.dumps(chunk, default=str) + "\n"
+        await append_streaming_log(
+            request_id=request_id,
+            log_type="sdk_streaming",
+            data=chunk_data.encode("utf-8"),
+            timestamp=timestamp,
+        )
 
     async def list_models(self) -> dict[str, Any]:
         """
