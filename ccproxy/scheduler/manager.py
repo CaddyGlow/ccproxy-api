@@ -85,7 +85,7 @@ async def setup_scheduler_tasks(scheduler: Scheduler, settings: Settings) -> Non
                 enabled=True,
                 force_refresh_on_startup=scheduler_config.pricing_force_refresh_on_startup,
             )
-            logger.info(
+            logger.debug(
                 "pricing_update_task_added",
                 interval_hours=scheduler_config.pricing_update_interval_hours,
                 force_refresh_on_startup=scheduler_config.pricing_force_refresh_on_startup,
@@ -110,7 +110,7 @@ async def setup_scheduler_tasks(scheduler: Scheduler, settings: Settings) -> Non
                 enabled=True,
                 startup_max_age_hours=scheduler_config.version_check_startup_max_age_hours,
             )
-            logger.info(
+            logger.debug(
                 "version_check_task_added",
                 interval_hours=scheduler_config.version_check_interval_hours,
                 startup_max_age_hours=scheduler_config.version_check_startup_max_age_hours,
@@ -206,7 +206,6 @@ async def stop_scheduler(scheduler: Scheduler | None) -> None:
 
     try:
         await scheduler.stop()
-        logger.info("scheduler_stopped")
     except Exception as e:
         logger.error(
             "scheduler_stop_failed",

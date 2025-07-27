@@ -14,9 +14,11 @@ import functools
 import shutil
 import time
 from datetime import UTC, datetime
+from enum import Enum
 from typing import Any
 
 from fastapi import APIRouter, Response, status
+from pydantic import BaseModel
 from structlog import get_logger
 
 from ccproxy import __version__
@@ -27,6 +29,28 @@ from ccproxy.services.credentials import CredentialsManager
 
 router = APIRouter()
 logger = get_logger(__name__)
+
+
+class ClaudeCliStatus(str, Enum):
+    """Claude CLI status enumeration."""
+
+    AVAILABLE = "available"
+    NOT_INSTALLED = "not_installed"
+    BINARY_FOUND_BUT_ERRORS = "binary_found_but_errors"
+    TIMEOUT = "timeout"
+    ERROR = "error"
+
+
+class ClaudeCliInfo(BaseModel):
+    """Claude CLI information with structured data."""
+
+    status: ClaudeCliStatus
+    version: str | None = None
+    binary_path: str | None = None
+    version_output: str | None = None
+    error: str | None = None
+    return_code: str | None = None
+
 
 # Cache for Claude CLI check results
 _claude_cli_cache: tuple[float, tuple[str, dict[str, Any]]] | None = None
@@ -129,7 +153,7 @@ def _get_claude_cli_path() -> str | None:
     return shutil.which("claude")
 
 
-async def _check_claude_code() -> tuple[str, dict[str, Any]]:
+async def check_claude_code() -> tuple[str, dict[str, Any]]:
     """Check Claude Code CLI installation and version by running 'claude --version'.
 
     Results are cached for 5 minutes to avoid repeated subprocess calls.
@@ -259,6 +283,36 @@ async def _check_claude_code() -> tuple[str, dict[str, Any]]:
         return result
 
 
+async def get_claude_cli_info() -> ClaudeCliInfo:
+    """Get Claude CLI information as a structured Pydantic model.
+
+    Returns:
+        ClaudeCliInfo: Structured information about Claude CLI installation and status
+    """
+    cli_status, cli_details = await check_claude_code()
+
+    # Map the status to our enum values
+    if cli_status == "pass":
+        status_value = ClaudeCliStatus.AVAILABLE
+    elif cli_details.get("cli_status") == "not_installed":
+        status_value = ClaudeCliStatus.NOT_INSTALLED
+    elif cli_details.get("cli_status") == "binary_found_but_errors":
+        status_value = ClaudeCliStatus.BINARY_FOUND_BUT_ERRORS
+    elif cli_details.get("cli_status") == "timeout":
+        status_value = ClaudeCliStatus.TIMEOUT
+    else:
+        status_value = ClaudeCliStatus.ERROR
+
+    return ClaudeCliInfo(
+        status=status_value,
+        version=cli_details.get("version"),
+        binary_path=cli_details.get("binary_path"),
+        version_output=cli_details.get("version_output"),
+        error=cli_details.get("error"),
+        return_code=cli_details.get("return_code"),
+    )
+
+
 async def _check_claude_sdk() -> tuple[str, dict[str, Any]]:
     """Check Claude SDK installation and version.
 
@@ -337,7 +391,7 @@ async def readiness_probe(response: Response) -> dict[str, Any]:
 
     # Check OAuth credentials, CLI, and SDK separately
     oauth_status, oauth_details = await _check_oauth2_credentials()
-    cli_status, cli_details = await _check_claude_code()
+    cli_status, cli_details = await check_claude_code()
     sdk_status, sdk_details = await _check_claude_sdk()
 
     # Service is ready if no check returns "fail"
@@ -424,7 +478,7 @@ async def detailed_health_check(response: Response) -> dict[str, Any]:
 
     # Perform all health checks
     oauth_status, oauth_details = await _check_oauth2_credentials()
-    cli_status, cli_details = await _check_claude_code()
+    cli_status, cli_details = await check_claude_code()
     sdk_status, sdk_details = await _check_claude_sdk()
 
     # Determine overall status - prioritize failures, then warnings

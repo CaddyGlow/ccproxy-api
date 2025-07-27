@@ -60,7 +60,7 @@ class Scheduler:
         self._running = True
         self._semaphore = asyncio.Semaphore(self.max_concurrent_tasks)
 
-        logger.info(
+        logger.debug(
             "scheduler_starting",
             max_concurrent_tasks=self.max_concurrent_tasks,
             registered_tasks=self.task_registry.list_tasks(),
@@ -68,7 +68,7 @@ class Scheduler:
 
         try:
             # No automatic task creation - tasks must be explicitly added
-            logger.info(
+            logger.debug(
                 "scheduler_started",
                 active_tasks=len(self._tasks),
                 running_tasks=[
@@ -129,7 +129,7 @@ class Scheduler:
                 ) from e
 
         self._tasks.clear()
-        logger.info("scheduler_stopped")
+        logger.debug("scheduler_stopped")
 
     async def add_task(
         self,
@@ -166,13 +166,13 @@ class Scheduler:
             # Start the task if scheduler is running and task is enabled
             if self._running and task_instance.enabled:
                 await task_instance.start()
-                logger.info(
+                logger.debug(
                     "task_added_and_started",
                     task_name=task_name,
                     task_type=task_type,
                 )
             else:
-                logger.info(
+                logger.debug(
                     "task_added_not_started",
                     task_name=task_name,
                     task_type=task_type,

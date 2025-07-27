@@ -19,6 +19,7 @@ from ccproxy.api.middleware.request_content_logging import (
 from ccproxy.api.middleware.request_id import RequestIDMiddleware
 from ccproxy.api.middleware.server_header import ServerHeaderMiddleware
 from ccproxy.api.routes.claude import router as claude_router
+from ccproxy.api.routes.health import get_claude_cli_info
 from ccproxy.api.routes.health import router as health_router
 from ccproxy.api.routes.mcp import setup_mcp
 from ccproxy.api.routes.metrics import (
@@ -29,7 +30,6 @@ from ccproxy.api.routes.metrics import (
 from ccproxy.api.routes.permissions import router as permissions_router
 from ccproxy.api.routes.proxy import router as proxy_router
 from ccproxy.api.services.permission_service import get_permission_service
-from ccproxy.api.ui.terminal_permission_handler import TerminalPermissionHandler
 from ccproxy.auth.credentials_adapter import CredentialsAuthManager
 from ccproxy.auth.exceptions import CredentialsNotFoundError
 from ccproxy.auth.oauth.routes import router as oauth_router
@@ -105,14 +105,14 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
                     ).total_seconds()
                     / 3600
                 )
-                logger.info(
+                logger.debug(
                     "auth_token_valid",
                     expires_in_hours=hours_until_expiry,
                     subscription_type=oauth_token.subscription_type,
                     credentials_path=str(validation.path) if validation.path else None,
                 )
             else:
-                logger.info("auth_token_valid", credentials_path=str(validation.path))
+                logger.debug("auth_token_valid", credentials_path=str(validation.path))
         elif validation.expired:
             logger.warning(
                 "auth_token_expired",
@@ -139,22 +139,30 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             exc_info=True,
         )
 
-    # Validate Claude binary at startup
-    claude_path, found_in_path = settings.claude.find_claude_cli()
-    if claude_path:
-        logger.info(
-            "claude_binary_found",
-            path=claude_path,
-            found_in_path=found_in_path,
-            message=f"Claude CLI binary found at: {claude_path}",
-        )
-    else:
-        searched_paths = settings.claude.get_searched_paths()
-        logger.warning(
-            "claude_binary_not_found",
-            message="Claude CLI binary not found. Please install Claude CLI to use SDK features.",
-            searched_paths=searched_paths,
-            install_command="npm install -g @anthropic-ai/claude-code",
+    # Validate Claude binary at startup using the new function
+    try:
+        claude_info = await get_claude_cli_info()
+
+        if claude_info.status == "available":
+            logger.info(
+                "claude_cli_available",
+                status=claude_info.status,
+                version=claude_info.version,
+                binary_path=claude_info.binary_path,
+            )
+        else:
+            logger.warning(
+                "claude_cli_unavailable",
+                status=claude_info.status,
+                error=claude_info.error,
+                binary_path=claude_info.binary_path,
+                message=f"Claude CLI status: {claude_info.status}",
+            )
+    except Exception as e:
+        logger.error(
+            "claude_cli_check_failed",
+            error=str(e),
+            message="Failed to check Claude CLI status during startup",
         )
 
     # Initialize ClaudeSDKService and store in app state
@@ -211,32 +219,32 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     # Initialize permission service
     try:
-        logger.info("Initializing permission service...")
         permission_service = get_permission_service()
 
         # Only connect terminal handler if not using external handler
         if settings.server.use_terminal_permission_handler:
-            terminal_handler = TerminalPermissionHandler()
+            # terminal_handler = TerminalPermissionHandler()
 
             # TODO: Terminal handler should subscribe to events from the service
             # instead of trying to set a handler directly
             # The service uses an event-based architecture, not direct handlers
 
-            logger.info(
-                "permission_handler_configured",
-                handler_type="terminal",
-                message="Connected terminal handler to permission service",
-            )
-            app.state.terminal_handler = terminal_handler
+            # logger.info(
+            #     "permission_handler_configured",
+            #     handler_type="terminal",
+            #     message="Connected terminal handler to permission service",
+            # )
+            # app.state.terminal_handler = terminal_handler
+            pass
         else:
-            logger.info(
+            logger.debug(
                 "permission_handler_configured",
                 handler_type="external_sse",
                 message="Terminal permission handler disabled - use 'ccproxy permission-handler connect' to handle permissions",
             )
             logger.warning(
                 "permission_handler_required",
-                message="No permission handler active. Start external handler with: ccproxy permission-handler connect",
+                message="Start external handler with: ccproxy permission-handler connect",
             )
 
         # Start the permission service
@@ -245,7 +253,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         # Store references in app state
         app.state.permission_service = permission_service
 
-        logger.info(
+        logger.debug(
             "permission_service_initialized",
             timeout_seconds=permission_service._timeout_seconds,
             terminal_handler_enabled=settings.server.use_terminal_permission_handler,
@@ -272,7 +280,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     try:
         scheduler = getattr(app.state, "scheduler", None)
         await stop_scheduler(scheduler)
-        logger.debug("scheduler_stopped")
+        logger.debug("scheduler_stopped_lifespan")
     except SchedulerError as e:
         logger.error("scheduler_stop_failed", error=str(e))
 

@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.1.3] - 2025-07-27
 
 ### Added
+- **Version Update Checking**: Automatic version checking against GitHub releases with configurable intervals (default 12 hours) and startup checks
 - **MCP Server Integration**: Added Model Context Protocol (MCP) server functionality with permission checking tools for Claude Code integration
 - **Permission System**: Implemented comprehensive permission management with REST API endpoints and Server-Sent Events (SSE) streaming for real-time permission requests
 - **Request/Response Logging**: Added comprehensive logging middleware with configurable verbosity levels (`CCPROXY_VERBOSE_API`, `CCPROXY_REQUEST_LOG_DIR`)

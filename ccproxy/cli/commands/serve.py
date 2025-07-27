@@ -324,7 +324,7 @@ def api(
         str | None,
         typer.Option(
             "--log-level",
-            help="Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)",
+            help="Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL). Use WARNING for minimal output.",
             callback=validate_log_level,
             rich_help_panel="Server Settings",
         ),
@@ -640,7 +640,7 @@ def api(
         )
 
         # Log effective configuration
-        logger.info(
+        logger.debug(
             "configuration_loaded",
             host=settings.server.host,
             port=settings.server.port,

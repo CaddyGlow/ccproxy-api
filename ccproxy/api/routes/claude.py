@@ -78,7 +78,13 @@ async def create_openai_chat_completion(
             )
         else:
             # Convert non-streaming response to OpenAI format using adapter
-            openai_response = adapter.adapt_response(response)  # type: ignore[arg-type]
+            # Convert MessageResponse model to dict for adapter
+            # In non-streaming mode, response should always be MessageResponse
+            assert isinstance(response, MessageResponse), (
+                "Non-streaming response must be MessageResponse"
+            )
+            response_dict = response.model_dump()
+            openai_response = adapter.adapt_response(response_dict)
             return OpenAIChatCompletionResponse.model_validate(openai_response)
 
     except Exception as e:
