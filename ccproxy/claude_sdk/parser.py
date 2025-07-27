@@ -3,6 +3,9 @@
 This module provides parsing functions for XML-formatted SDK content that appears
 in Claude Code SDK responses. It consolidates the parsing logic that was previously
 duplicated across OpenAI adapter and streaming components.
+
+Currently not usedd but could be useful to rebuild message
+for turn to turn conversation.
 """
 
 from __future__ import annotations

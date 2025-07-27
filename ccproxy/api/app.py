@@ -3,8 +3,9 @@
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
+from typing import Any
 
-from fastapi import FastAPI
+from fastapi import APIRouter, FastAPI
 from fastapi.staticfiles import StaticFiles
 from structlog import get_logger
 
@@ -40,9 +41,24 @@ from ccproxy.scheduler.errors import SchedulerError
 from ccproxy.scheduler.manager import start_scheduler, stop_scheduler
 from ccproxy.services.claude_sdk_service import ClaudeSDKService
 from ccproxy.services.credentials import CredentialsManager
+from ccproxy.utils.models_provider import get_models_list
 
 
 logger = get_logger(__name__)
+
+
+# Create shared models router
+models_router = APIRouter(tags=["models"])
+
+
+@models_router.get("/v1/models", response_model=None)
+async def list_models() -> dict[str, Any]:
+    """List available models.
+
+    Returns a combined list of Anthropic models and recent OpenAI models.
+    This endpoint is shared between both SDK and proxy APIs.
+    """
+    return get_models_list()
 
 
 @asynccontextmanager
@@ -355,6 +371,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     # New /api/ routes for proxy endpoints (includes OpenAI-compatible /v1/chat/completions)
     app.include_router(proxy_router, prefix="/api", tags=["proxy-api"])
+
+    # Shared models endpoints for both SDK and proxy APIs
+    app.include_router(models_router, prefix="/sdk", tags=["claude-sdk", "models"])
+    app.include_router(models_router, prefix="/api", tags=["proxy-api", "models"])
 
     # Confirmation endpoints for SSE streaming and responses
     app.include_router(permissions_router, prefix="/permissions", tags=["permissions"])

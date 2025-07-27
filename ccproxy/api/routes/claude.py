@@ -2,7 +2,6 @@
 
 import json
 from collections.abc import AsyncIterator
-from typing import Any
 
 import structlog
 from fastapi import APIRouter, HTTPException, Request
@@ -150,27 +149,6 @@ async def create_anthropic_message(
             # Return Anthropic format response directly
             return MessageResponse.model_validate(response)
 
-    except Exception as e:
-        # Re-raise specific proxy errors to be handled by the error handler
-        from ccproxy.core.errors import ClaudeProxyError
-
-        if isinstance(e, ClaudeProxyError):
-            raise
-        raise HTTPException(
-            status_code=500, detail=f"Internal server error: {str(e)}"
-        ) from e
-
-
-@router.get("/v1/models", response_model=None)
-async def list_models(
-    claude_service: ClaudeServiceDep,
-) -> dict[str, Any]:
-    """List available models using Claude SDK service.
-
-    Returns a combined list of Anthropic models and recent OpenAI models.
-    """
-    try:
-        return await claude_service.list_models()
     except Exception as e:
         # Re-raise specific proxy errors to be handled by the error handler
         from ccproxy.core.errors import ClaudeProxyError
