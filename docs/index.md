@@ -3,7 +3,7 @@
 `ccproxy` is a local reverse proxy server for Anthropic Claude LLM at `api.anthropic.com/v1/messages`. It allows you to use your existing Claude Max subscription to interact with the Anthropic API, bypassing the need for separate API key billing.
 
 The server provides two primary modes of operation:
-*   **SDK Mode (`/sdk`):** Routes requests through the local `claude-code-sdk`. This enables access to tools configured in your Claude environment.
+*   **SDK Mode (`/sdk`):** Routes requests through the local `claude-code-sdk`. This enables access to tools configured in your Claude environment and includes an integrated MCP (Model Context Protocol) server for permission management.
 *   **API Mode (`/api`):** Acts as a direct reverse proxy, injecting the necessary authentication headers. This provides full access to the underlying API features and model settings.
 
 It includes a translation layer to support both Anthropic and OpenAI-compatible API formats for requests and responses, including streaming.
@@ -97,6 +97,59 @@ export ANTHROPIC_API_KEY="dummy-key"
 ```
 
 
+## MCP Server Integration & Permission System
+
+In SDK mode, CCProxy automatically configures an MCP (Model Context Protocol) server that provides permission checking tools for Claude Code. This enables interactive permission management for tool execution.
+
+### Permission Management
+
+**Starting the Permission Handler:**
+```bash
+# In a separate terminal, start the permission handler
+ccproxy permission-handler
+
+# Or with custom settings
+ccproxy permission-handler --host 127.0.0.1 --port 8000
+```
+
+The permission handler provides:
+- **Real-time Permission Requests**: Streams permission requests via Server-Sent Events (SSE)
+- **Interactive Approval/Denial**: Command-line interface for managing tool permissions
+- **Automatic MCP Integration**: Works seamlessly with Claude Code SDK tools
+
+**Working Directory Control:**
+Control which project the Claude SDK API can access using the `--cwd` flag:
+```bash
+# Set working directory for Claude SDK
+ccproxy --claude-code-options-cwd /path/to/your/project
+
+# Example with permission bypass and formatted output
+ccproxy --claude-code-options-cwd /tmp/tmp.AZyCo5a42N \
+        --claude-code-options-permission-mode bypassPermissions \
+        --claude-sdk-message-mode formatted
+
+# Alternative: Change to project directory and start ccproxy
+cd /path/to/your/project
+ccproxy
+```
+
+### Claude SDK Message Formatting
+
+CCProxy supports flexible message formatting through the `sdk_message_mode` configuration:
+
+- **`forward`** (default): Preserves original Claude SDK content blocks with full metadata
+- **`formatted`**: Converts content to XML tags with pretty-printed JSON data
+- **`ignore`**: Filters out Claude SDK-specific content entirely
+
+Configure via environment variables:
+```bash
+# Use formatted XML output
+CLAUDE__SDK_MESSAGE_MODE=formatted ccproxy
+
+# Use compact formatting without pretty-printing
+CLAUDE__PRETTY_FORMAT=false ccproxy
+```
+
 ## Using with Aider
 
 CCProxy works seamlessly with Aider and other AI coding assistants:
@@ -171,6 +224,11 @@ The proxy exposes endpoints under two prefixes, corresponding to its operating m
     *   `GET /sdk/models`, `GET /api/models`
     *   `GET /sdk/status`, `GET /api/status`
     *   `GET /oauth/callback`
+*   **MCP & Permissions:**
+    *   `POST /mcp/permission/check` - MCP permission checking endpoint
+    *   `GET /permissions/stream` - SSE stream for permission requests
+    *   `GET /permissions/{id}` - Get permission request details
+    *   `POST /permissions/{id}/respond` - Respond to permission request
 *   **Observability (Optional):**
     *   `GET /metrics`
     *   `GET /logs/status`, `GET /logs/query`

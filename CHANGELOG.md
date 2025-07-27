@@ -5,6 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.3] - 2025-07-27
+
+### Added
+- **MCP Server Integration**: Added Model Context Protocol (MCP) server functionality with permission checking tools for Claude Code integration
+- **Permission System**: Implemented comprehensive permission management with REST API endpoints and Server-Sent Events (SSE) streaming for real-time permission requests
+- **Request/Response Logging**: Added comprehensive logging middleware with configurable verbosity levels (`CCPROXY_VERBOSE_API`, `CCPROXY_REQUEST_LOG_DIR`)
+- **Claude SDK Custom Content Blocks**: Added support for `system_message`, `tool_use_sdk`, and `tool_result_sdk` content blocks with full metadata preservation
+- **Model Mapping Utilities**: Centralized model provider abstraction with unified mapping logic in `ccproxy/utils/models_provider.py`
+- **Terminal Permission Handler**: Interactive permission workflow handler for CLI-based permission management
+- **Claude SDK Field Rendering**: Added flexible content handling with `forward`, `formatted`, and `ignore` rendering options for Claude SDK fields
+
+### Changed
+- **Claude SDK Integration**: Refactored to use native ThinkingBlock models from Claude Code SDK
+- **Models Endpoint**: Centralized `/v1/models` endpoint implementation to eliminate code duplication across routes
+- **OpenAI Adapter**: Enhanced with improved modularization and streaming architecture
+- **Logging System**: Migrated to canonical structlog pattern for structured, consistent logging
+- **SSE Streaming**: Improved Server-Sent Events format with comprehensive examples and better error handling
+
+### Fixed
+- **SDK Double Content**: Resolved duplicate content issue in Claude SDK message processing
+- **Error Handling**: Enhanced error handling throughout Claude SDK message processing pipeline
+- **Type Safety**: Improved type checking across permission system components
+- **Permission Handler**: Fixed lazy initialization issues in terminal permission handler
+
 ## [0.1.2] - 2025-07-22
 
 ### Added
