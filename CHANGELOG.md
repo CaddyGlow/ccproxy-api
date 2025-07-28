@@ -5,6 +5,51 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Claude Detection Service**: Implemented automatic Claude CLI header and system prompt detection at startup:
+  - Automatically detects current Claude CLI version and extracts real headers/system prompt
+  - Caches detection results per version to avoid repeated startup delays
+  - Falls back to hardcoded values when detection fails
+- **Detection Models**: Added Pydantic models for Claude detection data:
+  - `ClaudeCodeHeaders` - Structured header extraction with field aliases
+  - `SystemPromptData` - System prompt content with cache control
+  - `ClaudeCacheData` - Complete cached detection data with version tracking
+
+### Changed
+
+- **HTTP Request Transformation**: Enhanced request transformers to use detected Claude CLI headers and system prompt:
+  - Dynamically uses detected headers when available, falls back to hardcoded when not
+  - System prompt injection now uses detected Claude Code system prompt
+  - Added app_state parameter propagation for detection data access
+- **Request Transformer Architecture**: Refactored transformers to support dynamic header and prompt injection:
+  - Added proxy_mode parameter to RequestTransformer base class
+  - Enhanced transform methods to accept app_state for detection data access
+  - Improved header creation logic to distinguish between detected and fallback headers
+- **Test Organization Cleanup**: Finalized test suite migration and removed obsolete migration documentation:
+  - Removed obsolete `MIGRATION_GUIDE.md` files from factories, fixtures, and auth directories
+  - Cleaned up `conftest.py` by removing backward compatibility aliases for fixture names
+  - Updated fixture references to use direct imports from fixture modules
+  - Simplified FastAPI factory test organization by removing legacy compatibility layer
+  - Modernized fixture naming convention throughout test files (internal_claude_sdk_service vs claude_service)
+  - Removed unused factory fixtures and consolidated client creation patterns
+- **Test Organization**: Migrated test suite from flat structure to organized hierarchy:
+  - Tests now organized under `tests/unit/` and `tests/integration/` directories
+  - Unit tests categorized by component: `api/`, `services/`, `auth/`, `config/`, `utils/`, `cli/`
+  - Integration tests moved to dedicated `tests/integration/` directory
+  - Enhanced factory pattern with `FastAPIAppFactory` for flexible test app creation
+  - Improved fixture organization with dedicated `tests/fixtures/` structure
+- **Configuration Cleanup**: Removed unused `ConfigLoader` class and simplified configuration management
+- **Logging Optimization**: Reduced permission service log verbosity from INFO to DEBUG level for cleaner production logs
+
+### Infrastructure
+
+- **Test Structure**: Added `.gitignore` for test artifacts and coverage reports
+- **Documentation**: Updated `TESTING.md` with new test organization and examples
+- **Cache Directory**: Added automatic creation of `~/.cache/ccproxy/` for detection data persistence
+
 ## [0.1.3] - 2025-07-25
 
 ### Added
