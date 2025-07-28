@@ -91,6 +91,7 @@ class FastAPIAppFactory:
         dependency_overrides: DependencyOverrides | None = None,
         claude_service_mock: MockService | None = None,
         auth_enabled: bool = False,
+        log_storage: Any | None = None,
         **kwargs: Any,
     ) -> FastAPI:
         """Create a FastAPI application with specified configuration.
@@ -100,6 +101,7 @@ class FastAPIAppFactory:
             dependency_overrides: Custom dependency overrides
             claude_service_mock: Mock Claude service (uses factory default if None)
             auth_enabled: Whether to enable authentication
+            log_storage: Optional log storage instance to set in app state
             **kwargs: Additional configuration options
 
         Returns:
@@ -116,6 +118,29 @@ class FastAPIAppFactory:
 
         # Create the base app
         app = create_app(settings=effective_settings)
+
+        # IMPORTANT: Set up app.state BEFORE dependency overrides
+        # This mimics what happens in the real app's lifespan function
+        # The cached dependencies expect these to be available in app.state
+
+        # Always set settings (this is set in the real app's lifespan)
+        app.state.settings = effective_settings
+
+        # Set claude_service in app state if mock provided
+        if effective_claude_mock is not None:
+            app.state.claude_service = effective_claude_mock
+
+        # Set log storage in app state if provided
+        if log_storage is not None:
+            app.state.log_storage = log_storage
+            # Also set duckdb_storage for backward compatibility with middleware
+            app.state.duckdb_storage = log_storage
+
+        # Set optional services to None for tests (these aren't typically needed in unit tests)
+        if not hasattr(app.state, "scheduler"):
+            app.state.scheduler = None
+        if not hasattr(app.state, "permission_service"):
+            app.state.permission_service = None
 
         # Prepare all dependency overrides
         all_overrides = self._build_dependency_overrides(
@@ -164,22 +189,18 @@ class FastAPIAppFactory:
         overrides[get_cached_settings] = mock_get_cached_settings_for_factory
 
         # Override Claude service if mock provided
+        # NOTE: Since we're setting claude_service in app.state, the cached dependency
+        # should work automatically. We'll only add override as backup for non-cached calls.
         if claude_service_mock is not None:
-            from ccproxy.api.dependencies import (
-                get_cached_claude_service,
-                get_claude_service,
-            )
+            from ccproxy.api.dependencies import get_claude_service
 
             def mock_get_claude_service(
-                auth_manager: Any = None, metrics_collector: Any = None
+                settings: Any = None, auth_manager: Any = None
             ) -> MockService:
                 return claude_service_mock
 
-            def mock_get_cached_claude_service(request: Any) -> MockService:
-                return claude_service_mock
-
+            # Only override the non-cached version as backup
             overrides[get_claude_service] = mock_get_claude_service
-            overrides[get_cached_claude_service] = mock_get_cached_claude_service
 
         # Override auth manager if auth is enabled
         if auth_enabled and settings.security.auth_token:
@@ -225,6 +246,7 @@ class FastAPIClientFactory:
         dependency_overrides: DependencyOverrides | None = None,
         claude_service_mock: MockService | None = None,
         auth_enabled: bool = False,
+        log_storage: Any | None = None,
         **kwargs: Any,
     ) -> TestClient:
         """Create a synchronous test client.
@@ -234,6 +256,7 @@ class FastAPIClientFactory:
             dependency_overrides: Custom dependency overrides
             claude_service_mock: Mock Claude service
             auth_enabled: Whether to enable authentication
+            log_storage: Optional log storage instance to set in app state
             **kwargs: Additional configuration options
 
         Returns:
@@ -244,6 +267,7 @@ class FastAPIClientFactory:
             dependency_overrides=dependency_overrides,
             claude_service_mock=claude_service_mock,
             auth_enabled=auth_enabled,
+            log_storage=log_storage,
             **kwargs,
         )
         return TestClient(app)
@@ -254,6 +278,7 @@ class FastAPIClientFactory:
         dependency_overrides: DependencyOverrides | None = None,
         claude_service_mock: MockService | None = None,
         auth_enabled: bool = False,
+        log_storage: Any | None = None,
         **kwargs: Any,
     ) -> AsyncClient:
         """Create an asynchronous test client.
@@ -263,6 +288,7 @@ class FastAPIClientFactory:
             dependency_overrides: Custom dependency overrides
             claude_service_mock: Mock Claude service
             auth_enabled: Whether to enable authentication
+            log_storage: Optional log storage instance to set in app state
             **kwargs: Additional configuration options
 
         Returns:
@@ -273,6 +299,7 @@ class FastAPIClientFactory:
             dependency_overrides=dependency_overrides,
             claude_service_mock=claude_service_mock,
             auth_enabled=auth_enabled,
+            log_storage=log_storage,
             **kwargs,
         )
 
@@ -287,7 +314,7 @@ class FastAPIClientFactory:
         auth_enabled: bool = False,
         **kwargs: Any,
     ) -> TestClient:
-        """Create a test client with DuckDB storage dependency override.
+        """Create a test client with log storage set in app state and dependency override.
 
         Args:
             storage: Storage instance to use (can be None)
@@ -298,20 +325,16 @@ class FastAPIClientFactory:
             **kwargs: Additional configuration options
 
         Returns:
-            Configured TestClient with storage override
+            Configured TestClient with storage configured
         """
-        # Add storage dependency override
-        storage_overrides = dependency_overrides or {}
-
-        from ccproxy.api.dependencies import get_duckdb_storage
-
-        storage_overrides[get_duckdb_storage] = lambda: storage
-
+        # Use the new log_storage parameter to set storage in app state
+        # This is the preferred approach as it matches real app behavior
         return self.create_client(
             settings=settings,
-            dependency_overrides=storage_overrides,
+            dependency_overrides=dependency_overrides,
             claude_service_mock=claude_service_mock,
             auth_enabled=auth_enabled,
+            log_storage=storage,
             **kwargs,
         )
 
@@ -321,6 +344,7 @@ def create_mock_claude_app(
     settings: Settings,
     claude_mock: MockService,
     auth_enabled: bool = False,
+    log_storage: Any | None = None,
     **kwargs: Any,
 ) -> FastAPI:
     """Convenience function to create app with mocked Claude service.
@@ -329,6 +353,7 @@ def create_mock_claude_app(
         settings: Application settings
         claude_mock: Mock Claude service
         auth_enabled: Whether to enable authentication
+        log_storage: Optional log storage instance to set in app state
         **kwargs: Additional configuration options
 
     Returns:
@@ -338,6 +363,7 @@ def create_mock_claude_app(
     return factory.create_app(
         claude_service_mock=claude_mock,
         auth_enabled=auth_enabled,
+        log_storage=log_storage,
         **kwargs,
     )
 
@@ -345,6 +371,7 @@ def create_mock_claude_app(
 def create_auth_app(
     settings: Settings,
     claude_mock: MockService | None = None,
+    log_storage: Any | None = None,
     **kwargs: Any,
 ) -> FastAPI:
     """Convenience function to create app with authentication enabled.
@@ -352,6 +379,7 @@ def create_auth_app(
     Args:
         settings: Application settings (should have auth_token set)
         claude_mock: Optional mock Claude service
+        log_storage: Optional log storage instance to set in app state
         **kwargs: Additional configuration options
 
     Returns:
@@ -361,6 +389,7 @@ def create_auth_app(
     return factory.create_app(
         claude_service_mock=claude_mock,
         auth_enabled=True,
+        log_storage=log_storage,
         **kwargs,
     )
 
@@ -369,6 +398,7 @@ def create_unavailable_claude_app(
     settings: Settings,
     unavailable_mock: MockService,
     auth_enabled: bool = False,
+    log_storage: Any | None = None,
     **kwargs: Any,
 ) -> FastAPI:
     """Convenience function to create app with unavailable Claude service.
@@ -377,6 +407,7 @@ def create_unavailable_claude_app(
         settings: Application settings
         unavailable_mock: Mock that simulates unavailable Claude service
         auth_enabled: Whether to enable authentication
+        log_storage: Optional log storage instance to set in app state
         **kwargs: Additional configuration options
 
     Returns:
@@ -386,5 +417,6 @@ def create_unavailable_claude_app(
     return factory.create_app(
         claude_service_mock=unavailable_mock,
         auth_enabled=auth_enabled,
+        log_storage=log_storage,
         **kwargs,
     )

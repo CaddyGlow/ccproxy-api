@@ -35,7 +35,7 @@ class PermissionService:
     async def start(self) -> None:
         if self._expiry_task is None:
             self._expiry_task = asyncio.create_task(self._expiry_checker())
-            logger.info("permission_service_started")
+            logger.debug("permission_service_started")
 
     async def stop(self) -> None:
         self._shutdown = True
@@ -44,7 +44,7 @@ class PermissionService:
             with contextlib.suppress(asyncio.CancelledError):
                 await self._expiry_task
             self._expiry_task = None
-        logger.info("permission_service_stopped")
+        logger.debug("permission_service_stopped")
 
     async def request_permission(self, tool_name: str, input: dict[str, str]) -> str:
         """Create a new permission request.

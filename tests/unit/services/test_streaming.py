@@ -15,10 +15,11 @@ The tests cover:
 
 import json
 from typing import TYPE_CHECKING, Any
+from unittest.mock import AsyncMock
 
 import pytest
-from fastapi.testclient import TestClient
 
+from tests.factories import FastAPIClientFactory
 from tests.helpers.assertions import assert_sse_format_compliance, assert_sse_headers
 from tests.helpers.test_data import (
     STREAMING_ANTHROPIC_REQUEST,
@@ -32,10 +33,13 @@ if TYPE_CHECKING:
 
 @pytest.mark.unit
 def test_openai_streaming_response(
-    client_with_mock_claude_streaming: TestClient,
+    fastapi_client_factory: FastAPIClientFactory,
+    mock_internal_claude_sdk_service_streaming: AsyncMock,
 ) -> None:
     """Test OpenAI streaming endpoint with proper SSE format."""
-    client = client_with_mock_claude_streaming
+    client = fastapi_client_factory.create_client(
+        claude_service_mock=mock_internal_claude_sdk_service_streaming
+    )
 
     # Make streaming request to OpenAI SDK endpoint
     with client.stream(
@@ -63,12 +67,15 @@ def test_openai_streaming_response(
     ids=["anthropic_streaming", "openai_streaming"],
 )
 def test_streaming_endpoints(
-    client_with_mock_claude_streaming: TestClient,
+    fastapi_client_factory: FastAPIClientFactory,
+    mock_internal_claude_sdk_service_streaming: AsyncMock,
     endpoint_path: str,
     request_data: dict[str, Any],
 ) -> None:
     """Test streaming endpoints with proper SSE format compliance."""
-    client = client_with_mock_claude_streaming
+    client = fastapi_client_factory.create_client(
+        claude_service_mock=mock_internal_claude_sdk_service_streaming
+    )
 
     # Make streaming request
     with client.stream("POST", endpoint_path, json=request_data) as response:
@@ -86,10 +93,13 @@ def test_streaming_endpoints(
 
 @pytest.mark.unit
 def test_sse_json_parsing_and_validation(
-    client_with_mock_claude_streaming: TestClient,
+    fastapi_client_factory: FastAPIClientFactory,
+    mock_internal_claude_sdk_service_streaming: AsyncMock,
 ) -> None:
     """Test that streaming responses contain valid JSON events."""
-    client = client_with_mock_claude_streaming
+    client = fastapi_client_factory.create_client(
+        claude_service_mock=mock_internal_claude_sdk_service_streaming
+    )
 
     with client.stream(
         "POST", "/sdk/v1/messages", json=STREAMING_ANTHROPIC_REQUEST
@@ -121,10 +131,13 @@ def test_sse_json_parsing_and_validation(
 
 @pytest.mark.unit
 def test_streaming_error_handling(
-    client_with_unavailable_claude: TestClient,
+    fastapi_client_factory: FastAPIClientFactory,
+    mock_internal_claude_sdk_service_unavailable: AsyncMock,
 ) -> None:
     """Test streaming endpoint error handling when service is unavailable."""
-    client = client_with_unavailable_claude
+    client = fastapi_client_factory.create_client(
+        claude_service_mock=mock_internal_claude_sdk_service_unavailable
+    )
 
     # Test streaming request also fails properly
     response = client.post("/sdk/v1/chat/completions", json=STREAMING_OPENAI_REQUEST)

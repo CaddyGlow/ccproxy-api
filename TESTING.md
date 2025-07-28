@@ -8,8 +8,10 @@ Keep it simple. Test what matters, mock what's external, don't overthink it.
 # Run all tests
 make test
 
-# Run specific test file
-pytest tests/test_api.py
+# Run specific test categories
+pytest tests/unit/api/           # API endpoint tests
+pytest tests/unit/auth/          # Authentication tests
+pytest tests/integration/       # Integration tests
 
 # Run with coverage
 make test-coverage
@@ -19,35 +21,55 @@ pytest -m real_api
 ```
 
 ## Test Structure
+
+**Organized by functionality** - As the test suite grew beyond 30+ files, we moved from a flat structure to organized categories while maintaining the same testing philosophy.
+
 ```
 tests/
 ├── conftest.py              # Shared fixtures + backward compatibility
-├── test_api.py              # All API endpoint tests
-├── test_auth.py             # Auth + OAuth2 together
-├── test_streaming.py        # Streaming functionality
-├── test_metrics_api.py      # Metrics collection
-├── test_adapters.py         # OpenAI↔Anthropic conversion
-├── factories/               # NEW: Factory pattern implementations
+├── unit/                    # Unit tests organized by component
+│   ├── api/                 # API endpoint tests
+│   │   ├── test_api.py      # Core API endpoints
+│   │   ├── test_mcp_route.py # MCP permission routes
+│   │   ├── test_metrics_api.py # Metrics collection endpoints
+│   │   ├── test_reset_endpoint.py # Reset endpoint
+│   │   ├── test_confirmation_routes.py # Confirmation routes
+│   ├── services/            # Service layer tests
+│   │   ├── test_adapters.py # OpenAI↔Anthropic conversion
+│   │   ├── test_streaming.py # Streaming functionality
+│   │   ├── test_docker.py   # Docker integration
+│   │   ├── test_confirmation_service.py # Confirmation service
+│   │   ├── test_scheduler*.py # Scheduler components
+│   │   └── test_*.py        # Other service tests
+│   ├── auth/                # Authentication tests
+│   │   └── test_auth.py     # Auth + OAuth2 together
+│   ├── config/              # Configuration tests
+│   │   ├── test_claude_sdk_*.py # Claude SDK configuration
+│   │   └── test_terminal_handler.py # Terminal handling
+│   ├── utils/               # Utility tests
+│   │   ├── test_duckdb_*.py # Database utilities
+│   │   └── test_version_checker.py # Version checking
+│   └── cli/                 # CLI command tests
+│       ├── test_cli_*.py    # CLI command implementations  
+│       └── test_cli_confirmation_handler.py # Confirmation CLI handling
+├── integration/             # Integration tests
+│   ├── test_*_integration.py # Cross-component integration tests
+│   └── test_confirmation_integration.py # Full confirmation flows
+├── factories/               # Factory pattern implementations
 │   ├── __init__.py         # Factory exports
 │   ├── fastapi_factory.py  # FastAPI app/client factories
 │   ├── README.md           # Factory documentation
 │   └── MIGRATION_GUIDE.md  # Factory migration guide
 ├── fixtures/               # Organized mock responses and utilities
 │   ├── auth/               # Authentication fixtures and utilities
-│   │   ├── __init__.py     # Auth fixture exports
-│   │   ├── MIGRATION_GUIDE.md  # Auth migration patterns
-│   │   └── example_usage.py    # Working auth examples
 │   ├── claude_sdk/         # Claude SDK mocking
-│   │   ├── internal_mocks.py   # AsyncMock for dependency injection
-│   │   └── responses.py        # Mock response data
 │   ├── external_apis/      # External API mocking
-│   │   └── anthropic_api.py    # HTTPXMock for api.anthropic.com
 │   ├── proxy_service/      # Proxy service mocking
-│   │   └── oauth_mocks.py      # OAuth endpoint mocking
 │   ├── responses.json      # Legacy mock data (still works)
 │   ├── README.md           # Complete fixture documentation
 │   └── MIGRATION_GUIDE.md  # Migration strategies
-└── test_fastapi_factory.py # Tests for new factory pattern
+├── helpers/                # Test helper utilities
+└── .gitignore              # Excludes coverage reports
 ```
 
 ## Writing Tests

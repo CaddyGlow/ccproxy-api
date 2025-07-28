@@ -1,0 +1,7 @@
+# Coverage reports
+htmlcov/
+coverage.xml
+.coverage
+
+# Test artifacts
+.pytest_cache/

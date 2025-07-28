@@ -24,9 +24,9 @@ logger = structlog.get_logger(__name__)
 
 @router.post("/v1/chat/completions", response_model=None)
 async def create_openai_chat_completion(
-    request: Request,
     openai_request: OpenAIChatCompletionRequest,
     claude_service: ClaudeServiceDep,
+    request: Request,
 ) -> StreamingResponse | OpenAIChatCompletionResponse:
     """Create a chat completion using Claude SDK with OpenAI-compatible format.
 
@@ -44,12 +44,6 @@ async def create_openai_chat_completion(
         stream = openai_request.stream or False
 
         # Call Claude SDK service with adapted request
-        if request and hasattr(request, "state") and hasattr(request.state, "context"):
-            # Use existing context from middleware
-            ctx = request.state.context
-            # Add service-specific metadata
-            ctx.add_metadata(streaming=stream)
-
         response = await claude_service.create_completion(
             messages=anthropic_request["messages"],
             model=anthropic_request["model"],
