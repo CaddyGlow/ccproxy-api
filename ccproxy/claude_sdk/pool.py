@@ -12,6 +12,7 @@ from pydantic import BaseModel
 
 from ccproxy.core.async_utils import patched_typing
 
+
 if TYPE_CHECKING:
     from ccproxy.observability.metrics import PrometheusMetrics
 
@@ -226,9 +227,9 @@ class ClaudeSDKClientPool:
         start_time = time.time()
         pooled_client = await self._get_client(options or self.default_options)
         acquisition_time = time.time() - start_time
-        
+
         self._stats.acquire_count += 1
-        
+
         # Record metrics
         if self._metrics:
             self._metrics.inc_pool_acquisitions()
@@ -241,7 +242,7 @@ class ClaudeSDKClientPool:
         finally:
             await self._return_client(pooled_client)
             self._stats.release_count += 1
-            
+
             # Record metrics
             if self._metrics:
                 self._metrics.inc_pool_releases()
@@ -453,7 +454,9 @@ class ClaudeSDKClientPool:
 _global_pool: ClaudeSDKClientPool | None = None
 
 
-async def get_global_pool(config: PoolConfig | None = None, metrics: "PrometheusMetrics | None" = None) -> ClaudeSDKClientPool:
+async def get_global_pool(
+    config: PoolConfig | None = None, metrics: "PrometheusMetrics | None" = None
+) -> ClaudeSDKClientPool:
     """Get or create the global client pool."""
     global _global_pool
 
@@ -462,10 +465,11 @@ async def get_global_pool(config: PoolConfig | None = None, metrics: "Prometheus
         if metrics is None:
             try:
                 from ccproxy.observability.metrics import get_metrics
+
                 metrics = get_metrics()
             except ImportError:
                 metrics = None
-        
+
         _global_pool = ClaudeSDKClientPool(config=config, metrics=metrics)
         await _global_pool.start()
 

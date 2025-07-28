@@ -6,6 +6,7 @@ from typing import Any, TypeVar
 import structlog
 from pydantic import BaseModel
 
+from ccproxy.claude_sdk.pool import PoolConfig, get_global_pool
 from ccproxy.config.settings import Settings
 from ccproxy.core.async_utils import patched_typing
 from ccproxy.core.errors import ClaudeProxyError, ServiceUnavailableError
@@ -243,7 +244,6 @@ class ClaudeSDKClient:
         | sdk_models.ResultMessage
     ]:
         """Execute query using pooled connection approach."""
-        from ccproxy.claude_sdk.pool import PoolConfig, get_global_pool
 
         async with timed_operation("claude_sdk_query_pooled", request_id) as op:
             try:

@@ -92,7 +92,9 @@ class ClaudePoolSettings(BaseModel):
         if info.data and "pool_size" in info.data:
             pool_size = info.data["pool_size"]
             if v < pool_size:
-                raise ValueError(f"max_pool_size ({v}) must be >= pool_size ({pool_size})")
+                raise ValueError(
+                    f"max_pool_size ({v}) must be >= pool_size ({pool_size})"
+                )
         return v
 
 

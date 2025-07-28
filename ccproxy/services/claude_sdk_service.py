@@ -57,7 +57,9 @@ class ClaudeSDKService:
             settings: Application settings (optional)
             use_pool: Whether to use connection pooling for improved performance
         """
-        self.sdk_client = sdk_client or ClaudeSDKClient(use_pool=use_pool, settings=settings)
+        self.sdk_client = sdk_client or ClaudeSDKClient(
+            use_pool=use_pool, settings=settings
+        )
         self.auth_manager = auth_manager
         self.metrics = metrics
         self.settings = settings

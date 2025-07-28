@@ -1,0 +1,459 @@
+"""Integration tests for Claude SDK pool with configuration and metrics.
+
+This module tests the integration between:
+- Pool configuration from settings
+- Metrics integration with PrometheusMetrics
+- Client integration with pool settings
+- End-to-end pool functionality
+"""
+
+from typing import Any
+from unittest.mock import AsyncMock, Mock, patch
+
+import pytest
+
+from ccproxy.claude_sdk.client import ClaudeSDKClient
+from ccproxy.claude_sdk.pool import ClaudeSDKClientPool, PoolConfig
+from ccproxy.config.claude import ClaudePoolSettings, ClaudeSettings
+from ccproxy.observability.metrics import PrometheusMetrics
+
+
+class TestPoolConfigurationIntegration:
+    """Test suite for pool configuration integration."""
+
+    def test_pool_config_from_claude_settings(self) -> None:
+        """Test creating PoolConfig from ClaudeSettings."""
+        pool_settings = ClaudePoolSettings(
+            pool_size=5,
+            max_pool_size=15,
+            connection_timeout=60.0,
+            idle_timeout=600.0,
+            health_check_interval=30.0,
+            enable_health_checks=True,
+        )
+
+        claude_settings = ClaudeSettings(
+            use_client_pool=True,
+            pool_settings=pool_settings,
+        )
+
+        # Convert to PoolConfig
+        pool_config = PoolConfig(
+            pool_size=claude_settings.pool_settings.pool_size,
+            max_pool_size=claude_settings.pool_settings.max_pool_size,
+            connection_timeout=claude_settings.pool_settings.connection_timeout,
+            idle_timeout=claude_settings.pool_settings.idle_timeout,
+            health_check_interval=claude_settings.pool_settings.health_check_interval,
+            enable_health_checks=claude_settings.pool_settings.enable_health_checks,
+        )
+
+        assert pool_config.pool_size == 5
+        assert pool_config.max_pool_size == 15
+        assert pool_config.connection_timeout == 60.0
+        assert pool_config.idle_timeout == 600.0
+        assert pool_config.health_check_interval == 30.0
+        assert pool_config.enable_health_checks is True
+
+    def test_claude_pool_settings_validation(self) -> None:
+        """Test ClaudePoolSettings validation constraints."""
+        # Valid settings
+        settings = ClaudePoolSettings(
+            pool_size=10,
+            max_pool_size=20,
+        )
+        assert settings.pool_size == 10
+        assert settings.max_pool_size == 20
+
+        # Test boundaries
+        settings_min = ClaudePoolSettings(pool_size=1, max_pool_size=1)
+        assert settings_min.pool_size == 1
+        assert settings_min.max_pool_size == 1
+
+        settings_max = ClaudePoolSettings(pool_size=20, max_pool_size=50)
+        assert settings_max.pool_size == 20
+        assert settings_max.max_pool_size == 50
+
+    def test_claude_pool_settings_defaults(self) -> None:
+        """Test ClaudePoolSettings default values."""
+        settings = ClaudePoolSettings()
+
+        assert settings.pool_size == 3
+        assert settings.max_pool_size == 10
+        assert settings.connection_timeout == 30.0
+        assert settings.idle_timeout == 300.0
+        assert settings.health_check_interval == 60.0
+        assert settings.enable_health_checks is True
+
+    @pytest.mark.asyncio
+    async def test_client_uses_pool_settings(self, test_settings) -> None:
+        """Test that ClaudeSDKClient correctly uses pool settings."""
+        # Configure pool settings in test settings
+        test_settings.claude.use_client_pool = True
+        test_settings.claude.pool_settings.pool_size = 3
+        test_settings.claude.pool_settings.max_pool_size = 8
+
+        client = ClaudeSDKClient(use_pool=True, settings=test_settings)
+
+        # Mock the global pool function where it's imported in the client
+        with patch("ccproxy.claude_sdk.client.get_global_pool") as mock_get_pool:
+            mock_pool_client = AsyncMock()
+            mock_pool_client.query = AsyncMock()
+
+            # Mock context manager properly
+            mock_acquire_context = AsyncMock()
+            mock_acquire_context.__aenter__ = AsyncMock(return_value=mock_pool_client)
+            mock_acquire_context.__aexit__ = AsyncMock(return_value=None)
+            
+            mock_pool = AsyncMock()
+            mock_pool.acquire_client.return_value = mock_acquire_context
+
+            # Make get_global_pool return the mock pool as an async function
+            async def async_mock_get_pool(*args, **kwargs):
+                return mock_pool
+            mock_get_pool.side_effect = async_mock_get_pool
+
+            # Mock empty response
+            async def mock_receive_response() -> None:
+                return
+                yield  # pragma: no cover
+
+            mock_pool_client.receive_response = mock_receive_response
+
+            # Execute query to trigger pool config creation but return immediately
+            try:
+                async for message in client.query_completion("test", None):
+                    break  # Exit after first iteration to avoid timeout
+            except StopAsyncIteration:
+                pass
+
+        # Verify pool was called with correct config
+        mock_get_pool.assert_called_once()
+        call_args = mock_get_pool.call_args
+
+        # Check that config parameter was passed
+        config_arg = call_args.kwargs.get("config") if call_args and call_args.kwargs else None
+        assert config_arg is not None
+        assert config_arg.pool_size == 3
+        assert config_arg.max_pool_size == 8
+
+
+class TestPoolMetricsIntegration:
+    """Test suite for pool metrics integration."""
+
+    def test_pool_metrics_initialization(self) -> None:
+        """Test pool initialization with metrics."""
+        metrics = Mock(spec=PrometheusMetrics)
+        pool = ClaudeSDKClientPool(metrics=metrics)
+
+        assert pool._metrics is metrics
+
+    @pytest.mark.asyncio
+    async def test_pool_start_updates_metrics(self) -> None:
+        """Test that pool startup updates metrics."""
+        metrics = Mock(spec=PrometheusMetrics)
+        config = PoolConfig(pool_size=2, enable_health_checks=False)
+        pool = ClaudeSDKClientPool(config=config, metrics=metrics)
+
+        with patch.object(pool, "_create_client") as mock_create:
+            mock_client = Mock()
+            mock_create.return_value = mock_client
+
+            await pool.start()
+
+        # Should update gauges after startup
+        metrics.update_pool_gauges.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_pool_client_lifecycle_metrics(self) -> None:
+        """Test metrics recording during client lifecycle."""
+        metrics = Mock(spec=PrometheusMetrics)
+        pool = ClaudeSDKClientPool(metrics=metrics)
+
+        # Test client creation
+        with patch("ccproxy.claude_sdk.pool.SDKClient") as mock_sdk_client:
+            mock_client_instance = Mock()
+            mock_sdk_client.return_value = mock_client_instance
+
+            await pool._create_client()
+
+        metrics.inc_pool_connections_created.assert_called_once()
+
+        # Test client removal
+        mock_pooled_client = Mock()
+        mock_pooled_client.disconnect = AsyncMock()
+        pool._all_clients.add(mock_pooled_client)
+
+        await pool._remove_client(mock_pooled_client)
+
+        metrics.inc_pool_connections_closed.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_pool_acquire_release_metrics(self) -> None:
+        """Test metrics recording during client acquire/release."""
+        metrics = Mock(spec=PrometheusMetrics)
+        pool = ClaudeSDKClientPool(metrics=metrics)
+
+        # Add a mock client to available queue
+        mock_sdk_client = Mock()  # The actual SDK client
+        mock_client = Mock()
+        mock_client.connect = AsyncMock()
+        mock_client.mark_used = Mock()
+        mock_client.client = mock_sdk_client
+        mock_client.is_healthy = True  # Required for _return_client
+        mock_client.disconnect = AsyncMock()  # Required for _remove_client if unhealthy
+        pool._available_clients.put_nowait(mock_client)
+
+        async with pool.acquire_client():
+            pass
+
+        # Should record acquisition and release metrics
+        metrics.inc_pool_acquisitions.assert_called_once()
+        metrics.record_pool_acquisition_time.assert_called_once()
+        metrics.inc_pool_releases.assert_called_once()
+
+        # Should update gauges (once for acquire, once for release)
+        assert metrics.update_pool_gauges.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_pool_health_check_failure_metrics(self) -> None:
+        """Test metrics recording for health check failures."""
+        metrics = Mock(spec=PrometheusMetrics)
+        pool = ClaudeSDKClientPool(metrics=metrics)
+
+        # Add an unhealthy client
+        unhealthy_client = Mock()
+        unhealthy_client.health_check = AsyncMock(return_value=False)
+        pool._available_clients.put_nowait(unhealthy_client)
+
+        with patch.object(pool, "_remove_client"):
+            await pool._perform_health_checks()
+
+        metrics.inc_pool_health_check_failures.assert_called_once()
+
+    def test_prometheus_metrics_has_pool_metrics(self) -> None:
+        """Test that PrometheusMetrics includes all pool metrics."""
+        # Use unique registry to avoid conflicts
+        from prometheus_client import CollectorRegistry
+
+        registry = CollectorRegistry()
+        metrics = PrometheusMetrics(namespace="test_pool_metrics", registry=registry)
+
+        # Check that all pool metrics are initialized
+        assert hasattr(metrics, "pool_clients_total")
+        assert hasattr(metrics, "pool_clients_available")
+        assert hasattr(metrics, "pool_clients_active")
+        assert hasattr(metrics, "pool_connections_created_total")
+        assert hasattr(metrics, "pool_connections_closed_total")
+        assert hasattr(metrics, "pool_acquisitions_total")
+        assert hasattr(metrics, "pool_releases_total")
+        assert hasattr(metrics, "pool_health_check_failures_total")
+        assert hasattr(metrics, "pool_acquisition_duration")
+
+    def test_metrics_methods_functionality(self) -> None:
+        """Test pool metrics methods functionality."""
+        from prometheus_client import CollectorRegistry
+        
+        # Use unique registry to avoid conflicts
+        registry = CollectorRegistry()
+        metrics = PrometheusMetrics(namespace="test_methods", registry=registry)
+
+        # Test gauge updates
+        metrics.update_pool_gauges(
+            total_clients=5,
+            available_clients=3,
+            active_clients=2,
+        )
+
+        # Test counter increments
+        metrics.inc_pool_connections_created()
+        metrics.inc_pool_connections_closed()
+        metrics.inc_pool_acquisitions()
+        metrics.inc_pool_releases()
+        metrics.inc_pool_health_check_failures()
+
+        # Test histogram recording
+        metrics.record_pool_acquisition_time(0.123)
+
+        # Test individual gauge setters
+        metrics.set_pool_clients_total(10)
+        metrics.set_pool_clients_available(7)
+        metrics.set_pool_clients_active(3)
+
+        # Should not raise any exceptions
+
+
+class TestPoolEndToEndIntegration:
+    """Test suite for end-to-end pool integration."""
+
+    @pytest.mark.asyncio
+    async def test_client_pool_full_integration(self, test_settings) -> None:
+        """Test complete integration from client to pool with settings and metrics."""
+        # Configure pool settings in test settings
+        test_settings.claude.use_client_pool = True
+        test_settings.claude.pool_settings.pool_size = 2
+        test_settings.claude.pool_settings.max_pool_size = 5
+        test_settings.claude.pool_settings.connection_timeout = 10.0
+        test_settings.claude.pool_settings.enable_health_checks = False  # Disable for simpler test
+
+        # Create client with pool enabled
+        client = ClaudeSDKClient(use_pool=True, settings=test_settings)
+
+        # Mock the entire pool infrastructure where it's imported in the client
+        with patch("ccproxy.claude_sdk.client.get_global_pool") as mock_get_pool:
+            # Create mock pool client
+            mock_pool_client = AsyncMock()
+            mock_pool_client.query = AsyncMock()
+
+            async def mock_receive_response() -> None:
+                return
+                yield  # pragma: no cover
+
+            mock_pool_client.receive_response = mock_receive_response
+
+            # Mock context manager for acquire_client
+            mock_acquire_context = AsyncMock()
+            mock_acquire_context.__aenter__ = AsyncMock(return_value=mock_pool_client)
+            mock_acquire_context.__aexit__ = AsyncMock(return_value=None)
+            
+            # Create mock pool
+            mock_pool = AsyncMock(spec=ClaudeSDKClientPool)
+            mock_pool.acquire_client.return_value = mock_acquire_context
+
+            # Make get_global_pool return the mock pool as an async function
+            async def async_mock_get_pool(*args, **kwargs):
+                return mock_pool
+            mock_get_pool.side_effect = async_mock_get_pool
+
+            # Execute query
+            messages = []
+            async for message in client.query_completion("test query", None, "req_123"):
+                messages.append(message)
+
+        # Verify the complete flow
+        mock_get_pool.assert_called_once()
+
+        # Check that config was created from settings
+        call_args = mock_get_pool.call_args
+        config_arg = call_args.kwargs.get("config")
+        assert config_arg is not None
+        assert config_arg.pool_size == 2
+        assert config_arg.max_pool_size == 5
+        assert config_arg.connection_timeout == 10.0
+
+        # Check that metrics were passed
+        metrics_arg = call_args.kwargs.get("metrics")
+        assert metrics_arg is not None
+
+        # Verify pool client interactions
+        mock_pool.acquire_client.assert_called_once()
+        mock_pool_client.query.assert_called_once_with("test query")
+
+    @pytest.mark.asyncio
+    async def test_client_pool_integration_with_fallback(self, test_settings) -> None:
+        """Test client pool integration with fallback to stateless mode."""
+        test_settings.claude.use_client_pool = True
+        client = ClaudeSDKClient(use_pool=True, settings=test_settings)
+
+        # Mock pool failure and stateless fallback
+        with patch("ccproxy.claude_sdk.client.get_global_pool") as mock_get_pool:
+            mock_get_pool.side_effect = Exception("Pool failed")
+
+            with patch("ccproxy.claude_sdk.client.query") as mock_query:
+                # Mock successful stateless query
+                async def mock_query_generator(*args: Any, **kwargs: Any) -> None:
+                    return
+                    yield  # pragma: no cover
+
+                mock_query.return_value = mock_query_generator()
+
+                # Execute query - should fallback to stateless
+                messages = []
+                async for message in client.query_completion("test", None):
+                    messages.append(message)
+
+        # Should attempt pool first, then fallback
+        mock_get_pool.assert_called_once()
+        mock_query.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_pool_with_real_prometheus_metrics(self) -> None:
+        """Test pool integration with real PrometheusMetrics instance."""
+        from prometheus_client import CollectorRegistry
+        
+        # Create real metrics instance with unique registry
+        registry = CollectorRegistry()
+        metrics = PrometheusMetrics(namespace="test_pool_real", registry=registry)
+
+        config = PoolConfig(
+            pool_size=1,
+            enable_health_checks=False,  # Disable for simpler test
+        )
+
+        pool = ClaudeSDKClientPool(config=config, metrics=metrics)
+
+        # Mock the SDKClient creation
+        with patch("ccproxy.claude_sdk.pool.SDKClient") as mock_sdk_client:
+            mock_client_instance = Mock()
+            mock_sdk_client.return_value = mock_client_instance
+
+            # Test pool startup with metrics
+            await pool.start()
+
+            # Test client creation and metrics
+            await pool._create_client()
+
+            # Test pool shutdown
+            await pool.stop()
+
+        # Verify stats were updated
+        stats = pool.get_stats()
+        assert stats.connections_created >= 2  # Initial clients + one more
+
+    def test_config_serialization_compatibility(self) -> None:
+        """Test that ClaudePoolSettings can be serialized/deserialized."""
+        # Test creating from dictionary (like TOML/JSON config)
+        config_dict = {
+            "pool_size": 8,
+            "max_pool_size": 20,
+            "connection_timeout": 45.0,
+            "idle_timeout": 450.0,
+            "health_check_interval": 25.0,
+            "enable_health_checks": True,
+        }
+
+        settings = ClaudePoolSettings(**config_dict)
+
+        assert settings.pool_size == 8
+        assert settings.max_pool_size == 20
+        assert settings.connection_timeout == 45.0
+        assert settings.idle_timeout == 450.0
+        assert settings.health_check_interval == 25.0
+        assert settings.enable_health_checks is True
+
+        # Test model dump (for serialization)
+        dumped = settings.model_dump()
+        assert isinstance(dumped, dict)
+        assert dumped["pool_size"] == 8
+
+    @pytest.mark.asyncio
+    async def test_multiple_pools_isolation(self) -> None:
+        """Test that multiple pool instances are properly isolated."""
+        # Create two separate pools with different configs
+        config1 = PoolConfig(pool_size=2, max_pool_size=5)
+        config2 = PoolConfig(pool_size=3, max_pool_size=8)
+
+        metrics1 = Mock(spec=PrometheusMetrics)
+        metrics2 = Mock(spec=PrometheusMetrics)
+
+        pool1 = ClaudeSDKClientPool(config=config1, metrics=metrics1)
+        pool2 = ClaudeSDKClientPool(config=config2, metrics=metrics2)
+
+        # Verify configurations are separate
+        assert pool1.config.pool_size == 2
+        assert pool2.config.pool_size == 3
+        assert pool1._metrics is metrics1
+        assert pool2._metrics is metrics2
+
+        # Verify client sets are separate
+        assert pool1._all_clients is not pool2._all_clients
+        assert pool1._active_clients is not pool2._active_clients
