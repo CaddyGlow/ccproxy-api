@@ -122,7 +122,7 @@ class ClaudeSettings(BaseModel):
     )
 
     use_client_pool: bool = Field(
-        default=True,
+        default=False,
         description="Whether to enable Claude SDK client connection pooling for improved performance. When enabled, maintains a pool of pre-connected clients to reduce subprocess startup overhead.",
     )
 

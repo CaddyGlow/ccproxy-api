@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Claude SDK Pool Mode**: Implemented connection pooling for Claude Code SDK clients to improve request performance:
+  - Maintains a pool of pre-initialized Claude Code instances to eliminate startup overhead
+  - Reduces request latency by reusing established connections
+  - Pool mode is disabled by default and can be enabled via configuration
+  - **Limitations**: Pool mode does not support dynamic Claude options (max_tokens, model changes, etc.)
+  - Pool instances are shared across requests with identical configurations
 - **Claude Detection Service**: Implemented automatic Claude CLI header and system prompt detection at startup:
   - Automatically detects current Claude CLI version and extracts real headers/system prompt
   - Caches detection results per version to avoid repeated startup delays

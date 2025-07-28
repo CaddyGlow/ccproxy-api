@@ -93,6 +93,22 @@ def validate_sdk_message_mode(
     return value
 
 
+def validate_pool_size(
+    ctx: typer.Context, param: typer.CallbackParam, value: int | None
+) -> int | None:
+    """Validate pool size."""
+    if value is None:
+        return None
+
+    if value < 1:
+        raise typer.BadParameter("Pool size must be at least 1")
+
+    if value > 20:
+        raise typer.BadParameter("Pool size must not exceed 20")
+
+    return value
+
+
 # Factory functions removed - use Annotated syntax directly in commands
 
 
@@ -115,6 +131,8 @@ class ClaudeOptions:
         cwd: str | None = None,
         permission_prompt_tool_name: str | None = None,
         sdk_message_mode: str | None = None,
+        sdk_enable_pool: bool = False,
+        sdk_pool_size: int | None = None,
     ):
         """Initialize Claude options.
 
@@ -129,6 +147,8 @@ class ClaudeOptions:
             cwd: Working directory path
             permission_prompt_tool_name: Permission prompt tool name
             sdk_message_mode: SDK message handling mode
+            sdk_enable_pool: Enable Claude SDK client connection pooling
+            sdk_pool_size: Number of clients to maintain in the pool
         """
         self.max_thinking_tokens = max_thinking_tokens
         self.allowed_tools = allowed_tools
@@ -140,3 +160,5 @@ class ClaudeOptions:
         self.cwd = cwd
         self.permission_prompt_tool_name = permission_prompt_tool_name
         self.sdk_message_mode = sdk_message_mode
+        self.sdk_enable_pool = sdk_enable_pool
+        self.sdk_pool_size = sdk_pool_size

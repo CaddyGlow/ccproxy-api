@@ -277,7 +277,9 @@ class TestPoolMetricsIntegration:
 
         Uses organized fixtures: mock_prometheus_metrics, mock_pooled_client
         """
-        config: PoolConfig = PoolConfig(pool_size=2, enable_health_checks=False)
+        config: PoolConfig = PoolConfig(
+            pool_size=2, enable_health_checks=False, startup_delay=0.01
+        )
         pool: ClaudeSDKClientPool = ClaudeSDKClientPool(
             config=config, metrics=mock_prometheus_metrics
         )
@@ -287,7 +289,10 @@ class TestPoolMetricsIntegration:
 
             await pool.start()
 
-        # Should update gauges after startup
+            # Wait for background initialization to complete
+            await pool.wait_for_initialization(timeout=2.0)
+
+        # Should update gauges after background initialization completes
         mock_prometheus_metrics.update_pool_gauges.assert_called_once()
 
     @pytest.mark.asyncio
@@ -530,6 +535,7 @@ class TestPoolEndToEndIntegration:
         config: PoolConfig = PoolConfig(
             pool_size=1,
             enable_health_checks=False,  # Disable for simpler test
+            startup_delay=0.01,  # Reduce delay for testing
         )
 
         pool: ClaudeSDKClientPool = ClaudeSDKClientPool(config=config, metrics=metrics)
@@ -542,6 +548,9 @@ class TestPoolEndToEndIntegration:
             # Test pool startup with metrics
             await pool.start()
 
+            # Wait for background initialization to complete
+            await pool.wait_for_initialization(timeout=2.0)
+
             # Test client creation and metrics
             await pool._create_client()
 
@@ -550,7 +559,9 @@ class TestPoolEndToEndIntegration:
 
         # Verify stats were updated
         stats: PoolStats = pool.get_stats()
-        assert stats.connections_created >= 2  # Initial clients + one more
+        assert (
+            stats.connections_created >= 2
+        )  # Background initialization + explicit create
 
     def test_config_serialization_compatibility(self) -> None:
         """Test that ClaudePoolSettings can be serialized/deserialized."""

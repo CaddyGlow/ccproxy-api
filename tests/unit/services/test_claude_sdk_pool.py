@@ -492,11 +492,13 @@ class TestClaudeSDKClientPool:
     async def test_pool_start_creates_initial_clients(
         self, mock_pooled_client: Mock
     ) -> None:
-        """Test pool startup creates initial clients.
+        """Test pool startup creates initial clients via background initialization.
 
         Uses organized fixture: mock_pooled_client
         """
-        mock_pool_config = PoolConfig(pool_size=2, enable_health_checks=False)
+        mock_pool_config = PoolConfig(
+            pool_size=2, enable_health_checks=False, startup_delay=0.01
+        )
         pool: ClaudeSDKClientPool = ClaudeSDKClientPool(config=mock_pool_config)
 
         with patch.object(pool, "_create_client") as mock_create:
@@ -504,9 +506,13 @@ class TestClaudeSDKClientPool:
 
             await pool.start()
 
+            # Wait for background initialization to complete
+            await pool.wait_for_initialization(timeout=2.0)
+
         assert mock_create.call_count == 2
         assert pool._available_clients.qsize() == 2
         assert pool._cleanup_task is not None
+        assert pool.is_initialization_complete
 
     @pytest.mark.asyncio
     async def test_pool_start_with_health_checks(
@@ -535,7 +541,9 @@ class TestClaudeSDKClientPool:
 
         Uses organized fixtures: mock_prometheus_metrics, mock_pooled_client
         """
-        mock_pool_config = PoolConfig(pool_size=1, enable_health_checks=False)
+        mock_pool_config = PoolConfig(
+            pool_size=1, enable_health_checks=False, startup_delay=0.01
+        )
         pool: ClaudeSDKClientPool = ClaudeSDKClientPool(
             config=mock_pool_config, metrics=mock_prometheus_metrics
         )
@@ -545,7 +553,10 @@ class TestClaudeSDKClientPool:
 
             await pool.start()
 
-        # Should update metrics after startup
+            # Wait for background initialization to complete
+            await pool.wait_for_initialization(timeout=2.0)
+
+        # Should update metrics after background initialization completes
         mock_prometheus_metrics.update_pool_gauges.assert_called_once()
 
     @pytest.mark.asyncio

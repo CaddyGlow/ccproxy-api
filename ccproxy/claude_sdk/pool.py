@@ -35,6 +35,8 @@ class PoolConfig:
     idle_timeout: float = 300.0
     health_check_interval: float = 60.0
     enable_health_checks: bool = True
+    startup_delay: float = 1
+    creation_delay: float = 0
 
 
 class PoolStats(BaseModel):
@@ -151,33 +153,25 @@ class ClaudeSDKClientPool:
         # Background tasks
         self._health_check_task: asyncio.Task[None] | None = None
         self._cleanup_task: asyncio.Task[None] | None = None
+        self._init_task: asyncio.Task[None] | None = None
         self._shutdown = False
 
     async def start(self) -> None:
-        """Start the pool and create initial connections."""
+        """Start the pool and begin background initialization."""
         logger.info("claude_sdk_pool_starting", pool_size=self.config.pool_size)
 
-        # Create initial pool of clients and add them to available queue
-        for _ in range(self.config.pool_size):
-            pooled_client = await self._create_client()
-            await self._available_clients.put(pooled_client)
+        # Start background client initialization task
+        self._init_task = asyncio.create_task(self._initialize_clients_background())
 
-        # Update initial metrics
-        if self._metrics:
-            stats = self.get_stats()
-            self._metrics.update_pool_gauges(
-                stats.total_clients, stats.available_clients, stats.active_clients
-            )
-
-        # Start background tasks
+        # Start other background tasks
         if self.config.enable_health_checks:
             self._health_check_task = asyncio.create_task(self._health_check_loop())
         self._cleanup_task = asyncio.create_task(self._cleanup_loop())
 
         logger.info(
             "claude_sdk_pool_started",
-            total_clients=len(self._all_clients),
-            available_clients=self._available_clients.qsize(),
+            background_initialization=True,
+            target_pool_size=self.config.pool_size,
         )
 
     async def stop(self) -> None:
@@ -186,6 +180,11 @@ class ClaudeSDKClientPool:
         logger.info("claude_sdk_pool_stopping")
 
         # Cancel background tasks
+        if self._init_task:
+            self._init_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await self._init_task
+
         if self._health_check_task:
             self._health_check_task.cancel()
             with suppress(asyncio.CancelledError):
@@ -307,6 +306,10 @@ class ClaudeSDKClientPool:
 
     async def _create_client(self) -> PooledClient:
         """Create a new pooled client."""
+        # Add small delay to prevent rapid client creation under load
+        if self.config.creation_delay > 0:
+            await asyncio.sleep(self.config.creation_delay)
+
         client = SDKClient(options=self.default_options)
         pooled_client = PooledClient(client, self.default_options)
 
@@ -349,6 +352,62 @@ class ClaudeSDKClientPool:
             "claude_sdk_pool_client_removed",
             client_id=id(pooled_client.client),
             total_clients=len(self._all_clients),
+        )
+
+    async def _initialize_clients_background(self) -> None:
+        """Background task to initialize pool clients with staggered delays."""
+        logger.info(
+            "claude_sdk_pool_background_initialization_started",
+            pool_size=self.config.pool_size,
+            startup_delay=self.config.startup_delay,
+        )
+
+        clients_created = 0
+        for i in range(self.config.pool_size):
+            if self._shutdown:
+                logger.info(
+                    "claude_sdk_pool_background_initialization_cancelled",
+                    clients_created=clients_created,
+                )
+                return
+
+            try:
+                pooled_client = await self._create_client()
+                await self._available_clients.put(pooled_client)
+                clients_created += 1
+
+                logger.debug(
+                    "claude_sdk_pool_background_client_created",
+                    client_number=i + 1,
+                    total_target=self.config.pool_size,
+                    client_id=id(pooled_client.client),
+                )
+
+                # Add delay between client creations, except for the last one
+                if i < self.config.pool_size - 1:
+                    await asyncio.sleep(self.config.startup_delay)
+
+            except Exception as e:
+                logger.error(
+                    "claude_sdk_pool_background_client_creation_failed",
+                    client_number=i + 1,
+                    error=str(e),
+                    error_type=type(e).__name__,
+                )
+                # Continue creating other clients even if one fails
+
+        # Update final metrics
+        if self._metrics:
+            stats = self.get_stats()
+            self._metrics.update_pool_gauges(
+                stats.total_clients, stats.available_clients, stats.active_clients
+            )
+
+        logger.info(
+            "claude_sdk_pool_background_initialization_completed",
+            clients_created=clients_created,
+            total_clients=len(self._all_clients),
+            available_clients=self._available_clients.qsize(),
         )
 
     async def _health_check_loop(self) -> None:
@@ -448,3 +507,26 @@ class ClaudeSDKClientPool:
         self._stats.available_clients = self._available_clients.qsize()
         self._stats.active_clients = len(self._active_clients)
         return self._stats
+
+    async def wait_for_initialization(self, timeout: float = 10.0) -> bool:
+        """Wait for background initialization to complete.
+
+        Args:
+            timeout: Maximum time to wait in seconds
+
+        Returns:
+            True if initialization completed, False if timeout
+        """
+        if self._init_task is None:
+            return True
+
+        try:
+            await asyncio.wait_for(self._init_task, timeout=timeout)
+            return True
+        except (TimeoutError, asyncio.CancelledError):
+            return False
+
+    @property
+    def is_initialization_complete(self) -> bool:
+        """Check if background initialization has completed."""
+        return self._init_task is None or self._init_task.done()

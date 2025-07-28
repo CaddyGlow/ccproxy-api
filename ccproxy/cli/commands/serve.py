@@ -35,6 +35,7 @@ from ..options.claude_options import (
     validate_max_thinking_tokens,
     validate_max_turns,
     validate_permission_mode,
+    validate_pool_size,
     validate_sdk_message_mode,
 )
 from ..options.security_options import SecurityOptions, validate_auth_token
@@ -442,6 +443,23 @@ def api(
             rich_help_panel="Claude Settings",
         ),
     ] = None,
+    sdk_enable_pool: Annotated[
+        bool,
+        typer.Option(
+            "--sdk-enable-pool",
+            help="Enable Claude SDK client connection pooling for improved performance",
+            rich_help_panel="Claude Settings",
+        ),
+    ] = False,
+    sdk_pool_size: Annotated[
+        int | None,
+        typer.Option(
+            "--sdk-pool-size",
+            help="Number of clients to maintain in the pool (1-20)",
+            callback=validate_pool_size,
+            rich_help_panel="Claude Settings",
+        ),
+    ] = None,
     # Core settings
     docker: Annotated[
         bool,
@@ -573,6 +591,8 @@ def api(
             cwd=cwd,
             permission_prompt_tool_name=permission_prompt_tool_name,
             sdk_message_mode=sdk_message_mode,
+            sdk_enable_pool=sdk_enable_pool,
+            sdk_pool_size=sdk_pool_size,
         )
 
         security_options = SecurityOptions(auth_token=auth_token)
@@ -599,6 +619,8 @@ def api(
             permission_prompt_tool_name=claude_options.permission_prompt_tool_name,
             cwd=claude_options.cwd,
             sdk_message_mode=claude_options.sdk_message_mode,
+            sdk_enable_pool=claude_options.sdk_enable_pool,
+            sdk_pool_size=claude_options.sdk_pool_size,
         )
 
         # Load settings with CLI overrides

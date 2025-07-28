@@ -466,6 +466,13 @@ class ConfigurationManager:
             if cli_args.get(key) is not None:
                 claude_settings[key] = cli_args[key]
 
+        # Handle pool configuration
+        if cli_args.get("sdk_enable_pool") is not None:
+            claude_settings["use_client_pool"] = cli_args["sdk_enable_pool"]
+
+        if cli_args.get("sdk_pool_size") is not None:
+            claude_settings["pool_settings"] = {"pool_size": cli_args["sdk_pool_size"]}
+
         # Claude Code options
         claude_opts = {}
         for key in [

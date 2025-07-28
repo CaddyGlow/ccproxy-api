@@ -150,6 +150,33 @@ CLAUDE__SDK_MESSAGE_MODE=formatted ccproxy
 CLAUDE__PRETTY_FORMAT=false ccproxy
 ```
 
+## Claude SDK Pool Mode
+
+CCProxy supports connection pooling for Claude Code SDK clients to improve request performance by maintaining a pool of pre-initialized Claude instances.
+
+### Benefits
+- **Reduced Latency**: Eliminates Claude Code startup overhead on each request
+- **Improved Performance**: Reuses established connections for faster response times
+- **Resource Efficiency**: Maintains a configurable pool size to balance performance and resource usage
+
+### Usage
+Pool mode is disabled by default and can be enabled using the CLI flag:
+
+```bash
+# Enable pool mode with default settings
+ccproxy --sdk-enable-pool
+
+# Configure pool size (default: 3)
+ccproxy --sdk-enable-pool --sdk-pool-size 5
+```
+
+### Limitations
+- **No Dynamic Options**: Pool instances cannot change Claude options (max_tokens, model, etc.) after initialization
+- **Shared Configuration**: All requests using the pool must use identical Claude configuration
+- **Memory Usage**: Each pool instance consumes additional memory
+
+Pool mode is most effective for high-frequency requests with consistent configuration requirements.
+
 ## Using with Aider
 
 CCProxy works seamlessly with Aider and other AI coding assistants:
