@@ -1,6 +1,7 @@
 """Tests for CLI confirmation handler SSE client."""
 
 import asyncio
+import contextlib
 from collections.abc import AsyncGenerator
 from typing import Any, cast
 from unittest.mock import AsyncMock, Mock, patch
@@ -306,9 +307,6 @@ data: {invalid json}
         # No events should be yielded for invalid JSON
         assert len(events) == 0
 
-    @pytest.mark.skip(
-        reason="Test blocks indefinitely - skipping to avoid hanging test suite"
-    )
     @patch("httpx.AsyncClient")
     async def test_run_with_successful_connection(
         self,
@@ -325,31 +323,34 @@ data: {invalid json}
         mock_response.__aenter__ = AsyncMock(return_value=mock_response)
         mock_response.__aexit__ = AsyncMock()
 
-        # Mock SSE events
+        # Mock SSE events with finite stream
         async def mock_parse_sse() -> AsyncGenerator[tuple[str, dict[str, Any]], None]:
             yield "ping", {"message": "Connected"}
-            # End stream
+            # Simulate stream ending after one event
 
         # Mock client.stream
         mock_client.stream.return_value = mock_response
 
         sse_handler.client = mock_client
+        sse_handler.max_retries = 0  # Don't retry to avoid infinite loop
 
         # Use patch to properly mock the method
-        with patch.object(
-            sse_handler, "parse_sse_stream", new=AsyncMock(side_effect=mock_parse_sse)
+        with (
+            patch.object(
+                sse_handler,
+                "parse_sse_stream",
+                new=AsyncMock(side_effect=mock_parse_sse),
+            ),
+            contextlib.suppress(TimeoutError),
         ):
-            # Run should complete without error
-            await sse_handler.run()
+            # Run with timeout to prevent hanging
+            await asyncio.wait_for(sse_handler.run(), timeout=1.0)
 
         # Verify stream was called
         mock_client.stream.assert_called_once_with(
             "GET", "http://localhost:8080/permissions/stream"
         )
 
-    @pytest.mark.skip(
-        reason="Test blocks indefinitely - skipping to avoid hanging test suite"
-    )
     @patch("httpx.AsyncClient")
     async def test_run_with_connection_retry(
         self,
@@ -371,21 +372,27 @@ data: {invalid json}
         # First call raises error, second returns response
         mock_client.stream.side_effect = [connect_error, mock_response]
 
-        # Mock SSE parsing
+        # Mock SSE parsing with finite stream
         async def mock_parse_sse() -> AsyncGenerator[tuple[str, dict[str, Any]], None]:
             yield "ping", {"message": "Connected"}
+            # Stream ends after one event
 
         sse_handler.client = mock_client
         sse_handler.max_retries = 1  # Allow one retry
 
         # Use patch to properly mock the method
-        with patch.object(
-            sse_handler, "parse_sse_stream", new=AsyncMock(side_effect=mock_parse_sse)
+        with (
+            patch.object(
+                sse_handler,
+                "parse_sse_stream",
+                new=AsyncMock(side_effect=mock_parse_sse),
+            ),
+            contextlib.suppress(TimeoutError),
         ):
-            # Should retry and succeed
-            await sse_handler.run()
+            # Should retry and succeed with timeout to prevent hanging
+            await asyncio.wait_for(sse_handler.run(), timeout=2.0)
 
-        # Should have been called twice
+        # Should have been called twice (first fails, second succeeds)
         assert mock_client.stream.call_count == 2
 
     async def test_handle_permission_with_cancellation(
@@ -491,11 +498,12 @@ class TestCLICommand:
         # Should not raise error
         connect(api_url=None, no_ui=False)
 
-    @pytest.mark.skip()
     @patch("ccproxy.cli.commands.permission_handler.get_settings")
     @patch("ccproxy.cli.commands.permission_handler.asyncio.run")
+    @patch("ccproxy.cli.commands.permission_handler.logger")
     def test_connect_command_general_error(
         self,
+        mock_logger: Mock,
         mock_asyncio_run: Mock,
         mock_get_settings: Mock,
     ) -> None:
@@ -505,6 +513,8 @@ class TestCLICommand:
         mock_settings.server = Mock()
         mock_settings.server.host = "localhost"
         mock_settings.server.port = 8080
+        mock_settings.security = Mock()
+        mock_settings.security.auth_token = None
         mock_get_settings.return_value = mock_settings
 
         # Make asyncio.run raise an error

@@ -202,9 +202,6 @@ class TestClaudeSDKEndpoints:
             assert_sse_format_compliance(chunks)
 
 
-# Removed TestDualOpenAIEndpoints - functionality covered by TestOpenAIEndpoints
-
-
 @pytest.mark.unit
 class TestAuthenticationEndpoints:
     """Test API endpoints with authentication using new auth fixtures."""
@@ -396,9 +393,6 @@ class TestErrorHandling:
         assert_service_unavailable_error(response)
 
 
-# Removed TestResponseValidation - schema validation covered by endpoint tests with assert_*_response_format
-
-
 @pytest.mark.unit
 class TestStatusEndpoints:
     """Test various status and health check endpoints."""
@@ -454,6 +448,3 @@ class TestStatusEndpoints:
         assert "checks" in data
         assert "claude_sdk" in data["checks"]
         assert "proxy_service" in data["checks"]
-
-
-# Removed TestRequestValidation - validation tests already covered in TestOpenAIEndpoints and TestAnthropicEndpoints

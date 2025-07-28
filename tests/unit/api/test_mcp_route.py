@@ -32,14 +32,13 @@ def mock_settings() -> Settings:
     """Create mock settings."""
     settings = Mock(spec=Settings)
     settings.security = Mock()
-    settings.security.permission_timeout_seconds = 30
+    settings.security.confirmation_timeout_seconds = 30
     return settings
 
 
 class TestMCPPermissionCheck:
     """Test cases for MCP permission checking functionality."""
 
-    @pytest.mark.skip("need to be fix")
     async def test_check_permission_waits_and_allows(
         self,
         mock_permission_service: Mock,
