@@ -97,10 +97,22 @@ def get_claude_service(
     # Get global metrics instance
     metrics = get_metrics()
 
+    # Check if pooling should be enabled from configuration
+    use_pool = settings.claude.use_client_pool
+
+    if use_pool:
+        logger.info(
+            "claude_sdk_pool_enabled",
+            message="Using Claude SDK client pooling for improved performance",
+            pool_size=settings.claude.pool_settings.pool_size,
+            max_pool_size=settings.claude.pool_settings.max_pool_size,
+        )
+
     return ClaudeSDKService(
         auth_manager=auth_manager,
         metrics=metrics,
         settings=settings,
+        use_pool=use_pool,
     )
 
 

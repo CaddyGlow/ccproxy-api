@@ -205,6 +205,62 @@ class PrometheusMetrics:
             registry=self.registry,
         )
 
+        # Claude SDK Pool metrics
+        self.pool_clients_total = Gauge(
+            f"{self.namespace}_pool_clients_total",
+            "Total number of clients in the pool",
+            registry=self.registry,
+        )
+
+        self.pool_clients_available = Gauge(
+            f"{self.namespace}_pool_clients_available",
+            "Number of available clients in the pool",
+            registry=self.registry,
+        )
+
+        self.pool_clients_active = Gauge(
+            f"{self.namespace}_pool_clients_active",
+            "Number of active clients currently processing requests",
+            registry=self.registry,
+        )
+
+        self.pool_connections_created_total = Counter(
+            f"{self.namespace}_pool_connections_created_total",
+            "Total number of pool connections created",
+            registry=self.registry,
+        )
+
+        self.pool_connections_closed_total = Counter(
+            f"{self.namespace}_pool_connections_closed_total",
+            "Total number of pool connections closed",
+            registry=self.registry,
+        )
+
+        self.pool_acquisitions_total = Counter(
+            f"{self.namespace}_pool_acquisitions_total",
+            "Total number of client acquisitions from pool",
+            registry=self.registry,
+        )
+
+        self.pool_releases_total = Counter(
+            f"{self.namespace}_pool_releases_total",
+            "Total number of client releases to pool",
+            registry=self.registry,
+        )
+
+        self.pool_health_check_failures_total = Counter(
+            f"{self.namespace}_pool_health_check_failures_total",
+            "Total number of pool health check failures",
+            registry=self.registry,
+        )
+
+        self.pool_acquisition_duration = Histogram(
+            f"{self.namespace}_pool_acquisition_duration_seconds",
+            "Time taken to acquire a client from the pool",
+            buckets=[0.001, 0.005, 0.01, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0],
+            registry=self.registry,
+        )
+
         # Set initial system info
         try:
             from ccproxy import __version__
@@ -467,6 +523,101 @@ class PrometheusMetrics:
             self._pushgateway_client is not None
             and self._pushgateway_client.is_enabled()
         )
+
+    # Claude SDK Pool metrics methods
+
+    def update_pool_gauges(
+        self,
+        total_clients: int,
+        available_clients: int,
+        active_clients: int,
+    ) -> None:
+        """
+        Update pool gauge metrics (current state).
+
+        Args:
+            total_clients: Total number of clients in pool
+            available_clients: Number of available clients
+            active_clients: Number of active clients
+        """
+        if not self._enabled:
+            return
+
+        # Update gauges
+        self.pool_clients_total.set(total_clients)
+        self.pool_clients_available.set(available_clients)
+        self.pool_clients_active.set(active_clients)
+
+        # Note: Counters are managed directly by the pool operations
+        # This method only updates the current gauges
+
+    def record_pool_acquisition_time(self, duration_seconds: float) -> None:
+        """
+        Record the time taken to acquire a client from the pool.
+
+        Args:
+            duration_seconds: Time in seconds to acquire client
+        """
+        if not self._enabled:
+            return
+
+        self.pool_acquisition_duration.observe(duration_seconds)
+
+    def inc_pool_connections_created(self) -> None:
+        """Increment the pool connections created counter."""
+        if not self._enabled:
+            return
+
+        self.pool_connections_created_total.inc()
+
+    def inc_pool_connections_closed(self) -> None:
+        """Increment the pool connections closed counter."""
+        if not self._enabled:
+            return
+
+        self.pool_connections_closed_total.inc()
+
+    def inc_pool_acquisitions(self) -> None:
+        """Increment the pool acquisitions counter."""
+        if not self._enabled:
+            return
+
+        self.pool_acquisitions_total.inc()
+
+    def inc_pool_releases(self) -> None:
+        """Increment the pool releases counter."""
+        if not self._enabled:
+            return
+
+        self.pool_releases_total.inc()
+
+    def inc_pool_health_check_failures(self) -> None:
+        """Increment the pool health check failures counter."""
+        if not self._enabled:
+            return
+
+        self.pool_health_check_failures_total.inc()
+
+    def set_pool_clients_total(self, count: int) -> None:
+        """Set the total number of clients in the pool."""
+        if not self._enabled:
+            return
+
+        self.pool_clients_total.set(count)
+
+    def set_pool_clients_available(self, count: int) -> None:
+        """Set the number of available clients in the pool."""
+        if not self._enabled:
+            return
+
+        self.pool_clients_available.set(count)
+
+    def set_pool_clients_active(self, count: int) -> None:
+        """Set the number of active clients in the pool."""
+        if not self._enabled:
+            return
+
+        self.pool_clients_active.set(count)
 
 
 # Global metrics instance

@@ -7,7 +7,6 @@ import json
 import os
 import socket
 import subprocess
-from pathlib import Path
 from typing import Any
 
 import structlog
