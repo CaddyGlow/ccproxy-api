@@ -50,6 +50,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Documentation**: Updated `TESTING.md` with new test organization and examples
 - **Cache Directory**: Added automatic creation of `~/.cache/ccproxy/` for detection data persistence
 
+## [0.1.4] - 2025-05-28
+
+### Fixed
+
+- **Pydantic Compatibility**: Fixed TypeError in model_dump_json() call by removing invalid separators parameter (issue #5)
+
 ## [0.1.3] - 2025-07-25
 
 ### Added
