@@ -8,7 +8,7 @@ while mocking only external services.
 import json
 import os
 import time
-from collections.abc import AsyncGenerator, Callable, Generator
+from collections.abc import Callable, Generator
 
 # Override settings for testing
 from functools import lru_cache
@@ -18,11 +18,9 @@ from unittest.mock import AsyncMock, patch
 
 import httpx
 import pytest
-import pytest_asyncio
 import structlog
 from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
-from httpx import ASGITransport, AsyncClient
 
 from ccproxy.api.app import create_app
 from ccproxy.observability.context import RequestContext
@@ -202,6 +200,35 @@ def test_settings(isolated_environment: Path) -> Settings:
 
 
 @pytest.fixture
+def auth_settings(isolated_environment: Path) -> Settings:
+    """Create test settings with authentication enabled.
+
+    Returns a Settings instance configured for testing with authentication:
+    - Temporary config and cache directories using isolated environment
+    - Authentication token configured for testing
+    - Observability endpoints enabled for testing
+    """
+    return Settings(
+        server=ServerSettings(log_level="WARNING"),
+        security=SecuritySettings(auth_token="test-auth-token-12345"),  # Auth enabled
+        auth=AuthSettings(
+            storage=CredentialStorageSettings(
+                storage_paths=[isolated_environment / ".claude/"]
+            )
+        ),
+        observability=ObservabilitySettings(
+            # Enable all observability endpoints for testing
+            metrics_endpoint_enabled=True,
+            logs_endpoints_enabled=True,
+            logs_collection_enabled=True,
+            dashboard_enabled=True,
+            log_storage_backend="duckdb",
+            duckdb_path=str(isolated_environment / "test_metrics.duckdb"),
+        ),
+    )
+
+
+@pytest.fixture
 def app(test_settings: Settings) -> FastAPI:
     """Create test FastAPI application with test settings.
 
@@ -220,147 +247,6 @@ def app(test_settings: Settings) -> FastAPI:
         return test_settings
 
     app.dependency_overrides[get_cached_settings] = mock_get_cached_settings_for_test
-
-    return app
-
-
-# NOTE: mock_claude_service is now an alias to mock_internal_claude_sdk_service (see imports above)
-
-
-# NOTE: mock_claude_service_unavailable is now an alias to mock_internal_claude_sdk_service_unavailable (see imports above)
-
-
-@pytest.fixture
-def app_with_unavailable_claude(
-    test_settings: Settings, mock_claude_service_unavailable: AsyncMock
-) -> FastAPI:
-    """Create test FastAPI application with unavailable Claude service.
-
-    Returns a configured FastAPI app that simulates Claude CLI unavailability.
-    """
-    # Create app
-    app = create_app(settings=test_settings)
-
-    # Override the settings dependency for testing
-    from ccproxy.api.dependencies import get_cached_claude_service, get_cached_settings
-    from ccproxy.config.settings import get_settings as original_get_settings
-
-    app.dependency_overrides[original_get_settings] = lambda: test_settings
-
-    def mock_get_cached_settings_for_test(request: Request):
-        return test_settings
-
-    app.dependency_overrides[get_cached_settings] = mock_get_cached_settings_for_test
-
-    # Override the actual dependency being used (get_cached_claude_service)
-    def mock_get_cached_claude_service_unavailable(request: Request) -> AsyncMock:
-        return mock_claude_service_unavailable
-
-    app.dependency_overrides[get_cached_claude_service] = (
-        mock_get_cached_claude_service_unavailable
-    )
-
-    return app
-
-
-@pytest.fixture
-def client_with_unavailable_claude(app_with_unavailable_claude: FastAPI) -> TestClient:
-    """Create client for testing with unavailable Claude service.
-
-    Returns a TestClient that simulates Claude CLI unavailability.
-    """
-    return TestClient(app_with_unavailable_claude)
-
-
-# NOTE: mock_claude_service_streaming is now an alias to mock_internal_claude_sdk_service_streaming (see imports above)
-
-
-@pytest.fixture
-def app_with_mock_claude_streaming(
-    test_settings: Settings, mock_claude_service_streaming: AsyncMock
-) -> FastAPI:
-    """Create test FastAPI application with mocked Claude streaming service.
-
-    Returns a configured FastAPI app with mocked streaming dependencies.
-    """
-    # Create app
-    app = create_app(settings=test_settings)
-
-    # Override the settings dependency for testing
-    from ccproxy.api.dependencies import get_cached_claude_service, get_cached_settings
-    from ccproxy.config.settings import get_settings as original_get_settings
-
-    app.dependency_overrides[original_get_settings] = lambda: test_settings
-
-    def mock_get_cached_settings_for_test(request: Request):
-        return test_settings
-
-    app.dependency_overrides[get_cached_settings] = mock_get_cached_settings_for_test
-
-    # Override the actual dependency being used (get_cached_claude_service)
-    def mock_get_cached_claude_service_streaming(request: Request) -> AsyncMock:
-        return mock_claude_service_streaming
-
-    app.dependency_overrides[get_cached_claude_service] = (
-        mock_get_cached_claude_service_streaming
-    )
-
-    return app
-
-
-@pytest.fixture
-def client_with_mock_claude_streaming(
-    app_with_mock_claude_streaming: FastAPI,
-) -> TestClient:
-    """Create test client with mocked Claude streaming service.
-
-    Returns a TestClient for making requests with mocked streaming.
-    """
-    return TestClient(app_with_mock_claude_streaming)
-
-
-@pytest_asyncio.fixture
-async def async_client_with_mock_claude_streaming(
-    app_with_mock_claude_streaming: FastAPI,
-) -> AsyncGenerator[AsyncClient, None]:
-    """Create async test client with mocked Claude streaming service.
-
-    Yields an AsyncClient for making async requests with mocked streaming.
-    """
-    async with AsyncClient(
-        transport=ASGITransport(app=app_with_mock_claude_streaming),
-        base_url="http://test",
-    ) as ac:
-        yield ac
-
-
-@pytest.fixture
-def app_with_mock_claude(
-    test_settings: Settings, mock_claude_service: AsyncMock
-) -> FastAPI:
-    """Create test FastAPI application with mocked Claude service.
-
-    Returns a configured FastAPI app with mocked dependencies.
-    """
-    # Create app
-    app = create_app(settings=test_settings)
-
-    # Override the settings dependency for testing
-    from ccproxy.api.dependencies import get_cached_claude_service, get_cached_settings
-    from ccproxy.config.settings import get_settings as original_get_settings
-
-    app.dependency_overrides[original_get_settings] = lambda: test_settings
-
-    def mock_get_cached_settings_for_test(request: Request):
-        return test_settings
-
-    app.dependency_overrides[get_cached_settings] = mock_get_cached_settings_for_test
-
-    # Override the actual dependency being used (get_cached_claude_service)
-    def mock_get_cached_claude_service(request: Request) -> AsyncMock:
-        return mock_claude_service
-
-    app.dependency_overrides[get_cached_claude_service] = mock_get_cached_claude_service
 
     return app
 
@@ -418,95 +304,6 @@ def client_with_claude_sdk_environment(
 
 
 @pytest.fixture
-def client_with_mock_claude(app_with_mock_claude: FastAPI) -> TestClient:
-    """Create client for testing with mocked Claude service.
-
-    Returns a TestClient with mocked Claude service dependencies.
-    """
-    return TestClient(app_with_mock_claude)
-
-
-@pytest.fixture
-def client(app: FastAPI) -> TestClient:
-    """Create synchronous test client for API testing.
-
-    Returns a TestClient for making synchronous HTTP requests.
-    """
-    return TestClient(app)
-
-
-@pytest_asyncio.fixture
-async def async_client(app: FastAPI) -> AsyncGenerator[AsyncClient, None]:
-    """Create asynchronous test client for async API testing.
-
-    Yields an AsyncClient for making asynchronous HTTP requests.
-    """
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
-    ) as ac:
-        yield ac
-
-
-@pytest.fixture
-def auth_settings(test_settings: Settings) -> Settings:
-    """Create settings with authentication enabled.
-
-    Returns Settings configured with a test auth token.
-    """
-    test_settings.security.auth_token = "test-token-12345"
-    return test_settings
-
-
-@pytest.fixture
-def app_with_auth(auth_settings: Settings) -> FastAPI:
-    """Create app with authentication enabled.
-
-    Returns a FastAPI app that requires authentication.
-    """
-    # Create app
-    app = create_app(settings=auth_settings)
-
-    # Override the settings dependency for testing
-    from fastapi.security import HTTPAuthorizationCredentials
-
-    from ccproxy.api.dependencies import get_cached_settings
-    from ccproxy.auth.dependencies import (
-        _get_auth_manager_with_settings,
-        get_auth_manager,
-    )
-    from ccproxy.auth.manager import AuthManager
-    from ccproxy.config.settings import get_settings as original_get_settings
-
-    app.dependency_overrides[original_get_settings] = lambda: auth_settings
-
-    def mock_get_cached_settings_for_auth_test(request: Request):
-        return auth_settings
-
-    app.dependency_overrides[get_cached_settings] = (
-        mock_get_cached_settings_for_auth_test
-    )
-
-    # Also override the auth manager to use the test settings
-    async def test_auth_manager(
-        credentials: HTTPAuthorizationCredentials | None = None,
-    ) -> AuthManager:
-        return await _get_auth_manager_with_settings(credentials, auth_settings)
-
-    app.dependency_overrides[get_auth_manager] = test_auth_manager
-
-    return app
-
-
-@pytest.fixture
-def client_with_auth(app_with_auth: FastAPI) -> TestClient:
-    """Create client for testing authenticated endpoints.
-
-    Returns a TestClient with auth-enabled app.
-    """
-    return TestClient(app_with_auth)
-
-
-@pytest.fixture
 def claude_responses() -> dict[str, Any]:
     """Load standard Claude API responses from fixtures.
 
@@ -539,15 +336,6 @@ def claude_responses() -> dict[str, Any]:
     }
 
 
-# NOTE: mock_claude is now an alias to mock_external_anthropic_api (see imports above)
-
-
-# NOTE: mock_claude_stream is now an alias to mock_external_anthropic_api_streaming (see imports above)
-
-
-# NOTE: mock_oauth is now an alias to mock_external_oauth_endpoints (see imports above)
-
-
 @pytest.fixture
 def metrics_storage() -> Any:
     """Create isolated in-memory metrics storage.
@@ -555,15 +343,6 @@ def metrics_storage() -> Any:
     Returns a mock storage instance for testing.
     """
     return None
-
-
-@pytest.fixture
-def auth_headers() -> dict[str, str]:
-    """Standard authentication headers for testing.
-
-    Returns headers with test auth token.
-    """
-    return {"Authorization": "Bearer test-token-12345"}
 
 
 # =============================================================================
@@ -1163,6 +942,75 @@ def client_factory_basic(app_factory_basic: FastAPI) -> TestClient:
     return TestClient(app_factory_basic)
 
 
+# Missing fixtures for API tests compatibility
+
+
+@pytest.fixture
+def client_with_mock_claude(
+    test_settings: Settings,
+    mock_claude_service: AsyncMock,
+    fastapi_app_factory: "FastAPIAppFactory",
+) -> TestClient:
+    """Test client with mocked Claude service (no auth)."""
+    app = fastapi_app_factory.create_app(
+        settings=test_settings,
+        claude_service_mock=mock_claude_service,
+        auth_enabled=False,
+    )
+    return TestClient(app)
+
+
+@pytest.fixture
+def client_with_mock_claude_streaming(
+    test_settings: Settings,
+    mock_claude_service_streaming: AsyncMock,
+    fastapi_app_factory: "FastAPIAppFactory",
+) -> TestClient:
+    """Test client with mocked Claude streaming service (no auth)."""
+    app = fastapi_app_factory.create_app(
+        settings=test_settings,
+        claude_service_mock=mock_claude_service_streaming,
+        auth_enabled=False,
+    )
+    return TestClient(app)
+
+
+@pytest.fixture
+def client_with_unavailable_claude(
+    test_settings: Settings,
+    mock_claude_service_unavailable: AsyncMock,
+    fastapi_app_factory: "FastAPIAppFactory",
+) -> TestClient:
+    """Test client with unavailable Claude service (no auth)."""
+    app = fastapi_app_factory.create_app(
+        settings=test_settings,
+        claude_service_mock=mock_claude_service_unavailable,
+        auth_enabled=False,
+    )
+    return TestClient(app)
+
+
+@pytest.fixture
+def client_with_auth(app_bearer_auth: FastAPI) -> TestClient:
+    """Test client with authentication enabled."""
+    return TestClient(app_bearer_auth)
+
+
+@pytest.fixture
+def auth_headers(
+    auth_mode_bearer_token: dict[str, Any],
+    auth_headers_factory: Callable[[dict[str, Any]], dict[str, str]],
+) -> dict[str, str]:
+    """Auth headers for bearer token authentication."""
+    return auth_headers_factory(auth_mode_bearer_token)
+
+
+@pytest.fixture
+def client(app: FastAPI) -> TestClient:
+    """Basic test client."""
+    return TestClient(app)
+
+
 # Test Utilities
 
 
@@ -1213,41 +1061,3 @@ def pytest_collection_modifyitems(
         # Add unit marker to tests not marked as real_api
         if not any(marker.name == "real_api" for marker in item.iter_markers()):
             item.add_marker(pytest.mark.unit)
-
-
-@pytest.fixture
-def app_with_mock_sdk_client_streaming(
-    test_settings: Settings, mock_claude_sdk_client_streaming: AsyncMock
-) -> FastAPI:
-    """Create test FastAPI application with mocked Claude SDK client for streaming."""
-    from ccproxy.services.claude_sdk_service import ClaudeSDKService
-
-    # Create an instance of the real service
-    claude_service = ClaudeSDKService(
-        sdk_client=mock_claude_sdk_client_streaming, settings=test_settings
-    )
-
-    # Create app
-    app = create_app(settings=test_settings)
-
-    # Override the dependency to return the real service with the mocked client
-    from ccproxy.api.dependencies import get_cached_claude_service
-
-    def mock_get_cached_claude_service_for_sdk_client_streaming(
-        request: Request,
-    ) -> ClaudeSDKService:
-        return claude_service
-
-    app.dependency_overrides[get_cached_claude_service] = (
-        mock_get_cached_claude_service_for_sdk_client_streaming
-    )
-
-    return app
-
-
-@pytest.fixture
-def client_with_mock_sdk_client_streaming(
-    app_with_mock_sdk_client_streaming: FastAPI,
-) -> TestClient:
-    """Create test client with mocked Claude SDK client for streaming."""
-    return TestClient(app_with_mock_sdk_client_streaming)

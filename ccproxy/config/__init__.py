@@ -2,7 +2,6 @@
 
 from .auth import AuthSettings, CredentialStorageSettings, OAuthSettings
 from .docker_settings import DockerSettings
-from .loader import ConfigLoader, load_config
 from .reverse_proxy import ReverseProxySettings
 from .settings import Settings, get_settings
 from .validators import (
@@ -26,8 +25,6 @@ __all__ = [
     "CredentialStorageSettings",
     "ReverseProxySettings",
     "DockerSettings",
-    "ConfigLoader",
-    "load_config",
     "ConfigValidationError",
     "validate_config_dict",
     "validate_cors_origins",

@@ -6,7 +6,9 @@ including token validation, credential storage, and API endpoint access control.
 
 import asyncio
 import json
+from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -294,11 +296,11 @@ class TestAPIEndpointsWithAuth:
     """Test API endpoints with authentication enabled."""
 
     def test_unauthenticated_request_with_auth_enabled(
-        self, client_with_auth: TestClient
+        self, client_configured_auth: TestClient
     ) -> None:
         """Test unauthenticated request when auth is enabled."""
         # Test unauthenticated request with auth enabled
-        response = client_with_auth.post(
+        response = client_configured_auth.post(
             "/api/v1/messages",
             json={
                 "model": "claude-3-5-sonnet-20241022",
@@ -310,27 +312,32 @@ class TestAPIEndpointsWithAuth:
 
     def test_authenticated_request_with_valid_token(
         self,
-        client_with_auth: TestClient,
-        auth_headers: dict[str, str],
+        client_configured_auth: TestClient,
+        auth_mode_configured_token: dict[str, Any],
+        auth_headers_factory: Callable[[dict[str, Any]], dict[str, str]],
     ) -> None:
         """Test authenticated request with valid bearer token."""
-        response = client_with_auth.post(
+        headers = auth_headers_factory(auth_mode_configured_token)
+        response = client_configured_auth.post(
             "/api/v1/messages",
             json={
                 "model": "claude-3-5-sonnet-20241022",
                 "messages": [{"role": "user", "content": "Hello"}],
             },
-            headers=auth_headers,
+            headers=headers,
         )
         # Should return 401 because auth token is valid but proxy service is not set up in test
         assert response.status_code == 401
 
     def test_authenticated_request_with_invalid_token(
-        self, client_with_auth: TestClient
+        self,
+        client_configured_auth: TestClient,
+        auth_mode_configured_token: dict[str, Any],
+        invalid_auth_headers_factory: Callable[[dict[str, Any]], dict[str, str]],
     ) -> None:
         """Test authenticated request with invalid bearer token."""
-        invalid_headers = {"Authorization": "Bearer invalid-token"}
-        response = client_with_auth.post(
+        invalid_headers = invalid_auth_headers_factory(auth_mode_configured_token)
+        response = client_configured_auth.post(
             "/api/v1/messages",
             json={
                 "model": "claude-3-5-sonnet-20241022",
@@ -342,11 +349,11 @@ class TestAPIEndpointsWithAuth:
         assert response.status_code == 401
 
     def test_authenticated_request_with_malformed_token(
-        self, client_with_auth: TestClient
+        self, client_configured_auth: TestClient
     ) -> None:
         """Test authenticated request with malformed authorization header."""
         malformed_headers = {"Authorization": "InvalidFormat token"}
-        response = client_with_auth.post(
+        response = client_configured_auth.post(
             "/api/v1/messages",
             json={
                 "model": "claude-3-5-sonnet-20241022",

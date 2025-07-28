@@ -19,12 +19,10 @@ from ccproxy.observability.storage.duckdb_simple import (
     SimpleDuckDBStorage,
 )
 from ccproxy.observability.storage.models import AccessLog
+from tests.factories import FastAPIClientFactory
 
 
-pytest.skip("need to fix the fixture", allow_module_level=True)  # type: ignore[unreachable]
-
-
-@pytest.fixture  # type: ignore[unreachable]
+@pytest.fixture
 def temp_db_path(tmp_path: Path) -> Path:
     """Create temporary database path for testing."""
     return tmp_path / "test_reset.duckdb"
@@ -80,7 +78,9 @@ class TestResetEndpoint:
     """Test suite for reset endpoint functionality."""
 
     def test_reset_endpoint_clears_data(
-        self, fastapi_client_factory: Any, storage_with_data: SimpleDuckDBStorage
+        self,
+        fastapi_client_factory: FastAPIClientFactory,
+        storage_with_data: SimpleDuckDBStorage,
     ) -> None:
         """Test that reset endpoint successfully clears all data."""
         # Verify data exists before reset
@@ -91,7 +91,7 @@ class TestResetEndpoint:
         # Create client with storage dependency override
         client = fastapi_client_factory.create_client_with_storage(storage_with_data)
 
-        response = client.post("/reset")
+        response = client.post("/logs/reset")
         assert response.status_code == 200
 
         data: dict[str, Any] = response.json()
@@ -107,18 +107,20 @@ class TestResetEndpoint:
                 f"Expected 0 records after reset, got {count_after}"
             )
 
-    def test_reset_endpoint_without_storage(self, fastapi_client_factory: Any) -> None:
+    def test_reset_endpoint_without_storage(
+        self, fastapi_client_factory: FastAPIClientFactory
+    ) -> None:
         """Test reset endpoint when storage is not available."""
         # Create client without storage
         client = fastapi_client_factory.create_client_with_storage(None)
 
-        response = client.post("/reset")
+        response = client.post("/logs/reset")
         assert response.status_code == 503
         # Just verify that the endpoint returns the expected status code
         # The error message may be handled by middleware and not in the JSON response
 
     def test_reset_endpoint_storage_without_reset_method(
-        self, fastapi_client_factory: Any
+        self, fastapi_client_factory: FastAPIClientFactory
     ) -> None:
         """Test reset endpoint with storage that doesn't support reset."""
 
@@ -130,45 +132,51 @@ class TestResetEndpoint:
             MockStorageWithoutReset()
         )
 
-        response = client.post("/reset")
+        response = client.post("/logs/reset")
         assert response.status_code == 501
         # Just verify that the endpoint returns the expected status code
         # The error message may be handled by middleware and not in the JSON response
 
     def test_reset_endpoint_multiple_calls(
-        self, fastapi_client_factory: Any, storage_with_data: SimpleDuckDBStorage
+        self,
+        fastapi_client_factory: FastAPIClientFactory,
+        storage_with_data: SimpleDuckDBStorage,
     ) -> None:
         """Test multiple consecutive reset calls."""
         client = fastapi_client_factory.create_client_with_storage(storage_with_data)
 
         # First reset
-        response1 = client.post("/reset")
+        response1 = client.post("/logs/reset")
         assert response1.status_code == 200
         assert response1.json()["status"] == "success"
 
         # Second reset (should still succeed on empty database)
-        response2 = client.post("/reset")
+        response2 = client.post("/logs/reset")
         assert response2.status_code == 200
         assert response2.json()["status"] == "success"
 
         # Third reset
-        response3 = client.post("/reset")
+        response3 = client.post("/logs/reset")
         assert response3.status_code == 200
         assert response3.json()["status"] == "success"
 
-        # Verify database is still empty
+        # Verify database is still empty (excluding access log entries for reset endpoint calls)
         with Session(storage_with_data._engine) as session:
-            count = len(session.exec(select(AccessLog)).all())
-            assert count == 0
+            results = session.exec(select(AccessLog)).all()
+            # Filter out access log entries for the reset endpoint itself
+            non_reset_results = [r for r in results if r.endpoint != "/logs/reset"]
+            assert len(non_reset_results) == 0
 
     async def test_reset_endpoint_preserves_schema(
-        self, fastapi_client_factory: Any, storage_with_data: SimpleDuckDBStorage
+        self,
+        fastapi_client_factory: FastAPIClientFactory,
+        storage_with_data: SimpleDuckDBStorage,
     ) -> None:
         """Test that reset preserves database schema and can accept new data."""
         client = fastapi_client_factory.create_client_with_storage(storage_with_data)
 
         # Reset the data
-        response = client.post("/reset")
+        response = client.post("/logs/reset")
         assert response.status_code == 200
 
         # Add new data after reset
@@ -204,26 +212,30 @@ class TestResetEndpoint:
         # Verify new data was stored successfully
         with Session(storage_with_data._engine) as session:
             results = session.exec(select(AccessLog)).all()
-            assert len(results) == 1
-            assert results[0].request_id == "post-reset-request"
-            assert results[0].model == "claude-3-5-haiku-20241022"
+            # Filter out access log entries for the reset endpoint itself
+            non_reset_results = [r for r in results if r.endpoint != "/logs/reset"]
+            assert len(non_reset_results) == 1
+            assert non_reset_results[0].request_id == "post-reset-request"
+            assert non_reset_results[0].model == "claude-3-5-haiku-20241022"
 
 
 class TestResetEndpointWithFiltering:
     """Test reset endpoint behavior with existing filtering endpoints."""
 
     def test_reset_then_query_with_filters(
-        self, fastapi_client_factory: Any, storage_with_data: SimpleDuckDBStorage
+        self,
+        fastapi_client_factory: FastAPIClientFactory,
+        storage_with_data: SimpleDuckDBStorage,
     ) -> None:
         """Test that query endpoint works correctly after reset."""
         client = fastapi_client_factory.create_client_with_storage(storage_with_data)
 
         # Reset data
-        reset_response = client.post("/reset")
+        reset_response = client.post("/logs/reset")
         assert reset_response.status_code == 200
 
         # Query after reset should return empty results
-        query_response = client.get("/query", params={"limit": 100})
+        query_response = client.get("/logs/query", params={"limit": 100})
         assert query_response.status_code == 200
 
         data: dict[str, Any] = query_response.json()
@@ -231,18 +243,20 @@ class TestResetEndpointWithFiltering:
         assert data["results"] == []
 
     def test_reset_then_analytics_with_filters(
-        self, fastapi_client_factory: Any, storage_with_data: SimpleDuckDBStorage
+        self,
+        fastapi_client_factory: FastAPIClientFactory,
+        storage_with_data: SimpleDuckDBStorage,
     ) -> None:
         """Test that analytics endpoint works correctly after reset."""
         client = fastapi_client_factory.create_client_with_storage(storage_with_data)
 
         # Reset data
-        reset_response = client.post("/reset")
+        reset_response = client.post("/logs/reset")
         assert reset_response.status_code == 200
 
         # Analytics after reset should return zero metrics
         analytics_response = client.get(
-            "/analytics",
+            "/logs/analytics",
             params={
                 "service_type": "proxy_service",
                 "model": "claude-3-5-sonnet-20241022",
@@ -258,18 +272,20 @@ class TestResetEndpointWithFiltering:
         assert data["service_type_breakdown"] == {}
 
     def test_reset_then_entries_with_filters(
-        self, fastapi_client_factory: Any, storage_with_data: SimpleDuckDBStorage
+        self,
+        fastapi_client_factory: FastAPIClientFactory,
+        storage_with_data: SimpleDuckDBStorage,
     ) -> None:
         """Test that entries endpoint works correctly after reset."""
         client = fastapi_client_factory.create_client_with_storage(storage_with_data)
 
         # Reset data
-        reset_response = client.post("/reset")
+        reset_response = client.post("/logs/reset")
         assert reset_response.status_code == 200
 
         # Entries after reset should return empty list
         entries_response = client.get(
-            "/entries",
+            "/logs/entries",
             params={
                 "limit": 50,
                 "service_type": "proxy_service",
