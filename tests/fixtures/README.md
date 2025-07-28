@@ -71,46 +71,17 @@ def test_proxy_service(mock_external_anthropic_api: HTTPXMock):
 - `mock_external_oauth_endpoints` - Success token exchange/refresh
 - `mock_external_oauth_endpoints_error` - OAuth error responses
 
-## Backward Compatibility
+## Usage
 
-The old fixture names are maintained through aliases in `tests/conftest.py`:
-
-```python
-# OLD NAME → NEW NAME (mocking strategy)
-mock_claude_service = mock_internal_claude_sdk_service  # Internal dependency injection
-mock_claude = mock_external_anthropic_api              # External HTTP interception  
-mock_oauth = mock_external_oauth_endpoints             # External OAuth endpoints
-```
-
-## Migration Guide
-
-### For New Tests
-
-Use the new descriptive fixture names:
+Use descriptive fixture names for clear intent:
 
 ```python
-# ✅ New way - clear intent
 def test_endpoint(mock_internal_claude_sdk_service: AsyncMock):
     # Testing with internal service dependency injection
     pass
 
 def test_proxy(mock_external_anthropic_api: HTTPXMock):  
     # Testing with external HTTP interception
-    pass
-```
-
-### For Existing Tests
-
-No changes needed - backward compatibility aliases work:
-
-```python
-# ✅ Still works - using backward compatibility aliases
-def test_endpoint(mock_claude_service: AsyncMock):
-    # Uses mock_internal_claude_sdk_service internally
-    pass
-
-def test_api(mock_claude: HTTPXMock):
-    # Uses mock_external_anthropic_api internally  
     pass
 ```
 
@@ -131,8 +102,7 @@ from tests.fixtures.claude_sdk.responses import (
 1. **Clear Purpose**: Fixture names indicate mocking strategy and scope
 2. **Organized Structure**: Related fixtures grouped by service/strategy  
 3. **Maintainability**: Centralized response data and clear documentation
-4. **Backward Compatible**: Existing tests continue working without changes
-5. **Type Safety**: Proper type hints and documentation for each fixture
+4. **Type Safety**: Proper type hints and documentation for each fixture
 
 ## Common Patterns
 

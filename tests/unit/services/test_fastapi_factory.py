@@ -27,11 +27,11 @@ def test_fastapi_app_factory_basic(test_settings: Settings) -> None:
 
 @pytest.mark.unit
 def test_fastapi_app_factory_with_mock_claude(
-    test_settings: Settings, mock_claude_service: AsyncMock
+    test_settings: Settings, mock_internal_claude_sdk_service: AsyncMock
 ) -> None:
     """Test creating a FastAPI app with mocked Claude service."""
     factory = FastAPIAppFactory(default_settings=test_settings)
-    app = factory.create_app(claude_service_mock=mock_claude_service)
+    app = factory.create_app(claude_service_mock=mock_internal_claude_sdk_service)
 
     assert isinstance(app, FastAPI)
     # Check that dependency overrides were applied
@@ -55,13 +55,13 @@ def test_fastapi_app_factory_with_auth(
 def test_fastapi_app_factory_composition(
     test_settings: Settings,
     auth_settings: Settings,
-    mock_claude_service: AsyncMock,
+    mock_internal_claude_sdk_service: AsyncMock,
 ) -> None:
     """Test creating a FastAPI app with multiple configurations composed."""
     factory = FastAPIAppFactory(default_settings=test_settings)
     app = factory.create_app(
         settings=auth_settings,
-        claude_service_mock=mock_claude_service,
+        claude_service_mock=mock_internal_claude_sdk_service,
         auth_enabled=True,
     )
 
@@ -87,13 +87,15 @@ def test_fastapi_client_factory_basic(test_settings: Settings) -> None:
 
 @pytest.mark.unit
 def test_fastapi_client_factory_with_mock(
-    test_settings: Settings, mock_claude_service: AsyncMock
+    test_settings: Settings, mock_internal_claude_sdk_service: AsyncMock
 ) -> None:
     """Test creating a test client with mocked Claude service."""
     app_factory = FastAPIAppFactory(default_settings=test_settings)
     client_factory = FastAPIClientFactory(app_factory)
 
-    client = client_factory.create_client(claude_service_mock=mock_claude_service)
+    client = client_factory.create_client(
+        claude_service_mock=mock_internal_claude_sdk_service
+    )
 
     assert isinstance(client, TestClient)
 
@@ -121,38 +123,23 @@ async def test_fastapi_client_factory_async(test_settings: Settings) -> None:
 def test_factory_fixtures_integration(
     fastapi_app_factory: FastAPIAppFactory,
     fastapi_client_factory: FastAPIClientFactory,
-    mock_claude_service: AsyncMock,
+    mock_internal_claude_sdk_service: AsyncMock,
 ) -> None:
     """Test that the new factory fixtures work together correctly."""
     # Test app factory fixture
-    app = fastapi_app_factory.create_app(claude_service_mock=mock_claude_service)
+    app = fastapi_app_factory.create_app(
+        claude_service_mock=mock_internal_claude_sdk_service
+    )
     assert isinstance(app, FastAPI)
 
     # Test client factory fixture
     client = fastapi_client_factory.create_client(
-        claude_service_mock=mock_claude_service
+        claude_service_mock=mock_internal_claude_sdk_service
     )
     assert isinstance(client, TestClient)
 
     # Test that the client works
     response = client.get("/health")
-    assert response.status_code == 200
-
-
-@pytest.mark.unit
-def test_backward_compatibility_legacy_fixtures(
-    app_factory_basic: FastAPI,
-    client_factory_basic: TestClient,
-) -> None:
-    """Test that legacy fixtures still work for backward compatibility."""
-    # Test legacy app fixture
-    assert isinstance(app_factory_basic, FastAPI)
-
-    # Test legacy client fixture
-    assert isinstance(client_factory_basic, TestClient)
-
-    # Test that the client works
-    response = client_factory_basic.get("/health")
     assert response.status_code == 200
 
 

@@ -39,45 +39,11 @@ from ccproxy.docker.docker_path import DockerPath, DockerPathSet
 from ccproxy.docker.models import DockerUserContext
 from ccproxy.docker.stream_process import DefaultOutputMiddleware
 
+
 # Import organized fixture modules
-from tests.fixtures.claude_sdk.internal_mocks import (
-    mock_internal_claude_sdk_service,
-    mock_internal_claude_sdk_service_streaming,
-    mock_internal_claude_sdk_service_unavailable,
-)
-from tests.fixtures.external_apis.anthropic_api import (
-    mock_external_anthropic_api,
-    mock_external_anthropic_api_streaming,
-)
-from tests.fixtures.proxy_service.oauth_mocks import mock_external_oauth_endpoints
-
-
-# =============================================================================
-# BACKWARD COMPATIBILITY ALIASES
-# =============================================================================
-# These aliases maintain compatibility while the new organized fixtures are adopted
-
-# Backward compatibility aliases for Claude SDK internal mocks
-# OLD NAME → NEW NAME (explanation)
-mock_claude_service = (
-    mock_internal_claude_sdk_service  # Internal dependency injection mock
-)
-mock_claude_service_streaming = (
-    mock_internal_claude_sdk_service_streaming  # Internal streaming mock
-)
-mock_claude_service_unavailable = (
-    mock_internal_claude_sdk_service_unavailable  # Internal unavailable mock
-)
-
-# Backward compatibility aliases for external API mocks
-# OLD NAME → NEW NAME (explanation)
-mock_claude = mock_external_anthropic_api  # External HTTP interception mock
-mock_claude_stream = (
-    mock_external_anthropic_api_streaming  # External streaming HTTP mock
-)
-mock_oauth = mock_external_oauth_endpoints  # External OAuth endpoints mock
-
-# =============================================================================
+pytest_plugins = [
+    "tests.fixtures.claude_sdk.internal_mocks",
+]
 
 
 @lru_cache
@@ -255,7 +221,7 @@ def app(test_settings: Settings) -> FastAPI:
 def app_with_claude_sdk_environment(
     claude_sdk_environment: Path,
     test_settings: Settings,
-    mock_claude_service: AsyncMock,
+    mock_internal_claude_sdk_service: AsyncMock,
 ) -> FastAPI:
     """Create test FastAPI application with Claude SDK environment and mocked service.
 
@@ -283,7 +249,7 @@ def app_with_claude_sdk_environment(
 
     # Override the actual dependency being used (get_cached_claude_service)
     def mock_get_cached_claude_service_for_sdk(request: Request) -> AsyncMock:
-        return mock_claude_service
+        return mock_internal_claude_sdk_service
 
     app.dependency_overrides[get_cached_claude_service] = (
         mock_get_cached_claude_service_for_sdk
@@ -927,34 +893,19 @@ def fastapi_client_factory(
     return FastAPIClientFactory(fastapi_app_factory)
 
 
-@pytest.fixture
-def app_factory_basic(test_settings: Settings) -> FastAPI:
-    """Legacy compatibility fixture - basic app via factory."""
-    from tests.factories import FastAPIAppFactory
-
-    factory = FastAPIAppFactory(default_settings=test_settings)
-    return factory.create_app()
-
-
-@pytest.fixture
-def client_factory_basic(app_factory_basic: FastAPI) -> TestClient:
-    """Legacy compatibility fixture - basic client via factory."""
-    return TestClient(app_factory_basic)
-
-
 # Missing fixtures for API tests compatibility
 
 
 @pytest.fixture
 def client_with_mock_claude(
     test_settings: Settings,
-    mock_claude_service: AsyncMock,
+    mock_internal_claude_sdk_service: AsyncMock,
     fastapi_app_factory: "FastAPIAppFactory",
 ) -> TestClient:
     """Test client with mocked Claude service (no auth)."""
     app = fastapi_app_factory.create_app(
         settings=test_settings,
-        claude_service_mock=mock_claude_service,
+        claude_service_mock=mock_internal_claude_sdk_service,
         auth_enabled=False,
     )
     return TestClient(app)
@@ -963,13 +914,13 @@ def client_with_mock_claude(
 @pytest.fixture
 def client_with_mock_claude_streaming(
     test_settings: Settings,
-    mock_claude_service_streaming: AsyncMock,
+    mock_internal_claude_sdk_service_streaming: AsyncMock,
     fastapi_app_factory: "FastAPIAppFactory",
 ) -> TestClient:
     """Test client with mocked Claude streaming service (no auth)."""
     app = fastapi_app_factory.create_app(
         settings=test_settings,
-        claude_service_mock=mock_claude_service_streaming,
+        claude_service_mock=mock_internal_claude_sdk_service_streaming,
         auth_enabled=False,
     )
     return TestClient(app)
@@ -978,13 +929,13 @@ def client_with_mock_claude_streaming(
 @pytest.fixture
 def client_with_unavailable_claude(
     test_settings: Settings,
-    mock_claude_service_unavailable: AsyncMock,
+    mock_internal_claude_sdk_service_unavailable: AsyncMock,
     fastapi_app_factory: "FastAPIAppFactory",
 ) -> TestClient:
     """Test client with unavailable Claude service (no auth)."""
     app = fastapi_app_factory.create_app(
         settings=test_settings,
-        claude_service_mock=mock_claude_service_unavailable,
+        claude_service_mock=mock_internal_claude_sdk_service_unavailable,
         auth_enabled=False,
     )
     return TestClient(app)
