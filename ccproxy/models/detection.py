@@ -12,32 +12,55 @@ class ClaudeCodeHeaders(BaseModel):
     """Pydantic model for Claude CLI headers extraction with field aliases."""
 
     anthropic_beta: str = Field(
-        alias="anthropic-beta", description="Anthropic beta features"
+        alias="anthropic-beta",
+        description="Anthropic beta features",
+        default="claude-code-20250219,oauth-2025-04-20,interleaved-thinking-2025-05-14,fine-grained-tool-streaming-2025-05-14",
     )
     anthropic_version: str = Field(
-        alias="anthropic-version", description="Anthropic API version"
+        alias="anthropic-version",
+        description="Anthropic API version",
+        default="2023-06-01",
     )
     anthropic_dangerous_direct_browser_access: str = Field(
         alias="anthropic-dangerous-direct-browser-access",
         description="Browser access flag",
+        default="true",
     )
-    x_app: str = Field(alias="x-app", description="Application identifier")
-    user_agent: str = Field(alias="user-agent", description="User agent string")
-    x_stainless_lang: str = Field(alias="x-stainless-lang", description="SDK language")
+    x_app: str = Field(
+        alias="x-app", description="Application identifier", default="cli"
+    )
+    user_agent: str = Field(
+        alias="user-agent",
+        description="User agent string",
+        default="claude-cli/1.0.60 (external, cli)",
+    )
+    x_stainless_lang: str = Field(
+        alias="x-stainless-lang", description="SDK language", default="js"
+    )
     x_stainless_retry_count: str = Field(
-        alias="x-stainless-retry-count", description="Retry count"
+        alias="x-stainless-retry-count", description="Retry count", default="0"
     )
     x_stainless_timeout: str = Field(
-        alias="x-stainless-timeout", description="Request timeout"
+        alias="x-stainless-timeout", description="Request timeout", default="60"
     )
     x_stainless_package_version: str = Field(
-        alias="x-stainless-package-version", description="Package version"
+        alias="x-stainless-package-version",
+        description="Package version",
+        default="0.55.1",
     )
-    x_stainless_os: str = Field(alias="x-stainless-os", description="Operating system")
-    x_stainless_arch: str = Field(alias="x-stainless-arch", description="Architecture")
-    x_stainless_runtime: str = Field(alias="x-stainless-runtime", description="Runtime")
+    x_stainless_os: str = Field(
+        alias="x-stainless-os", description="Operating system", default="Linux"
+    )
+    x_stainless_arch: str = Field(
+        alias="x-stainless-arch", description="Architecture", default="x64"
+    )
+    x_stainless_runtime: str = Field(
+        alias="x-stainless-runtime", description="Runtime", default="node"
+    )
     x_stainless_runtime_version: str = Field(
-        alias="x-stainless-runtime-version", description="Runtime version"
+        alias="x-stainless-runtime-version",
+        description="Runtime version",
+        default="v24.3.0",
     )
 
     model_config = ConfigDict(extra="ignore", populate_by_name=True)

@@ -45,6 +45,7 @@ class ClaudeSDKService:
         auth_manager: AuthManager | None = None,
         metrics: PrometheusMetrics | None = None,
         settings: Settings | None = None,
+        use_pool: bool = False,
     ) -> None:
         """
         Initialize Claude SDK service.
@@ -54,8 +55,9 @@ class ClaudeSDKService:
             auth_manager: Authentication manager (optional)
             metrics: Prometheus metrics instance (optional)
             settings: Application settings (optional)
+            use_pool: Whether to use connection pooling for improved performance
         """
-        self.sdk_client = sdk_client or ClaudeSDKClient()
+        self.sdk_client = sdk_client or ClaudeSDKClient(use_pool=use_pool, settings=settings)
         self.auth_manager = auth_manager
         self.metrics = metrics
         self.settings = settings

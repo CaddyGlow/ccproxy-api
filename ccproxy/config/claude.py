@@ -42,6 +42,60 @@ class SDKMessageMode(str, Enum):
     FORMATTED = "formatted"
 
 
+class ClaudePoolSettings(BaseModel):
+    """Configuration settings for Claude SDK client connection pooling."""
+
+    pool_size: int = Field(
+        default=3,
+        ge=1,
+        le=20,
+        description="Number of standby clients to maintain in the pool",
+    )
+
+    max_pool_size: int = Field(
+        default=10,
+        ge=1,
+        le=50,
+        description="Maximum number of clients that can be created (pool + on-demand)",
+    )
+
+    connection_timeout: float = Field(
+        default=30.0,
+        ge=1.0,
+        le=300.0,
+        description="Timeout in seconds when acquiring a client from the pool",
+    )
+
+    idle_timeout: float = Field(
+        default=300.0,
+        ge=60.0,
+        le=3600.0,
+        description="Time in seconds before idle clients are removed from the pool",
+    )
+
+    health_check_interval: float = Field(
+        default=60.0,
+        ge=10.0,
+        le=600.0,
+        description="Interval in seconds between health checks of pooled clients",
+    )
+
+    enable_health_checks: bool = Field(
+        default=True,
+        description="Whether to enable background health checks for pooled clients",
+    )
+
+    @field_validator("max_pool_size")
+    @classmethod
+    def validate_max_pool_size(cls, v: int, info: Any) -> int:
+        """Ensure max_pool_size is at least as large as pool_size."""
+        if info.data and "pool_size" in info.data:
+            pool_size = info.data["pool_size"]
+            if v < pool_size:
+                raise ValueError(f"max_pool_size ({v}) must be >= pool_size ({pool_size})")
+        return v
+
+
 class ClaudeSettings(BaseModel):
     """Claude-specific configuration settings."""
 
@@ -63,6 +117,16 @@ class ClaudeSettings(BaseModel):
     pretty_format: bool = Field(
         default=True,
         description="Whether to use pretty formatting (indented JSON, newlines after XML tags, unescaped content). When false: compact JSON, no newlines, escaped content between XML tags",
+    )
+
+    use_client_pool: bool = Field(
+        default=False,
+        description="Whether to enable Claude SDK client connection pooling for improved performance. When enabled, maintains a pool of pre-connected clients to reduce subprocess startup overhead.",
+    )
+
+    pool_settings: ClaudePoolSettings = Field(
+        default_factory=ClaudePoolSettings,
+        description="Configuration settings for Claude SDK client connection pooling. Only used when use_client_pool=True.",
     )
 
     @field_validator("cli_path")
