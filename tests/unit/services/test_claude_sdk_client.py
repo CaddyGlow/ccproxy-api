@@ -54,6 +54,8 @@ class SDKClientMockBuilder:
             *args: Any, **kwargs: Any
         ) -> AsyncGenerator[Any, None]:
             raise error
+            # mypy: disable-next-line unreachable
+            yield  # type: ignore[unreachable]
 
         return error_generator
 

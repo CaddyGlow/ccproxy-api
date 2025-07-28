@@ -193,21 +193,38 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         # Get global metrics instance
         metrics = get_metrics()
 
-        # Check if pooling should be enabled via environment variable
-        import os
-
-        use_pool = os.getenv("CCPROXY_USE_CLIENT_POOL", "false").lower() == "true"
+        # Check if pooling should be enabled from settings configuration
+        use_pool = settings.claude.use_client_pool
 
         # Initialize pool manager for dependency injection when pooling is enabled
         pool_manager = None
         if use_pool:
             from ccproxy.claude_sdk.manager import get_pool_manager
+            from ccproxy.claude_sdk.pool import PoolConfig
 
             pool_manager = await get_pool_manager()
 
+            # Create pool configuration from settings
+            pool_config = None
+            if hasattr(settings, "claude") and settings.claude.use_client_pool:
+                pool_settings = settings.claude.pool_settings
+                pool_config = PoolConfig(
+                    pool_size=pool_settings.pool_size,
+                    max_pool_size=pool_settings.max_pool_size,
+                    connection_timeout=pool_settings.connection_timeout,
+                    idle_timeout=pool_settings.idle_timeout,
+                    health_check_interval=pool_settings.health_check_interval,
+                    enable_health_checks=pool_settings.enable_health_checks,
+                )
+
+            # Pre-start the pool to populate it with clients
+            pool = await pool_manager.get_pool(config=pool_config)
+
             logger.info(
-                "claude_sdk_pool_enabled",
-                message="Using Claude SDK client pooling for improved performance",
+                "claude_sdk_pool_started",
+                message="Claude SDK client pool started at application startup",
+                pool_size=pool_config.pool_size if pool_config else 3,
+                max_pool_size=pool_config.max_pool_size if pool_config else 10,
             )
 
         # Create ClaudeSDKService instance

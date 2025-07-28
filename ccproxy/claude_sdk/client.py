@@ -283,7 +283,8 @@ class ClaudeSDKClient:
                 message_count = 0
 
                 async with pool.acquire_client(options) as client:
-                    # Send the query to the pooled client
+                    # Send the query to the pooled client with options
+                    # second parameter is session_id for turn messages
                     await client.query(prompt)
 
                     # Receive and process all messages
