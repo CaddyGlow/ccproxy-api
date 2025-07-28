@@ -448,38 +448,3 @@ class ClaudeSDKClientPool:
         self._stats.available_clients = self._available_clients.qsize()
         self._stats.active_clients = len(self._active_clients)
         return self._stats
-
-
-# Global pool instance
-_global_pool: ClaudeSDKClientPool | None = None
-
-
-async def get_global_pool(
-    config: PoolConfig | None = None, metrics: "PrometheusMetrics | None" = None
-) -> ClaudeSDKClientPool:
-    """Get or create the global client pool."""
-    global _global_pool
-
-    if _global_pool is None:
-        # Get metrics if not provided
-        if metrics is None:
-            try:
-                from ccproxy.observability.metrics import get_metrics
-
-                metrics = get_metrics()
-            except ImportError:
-                metrics = None
-
-        _global_pool = ClaudeSDKClientPool(config=config, metrics=metrics)
-        await _global_pool.start()
-
-    return _global_pool
-
-
-async def shutdown_global_pool() -> None:
-    """Shutdown the global client pool."""
-    global _global_pool
-
-    if _global_pool:
-        await _global_pool.stop()
-        _global_pool = None

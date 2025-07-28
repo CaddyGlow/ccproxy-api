@@ -198,7 +198,13 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
         use_pool = os.getenv("CCPROXY_USE_CLIENT_POOL", "false").lower() == "true"
 
+        # Initialize pool manager for dependency injection when pooling is enabled
+        pool_manager = None
         if use_pool:
+            from ccproxy.claude_sdk.manager import get_pool_manager
+
+            pool_manager = await get_pool_manager()
+
             logger.info(
                 "claude_sdk_pool_enabled",
                 message="Using Claude SDK client pooling for improved performance",
@@ -210,6 +216,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             metrics=metrics,
             settings=settings,
             use_pool=use_pool,
+            pool_manager=pool_manager,
         )
 
         # Store in app state for reuse in dependencies
@@ -334,9 +341,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     # Shutdown global Claude SDK client pool if it was used
     try:
-        from ccproxy.claude_sdk.pool import shutdown_global_pool
+        from ccproxy.claude_sdk.manager import reset_pool_manager
 
-        await shutdown_global_pool()
+        await reset_pool_manager()
         logger.debug("claude_sdk_pool_shutdown")
     except Exception as e:
         logger.error("claude_sdk_pool_shutdown_failed", error=str(e))

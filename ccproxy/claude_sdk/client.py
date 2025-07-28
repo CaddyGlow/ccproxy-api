@@ -6,7 +6,8 @@ from typing import Any, TypeVar
 import structlog
 from pydantic import BaseModel
 
-from ccproxy.claude_sdk.pool import PoolConfig, get_global_pool
+from ccproxy.claude_sdk.manager import PoolManager, get_pool_manager
+from ccproxy.claude_sdk.pool import PoolConfig
 from ccproxy.config.settings import Settings
 from ccproxy.core.async_utils import patched_typing
 from ccproxy.core.errors import ClaudeProxyError, ServiceUnavailableError
@@ -64,17 +65,22 @@ class ClaudeSDKClient:
     """
 
     def __init__(
-        self, use_pool: bool = False, settings: Settings | None = None
+        self,
+        use_pool: bool = False,
+        settings: Settings | None = None,
+        pool_manager: PoolManager | None = None,
     ) -> None:
         """Initialize the Claude SDK client.
 
         Args:
             use_pool: Whether to use connection pooling for better performance
             settings: Application settings for pool configuration
+            pool_manager: Optional PoolManager instance for dependency injection
         """
         self._last_api_call_time_ms: float = 0.0
         self._use_pool = use_pool
         self._settings = settings
+        self._pool_manager = pool_manager
 
     async def query_completion(
         self, prompt: str, options: ClaudeCodeOptions, request_id: str | None = None
@@ -268,16 +274,12 @@ class ClaudeSDKClient:
                         enable_health_checks=pool_settings.enable_health_checks,
                     )
 
-                # Get metrics instance for the pool
-                metrics = None
-                try:
-                    from ccproxy.observability.metrics import get_metrics
-
-                    metrics = get_metrics()
-                except ImportError:
-                    metrics = None
-
-                pool = await get_global_pool(config=pool_config, metrics=metrics)
+                # Use injected manager or fall back to singleton
+                if self._pool_manager is not None:
+                    manager = self._pool_manager
+                else:
+                    manager = await get_pool_manager()
+                pool = await manager.get_pool(config=pool_config)
                 message_count = 0
 
                 async with pool.acquire_client(options) as client:

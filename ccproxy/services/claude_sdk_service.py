@@ -9,6 +9,7 @@ from claude_code_sdk import ClaudeCodeOptions
 from ccproxy.auth.manager import AuthManager
 from ccproxy.claude_sdk.client import ClaudeSDKClient
 from ccproxy.claude_sdk.converter import MessageConverter
+from ccproxy.claude_sdk.manager import PoolManager
 from ccproxy.claude_sdk.options import OptionsHandler
 from ccproxy.claude_sdk.streaming import ClaudeStreamProcessor
 from ccproxy.config.claude import SDKMessageMode
@@ -46,6 +47,7 @@ class ClaudeSDKService:
         metrics: PrometheusMetrics | None = None,
         settings: Settings | None = None,
         use_pool: bool = False,
+        pool_manager: PoolManager | None = None,
     ) -> None:
         """
         Initialize Claude SDK service.
@@ -56,9 +58,10 @@ class ClaudeSDKService:
             metrics: Prometheus metrics instance (optional)
             settings: Application settings (optional)
             use_pool: Whether to use connection pooling for improved performance
+            pool_manager: Pool manager for dependency injection (optional)
         """
         self.sdk_client = sdk_client or ClaudeSDKClient(
-            use_pool=use_pool, settings=settings
+            use_pool=use_pool, settings=settings, pool_manager=pool_manager
         )
         self.auth_manager = auth_manager
         self.metrics = metrics
@@ -212,6 +215,7 @@ class ClaudeSDKService:
         """
         # SDK request already logged in create_completion
 
+        logger.debug("claude_sdk_completion_startddddddd", request_id=request_id)
         messages = [
             m
             async for m in self.sdk_client.query_completion(prompt, options, request_id)
@@ -267,7 +271,7 @@ class ClaudeSDKService:
                         xml_tag="system_message",
                         forward_converter=lambda obj: {
                             "type": "system_message",
-                            "text": obj.model_dump_json(separators=(",", ":")),
+                            "text": obj.model_dump_json(),
                         },
                     )
                     if content_block:
