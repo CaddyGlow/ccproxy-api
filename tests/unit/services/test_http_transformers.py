@@ -476,7 +476,7 @@ class TestHTTPRequestTransformer:
 
             # Should detect OpenAI and transform
             mock_transform.assert_called_once_with(openai_body)
-            mock_system.assert_called_once_with(b'{"transformed": true}')
+            mock_system.assert_called_once_with(b'{"transformed": true}', None)
             assert result == b'{"final": true}'
 
     def test_transform_request_body_anthropic_passthrough(
@@ -501,7 +501,7 @@ class TestHTTPRequestTransformer:
             result = request_transformer.transform_request_body(anthropic_body, path)
 
             # Should only apply system prompt transformation
-            mock_system.assert_called_once_with(anthropic_body)
+            mock_system.assert_called_once_with(anthropic_body, None)
             assert result == b'{"system_transformed": true}'
 
     def test_transform_request_body_empty_body(

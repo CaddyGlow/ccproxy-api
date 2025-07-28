@@ -20,8 +20,19 @@ claude_code_prompt = "You are Claude Code, Anthropic's official CLI for Claude."
 # claude_code_prompt = "<system-reminder>\nAs you answer the user's questions, you can use the following context:\n# important-instruction-reminders\nDo what has been asked; nothing more, nothing less.\nNEVER create files unless they're absolutely necessary for achieving your goal.\nALWAYS prefer editing an existing file to creating a new one.\nNEVER proactively create documentation files (*.md) or README files. Only create documentation files if explicitly requested by the User.\n\n      \n      IMPORTANT: this context may or may not be relevant to your tasks. You should not respond to this context unless it is highly relevant to your task.\n</system-reminder>\n"
 
 
-def get_claude_code_prompt() -> dict[str, Any]:
+def get_claude_code_prompt(app_state: Any = None) -> dict[str, Any]:
     """Get the Claude Code system prompt with cache control."""
+    # Use detected system prompt when available
+    if app_state and hasattr(app_state, "claude_detection_data"):
+        claude_data = app_state.claude_detection_data
+        return {
+            "type": "text",
+            "text": claude_data.system_prompt.text,
+            "cache_control": claude_data.system_prompt.cache_control
+            or {"type": "ephemeral"},
+        }
+
+    # Fallback to hardcoded prompt
     return {
         "type": "text",
         "text": claude_code_prompt,
@@ -73,24 +84,39 @@ class HTTPRequestTransformer(RequestTransformer):
         elif context and isinstance(context, dict):
             access_token = context.get("access_token", "")
 
-        transformed_headers = self.create_proxy_headers(request.headers, access_token)
+        # Extract app_state from context if available
+        app_state = None
+        if context and hasattr(context, "app_state"):
+            app_state = context.app_state
+        elif context and isinstance(context, dict):
+            app_state = context.get("app_state")
+
+        transformed_headers = self.create_proxy_headers(
+            request.headers, access_token, self.proxy_mode, app_state
+        )
 
         # Transform body
         transformed_body = request.body
         if request.body:
             if isinstance(request.body, bytes):
                 transformed_body = self.transform_request_body(
-                    request.body, transformed_path
+                    request.body, transformed_path, self.proxy_mode, app_state
                 )
             elif isinstance(request.body, str):
                 transformed_body = self.transform_request_body(
-                    request.body.encode("utf-8"), transformed_path
+                    request.body.encode("utf-8"),
+                    transformed_path,
+                    self.proxy_mode,
+                    app_state,
                 )
             elif isinstance(request.body, dict):
                 import json
 
                 transformed_body = self.transform_request_body(
-                    json.dumps(request.body).encode("utf-8"), transformed_path
+                    json.dumps(request.body).encode("utf-8"),
+                    transformed_path,
+                    self.proxy_mode,
+                    app_state,
                 )
 
         # Create new transformed request
@@ -122,7 +148,11 @@ class HTTPRequestTransformer(RequestTransformer):
         return path
 
     def create_proxy_headers(
-        self, headers: dict[str, str], access_token: str, proxy_mode: str = "full"
+        self,
+        headers: dict[str, str],
+        access_token: str,
+        proxy_mode: str = "full",
+        app_state: Any = None,
     ) -> dict[str, str]:
         """Create proxy headers from original headers with Claude CLI identity."""
         proxy_headers = {}
@@ -170,27 +200,35 @@ class HTTPRequestTransformer(RequestTransformer):
         if "connection" not in [k.lower() for k in proxy_headers]:
             proxy_headers["Connection"] = "keep-alive"
 
-        # Critical Claude/Anthropic headers for tools and beta features
-        proxy_headers["anthropic-beta"] = (
-            "claude-code-20250219,oauth-2025-04-20,"
-            "interleaved-thinking-2025-05-14,fine-grained-tool-streaming-2025-05-14"
-        )
-        proxy_headers["anthropic-version"] = "2023-06-01"
-        proxy_headers["anthropic-dangerous-direct-browser-access"] = "true"
+        # Use detected Claude CLI headers when available
+        if app_state and hasattr(app_state, "claude_detection_data"):
+            claude_data = app_state.claude_detection_data
+            detected_headers = claude_data.headers.to_headers_dict()
+            proxy_headers.update(detected_headers)
+            logger.debug("using_detected_headers", version=claude_data.claude_version)
+        else:
+            # Fallback to hardcoded Claude/Anthropic headers
+            proxy_headers["anthropic-beta"] = (
+                "claude-code-20250219,oauth-2025-04-20,"
+                "interleaved-thinking-2025-05-14,fine-grained-tool-streaming-2025-05-14"
+            )
+            proxy_headers["anthropic-version"] = "2023-06-01"
+            proxy_headers["anthropic-dangerous-direct-browser-access"] = "true"
 
-        # Claude CLI identity headers
-        proxy_headers["x-app"] = "cli"
-        proxy_headers["User-Agent"] = "claude-cli/1.0.60 (external, cli)"
+            # Claude CLI identity headers
+            proxy_headers["x-app"] = "cli"
+            proxy_headers["User-Agent"] = "claude-cli/1.0.60 (external, cli)"
 
-        # Stainless SDK compatibility headers
-        proxy_headers["X-Stainless-Lang"] = "js"
-        proxy_headers["X-Stainless-Retry-Count"] = "0"
-        proxy_headers["X-Stainless-Timeout"] = "60"
-        proxy_headers["X-Stainless-Package-Version"] = "0.55.1"
-        proxy_headers["X-Stainless-OS"] = "Linux"
-        proxy_headers["X-Stainless-Arch"] = "x64"
-        proxy_headers["X-Stainless-Runtime"] = "node"
-        proxy_headers["X-Stainless-Runtime-Version"] = "v24.3.0"
+            # Stainless SDK compatibility headers
+            proxy_headers["X-Stainless-Lang"] = "js"
+            proxy_headers["X-Stainless-Retry-Count"] = "0"
+            proxy_headers["X-Stainless-Timeout"] = "60"
+            proxy_headers["X-Stainless-Package-Version"] = "0.55.1"
+            proxy_headers["X-Stainless-OS"] = "Linux"
+            proxy_headers["X-Stainless-Arch"] = "x64"
+            proxy_headers["X-Stainless-Runtime"] = "node"
+            proxy_headers["X-Stainless-Runtime-Version"] = "v24.3.0"
+            logger.debug("using_fallback_headers")
 
         # Standard HTTP headers for proper API interaction
         proxy_headers["accept-language"] = "*"
@@ -201,7 +239,7 @@ class HTTPRequestTransformer(RequestTransformer):
         return proxy_headers
 
     def transform_request_body(
-        self, body: bytes, path: str, proxy_mode: str = "full"
+        self, body: bytes, path: str, proxy_mode: str = "full", app_state: Any = None
     ) -> bytes:
         """Transform request body."""
         if not body:
@@ -213,13 +251,14 @@ class HTTPRequestTransformer(RequestTransformer):
             body = self._transform_openai_to_anthropic(body)
 
         # Apply system prompt transformation for Claude Code identity
-        return self.transform_system_prompt(body)
+        return self.transform_system_prompt(body, app_state)
 
-    def transform_system_prompt(self, body: bytes) -> bytes:
+    def transform_system_prompt(self, body: bytes, app_state: Any = None) -> bytes:
         """Transform system prompt to ensure Claude Code identification comes first.
 
         Args:
             body: Original request body as bytes
+            app_state: Optional app state containing detection data
 
         Returns:
             Transformed request body as bytes with Claude Code system prompt
@@ -237,7 +276,7 @@ class HTTPRequestTransformer(RequestTransformer):
             isinstance(data["system"], str) and data["system"] == claude_code_prompt
         ):
             # No system prompt, inject Claude Code identification
-            data["system"] = [get_claude_code_prompt()]
+            data["system"] = [get_claude_code_prompt(app_state)]
             return json.dumps(data).encode("utf-8")
 
         system = data["system"]
@@ -246,12 +285,12 @@ class HTTPRequestTransformer(RequestTransformer):
             # Handle string system prompt
             if system == claude_code_prompt:
                 # Already correct, convert to proper array format
-                data["system"] = [get_claude_code_prompt()]
+                data["system"] = [get_claude_code_prompt(app_state)]
                 return json.dumps(data).encode("utf-8")
 
             # Prepend Claude Code prompt to existing string
             data["system"] = [
-                get_claude_code_prompt(),
+                get_claude_code_prompt(app_state),
                 {"type": "text", "text": system},
             ]
 
@@ -262,11 +301,11 @@ class HTTPRequestTransformer(RequestTransformer):
                 first = system[0]
                 if isinstance(first, dict) and first.get("text") == claude_code_prompt:
                     # Already has Claude Code first, ensure it has cache_control
-                    data["system"][0] = get_claude_code_prompt()
+                    data["system"][0] = get_claude_code_prompt(app_state)
                     return json.dumps(data).encode("utf-8")
 
             # Prepend Claude Code prompt
-            data["system"] = [get_claude_code_prompt()] + system
+            data["system"] = [get_claude_code_prompt(app_state)] + system
 
         return json.dumps(data).encode("utf-8")
 

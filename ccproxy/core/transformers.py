@@ -114,6 +114,11 @@ class BaseTransformer(ABC):
 class RequestTransformer(BaseTransformer):
     """Base class for request transformers."""
 
+    def __init__(self, proxy_mode: str = "full") -> None:
+        """Initialize request transformer with proxy mode."""
+        super().__init__()
+        self.proxy_mode = proxy_mode
+
     async def transform(
         self, request: ProxyRequest, context: TransformContext | None = None
     ) -> ProxyRequest:

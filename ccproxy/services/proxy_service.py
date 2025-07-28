@@ -530,16 +530,19 @@ class ProxyService:
                 query_params["beta"] = "true"
                 logger.debug("beta_parameter_added")
 
+        # App state will need to be passed through context in the future
+        app_state = None
+
         # Transform body first (as it might change size)
         proxy_body = None
         if body:
             proxy_body = self.request_transformer.transform_request_body(
-                body, path, self.proxy_mode
+                body, path, self.proxy_mode, app_state
             )
 
         # Transform headers (and update Content-Length if body changed)
         proxy_headers = self.request_transformer.create_proxy_headers(
-            headers, access_token, self.proxy_mode
+            headers, access_token, self.proxy_mode, app_state
         )
 
         # Update Content-Length if body was transformed and size changed

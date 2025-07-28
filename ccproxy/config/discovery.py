@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from ccproxy.core.system import get_xdg_config_home
+from ccproxy.core.system import get_xdg_cache_home, get_xdg_config_home
 
 
 def find_toml_config_file() -> Path | None:
@@ -84,3 +84,12 @@ def get_claude_docker_home_dir() -> Path:
         Path to the Claude Docker home directory within XDG_DATA_HOME.
     """
     return get_ccproxy_config_dir() / "home"
+
+
+def get_ccproxy_cache_dir() -> Path:
+    """Get the ccproxy cache directory.
+
+    Returns:
+        Path to the ccproxy cache directory within XDG_CACHE_HOME.
+    """
+    return get_xdg_cache_home() / "ccproxy"
