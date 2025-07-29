@@ -4,6 +4,7 @@ from collections.abc import AsyncIterator
 from typing import Any, TypeVar
 
 import structlog
+from claude_code_sdk import Message
 from pydantic import BaseModel
 
 from ccproxy.claude_sdk.manager import PoolManager, get_pool_manager
@@ -12,6 +13,7 @@ from ccproxy.config.settings import Settings
 from ccproxy.core.async_utils import patched_typing
 from ccproxy.core.errors import ClaudeProxyError, ServiceUnavailableError
 from ccproxy.models import claude_sdk as sdk_models
+from ccproxy.models.requests import MessageContent
 from ccproxy.observability import timed_operation
 
 
@@ -26,6 +28,9 @@ with patched_typing():
         CLINotFoundError,
         ProcessError,
         query,
+    )
+    from claude_code_sdk import (
+        ClaudeSDKClient as ImportedClaudeSDKClient,
     )
     from claude_code_sdk import (
         ResultMessage as SDKResultMessage,
@@ -82,8 +87,62 @@ class ClaudeSDKClient:
         self._settings = settings
         self._pool_manager = pool_manager
 
+    def _convert_anthropic_messages_to_sdk(
+        self, messages: list[dict[str, Any]]
+    ) -> list[sdk_models.UserMessage]:
+        """Convert Anthropic API messages to Claude SDK UserMessage format.
+
+        Args:
+            messages: List of Anthropic API messages
+
+        Returns:
+            List of Claude SDK UserMessage objects
+        """
+        sdk_messages = []
+
+        for msg in messages:
+            if msg.get("role") == "user":
+                # Convert content to SDK format
+                content_blocks: list[sdk_models.ContentBlock] = []
+
+                if isinstance(msg.get("content"), str):
+                    # Simple text content
+                    content_blocks.append(
+                        sdk_models.TextBlock(type="text", text=msg["content"])
+                    )
+                elif isinstance(msg.get("content"), list):
+                    # List of content blocks
+                    for block in msg["content"]:
+                        if isinstance(block, dict):
+                            if block.get("type") == "text":
+                                content_blocks.append(
+                                    sdk_models.TextBlock(
+                                        type="text", text=block.get("text", "")
+                                    )
+                                )
+                            elif block.get("type") == "tool_result":
+                                content_blocks.append(
+                                    sdk_models.ToolResultBlock(
+                                        type="tool_result",
+                                        tool_use_id=block.get("tool_use_id", ""),
+                                        content=block.get("content"),
+                                        is_error=block.get("is_error", False),
+                                    )
+                                )
+                            # Add other block types as needed
+
+                if content_blocks:
+                    sdk_messages.append(sdk_models.UserMessage(content=content_blocks))
+
+        return sdk_messages
+
     async def query_completion(
-        self, prompt: str, options: ClaudeCodeOptions, request_id: str | None = None
+        self,
+        prompt: str,
+        messages: list[dict[str, Any]],
+        options: ClaudeCodeOptions,
+        request_id: str | None = None,
+        session_id: str | None = None,
     ) -> AsyncIterator[
         sdk_models.UserMessage
         | sdk_models.AssistantMessage
@@ -97,6 +156,7 @@ class ClaudeSDKClient:
             prompt: The prompt string to send to Claude
             options: Claude Code options configuration
             request_id: Optional request ID for correlation
+            session_id: Optional session ID for conversation continuity
 
         Yields:
             Strongly-typed Pydantic messages from ccproxy.claude_sdk.models
@@ -105,99 +165,162 @@ class ClaudeSDKClient:
             ClaudeSDKError: If the query fails
         """
         if self._use_pool:
-            async for message in self._query_with_pool(prompt, options, request_id):
+            async for message in self._query_with_pool(
+                messages, options, request_id, session_id
+            ):
                 yield message
         else:
-            async for message in self._query_stateless(prompt, options, request_id):
+            async for message in self._query_stateless(
+                messages, options, request_id, session_id
+            ):
                 yield message
 
     async def _query_stateless(
-        self, prompt: str, options: ClaudeCodeOptions, request_id: str | None = None
+        self,
+        messages: list[dict[str, Any]],
+        options: ClaudeCodeOptions,
+        request_id: str | None = None,
+        session_id: str | None = None,
     ) -> AsyncIterator[
         sdk_models.UserMessage
         | sdk_models.AssistantMessage
         | sdk_models.SystemMessage
         | sdk_models.ResultMessage
     ]:
-        """Execute query using stateless approach (current implementation)."""
+        """Execute query using direct connect approach (same as pool but without pool)."""
         async with timed_operation("claude_sdk_query_stateless", request_id) as op:
             try:
                 logger.debug(
                     "claude_sdk_query_start",
-                    prompt_length=len(prompt),
-                    mode="stateless",
+                    messages_count=len(messages),
+                    mode="stateless_connect",
+                    session_id=session_id,
                 )
 
-                message_count = 0
-                async for message in query(prompt=prompt, options=options):
-                    message_count += 1
+                # Use ClaudeSDKClient with direct connect (no pool)
+                client = ImportedClaudeSDKClient(options)
 
-                    logger.debug(
-                        "claude_sdk_raw_message_received",
-                        message_type=type(message).__name__,
-                        message_count=message_count,
-                        request_id=request_id,
-                        has_content=hasattr(message, "content")
-                        and bool(getattr(message, "content", None)),
-                        content_preview=str(message)[:150],
-                    )
+                try:
+                    # Connect to Claude CLI
+                    await client.connect()
 
-                    # Skip unknown message types early
-                    if not isinstance(
-                        message,
-                        SDKUserMessage
-                        | SDKAssistantMessage
-                        | SDKSystemMessage
-                        | SDKResultMessage,
-                    ):
-                        logger.warning(  # type: ignore[unreachable]
-                            "claude_sdk_unknown_message_type",
-                            message_type=type(message).__name__,
-                            request_id=request_id,
-                        )
-                        continue
+                    # Convert Anthropic messages to SDK format
+                    sdk_messages = self._convert_anthropic_messages_to_sdk(messages)
 
-                    # Convert Claude SDK message to our Pydantic model
-                    try:
-                        converted_message: (
-                            sdk_models.UserMessage
-                            | sdk_models.AssistantMessage
-                            | sdk_models.SystemMessage
-                            | sdk_models.ResultMessage
-                        )
-                        if isinstance(message, SDKUserMessage):
-                            converted_message = self._convert_message(
-                                message, sdk_models.UserMessage
-                            )
-                        elif isinstance(message, SDKAssistantMessage):
-                            converted_message = self._convert_message(
-                                message, sdk_models.AssistantMessage
-                            )
-                        elif isinstance(message, SDKSystemMessage):
-                            converted_message = self._convert_message(
-                                message, sdk_models.SystemMessage
-                            )
-                        else:  # SDKResultMessage
-                            converted_message = self._convert_message(
-                                message, sdk_models.ResultMessage
-                            )
+                    # Convert SDK messages to Claude SDK expected format
+                    async def message_iter() -> AsyncIterator[dict[str, Any]]:
+                        for msg in sdk_messages[-1:]:
+                            # Convert to Claude SDK expected format with proper content handling
+                            content: str | list[dict[str, Any]] = ""
+                            if msg.content:
+                                if len(msg.content) == 1 and hasattr(
+                                    msg.content[0], "text"
+                                ):
+                                    # Simple text message
+                                    content = msg.content[0].text
+                                else:
+                                    # Complex message with multiple blocks - convert to list format
+                                    content = [
+                                        block.model_dump() for block in msg.content
+                                    ]
+
+                            msg = {
+                                "type": "user",
+                                "message": {"role": "user", "content": content},
+                                "parent_tool_use_id": None,
+                                "session_id": session_id,
+                            }
+                            logger.debug("sending_sdk_message", message=msg)
+                            yield msg
+
+                    # Send query with session_id support
+                    if session_id:
+                        await client.query(message_iter(), session_id=session_id)
+                    else:
+                        await client.query(message_iter())
+
+                    message_count = 0
+                    # Receive and process all messages (same as pool)
+                    async for message in client.receive_response():
+                        message_count += 1
 
                         logger.debug(
-                            "claude_sdk_message_converted_successfully",
-                            original_type=type(message).__name__,
-                            converted_type=type(converted_message).__name__,
+                            "claude_sdk_raw_message_received",
+                            message_type=type(message).__name__,
                             message_count=message_count,
                             request_id=request_id,
+                            has_content=hasattr(message, "content")
+                            and bool(getattr(message, "content", None)),
+                            content_preview=str(message)[:150],
                         )
-                        yield converted_message
+
+                        # Skip unknown message types early
+                        if not isinstance(
+                            message,
+                            SDKUserMessage
+                            | SDKAssistantMessage
+                            | SDKSystemMessage
+                            | SDKResultMessage,
+                        ):
+                            logger.warning(  # type: ignore[unreachable]
+                                "claude_sdk_unknown_message_type",
+                                message_type=type(message).__name__,
+                                request_id=request_id,
+                            )
+                            continue
+
+                        # Convert SDK message to our Pydantic model (same logic as pool)
+                        try:
+                            converted_message: (
+                                sdk_models.UserMessage
+                                | sdk_models.AssistantMessage
+                                | sdk_models.SystemMessage
+                                | sdk_models.ResultMessage
+                            )
+                            if isinstance(message, SDKUserMessage):
+                                converted_message = self._convert_message(
+                                    message, sdk_models.UserMessage
+                                )
+                            elif isinstance(message, SDKAssistantMessage):
+                                converted_message = self._convert_message(
+                                    message, sdk_models.AssistantMessage
+                                )
+                            elif isinstance(message, SDKSystemMessage):
+                                converted_message = self._convert_message(
+                                    message, sdk_models.SystemMessage
+                                )
+                            else:  # SDKResultMessage
+                                converted_message = self._convert_message(
+                                    message, sdk_models.ResultMessage
+                                )
+
+                            logger.debug(
+                                "claude_sdk_message_converted_successfully",
+                                original_type=type(message).__name__,
+                                converted_type=type(converted_message).__name__,
+                                message_count=message_count,
+                                request_id=request_id,
+                            )
+                            yield converted_message
+                        except Exception as e:
+                            logger.warning(
+                                "claude_sdk_message_conversion_failed",
+                                message_type=type(message).__name__,
+                                error=str(e),
+                            )
+                            # Skip invalid messages rather than crashing
+                            continue
+
+                finally:
+                    # Always disconnect the client
+                    try:
+                        await client.disconnect()
                     except Exception as e:
                         logger.warning(
-                            "claude_sdk_message_conversion_failed",
-                            message_type=type(message).__name__,
+                            "claude_sdk_disconnect_failed",
                             error=str(e),
+                            request_id=request_id,
                         )
-                        # Skip invalid messages rather than crashing
-                        continue
 
                 # Store final metrics
                 op["message_count"] = message_count
@@ -207,6 +330,7 @@ class ClaudeSDKClient:
                     "claude_sdk_query_completed",
                     message_count=message_count,
                     duration_ms=op.get("duration_ms"),
+                    mode="stateless_connect",
                 )
 
             except (CLINotFoundError, CLIConnectionError) as e:
@@ -242,7 +366,11 @@ class ClaudeSDKClient:
                 ) from e
 
     async def _query_with_pool(
-        self, prompt: str, options: ClaudeCodeOptions, request_id: str | None = None
+        self,
+        messages: list[dict[str, Any]],
+        options: ClaudeCodeOptions,
+        request_id: str | None = None,
+        session_id: str | None = None,
     ) -> AsyncIterator[
         sdk_models.UserMessage
         | sdk_models.AssistantMessage
@@ -254,7 +382,10 @@ class ClaudeSDKClient:
         async with timed_operation("claude_sdk_query_pooled", request_id) as op:
             try:
                 logger.debug(
-                    "claude_sdk_query_start", prompt_length=len(prompt), mode="pooled"
+                    "claude_sdk_query_start",
+                    messages_count=len(messages),
+                    mode="pooled",
+                    session_id=session_id,
                 )
 
                 # Create pool config from settings if available
@@ -284,8 +415,38 @@ class ClaudeSDKClient:
 
                 async with pool.acquire_client(options) as client:
                     # Send the query to the pooled client with options
-                    # second parameter is session_id for turn messages
-                    await client.query(prompt)
+                    # Use session_id for conversation continuity
+                    # Convert Anthropic messages to SDK format
+                    sdk_messages = self._convert_anthropic_messages_to_sdk(messages)
+
+                    # Convert SDK messages to Claude SDK expected format
+                    async def message_iter() -> AsyncIterator[dict[str, Any]]:
+                        for msg in sdk_messages:
+                            # Convert to Claude SDK expected format with proper content handling
+                            content: str | list[dict[str, Any]] = ""
+                            if msg.content:
+                                if len(msg.content) == 1 and hasattr(
+                                    msg.content[0], "text"
+                                ):
+                                    # Simple text message
+                                    content = msg.content[0].text
+                                else:
+                                    # Complex message with multiple blocks - convert to list format
+                                    content = [
+                                        block.model_dump() for block in msg.content
+                                    ]
+
+                            yield {
+                                "type": "user",
+                                "message": {"role": "user", "content": content},
+                                "parent_tool_use_id": None,
+                                "session_id": session_id,
+                            }
+
+                    if session_id:
+                        await client.query(message_iter(), session_id=session_id)
+                    else:
+                        await client.query(message_iter())
 
                     # Receive and process all messages
                     async for message in client.receive_response():
@@ -378,7 +539,7 @@ class ClaudeSDKClient:
                 # Fall back to stateless mode on pool errors
                 logger.info("claude_sdk_falling_back_to_stateless_mode")
                 async for converted_message in self._query_stateless(
-                    prompt, options, request_id
+                    messages, options, request_id, session_id
                 ):
                     yield converted_message
 

@@ -260,6 +260,7 @@ class ClaudeStreamProcessor:
                             cache_read_tokens=usage_model.cache_read_input_tokens,
                             cache_write_tokens=usage_model.cache_creation_input_tokens,
                             cost_usd=message.total_cost_usd,
+                            session_id=message.session_id,
                         )
 
                 end_chunks = self.message_converter.create_streaming_end_chunks(

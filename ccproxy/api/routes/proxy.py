@@ -38,9 +38,11 @@ async def create_openai_chat_completion(
         )
 
         # Handle the request using proxy service directly
+        # Strip the /api prefix from the path
+        service_path = request.url.path.removeprefix("/api")
         response = await proxy_service.handle_request(
             method=request.method,
-            path=request.url.path,
+            path=service_path,
             headers=headers,
             body=body,
             query_params=query_params,
@@ -128,9 +130,11 @@ async def create_anthropic_message(
         )
 
         # Handle the request using proxy service directly
+        # Strip the /api prefix from the path
+        service_path = request.url.path.removeprefix("/api")
         response = await proxy_service.handle_request(
             method=request.method,
-            path=request.url.path,
+            path=service_path,
             headers=headers,
             body=body,
             query_params=query_params,

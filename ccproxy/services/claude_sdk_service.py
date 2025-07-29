@@ -79,6 +79,7 @@ class ClaudeSDKService:
         temperature: float | None = None,
         max_tokens: int | None = None,
         stream: bool = False,
+        session_id: str | None = None,
         **kwargs: Any,
     ) -> MessageResponse | AsyncIterator[dict[str, Any]]:
         """
@@ -90,6 +91,7 @@ class ClaudeSDKService:
             temperature: Temperature for response generation
             max_tokens: Maximum tokens in response
             stream: Whether to stream responses
+            session_id: Optional session ID for Claude SDK integration
             request_context: Existing request context to use instead of creating new one
             **kwargs: Additional arguments
 
@@ -112,6 +114,7 @@ class ClaudeSDKService:
             temperature=temperature,
             max_tokens=max_tokens,
             system_message=system_message,
+            session_id=session_id,
             **kwargs,
         )
 
@@ -120,11 +123,14 @@ class ClaudeSDKService:
 
         # Use existing context, but update metadata for this service (preserve original service_type)
         ctx = request_context
-        ctx.add_metadata(
-            endpoint="messages",
-            model=model,
-            streaming=stream,
-        )
+        metadata = {
+            "endpoint": "messages",
+            "model": model,
+            "streaming": stream,
+        }
+        if session_id:
+            metadata["session_id"] = session_id
+        ctx.add_metadata(**metadata)
         # Use existing request ID from context
         request_id = ctx.request_id
 
@@ -132,16 +138,18 @@ class ClaudeSDKService:
             # Log SDK request parameters
             timestamp = ctx.get_log_timestamp_prefix() if ctx else None
             await self._log_sdk_request(
-                request_id, prompt, options, model, stream, timestamp
+                request_id, prompt, options, model, stream, session_id, timestamp
             )
 
             if stream:
                 # For streaming, return the async iterator directly
                 # Access logging will be handled by the stream processor when ResultMessage is received
-                return self._stream_completion(ctx, prompt, options, model, timestamp)
+                return self._stream_completion(
+                    ctx, prompt, messages, options, model, session_id, timestamp
+                )
             else:
                 result = await self._complete_non_streaming(
-                    ctx, prompt, options, model, timestamp
+                    ctx, prompt, messages, options, model, session_id, timestamp
                 )
                 return result
         except (ClaudeProxyError, ServiceUnavailableError) as e:
@@ -153,8 +161,10 @@ class ClaudeSDKService:
         self,
         ctx: RequestContext,
         prompt: str,
+        messages: list[dict[str, Any]],
         options: "ClaudeCodeOptions",
         model: str,
+        session_id: str | None = None,
         timestamp: str | None = None,
     ) -> MessageResponse:
         """
@@ -174,16 +184,19 @@ class ClaudeSDKService:
         request_id = ctx.request_id
         logger.debug("claude_sdk_completion_start", request_id=request_id)
 
-        messages = [
+        sdk_messages = [
             m
-            async for m in self.sdk_client.query_completion(prompt, options, request_id)
+            async for m in self.sdk_client.query_completion(
+                prompt, messages, options, request_id, session_id
+            )
         ]
 
         result_message = next(
-            (m for m in messages if isinstance(m, sdk_models.ResultMessage)), None
+            (m for m in sdk_messages if isinstance(m, sdk_models.ResultMessage)), None
         )
         assistant_message = next(
-            (m for m in messages if isinstance(m, sdk_models.AssistantMessage)), None
+            (m for m in sdk_messages if isinstance(m, sdk_models.AssistantMessage)),
+            None,
         )
 
         if result_message is None:
@@ -215,7 +228,7 @@ class ClaudeSDKService:
         # Add other message types to the content block
         all_messages = [
             m
-            for m in messages
+            for m in sdk_messages
             if not isinstance(m, sdk_models.AssistantMessage | sdk_models.ResultMessage)
         ]
 
@@ -279,6 +292,7 @@ class ClaudeSDKService:
             cache_read_tokens=usage.cache_read_input_tokens,
             cache_write_tokens=usage.cache_creation_input_tokens,
             cost_usd=cost_usd,
+            session_id=result_message.session_id,
         )
         # Add success status to context for automatic access logging
         ctx.add_metadata(status_code=200)
@@ -293,8 +307,10 @@ class ClaudeSDKService:
         self,
         ctx: RequestContext,
         prompt: str,
+        messages: list[dict[str, Any]],
         options: "ClaudeCodeOptions",
         model: str,
+        session_id: str | None = None,
         timestamp: str | None = None,
     ) -> AsyncIterator[dict[str, Any]]:
         """
@@ -317,7 +333,9 @@ class ClaudeSDKService:
         )
         pretty_format = self.settings.claude.pretty_format if self.settings else True
 
-        sdk_stream = self.sdk_client.query_completion(prompt, options, request_id)
+        sdk_stream = self.sdk_client.query_completion(
+            prompt, messages, options, request_id, session_id
+        )
 
         async for chunk in self.stream_processor.process_stream(
             sdk_stream=sdk_stream,
@@ -339,6 +357,7 @@ class ClaudeSDKService:
         options: "ClaudeCodeOptions",
         model: str,
         stream: bool,
+        session_id: str | None = None,
         timestamp: str | None = None,
     ) -> None:
         """Log SDK input parameters as JSON dump.
@@ -349,6 +368,7 @@ class ClaudeSDKService:
             options: Claude SDK options
             model: The model being used
             stream: Whether streaming is enabled
+            session_id: Optional session ID for Claude SDK integration
             timestamp: Optional timestamp prefix
         """
         # timestamp is already provided from context, no need for fallback
@@ -363,6 +383,8 @@ class ClaudeSDKService:
             "stream": stream,
             "request_id": request_id,
         }
+        if session_id:
+            sdk_request_data["session_id"] = session_id
 
         await write_request_log(
             request_id=request_id,

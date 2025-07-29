@@ -85,6 +85,7 @@ async def log_request_access(
         "cache_write_tokens",
         "cost_usd",
         "cost_sdk_usd",
+        "session_id",
     ]
 
     for field in token_fields:
