@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 import structlog
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from ccproxy.core.async_utils import get_package_dir, patched_typing
 
@@ -19,14 +19,26 @@ with patched_typing():
 logger = structlog.get_logger(__name__)
 
 
-def _create_default_claude_code_options() -> ClaudeCodeOptions:
-    """Create ClaudeCodeOptions with default values."""
-    return ClaudeCodeOptions(
-        mcp_servers={
-            "confirmation": {"type": "sse", "url": "http://127.0.0.1:8000/mcp"}
-        },
-        permission_prompt_tool_name="mcp__confirmation__check_permission",
-    )
+def _create_default_claude_code_options(
+    builtin_permissions: bool = True,
+) -> ClaudeCodeOptions:
+    """Create ClaudeCodeOptions with default values.
+
+    Args:
+        builtin_permissions: Whether to include built-in permission handling defaults
+    """
+    if builtin_permissions:
+        return ClaudeCodeOptions(
+            mcp_servers={
+                "confirmation": {"type": "sse", "url": "http://127.0.0.1:8000/mcp"}
+            },
+            permission_prompt_tool_name="mcp__confirmation__check_permission",
+        )
+    else:
+        return ClaudeCodeOptions(
+            mcp_servers={},
+            permission_prompt_tool_name=None,
+        )
 
 
 class SDKMessageMode(str, Enum):
@@ -117,8 +129,13 @@ class ClaudeSettings(BaseModel):
         description="Path to Claude CLI executable",
     )
 
-    code_options: ClaudeCodeOptions = Field(
-        default_factory=_create_default_claude_code_options,
+    builtin_permissions: bool = Field(
+        default=True,
+        description="Whether to enable built-in permission handling infrastructure (MCP server and SSE endpoints). When disabled, users can still configure custom MCP servers and permission tools.",
+    )
+
+    code_options: ClaudeCodeOptions | None = Field(
+        default=None,
         description="Claude Code SDK options configuration",
     )
 
@@ -163,11 +180,16 @@ class ClaudeSettings(BaseModel):
 
     @field_validator("code_options", mode="before")
     @classmethod
-    def validate_claude_code_options(cls, v: Any) -> Any:
+    def validate_claude_code_options(cls, v: Any, info: Any) -> Any:
         """Validate and convert Claude Code options."""
+        # Get builtin_permissions setting from the model data
+        builtin_permissions = True  # default
+        if info.data and "builtin_permissions" in info.data:
+            builtin_permissions = info.data["builtin_permissions"]
+
         if v is None:
-            # Create instance with default values (same as default_factory)
-            return _create_default_claude_code_options()
+            # Create instance with default values based on builtin_permissions
+            return _create_default_claude_code_options(builtin_permissions)
 
         # If it's already a ClaudeCodeOptions instance, return as-is
         if isinstance(v, ClaudeCodeOptions):
@@ -175,16 +197,18 @@ class ClaudeSettings(BaseModel):
 
         # If it's an empty dict, treat it like None and use defaults
         if isinstance(v, dict) and not v:
-            return _create_default_claude_code_options()
+            return _create_default_claude_code_options(builtin_permissions)
 
         # For non-empty dicts, merge with defaults instead of replacing them
         if isinstance(v, dict):
-            # Start with default values
-            defaults = _create_default_claude_code_options()
+            # Start with default values based on builtin_permissions
+            defaults = _create_default_claude_code_options(builtin_permissions)
 
             # Extract default values as a dict for merging
             default_values = {
-                "mcp_servers": defaults.mcp_servers.copy(),
+                "mcp_servers": dict(defaults.mcp_servers)
+                if defaults.mcp_servers
+                else {},
                 "permission_prompt_tool_name": defaults.permission_prompt_tool_name,
             }
 
@@ -206,18 +230,41 @@ class ClaudeSettings(BaseModel):
                     if default_value is not None:
                         default_values[attr] = default_value
 
+            # Handle MCP server merging when builtin_permissions is enabled
+            if builtin_permissions and "mcp_servers" in v:
+                user_mcp_servers = v["mcp_servers"]
+                if isinstance(user_mcp_servers, dict):
+                    # Merge user MCP servers with built-in ones (user takes precedence)
+                    default_mcp = default_values["mcp_servers"]
+                    if isinstance(default_mcp, dict):
+                        merged_mcp_servers = {
+                            **default_mcp,
+                            **user_mcp_servers,
+                        }
+                        v = {**v, "mcp_servers": merged_mcp_servers}
+
             # Merge CLI overrides with defaults (CLI overrides take precedence)
             merged_values = {**default_values, **v}
 
             return ClaudeCodeOptions(**merged_values)
 
-        # Try to convert to dict if possible
+        # Try to convert to ClaudeCodeOptions if possible
         if hasattr(v, "model_dump"):
-            return v.model_dump()
+            return ClaudeCodeOptions(**v.model_dump())
         elif hasattr(v, "__dict__"):
-            return v.__dict__
+            return ClaudeCodeOptions(**v.__dict__)
 
-        return v
+        # Fallback: use default values
+        return _create_default_claude_code_options(builtin_permissions)
+
+    @model_validator(mode="after")
+    def validate_code_options_after(self) -> "ClaudeSettings":
+        """Ensure code_options is properly initialized after field validation."""
+        if self.code_options is None:
+            self.code_options = _create_default_claude_code_options(
+                self.builtin_permissions
+            )
+        return self
 
     def find_claude_cli(self) -> tuple[str | None, bool]:
         """Find Claude CLI executable in PATH or specified location.

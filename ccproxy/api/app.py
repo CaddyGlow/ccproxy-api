@@ -266,50 +266,58 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             logger.error("log_storage_initialization_failed", error=str(e))
             # Continue without log storage (graceful degradation)
 
-    # Initialize permission service
-    try:
-        permission_service = get_permission_service()
+    # Initialize permission service (conditional on builtin_permissions)
+    if settings.claude.builtin_permissions:
+        try:
+            permission_service = get_permission_service()
 
-        # Only connect terminal handler if not using external handler
-        if settings.server.use_terminal_permission_handler:
-            # terminal_handler = TerminalPermissionHandler()
+            # Only connect terminal handler if not using external handler
+            if settings.server.use_terminal_permission_handler:
+                # terminal_handler = TerminalPermissionHandler()
 
-            # TODO: Terminal handler should subscribe to events from the service
-            # instead of trying to set a handler directly
-            # The service uses an event-based architecture, not direct handlers
+                # TODO: Terminal handler should subscribe to events from the service
+                # instead of trying to set a handler directly
+                # The service uses an event-based architecture, not direct handlers
 
-            # logger.info(
-            #     "permission_handler_configured",
-            #     handler_type="terminal",
-            #     message="Connected terminal handler to permission service",
-            # )
-            # app.state.terminal_handler = terminal_handler
-            pass
-        else:
+                # logger.info(
+                #     "permission_handler_configured",
+                #     handler_type="terminal",
+                #     message="Connected terminal handler to permission service",
+                # )
+                # app.state.terminal_handler = terminal_handler
+                pass
+            else:
+                logger.debug(
+                    "permission_handler_configured",
+                    handler_type="external_sse",
+                    message="Terminal permission handler disabled - use 'ccproxy permission-handler connect' to handle permissions",
+                )
+                logger.warning(
+                    "permission_handler_required",
+                    message="Start external handler with: ccproxy permission-handler connect",
+                )
+
+            # Start the permission service
+            await permission_service.start()
+
+            # Store references in app state
+            app.state.permission_service = permission_service
+
             logger.debug(
-                "permission_handler_configured",
-                handler_type="external_sse",
-                message="Terminal permission handler disabled - use 'ccproxy permission-handler connect' to handle permissions",
+                "permission_service_initialized",
+                timeout_seconds=permission_service._timeout_seconds,
+                terminal_handler_enabled=settings.server.use_terminal_permission_handler,
+                builtin_permissions_enabled=True,
             )
-            logger.warning(
-                "permission_handler_required",
-                message="Start external handler with: ccproxy permission-handler connect",
-            )
-
-        # Start the permission service
-        await permission_service.start()
-
-        # Store references in app state
-        app.state.permission_service = permission_service
-
+        except Exception as e:
+            logger.error("permission_service_initialization_failed", error=str(e))
+            # Continue without permission service (API will work but without prompts)
+    else:
         logger.debug(
-            "permission_service_initialized",
-            timeout_seconds=permission_service._timeout_seconds,
-            terminal_handler_enabled=settings.server.use_terminal_permission_handler,
+            "permission_service_skipped",
+            builtin_permissions_enabled=False,
+            message="Built-in permission handling disabled - users can configure custom MCP servers and permission tools",
         )
-    except Exception as e:
-        logger.error("permission_service_initialization_failed", error=str(e))
-        # Continue without permission service (API will work but without prompts)
 
     yield
 
@@ -333,8 +341,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     except SchedulerError as e:
         logger.error("scheduler_stop_failed", error=str(e))
 
-    # Stop permission service
-    if hasattr(app.state, "permission_service") and app.state.permission_service:
+    # Stop permission service (if it was initialized)
+    if (
+        hasattr(app.state, "permission_service")
+        and app.state.permission_service
+        and settings.claude.builtin_permissions
+    ):
         try:
             await app.state.permission_service.stop()
             logger.debug("permission_service_stopped")
@@ -442,10 +454,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(models_router, prefix="/sdk", tags=["claude-sdk", "models"])
     app.include_router(models_router, prefix="/api", tags=["proxy-api", "models"])
 
-    # Confirmation endpoints for SSE streaming and responses
-    app.include_router(permissions_router, prefix="/permissions", tags=["permissions"])
-
-    setup_mcp(app)
+    # Confirmation endpoints for SSE streaming and responses (conditional on builtin_permissions)
+    if settings.claude.builtin_permissions:
+        app.include_router(
+            permissions_router, prefix="/permissions", tags=["permissions"]
+        )
+        setup_mcp(app)
 
     # Mount static files for dashboard SPA
     from pathlib import Path

@@ -150,6 +150,7 @@ class ClaudeOptions:
         sdk_enable_pool: bool = False,
         sdk_pool_size: int | None = None,
         system_prompt_injection_mode: str | None = None,
+        builtin_permissions: bool = True,
     ):
         """Initialize Claude options.
 
@@ -167,6 +168,7 @@ class ClaudeOptions:
             sdk_enable_pool: Enable Claude SDK client connection pooling
             sdk_pool_size: Number of clients to maintain in the pool
             system_prompt_injection_mode: System prompt injection mode
+            builtin_permissions: Enable built-in permission handling infrastructure
         """
         self.max_thinking_tokens = max_thinking_tokens
         self.allowed_tools = allowed_tools
@@ -181,3 +183,4 @@ class ClaudeOptions:
         self.sdk_enable_pool = sdk_enable_pool
         self.sdk_pool_size = sdk_pool_size
         self.system_prompt_injection_mode = system_prompt_injection_mode
+        self.builtin_permissions = builtin_permissions

@@ -93,12 +93,7 @@ async def log_request_access(
             log_data[field] = value
 
     # Add service and endpoint info
-    service_fields = [
-        "endpoint",
-        "model",
-        "streaming",
-        "service_type",
-    ]
+    service_fields = ["endpoint", "model", "streaming", "service_type", "headers"]
 
     for field in service_fields:
         value = ctx_metadata.get(field)

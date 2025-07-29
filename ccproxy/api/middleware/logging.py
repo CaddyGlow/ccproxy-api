@@ -111,6 +111,10 @@ class AccessLogMiddleware(BaseHTTPMiddleware):
                     if anthropic_request_id:
                         rate_limit_info["anthropic_request_id"] = anthropic_request_id
 
+                    headers = request.state.context.metadata.get("headers", {})
+                    headers.update(rate_limit_info)
+                    request.state.context.metadata["headers"] = headers
+                    request.state.context.metadata["status_code"] = status_code
                     # Extract metadata from context if available
                     context_metadata = {}
                     try:

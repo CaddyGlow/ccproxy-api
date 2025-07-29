@@ -470,6 +470,14 @@ def api(
             rich_help_panel="Claude Settings",
         ),
     ] = None,
+    builtin_permissions: Annotated[
+        bool,
+        typer.Option(
+            "--builtin-permissions/--no-builtin-permissions",
+            help="Enable built-in permission handling infrastructure (MCP server and SSE endpoints). When disabled, users can configure custom MCP servers and permission tools.",
+            rich_help_panel="Claude Settings",
+        ),
+    ] = True,
     # Core settings
     docker: Annotated[
         bool,
@@ -604,6 +612,7 @@ def api(
             sdk_enable_pool=sdk_enable_pool,
             sdk_pool_size=sdk_pool_size,
             system_prompt_injection_mode=system_prompt_injection_mode,
+            builtin_permissions=builtin_permissions,
         )
 
         security_options = SecurityOptions(auth_token=auth_token)
@@ -633,6 +642,7 @@ def api(
             sdk_enable_pool=claude_options.sdk_enable_pool,
             sdk_pool_size=claude_options.sdk_pool_size,
             system_prompt_injection_mode=claude_options.system_prompt_injection_mode,
+            builtin_permissions=claude_options.builtin_permissions,
         )
 
         # Load settings with CLI overrides

@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Configurable Permission Infrastructure**: Added `builtin_permissions` configuration flag to control built-in permission handling infrastructure:
+  - New `builtin_permissions` flag (default: true) in ClaudeSettings for granular control
+  - CLI support with `--builtin-permissions/--no-builtin-permissions` options
+  - When disabled: No MCP server setup, no SSE permission endpoints, no permission service initialization
+  - When enabled: Full built-in permission infrastructure with smart MCP server merging
+  - Users can configure custom MCP servers independently when built-in infrastructure is disabled
+  - Maintains full backward compatibility with existing configurations
 - **Claude SDK Pool Mode**: Implemented connection pooling for Claude Code SDK clients to improve request performance:
   - Maintains a pool of pre-initialized Claude Code instances to eliminate startup overhead
   - Reduces request latency by reusing established connections
