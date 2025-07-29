@@ -29,6 +29,7 @@ from ccproxy.observability import (
     timed_operation,
 )
 from ccproxy.observability.access_logger import log_request_access
+from ccproxy.observability.streaming_response import StreamingResponseWithLogging
 from ccproxy.services.credentials.manager import CredentialsManager
 from ccproxy.testing import RealisticMockResponseGenerator
 from ccproxy.utils.simple_request_logger import (
@@ -398,14 +399,6 @@ class ProxyService:
                     cost_usd=cost_usd,
                 )
 
-                # 7. Log comprehensive access log (includes Prometheus metrics)
-                await log_request_access(
-                    context=ctx,
-                    status_code=status_code,
-                    method=method,
-                    metrics=self.metrics,
-                )
-
                 return (
                     transformed_response["status_code"],
                     transformed_response["headers"],
@@ -413,27 +406,7 @@ class ProxyService:
                 )
 
             except Exception as e:
-                # Record error metrics via access logger
-                error_type = type(e).__name__
-
-                # Log the error with access logger (includes metrics)
-                await log_request_access(
-                    context=ctx,
-                    method=method,
-                    error_message=str(e),
-                    metrics=self.metrics,
-                    error_type=error_type,
-                )
-
-                logger.exception(
-                    "proxy_request_failed",
-                    method=method,
-                    path=path,
-                    error=str(e),
-                    exc_info=True,
-                )
-                # Re-raise the exception without transformation
-                # Let higher layers handle specific error types
+                ctx.add_metadata(error=e)
                 raise
 
     async def _get_access_token(self) -> str:
@@ -1012,18 +985,7 @@ class ProxyService:
                                         cost_usd=cost_usd,
                                     )
 
-                                    # Log comprehensive access log for streaming completion
-                                    from ccproxy.observability.access_logger import (
-                                        log_request_access,
-                                    )
-
-                                    await log_request_access(
-                                        context=ctx,
-                                        status_code=response_status,
-                                        metrics=self.metrics,
-                                        # Additional metadata for streaming completion
-                                        event_type="streaming_complete",
-                                    )
+                                    # Access logging is now handled by StreamingResponseWithLogging
 
                                 if (
                                     "content_block_delta" in chunk_str
@@ -1077,8 +1039,10 @@ class ProxyService:
         if "content-type" not in final_headers:
             final_headers["content-type"] = "text/event-stream"
 
-        return StreamingResponse(
-            stream_generator(),
+        return StreamingResponseWithLogging(
+            content=stream_generator(),
+            request_context=ctx,
+            metrics=self.metrics,
             status_code=response_status,
             headers=final_headers,
         )
@@ -1336,7 +1300,12 @@ class ProxyService:
             cost_usd=cost_usd,
         )
 
-        return StreamingResponse(realistic_mock_stream_generator(), headers=headers)
+        return StreamingResponseWithLogging(
+            content=realistic_mock_stream_generator(),
+            request_context=ctx,
+            metrics=self.metrics,
+            headers=headers,
+        )
 
     async def _generate_realistic_openai_stream(
         self,

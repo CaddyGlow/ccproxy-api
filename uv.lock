@@ -319,7 +319,7 @@ requires-dist = [
     { name = "duckdb", specifier = ">=1.1.0" },
     { name = "duckdb-engine", specifier = ">=0.17.0" },
     { name = "fastapi", extras = ["standard"], specifier = ">=0.115.14" },
-    { name = "fastapi-mcp", git = "https://github.com/tadata-org/fastapi_mcp.git?rev=refs%2Fpull%2F203%2Fhead" },
+    { name = "fastapi-mcp", git = "https://github.com/tadata-org/fastapi_mcp?rev=6fdbff6168b2c84b22966886741d1f24a584856c" },
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "httpx-sse", specifier = ">=0.4.1" },
     { name = "jsonschema", specifier = ">=0.33.2" },
@@ -818,7 +818,7 @@ wheels = [
 [[package]]
 name = "fastapi-mcp"
 version = "0.3.7"
-source = { git = "https://github.com/tadata-org/fastapi_mcp.git?rev=refs%2Fpull%2F203%2Fhead#6fdbff6168b2c84b22966886741d1f24a584856c" }
+source = { git = "https://github.com/tadata-org/fastapi_mcp?rev=6fdbff6168b2c84b22966886741d1f24a584856c#6fdbff6168b2c84b22966886741d1f24a584856c" }
 dependencies = [
     { name = "fastapi" },
     { name = "httpx" },

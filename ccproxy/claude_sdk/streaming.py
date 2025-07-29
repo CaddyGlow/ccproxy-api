@@ -282,24 +282,7 @@ class ClaudeStreamProcessor:
                     request_id=request_id,
                 )
         # Final message, contains metrics
-        if ctx:
-            # For streaming requests, manually trigger access log since the context
-            # has already exited by the time we get here
-            try:
-                from ccproxy.observability.access_logger import (
-                    log_request_access,
-                )
-
-                await log_request_access(
-                    context=ctx,
-                    status_code=200,
-                    metrics=self.metrics,
-                )
-            except Exception as e:
-                logger.warning(
-                    "streaming_access_log_failed",
-                    error=str(e),
-                    request_id=request_id,
-                )
+        # NOTE: Access logging is now handled by StreamingResponseWithLogging
+        # No need for manual access logging here anymore
 
         logger.debug("claude_sdk_stream_processing_completed", request_id=request_id)

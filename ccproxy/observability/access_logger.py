@@ -105,6 +105,25 @@ async def log_request_access(
         if value is not None:
             log_data[field] = value
 
+    # Add rate limit headers if available
+    rate_limit_fields = [
+        "x-ratelimit-limit",
+        "x-ratelimit-remaining",
+        "x-ratelimit-reset",
+        "anthropic-ratelimit-requests-limit",
+        "anthropic-ratelimit-requests-remaining",
+        "anthropic-ratelimit-requests-reset",
+        "anthropic-ratelimit-tokens-limit",
+        "anthropic-ratelimit-tokens-remaining",
+        "anthropic-ratelimit-tokens-reset",
+        "anthropic_request_id",
+    ]
+
+    for field in rate_limit_fields:
+        value = ctx_metadata.get(field)
+        if value is not None:
+            log_data[field] = value
+
     # Add any additional metadata provided
     log_data.update(additional_metadata)
 
@@ -112,15 +131,22 @@ async def log_request_access(
     log_data = {k: v for k, v in log_data.items() if v is not None}
 
     logger = context.logger.bind(**log_data)
-    if not log_data.get("streaming", False):
+    is_streaming = log_data.get("streaming", False)
+    is_streaming_complete = (
+        context.metadata.get("event_type", "") == "streaming_complete"
+    )
+
+    if context.metadata.get("error"):
+        logger.warn("access_log", exc_info=context.metadata.get("error"))
+    elif not is_streaming:
         # Log as access_log event (structured logging)
         logger.info("access_log")
-    elif log_data.get("event_type", "") == "streaming_complete":
+    elif is_streaming_complete:
         logger.info("access_log")
     else:
         # if streaming is true, and not streaming_complete log as debug
         # real access_log will come later
-        logger.debug("access_log")
+        logger.debug("access_log_streaming_start")
 
     # Store in DuckDB if available
     await _store_access_log(log_data, storage)

@@ -1,9 +1,11 @@
 # Simplified Testing Guide for CCProxy
 
 ## Philosophy
+
 Keep it simple. Test what matters, mock what's external, don't overthink it.
 
 ## Quick Start
+
 ```bash
 # Run all tests
 make test
@@ -50,7 +52,7 @@ tests/
 │   │   ├── test_duckdb_*.py # Database utilities
 │   │   └── test_version_checker.py # Version checking
 │   └── cli/                 # CLI command tests
-│       ├── test_cli_*.py    # CLI command implementations  
+│       ├── test_cli_*.py    # CLI command implementations
 │       └── test_cli_confirmation_handler.py # Confirmation CLI handling
 ├── integration/             # Integration tests
 │   ├── test_*_integration.py # Cross-component integration tests
@@ -75,12 +77,14 @@ tests/
 ## Writing Tests
 
 ### What to Mock (External Only)
+
 - **External APIs**: Claude API responses (using `mock_external_anthropic_api`)
-- **OAuth endpoints**: Token endpoints (using `mock_external_oauth_endpoints`)  
+- **OAuth endpoints**: Token endpoints (using `mock_external_oauth_endpoints`)
 - **Docker subprocess calls**: Process execution mocking
 - **Nothing else**: Keep mocking minimal and focused
 
 ### What NOT to Mock
+
 - **Internal services**: Use dependency injection with `mock_internal_claude_sdk_service`
 - **Adapters**: Test real adapter logic
 - **Configuration**: Use test settings
@@ -88,6 +92,7 @@ tests/
 - **Any internal components**: Only mock external boundaries
 
 ### New Mocking Strategy (Clear Separation)
+
 - **Internal Mocks**: `mock_internal_claude_sdk_service` - AsyncMock for dependency injection
 - **External Mocks**: `mock_external_anthropic_api` - HTTPXMock for HTTP interception
 - **OAuth Mocks**: `mock_external_oauth_endpoints` - OAuth flow simulation
@@ -97,12 +102,14 @@ tests/
 **REQUIREMENT**: All test files MUST pass type checking and linting. This is not optional.
 
 ### Type Safety Requirements
+
 1. **All test files MUST pass mypy type checking** - No `Any` types unless absolutely necessary
 2. **All test files MUST pass ruff formatting and linting** - Code must be properly formatted
 3. **Add proper type hints to all test functions and fixtures** - Include return types and parameter types
 4. **Import necessary types** - Use `from typing import` for type annotations
 
 ### Required Type Annotations
+
 - **Test functions**: Must have `-> None` return type annotation
 - **Fixtures**: Must have proper return type hints
 - **Parameters**: Must have type hints where not inferred from fixtures
@@ -111,11 +118,12 @@ tests/
 ### Examples with Proper Typing
 
 #### Basic Test Function with Types
+
 ```python
 from typing import Any
 import pytest
 from fastapi.testclient import TestClient
-from httpx_mock import HTTPXMock
+from pytest_httpx import HTTPXMock
 
 def test_openai_endpoint(client: TestClient, mock_claude: HTTPXMock) -> None:
     """Test OpenAI-compatible endpoint"""
@@ -129,6 +137,7 @@ def test_openai_endpoint(client: TestClient, mock_claude: HTTPXMock) -> None:
 ```
 
 #### Fixture with Type Annotations
+
 ```python
 from typing import Generator
 import pytest
@@ -149,6 +158,7 @@ def client(app: FastAPI) -> Generator[TestClient, None, None]:
 ```
 
 #### Testing with Complex Types
+
 ```python
 from typing import Any, Dict, List
 from pathlib import Path
@@ -165,6 +175,7 @@ def test_config_loading(tmp_path: Path) -> None:
 ```
 
 ### Quality Checks Commands
+
 ```bash
 # Type checking (MUST pass)
 make typecheck
@@ -181,6 +192,7 @@ make pre-commit
 ```
 
 ### Common Type Annotations for Tests
+
 - `TestClient` - FastAPI test client
 - `HTTPXMock` - Mock for HTTP requests
 - `Path` - File system paths
@@ -189,9 +201,10 @@ make pre-commit
 - `-> None` - Test function return type
 
 ### Basic Test Pattern
+
 ```python
 from fastapi.testclient import TestClient
-from httpx_mock import HTTPXMock
+from pytest_httpx import HTTPXMock
 
 def test_openai_endpoint(client: TestClient, mock_claude: HTTPXMock) -> None:
     """Test OpenAI-compatible endpoint"""
@@ -204,6 +217,7 @@ def test_openai_endpoint(client: TestClient, mock_claude: HTTPXMock) -> None:
 ```
 
 ### Testing with Auth
+
 ```python
 from fastapi.testclient import TestClient
 
@@ -217,9 +231,10 @@ def test_with_auth_token(client_with_auth: TestClient) -> None:
 ```
 
 ### Testing Streaming
+
 ```python
 from fastapi.testclient import TestClient
-from httpx_mock import HTTPXMock
+from pytest_httpx import HTTPXMock
 
 def test_streaming_response(client: TestClient, mock_claude_stream: HTTPXMock) -> None:
     """Test SSE streaming"""
@@ -235,28 +250,33 @@ def test_streaming_response(client: TestClient, mock_claude_stream: HTTPXMock) -
 ### NEW: Factory Pattern (Recommended for New Tests)
 
 #### Factory Fixtures
-- `fastapi_app_factory` - Creates FastAPI apps with any configuration  
+
+- `fastapi_app_factory` - Creates FastAPI apps with any configuration
 - `fastapi_client_factory` - Creates test clients with any configuration
 
 #### Authentication Modes (Composable)
+
 - `auth_mode_none` - No authentication required
 - `auth_mode_bearer_token` - Bearer token without server config
-- `auth_mode_configured_token` - Bearer token with server-configured token  
+- `auth_mode_configured_token` - Bearer token with server-configured token
 - `auth_mode_credentials` - OAuth credentials flow
 - `auth_mode_credentials_with_fallback` - Credentials with bearer fallback
 
 #### Auth Utilities
+
 - `auth_settings_factory` - Creates settings for any auth mode
 - `auth_headers_factory` - Generates headers for any auth mode
 - `invalid_auth_headers_factory` - Creates invalid headers for testing
 - `auth_test_utils` - Helper functions for auth response validation
 
 #### Service Mocks (Clear Naming)
+
 - `mock_internal_claude_sdk_service` - AsyncMock for dependency injection
-- `mock_external_anthropic_api` - HTTPXMock for HTTP interception  
+- `mock_external_anthropic_api` - HTTPXMock for HTTP interception
 - `mock_external_oauth_endpoints` - OAuth endpoint mocking
 
 #### Convenience Fixtures (Pre-configured)
+
 - `client_no_auth` - No authentication required
 - `client_bearer_auth` - Bearer token authentication
 - `client_configured_auth` - Server-configured token auth
@@ -265,20 +285,24 @@ def test_streaming_response(client: TestClient, mock_claude_stream: HTTPXMock) -
 ### Legacy Fixtures (Backward Compatibility)
 
 #### Core Fixtures (Still Work)
+
 - `app()` - Test FastAPI application
-- `client(app)` - Test client for API calls  
+- `client(app)` - Test client for API calls
 - `client_with_auth(app)` - Client with auth enabled
 
 #### Response Fixtures (Still Work)
+
 - `claude_responses()` - Standard Claude responses
 - `mock_claude_stream()` - Streaming responses
 
 #### Legacy Aliases (For Migration)
+
 - `mock_claude_service` → `mock_internal_claude_sdk_service`
 - `mock_claude` → `mock_external_anthropic_api`
 - `mock_oauth` → `mock_external_oauth_endpoints`
 
 ## Test Markers
+
 - `@pytest.mark.unit` - Fast unit tests (default)
 - `@pytest.mark.real_api` - Tests using real APIs (slow)
 - `@pytest.mark.docker` - Tests requiring Docker
@@ -297,6 +321,7 @@ def test_streaming_response(client: TestClient, mock_claude_stream: HTTPXMock) -
 ## Common Patterns
 
 ### NEW: Factory Pattern for Complex Scenarios
+
 ```python
 from fastapi.testclient import TestClient
 
@@ -315,6 +340,7 @@ def test_complex_scenario(fastapi_client_factory, auth_mode_bearer_token,
 ```
 
 ### NEW: Parametrized Testing (Multiple Scenarios)
+
 ```python
 import pytest
 from fastapi.testclient import TestClient
@@ -334,6 +360,7 @@ def test_endpoint_all_auth_modes(request, auth_mode_fixture, fastapi_client_fact
 ```
 
 ### NEW: Composable Authentication Testing
+
 ```python
 from fastapi.testclient import TestClient
 
@@ -349,6 +376,7 @@ def test_auth_endpoint(client_bearer_auth: TestClient, auth_headers_factory,
 ```
 
 ### Testing Error Cases (Updated)
+
 ```python
 from typing import Any
 from fastapi.testclient import TestClient
@@ -372,10 +400,11 @@ def test_invalid_model_error(fastapi_client_factory,
 ```
 
 ### Testing Metrics Collection
+
 ```python
 from typing import Any
 from fastapi.testclient import TestClient
-from httpx_mock import HTTPXMock
+from pytest_httpx import HTTPXMock
 
 def test_metrics_collected(client: TestClient, mock_claude: HTTPXMock, app) -> None:
     # Make request
@@ -389,6 +418,7 @@ def test_metrics_collected(client: TestClient, mock_claude: HTTPXMock, app) -> N
 ```
 
 ### Testing with Temp Files
+
 ```python
 from pathlib import Path
 import pytest
@@ -405,6 +435,7 @@ def test_config_loading(tmp_path: Path) -> None:
 ## Running Tests
 
 ### Make Commands
+
 ```bash
 make test              # Run all tests
 make test-unit         # Fast tests only
@@ -413,6 +444,7 @@ make test-watch        # Auto-run on changes
 ```
 
 ### Direct pytest
+
 ```bash
 pytest -v                          # Verbose output
 pytest -k "test_auth"              # Run matching tests
@@ -424,6 +456,7 @@ pytest --pdb                       # Debug on failure
 ## Debugging Tests
 
 ### Print Debugging
+
 ```python
 from typing import Any
 from fastapi.testclient import TestClient
@@ -440,6 +473,7 @@ def test_something(client: TestClient, capsys: pytest.CaptureFixture[str]) -> No
 ```
 
 ### Interactive Debugging
+
 ```python
 from fastapi.testclient import TestClient
 
@@ -470,6 +504,7 @@ See [`FIXTURE_MIGRATION_GUIDE.md`](./FIXTURE_MIGRATION_GUIDE.md) for comprehensi
 ### Key Changes Summary
 
 #### Before (Old Pattern)
+
 ```python
 # Limited combinations, fixture explosion
 def test_auth(client_with_auth: TestClient) -> None:
@@ -477,7 +512,8 @@ def test_auth(client_with_auth: TestClient) -> None:
 ```
 
 #### After (New Pattern - Recommended)
-```python  
+
+```python
 # Infinite combinations, composable
 def test_auth(fastapi_client_factory, auth_mode_bearer_token,
               auth_headers_factory) -> None:
@@ -487,8 +523,9 @@ def test_auth(fastapi_client_factory, auth_mode_bearer_token,
 ```
 
 #### Benefits of Migration
+
 - **Scalability**: Linear vs exponential fixture growth
-- **Clarity**: Clear naming (`mock_internal_claude_sdk_service` vs `mock_claude_service`)  
+- **Clarity**: Clear naming (`mock_internal_claude_sdk_service` vs `mock_claude_service`)
 - **Composability**: Test any combination of features
 - **Type Safety**: Full type annotations and mypy compliance
 - **No Test Skips**: Proper configurations for all auth modes
@@ -498,13 +535,15 @@ def test_auth(fastapi_client_factory, auth_mode_bearer_token,
 When writing tests for this project:
 
 ### Required (Unchanged)
+
 1. **MUST include proper type hints** - All test functions need `-> None` return type
-2. **MUST pass mypy and ruff checks** - Type safety and formatting are required  
+2. **MUST pass mypy and ruff checks** - Type safety and formatting are required
 3. Keep tests simple and focused
 4. Follow the naming convention: `test_what_when_expected()`
 5. Import necessary types: `TestClient`, `HTTPXMock`, `Path`, etc.
 
 ### Recommended (New)
+
 6. **Use factory pattern** - For complex scenarios: `fastapi_client_factory.create_client()`
 7. **Use composable auth** - Auth modes: `auth_mode_bearer_token`, `auth_mode_none`, etc.
 8. **Use clear mock naming** - `mock_internal_claude_sdk_service`, `mock_external_anthropic_api`
@@ -512,12 +551,14 @@ When writing tests for this project:
 10. **Prefer convenience fixtures** - `client_bearer_auth`, `client_no_auth` for simple cases
 
 ### Legacy Support (Backward Compatibility)
+
 - All existing fixtures still work: `client`, `client_with_auth`, `mock_claude_service`
 - Use existing patterns in `tests/` as reference
-- Only mock external HTTP calls using `httpx_mock`
+- Only mock external HTTP calls using `pytest_httpx`
 - Use fixtures from `conftest.py`, don't create new combinatorial ones
 
 **Type Safety Checklist:**
+
 - [ ] All test functions have `-> None` return type
 - [ ] All parameters have type hints (especially fixtures)
 - [ ] Complex variables have explicit type annotations
@@ -525,6 +566,7 @@ When writing tests for this project:
 - [ ] Code passes `make typecheck` and `make lint`
 
 **Factory Pattern Checklist:**
+
 - [ ] Use `fastapi_client_factory` for complex test scenarios
 - [ ] Use auth modes (`auth_mode_bearer_token`) instead of manual auth setup
 - [ ] Use clear service mock names (`mock_internal_claude_sdk_service`)

@@ -1,10 +1,14 @@
 import logging
+import shutil
 import sys
 from pathlib import Path
+from typing import TextIO
 
 import structlog
+from rich.console import Console
+from rich.traceback import Traceback
 from structlog.stdlib import BoundLogger
-from structlog.typing import Processor
+from structlog.typing import ExcInfo, Processor
 
 
 def configure_structlog(log_level: int = logging.INFO) -> None:
@@ -48,18 +52,63 @@ def configure_structlog(log_level: int = logging.INFO) -> None:
         context_class=dict,
         logger_factory=structlog.stdlib.LoggerFactory(),
         wrapper_class=structlog.stdlib.BoundLogger,
-        cache_logger_on_first_use=True,  # Cache for performance
+        cache_logger_on_first_use=True,
+    )
+
+
+def rich_traceback(sio: TextIO, exc_info: ExcInfo) -> None:
+    """Pretty-print *exc_info* to *sio* using the *Rich* package.
+
+    Based on:
+    https://github.com/hynek/structlog/blob/74cdff93af217519d4ebea05184f5e0db2972556/src/structlog/dev.py#L179-L192
+
+    """
+    term_width, _height = shutil.get_terminal_size((80, 123))
+    sio.write("\n")
+    # Rich docs: https://rich.readthedocs.io/en/stable/reference/traceback.html
+    Console(file=sio, color_system="truecolor").print(
+        Traceback.from_exception(
+            *exc_info,
+            # show_locals=True,  # Takes up too much vertical space
+            extra_lines=1,  # Reduce amount of source code displayed
+            width=term_width,  # Maximize width
+            max_frames=5,  # Default is 10
+            suppress=[
+                "click",
+                "typer",
+                "uvicorn",
+                "fastapi",
+                "starlette",
+            ],  # Suppress noise from these libraries
+        ),
     )
 
 
 def setup_logging(
-    json_logs: bool = False, log_level_name: str = "DEBUG", log_file: str | None = None
+    json_logs: bool = False,
+    log_level_name: str = "DEBUG",
+    log_file: str | None = None,
 ) -> BoundLogger:
     """
     Setup logging for the entire application using canonical structlog pattern.
     Returns a structlog logger instance.
     """
     log_level = getattr(logging, log_level_name.upper(), logging.INFO)
+
+    # Install rich traceback handler globally with frame limit
+    # install_rich_traceback(
+    #     show_locals=log_level <= logging.DEBUG,  # Only show locals in debug mode
+    #     max_frames=max_traceback_frames,
+    #     width=120,
+    #     word_wrap=True,
+    #     suppress=[
+    #         "click",
+    #         "typer",
+    #         "uvicorn",
+    #         "fastapi",
+    #         "starlette",
+    #     ],  # Suppress noise from these libraries
+    # )
 
     # Get root logger and set level BEFORE configuring structlog
     root_logger = logging.getLogger()
@@ -105,7 +154,9 @@ def setup_logging(
     console_renderer = (
         structlog.processors.JSONRenderer()
         if json_logs
-        else structlog.dev.ConsoleRenderer()
+        else structlog.dev.ConsoleRenderer(
+            exception_formatter=rich_traceback  # structlog.dev.rich_traceback,  # Use rich for better formatting
+        )
     )
 
     # Console gets human-readable timestamps for both structlog and stdlib logs

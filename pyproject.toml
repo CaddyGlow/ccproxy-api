@@ -344,4 +344,4 @@ package = true
 
 [tool.uv.sources]
 claude-code-sdk = { git = "https://github.com/anthropics/claude-code-sdk-python.git" }
-fastapi-mcp = { git = "https://github.com/tadata-org/fastapi_mcp.git", rev = "refs/pull/203/head" }
+fastapi-mcp = { git = "https://github.com/tadata-org/fastapi_mcp", rev = "6fdbff6168b2c84b22966886741d1f24a584856c" }

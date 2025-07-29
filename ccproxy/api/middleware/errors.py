@@ -50,6 +50,12 @@ def setup_error_handlers(app: FastAPI) -> None:
         request: Request, exc: ClaudeProxyError
     ) -> JSONResponse:
         """Handle Claude proxy specific errors."""
+        # Store status code in request state for access logging
+        if hasattr(request.state, "context") and hasattr(
+            request.state.context, "metadata"
+        ):
+            request.state.context.metadata["status_code"] = exc.status_code
+
         logger.error(
             "Claude proxy error",
             error_type="claude_proxy_error",
@@ -82,6 +88,12 @@ def setup_error_handlers(app: FastAPI) -> None:
         request: Request, exc: ValidationError
     ) -> JSONResponse:
         """Handle validation errors."""
+        # Store status code in request state for access logging
+        if hasattr(request.state, "context") and hasattr(
+            request.state.context, "metadata"
+        ):
+            request.state.context.metadata["status_code"] = 400
+
         logger.error(
             "Validation error",
             error_type="validation_error",
@@ -565,6 +577,12 @@ def setup_error_handlers(app: FastAPI) -> None:
         request: Request, exc: HTTPException
     ) -> JSONResponse:
         """Handle HTTP exceptions."""
+        # Store status code in request state for access logging
+        if hasattr(request.state, "context") and hasattr(
+            request.state.context, "metadata"
+        ):
+            request.state.context.metadata["status_code"] = exc.status_code
+
         # Don't log stack trace for 404 errors as they're expected
         if exc.status_code == 404:
             logger.info(
@@ -581,7 +599,7 @@ def setup_error_handlers(app: FastAPI) -> None:
             # For structlog, we can always include traceback since structlog handles filtering
             import traceback
 
-            stack_trace = traceback.format_exc()
+            stack_trace = traceback.format_exc(limit=5)  # Limit to 5 frames
 
             logger.error(
                 "HTTP exception",
@@ -668,6 +686,12 @@ def setup_error_handlers(app: FastAPI) -> None:
         request: Request, exc: Exception
     ) -> JSONResponse:
         """Handle all other unhandled exceptions."""
+        # Store status code in request state for access logging
+        if hasattr(request.state, "context") and hasattr(
+            request.state.context, "metadata"
+        ):
+            request.state.context.metadata["status_code"] = 500
+
         logger.error(
             "Unhandled exception",
             error_type="unhandled_exception",

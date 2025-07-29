@@ -43,6 +43,7 @@ from ccproxy.docker.stream_process import DefaultOutputMiddleware
 # Import organized fixture modules
 pytest_plugins = [
     "tests.fixtures.claude_sdk.internal_mocks",
+    "tests.fixtures.external_apis.anthropic_api",
 ]
 
 

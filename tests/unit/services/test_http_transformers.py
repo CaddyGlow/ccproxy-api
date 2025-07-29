@@ -315,16 +315,20 @@ class TestHTTPRequestTransformer:
         result = request_transformer.transform_system_prompt(body)
         result_data = json.loads(result.decode("utf-8"))
 
-        # Should update first element with cache control and keep structure
+        # Should prepend Claude Code prompt with cache control and keep original structure
         assert "system" in result_data
         assert isinstance(result_data["system"], list)
-        assert len(result_data["system"]) == 2
+        assert len(result_data["system"]) == 3
         assert (
             result_data["system"][0]["text"]
             == "You are Claude Code, Anthropic's official CLI for Claude."
         )
         assert result_data["system"][0]["cache_control"] == {"type": "ephemeral"}
-        assert result_data["system"][1]["text"] == "Additional instructions"
+        assert (
+            result_data["system"][1]["text"]
+            == "You are Claude Code, Anthropic's official CLI for Claude."
+        )
+        assert result_data["system"][2]["text"] == "Additional instructions"
 
     def test_transform_system_prompt_invalid_json(
         self, request_transformer: HTTPRequestTransformer
@@ -374,12 +378,15 @@ class TestHTTPRequestTransformer:
         mock_app_state = type("MockAppState", (), {})()
         mock_claude_data = type("MockClaudeData", (), {})()
         mock_claude_data.system_prompt = SystemPromptData(
-            texts=[
-                "You are Claude Code, Anthropic's official CLI for Claude.",
-                "Additional context from Claude CLI.",
-                "More system instructions.",
-            ],
-            cache_control={"type": "ephemeral"},
+            system_field=[
+                {
+                    "type": "text",
+                    "text": "You are Claude Code, Anthropic's official CLI for Claude.",
+                    "cache_control": {"type": "ephemeral"},
+                },
+                {"type": "text", "text": "Additional context from Claude CLI."},
+                {"type": "text", "text": "More system instructions."},
+            ]
         )
         mock_app_state.claude_detection_data = mock_claude_data
 
@@ -575,7 +582,9 @@ class TestHTTPRequestTransformer:
 
             # Should detect OpenAI and transform
             mock_transform.assert_called_once_with(openai_body)
-            mock_system.assert_called_once_with(b'{"transformed": true}', None)
+            mock_system.assert_called_once_with(
+                b'{"transformed": true}', None, "minimal"
+            )
             assert result == b'{"final": true}'
 
     def test_transform_request_body_anthropic_passthrough(
@@ -600,7 +609,7 @@ class TestHTTPRequestTransformer:
             result = request_transformer.transform_request_body(anthropic_body, path)
 
             # Should only apply system prompt transformation
-            mock_system.assert_called_once_with(anthropic_body, None)
+            mock_system.assert_called_once_with(anthropic_body, None, "minimal")
             assert result == b'{"system_transformed": true}'
 
     def test_transform_request_body_empty_body(

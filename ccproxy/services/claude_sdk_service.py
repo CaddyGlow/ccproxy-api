@@ -15,7 +15,6 @@ from ccproxy.claude_sdk.streaming import ClaudeStreamProcessor
 from ccproxy.config.claude import SDKMessageMode
 from ccproxy.config.settings import Settings
 from ccproxy.core.errors import (
-    AuthenticationError,
     ClaudeProxyError,
     ServiceUnavailableError,
 )

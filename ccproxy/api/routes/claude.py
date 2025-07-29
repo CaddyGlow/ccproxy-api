@@ -14,6 +14,7 @@ from ccproxy.adapters.openai.adapter import (
 )
 from ccproxy.api.dependencies import ClaudeServiceDep
 from ccproxy.models.messages import MessageCreateParams, MessageResponse
+from ccproxy.observability.streaming_response import StreamingResponseWithLogging
 
 
 # Create the router for Claude SDK endpoints
@@ -71,8 +72,10 @@ async def create_openai_chat_completion(
                 # Send final chunk
                 yield b"data: [DONE]\n\n"
 
-            return StreamingResponse(
-                openai_stream_generator(),
+            return StreamingResponseWithLogging(
+                content=openai_stream_generator(),
+                request_context=request_context,
+                metrics=getattr(claude_service, "metrics", None),
                 media_type="text/event-stream",
                 headers={
                     "Cache-Control": "no-cache",
@@ -155,8 +158,10 @@ async def create_anthropic_message(
                             yield f"data: {json.dumps(chunk)}\n\n".encode()
                 # No final [DONE] chunk for Anthropic format
 
-            return StreamingResponse(
-                anthropic_stream_generator(),
+            return StreamingResponseWithLogging(
+                content=anthropic_stream_generator(),
+                request_context=request_context,
+                metrics=getattr(claude_service, "metrics", None),
                 media_type="text/event-stream",
                 headers={
                     "Cache-Control": "no-cache",
