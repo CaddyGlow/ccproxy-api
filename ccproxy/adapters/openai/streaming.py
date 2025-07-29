@@ -435,6 +435,7 @@ class OpenAIStreamProcessor:
                 if cost_usd is not None:
                     formatted_text += f", cost_usd={cost_usd}"
                 yield self._format_chunk_output(delta={"content": formatted_text})
+
             elif block.get("type") == "tool_use":
                 # Start of tool call
                 tool_id = block.get("id", "")

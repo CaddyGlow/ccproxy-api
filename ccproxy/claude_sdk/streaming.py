@@ -251,17 +251,16 @@ class ClaudeStreamProcessor:
                         yield chunk
                     content_block_index += 1
 
-                # Final message, contains metrics
-                if ctx:
-                    usage_model = message.usage_model
-                    ctx.add_metadata(
-                        status_code=200,
-                        tokens_input=usage_model.input_tokens,
-                        tokens_output=usage_model.output_tokens,
-                        cache_read_tokens=usage_model.cache_read_input_tokens,
-                        cache_write_tokens=usage_model.cache_creation_input_tokens,
-                        cost_usd=message.total_cost_usd,
-                    )
+                    if ctx:
+                        usage_model = message.usage_model
+                        ctx.add_metadata(
+                            status_code=200,
+                            tokens_input=usage_model.input_tokens,
+                            tokens_output=usage_model.output_tokens,
+                            cache_read_tokens=usage_model.cache_read_input_tokens,
+                            cache_write_tokens=usage_model.cache_creation_input_tokens,
+                            cost_usd=message.total_cost_usd,
+                        )
 
                 end_chunks = self.message_converter.create_streaming_end_chunks(
                     stop_reason=message.stop_reason
@@ -280,6 +279,26 @@ class ClaudeStreamProcessor:
                     "sdk_unknown_message_type",
                     message_type=type(message).__name__,
                     message_content=str(message)[:200],
+                    request_id=request_id,
+                )
+        # Final message, contains metrics
+        if ctx:
+            # For streaming requests, manually trigger access log since the context
+            # has already exited by the time we get here
+            try:
+                from ccproxy.observability.access_logger import (
+                    log_request_access,
+                )
+
+                await log_request_access(
+                    context=ctx,
+                    status_code=200,
+                    metrics=self.metrics,
+                )
+            except Exception as e:
+                logger.warning(
+                    "streaming_access_log_failed",
+                    error=str(e),
                     request_id=request_id,
                 )
 

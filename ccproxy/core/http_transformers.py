@@ -20,24 +20,47 @@ claude_code_prompt = "You are Claude Code, Anthropic's official CLI for Claude."
 # claude_code_prompt = "<system-reminder>\nAs you answer the user's questions, you can use the following context:\n# important-instruction-reminders\nDo what has been asked; nothing more, nothing less.\nNEVER create files unless they're absolutely necessary for achieving your goal.\nALWAYS prefer editing an existing file to creating a new one.\nNEVER proactively create documentation files (*.md) or README files. Only create documentation files if explicitly requested by the User.\n\n      \n      IMPORTANT: this context may or may not be relevant to your tasks. You should not respond to this context unless it is highly relevant to your task.\n</system-reminder>\n"
 
 
-def get_claude_code_prompt(app_state: Any = None) -> dict[str, Any]:
-    """Get the Claude Code system prompt with cache control."""
-    # Use detected system prompt when available
-    if app_state and hasattr(app_state, "claude_detection_data"):
-        claude_data = app_state.claude_detection_data
-        return {
-            "type": "text",
-            "text": claude_data.system_prompt.text,
-            "cache_control": claude_data.system_prompt.cache_control
-            or {"type": "ephemeral"},
-        }
+def get_detected_system_field(
+    app_state: Any = None, injection_mode: str = "minimal"
+) -> Any:
+    """Get the detected system field for injection.
 
-    # Fallback to hardcoded prompt
-    return {
-        "type": "text",
-        "text": claude_code_prompt,
-        "cache_control": {"type": "ephemeral"},
-    }
+    Args:
+        app_state: App state containing detection data
+        injection_mode: 'minimal' or 'full' mode
+
+    Returns:
+        The system field to inject (preserving exact Claude CLI structure), or None if no detection data available
+    """
+    if not app_state or not hasattr(app_state, "claude_detection_data"):
+        return None
+
+    claude_data = app_state.claude_detection_data
+    detected_system = claude_data.system_prompt.system_field
+
+    if injection_mode == "full":
+        # Return the complete detected system field exactly as Claude CLI sent it
+        return detected_system
+    else:
+        # Minimal mode: extract just the first system message, preserving its structure
+        if isinstance(detected_system, str):
+            return detected_system
+        elif isinstance(detected_system, list) and detected_system:
+            # Return only the first message object with its complete structure (type, text, cache_control)
+            return [detected_system[0]]
+
+    return None
+
+
+def get_fallback_system_field() -> list[dict[str, Any]]:
+    """Get fallback system field when no detection data is available."""
+    return [
+        {
+            "type": "text",
+            "text": claude_code_prompt,
+            "cache_control": {"type": "ephemeral"},
+        }
+    ]
 
 
 class HTTPRequestTransformer(RequestTransformer):
@@ -239,7 +262,12 @@ class HTTPRequestTransformer(RequestTransformer):
         return proxy_headers
 
     def transform_request_body(
-        self, body: bytes, path: str, proxy_mode: str = "full", app_state: Any = None
+        self,
+        body: bytes,
+        path: str,
+        proxy_mode: str = "full",
+        app_state: Any = None,
+        injection_mode: str = "minimal",
     ) -> bytes:
         """Transform request body."""
         if not body:
@@ -251,17 +279,20 @@ class HTTPRequestTransformer(RequestTransformer):
             body = self._transform_openai_to_anthropic(body)
 
         # Apply system prompt transformation for Claude Code identity
-        return self.transform_system_prompt(body, app_state)
+        return self.transform_system_prompt(body, app_state, injection_mode)
 
-    def transform_system_prompt(self, body: bytes, app_state: Any = None) -> bytes:
-        """Transform system prompt to ensure Claude Code identification comes first.
+    def transform_system_prompt(
+        self, body: bytes, app_state: Any = None, injection_mode: str = "minimal"
+    ) -> bytes:
+        """Transform system prompt based on injection mode.
 
         Args:
             body: Original request body as bytes
             app_state: Optional app state containing detection data
+            injection_mode: System prompt injection mode ('minimal' or 'full')
 
         Returns:
-            Transformed request body as bytes with Claude Code system prompt
+            Transformed request body as bytes with system prompt injection
         """
         try:
             import json
@@ -271,41 +302,43 @@ class HTTPRequestTransformer(RequestTransformer):
             # Return original if not valid JSON
             return body
 
-        # Check if request has a system prompt
-        if "system" not in data or (
-            isinstance(data["system"], str) and data["system"] == claude_code_prompt
-        ):
-            # No system prompt, inject Claude Code identification
-            data["system"] = [get_claude_code_prompt(app_state)]
-            return json.dumps(data).encode("utf-8")
+        # Get the system field to inject
+        detected_system = get_detected_system_field(app_state, injection_mode)
+        if detected_system is None:
+            # No detection data, use fallback
+            detected_system = get_fallback_system_field()
 
-        system = data["system"]
+        # Always inject the system prompt (detected or fallback)
+        if "system" not in data:
+            # No existing system prompt, inject the detected/fallback one
+            data["system"] = detected_system
+        else:
+            # Request has existing system prompt, prepend the detected/fallback one
+            existing_system = data["system"]
 
-        if isinstance(system, str):
-            # Handle string system prompt
-            if system == claude_code_prompt:
-                # Already correct, convert to proper array format
-                data["system"] = [get_claude_code_prompt(app_state)]
-                return json.dumps(data).encode("utf-8")
-
-            # Prepend Claude Code prompt to existing string
-            data["system"] = [
-                get_claude_code_prompt(app_state),
-                {"type": "text", "text": system},
-            ]
-
-        elif isinstance(system, list):
-            # Handle array system prompt
-            if len(system) > 0:
-                # Check if first element has correct text
-                first = system[0]
-                if isinstance(first, dict) and first.get("text") == claude_code_prompt:
-                    # Already has Claude Code first, ensure it has cache_control
-                    data["system"][0] = get_claude_code_prompt(app_state)
-                    return json.dumps(data).encode("utf-8")
-
-            # Prepend Claude Code prompt
-            data["system"] = [get_claude_code_prompt(app_state)] + system
+            if isinstance(detected_system, str):
+                # Detected system is a string
+                if isinstance(existing_system, str):
+                    # Both are strings, convert to list format
+                    data["system"] = [
+                        {"type": "text", "text": detected_system},
+                        {"type": "text", "text": existing_system},
+                    ]
+                elif isinstance(existing_system, list):
+                    # Detected is string, existing is list
+                    data["system"] = [
+                        {"type": "text", "text": detected_system}
+                    ] + existing_system
+            elif isinstance(detected_system, list):
+                # Detected system is a list
+                if isinstance(existing_system, str):
+                    # Detected is list, existing is string
+                    data["system"] = detected_system + [
+                        {"type": "text", "text": existing_system}
+                    ]
+                elif isinstance(existing_system, list):
+                    # Both are lists, concatenate
+                    data["system"] = detected_system + existing_system
 
         return json.dumps(data).encode("utf-8")
 

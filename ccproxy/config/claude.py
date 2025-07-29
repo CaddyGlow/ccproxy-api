@@ -42,6 +42,17 @@ class SDKMessageMode(str, Enum):
     FORMATTED = "formatted"
 
 
+class SystemPromptInjectionMode(str, Enum):
+    """Modes for system prompt injection.
+
+    - minimal: Only inject Claude Code identification prompt
+    - full: Inject all detected system messages from Claude CLI
+    """
+
+    MINIMAL = "minimal"
+    FULL = "full"
+
+
 class ClaudePoolSettings(BaseModel):
     """Configuration settings for Claude SDK client connection pooling."""
 
@@ -114,6 +125,11 @@ class ClaudeSettings(BaseModel):
     sdk_message_mode: SDKMessageMode = Field(
         default=SDKMessageMode.FORWARD,
         description="Mode for handling SDK messages from Claude SDK. Options: forward (direct SDK blocks), ignore (skip blocks), formatted (XML tags with JSON data)",
+    )
+
+    system_prompt_injection_mode: SystemPromptInjectionMode = Field(
+        default=SystemPromptInjectionMode.MINIMAL,
+        description="Mode for system prompt injection. Options: minimal (Claude Code ID only), full (all detected system messages)",
     )
 
     pretty_format: bool = Field(

@@ -132,6 +132,7 @@ def get_credentials_manager(
 
 
 def get_proxy_service(
+    request: Request,
     settings: SettingsDep,
     credentials_manager: Annotated[
         CredentialsManager, Depends(get_credentials_manager)
@@ -140,13 +141,14 @@ def get_proxy_service(
     """Get proxy service instance.
 
     Args:
+        request: FastAPI request object (for app state access)
         settings: Application settings dependency
         credentials_manager: Credentials manager dependency
 
     Returns:
         Proxy service instance
     """
-    logger.debug("Creating proxy service instance")
+    logger.debug("get_proxy_service")
     # Create HTTP client for proxy
     from ccproxy.core.http import HTTPXClient
 
@@ -163,6 +165,7 @@ def get_proxy_service(
         proxy_mode="full",
         target_base_url=settings.reverse_proxy.target_url,
         metrics=metrics,
+        app_state=request.app.state,  # Pass app state for detection data access
     )
 
 
@@ -172,7 +175,7 @@ def get_observability_metrics() -> PrometheusMetrics:
     Returns:
         PrometheusMetrics instance
     """
-    logger.debug("Getting observability metrics instance")
+    logger.debug("get_observability_metrics")
     return get_metrics()
 
 

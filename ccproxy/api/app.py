@@ -168,12 +168,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     # Initialize Claude detection service
     try:
-        logger.info("initializing_claude_detection")
+        logger.debug("initializing_claude_detection")
         detection_service = ClaudeDetectionService(settings)
         claude_data = await detection_service.initialize_detection()
         app.state.claude_detection_data = claude_data
         app.state.claude_detection_service = detection_service
-        logger.info(
+        logger.debug(
             "claude_detection_completed",
             version=claude_data.claude_version,
             cached_at=claude_data.cached_at.isoformat(),
@@ -219,13 +219,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
             # Pre-start the pool to populate it with clients
             pool = await pool_manager.get_pool(config=pool_config)
-
-            logger.info(
-                "claude_sdk_pool_started",
-                message="Claude SDK client pool started at application startup",
-                pool_size=pool_config.pool_size if pool_config else 3,
-                max_pool_size=pool_config.max_pool_size if pool_config else 10,
-            )
 
         # Create ClaudeSDKService instance
         claude_service = ClaudeSDKService(

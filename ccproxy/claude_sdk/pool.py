@@ -170,8 +170,10 @@ class ClaudeSDKClientPool:
 
         logger.info(
             "claude_sdk_pool_started",
-            background_initialization=True,
             target_pool_size=self.config.pool_size,
+            target_max_pool_size=self.config.max_pool_size,
+            startup_delay=self.config.startup_delay,
+            creation_delay=self.config.creation_delay,
         )
 
     async def stop(self) -> None:

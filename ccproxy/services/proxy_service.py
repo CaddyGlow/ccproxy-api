@@ -83,6 +83,7 @@ class ProxyService:
         proxy_mode: str = "full",
         target_base_url: str = "https://api.anthropic.com",
         metrics: PrometheusMetrics | None = None,
+        app_state: Any = None,
     ) -> None:
         """Initialize the proxy service.
 
@@ -93,6 +94,7 @@ class ProxyService:
             proxy_mode: Transformation mode - "minimal" or "full"
             target_base_url: Base URL for the target API
             metrics: Prometheus metrics collector (optional)
+            app_state: FastAPI app state for accessing detection data
         """
         self.proxy_client = proxy_client
         self.credentials_manager = credentials_manager
@@ -100,6 +102,7 @@ class ProxyService:
         self.proxy_mode = proxy_mode
         self.target_base_url = target_base_url.rstrip("/")
         self.metrics = metrics or get_metrics()
+        self.app_state = app_state
 
         # Create concrete transformers
         self.request_transformer = HTTPRequestTransformer()
@@ -122,10 +125,6 @@ class ProxyService:
         self._verbose_api = (
             os.environ.get("CCPROXY_VERBOSE_API", "false").lower() == "true"
         )
-        # Note: Request logging is now handled by simple_request_logger utility
-        # which checks CCPROXY_LOG_REQUESTS and CCPROXY_REQUEST_LOG_DIR independently
-
-        # Request context is now passed as parameters to methods
 
     def _init_proxy_url(self) -> str | None:
         """Initialize proxy URL from environment variables."""
@@ -239,7 +238,13 @@ class ProxyService:
 
                 # 2. Request transformation
                 async with timed_operation("request_transform", ctx.request_id):
-                    logger.debug("request_transform_start")
+                    injection_mode = (
+                        self.settings.claude.system_prompt_injection_mode.value
+                    )
+                    logger.debug(
+                        "request_transform_start",
+                        system_prompt_injection_mode=injection_mode,
+                    )
                     transformed_request = await self._transform_request(
                         method, path, headers, body, query_params, access_token
                     )
@@ -530,19 +535,17 @@ class ProxyService:
                 query_params["beta"] = "true"
                 logger.debug("beta_parameter_added")
 
-        # App state will need to be passed through context in the future
-        app_state = None
-
         # Transform body first (as it might change size)
         proxy_body = None
         if body:
+            injection_mode = self.settings.claude.system_prompt_injection_mode.value
             proxy_body = self.request_transformer.transform_request_body(
-                body, path, self.proxy_mode, app_state
+                body, path, self.proxy_mode, self.app_state, injection_mode
             )
 
         # Transform headers (and update Content-Length if body changed)
         proxy_headers = self.request_transformer.create_proxy_headers(
-            headers, access_token, self.proxy_mode, app_state
+            headers, access_token, self.proxy_mode, self.app_state
         )
 
         # Update Content-Length if body was transformed and size changed

@@ -16,7 +16,8 @@ import pytest
 from ccproxy.core.http_transformers import (
     HTTPRequestTransformer,
     HTTPResponseTransformer,
-    get_claude_code_prompt,
+    get_detected_system_field,
+    get_fallback_system_field,
 )
 from ccproxy.core.types import (
     ProxyMethod,
@@ -335,6 +336,104 @@ class TestHTTPRequestTransformer:
 
         # Should return original body unchanged
         assert result == body
+
+    def test_transform_system_prompt_minimal_mode(
+        self, request_transformer: HTTPRequestTransformer
+    ) -> None:
+        """Test system prompt transformation in minimal mode."""
+        body_data = {
+            "model": "claude-3-5-sonnet-20241022",
+            "max_tokens": 100,
+            "system": "You are a helpful assistant.",
+            "messages": [{"role": "user", "content": "Hello"}],
+        }
+        body = json.dumps(body_data).encode("utf-8")
+
+        result = request_transformer.transform_system_prompt(
+            body, injection_mode="minimal"
+        )
+        result_data = json.loads(result.decode("utf-8"))
+
+        # Should prepend only Claude Code prompt in minimal mode
+        assert "system" in result_data
+        assert isinstance(result_data["system"], list)
+        assert len(result_data["system"]) == 2
+        assert (
+            result_data["system"][0]["text"]
+            == "You are Claude Code, Anthropic's official CLI for Claude."
+        )
+        assert result_data["system"][1]["text"] == "You are a helpful assistant."
+
+    def test_transform_system_prompt_full_mode_with_app_state(
+        self, request_transformer: HTTPRequestTransformer
+    ) -> None:
+        """Test system prompt transformation in full mode with app state."""
+        # Mock app state with detected system prompts
+        from ccproxy.models.detection import SystemPromptData
+
+        mock_app_state = type("MockAppState", (), {})()
+        mock_claude_data = type("MockClaudeData", (), {})()
+        mock_claude_data.system_prompt = SystemPromptData(
+            texts=[
+                "You are Claude Code, Anthropic's official CLI for Claude.",
+                "Additional context from Claude CLI.",
+                "More system instructions.",
+            ],
+            cache_control={"type": "ephemeral"},
+        )
+        mock_app_state.claude_detection_data = mock_claude_data
+
+        body_data = {
+            "model": "claude-3-5-sonnet-20241022",
+            "max_tokens": 100,
+            "system": "You are a helpful assistant.",
+            "messages": [{"role": "user", "content": "Hello"}],
+        }
+        body = json.dumps(body_data).encode("utf-8")
+
+        result = request_transformer.transform_system_prompt(
+            body, mock_app_state, injection_mode="full"
+        )
+        result_data = json.loads(result.decode("utf-8"))
+
+        # Should prepend all detected system prompts in full mode
+        assert "system" in result_data
+        assert isinstance(result_data["system"], list)
+        assert len(result_data["system"]) == 4  # 3 detected + 1 original
+        assert (
+            result_data["system"][0]["text"]
+            == "You are Claude Code, Anthropic's official CLI for Claude."
+        )
+        assert result_data["system"][1]["text"] == "Additional context from Claude CLI."
+        assert result_data["system"][2]["text"] == "More system instructions."
+        assert result_data["system"][3]["text"] == "You are a helpful assistant."
+
+    def test_transform_system_prompt_full_mode_no_app_state(
+        self, request_transformer: HTTPRequestTransformer
+    ) -> None:
+        """Test system prompt transformation in full mode without app state."""
+        body_data = {
+            "model": "claude-3-5-sonnet-20241022",
+            "max_tokens": 100,
+            "system": "You are a helpful assistant.",
+            "messages": [{"role": "user", "content": "Hello"}],
+        }
+        body = json.dumps(body_data).encode("utf-8")
+
+        result = request_transformer.transform_system_prompt(
+            body, injection_mode="full"
+        )
+        result_data = json.loads(result.decode("utf-8"))
+
+        # Should fall back to minimal behavior when no app state
+        assert "system" in result_data
+        assert isinstance(result_data["system"], list)
+        assert len(result_data["system"]) == 2
+        assert (
+            result_data["system"][0]["text"]
+            == "You are Claude Code, Anthropic's official CLI for Claude."
+        )
+        assert result_data["system"][1]["text"] == "You are a helpful assistant."
 
     def test_is_openai_request_path_based_detection(
         self, request_transformer: HTTPRequestTransformer
@@ -777,10 +876,14 @@ class TestHTTPResponseTransformer:
 class TestClaudeCodePrompt:
     """Test Claude Code prompt utility function."""
 
-    def test_get_claude_code_prompt_structure(self) -> None:
-        """Test Claude Code prompt structure and content."""
-        prompt = get_claude_code_prompt()
+    def test_get_fallback_system_field_structure(self) -> None:
+        """Test fallback system field structure and content."""
+        prompt_list = get_fallback_system_field()
 
+        assert isinstance(prompt_list, list)
+        assert len(prompt_list) == 1
+
+        prompt = prompt_list[0]
         assert isinstance(prompt, dict)
         assert prompt["type"] == "text"
         assert (
@@ -789,13 +892,98 @@ class TestClaudeCodePrompt:
         )
         assert prompt["cache_control"] == {"type": "ephemeral"}
 
-    def test_get_claude_code_prompt_consistency(self) -> None:
-        """Test that get_claude_code_prompt returns consistent results."""
-        prompt1 = get_claude_code_prompt()
-        prompt2 = get_claude_code_prompt()
+    def test_get_fallback_system_field_consistency(self) -> None:
+        """Test that get_fallback_system_field returns consistent results."""
+        prompt1 = get_fallback_system_field()
+        prompt2 = get_fallback_system_field()
 
         assert prompt1 == prompt2
         assert prompt1 is not prompt2  # Should be different instances
+
+    def test_get_detected_system_field_with_app_state_minimal(self) -> None:
+        """Test detected system field with app state in minimal mode."""
+        from ccproxy.models.detection import SystemPromptData
+
+        # Mock app state with detected system field (list format)
+        mock_app_state = type("MockAppState", (), {})()
+        mock_claude_data = type("MockClaudeData", (), {})()
+        mock_claude_data.system_prompt = SystemPromptData(
+            system_field=[
+                {
+                    "type": "text",
+                    "text": "Custom Claude Code prompt",
+                    "cache_control": {"type": "ephemeral"},
+                },
+                {"type": "text", "text": "Additional context"},
+            ]
+        )
+        mock_app_state.claude_detection_data = mock_claude_data
+
+        result = get_detected_system_field(mock_app_state, "minimal")
+
+        assert isinstance(result, list)
+        assert len(result) == 1  # Minimal mode returns only first message
+        assert result[0]["type"] == "text"
+        assert result[0]["text"] == "Custom Claude Code prompt"
+        assert result[0]["cache_control"] == {"type": "ephemeral"}
+
+    def test_get_detected_system_field_with_app_state_full(self) -> None:
+        """Test detected system field with app state in full mode."""
+        from ccproxy.models.detection import SystemPromptData
+
+        # Mock app state with multiple detected system prompts
+        mock_app_state = type("MockAppState", (), {})()
+        mock_claude_data = type("MockClaudeData", (), {})()
+        mock_claude_data.system_prompt = SystemPromptData(
+            system_field=[
+                {
+                    "type": "text",
+                    "text": "You are Claude Code",
+                    "cache_control": {"type": "ephemeral"},
+                },
+                {"type": "text", "text": "Additional context from CLI."},
+                {"type": "text", "text": "More system instructions."},
+            ]
+        )
+        mock_app_state.claude_detection_data = mock_claude_data
+
+        result = get_detected_system_field(mock_app_state, "full")
+
+        assert isinstance(result, list)
+        assert len(result) == 3  # Full mode returns all messages
+        assert all(isinstance(prompt, dict) for prompt in result)
+        assert all(prompt["type"] == "text" for prompt in result)
+        assert result[0]["text"] == "You are Claude Code"
+        assert result[1]["text"] == "Additional context from CLI."
+        assert result[2]["text"] == "More system instructions."
+        assert result[0]["cache_control"] == {"type": "ephemeral"}
+
+    def test_get_detected_system_field_no_app_state(self) -> None:
+        """Test getting detected system field without app state."""
+        result = get_detected_system_field(None, "minimal")
+        assert result is None
+
+        result = get_detected_system_field(None, "full")
+        assert result is None
+
+    def test_get_detected_system_field_string_format(self) -> None:
+        """Test detected system field with string format in minimal mode."""
+        from ccproxy.models.detection import SystemPromptData
+
+        # Mock app state with string system field
+        mock_app_state = type("MockAppState", (), {})()
+        mock_claude_data = type("MockClaudeData", (), {})()
+        mock_claude_data.system_prompt = SystemPromptData(
+            system_field="You are Claude Code, string format."
+        )
+        mock_app_state.claude_detection_data = mock_claude_data
+
+        # Test both minimal and full modes with string
+        result_minimal = get_detected_system_field(mock_app_state, "minimal")
+        assert result_minimal == "You are Claude Code, string format."
+
+        result_full = get_detected_system_field(mock_app_state, "full")
+        assert result_full == "You are Claude Code, string format."
 
 
 @pytest.mark.unit

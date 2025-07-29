@@ -39,27 +39,33 @@ class ClaudeDetectionService:
         try:
             # Get current Claude version
             current_version = await self._get_claude_version()
-            logger.info("claude_version_detected", version=current_version)
 
             # Try to load from cache first
-            cached_data = self._load_from_cache(current_version)
-            if cached_data:
-                logger.info("using_cached_claude_data", version=current_version)
-                self._cached_data = cached_data
-                return cached_data
+            detected_data = self._load_from_cache(current_version)
+            cached = detected_data is not None
+            if cached:
+                logger.debug("detection_claude_headers_debug", version=current_version)
+            else:
+                # No cache or version changed - detect fresh
+                detected_data = await self._detect_claude_headers(current_version)
+                # Cache the results
+                self._save_to_cache(detected_data)
 
-            # No cache or version changed - detect fresh
-            logger.info("detecting_fresh_claude_data", version=current_version)
-            detected_data = await self._detect_claude_headers(current_version)
-
-            # Cache the results
-            self._save_to_cache(detected_data)
             self._cached_data = detected_data
 
+            logger.info(
+                "detection_claude_headers_completed",
+                version=current_version,
+                cached=cached,
+            )
+
+            # TODO: add proper testing without claude cli installed
+            if detected_data is None:
+                raise ValueError("Claude detection failed")
             return detected_data
 
         except Exception as e:
-            logger.error("claude_detection_failed", error=e)
+            logger.warning("detection_claude_headers_failed", fallback=True, error=e)
             # Return fallback data
             fallback_data = self._get_fallback_data()
             self._cached_data = fallback_data
@@ -184,8 +190,7 @@ class ClaudeDetectionService:
             with cache_file.open("r") as f:
                 data = json.load(f)
                 return ClaudeCacheData.model_validate(data)
-        except Exception as e:
-            logger.warning("cache_load_failed", file=str(cache_file), error=str(e))
+        except Exception:
             return None
 
     def _save_to_cache(self, data: ClaudeCacheData) -> None:
@@ -195,7 +200,7 @@ class ClaudeDetectionService:
         try:
             with cache_file.open("w") as f:
                 json.dump(data.model_dump(), f, indent=2, default=str)
-            logger.info(
+            logger.debug(
                 "cache_saved", file=str(cache_file), version=data.claude_version
             )
         except Exception as e:
@@ -215,21 +220,10 @@ class ClaudeDetectionService:
             data = json.loads(body.decode("utf-8"))
             system_content = data.get("system")
 
-            if isinstance(system_content, str):
-                return SystemPromptData(text=system_content)
+            if system_content is None:
+                raise ValueError("No system field found in request body")
 
-            if isinstance(system_content, list) and system_content:
-                first_system = system_content[0]
-                if (
-                    isinstance(first_system, dict)
-                    and first_system.get("type") == "text"
-                ):
-                    return SystemPromptData(
-                        text=first_system.get("text", ""),
-                        cache_control=first_system.get("cache_control"),
-                    )
-
-            raise ValueError("Valid system prompt not found in request body")
+            return SystemPromptData(system_field=system_content)
 
         except Exception as e:
             logger.error("system_prompt_extraction_failed", error=str(e))
@@ -259,8 +253,13 @@ class ClaudeDetectionService:
         )
 
         fallback_prompt = SystemPromptData(
-            text="You are Claude Code, Anthropic's official CLI for Claude.",
-            cache_control={"type": "ephemeral"},
+            system_field=[
+                {
+                    "type": "text",
+                    "text": "You are Claude Code, Anthropic's official CLI for Claude.",
+                    "cache_control": {"type": "ephemeral"},
+                }
+            ]
         )
 
         return ClaudeCacheData(

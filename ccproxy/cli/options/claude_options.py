@@ -109,6 +109,22 @@ def validate_pool_size(
     return value
 
 
+def validate_system_prompt_injection_mode(
+    ctx: typer.Context, param: typer.CallbackParam, value: str | None
+) -> str | None:
+    """Validate system prompt injection mode."""
+    if value is None:
+        return None
+
+    valid_modes = {"minimal", "full"}
+    if value not in valid_modes:
+        raise typer.BadParameter(
+            f"System prompt injection mode must be one of: {', '.join(valid_modes)}"
+        )
+
+    return value
+
+
 # Factory functions removed - use Annotated syntax directly in commands
 
 
@@ -133,6 +149,7 @@ class ClaudeOptions:
         sdk_message_mode: str | None = None,
         sdk_enable_pool: bool = False,
         sdk_pool_size: int | None = None,
+        system_prompt_injection_mode: str | None = None,
     ):
         """Initialize Claude options.
 
@@ -149,6 +166,7 @@ class ClaudeOptions:
             sdk_message_mode: SDK message handling mode
             sdk_enable_pool: Enable Claude SDK client connection pooling
             sdk_pool_size: Number of clients to maintain in the pool
+            system_prompt_injection_mode: System prompt injection mode
         """
         self.max_thinking_tokens = max_thinking_tokens
         self.allowed_tools = allowed_tools
@@ -162,3 +180,4 @@ class ClaudeOptions:
         self.sdk_message_mode = sdk_message_mode
         self.sdk_enable_pool = sdk_enable_pool
         self.sdk_pool_size = sdk_pool_size
+        self.system_prompt_injection_mode = system_prompt_injection_mode

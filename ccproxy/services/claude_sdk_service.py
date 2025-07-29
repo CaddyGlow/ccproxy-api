@@ -21,8 +21,7 @@ from ccproxy.core.errors import (
 )
 from ccproxy.models import claude_sdk as sdk_models
 from ccproxy.models.messages import MessageResponse
-from ccproxy.observability.access_logger import log_request_access
-from ccproxy.observability.context import RequestContext, request_context
+from ccproxy.observability.context import RequestContext
 from ccproxy.observability.metrics import PrometheusMetrics
 from ccproxy.utils.model_mapping import map_model_to_claude
 from ccproxy.utils.simple_request_logger import write_request_log
@@ -75,12 +74,12 @@ class ClaudeSDKService:
 
     async def create_completion(
         self,
+        request_context: RequestContext,
         messages: list[dict[str, Any]],
         model: str,
         temperature: float | None = None,
         max_tokens: int | None = None,
         stream: bool = False,
-        user_id: str | None = None,
         **kwargs: Any,
     ) -> MessageResponse | AsyncIterator[dict[str, Any]]:
         """
@@ -92,7 +91,7 @@ class ClaudeSDKService:
             temperature: Temperature for response generation
             max_tokens: Maximum tokens in response
             stream: Whether to stream responses
-            user_id: User identifier for auth/metrics
+            request_context: Existing request context to use instead of creating new one
             **kwargs: Additional arguments
 
         Returns:
@@ -102,20 +101,6 @@ class ClaudeSDKService:
             ClaudeProxyError: If request fails
             ServiceUnavailableError: If service is unavailable
         """
-
-        # Validate authentication if auth manager is configured
-        if self.auth_manager and user_id:
-            try:
-                await self._validate_user_auth(user_id)
-            except Exception as e:
-                logger.error(
-                    "authentication_failed",
-                    user_id=user_id,
-                    error=str(e),
-                    error_type=type(e).__name__,
-                    exc_info=True,
-                )
-                raise
 
         # Extract system message and create options
         system_message = self.options_handler.extract_system_message(messages)
@@ -134,68 +119,43 @@ class ClaudeSDKService:
         # Convert messages to prompt format
         prompt = self.message_converter.format_messages_to_prompt(messages)
 
-        # Generate request ID for correlation
-        from uuid import uuid4
-
-        request_id = str(uuid4())
-
-        # Use request context for observability
-        endpoint = "messages"  # Claude SDK uses messages endpoint
-        async with request_context(
-            method="POST",
-            path=f"/sdk/v1/{endpoint}",
-            endpoint=endpoint,
+        # Use existing context, but update metadata for this service (preserve original service_type)
+        ctx = request_context
+        ctx.add_metadata(
+            endpoint="messages",
             model=model,
             streaming=stream,
-            service_type="claude_sdk_service",
-            metrics=self.metrics,  # Pass metrics for active request tracking
-        ) as ctx:
-            try:
-                # Log SDK request parameters
-                timestamp = ctx.get_log_timestamp_prefix() if ctx else None
-                await self._log_sdk_request(
-                    request_id, prompt, options, model, stream, timestamp
-                )
+        )
+        # Use existing request ID from context
+        request_id = ctx.request_id
 
-                if stream:
-                    # For streaming, return the async iterator directly
-                    # Pass context to streaming method
-                    return self._stream_completion(
-                        prompt, options, model, request_id, ctx, timestamp
-                    )
-                else:
-                    result = await self._complete_non_streaming(
-                        prompt, options, model, request_id, ctx, timestamp
-                    )
-                    return result
+        try:
+            # Log SDK request parameters
+            timestamp = ctx.get_log_timestamp_prefix() if ctx else None
+            await self._log_sdk_request(
+                request_id, prompt, options, model, stream, timestamp
+            )
 
-            except AuthenticationError as e:
-                logger.error(
-                    "authentication_failed",
-                    user_id=user_id,
-                    error=str(e),
-                    error_type=type(e).__name__,
-                    exc_info=True,
+            if stream:
+                # For streaming, return the async iterator directly
+                # Access logging will be handled by the stream processor when ResultMessage is received
+                return self._stream_completion(ctx, prompt, options, model, timestamp)
+            else:
+                result = await self._complete_non_streaming(
+                    ctx, prompt, options, model, timestamp
                 )
-                raise
-            except (ClaudeProxyError, ServiceUnavailableError) as e:
-                # Log error via access logger (includes metrics)
-                await log_request_access(
-                    context=ctx,
-                    method="POST",
-                    error_message=str(e),
-                    metrics=self.metrics,
-                    error_type=type(e).__name__,
-                )
-                raise
+                return result
+        except (ClaudeProxyError, ServiceUnavailableError) as e:
+            # Add error info to context for automatic access logging
+            ctx.add_metadata(error_message=str(e), error_type=type(e).__name__)
+            raise
 
     async def _complete_non_streaming(
         self,
+        ctx: RequestContext,
         prompt: str,
         options: "ClaudeCodeOptions",
         model: str,
-        request_id: str | None = None,
-        ctx: RequestContext | None = None,
         timestamp: str | None = None,
     ) -> MessageResponse:
         """
@@ -205,7 +165,6 @@ class ClaudeSDKService:
             prompt: The formatted prompt
             options: Claude SDK options
             model: The model being used
-            request_id: The request ID for metrics correlation
 
         Returns:
             Response in Anthropic format
@@ -213,9 +172,9 @@ class ClaudeSDKService:
         Raises:
             ClaudeProxyError: If completion fails
         """
-        # SDK request already logged in create_completion
+        request_id = ctx.request_id
+        logger.debug("claude_sdk_completion_start", request_id=request_id)
 
-        logger.debug("claude_sdk_completion_startddddddd", request_id=request_id)
         messages = [
             m
             async for m in self.sdk_client.query_completion(prompt, options, request_id)
@@ -314,18 +273,16 @@ class ClaudeSDKService:
             request_id=request_id,
         )
 
-        if ctx:
-            ctx.add_metadata(
-                status_code=200,
-                tokens_input=usage.input_tokens,
-                tokens_output=usage.output_tokens,
-                cache_read_tokens=usage.cache_read_input_tokens,
-                cache_write_tokens=usage.cache_creation_input_tokens,
-                cost_usd=cost_usd,
-            )
-            await log_request_access(
-                context=ctx, status_code=200, method="POST", metrics=self.metrics
-            )
+        ctx.add_metadata(
+            status_code=200,
+            tokens_input=usage.input_tokens,
+            tokens_output=usage.output_tokens,
+            cache_read_tokens=usage.cache_read_input_tokens,
+            cache_write_tokens=usage.cache_creation_input_tokens,
+            cost_usd=cost_usd,
+        )
+        # Add success status to context for automatic access logging
+        ctx.add_metadata(status_code=200)
 
         # Log SDK response
         if request_id:
@@ -335,11 +292,10 @@ class ClaudeSDKService:
 
     async def _stream_completion(
         self,
+        ctx: RequestContext,
         prompt: str,
         options: "ClaudeCodeOptions",
         model: str,
-        request_id: str | None = None,
-        ctx: RequestContext | None = None,
         timestamp: str | None = None,
     ) -> AsyncIterator[dict[str, Any]]:
         """
@@ -349,12 +305,12 @@ class ClaudeSDKService:
             prompt: The formatted prompt
             options: Claude SDK options
             model: The model being used
-            request_id: Optional request ID for logging
             ctx: Optional request context for metrics
 
         Yields:
             Response chunks in Anthropic format
         """
+        request_id = ctx.request_id
         sdk_message_mode = (
             self.settings.claude.sdk_message_mode
             if self.settings
@@ -376,20 +332,6 @@ class ClaudeSDKService:
             if request_id:
                 await self._log_sdk_streaming_chunk(request_id, chunk, timestamp)
             yield chunk
-
-    async def _validate_user_auth(self, user_id: str) -> None:
-        """
-        Validate user authentication.
-
-        Args:
-            user_id: User identifier
-
-        Raises:
-            AuthenticationError: If authentication fails
-        """
-        if not self.auth_manager:
-            return
-        logger.debug("user_auth_validation_start", user_id=user_id)
 
     async def _log_sdk_request(
         self,

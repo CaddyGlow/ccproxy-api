@@ -97,10 +97,12 @@ class ClaudeCodeHeaders(BaseModel):
 class SystemPromptData(BaseModel):
     """Extracted system prompt information."""
 
-    text: Annotated[str, Field(description="System prompt text content")]
-    cache_control: Annotated[
-        dict[str, Any] | None, Field(description="Cache control settings")
-    ] = None
+    system_field: Annotated[
+        str | list[dict[str, Any]],
+        Field(
+            description="Complete system field as detected from Claude CLI, preserving exact structure including type, text, and cache_control"
+        ),
+    ]
 
     model_config = ConfigDict(extra="forbid")
 

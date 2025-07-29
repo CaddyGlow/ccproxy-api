@@ -37,6 +37,7 @@ from ..options.claude_options import (
     validate_permission_mode,
     validate_pool_size,
     validate_sdk_message_mode,
+    validate_system_prompt_injection_mode,
 )
 from ..options.security_options import SecurityOptions, validate_auth_token
 from ..options.server_options import (
@@ -460,6 +461,15 @@ def api(
             rich_help_panel="Claude Settings",
         ),
     ] = None,
+    system_prompt_injection_mode: Annotated[
+        str | None,
+        typer.Option(
+            "--system-prompt-injection-mode",
+            help="System prompt injection mode: minimal (Claude Code ID only), full (all detected system messages)",
+            callback=validate_system_prompt_injection_mode,
+            rich_help_panel="Claude Settings",
+        ),
+    ] = None,
     # Core settings
     docker: Annotated[
         bool,
@@ -593,6 +603,7 @@ def api(
             sdk_message_mode=sdk_message_mode,
             sdk_enable_pool=sdk_enable_pool,
             sdk_pool_size=sdk_pool_size,
+            system_prompt_injection_mode=system_prompt_injection_mode,
         )
 
         security_options = SecurityOptions(auth_token=auth_token)
@@ -621,6 +632,7 @@ def api(
             sdk_message_mode=claude_options.sdk_message_mode,
             sdk_enable_pool=claude_options.sdk_enable_pool,
             sdk_pool_size=claude_options.sdk_pool_size,
+            system_prompt_injection_mode=claude_options.system_prompt_injection_mode,
         )
 
         # Load settings with CLI overrides

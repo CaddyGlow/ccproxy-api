@@ -43,6 +43,14 @@ async def create_openai_chat_completion(
         # Extract stream parameter
         stream = openai_request.stream or False
 
+        # Get request context from middleware
+        request_context = getattr(request.state, "context", None)
+
+        if request_context is None:
+            raise HTTPException(
+                status_code=500, detail="Internal server error: no request context"
+            )
+
         # Call Claude SDK service with adapted request
         response = await claude_service.create_completion(
             messages=anthropic_request["messages"],
@@ -51,6 +59,7 @@ async def create_openai_chat_completion(
             max_tokens=anthropic_request.get("max_tokens"),
             stream=stream,
             user_id=getattr(openai_request, "user", None),
+            request_context=request_context,
         )
 
         if stream:
@@ -94,8 +103,9 @@ async def create_openai_chat_completion(
 
 @router.post("/v1/messages", response_model=None)
 async def create_anthropic_message(
-    request: MessageCreateParams,
+    message_request: MessageCreateParams,
     claude_service: ClaudeServiceDep,
+    request: Request,
 ) -> StreamingResponse | MessageResponse:
     """Create a message using Claude SDK with Anthropic format.
 
@@ -104,11 +114,18 @@ async def create_anthropic_message(
     """
     try:
         # Extract parameters from Anthropic request
-        messages = [msg.model_dump() for msg in request.messages]
-        model = request.model
-        temperature = request.temperature
-        max_tokens = request.max_tokens
-        stream = request.stream or False
+        messages = [msg.model_dump() for msg in message_request.messages]
+        model = message_request.model
+        temperature = message_request.temperature
+        max_tokens = message_request.max_tokens
+        stream = message_request.stream or False
+
+        # Get request context from middleware
+        request_context = getattr(request.state, "context", None)
+        if request_context is None:
+            raise HTTPException(
+                status_code=500, detail="Internal server error: no request context"
+            )
 
         # Call Claude SDK service directly with Anthropic format
         response = await claude_service.create_completion(
@@ -117,7 +134,8 @@ async def create_anthropic_message(
             temperature=temperature,
             max_tokens=max_tokens,
             stream=stream,
-            user_id=getattr(request, "user_id", None),
+            user_id=getattr(message_request, "user_id", None),
+            request_context=request_context,
         )
 
         if stream:

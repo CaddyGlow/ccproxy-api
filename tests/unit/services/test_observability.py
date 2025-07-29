@@ -403,8 +403,14 @@ class TestProxyServiceObservabilityIntegration:
         # Create credentials manager
         credentials_manager = CredentialsManager(config=settings.auth)
 
+        # Create mock request with app state
+        from unittest.mock import Mock
+
+        mock_request = Mock()
+        mock_request.app.state = Mock()
+
         # Get proxy service (this should use the new observability system)
-        proxy_service = get_proxy_service(settings, credentials_manager)
+        proxy_service = get_proxy_service(mock_request, settings, credentials_manager)
 
         # Verify it has metrics attribute (new system)
         assert hasattr(proxy_service, "metrics")

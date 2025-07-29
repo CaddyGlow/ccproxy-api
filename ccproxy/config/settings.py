@@ -462,7 +462,7 @@ class ConfigurationManager:
             claude_settings["cli_path"] = cli_args["claude_cli_path"]
 
         # Direct Claude settings (not nested in code_options)
-        for key in ["sdk_message_mode"]:
+        for key in ["sdk_message_mode", "system_prompt_injection_mode"]:
             if cli_args.get(key) is not None:
                 claude_settings[key] = cli_args[key]
 
