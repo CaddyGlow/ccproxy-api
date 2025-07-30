@@ -4,7 +4,7 @@ import json
 from collections.abc import AsyncIterator
 
 import structlog
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
 from ccproxy.adapters.openai.adapter import (
@@ -161,8 +161,13 @@ async def create_openai_chat_completion_with_session(
                 # Send final chunk
                 yield b"data: [DONE]\n\n"
 
-            return StreamingResponseWithLogging(
+            # Use session monitoring wrapper for disconnection detection
+            # This automatically includes access logging functionality
+            return StreamingResponseWithSessionInterrupt(
                 content=openai_stream_generator(),
+                request=request,
+                session_id=session_id,
+                claude_service=claude_service,
                 request_context=request_context,
                 metrics=getattr(claude_service, "metrics", None),
                 media_type="text/event-stream",
@@ -252,8 +257,13 @@ async def create_anthropic_message_with_session(
                             yield f"data: {json.dumps(chunk)}\n\n".encode()
                 # No final [DONE] chunk for Anthropic format
 
-            return StreamingResponseWithLogging(
+            # Use session monitoring wrapper for disconnection detection
+            # This automatically includes access logging functionality
+            return StreamingResponseWithSessionInterrupt(
                 content=anthropic_stream_generator(),
+                request=request,
+                session_id=session_id,
+                claude_service=claude_service,
                 request_context=request_context,
                 metrics=getattr(claude_service, "metrics", None),
                 media_type="text/event-stream",

@@ -142,26 +142,96 @@ class SessionContext:
                     self.status = SessionStatus.DISCONNECTED
 
     async def interrupt(self) -> None:
-        """Interrupt any ongoing operations without disconnecting."""
-        if self.claude_client:
+        """Interrupt any ongoing operations with timeout and force disconnect fallback."""
+        if not self.claude_client:
+            logger.debug(
+                "session_interrupt_no_client",
+                session_id=self.session_id,
+            )
+            return
+
+        logger.info(
+            "session_interrupting",
+            session_id=self.session_id,
+            status=self.status.value,
+        )
+
+        try:
+            # First attempt: Try graceful interrupt with timeout
+            await asyncio.wait_for(
+                self.claude_client.interrupt(),
+                timeout=5.0,  # 5 second timeout for interrupt
+            )
+
+            logger.info("session_interrupted_gracefully", session_id=self.session_id)
+
+        except TimeoutError:
+            logger.warning(
+                "session_interrupt_timeout",
+                session_id=self.session_id,
+                message="Graceful interrupt timed out, forcing disconnect",
+            )
+
+            # Force disconnect if interrupt hangs
+            await self._force_disconnect()
+
+        except Exception as e:
+            logger.warning(
+                "session_interrupt_error",
+                session_id=self.session_id,
+                error=str(e),
+                error_type=type(e).__name__,
+            )
+
+            # If interrupt fails, try force disconnect as fallback
             try:
                 logger.info(
-                    "session_interrupting",
+                    "session_interrupt_fallback_disconnect",
                     session_id=self.session_id,
-                    status=self.status.value,
+                )
+                await self._force_disconnect()
+            except Exception as disconnect_error:
+                logger.error(
+                    "session_force_disconnect_failed",
+                    session_id=self.session_id,
+                    error=str(disconnect_error),
+                    error_type=type(disconnect_error).__name__,
                 )
 
-                # Call interrupt to stop any ongoing operations
-                await self.claude_client.interrupt()
+    async def _force_disconnect(self) -> None:
+        """Force disconnect the session when interrupt fails or times out."""
+        logger.warning(
+            "session_force_disconnecting",
+            session_id=self.session_id,
+            message="Force disconnecting stuck session",
+        )
 
-                logger.info("session_interrupted", session_id=self.session_id)
-            except Exception as e:
-                logger.warning(
-                    "session_interrupt_error",
-                    session_id=self.session_id,
-                    error=str(e),
+        try:
+            if self.claude_client:
+                # Try to disconnect with timeout
+                await asyncio.wait_for(
+                    self.claude_client.disconnect(),
+                    timeout=3.0,  # 3 second timeout for disconnect
                 )
-                # Don't change status or client state on interrupt error
+        except Exception as e:
+            logger.warning(
+                "session_force_disconnect_error",
+                session_id=self.session_id,
+                error=str(e),
+            )
+        finally:
+            # Always clean up the client reference and mark as disconnected
+            self.claude_client = None
+            self.status = SessionStatus.DISCONNECTED
+            self.last_error = Exception(
+                "Session force disconnected due to hanging operation"
+            )
+
+            logger.warning(
+                "session_force_disconnected",
+                session_id=self.session_id,
+                message="Session forcibly disconnected and marked for cleanup",
+            )
 
     async def is_healthy(self) -> bool:
         """Check if the session connection is healthy."""
@@ -188,10 +258,26 @@ class SessionContext:
             idle_seconds=self.metrics.idle_seconds,
         )
 
-    def should_cleanup(self, idle_threshold: int = 300) -> bool:
-        """Determine if session should be cleaned up."""
+    def should_cleanup(
+        self, idle_threshold: int = 300, stuck_threshold: int = 900
+    ) -> bool:
+        """Determine if session should be cleaned up.
+
+        Args:
+            idle_threshold: Max idle time in seconds before cleanup
+            stuck_threshold: Max time a session can be ACTIVE without going idle (indicating stuck)
+        """
+        # Check if session has been stuck in ACTIVE state too long
+        is_potentially_stuck = (
+            self.status == SessionStatus.ACTIVE
+            and self.metrics.idle_seconds < 10  # Still being used but...
+            and self.metrics.age_seconds
+            > stuck_threshold  # ...has been active way too long
+        )
+
         return (
             self.is_expired()
             or self.metrics.idle_seconds > idle_threshold
             or self.status in (SessionStatus.ERROR, SessionStatus.DISCONNECTED)
+            or is_potentially_stuck
         )

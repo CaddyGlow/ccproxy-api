@@ -196,17 +196,50 @@ class SessionPool:
                 logger.error("session_cleanup_error", error=str(e), exc_info=True)
 
     async def _cleanup_sessions(self) -> None:
-        """Remove expired and idle sessions."""
+        """Remove expired, idle, and stuck sessions."""
         sessions_to_remove = []
+        stuck_sessions = []
 
         for session_id, session_ctx in self.sessions.items():
-            if session_ctx.should_cleanup(self.config.idle_threshold):
+            # Check if session is potentially stuck (active too long)
+            is_stuck = (
+                session_ctx.status.value == "active"
+                and session_ctx.metrics.idle_seconds < 10
+                and session_ctx.metrics.age_seconds > 900  # 15 minutes
+            )
+
+            if is_stuck:
+                stuck_sessions.append(session_id)
+                logger.warning(
+                    "session_stuck_detected",
+                    session_id=session_id,
+                    age_seconds=session_ctx.metrics.age_seconds,
+                    idle_seconds=session_ctx.metrics.idle_seconds,
+                    message_count=session_ctx.metrics.message_count,
+                    message="Session appears stuck, will interrupt and cleanup",
+                )
+
+                # Try to interrupt stuck session before cleanup
+                try:
+                    await session_ctx.interrupt()
+                except Exception as e:
+                    logger.warning(
+                        "session_stuck_interrupt_failed",
+                        session_id=session_id,
+                        error=str(e),
+                    )
+
+            # Check normal cleanup criteria (including stuck sessions)
+            if session_ctx.should_cleanup(
+                self.config.idle_threshold, stuck_threshold=900
+            ):
                 sessions_to_remove.append(session_id)
 
         if sessions_to_remove:
             logger.info(
                 "session_cleanup_starting",
                 sessions_to_remove=len(sessions_to_remove),
+                stuck_sessions=len(stuck_sessions),
                 total_sessions=len(self.sessions),
             )
 
