@@ -282,6 +282,21 @@ class ClaudeStreamProcessor:
                     message_content=str(message)[:200],
                     request_id=request_id,
                 )
+        else:
+            # Stream ended without a ResultMessage - this indicates an error/interruption
+            if ctx and "status_code" not in ctx.metadata:
+                # Set error status if not already set (e.g., by StreamTimeoutError handler)
+                logger.warning(
+                    "stream_ended_without_result_message",
+                    request_id=request_id,
+                    message="Stream ended without ResultMessage, likely interrupted",
+                )
+                ctx.add_metadata(
+                    status_code=499,  # Client Closed Request
+                    error_type="stream_interrupted",
+                    error_message="Stream ended without completion",
+                )
+
         # Final message, contains metrics
         # NOTE: Access logging is now handled by StreamingResponseWithLogging
         # No need for manual access logging here anymore

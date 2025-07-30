@@ -896,7 +896,7 @@ class ClaudeSDKClient:
                     first_message_received = False
                     first_message_timeout = 10.0  # 10 second timeout for first message
 
-                    async def message_generator():
+                    async def message_generator() -> AsyncIterator[Any]:
                         """Generator wrapper to handle first message timeout."""
                         nonlocal first_message_received
                         async for msg in session_ctx.claude_client.receive_response():
@@ -916,17 +916,6 @@ class ClaudeSDKClient:
                             # Process the first message
                             message = first_message
                             message_count += 1
-
-                            logger.debug(
-                                "claude_sdk_raw_message_received",
-                                message_type=type(message).__name__,
-                                message_count=message_count,
-                                request_id=request_id,
-                                session_id=session_id,
-                                has_content=hasattr(message, "content")
-                                and bool(getattr(message, "content", None)),
-                                content_preview=str(message)[:150],
-                            )
 
                             # Skip unknown message types early
                             if not isinstance(
@@ -998,17 +987,6 @@ class ClaudeSDKClient:
                         async for message in message_gen:
                             message_count += 1
 
-                            logger.debug(
-                                "claude_sdk_raw_message_received",
-                                message_type=type(message).__name__,
-                                message_count=message_count,
-                                request_id=request_id,
-                                session_id=session_id,
-                                has_content=hasattr(message, "content")
-                                and bool(getattr(message, "content", None)),
-                                content_preview=str(message)[:150],
-                            )
-
                             # Skip unknown message types early
                             if not isinstance(
                                 message,
@@ -1027,45 +1005,37 @@ class ClaudeSDKClient:
 
                             # Convert SDK message to our Pydantic model
                             try:
-                                converted_message: (
+                                converted_msg: (
                                     sdk_models.UserMessage
                                     | sdk_models.AssistantMessage
                                     | sdk_models.SystemMessage
                                     | sdk_models.ResultMessage
                                 )
                                 if isinstance(message, SDKUserMessage):
-                                    converted_message = self._convert_message(
+                                    converted_msg = self._convert_message(
                                         message, sdk_models.UserMessage
                                     )
                                 elif isinstance(message, SDKAssistantMessage):
-                                    converted_message = self._convert_message(
+                                    converted_msg = self._convert_message(
                                         message, sdk_models.AssistantMessage
                                     )
                                 elif isinstance(message, SDKSystemMessage):
-                                    converted_message = self._convert_message(
+                                    converted_msg = self._convert_message(
                                         message, sdk_models.SystemMessage
                                     )
                                 else:  # SDKResultMessage
-                                    converted_message = self._convert_message(
+                                    converted_msg = self._convert_message(
                                         message, sdk_models.ResultMessage
                                     )
                                     # Capture SDK session ID from result message
                                     if isinstance(
-                                        converted_message, sdk_models.ResultMessage
+                                        converted_msg, sdk_models.ResultMessage
                                     ):
                                         session_ctx.sdk_session_id = (
-                                            converted_message.session_id
+                                            converted_msg.session_id
                                         )
 
-                                logger.debug(
-                                    "claude_sdk_message_converted_successfully",
-                                    original_type=type(message).__name__,
-                                    converted_type=type(converted_message).__name__,
-                                    message_count=message_count,
-                                    request_id=request_id,
-                                    session_id=session_id,
-                                )
-                                yield converted_message
+                                yield converted_msg
 
                             except Exception as e:
                                 logger.warning(
@@ -1088,10 +1058,6 @@ class ClaudeSDKClient:
                         # Interrupt the session when no first message is received
                         try:
                             await self._pool_manager.interrupt_session(session_id)
-                            logger.info(
-                                "stuck_session_interrupted_from_sdk",
-                                session_id=session_id,
-                            )
                         except Exception as e:
                             logger.error(
                                 "failed_to_interrupt_stuck_session_from_sdk",
@@ -1100,16 +1066,11 @@ class ClaudeSDKClient:
                             )
 
                         # Raise a custom exception with error details that can be caught by the API layer
-                        logger.error(
-                            "raising_stream_timeout_error",
-                            session_id=session_id,
-                            timeout_seconds=first_message_timeout,
-                        )
                         raise StreamTimeoutError(
                             message=f"Stream timeout: No response received within {first_message_timeout} seconds. The command may not be supported or the session may be stuck.",
                             session_id=session_id,
                             timeout_seconds=first_message_timeout,
-                        )
+                        ) from None
 
                 # Store final metrics
                 op["message_count"] = message_count

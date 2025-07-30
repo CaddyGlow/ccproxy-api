@@ -82,9 +82,12 @@ class StreamingResponseWithLogging(StreamingResponse):
                 # Add streaming completion event type to context
                 context.add_metadata(event_type="streaming_complete")
 
+                # Check if status_code was updated in context metadata (e.g., due to error)
+                final_status_code = context.metadata.get("status_code", status_code)
+
                 await log_request_access(
                     context=context,
-                    status_code=status_code,
+                    status_code=final_status_code,
                     metrics=metrics,
                 )
             except Exception as e:
