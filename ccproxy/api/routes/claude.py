@@ -1,7 +1,5 @@
 """Claude SDK endpoints for CCProxy API Server."""
 
-import asyncio
-import contextlib
 import json
 from collections.abc import AsyncIterator
 
@@ -17,7 +15,9 @@ from ccproxy.adapters.openai.adapter import (
 from ccproxy.api.dependencies import ClaudeServiceDep
 from ccproxy.models.messages import MessageCreateParams, MessageResponse
 from ccproxy.observability.streaming_response import StreamingResponseWithLogging
-from ccproxy.utils import monitor_disconnection
+from ccproxy.observability.streaming_session_response import (
+    StreamingResponseWithSessionInterrupt,
+)
 
 
 # Create the router for Claude SDK endpoints
@@ -161,23 +161,13 @@ async def create_openai_chat_completion_with_session(
                 # Send final chunk
                 yield b"data: [DONE]\n\n"
 
-            # Start disconnection monitoring
-            disconnect_task = asyncio.create_task(
-                monitor_disconnection(request, session_id, claude_service)
-            )
-
-            async def stream_with_monitoring() -> AsyncIterator[bytes]:
-                try:
-                    async for chunk in openai_stream_generator():
-                        yield chunk
-                finally:
-                    # Cancel monitoring task when streaming completes
-                    disconnect_task.cancel()
-                    with contextlib.suppress(asyncio.CancelledError):
-                        await disconnect_task
-
-            return StreamingResponseWithLogging(
-                content=stream_with_monitoring(),
+            # Use session monitoring wrapper for disconnection detection
+            # This automatically includes access logging functionality
+            return StreamingResponseWithSessionInterrupt(
+                content=openai_stream_generator(),
+                request=request,
+                session_id=session_id,
+                claude_service=claude_service,
                 request_context=request_context,
                 metrics=getattr(claude_service, "metrics", None),
                 media_type="text/event-stream",
@@ -267,23 +257,13 @@ async def create_anthropic_message_with_session(
                             yield f"data: {json.dumps(chunk)}\n\n".encode()
                 # No final [DONE] chunk for Anthropic format
 
-            # Start disconnection monitoring
-            disconnect_task = asyncio.create_task(
-                monitor_disconnection(request, session_id, claude_service)
-            )
-
-            async def stream_with_monitoring() -> AsyncIterator[bytes]:
-                try:
-                    async for chunk in anthropic_stream_generator():
-                        yield chunk
-                finally:
-                    # Cancel monitoring task when streaming completes
-                    disconnect_task.cancel()
-                    with contextlib.suppress(asyncio.CancelledError):
-                        await disconnect_task
-
-            return StreamingResponseWithLogging(
-                content=stream_with_monitoring(),
+            # Use session monitoring wrapper for disconnection detection
+            # This automatically includes access logging functionality
+            return StreamingResponseWithSessionInterrupt(
+                content=anthropic_stream_generator(),
+                request=request,
+                session_id=session_id,
+                claude_service=claude_service,
                 request_context=request_context,
                 metrics=getattr(claude_service, "metrics", None),
                 media_type="text/event-stream",
