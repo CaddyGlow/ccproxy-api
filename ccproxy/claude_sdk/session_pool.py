@@ -272,11 +272,49 @@ class SessionPool:
         )
 
         try:
-            # Interrupt the session (only stops ongoing operations)
-            await session_ctx.interrupt()
+            # Interrupt the session with timeout to prevent hanging
+            # This timeout should be less than the 5-second timeout in streaming_session_response.py
+            await asyncio.wait_for(
+                session_ctx.interrupt(),
+                timeout=4.0,  # 4 second timeout (less than streaming's 5 second timeout)
+            )
 
             logger.info("session_interrupted", session_id=session_id)
+
+            # IMPORTANT: Remove the session from the pool after interruption
+            # This ensures subsequent requests don't try to reuse a broken session
+            logger.warning(
+                "session_removing_after_interrupt",
+                session_id=session_id,
+                message="Removing interrupted session from pool to prevent reuse",
+            )
+            await self._remove_session(session_id)
+
             return True
+
+        except TimeoutError:
+            logger.error(
+                "session_interrupt_timeout",
+                session_id=session_id,
+                message="Session interrupt timed out after 4 seconds",
+            )
+
+            # Remove the session even if interrupt times out
+            logger.warning(
+                "session_removing_after_timeout",
+                session_id=session_id,
+                message="Removing session after interrupt timeout to prevent reuse",
+            )
+            try:
+                await self._remove_session(session_id)
+            except Exception as remove_error:
+                logger.error(
+                    "session_remove_after_timeout_failed",
+                    session_id=session_id,
+                    error=str(remove_error),
+                )
+
+            return False
 
         except Exception as e:
             logger.error(
@@ -285,6 +323,22 @@ class SessionPool:
                 error=str(e),
                 exc_info=True,
             )
+
+            # Even if interrupt fails, remove the session to prevent reuse
+            logger.warning(
+                "session_removing_after_failed_interrupt",
+                session_id=session_id,
+                message="Removing session after failed interrupt to prevent reuse",
+            )
+            try:
+                await self._remove_session(session_id)
+            except Exception as remove_error:
+                logger.error(
+                    "session_remove_after_interrupt_failed",
+                    session_id=session_id,
+                    error=str(remove_error),
+                )
+
             return False
 
     async def interrupt_all_sessions(self) -> int:

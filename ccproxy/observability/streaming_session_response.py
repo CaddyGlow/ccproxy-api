@@ -261,7 +261,11 @@ class StreamingResponseWithSessionInterrupt(StreamingResponse):
             reason: Reason for interruption (for logging)
         """
         try:
-            interrupted = await claude_service.interrupt_session(session_id)
+            # Add timeout to prevent hanging on interrupt
+            interrupted = await asyncio.wait_for(
+                claude_service.interrupt_session(session_id),
+                timeout=5.0,  # 5 second timeout
+            )
 
             logger.info(
                 "streaming_session_interrupted",
@@ -271,6 +275,14 @@ class StreamingResponseWithSessionInterrupt(StreamingResponse):
                 reason=reason,
             )
 
+        except TimeoutError:
+            logger.error(
+                "streaming_session_interrupt_timeout",
+                session_id=session_id,
+                request_id=request_id,
+                reason=reason,
+                message="Session interrupt timed out after 5 seconds",
+            )
         except Exception as e:
             logger.error(
                 "streaming_session_interrupt_failed",
@@ -345,72 +357,114 @@ class StreamingResponseWithSessionInterrupt(StreamingResponse):
         """
         import asyncio
 
-        disconnection_check_interval = 2.0  # Check every 2 seconds
-        chunk_timeout = 30.0  # Timeout for waiting for next chunk
+        disconnection_check_interval = 1.0  # Check every 1 second for faster detection
+        first_chunk_timeout = (
+            10.0  # Timeout for waiting for first chunk (SystemMessage)
+        )
+
+        # Create a single long-running disconnection check task
+        disconnection_event = asyncio.Event()
+        disconnection_check_task = asyncio.create_task(
+            self._continuous_disconnection_check(
+                request,
+                session_id,
+                request_id,
+                disconnection_check_interval,
+                disconnection_event,
+            )
+        )
+
+        # Track if we've received the first chunk
+        first_chunk_received = False
 
         try:
             while True:
                 try:
-                    # Wait for next chunk with timeout and concurrent disconnection monitoring
+                    # Create task for getting next chunk
                     next_chunk_task: asyncio.Task[bytes] = asyncio.create_task(
                         self._get_next_chunk(content_iter)
                     )
-                    disconnection_check_task: asyncio.Task[None] = asyncio.create_task(
-                        self._periodic_disconnection_check(
-                            request,
-                            session_id,
-                            request_id,
-                            disconnection_check_interval,
-                        )
+
+                    # Create task to wait for disconnection event
+                    disconnection_wait_task = asyncio.create_task(
+                        disconnection_event.wait()
                     )
 
-                    # Race between getting next chunk and detecting disconnection
+                    # Race between getting next chunk, detecting disconnection, or timeout
+                    # Only apply timeout for the first chunk (SystemMessage)
+                    timeout = first_chunk_timeout if not first_chunk_received else None
                     done, pending = await asyncio.wait(
-                        [next_chunk_task, disconnection_check_task],
-                        timeout=chunk_timeout,
+                        [next_chunk_task, disconnection_wait_task],
+                        timeout=timeout,
                         return_when=asyncio.FIRST_COMPLETED,
                     )
 
-                    # Cancel any remaining tasks
+                    logger.debug(
+                        "streaming_monitor_task_status",
+                        session_id=session_id,
+                        request_id=request_id,
+                        done_tasks=len(done),
+                        pending_tasks=len(pending),
+                        next_chunk_done=next_chunk_task in done,
+                        disconnection_detected=disconnection_wait_task in done,
+                    )
+
+                    # Cancel the tasks that didn't complete
                     for task in pending:
                         task.cancel()
                         with contextlib.suppress(asyncio.CancelledError):
                             await task
 
                     if not done:
-                        # Timeout occurred - check for disconnection and interrupt if stuck
-                        logger.warning(
-                            "streaming_chunk_timeout_checking_disconnection",
-                            session_id=session_id,
-                            request_id=request_id,
-                            timeout_seconds=chunk_timeout,
-                            message="No chunks received within timeout, checking for disconnection",
-                        )
-
-                        if await request.is_disconnected():
+                        # Timeout occurred - only happens for first chunk
+                        if not first_chunk_received:
                             logger.warning(
-                                "streaming_timeout_disconnection_detected",
+                                "streaming_first_chunk_timeout",
                                 session_id=session_id,
                                 request_id=request_id,
-                                message="Client disconnected during chunk timeout",
+                                timeout_seconds=first_chunk_timeout,
+                                message="No SystemMessage received within timeout, checking for disconnection",
                             )
 
-                            await self._interrupt_session(
-                                claude_service,
-                                session_id,
-                                request_id,
-                                "timeout_disconnection",
-                            )
-                            yield None  # Signal disconnection
-                            return
+                            if await request.is_disconnected():
+                                logger.warning(
+                                    "streaming_timeout_disconnection_detected",
+                                    session_id=session_id,
+                                    request_id=request_id,
+                                    message="Client disconnected while waiting for SystemMessage",
+                                )
 
-                        # Continue waiting if still connected
-                        continue
+                                await self._interrupt_session(
+                                    claude_service,
+                                    session_id,
+                                    request_id,
+                                    "timeout_disconnection",
+                                )
+                                yield None  # Signal disconnection
+                                return
+                            else:
+                                # Stream appears stuck - no SystemMessage received
+                                # This can happen with certain commands like /status
+                                logger.error(
+                                    "streaming_system_message_timeout",
+                                    session_id=session_id,
+                                    request_id=request_id,
+                                    timeout_seconds=first_chunk_timeout,
+                                    message="No SystemMessage received, interrupting session",
+                                )
+
+                                await self._interrupt_session(
+                                    claude_service,
+                                    session_id,
+                                    request_id,
+                                    "system_message_timeout",
+                                )
+                                yield None  # Signal stream failure
+                                return
 
                     # Check which task completed first
-                    if disconnection_check_task in done:
-                        # Disconnection check task completed - this means disconnection was detected
-                        # (because _periodic_disconnection_check only returns when disconnected)
+                    if disconnection_wait_task in done:
+                        # Disconnection was detected
                         logger.warning(
                             "streaming_periodic_disconnection_detected",
                             session_id=session_id,
@@ -431,6 +485,17 @@ class StreamingResponseWithSessionInterrupt(StreamingResponse):
                         # Got next chunk successfully
                         try:
                             chunk = await next_chunk_task
+
+                            # Mark that we've received the first chunk
+                            if not first_chunk_received:
+                                first_chunk_received = True
+                                logger.debug(
+                                    "streaming_first_chunk_received",
+                                    session_id=session_id,
+                                    request_id=request_id,
+                                    chunk_size=len(chunk),
+                                )
+
                             yield chunk
                         except StopAsyncIteration:
                             # End of stream reached normally
@@ -449,6 +514,11 @@ class StreamingResponseWithSessionInterrupt(StreamingResponse):
                 exception_message=str(e),
             )
             raise
+        finally:
+            # Clean up the disconnection check task
+            disconnection_check_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await disconnection_check_task
 
     async def _periodic_disconnection_check(
         self,
@@ -465,17 +535,63 @@ class StreamingResponseWithSessionInterrupt(StreamingResponse):
             request_id: Request ID for logging
             check_interval: How often to check for disconnection (seconds)
         """
-        while True:
-            await asyncio.sleep(check_interval)
+        try:
+            while True:
+                await asyncio.sleep(check_interval)
 
-            if await request.is_disconnected():
-                logger.debug(
-                    "periodic_disconnection_check_detected",
-                    session_id=session_id,
-                    request_id=request_id,
-                    check_interval=check_interval,
-                )
-                return  # This will complete the task and signal disconnection
+                if await request.is_disconnected():
+                    logger.debug(
+                        "periodic_disconnection_check_detected",
+                        session_id=session_id,
+                        request_id=request_id,
+                        check_interval=check_interval,
+                    )
+                    return  # This will complete the task and signal disconnection
+        except asyncio.CancelledError:
+            logger.debug(
+                "periodic_disconnection_check_cancelled",
+                session_id=session_id,
+                request_id=request_id,
+            )
+            raise
+
+    async def _continuous_disconnection_check(
+        self,
+        request: Request,
+        session_id: str,
+        request_id: str,
+        check_interval: float,
+        disconnection_event: asyncio.Event,
+    ) -> None:
+        """Continuously check for client disconnection and set event when detected.
+
+        Args:
+            request: FastAPI request for disconnection detection
+            session_id: Session ID for logging
+            request_id: Request ID for logging
+            check_interval: How often to check for disconnection (seconds)
+            disconnection_event: Event to set when disconnection is detected
+        """
+        try:
+            while True:
+                await asyncio.sleep(check_interval)
+
+                if await request.is_disconnected():
+                    logger.debug(
+                        "continuous_disconnection_check_detected",
+                        session_id=session_id,
+                        request_id=request_id,
+                        check_interval=check_interval,
+                    )
+                    disconnection_event.set()  # Signal disconnection
+                    return
+        except asyncio.CancelledError:
+            logger.debug(
+                "continuous_disconnection_check_cancelled",
+                session_id=session_id,
+                request_id=request_id,
+            )
+            raise
 
     async def _get_next_chunk(self, content_iter: AsyncIterator[bytes]) -> bytes:
         """Get the next chunk from the content iterator.
