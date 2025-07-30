@@ -149,6 +149,7 @@ class SessionPool:
         self, session_id: str, options: ClaudeCodeOptions
     ) -> SessionContext:
         """Create a new session context."""
+        options.continue_conversation = True
         session_ctx = SessionContext(
             session_id=session_id, options=options, ttl_seconds=self.config.session_ttl
         )

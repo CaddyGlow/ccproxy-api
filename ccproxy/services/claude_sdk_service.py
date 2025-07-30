@@ -373,10 +373,7 @@ class ClaudeSDKService:
         # JSON dump of the parameters passed to SDK completion
         sdk_request_data = {
             "messages": messages,
-            "options": options.model_dump()
-            if hasattr(options, "model_dump")
-            else str(options),
-            "model": model,
+            "options": options,
             "stream": stream,
             "request_id": request_id,
         }
@@ -459,6 +456,32 @@ class ClaudeSDKService:
         except Exception as e:
             logger.error(
                 "health_check_failed",
+                error=str(e),
+                error_type=type(e).__name__,
+                exc_info=True,
+            )
+            return False
+
+    async def interrupt_session(self, session_id: str) -> bool:
+        """
+        Interrupt a Claude SDK session due to client disconnection.
+
+        Args:
+            session_id: The session ID to interrupt
+
+        Returns:
+            True if session was found and interrupted, False otherwise
+        """
+        logger.debug(
+            "claude_service_interrupt_session_requested", session_id=session_id
+        )
+
+        try:
+            return await self.sdk_client.interrupt_session(session_id)
+        except Exception as e:
+            logger.error(
+                "claude_service_interrupt_session_failed",
+                session_id=session_id,
                 error=str(e),
                 error_type=type(e).__name__,
                 exc_info=True,

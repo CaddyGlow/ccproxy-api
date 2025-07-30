@@ -416,13 +416,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     setup_cors_middleware(app, settings)
     setup_error_handlers(app)
 
-    # Add request content logging middleware first (will run third due to middleware order)
+    # Add request content logging middleware first (will run fourth due to middleware order)
     app.add_middleware(RequestContentLoggingMiddleware)
 
-    # Add custom access log middleware second (will run second due to middleware order)
+    # Add custom access log middleware second (will run third due to middleware order)
     app.add_middleware(AccessLogMiddleware)
 
-    # Add request ID middleware third (will run first to initialize context)
+    # Add request ID middleware fourth (will run first to initialize context)
     app.add_middleware(RequestIDMiddleware)
 
     # Add server header middleware (for non-proxy routes)

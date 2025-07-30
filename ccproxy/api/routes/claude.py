@@ -4,7 +4,7 @@ import json
 from collections.abc import AsyncIterator
 
 import structlog
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
 from ccproxy.adapters.openai.adapter import (
@@ -15,6 +15,9 @@ from ccproxy.adapters.openai.adapter import (
 from ccproxy.api.dependencies import ClaudeServiceDep
 from ccproxy.models.messages import MessageCreateParams, MessageResponse
 from ccproxy.observability.streaming_response import StreamingResponseWithLogging
+from ccproxy.observability.streaming_session_response import (
+    StreamingResponseWithSessionInterrupt,
+)
 
 
 # Create the router for Claude SDK endpoints
@@ -104,7 +107,10 @@ async def create_openai_chat_completion(
         ) from e
 
 
-@router.post("/{session_id}/v1/chat/completions", response_model=None)
+@router.post(
+    "/{session_id}/v1/chat/completions",
+    response_model=None,
+)
 async def create_openai_chat_completion_with_session(
     session_id: str,
     openai_request: OpenAIChatCompletionRequest,
@@ -187,7 +193,10 @@ async def create_openai_chat_completion_with_session(
         ) from e
 
 
-@router.post("/{session_id}/v1/messages", response_model=None)
+@router.post(
+    "/{session_id}/v1/messages",
+    response_model=None,
+)
 async def create_anthropic_message_with_session(
     session_id: str,
     message_request: MessageCreateParams,

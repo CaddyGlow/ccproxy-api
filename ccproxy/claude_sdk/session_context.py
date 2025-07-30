@@ -72,7 +72,6 @@ class SessionContext:
         self.connection_attempts = 0
         self.max_connection_attempts = 3
 
-
     async def connect(self) -> bool:
         """Establish connection to Claude SDK."""
         async with self.lock:
@@ -100,7 +99,6 @@ class SessionContext:
                     session_id=self.session_id,
                     attempt=self.connection_attempts,
                 )
-
 
                 return True
 
@@ -181,7 +179,6 @@ class SessionContext:
         self.metrics.last_used = time.time()
         self.metrics.message_count += 1
 
-
         logger.debug(
             "session_usage_updated",
             session_id=self.session_id,
@@ -198,4 +195,3 @@ class SessionContext:
             or self.metrics.idle_seconds > idle_threshold
             or self.status in (SessionStatus.ERROR, SessionStatus.DISCONNECTED)
         )
-
