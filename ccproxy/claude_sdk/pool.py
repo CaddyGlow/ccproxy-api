@@ -158,7 +158,6 @@ class ClaudeSDKClientPool:
 
     async def start(self) -> None:
         """Start the pool and begin background initialization."""
-        logger.info("claude_sdk_pool_starting", pool_size=self.config.pool_size)
 
         # Start background client initialization task
         self._init_task = asyncio.create_task(self._initialize_clients_background())
@@ -169,7 +168,7 @@ class ClaudeSDKClientPool:
         self._cleanup_task = asyncio.create_task(self._cleanup_loop())
 
         logger.info(
-            "claude_sdk_pool_started",
+            "sdk_pool_started",
             target_pool_size=self.config.pool_size,
             target_max_pool_size=self.config.max_pool_size,
             startup_delay=self.config.startup_delay,
@@ -179,7 +178,7 @@ class ClaudeSDKClientPool:
     async def stop(self) -> None:
         """Stop the pool and cleanup all connections."""
         self._shutdown = True
-        logger.info("claude_sdk_pool_stopping")
+        logger.info("sdk_pool_stopping")
 
         # Cancel background tasks
         if self._init_task:
@@ -210,7 +209,7 @@ class ClaudeSDKClientPool:
             while not self._available_clients.empty():
                 self._available_clients.get_nowait()
 
-        logger.info("claude_sdk_pool_stopped")
+        logger.info("sdk_pool_stopped")
 
     @asynccontextmanager
     async def acquire_client(
@@ -264,7 +263,7 @@ class ClaudeSDKClientPool:
                 self._active_clients.add(pooled_client)
 
             logger.debug(
-                "claude_sdk_pool_client_acquired_from_pool",
+                "sdk_pool_client_acquired_from_pool",
                 client_id=id(pooled_client.client),
             )
             return pooled_client
@@ -276,14 +275,14 @@ class ClaudeSDKClientPool:
                     pooled_client = await self._create_client()
                     self._active_clients.add(pooled_client)
                     logger.debug(
-                        "claude_sdk_pool_client_created_on_demand",
+                        "sdk_pool_client_created_on_demand",
                         client_id=id(pooled_client.client),
                     )
                     return pooled_client
                 else:
                     # Wait for a client to become available
                     logger.warning(
-                        "claude_sdk_pool_max_size_reached",
+                        "sdk_pool_max_size_reached",
                         max_size=self.config.max_pool_size,
                     )
                     raise RuntimeError(
@@ -299,7 +298,7 @@ class ClaudeSDKClientPool:
             if pooled_client.is_healthy and pooled_client in self._all_clients:
                 await self._available_clients.put(pooled_client)
                 logger.debug(
-                    "claude_sdk_pool_client_returned",
+                    "sdk_pool_client_returned",
                     client_id=id(pooled_client.client),
                 )
             else:
@@ -328,7 +327,7 @@ class ClaudeSDKClientPool:
             )
 
         logger.debug(
-            "claude_sdk_pool_client_created",
+            "sdk_pool_client_created",
             client_id=id(client),
             total_clients=len(self._all_clients),
         )
@@ -351,15 +350,15 @@ class ClaudeSDKClientPool:
             )
 
         logger.debug(
-            "claude_sdk_pool_client_removed",
+            "sdk_pool_client_removed",
             client_id=id(pooled_client.client),
             total_clients=len(self._all_clients),
         )
 
     async def _initialize_clients_background(self) -> None:
         """Background task to initialize pool clients with staggered delays."""
-        logger.info(
-            "claude_sdk_pool_background_initialization_started",
+        logger.debug(
+            "sdk_pool_background_initialization_started",
             pool_size=self.config.pool_size,
             startup_delay=self.config.startup_delay,
         )
@@ -367,8 +366,8 @@ class ClaudeSDKClientPool:
         clients_created = 0
         for i in range(self.config.pool_size):
             if self._shutdown:
-                logger.info(
-                    "claude_sdk_pool_background_initialization_cancelled",
+                logger.debug(
+                    "sdk_pool_background_initialization_cancelled",
                     clients_created=clients_created,
                 )
                 return
@@ -378,8 +377,8 @@ class ClaudeSDKClientPool:
                 await self._available_clients.put(pooled_client)
                 clients_created += 1
 
-                logger.debug(
-                    "claude_sdk_pool_background_client_created",
+                logger.info(
+                    "sdk_pool_client_init_created",
                     client_number=i + 1,
                     total_target=self.config.pool_size,
                     client_id=id(pooled_client.client),
@@ -391,7 +390,7 @@ class ClaudeSDKClientPool:
 
             except Exception as e:
                 logger.error(
-                    "claude_sdk_pool_background_client_creation_failed",
+                    "sdk_pool_client_init_creation_failed",
                     client_number=i + 1,
                     error=str(e),
                     error_type=type(e).__name__,
@@ -406,7 +405,7 @@ class ClaudeSDKClientPool:
             )
 
         logger.info(
-            "claude_sdk_pool_background_initialization_completed",
+            "sdk_pool_client_init_completed",
             clients_created=clients_created,
             total_clients=len(self._all_clients),
             available_clients=self._available_clients.qsize(),
@@ -421,7 +420,7 @@ class ClaudeSDKClientPool:
             except asyncio.CancelledError:
                 break
             except Exception as e:
-                logger.error("claude_sdk_pool_health_check_error", error=str(e))
+                logger.error("sdk_pool_health_check_error", error=str(e))
 
     async def _cleanup_loop(self) -> None:
         """Background task to cleanup idle clients."""
@@ -432,7 +431,7 @@ class ClaudeSDKClientPool:
             except asyncio.CancelledError:
                 break
             except Exception as e:
-                logger.error("claude_sdk_pool_cleanup_error", error=str(e))
+                logger.error("sdk_pool_cleanup_error", error=str(e))
 
     async def _perform_health_checks(self) -> None:
         """Perform health checks on available clients."""
@@ -461,7 +460,7 @@ class ClaudeSDKClientPool:
             await self._available_clients.put(client)
 
         logger.debug(
-            "claude_sdk_pool_health_check_completed",
+            "sdk_pool_health_check_completed",
             checked=len(available_clients),
             healthy=len(healthy_clients),
             removed=len(available_clients) - len(healthy_clients),
@@ -499,9 +498,7 @@ class ClaudeSDKClientPool:
             await self._available_clients.put(client)
 
         if removed_count > 0:
-            logger.debug(
-                "claude_sdk_pool_idle_cleanup_completed", removed_count=removed_count
-            )
+            logger.debug("sdk_pool_idle_cleanup_completed", removed_count=removed_count)
 
     def get_stats(self) -> PoolStats:
         """Get current pool statistics."""

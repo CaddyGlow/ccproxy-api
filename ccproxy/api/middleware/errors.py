@@ -585,7 +585,7 @@ def setup_error_handlers(app: FastAPI) -> None:
 
         # Don't log stack trace for 404 errors as they're expected
         if exc.status_code == 404:
-            logger.info(
+            logger.debug(
                 "HTTP 404 error",
                 error_type="http_404",
                 error_message=exc.detail,
@@ -639,7 +639,7 @@ def setup_error_handlers(app: FastAPI) -> None:
         """Handle Starlette HTTP exceptions."""
         # Don't log stack trace for 404 errors as they're expected
         if exc.status_code == 404:
-            logger.info(
+            logger.debug(
                 "Starlette HTTP 404 error",
                 error_type="starlette_http_404",
                 error_message=exc.detail,

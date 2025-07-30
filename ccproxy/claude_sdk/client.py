@@ -864,7 +864,7 @@ class ClaudeSDKClient:
                                     # "parent_tool_use_id": None,
                                     # "session_id": session_id,
                                 }
-                                logger.info("sending_sdk_message", message=message)
+                                logger.debug("sending_sdk_message", message=message)
                                 yield message
                             else:
                                 raise ClaudeSDKError("Invalid message content")
