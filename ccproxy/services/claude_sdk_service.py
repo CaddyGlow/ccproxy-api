@@ -534,6 +534,17 @@ class ClaudeSDKService:
             )
             return False
 
+    async def interrupt_session(self, session_id: str) -> bool:
+        """Interrupt a Claude session due to client disconnection.
+
+        Args:
+            session_id: The session ID to interrupt
+
+        Returns:
+            True if session was found and interrupted, False otherwise
+        """
+        return await self.sdk_client.interrupt_session(session_id)
+
     async def close(self) -> None:
         """Close the service and cleanup resources."""
         await self.sdk_client.close()
