@@ -138,7 +138,6 @@ class ClaudeSDKClient:
 
     async def query_completion(
         self,
-        prompt: str,
         messages: list[dict[str, Any]],
         options: ClaudeCodeOptions,
         request_id: str | None = None,
@@ -153,7 +152,7 @@ class ClaudeSDKClient:
         Execute a query using the Claude Code SDK and yields strongly-typed Pydantic models.
 
         Args:
-            prompt: The prompt string to send to Claude
+            messages: List of Anthropic API messages to convert and send
             options: Claude Code options configuration
             request_id: Optional request ID for correlation
             session_id: Optional session ID for conversation continuity
@@ -170,12 +169,10 @@ class ClaudeSDKClient:
             ):
                 yield message
         else:
-            async for message in self._query_stateless(
-                messages, options, request_id, session_id
-            ):
+            async for message in self._query(messages, options, request_id, session_id):
                 yield message
 
-    async def _query_stateless(
+    async def _query(
         self,
         messages: list[dict[str, Any]],
         options: ClaudeCodeOptions,
@@ -224,14 +221,14 @@ class ClaudeSDKClient:
                                         block.model_dump() for block in msg.content
                                     ]
 
-                            msg = {
+                            message_dict = {
                                 "type": "user",
                                 "message": {"role": "user", "content": content},
                                 "parent_tool_use_id": None,
                                 "session_id": session_id,
                             }
-                            logger.debug("sending_sdk_message", message=msg)
-                            yield msg
+                            logger.debug("sending_sdk_message", message=message_dict)
+                            yield message_dict
 
                     # Send query with session_id support
                     if session_id:
@@ -365,6 +362,168 @@ class ClaudeSDKClient:
                     status_code=500,
                 ) from e
 
+    async def _query_stateless(
+        self,
+        messages: list[dict[str, Any]],
+        options: ClaudeCodeOptions,
+        request_id: str | None = None,
+        session_id: str | None = None,
+    ) -> AsyncIterator[
+        sdk_models.UserMessage
+        | sdk_models.AssistantMessage
+        | sdk_models.SystemMessage
+        | sdk_models.ResultMessage
+    ]:
+        """Execute query using the basic query() function from Claude SDK."""
+        async with timed_operation(
+            "claude_sdk_query_stateless_basic", request_id
+        ) as op:
+            try:
+                logger.debug(
+                    "claude_sdk_query_start",
+                    messages_count=len(messages),
+                    mode="stateless_basic",
+                    session_id=session_id,
+                )
+
+                # Convert Anthropic messages to a simple prompt string
+                # Take the last user message as the prompt
+                prompt = ""
+                for msg in messages:
+                    if msg.get("role") == "user":
+                        content = msg.get("content", "")
+                        if isinstance(content, str):
+                            prompt = content
+                        elif isinstance(content, list):
+                            # Extract text from content blocks
+                            text_parts = []
+                            for block in content:
+                                if (
+                                    isinstance(block, dict)
+                                    and block.get("type") == "text"
+                                ):
+                                    text_parts.append(block.get("text", ""))
+                            prompt = "\n".join(text_parts)
+
+                if not prompt:
+                    prompt = "Hello"  # Default prompt if none found
+
+                message_count = 0
+
+                # Use the basic query function from Claude SDK
+                async for message in query(prompt=prompt):
+                    message_count += 1
+
+                    logger.debug(
+                        "claude_sdk_raw_message_received",
+                        message_type=type(message).__name__,
+                        message_count=message_count,
+                        request_id=request_id,
+                        has_content=hasattr(message, "content")
+                        and bool(getattr(message, "content", None)),
+                        content_preview=str(message)[:150],
+                    )
+
+                    # Skip unknown message types early
+                    if not isinstance(
+                        message,
+                        SDKUserMessage
+                        | SDKAssistantMessage
+                        | SDKSystemMessage
+                        | SDKResultMessage,
+                    ):
+                        logger.warning(  # type: ignore[unreachable]
+                            "claude_sdk_unknown_message_type",
+                            message_type=type(message).__name__,
+                            request_id=request_id,
+                        )
+                        continue
+
+                    # Convert SDK message to our Pydantic model
+                    try:
+                        converted_message: (
+                            sdk_models.UserMessage
+                            | sdk_models.AssistantMessage
+                            | sdk_models.SystemMessage
+                            | sdk_models.ResultMessage
+                        )
+                        if isinstance(message, SDKUserMessage):
+                            converted_message = self._convert_message(
+                                message, sdk_models.UserMessage
+                            )
+                        elif isinstance(message, SDKAssistantMessage):
+                            converted_message = self._convert_message(
+                                message, sdk_models.AssistantMessage
+                            )
+                        elif isinstance(message, SDKSystemMessage):
+                            converted_message = self._convert_message(
+                                message, sdk_models.SystemMessage
+                            )
+                        else:  # SDKResultMessage
+                            converted_message = self._convert_message(
+                                message, sdk_models.ResultMessage
+                            )
+
+                        logger.debug(
+                            "claude_sdk_message_converted_successfully",
+                            original_type=type(message).__name__,
+                            converted_type=type(converted_message).__name__,
+                            message_count=message_count,
+                            request_id=request_id,
+                        )
+                        yield converted_message
+                    except Exception as e:
+                        logger.warning(
+                            "claude_sdk_message_conversion_failed",
+                            message_type=type(message).__name__,
+                            error=str(e),
+                        )
+                        # Skip invalid messages rather than crashing
+                        continue
+
+                # Store final metrics
+                op["message_count"] = message_count
+                self._last_api_call_time_ms = op.get("duration_ms", 0.0)
+
+                logger.debug(
+                    "claude_sdk_query_completed",
+                    message_count=message_count,
+                    duration_ms=op.get("duration_ms"),
+                    mode="stateless_basic",
+                )
+
+            except (CLINotFoundError, CLIConnectionError) as e:
+                logger.error(
+                    "claude_sdk_connection_failed",
+                    error=str(e),
+                    error_type=type(e).__name__,
+                )
+                raise ServiceUnavailableError(
+                    f"Claude CLI not available: {str(e)}"
+                ) from e
+            except (ProcessError, CLIJSONDecodeError) as e:
+                logger.error(
+                    "claude_sdk_process_failed",
+                    error=str(e),
+                    error_type=type(e).__name__,
+                )
+                raise ClaudeProxyError(
+                    message=f"Claude process error: {str(e)}",
+                    error_type="service_unavailable_error",
+                    status_code=503,
+                ) from e
+            except Exception as e:
+                logger.error(
+                    "claude_sdk_unexpected_error_occurred",
+                    error=str(e),
+                    error_type=type(e).__name__,
+                )
+                raise ClaudeProxyError(
+                    message=f"Unexpected error: {str(e)}",
+                    error_type="internal_server_error",
+                    status_code=500,
+                ) from e
+
     async def _query_with_pool(
         self,
         messages: list[dict[str, Any]],
@@ -405,12 +564,13 @@ class ClaudeSDKClient:
                         enable_health_checks=pool_settings.enable_health_checks,
                     )
 
-                # Use injected manager or fall back to singleton
-                if self._pool_manager is not None:
-                    manager = self._pool_manager
-                else:
-                    manager = await get_pool_manager()
+                # Use injected manager
+                if self._pool_manager is None:
+                    raise ClaudeProxyError("No pool manager available")
+
+                manager = self._pool_manager
                 pool = await manager.get_pool(config=pool_config)
+
                 message_count = 0
 
                 async with pool.acquire_client(options) as client:
@@ -537,8 +697,8 @@ class ClaudeSDKClient:
                     error_type=type(e).__name__,
                 )
                 # Fall back to stateless mode on pool errors
-                logger.info("claude_sdk_falling_back_to_stateless_mode")
-                async for converted_message in self._query_stateless(
+                logger.info("claude_sdk_nopool_mode")
+                async for converted_message in self._query(
                     messages, options, request_id, session_id
                 ):
                     yield converted_message

@@ -118,8 +118,7 @@ class ClaudeSDKService:
             **kwargs,
         )
 
-        # Convert messages to prompt format
-        prompt = self.message_converter.format_messages_to_prompt(messages)
+        # Messages will be converted to SDK format in the client layer
 
         # Use existing context, but update metadata for this service (preserve original service_type)
         ctx = request_context
@@ -138,18 +137,18 @@ class ClaudeSDKService:
             # Log SDK request parameters
             timestamp = ctx.get_log_timestamp_prefix() if ctx else None
             await self._log_sdk_request(
-                request_id, prompt, options, model, stream, session_id, timestamp
+                request_id, messages, options, model, stream, session_id, timestamp
             )
 
             if stream:
                 # For streaming, return the async iterator directly
                 # Access logging will be handled by the stream processor when ResultMessage is received
                 return self._stream_completion(
-                    ctx, prompt, messages, options, model, session_id, timestamp
+                    ctx, messages, options, model, session_id, timestamp
                 )
             else:
                 result = await self._complete_non_streaming(
-                    ctx, prompt, messages, options, model, session_id, timestamp
+                    ctx, messages, options, model, session_id, timestamp
                 )
                 return result
         except (ClaudeProxyError, ServiceUnavailableError) as e:
@@ -160,7 +159,6 @@ class ClaudeSDKService:
     async def _complete_non_streaming(
         self,
         ctx: RequestContext,
-        prompt: str,
         messages: list[dict[str, Any]],
         options: "ClaudeCodeOptions",
         model: str,
@@ -187,7 +185,7 @@ class ClaudeSDKService:
         sdk_messages = [
             m
             async for m in self.sdk_client.query_completion(
-                prompt, messages, options, request_id, session_id
+                messages, options, request_id, session_id
             )
         ]
 
@@ -306,7 +304,6 @@ class ClaudeSDKService:
     async def _stream_completion(
         self,
         ctx: RequestContext,
-        prompt: str,
         messages: list[dict[str, Any]],
         options: "ClaudeCodeOptions",
         model: str,
@@ -334,7 +331,7 @@ class ClaudeSDKService:
         pretty_format = self.settings.claude.pretty_format if self.settings else True
 
         sdk_stream = self.sdk_client.query_completion(
-            prompt, messages, options, request_id, session_id
+            messages, options, request_id, session_id
         )
 
         async for chunk in self.stream_processor.process_stream(
@@ -353,7 +350,7 @@ class ClaudeSDKService:
     async def _log_sdk_request(
         self,
         request_id: str,
-        prompt: str,
+        messages: list[dict[str, Any]],
         options: "ClaudeCodeOptions",
         model: str,
         stream: bool,
@@ -364,7 +361,7 @@ class ClaudeSDKService:
 
         Args:
             request_id: Request identifier
-            prompt: The formatted prompt
+            messages: List of Anthropic API messages
             options: Claude SDK options
             model: The model being used
             stream: Whether streaming is enabled
@@ -375,7 +372,7 @@ class ClaudeSDKService:
 
         # JSON dump of the parameters passed to SDK completion
         sdk_request_data = {
-            "prompt": prompt,
+            "messages": messages,
             "options": options.model_dump()
             if hasattr(options, "model_dump")
             else str(options),
