@@ -4,16 +4,14 @@ from collections.abc import AsyncIterator
 from typing import Any, TypeVar
 
 import structlog
-from claude_code_sdk import Message
 from pydantic import BaseModel
 
-from ccproxy.claude_sdk.manager import PoolManager, get_pool_manager
+from ccproxy.claude_sdk.manager import PoolManager
 from ccproxy.claude_sdk.pool import PoolConfig
 from ccproxy.config.settings import Settings
 from ccproxy.core.async_utils import patched_typing
 from ccproxy.core.errors import ClaudeProxyError, ServiceUnavailableError
 from ccproxy.models import claude_sdk as sdk_models
-from ccproxy.models.requests import MessageContent
 from ccproxy.observability import timed_operation
 
 
@@ -136,6 +134,61 @@ class ClaudeSDKClient:
 
         return sdk_messages
 
+    def _should_use_session_pool(self, session_id: str | None) -> bool:
+        """Determine if session pool should be used for this request."""
+        logger.debug(
+            "session_pool_routing_check",
+            session_id=session_id,
+            has_session_id=bool(session_id),
+            has_pool_manager=bool(self._pool_manager),
+            has_settings=bool(self._settings),
+        )
+
+        # Must have session_id
+        if not session_id:
+            logger.debug(
+                "session_pool_routing_decision",
+                decision="no_session_id",
+                use_session_pool=False,
+            )
+            return False
+
+        # Must have pool manager
+        if not self._pool_manager:
+            logger.debug(
+                "session_pool_routing_decision",
+                decision="no_pool_manager",
+                use_session_pool=False,
+            )
+            return False
+
+        # Must have settings with session pool enabled
+        if not self._settings or not hasattr(self._settings, "claude"):
+            logger.debug(
+                "session_pool_routing_decision",
+                decision="no_settings",
+                use_session_pool=False,
+            )
+            return False
+
+        session_pool_settings = getattr(self._settings.claude, "session_pool", None)
+        if not session_pool_settings:
+            logger.debug(
+                "session_pool_routing_decision",
+                decision="no_session_pool_settings",
+                use_session_pool=False,
+            )
+            return False
+
+        enabled = getattr(session_pool_settings, "enabled", False)
+        logger.debug(
+            "session_pool_routing_decision",
+            decision="session_pool_enabled_check",
+            session_pool_enabled=enabled,
+            use_session_pool=enabled,
+        )
+        return enabled
+
     async def query_completion(
         self,
         messages: list[dict[str, Any]],
@@ -163,12 +216,45 @@ class ClaudeSDKClient:
         Raises:
             ClaudeSDKError: If the query fails
         """
-        if self._use_pool:
+        logger.debug(
+            "query_completion_start",
+            request_id=request_id,
+            session_id=session_id,
+            messages_count=len(messages),
+            use_pool=self._use_pool,
+            pool_manager_available=bool(self._pool_manager),
+        )
+
+        # Route to session pool if session_id provided and session pool available
+        if self._should_use_session_pool(session_id):
+            logger.debug(
+                "query_completion_routing",
+                request_id=request_id,
+                session_id=session_id,
+                route="session_pool",
+            )
+            async for message in self._query_with_session_pool(
+                messages, options, request_id, session_id
+            ):
+                yield message
+        elif self._use_pool:
+            logger.debug(
+                "query_completion_routing",
+                request_id=request_id,
+                session_id=session_id,
+                route="regular_pool",
+            )
             async for message in self._query_with_pool(
                 messages, options, request_id, session_id
             ):
                 yield message
         else:
+            logger.debug(
+                "query_completion_routing",
+                request_id=request_id,
+                session_id=session_id,
+                route="direct_connection",
+            )
             async for message in self._query(messages, options, request_id, session_id):
                 yield message
 
@@ -703,6 +789,220 @@ class ClaudeSDKClient:
                 ):
                     yield converted_message
 
+    async def _query_with_session_pool(
+        self,
+        messages: list[dict[str, Any]],
+        options: ClaudeCodeOptions,
+        request_id: str | None = None,
+        session_id: str | None = None,
+    ) -> AsyncIterator[
+        sdk_models.UserMessage
+        | sdk_models.AssistantMessage
+        | sdk_models.SystemMessage
+        | sdk_models.ResultMessage
+    ]:
+        """Execute query using session-aware pooled connection approach."""
+
+        async with timed_operation("claude_sdk_query_session_pool", request_id) as op:
+            try:
+                logger.debug(
+                    "claude_sdk_query_start",
+                    messages_count=len(messages),
+                    mode="session_pool",
+                    session_id=session_id,
+                )
+
+                # Get pool manager
+                if self._pool_manager is None:
+                    raise ClaudeSDKError("No pool manager available")
+
+                # Get session context (session_id is guaranteed to be non-None here)
+                if not session_id:
+                    raise ClaudeSDKError("Session ID required for session pool")
+
+                session_ctx = await self._pool_manager.get_session_client(
+                    session_id, options
+                )
+
+                message_count = 0
+
+                async with (
+                    session_ctx.lock
+                ):  # Prevent concurrent access to same session
+                    logger.debug(
+                        "session_pool_lock_acquired",
+                        session_id=session_id,
+                        request_id=request_id,
+                        session_status=session_ctx.status,
+                    )
+
+                    # Update session usage
+                    session_ctx.update_usage()
+
+                    # Convert Anthropic messages to SDK format
+                    sdk_messages = self._convert_anthropic_messages_to_sdk(messages)
+
+                    # Convert SDK messages to Claude SDK expected format
+                    async def message_iter() -> AsyncIterator[dict[str, Any]]:
+                        last_message = sdk_messages[-1]
+                        logger.debug(
+                            "last_message",
+                            last_message_type=last_message.__module__,
+                            last_message=last_message,
+                        )
+                        if isinstance(last_message, sdk_models.UserMessage):
+                            content = last_message.content[0]
+                            if isinstance(content, sdk_models.TextBlock):
+                                message = {
+                                    "type": "user",
+                                    "message": {
+                                        "role": "user",
+                                        "content": content.text,
+                                    },
+                                    # "parent_tool_use_id": None,
+                                    # "session_id": session_id,
+                                }
+                                logger.info("sending_sdk_message", message=message)
+                                yield message
+                            else:
+                                raise ClaudeSDKError("Invalid message content")
+                        else:
+                            raise ClaudeSDKError("Invalid message")
+
+                    # Send query to persistent client
+                    logger.debug(
+                        "session_pool_sending_query",
+                        session_id=session_id,
+                        request_id=request_id,
+                        has_claude_client=bool(session_ctx.claude_client),
+                    )
+
+                    if session_id:
+                        await session_ctx.claude_client.query(
+                            message_iter(), session_id=session_id
+                        )
+                    else:
+                        await session_ctx.claude_client.query(message_iter())
+
+                    logger.debug(
+                        "session_pool_query_sent_receiving_response",
+                        session_id=session_id,
+                        request_id=request_id,
+                    )
+
+                    # Receive and process all messages
+                    async for message in session_ctx.claude_client.receive_response():
+                        message_count += 1
+
+                        logger.debug(
+                            "claude_sdk_raw_message_received",
+                            message_type=type(message).__name__,
+                            message_count=message_count,
+                            request_id=request_id,
+                            session_id=session_id,
+                            has_content=hasattr(message, "content")
+                            and bool(getattr(message, "content", None)),
+                            content_preview=str(message)[:150],
+                        )
+
+                        # Skip unknown message types early
+                        if not isinstance(
+                            message,
+                            SDKUserMessage
+                            | SDKAssistantMessage
+                            | SDKSystemMessage
+                            | SDKResultMessage,
+                        ):
+                            logger.warning(
+                                "claude_sdk_unknown_message_type",
+                                message_type=type(message).__name__,
+                                request_id=request_id,
+                                session_id=session_id,
+                            )
+                            continue
+
+                        # Convert SDK message to our Pydantic model
+                        try:
+                            converted_message: (
+                                sdk_models.UserMessage
+                                | sdk_models.AssistantMessage
+                                | sdk_models.SystemMessage
+                                | sdk_models.ResultMessage
+                            )
+                            if isinstance(message, SDKUserMessage):
+                                converted_message = self._convert_message(
+                                    message, sdk_models.UserMessage
+                                )
+                            elif isinstance(message, SDKAssistantMessage):
+                                converted_message = self._convert_message(
+                                    message, sdk_models.AssistantMessage
+                                )
+                            elif isinstance(message, SDKSystemMessage):
+                                converted_message = self._convert_message(
+                                    message, sdk_models.SystemMessage
+                                )
+                            else:  # SDKResultMessage
+                                converted_message = self._convert_message(
+                                    message, sdk_models.ResultMessage
+                                )
+                                # Capture SDK session ID from result message
+                                if isinstance(
+                                    converted_message, sdk_models.ResultMessage
+                                ):
+                                    session_ctx.sdk_session_id = (
+                                        converted_message.session_id
+                                    )
+
+                            logger.debug(
+                                "claude_sdk_message_converted_successfully",
+                                original_type=type(message).__name__,
+                                converted_type=type(converted_message).__name__,
+                                message_count=message_count,
+                                request_id=request_id,
+                                session_id=session_id,
+                            )
+                            yield converted_message
+
+                        except Exception as e:
+                            logger.warning(
+                                "claude_sdk_message_conversion_failed",
+                                message_type=type(message).__name__,
+                                error=str(e),
+                                session_id=session_id,
+                            )
+                            # Skip invalid messages rather than crashing
+                            continue
+
+                # Store final metrics
+                op["message_count"] = message_count
+                op["session_id"] = session_id
+                self._last_api_call_time_ms = op.get("duration_ms", 0.0)
+
+                logger.debug(
+                    "claude_sdk_query_completed",
+                    message_count=message_count,
+                    duration_ms=op.get("duration_ms"),
+                    mode="session_pool",
+                    session_id=session_id,
+                )
+
+            except Exception as e:
+                logger.error(
+                    "claude_sdk_session_pool_query_error",
+                    error=str(e),
+                    error_type=type(e).__name__,
+                    session_id=session_id,
+                    exc_info=True,
+                )
+                # Fall back to regular pool on session pool errors
+                logger.info(
+                    "claude_sdk_fallback_to_regular_pool", session_id=session_id
+                )
+                async for converted_message in self._query_with_pool(
+                    messages, options, request_id, session_id
+                ):
+                    yield converted_message
+
     def _convert_message(self, message: Any, model_class: type[T]) -> T:
         """Convert SDK message to Pydantic model."""
         if hasattr(message, "__dict__"):
@@ -764,6 +1064,30 @@ class ClaudeSDKClient:
                 component="claude_sdk",
                 error=str(e),
                 error_type=type(e).__name__,
+            )
+            return False
+
+    async def interrupt_session(self, session_id: str) -> bool:
+        """Interrupt a specific session due to client disconnection.
+
+        Args:
+            session_id: The session ID to interrupt
+
+        Returns:
+            True if session was found and interrupted, False otherwise
+        """
+        logger.debug("sdk_client_interrupt_session_started", session_id=session_id)
+        if self._pool_manager:
+            logger.info(
+                "client_interrupt_session_requested",
+                session_id=session_id,
+                has_pool_manager=True,
+            )
+            return await self._pool_manager.interrupt_session(session_id)
+        else:
+            logger.warning(
+                "client_interrupt_session_no_pool_manager",
+                session_id=session_id,
             )
             return False
 

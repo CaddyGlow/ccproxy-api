@@ -69,8 +69,8 @@ class ClaudePoolSettings(BaseModel):
     """Configuration settings for Claude SDK client connection pooling."""
 
     pool_size: int = Field(
-        default=3,
-        ge=1,
+        default=0,
+        ge=0,
         le=20,
         description="Number of standby clients to maintain in the pool",
     )
@@ -121,6 +121,47 @@ class ClaudePoolSettings(BaseModel):
         return v
 
 
+class SessionPoolSettings(BaseModel):
+    """Session pool configuration settings."""
+
+    enabled: bool = Field(
+        default=True, description="Enable session-aware persistent pooling"
+    )
+
+    session_ttl: int = Field(
+        default=3600,
+        ge=60,
+        le=86400,
+        description="Session time-to-live in seconds (1 minute to 24 hours)",
+    )
+
+    max_sessions: int = Field(
+        default=1000,
+        ge=1,
+        le=10000,
+        description="Maximum number of concurrent sessions",
+    )
+
+    cleanup_interval: int = Field(
+        default=300,
+        ge=30,
+        le=3600,
+        description="Session cleanup interval in seconds (30 seconds to 1 hour)",
+    )
+
+    idle_threshold: int = Field(
+        default=600,
+        ge=60,
+        le=7200,
+        description="Session idle threshold in seconds (1 minute to 2 hours)",
+    )
+
+    connection_recovery: bool = Field(
+        default=True,
+        description="Enable automatic connection recovery for unhealthy sessions",
+    )
+
+
 class ClaudeSettings(BaseModel):
     """Claude-specific configuration settings."""
 
@@ -162,6 +203,10 @@ class ClaudeSettings(BaseModel):
     pool_settings: ClaudePoolSettings = Field(
         default_factory=ClaudePoolSettings,
         description="Configuration settings for Claude SDK client connection pooling. Only used when use_client_pool=True.",
+    )
+
+    session_pool: SessionPoolSettings = Field(
+        default_factory=SessionPoolSettings, description="Session pool configuration"
     )
 
     @field_validator("cli_path")

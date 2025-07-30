@@ -225,7 +225,9 @@ class TestClaudeSDKClientStatelessQueries:
             SDKClientMockBuilder.create_simple_response_generator(),
         ):
             messages: list[Any] = []
-            async for message in client.query_completion("Hello", options, "req_123"):
+            async for message in client.query_completion(
+                [{"role": "user", "content": "Hello"}], options, "req_123"
+            ):
                 messages.append(message)
 
         assert len(messages) == 1
@@ -249,7 +251,9 @@ class TestClaudeSDKClientStatelessQueries:
             ),
             pytest.raises(ServiceUnavailableError) as exc_info,
         ):
-            async for _ in client.query_completion("Hello", options):
+            async for _ in client.query_completion(
+                [{"role": "user", "content": "Hello"}], options
+            ):
                 pass
 
         assert "Claude CLI not available" in str(exc_info.value)
@@ -270,7 +274,9 @@ class TestClaudeSDKClientStatelessQueries:
             ),
             pytest.raises(ServiceUnavailableError) as exc_info,
         ):
-            async for _ in client.query_completion("Hello", options):
+            async for _ in client.query_completion(
+                [{"role": "user", "content": "Hello"}], options
+            ):
                 pass
 
         assert "Claude CLI not available" in str(exc_info.value)
@@ -291,7 +297,9 @@ class TestClaudeSDKClientStatelessQueries:
             ),
             pytest.raises(ClaudeProxyError) as exc_info,
         ):
-            async for _ in client.query_completion("Hello", options):
+            async for _ in client.query_completion(
+                [{"role": "user", "content": "Hello"}], options
+            ):
                 pass
 
         assert "Claude process error" in str(exc_info.value)
@@ -313,7 +321,9 @@ class TestClaudeSDKClientStatelessQueries:
             ),
             pytest.raises(ClaudeProxyError) as exc_info,
         ):
-            async for _ in client.query_completion("Hello", options):
+            async for _ in client.query_completion(
+                [{"role": "user", "content": "Hello"}], options
+            ):
                 pass
 
         assert "Claude process error" in str(exc_info.value)
@@ -335,7 +345,9 @@ class TestClaudeSDKClientStatelessQueries:
             ),
             pytest.raises(ClaudeProxyError) as exc_info,
         ):
-            async for _ in client.query_completion("Hello", options):
+            async for _ in client.query_completion(
+                [{"role": "user", "content": "Hello"}], options
+            ):
                 pass
 
         assert "Unexpected error" in str(exc_info.value)
@@ -356,7 +368,9 @@ class TestClaudeSDKClientStatelessQueries:
 
         with patch("ccproxy.claude_sdk.client.query", mock_query):
             messages: list[Any] = []
-            async for message in client.query_completion("Hello", options):
+            async for message in client.query_completion(
+                [{"role": "user", "content": "Hello"}], options
+            ):
                 messages.append(message)
 
         # Should skip unknown message types
@@ -384,7 +398,9 @@ class TestClaudeSDKClientStatelessQueries:
             ),
         ):
             messages: list[Any] = []
-            async for message in client.query_completion("Hello", options):
+            async for message in client.query_completion(
+                [{"role": "user", "content": "Hello"}], options
+            ):
                 messages.append(message)
 
         # Should skip failed conversions
@@ -402,7 +418,9 @@ class TestClaudeSDKClientStatelessQueries:
             SDKClientMockBuilder.create_multi_message_generator(),
         ):
             messages: list[Any] = []
-            async for message in client.query_completion("Hello", options):
+            async for message in client.query_completion(
+                [{"role": "user", "content": "Hello"}], options
+            ):
                 messages.append(message)
 
         assert len(messages) == 4
@@ -484,7 +502,9 @@ class TestClaudeSDKClientPooledQueries:
             "ccproxy.claude_sdk.pool.get_global_pool", return_value=mock_connection_pool
         ):
             messages: list[Any] = []
-            async for message in client.query_completion("Hello", options, "req_123"):
+            async for message in client.query_completion(
+                [{"role": "user", "content": "Hello"}], options, "req_123"
+            ):
                 messages.append(message)
 
         assert len(messages) == 1
@@ -541,7 +561,9 @@ class TestClaudeSDKClientPooledQueries:
                 "ccproxy.claude_sdk.client.query", mock_stateless_fallback_query
             ):
                 messages: list[Any] = []
-                async for message in client.query_completion("Hello", options):
+                async for message in client.query_completion(
+                    [{"role": "user", "content": "Hello"}], options
+                ):
                     messages.append(message)
 
         assert len(messages) == 1
@@ -570,7 +592,9 @@ class TestClaudeSDKClientPooledQueries:
             "ccproxy.claude_sdk.pool.get_global_pool", return_value=mock_default_pool
         ):
             messages: list[Any] = []
-            async for message in client.query_completion("Hello", options):
+            async for message in client.query_completion(
+                [{"role": "user", "content": "Hello"}], options
+            ):
                 messages.append(message)
 
         assert len(messages) == 1

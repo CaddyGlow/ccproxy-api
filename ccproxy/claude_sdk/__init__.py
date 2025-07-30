@@ -12,6 +12,7 @@ from .parser import parse_formatted_sdk_content
 
 
 __all__ = [
+    # Session Context will be imported here once created
     "ClaudeSDKClient",
     "ClaudeSDKError",
     "ClaudeSDKConnectionError",

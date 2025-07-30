@@ -238,7 +238,7 @@ class TestPoolConfigurationIntegration:
             # Execute query to trigger pool config creation but return immediately
             try:
                 async for _message in client.query_completion(
-                    "test", ClaudeCodeOptions()
+                    [{"role": "user", "content": "test"}], ClaudeCodeOptions()
                 ):
                     break  # Exit after first iteration to avoid timeout
             except StopAsyncIteration:
@@ -459,7 +459,9 @@ class TestPoolEndToEndIntegration:
             # Execute query
             messages: list[Any] = []
             async for message in client.query_completion(
-                "test query", ClaudeCodeOptions(), "req_123"
+                [{"role": "user", "content": "test query"}],
+                ClaudeCodeOptions(),
+                "req_123",
             ):
                 messages.append(message)
 
@@ -513,7 +515,7 @@ class TestPoolEndToEndIntegration:
                 # Execute query - should fallback to stateless
                 messages: list[Any] = []
                 async for message in client.query_completion(
-                    "test", ClaudeCodeOptions()
+                    [{"role": "user", "content": "test"}], ClaudeCodeOptions()
                 ):
                     messages.append(message)
 
