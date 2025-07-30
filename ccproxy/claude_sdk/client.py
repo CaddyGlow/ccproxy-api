@@ -1,11 +1,13 @@
 """Claude SDK client wrapper for handling core Claude Code SDK interactions."""
 
+import asyncio
 from collections.abc import AsyncIterator
 from typing import Any, TypeVar
 
 import structlog
 from pydantic import BaseModel
 
+from ccproxy.claude_sdk.exceptions import StreamTimeoutError
 from ccproxy.claude_sdk.manager import PoolManager
 from ccproxy.claude_sdk.pool import PoolConfig
 from ccproxy.config.settings import Settings
@@ -891,87 +893,223 @@ class ClaudeSDKClient:
                     )
 
                     # Receive and process all messages
-                    async for message in session_ctx.claude_client.receive_response():
-                        message_count += 1
+                    first_message_received = False
+                    first_message_timeout = 10.0  # 10 second timeout for first message
 
-                        logger.debug(
-                            "claude_sdk_raw_message_received",
-                            message_type=type(message).__name__,
-                            message_count=message_count,
-                            request_id=request_id,
-                            session_id=session_id,
-                            has_content=hasattr(message, "content")
-                            and bool(getattr(message, "content", None)),
-                            content_preview=str(message)[:150],
-                        )
+                    async def message_generator():
+                        """Generator wrapper to handle first message timeout."""
+                        nonlocal first_message_received
+                        async for msg in session_ctx.claude_client.receive_response():
+                            first_message_received = True
+                            yield msg
 
-                        # Skip unknown message types early
-                        if not isinstance(
-                            message,
-                            SDKUserMessage
-                            | SDKAssistantMessage
-                            | SDKSystemMessage
-                            | SDKResultMessage,
-                        ):
-                            logger.warning(
-                                "claude_sdk_unknown_message_type",
-                                message_type=type(message).__name__,
-                                request_id=request_id,
-                                session_id=session_id,
+                    message_gen = message_generator()
+
+                    # Try to get the first message with timeout
+                    try:
+                        if not first_message_received:
+                            # Use anext with timeout for the first message
+                            first_message = await asyncio.wait_for(
+                                anext(message_gen), timeout=first_message_timeout
                             )
-                            continue
 
-                        # Convert SDK message to our Pydantic model
-                        try:
-                            converted_message: (
-                                sdk_models.UserMessage
-                                | sdk_models.AssistantMessage
-                                | sdk_models.SystemMessage
-                                | sdk_models.ResultMessage
-                            )
-                            if isinstance(message, SDKUserMessage):
-                                converted_message = self._convert_message(
-                                    message, sdk_models.UserMessage
-                                )
-                            elif isinstance(message, SDKAssistantMessage):
-                                converted_message = self._convert_message(
-                                    message, sdk_models.AssistantMessage
-                                )
-                            elif isinstance(message, SDKSystemMessage):
-                                converted_message = self._convert_message(
-                                    message, sdk_models.SystemMessage
-                                )
-                            else:  # SDKResultMessage
-                                converted_message = self._convert_message(
-                                    message, sdk_models.ResultMessage
-                                )
-                                # Capture SDK session ID from result message
-                                if isinstance(
-                                    converted_message, sdk_models.ResultMessage
-                                ):
-                                    session_ctx.sdk_session_id = (
-                                        converted_message.session_id
-                                    )
+                            # Process the first message
+                            message = first_message
+                            message_count += 1
 
                             logger.debug(
-                                "claude_sdk_message_converted_successfully",
-                                original_type=type(message).__name__,
-                                converted_type=type(converted_message).__name__,
+                                "claude_sdk_raw_message_received",
+                                message_type=type(message).__name__,
                                 message_count=message_count,
                                 request_id=request_id,
                                 session_id=session_id,
+                                has_content=hasattr(message, "content")
+                                and bool(getattr(message, "content", None)),
+                                content_preview=str(message)[:150],
                             )
-                            yield converted_message
 
-                        except Exception as e:
-                            logger.warning(
-                                "claude_sdk_message_conversion_failed",
+                            # Skip unknown message types early
+                            if not isinstance(
+                                message,
+                                SDKUserMessage
+                                | SDKAssistantMessage
+                                | SDKSystemMessage
+                                | SDKResultMessage,
+                            ):
+                                logger.warning(
+                                    "claude_sdk_unknown_message_type",
+                                    message_type=type(message).__name__,
+                                    request_id=request_id,
+                                    session_id=session_id,
+                                )
+                            else:
+                                # Convert SDK message to our Pydantic model
+                                try:
+                                    converted_message: (
+                                        sdk_models.UserMessage
+                                        | sdk_models.AssistantMessage
+                                        | sdk_models.SystemMessage
+                                        | sdk_models.ResultMessage
+                                    )
+                                    if isinstance(message, SDKUserMessage):
+                                        converted_message = self._convert_message(
+                                            message, sdk_models.UserMessage
+                                        )
+                                    elif isinstance(message, SDKAssistantMessage):
+                                        converted_message = self._convert_message(
+                                            message, sdk_models.AssistantMessage
+                                        )
+                                    elif isinstance(message, SDKSystemMessage):
+                                        converted_message = self._convert_message(
+                                            message, sdk_models.SystemMessage
+                                        )
+                                    else:  # SDKResultMessage
+                                        converted_message = self._convert_message(
+                                            message, sdk_models.ResultMessage
+                                        )
+                                        # Capture SDK session ID from result message
+                                        if isinstance(
+                                            converted_message, sdk_models.ResultMessage
+                                        ):
+                                            session_ctx.sdk_session_id = (
+                                                converted_message.session_id
+                                            )
+
+                                    logger.debug(
+                                        "claude_sdk_message_converted_successfully",
+                                        original_type=type(message).__name__,
+                                        converted_type=type(converted_message).__name__,
+                                        message_count=message_count,
+                                        request_id=request_id,
+                                        session_id=session_id,
+                                    )
+                                    yield converted_message
+
+                                except Exception as e:
+                                    logger.warning(
+                                        "claude_sdk_message_conversion_failed",
+                                        message_type=type(message).__name__,
+                                        error=str(e),
+                                        session_id=session_id,
+                                    )
+                                    # Skip invalid messages rather than crashing
+
+                        # Process remaining messages without timeout
+                        async for message in message_gen:
+                            message_count += 1
+
+                            logger.debug(
+                                "claude_sdk_raw_message_received",
                                 message_type=type(message).__name__,
-                                error=str(e),
+                                message_count=message_count,
+                                request_id=request_id,
+                                session_id=session_id,
+                                has_content=hasattr(message, "content")
+                                and bool(getattr(message, "content", None)),
+                                content_preview=str(message)[:150],
+                            )
+
+                            # Skip unknown message types early
+                            if not isinstance(
+                                message,
+                                SDKUserMessage
+                                | SDKAssistantMessage
+                                | SDKSystemMessage
+                                | SDKResultMessage,
+                            ):
+                                logger.warning(
+                                    "claude_sdk_unknown_message_type",
+                                    message_type=type(message).__name__,
+                                    request_id=request_id,
+                                    session_id=session_id,
+                                )
+                                continue
+
+                            # Convert SDK message to our Pydantic model
+                            try:
+                                converted_message: (
+                                    sdk_models.UserMessage
+                                    | sdk_models.AssistantMessage
+                                    | sdk_models.SystemMessage
+                                    | sdk_models.ResultMessage
+                                )
+                                if isinstance(message, SDKUserMessage):
+                                    converted_message = self._convert_message(
+                                        message, sdk_models.UserMessage
+                                    )
+                                elif isinstance(message, SDKAssistantMessage):
+                                    converted_message = self._convert_message(
+                                        message, sdk_models.AssistantMessage
+                                    )
+                                elif isinstance(message, SDKSystemMessage):
+                                    converted_message = self._convert_message(
+                                        message, sdk_models.SystemMessage
+                                    )
+                                else:  # SDKResultMessage
+                                    converted_message = self._convert_message(
+                                        message, sdk_models.ResultMessage
+                                    )
+                                    # Capture SDK session ID from result message
+                                    if isinstance(
+                                        converted_message, sdk_models.ResultMessage
+                                    ):
+                                        session_ctx.sdk_session_id = (
+                                            converted_message.session_id
+                                        )
+
+                                logger.debug(
+                                    "claude_sdk_message_converted_successfully",
+                                    original_type=type(message).__name__,
+                                    converted_type=type(converted_message).__name__,
+                                    message_count=message_count,
+                                    request_id=request_id,
+                                    session_id=session_id,
+                                )
+                                yield converted_message
+
+                            except Exception as e:
+                                logger.warning(
+                                    "claude_sdk_message_conversion_failed",
+                                    message_type=type(message).__name__,
+                                    error=str(e),
+                                    session_id=session_id,
+                                )
+                                # Skip invalid messages rather than crashing
+                                continue
+
+                    except TimeoutError:
+                        logger.error(
+                            "session_pool_first_message_timeout",
+                            session_id=session_id,
+                            request_id=request_id,
+                            timeout=first_message_timeout,
+                            message="No SDK message received within timeout, interrupting session",
+                        )
+                        # Interrupt the session when no first message is received
+                        try:
+                            await self._pool_manager.interrupt_session(session_id)
+                            logger.info(
+                                "stuck_session_interrupted_from_sdk",
                                 session_id=session_id,
                             )
-                            # Skip invalid messages rather than crashing
-                            continue
+                        except Exception as e:
+                            logger.error(
+                                "failed_to_interrupt_stuck_session_from_sdk",
+                                session_id=session_id,
+                                error=str(e),
+                            )
+
+                        # Raise a custom exception with error details that can be caught by the API layer
+                        logger.error(
+                            "raising_stream_timeout_error",
+                            session_id=session_id,
+                            timeout_seconds=first_message_timeout,
+                        )
+                        raise StreamTimeoutError(
+                            message=f"Stream timeout: No response received within {first_message_timeout} seconds. The command may not be supported or the session may be stuck.",
+                            session_id=session_id,
+                            timeout_seconds=first_message_timeout,
+                        )
 
                 # Store final metrics
                 op["message_count"] = message_count
@@ -986,6 +1124,9 @@ class ClaudeSDKClient:
                     session_id=session_id,
                 )
 
+            except StreamTimeoutError:
+                # Re-raise StreamTimeoutError so it can be caught by service layer
+                raise
             except Exception as e:
                 logger.error(
                     "claude_sdk_session_pool_query_error",

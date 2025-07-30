@@ -9,6 +9,7 @@ from claude_code_sdk import ClaudeCodeOptions
 from ccproxy.auth.manager import AuthManager
 from ccproxy.claude_sdk.client import ClaudeSDKClient
 from ccproxy.claude_sdk.converter import MessageConverter
+from ccproxy.claude_sdk.exceptions import StreamTimeoutError
 from ccproxy.claude_sdk.manager import PoolManager
 from ccproxy.claude_sdk.options import OptionsHandler
 from ccproxy.claude_sdk.streaming import ClaudeStreamProcessor
@@ -334,18 +335,89 @@ class ClaudeSDKService:
             messages, options, request_id, session_id
         )
 
-        async for chunk in self.stream_processor.process_stream(
-            sdk_stream=sdk_stream,
-            model=model,
-            request_id=request_id,
-            ctx=ctx,
-            sdk_message_mode=sdk_message_mode,
-            pretty_format=pretty_format,
-        ):
-            # Log streaming chunk
-            if request_id:
-                await self._log_sdk_streaming_chunk(request_id, chunk, timestamp)
-            yield chunk
+        try:
+            async for chunk in self.stream_processor.process_stream(
+                sdk_stream=sdk_stream,
+                model=model,
+                request_id=request_id,
+                ctx=ctx,
+                sdk_message_mode=sdk_message_mode,
+                pretty_format=pretty_format,
+            ):
+                # Log streaming chunk
+                if request_id:
+                    await self._log_sdk_streaming_chunk(request_id, chunk, timestamp)
+                yield chunk
+        except StreamTimeoutError as e:
+            # Send error events to the client
+            logger.error(
+                "stream_timeout_error",
+                message=str(e),
+                session_id=e.session_id,
+                timeout_seconds=e.timeout_seconds,
+                request_id=request_id,
+            )
+
+            # Create a unique message ID for the error response
+            from uuid import uuid4
+
+            error_message_id = f"msg_error_{uuid4()}"
+
+            # Yield message_start event
+            yield {
+                "type": "message_start",
+                "message": {
+                    "id": error_message_id,
+                    "type": "message",
+                    "role": "assistant",
+                    "model": model,
+                    "content": [],
+                    "stop_reason": "error",
+                    "stop_sequence": None,
+                    "usage": {"input_tokens": 0, "output_tokens": 0},
+                },
+            }
+
+            # Yield content_block_start for error message
+            yield {
+                "type": "content_block_start",
+                "index": 0,
+                "content_block": {"type": "text", "text": ""},
+            }
+
+            # Yield error text delta
+            error_text = f"Error: {e}"
+            yield {
+                "type": "content_block_delta",
+                "index": 0,
+                "delta": {"type": "text_delta", "text": error_text},
+            }
+
+            # Yield content_block_stop
+            yield {
+                "type": "content_block_stop",
+                "index": 0,
+            }
+
+            # Yield message_delta with stop reason
+            yield {
+                "type": "message_delta",
+                "delta": {"stop_reason": "error", "stop_sequence": None},
+                "usage": {"output_tokens": len(error_text.split())},
+            }
+
+            # Yield message_stop
+            yield {
+                "type": "message_stop",
+            }
+
+            # Update context with error status
+            ctx.add_metadata(
+                status_code=504,  # Gateway Timeout
+                error_message=str(e),
+                error_type="stream_timeout",
+                session_id=e.session_id,
+            )
 
     async def _log_sdk_request(
         self,
@@ -456,32 +528,6 @@ class ClaudeSDKService:
         except Exception as e:
             logger.error(
                 "health_check_failed",
-                error=str(e),
-                error_type=type(e).__name__,
-                exc_info=True,
-            )
-            return False
-
-    async def interrupt_session(self, session_id: str) -> bool:
-        """
-        Interrupt a Claude SDK session due to client disconnection.
-
-        Args:
-            session_id: The session ID to interrupt
-
-        Returns:
-            True if session was found and interrupted, False otherwise
-        """
-        logger.debug(
-            "claude_service_interrupt_session_requested", session_id=session_id
-        )
-
-        try:
-            return await self.sdk_client.interrupt_session(session_id)
-        except Exception as e:
-            logger.error(
-                "claude_service_interrupt_session_failed",
-                session_id=session_id,
                 error=str(e),
                 error_type=type(e).__name__,
                 exc_info=True,

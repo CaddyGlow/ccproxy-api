@@ -256,89 +256,31 @@ class SessionPool:
             True if session was found and interrupted, False otherwise
         """
         if session_id not in self.sessions:
-            logger.warning(
-                "session_interrupt_not_found",
-                session_id=session_id,
-                total_sessions=len(self.sessions),
-            )
+            logger.warning("session_not_found", session_id=session_id)
             return False
 
         session_ctx = self.sessions[session_id]
 
-        logger.info(
-            "session_interrupt_requested",
-            session_id=session_id,
-            session_status=session_ctx.status.value,
-        )
-
         try:
-            # Interrupt the session with timeout to prevent hanging
-            # This timeout should be less than the 5-second timeout in streaming_session_response.py
-            await asyncio.wait_for(
-                session_ctx.interrupt(),
-                timeout=4.0,  # 4 second timeout (less than streaming's 5 second timeout)
-            )
-
+            # Interrupt the session with 10-second timeout (allows for 5s interrupt + 3s disconnect + buffer)
+            await asyncio.wait_for(session_ctx.interrupt(), timeout=10.0)
             logger.info("session_interrupted", session_id=session_id)
 
-            # IMPORTANT: Remove the session from the pool after interruption
-            # This ensures subsequent requests don't try to reuse a broken session
-            logger.warning(
-                "session_removing_after_interrupt",
-                session_id=session_id,
-                message="Removing interrupted session from pool to prevent reuse",
-            )
+            # Remove the session to prevent reuse
             await self._remove_session(session_id)
-
             return True
 
-        except TimeoutError:
-            logger.error(
-                "session_interrupt_timeout",
-                session_id=session_id,
-                message="Session interrupt timed out after 4 seconds",
-            )
-
-            # Remove the session even if interrupt times out
-            logger.warning(
-                "session_removing_after_timeout",
-                session_id=session_id,
-                message="Removing session after interrupt timeout to prevent reuse",
-            )
-            try:
-                await self._remove_session(session_id)
-            except Exception as remove_error:
-                logger.error(
-                    "session_remove_after_timeout_failed",
-                    session_id=session_id,
-                    error=str(remove_error),
-                )
-
-            return False
-
-        except Exception as e:
+        except (TimeoutError, Exception) as e:
             logger.error(
                 "session_interrupt_failed",
                 session_id=session_id,
-                error=str(e),
-                exc_info=True,
+                error=str(e)
+                if not isinstance(e, TimeoutError)
+                else "Timeout after 10s",
             )
-
-            # Even if interrupt fails, remove the session to prevent reuse
-            logger.warning(
-                "session_removing_after_failed_interrupt",
-                session_id=session_id,
-                message="Removing session after failed interrupt to prevent reuse",
-            )
-            try:
+            # Always remove the session on failure
+            with contextlib.suppress(Exception):
                 await self._remove_session(session_id)
-            except Exception as remove_error:
-                logger.error(
-                    "session_remove_after_interrupt_failed",
-                    session_id=session_id,
-                    error=str(remove_error),
-                )
-
             return False
 
     async def interrupt_all_sessions(self) -> int:
