@@ -34,7 +34,8 @@ def mock_sdk_client_instance() -> AsyncMock:
     async def simple_response() -> AsyncGenerator[Any, None]:
         yield AssistantMessage(content=[TextBlock(text="Hello")])
 
-    mock_client.receive_response = simple_response
+    # receive_response should be a method that returns the generator when called
+    mock_client.receive_response = lambda: simple_response()
     return mock_client
 
 
@@ -61,7 +62,8 @@ def mock_sdk_client_streaming() -> AsyncMock:
             usage={"input_tokens": 10, "output_tokens": 5},
         )
 
-    mock_client.receive_response = streaming_response
+    # receive_response should be a method that returns the generator when called
+    mock_client.receive_response = lambda: streaming_response()
     return mock_client
 
 
@@ -97,7 +99,8 @@ def mock_sdk_client_process_error() -> AsyncMock:
             yield
         raise ProcessError("Process failed")
 
-    mock_client.receive_response = process_error_response
+    # receive_response should be a method that returns the generator when called
+    mock_client.receive_response = lambda: process_error_response()
     return mock_client
 
 
@@ -115,7 +118,8 @@ def mock_sdk_client_json_decode_error() -> AsyncMock:
             yield
         raise CLIJSONDecodeError("invalid json", Exception("JSON decode failed"))
 
-    mock_client.receive_response = json_error_response
+    # receive_response should be a method that returns the generator when called
+    mock_client.receive_response = lambda: json_error_response()
     return mock_client
 
 
@@ -133,5 +137,6 @@ def mock_sdk_client_unexpected_error() -> AsyncMock:
             yield
         raise ValueError("Unexpected error")
 
-    mock_client.receive_response = unexpected_error_response
+    # receive_response should be a method that returns the generator when called
+    mock_client.receive_response = lambda: unexpected_error_response()
     return mock_client

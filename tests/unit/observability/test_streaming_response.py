@@ -19,6 +19,7 @@ class TestStreamingResponseWithLogging:
         """Create a mock request context for testing."""
         context = MagicMock(spec=RequestContext)
         context.request_id = "test-request-123"
+        context.metadata = {}  # Initialize metadata as empty dict
         context.add_metadata = MagicMock()
         return context
 
@@ -44,10 +45,9 @@ class TestStreamingResponseWithLogging:
     ) -> None:
         """Test that access logging is triggered when stream completes successfully."""
         with patch(
-            "ccproxy.observability.streaming_response.log_request_access"
+            "ccproxy.observability.streaming_response.log_request_access",
+            new_callable=AsyncMock,
         ) as mock_log:
-            mock_log.return_value = AsyncMock()
-
             # Create streaming response
             response = StreamingResponseWithLogging(
                 content=self.sample_content_generator(),
@@ -86,10 +86,9 @@ class TestStreamingResponseWithLogging:
     ) -> None:
         """Test that access logging is triggered even when stream fails."""
         with patch(
-            "ccproxy.observability.streaming_response.log_request_access"
+            "ccproxy.observability.streaming_response.log_request_access",
+            new_callable=AsyncMock,
         ) as mock_log:
-            mock_log.return_value = AsyncMock()
-
             # Create streaming response with failing generator
             response = StreamingResponseWithLogging(
                 content=self.failing_content_generator(),
@@ -161,10 +160,9 @@ class TestStreamingResponseWithLogging:
     ) -> None:
         """Test streaming response works without metrics instance."""
         with patch(
-            "ccproxy.observability.streaming_response.log_request_access"
+            "ccproxy.observability.streaming_response.log_request_access",
+            new_callable=AsyncMock,
         ) as mock_log:
-            mock_log.return_value = AsyncMock()
-
             # Create streaming response without metrics
             response = StreamingResponseWithLogging(
                 content=self.sample_content_generator(),
@@ -192,10 +190,9 @@ class TestStreamingResponseWithLogging:
     ) -> None:
         """Test streaming response with custom status code."""
         with patch(
-            "ccproxy.observability.streaming_response.log_request_access"
+            "ccproxy.observability.streaming_response.log_request_access",
+            new_callable=AsyncMock,
         ) as mock_log:
-            mock_log.return_value = AsyncMock()
-
             # Create streaming response with custom status code
             response = StreamingResponseWithLogging(
                 content=self.sample_content_generator(),
@@ -249,10 +246,9 @@ class TestStreamingResponseWithLogging:
                 yield b"never reached"
 
         with patch(
-            "ccproxy.observability.streaming_response.log_request_access"
+            "ccproxy.observability.streaming_response.log_request_access",
+            new_callable=AsyncMock,
         ) as mock_log:
-            mock_log.return_value = AsyncMock()
-
             # Create streaming response with empty generator
             response = StreamingResponseWithLogging(
                 content=empty_generator(),
