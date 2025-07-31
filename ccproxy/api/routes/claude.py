@@ -15,9 +15,6 @@ from ccproxy.adapters.openai.adapter import (
 from ccproxy.api.dependencies import ClaudeServiceDep
 from ccproxy.models.messages import MessageCreateParams, MessageResponse
 from ccproxy.observability.streaming_response import StreamingResponseWithLogging
-from ccproxy.observability.streaming_session_response import (
-    StreamingResponseWithSessionInterrupt,
-)
 
 
 # Create the router for Claude SDK endpoints
@@ -163,10 +160,10 @@ async def create_openai_chat_completion_with_session(
 
             # Use session monitoring wrapper for disconnection detection
             # This automatically includes access logging functionality
-            return StreamingResponseWithSessionInterrupt(
+            return StreamingResponseWithLogging(
                 content=openai_stream_generator(),
-                request=request,
-                session_id=session_id,
+                # request=request,
+                # session_id=session_id,
                 claude_service=claude_service,
                 request_context=request_context,
                 metrics=getattr(claude_service, "metrics", None),
@@ -259,11 +256,11 @@ async def create_anthropic_message_with_session(
 
             # Use session monitoring wrapper for disconnection detection
             # This automatically includes access logging functionality
-            return StreamingResponseWithSessionInterrupt(
+            return StreamingResponseWithLogging(
                 content=anthropic_stream_generator(),
-                request=request,
-                session_id=session_id,
-                claude_service=claude_service,
+                # request=request,
+                # session_id=session_id,
+                # claude_service=claude_service,
                 request_context=request_context,
                 metrics=getattr(claude_service, "metrics", None),
                 media_type="text/event-stream",

@@ -20,6 +20,7 @@ from ccproxy.core.errors import (
     ServiceUnavailableError,
 )
 from ccproxy.models import claude_sdk as sdk_models
+from ccproxy.models.claude_sdk import SDKMessage, create_sdk_message
 from ccproxy.models.messages import MessageResponse
 from ccproxy.observability.context import RequestContext
 from ccproxy.observability.metrics import PrometheusMetrics
@@ -71,6 +72,48 @@ class ClaudeSDKService:
             message_converter=self.message_converter,
             metrics=self.metrics,
         )
+
+    def _convert_messages_to_sdk_message(
+        self, messages: list[dict[str, Any]], session_id: str | None = None
+    ) -> "SDKMessage":
+        """Convert list of Anthropic messages to single SDKMessage.
+
+        Takes the last user message from the list and converts it to SDKMessage format.
+
+        Args:
+            messages: List of Anthropic API messages
+            session_id: Optional session ID for conversation continuity
+
+        Returns:
+            SDKMessage ready to send to Claude SDK
+        """
+        # Find the last user message
+        last_user_message = None
+        for msg in reversed(messages):
+            if msg.get("role") == "user":
+                last_user_message = msg
+                break
+
+        if not last_user_message:
+            raise ClaudeProxyError(
+                message="No user message found in messages list",
+                error_type="invalid_request_error",
+                status_code=400,
+            )
+
+        # Extract text content from the message
+        content = last_user_message.get("content", "")
+        if isinstance(content, list):
+            # Extract text from content blocks
+            text_parts = []
+            for block in content:
+                if isinstance(block, dict) and block.get("type") == "text":
+                    text_parts.append(block.get("text", ""))
+            content = "\n".join(text_parts)
+        elif not isinstance(content, str):
+            content = str(content)
+
+        return create_sdk_message(content=content, session_id=session_id)
 
     async def create_completion(
         self,
@@ -183,10 +226,13 @@ class ClaudeSDKService:
         request_id = ctx.request_id
         logger.debug("claude_sdk_completion_start", request_id=request_id)
 
+        # Convert messages to single SDKMessage
+        sdk_message = self._convert_messages_to_sdk_message(messages, session_id)
+
         sdk_messages = [
             m
             async for m in self.sdk_client.query_completion(
-                messages, options, request_id, session_id
+                sdk_message, options, request_id, session_id
             )
         ]
 
@@ -331,8 +377,11 @@ class ClaudeSDKService:
         )
         pretty_format = self.settings.claude.pretty_format if self.settings else True
 
+        # Convert messages to single SDKMessage
+        sdk_message = self._convert_messages_to_sdk_message(messages, session_id)
+
         sdk_stream = self.sdk_client.query_completion(
-            messages, options, request_id, session_id
+            sdk_message, options, request_id, session_id
         )
 
         try:

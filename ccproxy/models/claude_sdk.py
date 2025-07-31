@@ -338,6 +338,59 @@ SDKContentBlock = Annotated[
 ExtendedContentBlock = SDKContentBlock
 
 
+# SDK Query Message Types
+class SDKMessageContent(BaseModel):
+    """Content structure for SDK query messages."""
+
+    role: Literal["user"] = "user"
+    content: str = Field(..., description="Message text content")
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class SDKMessage(BaseModel):
+    """Message format used to send queries over the Claude SDK.
+
+    This represents the internal message structure expected by the
+    Claude Code SDK client for query operations.
+    """
+
+    type: Literal["user"] = "user"
+    message: SDKMessageContent = Field(
+        ..., description="Message content with role and text"
+    )
+    parent_tool_use_id: str | None = Field(
+        None, description="Optional parent tool use ID"
+    )
+    session_id: str | None = Field(
+        None, description="Optional session ID for conversation continuity"
+    )
+
+    model_config = ConfigDict(extra="forbid")
+
+
+def create_sdk_message(
+    content: str,
+    session_id: str | None = None,
+    parent_tool_use_id: str | None = None,
+) -> SDKMessage:
+    """Create an SDKMessage instance for sending queries to Claude SDK.
+
+    Args:
+        content: The text content to send to Claude
+        session_id: Optional session ID for conversation continuity
+        parent_tool_use_id: Optional parent tool use ID
+
+    Returns:
+        SDKMessage instance ready to send to Claude SDK
+    """
+    return SDKMessage(
+        message=SDKMessageContent(content=content),
+        session_id=session_id,
+        parent_tool_use_id=parent_tool_use_id,
+    )
+
+
 # Conversion Functions
 def convert_sdk_text_block(text_content: str) -> TextBlock:
     """Convert raw text content to TextBlock model."""
@@ -404,6 +457,10 @@ __all__ = [
     "AssistantMessage",
     "SystemMessage",
     "ResultMessage",
+    # SDK Query Messages
+    "SDKMessageContent",
+    "SDKMessage",
+    "create_sdk_message",
     # Custom content blocks
     "SDKMessageMode",
     "ToolUseSDKBlock",

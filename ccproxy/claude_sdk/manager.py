@@ -14,10 +14,13 @@ from collections.abc import Callable
 from typing import Any, TypeAlias
 
 import structlog
+from claude_code_sdk import ClaudeCodeOptions
 
 from ccproxy.claude_sdk.pool import ClaudeSDKClientPool, PoolConfig
+from ccproxy.claude_sdk.session_context import SessionContext
 from ccproxy.claude_sdk.session_pool import SessionPool, SessionPoolConfig
 from ccproxy.config.settings import Settings
+from ccproxy.core.errors import ClaudeProxyError
 
 
 logger = structlog.get_logger(__name__)
@@ -172,12 +175,9 @@ class PoolManager:
     async def get_session_client(
         self,
         session_id: str,
-        options: Any,  # ClaudeCodeOptions type - avoiding import cycle
-    ) -> Any:  # SessionContext type - avoiding import cycle
+        options: ClaudeCodeOptions,
+    ) -> SessionContext:
         """Get session-aware client."""
-        import structlog
-
-        from ccproxy.core.errors import ClaudeProxyError
 
         logger = structlog.get_logger(__name__)
         logger.debug(

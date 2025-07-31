@@ -5,7 +5,6 @@ import json
 import os
 import random
 import time
-import urllib.parse
 from collections.abc import AsyncGenerator
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -246,8 +245,18 @@ class ProxyService:
                         "request_transform_start",
                         system_prompt_injection_mode=injection_mode,
                     )
-                    transformed_request = await self._transform_request(
-                        method, path, headers, body, query_params, access_token
+                    transformed_request = (
+                        await self.request_transformer.transform_proxy_request(
+                            method,
+                            path,
+                            headers,
+                            body,
+                            query_params,
+                            access_token,
+                            self.target_base_url,
+                            self.app_state,
+                            injection_mode,
+                        )
                     )
 
                 # 3. Check for bypass header to skip upstream forwarding
@@ -336,29 +345,25 @@ class ProxyService:
                             content_length=len(response_body) if response_body else 0,
                         )
 
-                        # Transform error to OpenAI format if this is an OpenAI endpoint
-                        transformed_error_body = response_body
-                        if self.response_transformer._is_openai_request(path):
-                            try:
-                                error_data = json.loads(response_body.decode("utf-8"))
-                                openai_error = self.openai_adapter.adapt_error(
-                                    error_data
-                                )
-                                transformed_error_body = json.dumps(
-                                    openai_error
-                                ).encode("utf-8")
-                            except (json.JSONDecodeError, UnicodeDecodeError):
-                                # Keep original error if parsing fails
-                                pass
-
-                        transformed_response = ResponseData(
-                            status_code=status_code,
-                            headers=response_headers,
-                            body=transformed_error_body,
+                        # Use transformer to handle error transformation (including OpenAI format)
+                        transformed_response = (
+                            await self.response_transformer.transform_proxy_response(
+                                status_code,
+                                response_headers,
+                                response_body,
+                                path,
+                                self.proxy_mode,
+                            )
                         )
                     else:
-                        transformed_response = await self._transform_response(
-                            status_code, response_headers, response_body, path
+                        transformed_response = (
+                            await self.response_transformer.transform_proxy_response(
+                                status_code,
+                                response_headers,
+                                response_body,
+                                path,
+                                self.proxy_mode,
+                            )
                         )
 
                 # 5. Extract response metrics using direct JSON parsing
@@ -468,121 +473,6 @@ class ProxyService:
                 status_code=401,
                 detail="Authentication failed",
             ) from e
-
-    async def _transform_request(
-        self,
-        method: str,
-        path: str,
-        headers: dict[str, str],
-        body: bytes | None,
-        query_params: dict[str, str | list[str]] | None,
-        access_token: str,
-    ) -> RequestData:
-        """Transform request using the transformer pipeline.
-
-        Args:
-            method: HTTP method
-            path: Request path
-            headers: Request headers
-            body: Request body
-            query_params: Query parameters
-            access_token: OAuth access token
-
-        Returns:
-            Transformed request data
-        """
-        # Transform path
-        transformed_path = self.request_transformer.transform_path(
-            path, self.proxy_mode
-        )
-        target_url = f"{self.target_base_url}{transformed_path}"
-
-        # Add beta=true query parameter for /v1/messages requests if not already present
-        if transformed_path == "/v1/messages":
-            if query_params is None:
-                query_params = {}
-            elif "beta" not in query_params:
-                query_params = dict(query_params)  # Make a copy
-
-            if "beta" not in query_params:
-                query_params["beta"] = "true"
-                logger.debug("beta_parameter_added")
-
-        # Transform body first (as it might change size)
-        proxy_body = None
-        if body:
-            injection_mode = self.settings.claude.system_prompt_injection_mode.value
-            proxy_body = self.request_transformer.transform_request_body(
-                body, path, self.proxy_mode, self.app_state, injection_mode
-            )
-
-        # Transform headers (and update Content-Length if body changed)
-        proxy_headers = self.request_transformer.create_proxy_headers(
-            headers, access_token, self.proxy_mode, self.app_state
-        )
-
-        # Update Content-Length if body was transformed and size changed
-        if proxy_body and body and len(proxy_body) != len(body):
-            # Remove any existing content-length headers (case-insensitive)
-            proxy_headers = {
-                k: v for k, v in proxy_headers.items() if k.lower() != "content-length"
-            }
-            proxy_headers["Content-Length"] = str(len(proxy_body))
-        elif proxy_body and not body:
-            # New body was created where none existed
-            proxy_headers["Content-Length"] = str(len(proxy_body))
-
-        # Add query parameters to URL if present
-        if query_params:
-            query_string = urllib.parse.urlencode(query_params)
-            target_url = f"{target_url}?{query_string}"
-
-        return {
-            "method": method,
-            "url": target_url,
-            "headers": proxy_headers,
-            "body": proxy_body,
-        }
-
-    async def _transform_response(
-        self,
-        status_code: int,
-        headers: dict[str, str],
-        body: bytes,
-        original_path: str,
-    ) -> ResponseData:
-        """Transform response using the transformer pipeline.
-
-        Args:
-            status_code: HTTP status code
-            headers: Response headers
-            body: Response body
-            original_path: Original request path for context
-
-        Returns:
-            Transformed response data
-        """
-        # For error responses, pass through without transformation
-        if status_code >= 400:
-            return {
-                "status_code": status_code,
-                "headers": headers,
-                "body": body,
-            }
-
-        transformed_body = self.response_transformer.transform_response_body(
-            body, original_path, self.proxy_mode
-        )
-
-        transformed_headers = self.response_transformer.transform_response_headers(
-            headers, original_path, len(transformed_body), self.proxy_mode
-        )
-
-        return {
-            "status_code": status_code,
-            "headers": transformed_headers,
-            "body": transformed_body,
-        }
 
     def _redact_headers(self, headers: dict[str, str]) -> dict[str, str]:
         """Redact sensitive information from headers for safe logging."""
@@ -789,18 +679,17 @@ class ProxyService:
                     error_detail=error_content.decode("utf-8", errors="replace"),
                 )
 
-                # Transform error to OpenAI format if this is an OpenAI endpoint
-                transformed_error_body = error_content
-                if self.response_transformer._is_openai_request(original_path):
-                    try:
-                        error_data = json.loads(error_content.decode("utf-8"))
-                        openai_error = self.openai_adapter.adapt_error(error_data)
-                        transformed_error_body = json.dumps(openai_error).encode(
-                            "utf-8"
-                        )
-                    except (json.JSONDecodeError, UnicodeDecodeError):
-                        # Keep original error if parsing fails
-                        pass
+                # Use transformer to handle error transformation (including OpenAI format)
+                transformed_error_response = (
+                    await self.response_transformer.transform_proxy_response(
+                        response.status_code,
+                        dict(response.headers),
+                        error_content,
+                        original_path,
+                        self.proxy_mode,
+                    )
+                )
+                transformed_error_body = transformed_error_response["body"]
 
                 # Update context with error status
                 ctx.add_metadata(status_code=response.status_code)

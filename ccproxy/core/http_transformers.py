@@ -3,6 +3,7 @@
 from typing import TYPE_CHECKING, Any
 
 import structlog
+from typing_extensions import TypedDict
 
 from ccproxy.core.transformers import RequestTransformer, ResponseTransformer
 from ccproxy.core.types import ProxyRequest, ProxyResponse, TransformContext
@@ -61,6 +62,23 @@ def get_fallback_system_field() -> list[dict[str, Any]]:
             "cache_control": {"type": "ephemeral"},
         }
     ]
+
+
+class RequestData(TypedDict):
+    """Typed structure for transformed request data."""
+
+    method: str
+    url: str
+    headers: dict[str, str]
+    body: bytes | None
+
+
+class ResponseData(TypedDict):
+    """Typed structure for transformed response data."""
+
+    status_code: int
+    headers: dict[str, str]
+    body: bytes
 
 
 class HTTPRequestTransformer(RequestTransformer):
@@ -152,6 +170,88 @@ class HTTPRequestTransformer(RequestTransformer):
             protocol=request.protocol,
             timeout=request.timeout,
             metadata=request.metadata,
+        )
+
+    async def transform_proxy_request(
+        self,
+        method: str,
+        path: str,
+        headers: dict[str, str],
+        body: bytes | None,
+        query_params: dict[str, str | list[str]] | None,
+        access_token: str,
+        target_base_url: str = "https://api.anthropic.com",
+        app_state: Any = None,
+        injection_mode: str = "minimal",
+    ) -> RequestData:
+        """Transform request using direct parameters from ProxyService.
+
+        This method provides the same functionality as ProxyService._transform_request()
+        but is properly located in the transformer layer.
+
+        Args:
+            method: HTTP method
+            path: Request path
+            headers: Request headers
+            body: Request body
+            query_params: Query parameters
+            access_token: OAuth access token
+            target_base_url: Base URL for the target API
+            app_state: Optional app state containing detection data
+            injection_mode: System prompt injection mode
+
+        Returns:
+            Dictionary with transformed request data (method, url, headers, body)
+        """
+        import urllib.parse
+
+        # Transform path
+        transformed_path = self.transform_path(path, self.proxy_mode)
+        target_url = f"{target_base_url.rstrip('/')}{transformed_path}"
+
+        # Add beta=true query parameter for /v1/messages requests if not already present
+        if transformed_path == "/v1/messages":
+            if query_params is None:
+                query_params = {}
+            elif "beta" not in query_params:
+                query_params = dict(query_params)  # Make a copy
+
+            if "beta" not in query_params:
+                query_params["beta"] = "true"
+
+        # Transform body first (as it might change size)
+        proxy_body = None
+        if body:
+            proxy_body = self.transform_request_body(
+                body, path, self.proxy_mode, app_state, injection_mode
+            )
+
+        # Transform headers (and update Content-Length if body changed)
+        proxy_headers = self.create_proxy_headers(
+            headers, access_token, self.proxy_mode, app_state
+        )
+
+        # Update Content-Length if body was transformed and size changed
+        if proxy_body and body and len(proxy_body) != len(body):
+            # Remove any existing content-length headers (case-insensitive)
+            proxy_headers = {
+                k: v for k, v in proxy_headers.items() if k.lower() != "content-length"
+            }
+            proxy_headers["Content-Length"] = str(len(proxy_body))
+        elif proxy_body and not body:
+            # New body was created where none existed
+            proxy_headers["Content-Length"] = str(len(proxy_body))
+
+        # Add query parameters to URL if present
+        if query_params:
+            query_string = urllib.parse.urlencode(query_params)
+            target_url = f"{target_url}?{query_string}"
+
+        return RequestData(
+            method=method,
+            url=target_url,
+            headers=proxy_headers,
+            body=proxy_body,
         )
 
     def transform_path(self, path: str, proxy_mode: str = "full") -> str:
@@ -457,6 +557,65 @@ class HTTPResponseTransformer(ResponseTransformer):
             headers=transformed_headers,
             body=transformed_body,
             metadata=response.metadata,
+        )
+
+    async def transform_proxy_response(
+        self,
+        status_code: int,
+        headers: dict[str, str],
+        body: bytes,
+        original_path: str,
+        proxy_mode: str = "full",
+    ) -> ResponseData:
+        """Transform response using direct parameters from ProxyService.
+
+        This method provides the same functionality as ProxyService._transform_response()
+        but is properly located in the transformer layer.
+
+        Args:
+            status_code: HTTP status code
+            headers: Response headers
+            body: Response body
+            original_path: Original request path for context
+            proxy_mode: Proxy transformation mode
+
+        Returns:
+            Dictionary with transformed response data (status_code, headers, body)
+        """
+        # For error responses, handle OpenAI transformation if needed
+        if status_code >= 400:
+            transformed_error_body = body
+            if self._is_openai_request(original_path):
+                try:
+                    import json
+
+                    from ccproxy.adapters.openai.adapter import OpenAIAdapter
+
+                    error_data = json.loads(body.decode("utf-8"))
+                    openai_adapter = OpenAIAdapter()
+                    openai_error = openai_adapter.adapt_error(error_data)
+                    transformed_error_body = json.dumps(openai_error).encode("utf-8")
+                except (json.JSONDecodeError, UnicodeDecodeError):
+                    # Keep original error if parsing fails
+                    pass
+
+            return ResponseData(
+                status_code=status_code,
+                headers=headers,
+                body=transformed_error_body,
+            )
+
+        # For successful responses, transform normally
+        transformed_body = self.transform_response_body(body, original_path, proxy_mode)
+
+        transformed_headers = self.transform_response_headers(
+            headers, original_path, len(transformed_body), proxy_mode
+        )
+
+        return ResponseData(
+            status_code=status_code,
+            headers=transformed_headers,
+            body=transformed_body,
         )
 
     def transform_response_body(
