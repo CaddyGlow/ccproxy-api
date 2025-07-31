@@ -300,6 +300,7 @@ markers = [
   "config: Configuration and settings tests",
   "cli: Command-line interface tests",
   "metrics: Metrics and monitoring tests",
+  "sdk: SDK endpoint tests using Anthropic SDK client (requires running server)",
 
   # Test quality markers
   "flaky: Tests that may be unreliable and need investigation",

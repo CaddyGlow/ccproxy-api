@@ -22,6 +22,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Pool mode is disabled by default and can be enabled via configuration
   - **Limitations**: Pool mode does not support dynamic Claude options (max_tokens, model changes, etc.)
   - Pool instances are shared across requests with identical configurations
+- **Session-Aware Connection Pooling**: Added advanced session-based pooling for persistent conversation context:
+  - Session pools maintain dedicated Claude SDK clients per session ID for conversation continuity
+  - Configurable session TTL (time-to-live) with automatic cleanup of idle sessions
+  - Session pool settings include max sessions, idle threshold, and cleanup intervals
+  - Automatic connection recovery for unhealthy sessions when enabled
+  - Session interruption support for graceful handling of canceled requests
+  - Separate from the general connection pool - can be used independently or together
+  - Configuration via `claude.session_pool` settings with sensible defaults
 - **Claude Detection Service**: Implemented automatic Claude CLI header and system prompt detection at startup:
   - Automatically detects current Claude CLI version and extracts real headers/system prompt
   - Caches detection results per version to avoid repeated startup delays
@@ -33,6 +41,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Configuration Updates**: Enhanced Claude settings with new pool configuration options:
+  - Added `use_client_pool` boolean flag to enable general connection pooling
+  - Added `pool_settings` for configuring general pool behavior (size, timeouts, health checks)
+  - Added `session_pool` settings for session-aware pooling configuration
+  - Session pool enabled by default with 1-hour TTL and automatic cleanup
 - **HTTP Request Transformation**: Enhanced request transformers to use detected Claude CLI headers and system prompt:
   - Dynamically uses detected headers when available, falls back to hardcoded when not
   - System prompt injection now uses detected Claude Code system prompt
@@ -62,6 +75,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Test Structure**: Added `.gitignore` for test artifacts and coverage reports
 - **Documentation**: Updated `TESTING.md` with new test organization and examples
 - **Cache Directory**: Added automatic creation of `~/.cache/ccproxy/` for detection data persistence
+- **Session Pool Components**: Added new modules for session management:
+  - `ccproxy/claude_sdk/session_pool.py` - Core session pool implementation
+  - `ccproxy/claude_sdk/session_client.py` - Session-aware client wrapper
+  - `ccproxy/claude_sdk/manager.py` - Unified pool management with metrics integration
+- **Test Coverage**: Added comprehensive tests for session pool functionality:
+  - Unit tests for session lifecycle, cleanup, and recovery
+  - Integration tests for end-to-end session pooling behavior
 
 ## [0.1.4] - 2025-05-28
 

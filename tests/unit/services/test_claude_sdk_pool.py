@@ -85,6 +85,8 @@ def mock_pooled_client() -> Mock:
     mock_client.health_check = AsyncMock(return_value=True)
     mock_client.client = Mock()  # The actual SDK client
     mock_client.is_idle = Mock(return_value=False)
+    mock_client.use_count = 0
+    mock_client.client_id = "mock1234"  # Mock UUID first part
     return mock_client
 
 
@@ -110,6 +112,8 @@ class PooledClientMockBuilder:
         mock_client.is_healthy = True
         mock_client.health_check = AsyncMock(return_value=True)
         mock_client.client = Mock()  # The actual SDK client
+        mock_client.use_count = 0
+        mock_client.client_id = "healthy1"  # Mock UUID first part
         return mock_client
 
     @staticmethod
@@ -122,6 +126,8 @@ class PooledClientMockBuilder:
         mock_client.is_healthy = False
         mock_client.health_check = AsyncMock(return_value=False)
         mock_client.client = Mock()
+        mock_client.use_count = 0
+        mock_client.client_id = "unhealthy1"  # Mock UUID first part
         return mock_client
 
 
@@ -138,6 +144,7 @@ class TestPoolConfig:
         assert config.idle_timeout == 300.0
         assert config.health_check_interval == 60.0
         assert config.enable_health_checks is True
+        assert config.reuse_clients is True
 
     def test_pool_config_custom_values(self) -> None:
         """Test PoolConfig with custom values."""
@@ -148,6 +155,7 @@ class TestPoolConfig:
             idle_timeout=600.0,
             health_check_interval=30.0,
             enable_health_checks=False,
+            reuse_clients=False,
         )
 
         assert config.pool_size == 5
@@ -156,6 +164,7 @@ class TestPoolConfig:
         assert config.idle_timeout == 600.0
         assert config.health_check_interval == 30.0
         assert config.enable_health_checks is False
+        assert config.reuse_clients is False
 
 
 class TestPoolStats:
@@ -210,6 +219,8 @@ class TestPooledClient:
         assert pooled_client.use_count == 0
         assert isinstance(pooled_client.created_at, float)
         assert isinstance(pooled_client.last_used, float)
+        assert isinstance(pooled_client.client_id, str)
+        assert len(pooled_client.client_id) == 8  # First part of UUID is 8 chars
 
     @pytest.mark.asyncio
     async def test_pooled_client_connect(
@@ -773,6 +784,32 @@ class TestClaudeSDKClientPool:
         assert mock_prometheus_metrics.update_pool_gauges.call_count == 2
 
     @pytest.mark.asyncio
+    async def test_pool_acquire_client_with_reuse_disabled(
+        self, mock_pooled_client: Mock
+    ) -> None:
+        """Test client acquisition and release with reuse_clients=False.
+
+        Uses organized fixture: mock_pooled_client
+        """
+        mock_pool_config = PoolConfig(reuse_clients=False, connection_timeout=1.0)
+        pool: ClaudeSDKClientPool = ClaudeSDKClientPool(config=mock_pool_config)
+
+        # Add a mock client to available queue
+        pool._available_clients.put_nowait(mock_pooled_client)
+        pool._all_clients.add(mock_pooled_client)
+
+        with patch.object(pool, "_remove_client") as mock_remove:
+            async with pool.acquire_client() as client:
+                assert client is mock_pooled_client.client
+                mock_pooled_client.connect.assert_called_once()
+                mock_pooled_client.mark_used.assert_called_once()
+                assert mock_pooled_client in pool._active_clients
+
+            # Should be discarded after context manager exits
+            assert mock_pooled_client not in pool._active_clients
+            mock_remove.assert_called_once_with(mock_pooled_client)
+
+    @pytest.mark.asyncio
     async def test_pool_return_client_healthy(self, mock_pooled_client: Mock) -> None:
         """Test returning a healthy client to the pool.
 
@@ -801,6 +838,27 @@ class TestClaudeSDKClientPool:
 
         mock_remove.assert_called_once_with(mock_unhealthy_client)
         assert mock_unhealthy_client not in pool._active_clients
+
+    @pytest.mark.asyncio
+    async def test_pool_return_client_with_reuse_disabled(
+        self, mock_pooled_client: Mock
+    ) -> None:
+        """Test returning a client with reuse_clients=False always discards it.
+
+        Uses organized fixture: mock_pooled_client
+        """
+        mock_pool_config = PoolConfig(reuse_clients=False)
+        pool: ClaudeSDKClientPool = ClaudeSDKClientPool(config=mock_pool_config)
+        pool._all_clients.add(mock_pooled_client)
+        pool._active_clients.add(mock_pooled_client)
+
+        with patch.object(pool, "_remove_client") as mock_remove:
+            await pool._return_client(mock_pooled_client)
+
+        # Should always remove client when reuse is disabled
+        mock_remove.assert_called_once_with(mock_pooled_client)
+        assert mock_pooled_client not in pool._active_clients
+        assert pool._available_clients.empty()
 
     @pytest.mark.asyncio
     async def test_pool_health_check_loop(self) -> None:
@@ -940,7 +998,9 @@ class TestPoolManagement:
             pool: Any = await manager.get_pool(config=mock_pool_config)
 
         assert pool is mock_pool_instance
-        mock_pool_class.assert_called_once_with(config=mock_pool_config, metrics=None)
+        mock_pool_class.assert_called_once_with(
+            config=mock_pool_config, default_options=None, metrics=None
+        )
         mock_pool_instance.start.assert_called_once()
 
     @pytest.mark.asyncio
@@ -988,7 +1048,7 @@ class TestPoolManagement:
             pool: Any = await manager.get_pool()
 
         mock_pool_class.assert_called_once_with(
-            config=None, metrics=mock_prometheus_metrics
+            config=None, default_options=None, metrics=mock_prometheus_metrics
         )
 
     @pytest.mark.asyncio

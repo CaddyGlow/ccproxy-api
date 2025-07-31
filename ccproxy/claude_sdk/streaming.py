@@ -139,6 +139,15 @@ class ClaudeStreamProcessor:
                             mode=sdk_message_mode.value,
                             request_id=request_id,
                         )
+                        logger.info(
+                            "sdk_tool_use_block",
+                            tool_id=block.id,
+                            tool_name=block.name,
+                            input_keys=list(block.input.keys()) if block.input else [],
+                            block_index=content_block_index,
+                            mode=sdk_message_mode.value,
+                            request_id=request_id,
+                        )
                         chunks = (
                             self.message_converter._create_sdk_content_block_chunks(
                                 sdk_object=block,
@@ -155,6 +164,20 @@ class ClaudeStreamProcessor:
                     elif isinstance(block, sdk_models.ToolResultBlock):
                         logger.debug(
                             "sdk_tool_result_block_processing",
+                            tool_use_id=block.tool_use_id,
+                            is_error=block.is_error,
+                            content_type=type(block.content).__name__
+                            if block.content
+                            else "None",
+                            content_preview=str(block.content)[:100]
+                            if block.content
+                            else None,
+                            block_index=content_block_index,
+                            mode=sdk_message_mode.value,
+                            request_id=request_id,
+                        )
+                        logger.info(
+                            "sdk_tool_result_block",
                             tool_use_id=block.tool_use_id,
                             is_error=block.is_error,
                             content_type=type(block.content).__name__

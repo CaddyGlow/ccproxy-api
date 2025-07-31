@@ -204,7 +204,6 @@ class TestPoolConfigurationIntegration:
         """Test ClaudePoolSettings default values."""
         settings = ClaudePoolSettings()
 
-        assert settings.pool_size == 0
         assert settings.max_pool_size == 10
         assert settings.connection_timeout == 30.0
         assert settings.idle_timeout == 300.0

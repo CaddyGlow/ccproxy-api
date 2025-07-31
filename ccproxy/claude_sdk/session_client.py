@@ -1,4 +1,4 @@
-"""Session context for persistent Claude SDK connections."""
+"""Session client for persistent Claude SDK connections."""
 
 from __future__ import annotations
 
@@ -48,7 +48,7 @@ class SessionMetrics(BaseModel):
         return time.time() - self.last_used
 
 
-class SessionContext:
+class SessionClient:
     """Manages a persistent Claude SDK connection with session state."""
 
     def __init__(

@@ -17,7 +17,7 @@ import structlog
 from claude_code_sdk import ClaudeCodeOptions
 
 from ccproxy.claude_sdk.pool import ClaudeSDKClientPool, PoolConfig
-from ccproxy.claude_sdk.session_context import SessionContext
+from ccproxy.claude_sdk.session_client import SessionClient
 from ccproxy.claude_sdk.session_pool import SessionPool, SessionPoolConfig
 from ccproxy.config.settings import Settings
 from ccproxy.core.errors import ClaudeProxyError
@@ -148,9 +148,20 @@ class PoolManager:
                 if self._metrics_factory:
                     metrics_instance = self._metrics_factory()
 
-                # Create and start the pool
+                # Get default options from settings
+                default_options = None
+                if (
+                    self._settings
+                    and hasattr(self._settings, "claude")
+                    and self._settings.claude.code_options
+                ):
+                    default_options = self._settings.claude.code_options
+
+                # Create and start the pool with default options
                 self._pool = ClaudeSDKClientPool(
-                    config=config, metrics=metrics_instance
+                    config=config,
+                    default_options=default_options,
+                    metrics=metrics_instance,
                 )
                 await self._pool.start()
 
@@ -176,7 +187,7 @@ class PoolManager:
         self,
         session_id: str,
         options: ClaudeCodeOptions,
-    ) -> SessionContext:
+    ) -> SessionClient:
         """Get session-aware client."""
 
         logger = structlog.get_logger(__name__)

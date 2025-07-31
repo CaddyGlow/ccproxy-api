@@ -164,11 +164,11 @@ class ClaudeSDKClient:
 
     async def _execute_with_client(
         self,
-        client: Any,  # Claude SDK client (ImportedClaudeSDKClient)
+        client: ImportedClaudeSDKClient,  # Claude SDK client (ImportedClaudeSDKClient)
         message: SDKMessage,
         session_id: str | None,
         request_id: str | None,
-        session_ctx: Any = None,  # SessionContext for session pool
+        session_client: Any = None,  # SessionClient for session pool
     ) -> AsyncIterator[
         sdk_models.UserMessage
         | sdk_models.AssistantMessage
@@ -200,7 +200,7 @@ class ClaudeSDKClient:
 
         # Process messages
         async for converted_message in self._process_message_stream(
-            message_chain(), request_id, session_id, session_ctx
+            message_chain(), request_id, session_id, session_client
         ):
             yield converted_message
 
@@ -362,6 +362,9 @@ class ClaudeSDKClient:
         | sdk_models.SystemMessage
         | sdk_models.ResultMessage
     ]:
+        if not session_id:
+            session_id = "default"  # str(uuid4())
+
         """Execute query using pooled connection."""
         async with timed_operation("claude_sdk_query_pooled", request_id) as op:
             try:
@@ -413,20 +416,35 @@ class ClaudeSDKClient:
                 if not self._pool_manager:
                     raise ClaudeSDKError("No pool manager available")
 
-                session_ctx = await self._pool_manager.get_session_client(
+                # Enable continue conversation for session pool
+                # so conversation is possible to resume based on session_id
+                options.continue_conversation = True
+
+                session_client = await self._pool_manager.get_session_client(
                     session_id, options
                 )
 
-                async with session_ctx.lock:  # Prevent concurrent access
-                    session_ctx.update_usage()
+                async with session_client.lock:  # Prevent concurrent access
+                    session_client.update_usage()
+
+                    # Ensure client is connected
+                    if not session_client.claude_client:
+                        logger.error(
+                            "session_client_not_connected",
+                            session_id=session_id,
+                            status=session_client.status,
+                        )
+                        raise ClaudeSDKError(
+                            f"Session client not connected for session {session_id}"
+                        )
 
                     message_count = 0
                     async for msg in self._execute_with_client(
-                        session_ctx.claude_client,
+                        session_client.claude_client,
                         message,
                         session_id,
                         request_id,
-                        session_ctx=session_ctx,
+                        session_client=session_client,
                     ):
                         message_count += 1
                         yield msg
@@ -513,7 +531,7 @@ class ClaudeSDKClient:
         message_iterator: AsyncIterator[Any],
         request_id: str | None = None,
         session_id: str | None = None,
-        session_ctx: Any = None,  # SessionContext for session pool
+        session_client: Any = None,  # SessionClient for session pool
     ) -> AsyncIterator[
         sdk_models.UserMessage
         | sdk_models.AssistantMessage
@@ -527,7 +545,7 @@ class ClaudeSDKClient:
             message_iterator: The async iterator of SDK messages
             request_id: Optional request ID for logging
             session_id: Optional session ID for logging
-            session_ctx: Optional session context for session pool operations
+            session_client: Optional session context for session pool operations
 
         Yields:
             Converted Pydantic model messages
@@ -546,10 +564,10 @@ class ClaudeSDKClient:
                         )
 
                         # Special handling for ResultMessage
-                        if session_ctx and isinstance(
+                        if session_client and isinstance(
                             converted_message, sdk_models.ResultMessage
                         ):
-                            session_ctx.sdk_session_id = converted_message.session_id
+                            session_client.sdk_session_id = converted_message.session_id
 
                         yield converted_message
                     except Exception as e:

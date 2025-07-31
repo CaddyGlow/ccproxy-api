@@ -2,6 +2,7 @@
 
 import asyncio
 import time
+import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass
@@ -37,6 +38,7 @@ class PoolConfig:
     enable_health_checks: bool = True
     startup_delay: float = 1
     creation_delay: float = 0
+    reuse_clients: bool = False  # If False, clients are discarded after each use
 
 
 class PoolStats(BaseModel):
@@ -58,6 +60,7 @@ class PooledClient:
     def __init__(self, client: SDKClient, options: ClaudeCodeOptions):
         self.client = client
         self.options = options
+        self.client_id = str(uuid.uuid4()).split("-")[0]  # First part of UUID
         self.created_at = time.time()
         self.last_used = time.time()
         self.is_connected = False
@@ -69,7 +72,7 @@ class PooledClient:
         if not self.is_connected:
             await self.client.connect()
             self.is_connected = True
-            logger.debug("pooled_client_connected", client_id=id(self.client))
+            logger.debug("pooled_client_connected", client_id=self.client_id)
 
     async def disconnect(self) -> None:
         """Disconnect the client."""
@@ -80,7 +83,7 @@ class PooledClient:
                 logger.warning("pooled_client_disconnect_error", error=str(e))
             finally:
                 self.is_connected = False
-                logger.debug("pooled_client_disconnected", client_id=id(self.client))
+                logger.debug("pooled_client_disconnected", client_id=self.client_id)
 
     def mark_used(self) -> None:
         """Mark the client as recently used."""
@@ -264,7 +267,7 @@ class ClaudeSDKClientPool:
 
             logger.debug(
                 "sdk_pool_client_acquired_from_pool",
-                client_id=id(pooled_client.client),
+                client_id=pooled_client.client_id,
             )
             return pooled_client
 
@@ -276,7 +279,7 @@ class ClaudeSDKClientPool:
                     self._active_clients.add(pooled_client)
                     logger.debug(
                         "sdk_pool_client_created_on_demand",
-                        client_id=id(pooled_client.client),
+                        client_id=pooled_client.client_id,
                     )
                     return pooled_client
                 else:
@@ -295,15 +298,28 @@ class ClaudeSDKClientPool:
             if pooled_client in self._active_clients:
                 self._active_clients.remove(pooled_client)
 
-            if pooled_client.is_healthy and pooled_client in self._all_clients:
+            if (
+                self.config.reuse_clients
+                and pooled_client.is_healthy
+                and pooled_client in self._all_clients
+            ):
+                # Return healthy clients to the pool for reuse
                 await self._available_clients.put(pooled_client)
                 logger.debug(
                     "sdk_pool_client_returned",
-                    client_id=id(pooled_client.client),
+                    client_id=pooled_client.client_id,
                 )
             else:
-                # Remove unhealthy or unknown clients
+                # Discard clients after use or if unhealthy/unknown
                 await self._remove_client(pooled_client)
+                logger.debug(
+                    "sdk_pool_client_discarded",
+                    client_id=pooled_client.client_id,
+                    reason="reuse_disabled"
+                    if not self.config.reuse_clients
+                    else "unhealthy_or_unknown",
+                    use_count=pooled_client.use_count,
+                )
 
     async def _create_client(self) -> PooledClient:
         """Create a new pooled client."""
@@ -328,7 +344,7 @@ class ClaudeSDKClientPool:
 
         logger.debug(
             "sdk_pool_client_created",
-            client_id=id(client),
+            client_id=pooled_client.client_id,
             total_clients=len(self._all_clients),
         )
         return pooled_client
@@ -351,7 +367,7 @@ class ClaudeSDKClientPool:
 
         logger.debug(
             "sdk_pool_client_removed",
-            client_id=id(pooled_client.client),
+            client_id=pooled_client.client_id,
             total_clients=len(self._all_clients),
         )
 
@@ -381,7 +397,7 @@ class ClaudeSDKClientPool:
                     "sdk_pool_client_init_created",
                     client_number=i + 1,
                     total_target=self.config.pool_size,
-                    client_id=id(pooled_client.client),
+                    client_id=pooled_client.client_id,
                 )
 
                 # Add delay between client creations, except for the last one

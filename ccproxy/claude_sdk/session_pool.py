@@ -9,7 +9,7 @@ from typing import Any
 import structlog
 from claude_code_sdk import ClaudeCodeOptions
 
-from ccproxy.claude_sdk.session_context import SessionContext, SessionStatus
+from ccproxy.claude_sdk.session_client import SessionClient, SessionStatus
 from ccproxy.core.errors import ClaudeProxyError, ServiceUnavailableError
 
 
@@ -41,7 +41,7 @@ class SessionPool:
 
     def __init__(self, config: SessionPoolConfig | None = None):
         self.config = config or SessionPoolConfig()
-        self.sessions: dict[str, SessionContext] = {}
+        self.sessions: dict[str, SessionClient] = {}
         self.cleanup_task: asyncio.Task[None] | None = None
         self._shutdown = False
 
@@ -70,7 +70,7 @@ class SessionPool:
 
         # Disconnect all active sessions
         disconnect_tasks = [
-            session_ctx.disconnect() for session_ctx in self.sessions.values()
+            session_client.disconnect() for session_client in self.sessions.values()
         ]
 
         if disconnect_tasks:
@@ -81,7 +81,7 @@ class SessionPool:
 
     async def get_session_client(
         self, session_id: str, options: ClaudeCodeOptions
-    ) -> SessionContext:
+    ) -> SessionClient:
         """Get or create a session context for the given session_id."""
         logger.debug(
             "session_pool_get_client_start",
@@ -118,70 +118,72 @@ class SessionPool:
         # Get existing session or create new one
         if session_id in self.sessions:
             logger.debug("session_pool_existing_session_found", session_id=session_id)
-            session_ctx = self.sessions[session_id]
+            session_client = self.sessions[session_id]
 
             # Check if session is still valid
-            if session_ctx.is_expired():
+            if session_client.is_expired():
                 logger.info("session_expired", session_id=session_id)
                 await self._remove_session(session_id)
-                session_ctx = await self._create_session(session_id, options)
-            elif not await session_ctx.is_healthy() and self.config.connection_recovery:
+                session_client = await self._create_session(session_id, options)
+            elif (
+                not await session_client.is_healthy()
+                and self.config.connection_recovery
+            ):
                 logger.info("session_unhealthy_recovering", session_id=session_id)
-                await session_ctx.connect()
+                await session_client.connect()
             else:
                 logger.debug(
                     "session_pool_reusing_healthy_session", session_id=session_id
                 )
         else:
             logger.debug("session_pool_creating_new_session", session_id=session_id)
-            session_ctx = await self._create_session(session_id, options)
+            session_client = await self._create_session(session_id, options)
 
         logger.debug(
             "session_pool_get_client_complete",
             session_id=session_id,
-            session_status=session_ctx.status,
-            session_age_seconds=session_ctx.metrics.age_seconds,
-            session_message_count=session_ctx.metrics.message_count,
+            session_status=session_client.status,
+            session_age_seconds=session_client.metrics.age_seconds,
+            session_message_count=session_client.metrics.message_count,
         )
-        return session_ctx
+        return session_client
 
     async def _create_session(
         self, session_id: str, options: ClaudeCodeOptions
-    ) -> SessionContext:
+    ) -> SessionClient:
         """Create a new session context."""
-        options.continue_conversation = True
-        session_ctx = SessionContext(
+        session_client = SessionClient(
             session_id=session_id, options=options, ttl_seconds=self.config.session_ttl
         )
 
         # Connect to Claude SDK
-        if not await session_ctx.connect():
+        if not await session_client.connect():
             raise ServiceUnavailableError(
                 f"Failed to establish session connection: {session_id}"
             )
 
-        self.sessions[session_id] = session_ctx
+        self.sessions[session_id] = session_client
 
         logger.info(
             "session_created", session_id=session_id, total_sessions=len(self.sessions)
         )
 
-        return session_ctx
+        return session_client
 
     async def _remove_session(self, session_id: str) -> None:
         """Remove and cleanup a session."""
         if session_id not in self.sessions:
             return
 
-        session_ctx = self.sessions.pop(session_id)
-        await session_ctx.disconnect()
+        session_client = self.sessions.pop(session_id)
+        await session_client.disconnect()
 
         logger.info(
             "session_removed",
             session_id=session_id,
             total_sessions=len(self.sessions),
-            age_seconds=session_ctx.metrics.age_seconds,
-            message_count=session_ctx.metrics.message_count,
+            age_seconds=session_client.metrics.age_seconds,
+            message_count=session_client.metrics.message_count,
         )
 
     async def _cleanup_loop(self) -> None:
@@ -200,12 +202,12 @@ class SessionPool:
         sessions_to_remove = []
         stuck_sessions = []
 
-        for session_id, session_ctx in self.sessions.items():
+        for session_id, session_client in self.sessions.items():
             # Check if session is potentially stuck (active too long)
             is_stuck = (
-                session_ctx.status.value == "active"
-                and session_ctx.metrics.idle_seconds < 10
-                and session_ctx.metrics.age_seconds > 900  # 15 minutes
+                session_client.status.value == "active"
+                and session_client.metrics.idle_seconds < 10
+                and session_client.metrics.age_seconds > 900  # 15 minutes
             )
 
             if is_stuck:
@@ -213,15 +215,15 @@ class SessionPool:
                 logger.warning(
                     "session_stuck_detected",
                     session_id=session_id,
-                    age_seconds=session_ctx.metrics.age_seconds,
-                    idle_seconds=session_ctx.metrics.idle_seconds,
-                    message_count=session_ctx.metrics.message_count,
+                    age_seconds=session_client.metrics.age_seconds,
+                    idle_seconds=session_client.metrics.idle_seconds,
+                    message_count=session_client.metrics.message_count,
                     message="Session appears stuck, will interrupt and cleanup",
                 )
 
                 # Try to interrupt stuck session before cleanup
                 try:
-                    await session_ctx.interrupt()
+                    await session_client.interrupt()
                 except Exception as e:
                     logger.warning(
                         "session_stuck_interrupt_failed",
@@ -230,7 +232,7 @@ class SessionPool:
                     )
 
             # Check normal cleanup criteria (including stuck sessions)
-            if session_ctx.should_cleanup(
+            if session_client.should_cleanup(
                 self.config.idle_threshold, stuck_threshold=900
             ):
                 sessions_to_remove.append(session_id)
@@ -259,11 +261,11 @@ class SessionPool:
             logger.warning("session_not_found", session_id=session_id)
             return False
 
-        session_ctx = self.sessions[session_id]
+        session_client = self.sessions[session_id]
 
         try:
             # Interrupt the session with 10-second timeout (allows for 5s interrupt + 3s disconnect + buffer)
-            await asyncio.wait_for(session_ctx.interrupt(), timeout=10.0)
+            await asyncio.wait_for(session_client.interrupt(), timeout=10.0)
             logger.info("session_interrupted", session_id=session_id)
 
             # Remove the session to prevent reuse
@@ -299,8 +301,8 @@ class SessionPool:
 
         for session_id in session_ids:
             try:
-                session_ctx = self.sessions[session_id]
-                await session_ctx.interrupt()
+                session_client = self.sessions[session_id]
+                await session_client.interrupt()
                 interrupted_count += 1
             except Exception as e:
                 logger.error(

@@ -21,6 +21,7 @@ logger = structlog.get_logger(__name__)
 
 def _create_default_claude_code_options(
     builtin_permissions: bool = True,
+    continue_conversation: bool = False,
 ) -> ClaudeCodeOptions:
     """Create ClaudeCodeOptions with default values.
 
@@ -29,6 +30,7 @@ def _create_default_claude_code_options(
     """
     if builtin_permissions:
         return ClaudeCodeOptions(
+            continue_conversation=continue_conversation,
             mcp_servers={
                 "confirmation": {"type": "sse", "url": "http://127.0.0.1:8000/mcp"}
             },
@@ -38,6 +40,7 @@ def _create_default_claude_code_options(
         return ClaudeCodeOptions(
             mcp_servers={},
             permission_prompt_tool_name=None,
+            continue_conversation=continue_conversation,
         )
 
 
@@ -69,7 +72,7 @@ class ClaudePoolSettings(BaseModel):
     """Configuration settings for Claude SDK client connection pooling."""
 
     pool_size: int = Field(
-        default=0,
+        default=3,
         ge=0,
         le=20,
         description="Number of standby clients to maintain in the pool",
