@@ -22,76 +22,12 @@ import pytest
 from claude_code_sdk import (
     AssistantMessage,
     ClaudeCodeOptions,
-    CLIConnectionError,
-    CLIJSONDecodeError,
-    CLINotFoundError,
-    ProcessError,
-    ResultMessage,
-    SystemMessage,
     TextBlock,
-    UserMessage,
 )
 
 from ccproxy.claude_sdk.client import ClaudeSDKClient
-from ccproxy.claude_sdk.exceptions import ClaudeSDKError
 from ccproxy.core.errors import ClaudeProxyError, ServiceUnavailableError
 from ccproxy.models import claude_sdk as sdk_models
-
-
-# Mock helper classes for SDK client testing
-class SDKClientMockBuilder:
-    """Builder for creating SDK client mock patterns."""
-
-    @staticmethod
-    def create_query_error_generator(error: Exception):
-        """Create an error generator function that accepts arguments."""
-
-        async def error_generator(
-            *args: Any, **kwargs: Any
-        ) -> AsyncGenerator[Any, None]:
-            raise error
-            # mypy: disable-next-line unreachable
-            yield  # type: ignore[unreachable]
-
-        return error_generator
-
-    @staticmethod
-    def create_simple_response_generator(text: str = "Hello"):
-        """Create a simple response generator function that accepts arguments."""
-
-        async def response_generator(
-            *args: Any, **kwargs: Any
-        ) -> AsyncGenerator[Any, None]:
-            yield AssistantMessage(content=[TextBlock(text=text)])
-
-        return response_generator
-
-    @staticmethod
-    def create_multi_message_generator():
-        """Create a generator function that accepts arguments for multiple message types."""
-
-        async def multi_message_generator(
-            *args: Any, **kwargs: Any
-        ) -> AsyncGenerator[Any, None]:
-            messages = [
-                UserMessage(content="Hello"),
-                AssistantMessage(content=[TextBlock(text="Hi there!")]),
-                SystemMessage(subtype="test", data={"message": "System message"}),
-                ResultMessage(
-                    subtype="success",
-                    duration_ms=1000,
-                    duration_api_ms=800,
-                    is_error=False,
-                    num_turns=1,
-                    session_id="test_session",
-                    total_cost_usd=0.001,
-                    usage={"input_tokens": 10, "output_tokens": 5},
-                ),
-            ]
-            for message in messages:
-                yield message
-
-        return multi_message_generator
 
 
 class PoolMockBuilder:
@@ -210,19 +146,25 @@ class TestClaudeSDKClientStatelessQueries:
     """Test suite for stateless query execution."""
 
     @pytest.mark.asyncio
-    async def test_query_completion_stateless_success(self) -> None:
+    async def test_query_completion_stateless_success(
+        self, mock_sdk_client_instance: AsyncMock
+    ) -> None:
         """Test successful stateless query execution."""
         client: ClaudeSDKClient = ClaudeSDKClient(use_pool=False)
         options: ClaudeCodeOptions = ClaudeCodeOptions()
 
-        # Use SDKClientMockBuilder for simple response
         with patch(
-            "ccproxy.claude_sdk.client.query",
-            SDKClientMockBuilder.create_simple_response_generator(),
+            "ccproxy.claude_sdk.client.ImportedClaudeSDKClient",
+            return_value=mock_sdk_client_instance,
         ):
             messages: list[Any] = []
+            # Create a proper SDKMessage for the test
+            from ccproxy.models.claude_sdk import create_sdk_message
+
+            sdk_message = create_sdk_message(content="Hello")
+
             async for message in client.query_completion(
-                [{"role": "user", "content": "Hello"}], options, "req_123"
+                sdk_message, options, "req_123"
             ):
                 messages.append(message)
 
@@ -232,118 +174,128 @@ class TestClaudeSDKClientStatelessQueries:
         assert messages[0].content[0].text == "Hello"
 
     @pytest.mark.asyncio
-    async def test_query_completion_cli_not_found_error(self) -> None:
+    async def test_query_completion_cli_not_found_error(
+        self, mock_sdk_client_cli_not_found: AsyncMock
+    ) -> None:
         """Test handling of CLINotFoundError."""
         client: ClaudeSDKClient = ClaudeSDKClient(use_pool=False)
         options: ClaudeCodeOptions = ClaudeCodeOptions()
 
-        # Use SDKClientMockBuilder for error generation
         with (
             patch(
-                "ccproxy.claude_sdk.client.query",
-                SDKClientMockBuilder.create_query_error_generator(
-                    CLINotFoundError("Claude CLI not found")
-                ),
+                "ccproxy.claude_sdk.client.ImportedClaudeSDKClient",
+                return_value=mock_sdk_client_cli_not_found,
             ),
             pytest.raises(ServiceUnavailableError) as exc_info,
         ):
-            async for _ in client.query_completion(
-                [{"role": "user", "content": "Hello"}], options
-            ):
+            # Create a proper SDKMessage for the test
+            from ccproxy.models.claude_sdk import create_sdk_message
+
+            sdk_message = create_sdk_message(content="Hello")
+
+            async for _ in client.query_completion(sdk_message, options):
                 pass
 
         assert "Claude CLI not available" in str(exc_info.value)
 
     @pytest.mark.asyncio
-    async def test_query_completion_cli_connection_error(self) -> None:
+    async def test_query_completion_cli_connection_error(
+        self, mock_sdk_client_cli_connection_error: AsyncMock
+    ) -> None:
         """Test handling of CLIConnectionError."""
         client: ClaudeSDKClient = ClaudeSDKClient(use_pool=False)
         options: ClaudeCodeOptions = ClaudeCodeOptions()
 
-        # Use SDKClientMockBuilder for connection error
         with (
             patch(
-                "ccproxy.claude_sdk.client.query",
-                SDKClientMockBuilder.create_query_error_generator(
-                    CLIConnectionError("Connection failed")
-                ),
+                "ccproxy.claude_sdk.client.ImportedClaudeSDKClient",
+                return_value=mock_sdk_client_cli_connection_error,
             ),
             pytest.raises(ServiceUnavailableError) as exc_info,
         ):
-            async for _ in client.query_completion(
-                [{"role": "user", "content": "Hello"}], options
-            ):
+            # Create a proper SDKMessage for the test
+            from ccproxy.models.claude_sdk import create_sdk_message
+
+            sdk_message = create_sdk_message(content="Hello")
+
+            async for _ in client.query_completion(sdk_message, options):
                 pass
 
         assert "Claude CLI not available" in str(exc_info.value)
 
     @pytest.mark.asyncio
-    async def test_query_completion_process_error(self) -> None:
+    async def test_query_completion_process_error(
+        self, mock_sdk_client_process_error: AsyncMock
+    ) -> None:
         """Test handling of ProcessError."""
         client: ClaudeSDKClient = ClaudeSDKClient(use_pool=False)
         options: ClaudeCodeOptions = ClaudeCodeOptions()
 
-        # Use SDKClientMockBuilder for process error
         with (
             patch(
-                "ccproxy.claude_sdk.client.query",
-                SDKClientMockBuilder.create_query_error_generator(
-                    ProcessError("Process failed")
-                ),
+                "ccproxy.claude_sdk.client.ImportedClaudeSDKClient",
+                return_value=mock_sdk_client_process_error,
             ),
             pytest.raises(ClaudeProxyError) as exc_info,
         ):
-            async for _ in client.query_completion(
-                [{"role": "user", "content": "Hello"}], options
-            ):
+            # Create a proper SDKMessage for the test
+            from ccproxy.models.claude_sdk import create_sdk_message
+
+            sdk_message = create_sdk_message(content="Hello")
+
+            async for _ in client.query_completion(sdk_message, options):
                 pass
 
         assert "Claude process error" in str(exc_info.value)
         assert exc_info.value.status_code == 503
 
     @pytest.mark.asyncio
-    async def test_query_completion_json_decode_error(self) -> None:
+    async def test_query_completion_json_decode_error(
+        self, mock_sdk_client_json_decode_error: AsyncMock
+    ) -> None:
         """Test handling of CLIJSONDecodeError."""
         client: ClaudeSDKClient = ClaudeSDKClient(use_pool=False)
         options: ClaudeCodeOptions = ClaudeCodeOptions()
 
-        # Use SDKClientMockBuilder for JSON decode error
         with (
             patch(
-                "ccproxy.claude_sdk.client.query",
-                SDKClientMockBuilder.create_query_error_generator(
-                    CLIJSONDecodeError("invalid json", Exception("JSON decode failed"))
-                ),
+                "ccproxy.claude_sdk.client.ImportedClaudeSDKClient",
+                return_value=mock_sdk_client_json_decode_error,
             ),
             pytest.raises(ClaudeProxyError) as exc_info,
         ):
-            async for _ in client.query_completion(
-                [{"role": "user", "content": "Hello"}], options
-            ):
+            # Create a proper SDKMessage for the test
+            from ccproxy.models.claude_sdk import create_sdk_message
+
+            sdk_message = create_sdk_message(content="Hello")
+
+            async for _ in client.query_completion(sdk_message, options):
                 pass
 
         assert "Claude process error" in str(exc_info.value)
         assert exc_info.value.status_code == 503
 
     @pytest.mark.asyncio
-    async def test_query_completion_unexpected_error(self) -> None:
+    async def test_query_completion_unexpected_error(
+        self, mock_sdk_client_unexpected_error: AsyncMock
+    ) -> None:
         """Test handling of unexpected errors."""
         client: ClaudeSDKClient = ClaudeSDKClient(use_pool=False)
         options: ClaudeCodeOptions = ClaudeCodeOptions()
 
-        # Use SDKClientMockBuilder for unexpected error
         with (
             patch(
-                "ccproxy.claude_sdk.client.query",
-                SDKClientMockBuilder.create_query_error_generator(
-                    ValueError("Unexpected error")
-                ),
+                "ccproxy.claude_sdk.client.ImportedClaudeSDKClient",
+                return_value=mock_sdk_client_unexpected_error,
             ),
             pytest.raises(ClaudeProxyError) as exc_info,
         ):
-            async for _ in client.query_completion(
-                [{"role": "user", "content": "Hello"}], options
-            ):
+            # Create a proper SDKMessage for the test
+            from ccproxy.models.claude_sdk import create_sdk_message
+
+            sdk_message = create_sdk_message(content="Hello")
+
+            async for _ in client.query_completion(sdk_message, options):
                 pass
 
         assert "Unexpected error" in str(exc_info.value)
@@ -359,14 +311,28 @@ class TestClaudeSDKClientStatelessQueries:
         mock_unknown_message: Mock = Mock()
         mock_unknown_message.__class__.__name__ = "UnknownMessage"
 
-        async def mock_query(*args: Any, **kwargs: Any) -> AsyncGenerator[Any, None]:
+        # Create a mock SDK client that returns unknown message
+        mock_sdk_client = AsyncMock()
+        mock_sdk_client.connect = AsyncMock()
+        mock_sdk_client.disconnect = AsyncMock()
+        mock_sdk_client.query = AsyncMock()
+
+        async def unknown_message_response() -> AsyncGenerator[Any, None]:
             yield mock_unknown_message
 
-        with patch("ccproxy.claude_sdk.client.query", mock_query):
+        mock_sdk_client.receive_response = unknown_message_response
+
+        with patch(
+            "ccproxy.claude_sdk.client.ImportedClaudeSDKClient",
+            return_value=mock_sdk_client,
+        ):
             messages: list[Any] = []
-            async for message in client.query_completion(
-                [{"role": "user", "content": "Hello"}], options
-            ):
+            # Create a proper SDKMessage for the test
+            from ccproxy.models.claude_sdk import create_sdk_message
+
+            sdk_message = create_sdk_message(content="Hello")
+
+            async for message in client.query_completion(sdk_message, options):
                 messages.append(message)
 
         # Should skip unknown message types
@@ -383,40 +349,58 @@ class TestClaudeSDKClientStatelessQueries:
             content=[TextBlock(text="Hello")],
         )
 
-        async def mock_query(*args: Any, **kwargs: Any) -> AsyncGenerator[Any, None]:
+        # Create a mock SDK client
+        mock_sdk_client = AsyncMock()
+        mock_sdk_client.connect = AsyncMock()
+        mock_sdk_client.disconnect = AsyncMock()
+        mock_sdk_client.query = AsyncMock()
+
+        async def bad_message_response() -> AsyncGenerator[Any, None]:
             yield bad_message
+
+        mock_sdk_client.receive_response = bad_message_response
 
         # Mock the conversion to fail
         with (
-            patch("ccproxy.claude_sdk.client.query", mock_query),
+            patch(
+                "ccproxy.claude_sdk.client.ImportedClaudeSDKClient",
+                return_value=mock_sdk_client,
+            ),
             patch.object(
                 client, "_convert_message", side_effect=Exception("Conversion failed")
             ),
         ):
             messages: list[Any] = []
-            async for message in client.query_completion(
-                [{"role": "user", "content": "Hello"}], options
-            ):
+            # Create a proper SDKMessage for the test
+            from ccproxy.models.claude_sdk import create_sdk_message
+
+            sdk_message = create_sdk_message(content="Hello")
+
+            async for message in client.query_completion(sdk_message, options):
                 messages.append(message)
 
         # Should skip failed conversions
         assert len(messages) == 0
 
     @pytest.mark.asyncio
-    async def test_query_completion_multiple_message_types(self) -> None:
+    async def test_query_completion_multiple_message_types(
+        self, mock_sdk_client_streaming: AsyncMock
+    ) -> None:
         """Test query with multiple message types."""
         client: ClaudeSDKClient = ClaudeSDKClient(use_pool=False)
         options: ClaudeCodeOptions = ClaudeCodeOptions()
 
-        # Use SDKClientMockBuilder for multi-message response
         with patch(
-            "ccproxy.claude_sdk.client.query",
-            SDKClientMockBuilder.create_multi_message_generator(),
+            "ccproxy.claude_sdk.client.ImportedClaudeSDKClient",
+            return_value=mock_sdk_client_streaming,
         ):
             messages: list[Any] = []
-            async for message in client.query_completion(
-                [{"role": "user", "content": "Hello"}], options
-            ):
+            # Create a proper SDKMessage for the test
+            from ccproxy.models.claude_sdk import create_sdk_message
+
+            sdk_message = create_sdk_message(content="Hello")
+
+            async for message in client.query_completion(sdk_message, options):
                 messages.append(message)
 
         assert len(messages) == 4
@@ -480,10 +464,6 @@ class TestClaudeSDKClientPooledQueries:
         """Test successful pooled query execution."""
         # Use PoolMockBuilder for pool configuration
         mock_pool_config = PoolMockBuilder.create_pool_config_mock()
-
-        client: ClaudeSDKClient = ClaudeSDKClient(
-            use_pool=True, settings=mock_pool_config
-        )
         options: ClaudeCodeOptions = ClaudeCodeOptions()
 
         # Use PoolMockBuilder for pool components
@@ -494,12 +474,29 @@ class TestClaudeSDKClientPooledQueries:
         mock_connection_pool = AsyncMock()
         mock_connection_pool.acquire_client.return_value = mock_acquire_context
 
+        # Create a PoolManager with the mocked pool
+        from ccproxy.claude_sdk.manager import PoolManager
+
+        mock_pool_manager = AsyncMock(spec=PoolManager)
+        mock_pool_manager.get_pool.return_value = mock_connection_pool
+
+        # Create client with the mocked pool manager
+        client: ClaudeSDKClient = ClaudeSDKClient(
+            use_pool=True, settings=mock_pool_config, pool_manager=mock_pool_manager
+        )
+
         with patch(
-            "ccproxy.claude_sdk.pool.get_global_pool", return_value=mock_connection_pool
+            "ccproxy.claude_sdk.pool.ClaudeSDKClientPool",
+            return_value=mock_connection_pool,
         ):
             messages: list[Any] = []
+            # Create a proper SDKMessage for the test
+            from ccproxy.models.claude_sdk import create_sdk_message
+
+            sdk_message = create_sdk_message(content="Hello")
+
             async for message in client.query_completion(
-                [{"role": "user", "content": "Hello"}], options, "req_123"
+                sdk_message, options, "req_123"
             ):
                 messages.append(message)
 
@@ -520,47 +517,44 @@ class TestClaudeSDKClientPooledQueries:
         # Use PoolMockBuilder for fallback settings
         mock_fallback_settings = PoolMockBuilder.create_pool_config_mock(pool_size=3)
 
+        # Create a failing PoolManager
+        from ccproxy.claude_sdk.manager import PoolManager
+
+        mock_pool_manager = AsyncMock(spec=PoolManager)
+
+        # Make the pool manager's get_pool method fail
+        mock_pool_manager.get_pool.side_effect = Exception("Pool initialization failed")
+
         client: ClaudeSDKClient = ClaudeSDKClient(
-            use_pool=True, settings=mock_fallback_settings
+            use_pool=True,
+            settings=mock_fallback_settings,
+            pool_manager=mock_pool_manager,
         )
         options: ClaudeCodeOptions = ClaudeCodeOptions()
 
-        # Use SDKClientMockBuilder for fallback query
-        mock_stateless_fallback_query = (
-            SDKClientMockBuilder.create_simple_response_generator("Fallback response")
-        )
+        # Create a mock SDK client for fallback
+        mock_fallback_client = AsyncMock()
+        mock_fallback_client.connect = AsyncMock()
+        mock_fallback_client.disconnect = AsyncMock()
+        mock_fallback_client.query = AsyncMock()
 
-        # Mock multiple paths to ensure pool failure and fallback to stateless
-        with (
-            patch(
-                "ccproxy.claude_sdk.client.get_pool_manager"
-            ) as mock_get_pool_manager,
-            patch("ccproxy.claude_sdk.manager.PoolManager") as mock_pool_manager_class,
-            patch("ccproxy.observability.metrics.get_metrics") as mock_get_metrics,
+        async def fallback_response() -> AsyncGenerator[Any, None]:
+            yield AssistantMessage(content=[TextBlock(text="Fallback response")])
+
+        mock_fallback_client.receive_response = fallback_response
+
+        with patch(
+            "ccproxy.claude_sdk.client.ImportedClaudeSDKClient",
+            return_value=mock_fallback_client,
         ):
-            # Mock get_metrics to return None so it doesn't take the metrics path
-            mock_get_metrics.return_value = None
+            messages: list[Any] = []
+            # Create a proper SDKMessage for the test
+            from ccproxy.models.claude_sdk import create_sdk_message
 
-            # Create a failing pool manager that returns a pool with failing acquire_client
-            mock_manager = AsyncMock()
-            mock_pool = AsyncMock()
+            sdk_message = create_sdk_message(content="Hello")
 
-            # Make pool.acquire_client() fail to trigger the fallback
-            async def failing_acquire_client(*args: Any, **kwargs: Any) -> Any:
-                raise Exception("Pool client acquisition failed")
-
-            mock_pool.acquire_client.side_effect = failing_acquire_client
-            mock_manager.get_pool.return_value = mock_pool
-            mock_get_pool_manager.return_value = mock_manager
-
-            with patch(
-                "ccproxy.claude_sdk.client.query", mock_stateless_fallback_query
-            ):
-                messages: list[Any] = []
-                async for message in client.query_completion(
-                    [{"role": "user", "content": "Hello"}], options
-                ):
-                    messages.append(message)
+            async for message in client.query_completion(sdk_message, options):
+                messages.append(message)
 
         assert len(messages) == 1
         assert isinstance(messages[0], sdk_models.AssistantMessage)
@@ -573,7 +567,6 @@ class TestClaudeSDKClientPooledQueries:
     @pytest.mark.asyncio
     async def test_query_completion_pooled_no_settings(self) -> None:
         """Test pooled query when settings are not available."""
-        client: ClaudeSDKClient = ClaudeSDKClient(use_pool=True, settings=None)
         options: ClaudeCodeOptions = ClaudeCodeOptions()
 
         # Use PoolMockBuilder for no-settings scenario
@@ -584,13 +577,28 @@ class TestClaudeSDKClientPooledQueries:
         mock_default_pool = AsyncMock()
         mock_default_pool.acquire_client.return_value = mock_acquire_context
 
+        # Create a PoolManager with the mocked pool
+        from ccproxy.claude_sdk.manager import PoolManager
+
+        mock_pool_manager = AsyncMock(spec=PoolManager)
+        mock_pool_manager.get_pool.return_value = mock_default_pool
+
+        # Create client with the mocked pool manager
+        client: ClaudeSDKClient = ClaudeSDKClient(
+            use_pool=True, settings=None, pool_manager=mock_pool_manager
+        )
+
         with patch(
-            "ccproxy.claude_sdk.pool.get_global_pool", return_value=mock_default_pool
+            "ccproxy.claude_sdk.pool.ClaudeSDKClientPool",
+            return_value=mock_default_pool,
         ):
             messages: list[Any] = []
-            async for message in client.query_completion(
-                [{"role": "user", "content": "Hello"}], options
-            ):
+            # Create a proper SDKMessage for the test
+            from ccproxy.models.claude_sdk import create_sdk_message
+
+            sdk_message = create_sdk_message(content="Hello")
+
+            async for message in client.query_completion(sdk_message, options):
                 messages.append(message)
 
         assert len(messages) == 1

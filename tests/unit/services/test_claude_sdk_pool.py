@@ -912,11 +912,10 @@ class TestPoolManagement:
 
     async def teardown_method(self) -> None:
         """Clean up pool manager after each test."""
-        from ccproxy.claude_sdk.manager import reset_pool_manager
         from ccproxy.observability.metrics import reset_metrics
 
-        # Reset pool manager (handles pool shutdown automatically)
-        await reset_pool_manager()
+        # Note: With dependency injection, there's no global pool manager to reset
+        # Each test creates its own PoolManager instance
 
         # Reset metrics as well
         with contextlib.suppress(ImportError):
@@ -1015,34 +1014,20 @@ class TestPoolManagement:
 
             mock_pool_instance.stop.assert_called_once()  # type: ignore[unreachable]
 
+    @pytest.mark.skip(
+        reason="Service locator pattern removed - using dependency injection"
+    )
     @pytest.mark.asyncio
     async def test_service_locator_pattern(self) -> None:
         """Test service locator provides consistent manager."""
-        from ccproxy.claude_sdk.manager import get_pool_manager, reset_pool_manager_sync
+        # This test is no longer applicable with dependency injection
+        # Each component should receive its own PoolManager instance
+        pass
 
-        # Clean slate
-        reset_pool_manager_sync()
-
-        # Get manager twice
-        manager1: Any = await get_pool_manager()
-        manager2: Any = await get_pool_manager()
-
-        # Should be same instance
-        assert manager1 is manager2
-
+    @pytest.mark.skip(reason="Global functions removed - using dependency injection")
     @pytest.mark.asyncio
     async def test_custom_manager_injection(self) -> None:
         """Test injecting custom manager for testing."""
-        from ccproxy.claude_sdk.manager import (
-            PoolManager,
-            get_pool_manager,
-            set_pool_manager,
-        )
-
-        # Create custom manager
-        custom_manager: PoolManager = PoolManager()
-        set_pool_manager(custom_manager)
-
-        # Should get our custom manager
-        retrieved_manager: Any = await get_pool_manager()
-        assert retrieved_manager is custom_manager
+        # This test is no longer applicable with dependency injection
+        # Custom managers are now injected directly into components
+        pass
