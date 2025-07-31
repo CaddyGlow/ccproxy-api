@@ -199,10 +199,16 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         # Initialize pool manager for dependency injection when pooling is enabled
         pool_manager = None
         if use_pool:
-            from ccproxy.claude_sdk.manager import get_pool_manager
+            from ccproxy.claude_sdk.manager import PoolManager
             from ccproxy.claude_sdk.pool import PoolConfig
 
-            pool_manager = await get_pool_manager()
+            # Create PoolManager with dependency injection
+            pool_manager = PoolManager(
+                settings=settings, metrics_factory=lambda: metrics
+            )
+
+            # Start the pool manager (initializes session pool if enabled)
+            await pool_manager.start()
 
             # Create pool configuration from settings
             pool_config = None
@@ -231,6 +237,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
         # Store in app state for reuse in dependencies
         app.state.claude_service = claude_service
+        app.state.pool_manager = pool_manager  # Store pool_manager for shutdown
         logger.debug("claude_sdk_service_initialized")
     except Exception as e:
         logger.error("claude_sdk_service_initialization_failed", error=str(e))
@@ -361,14 +368,13 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         except Exception as e:
             logger.error("log_storage_close_failed", error=str(e))
 
-    # Shutdown global Claude SDK client pool if it was used
-    try:
-        from ccproxy.claude_sdk.manager import reset_pool_manager
-
-        await reset_pool_manager()
-        logger.debug("claude_sdk_pool_shutdown")
-    except Exception as e:
-        logger.error("claude_sdk_pool_shutdown_failed", error=str(e))
+    # Shutdown Claude SDK client pool if it was created
+    if hasattr(app.state, "pool_manager") and app.state.pool_manager:
+        try:
+            await app.state.pool_manager.shutdown()
+            logger.debug("claude_sdk_pool_shutdown")
+        except Exception as e:
+            logger.error("claude_sdk_pool_shutdown_failed", error=str(e))
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:

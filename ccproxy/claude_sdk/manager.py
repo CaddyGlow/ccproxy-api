@@ -1,8 +1,8 @@
 """
-Claude SDK Pool Manager - Eliminates global state with dependency injection architecture.
+Claude SDK Pool Manager - Pure dependency injection architecture.
 
 This module provides a PoolManager class that encapsulates pool lifecycle management
-using dependency injection patterns, replacing the problematic global pool functions.
+using dependency injection patterns without any global state.
 """
 
 from __future__ import annotations
@@ -255,88 +255,3 @@ class PoolManager:
     def is_active(self) -> bool:
         """Check if the pool manager has an active pool."""
         return self._pool is not None
-
-
-# Service Locator Pattern (async-safe)
-_default_pool_manager: PoolManager | None = None
-_manager_lock = asyncio.Lock()
-
-
-async def get_pool_manager() -> PoolManager:
-    """Safely get the default PoolManager instance.
-
-    This function implements the service locator pattern with proper async safety.
-    It will create a default PoolManager on first access.
-
-    Returns:
-        The default PoolManager instance.
-    """
-    global _default_pool_manager
-
-    if _default_pool_manager is None:
-        async with _manager_lock:
-            # Double-check pattern for async safety
-            if _default_pool_manager is None:
-                # Try to get metrics factory, fallback to None if not available
-                metrics_factory = None
-                try:
-                    from ccproxy.observability.metrics import get_metrics
-
-                    metrics_factory = get_metrics
-                except ImportError:
-                    # No metrics available, continue without them
-                    pass
-
-                # Try to get current settings for session pool support
-                settings = None
-                try:
-                    from ccproxy.config.settings import get_settings
-
-                    settings = get_settings()
-                except ImportError:
-                    # Settings not available, continue without them
-                    pass
-
-                _default_pool_manager = PoolManager(
-                    settings=settings, metrics_factory=metrics_factory
-                )
-
-    return _default_pool_manager
-
-
-def set_pool_manager(manager: PoolManager) -> None:
-    """Inject a specific PoolManager instance. Primarily for testing.
-
-    Args:
-        manager: The PoolManager instance to use as the default.
-
-    Warning:
-        This function bypasses async safety and should primarily be used
-        in test setup where you control the execution context.
-    """
-    global _default_pool_manager
-    _default_pool_manager = manager
-
-
-async def reset_pool_manager() -> None:
-    """Resets the global manager state. For testing.
-
-    This function properly shuts down any existing pool before resetting.
-    """
-    global _default_pool_manager
-
-    async with _manager_lock:
-        if _default_pool_manager:
-            await _default_pool_manager.shutdown()
-        _default_pool_manager = None
-
-
-def reset_pool_manager_sync() -> None:
-    """Synchronous reset for test environments.
-
-    Warning:
-        This does not properly shut down pools. Use reset_pool_manager()
-        for production code.
-    """
-    global _default_pool_manager
-    _default_pool_manager = None

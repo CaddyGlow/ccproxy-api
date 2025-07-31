@@ -32,12 +32,8 @@ from claude_code_sdk import (
     UserMessage,
 )
 
-from ccproxy.claude_sdk.client import (
-    ClaudeSDKClient,
-    ClaudeSDKConnectionError,
-    ClaudeSDKError,
-    ClaudeSDKProcessError,
-)
+from ccproxy.claude_sdk.client import ClaudeSDKClient
+from ccproxy.claude_sdk.exceptions import ClaudeSDKError
 from ccproxy.core.errors import ClaudeProxyError, ServiceUnavailableError
 from ccproxy.models import claude_sdk as sdk_models
 
@@ -661,25 +657,4 @@ class TestClaudeSDKClientMessageConversion:
         assert isinstance(result, sdk_models.AssistantMessage)
 
 
-class TestClaudeSDKClientExceptions:
-    """Test suite for custom exception classes."""
-
-    def test_claude_sdk_error_inheritance(self) -> None:
-        """Test that ClaudeSDKError inherits from Exception."""
-        error: ClaudeSDKError = ClaudeSDKError("Test error")
-        assert isinstance(error, Exception)
-        assert str(error) == "Test error"
-
-    def test_claude_sdk_connection_error_inheritance(self) -> None:
-        """Test that ClaudeSDKConnectionError inherits from ClaudeSDKError."""
-        error: ClaudeSDKConnectionError = ClaudeSDKConnectionError("Connection error")
-        assert isinstance(error, ClaudeSDKError)
-        assert isinstance(error, Exception)
-        assert str(error) == "Connection error"
-
-    def test_claude_sdk_process_error_inheritance(self) -> None:
-        """Test that ClaudeSDKProcessError inherits from ClaudeSDKError."""
-        error: ClaudeSDKProcessError = ClaudeSDKProcessError("Process error")
-        assert isinstance(error, ClaudeSDKError)
-        assert isinstance(error, Exception)
-        assert str(error) == "Process error"
+# TestClaudeSDKClientExceptions removed - exceptions moved to exceptions.py module
