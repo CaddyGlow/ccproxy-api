@@ -9,8 +9,7 @@ import structlog
 from pydantic import BaseModel
 
 from ccproxy.claude_sdk.exceptions import ClaudeSDKError, StreamTimeoutError
-from ccproxy.claude_sdk.manager import PoolManager
-from ccproxy.claude_sdk.pool import PoolConfig
+from ccproxy.claude_sdk.manager import SessionManager
 from ccproxy.claude_sdk.stream_handle import StreamHandle
 from ccproxy.config.settings import Settings
 from ccproxy.core.async_utils import patched_typing
@@ -70,21 +69,18 @@ class ClaudeSDKClient:
 
     def __init__(
         self,
-        use_pool: bool = False,
         settings: Settings | None = None,
-        pool_manager: PoolManager | None = None,
+        session_manager: SessionManager | None = None,
     ) -> None:
         """Initialize the Claude SDK client.
 
         Args:
-            use_pool: Whether to use connection pooling for better performance
-            settings: Application settings for pool configuration
-            pool_manager: Optional PoolManager instance for dependency injection
+            settings: Application settings for session pool configuration
+            session_manager: Optional SessionManager instance for dependency injection
         """
         self._last_api_call_time_ms: float = 0.0
-        self._use_pool = use_pool
         self._settings = settings
-        self._pool_manager = pool_manager
+        self._session_manager = session_manager
 
     @contextlib.asynccontextmanager
     async def _handle_sdk_exceptions(
@@ -132,37 +128,6 @@ class ClaudeSDKClient:
                 status_code=500,
             ) from e
 
-    async def _create_message_iterator(
-        self, message: SDKMessage
-    ) -> AsyncIterator[dict[str, Any]]:
-        """Convert SDKMessage to iterator format expected by Claude SDK."""
-        message_dict = message.model_dump()
-        logger.debug("sending_sdk_message", message=message_dict)
-        yield message_dict
-
-    async def _get_configured_pool(self) -> Any:
-        """Get pool with configuration from settings."""
-        if not self._pool_manager:
-            raise ClaudeProxyError("No pool manager available")
-
-        pool_config = None
-        if (
-            self._settings
-            and hasattr(self._settings, "claude")
-            and self._settings.claude.sdk_pool.enabled
-        ):
-            pool_settings = self._settings.claude.sdk_pool
-            pool_config = PoolConfig(
-                pool_size=pool_settings.pool_size,
-                max_pool_size=pool_settings.max_pool_size,
-                connection_timeout=pool_settings.connection_timeout,
-                idle_timeout=pool_settings.idle_timeout,
-                health_check_interval=pool_settings.health_check_interval,
-                enable_health_checks=pool_settings.enable_health_checks,
-            )
-
-        return await self._pool_manager.get_pool(config=pool_config)
-
     async def _execute_with_client(
         self,
         client: ImportedClaudeSDKClient,  # Claude SDK client (ImportedClaudeSDKClient)
@@ -178,11 +143,16 @@ class ClaudeSDKClient:
     ]:
         """Execute query with standard 4-second first chunk timeout."""
         # Send message
-        message_iter = self._create_message_iterator(message)
+        message_dict = message.model_dump()
+        logger.debug("sending_sdk_message", message=message_dict)
+
+        async def message_iter() -> AsyncIterator[dict[str, Any]]:
+            yield message_dict
+
         if session_id:
-            await client.query(message_iter, session_id=session_id)
+            await client.query(message_iter(), session_id=session_id)
         else:
-            await client.query(message_iter)
+            await client.query(message_iter())
 
         # Get response with 4s timeout on first chunk
         response_iterator = client.receive_response()
@@ -256,19 +226,22 @@ class ClaudeSDKClient:
 
     def _should_use_session_pool(self, session_id: str | None) -> bool:
         """Determine if session pool should be used for this request."""
-        if not session_id or not self._pool_manager:
+        if not session_id or not self._session_manager:
             return False
 
-        # Check settings using optional chaining pattern
-        try:
-            return bool(
-                self._settings
-                and self._settings.claude
-                and self._settings.claude.sdk_session_pool
-                and self._settings.claude.sdk_session_pool.enabled
-            )
-        except AttributeError:
+        # Check settings using safe attribute chaining
+        if not self._settings:
             return False
+
+        claude_settings = getattr(self._settings, "claude", None)
+        if not claude_settings:
+            return False
+
+        pool_settings = getattr(claude_settings, "sdk_session_pool", None)
+        if not pool_settings:
+            return False
+
+        return bool(getattr(pool_settings, "enabled", False))
 
     async def query_completion(
         self,
@@ -294,45 +267,60 @@ class ClaudeSDKClient:
         """
         # Determine routing strategy
         if self._should_use_session_pool(session_id):
-            query_method = self._query_with_session_pool
-        elif self._use_pool:
-            query_method = self._query_with_pool
+            return await self._create_session_pool_stream_handle(
+                message, options, request_id, session_id
+            )
         else:
-            query_method = self._query
+            return await self._create_direct_stream_handle(
+                message, options, request_id, session_id
+            )
 
-        # Get the message iterator from selected method
-        message_iterator = query_method(message, options, request_id, session_id)
+    async def _create_direct_stream_handle(
+        self,
+        message: SDKMessage,
+        options: ClaudeCodeOptions,
+        request_id: str | None = None,
+        session_id: str | None = None,
+    ) -> StreamHandle:
+        """Create stream handle for direct query (no session pool)."""
+        message_iterator = self._query(message, options, request_id, session_id)
 
-        # Get existing session client if available (don't create new one)
-        session_client = None
-        if self._should_use_session_pool(session_id) and self._pool_manager:
-            try:
-                # Check if session already exists
-                if session_id and await self._pool_manager.has_session(session_id):
-                    session_pool = self._pool_manager._session_pool
-                    if session_pool and session_id in session_pool.sessions:
-                        session_client = session_pool.sessions[session_id]
-            except Exception as e:
-                logger.debug(
-                    "query_completion_session_lookup_error",
-                    session_id=session_id,
-                    error=str(e),
-                    message="Failed to get existing session client",
-                )
+        return StreamHandle(
+            message_iterator=message_iterator,
+            session_id=session_id,
+            request_id=request_id,
+            session_client=None,
+        )
 
-        # Create and return stream handle
-        stream_handle = StreamHandle(
+    async def _create_session_pool_stream_handle(
+        self,
+        message: SDKMessage,
+        options: ClaudeCodeOptions,
+        request_id: str | None = None,
+        session_id: str | None = None,
+    ) -> StreamHandle:
+        """Create stream handle for session pool query."""
+        if not session_id:
+            raise ClaudeSDKError("Session ID required for session pool")
+        if not self._session_manager:
+            raise ClaudeSDKError("No session manager available")
+
+        # Enable continue conversation for session pool
+        options.continue_conversation = True
+        session_client = await self._session_manager.get_session_client(
+            session_id, options
+        )
+
+        message_iterator = self._query_with_session_pool(
+            message, options, request_id, session_id
+        )
+
+        return StreamHandle(
             message_iterator=message_iterator,
             session_id=session_id,
             request_id=request_id,
             session_client=session_client,
         )
-
-        # If we have a session client, set the active stream handle
-        if session_client:
-            session_client.active_stream_handle = stream_handle
-
-        return stream_handle
 
     async def _query(
         self,
@@ -376,135 +364,6 @@ class ClaudeSDKClient:
                         request_id=request_id,
                     )
 
-    async def _query_with_pool(
-        self,
-        message: SDKMessage,
-        options: ClaudeCodeOptions,
-        request_id: str | None = None,
-        session_id: str | None = None,
-    ) -> AsyncIterator[
-        sdk_models.UserMessage
-        | sdk_models.AssistantMessage
-        | sdk_models.SystemMessage
-        | sdk_models.ResultMessage
-    ]:
-        """Execute query using hybrid pool approach (session pool first, then general pool)."""
-        # If we have a session_id and session pool is available, check if session exists
-        if (
-            session_id
-            and self._pool_manager
-            and await self._pool_manager.has_session_pool()
-        ):
-            try:
-                # Check if session exists before trying to use it
-                if await self._pool_manager.has_session(session_id):
-                    logger.debug(
-                        "claude_sdk_using_existing_session",
-                        session_id=session_id,
-                        request_id=request_id,
-                    )
-                    async for msg in self._query_with_session_pool(
-                        message, options, request_id, session_id
-                    ):
-                        yield msg
-                    return
-            except Exception as e:
-                # Error checking session, fall through to general pool
-                logger.debug(
-                    "claude_sdk_session_check_error",
-                    session_id=session_id,
-                    error=str(e),
-                    request_id=request_id,
-                )
-
-        async with timed_operation("claude_sdk_query_pooled", request_id) as op:
-            try:
-                pool = await self._get_configured_pool()
-                server_session_id = None
-
-                async with pool.acquire_transferable_client(options) as (
-                    client,
-                    pooled_client,
-                ):
-                    message_count = 0
-
-                    try:
-                        async for msg in self._execute_with_client(
-                            client, message, session_id or "default", request_id
-                        ):
-                            message_count += 1
-
-                            # Check if we received a session ID from the server
-                            if (
-                                isinstance(msg, sdk_models.ResultMessage)
-                                and msg.session_id
-                            ):
-                                server_session_id = msg.session_id
-                                logger.info(
-                                    "claude_sdk_received_session_id",
-                                    session_id=server_session_id,
-                                    request_id=request_id,
-                                )
-
-                            yield msg
-
-                    except GeneratorExit:
-                        # Client disconnected - mark client as unhealthy
-                        if pooled_client:
-                            pooled_client.is_healthy = False
-                            logger.warning(
-                                "pool_client_disconnection_detected",
-                                client_id=pooled_client.client_id,
-                                request_id=request_id,
-                                message="Client disconnected during streaming, marking as unhealthy",
-                            )
-                        raise
-
-                    op["message_count"] = message_count
-                    self._last_api_call_time_ms = op.get("duration_ms", 0.0)
-
-                    # Transfer client to session pool if we got a session ID
-                    # and migration is allowed in pool config
-                    if (
-                        server_session_id
-                        and pooled_client
-                        and self._pool_manager
-                        and pool.config.allow_migration_to_session
-                    ):
-                        logger.info(
-                            "claude_sdk_transferring_to_session_pool",
-                            session_id=server_session_id,
-                            request_id=request_id,
-                        )
-                        await self._pool_manager.transfer_client_to_session(
-                            pooled_client, server_session_id, options
-                        )
-                    elif (
-                        server_session_id
-                        and pooled_client
-                        and not pool.config.allow_migration_to_session
-                    ):
-                        logger.debug(
-                            "claude_sdk_migration_disabled",
-                            session_id=server_session_id,
-                            request_id=request_id,
-                            message="Client migration to session pool disabled by config",
-                        )
-
-            except StreamTimeoutError:
-                # Re-raise timeout errors
-                raise
-            except Exception as e:
-                logger.error(
-                    "claude_sdk_pooled_query_error",
-                    error=str(e),
-                    error_type=type(e).__name__,
-                )
-                # Fall back to direct connection on pool errors
-                logger.info("claude_sdk_fallback_to_direct")
-                async for msg in self._query(message, options, request_id, session_id):
-                    yield msg
-
     async def _query_with_session_pool(
         self,
         message: SDKMessage,
@@ -523,14 +382,14 @@ class ClaudeSDKClient:
                 if not session_id:
                     raise ClaudeSDKError("Session ID required for session pool")
 
-                if not self._pool_manager:
-                    raise ClaudeSDKError("No pool manager available")
+                if not self._session_manager:
+                    raise ClaudeSDKError("No session manager available")
 
                 # Enable continue conversation for session pool
                 # so conversation is possible to resume based on session_id
                 options.continue_conversation = True
 
-                session_client = await self._pool_manager.get_session_client(
+                session_client = await self._session_manager.get_session_client(
                     session_id, options
                 )
 
@@ -612,13 +471,11 @@ class ClaudeSDKClient:
                     session_id=session_id,
                     exc_info=True,
                 )
-                # Fall back to regular pool
+                # Fall back to direct query
                 logger.info(
-                    "claude_sdk_fallback_to_regular_pool", session_id=session_id
+                    "claude_sdk_fallback_to_direct_query", session_id=session_id
                 )
-                async for msg in self._query_with_pool(
-                    message, options, request_id, session_id
-                ):
+                async for msg in self._query(message, options, request_id, session_id):
                     yield msg
 
     async def _wait_for_first_chunk(
@@ -658,10 +515,10 @@ class ClaudeSDKClient:
                 timeout=timeout_seconds,
                 message="No chunk received within timeout, interrupting session",
             )
-            # Interrupt the session if we have a session_id and pool manager
-            if session_id and self._pool_manager:
+            # Interrupt the session if we have a session_id and session manager
+            if session_id and self._session_manager:
                 try:
-                    await self._pool_manager.interrupt_session(session_id)
+                    await self._session_manager.interrupt_session(session_id)
                 except Exception as e:
                     logger.error(
                         "failed_to_interrupt_stuck_session",
@@ -809,40 +666,32 @@ class ClaudeSDKClient:
 
     def _convert_message(self, message: Any, model_class: type[T]) -> T:
         """Convert SDK message to Pydantic model."""
+        # Try standard object attribute extraction first
         if hasattr(message, "__dict__"):
             return model_class.model_validate(vars(message))
-        else:
-            # For dataclass objects, use dataclass.asdict equivalent
-            message_dict = {}
-            if hasattr(message, "__dataclass_fields__"):
-                message_dict = {
-                    field: getattr(message, field)
-                    for field in message.__dataclass_fields__
-                }
-            else:
-                # Try to extract common attributes
-                for attr in [
-                    "content",
-                    "subtype",
-                    "data",
-                    "session_id",
-                    "stop_reason",
-                    "usage",
-                    "total_cost_usd",
-                ]:
-                    if hasattr(message, attr):
-                        message_dict[attr] = getattr(message, attr)
 
+        # Handle dataclass objects
+        if hasattr(message, "__dataclass_fields__"):
+            message_dict = {
+                field: getattr(message, field) for field in message.__dataclass_fields__
+            }
             return model_class.model_validate(message_dict)
 
-    def get_last_api_call_time_ms(self) -> float:
-        """
-        Get the duration of the last Claude API call in milliseconds.
+        # Fallback: extract common attributes
+        message_dict = {}
+        for attr in [
+            "content",
+            "subtype",
+            "data",
+            "session_id",
+            "stop_reason",
+            "usage",
+            "total_cost_usd",
+        ]:
+            if hasattr(message, attr):
+                message_dict[attr] = getattr(message, attr)
 
-        Returns:
-            Duration in milliseconds, or 0.0 if no call has been made yet
-        """
-        return self._last_api_call_time_ms
+        return model_class.model_validate(message_dict)
 
     async def validate_health(self) -> bool:
         """
@@ -881,16 +730,16 @@ class ClaudeSDKClient:
             True if session was found and interrupted, False otherwise
         """
         logger.debug("sdk_client_interrupt_session_started", session_id=session_id)
-        if self._pool_manager:
+        if self._session_manager:
             logger.info(
                 "client_interrupt_session_requested",
                 session_id=session_id,
-                has_pool_manager=True,
+                has_session_manager=True,
             )
-            return await self._pool_manager.interrupt_session(session_id)
+            return await self._session_manager.interrupt_session(session_id)
         else:
             logger.warning(
-                "client_interrupt_session_no_pool_manager",
+                "client_interrupt_session_no_session_manager",
                 session_id=session_id,
             )
             return False
@@ -899,11 +748,3 @@ class ClaudeSDKClient:
         """Close the client and cleanup resources."""
         # Claude Code SDK doesn't require explicit cleanup
         pass
-
-    async def __aenter__(self) -> "ClaudeSDKClient":
-        """Async context manager entry."""
-        return self
-
-    async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
-        """Async context manager exit."""
-        await self.close()

@@ -193,51 +193,35 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         # Get global metrics instance
         metrics = get_metrics()
 
-        # Check if any pooling should be enabled from settings configuration
-        use_general_pool = settings.claude.sdk_pool.enabled
+        # Check if session pool should be enabled from settings configuration
         use_session_pool = settings.claude.sdk_session_pool.enabled
 
-        # Initialize pool manager if either pool is enabled
-        pool_manager = None
-        if use_general_pool or use_session_pool:
-            from ccproxy.claude_sdk.manager import PoolManager
-            from ccproxy.claude_sdk.pool import PoolConfig
+        # Initialize session manager if session pool is enabled
+        session_manager = None
+        if use_session_pool:
+            from ccproxy.claude_sdk.manager import SessionManager
 
-            # Create PoolManager with dependency injection
-            pool_manager = PoolManager(
+            # Create SessionManager with dependency injection
+            session_manager = SessionManager(
                 settings=settings, metrics_factory=lambda: metrics
             )
 
-            # Start the pool manager (initializes session pool if enabled)
-            await pool_manager.start()
-
-            # Create and start general pool if enabled
-            if use_general_pool:
-                pool_settings = settings.claude.sdk_pool
-                pool_config = PoolConfig(
-                    pool_size=pool_settings.pool_size,
-                    max_pool_size=pool_settings.max_pool_size,
-                    connection_timeout=pool_settings.connection_timeout,
-                    idle_timeout=pool_settings.idle_timeout,
-                    health_check_interval=pool_settings.health_check_interval,
-                    enable_health_checks=pool_settings.enable_health_checks,
-                )
-
-                # Pre-start the pool to populate it with clients
-                pool = await pool_manager.get_pool(config=pool_config)
+            # Start the session manager (initializes session pool if enabled)
+            await session_manager.start()
 
         # Create ClaudeSDKService instance
         claude_service = ClaudeSDKService(
             auth_manager=auth_manager,
             metrics=metrics,
             settings=settings,
-            use_pool=use_general_pool,
-            pool_manager=pool_manager,
+            session_manager=session_manager,
         )
 
         # Store in app state for reuse in dependencies
         app.state.claude_service = claude_service
-        app.state.pool_manager = pool_manager  # Store pool_manager for shutdown
+        app.state.session_manager = (
+            session_manager  # Store session_manager for shutdown
+        )
         logger.debug("claude_sdk_service_initialized")
     except Exception as e:
         logger.error("claude_sdk_service_initialization_failed", error=str(e))
@@ -249,21 +233,25 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         app.state.scheduler = scheduler
         logger.debug("scheduler_initialized")
 
-        # Add pool stats task if pool manager is available
-        if scheduler and hasattr(app.state, "pool_manager") and app.state.pool_manager:
+        # Add session pool stats task if session manager is available
+        if (
+            scheduler
+            and hasattr(app.state, "session_manager")
+            and app.state.session_manager
+        ):
             try:
-                # Add pool stats task that runs every minute
+                # Add session pool stats task that runs every minute
                 await scheduler.add_task(
-                    task_name="pool_stats",
-                    task_type="pool_stats",
+                    task_name="session_pool_stats",
+                    task_type="session_pool_stats",
                     interval_seconds=60,  # Every minute
                     enabled=True,
-                    pool_manager=app.state.pool_manager,
+                    session_manager=app.state.session_manager,
                 )
-                logger.debug("pool_stats_task_added", interval_seconds=60)
+                logger.debug("session_pool_stats_task_added", interval_seconds=60)
             except Exception as e:
                 logger.error(
-                    "pool_stats_task_add_failed",
+                    "session_pool_stats_task_add_failed",
                     error=str(e),
                     error_type=type(e).__name__,
                 )
@@ -387,13 +375,13 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         except Exception as e:
             logger.error("log_storage_close_failed", error=str(e))
 
-    # Shutdown Claude SDK client pool if it was created
-    if hasattr(app.state, "pool_manager") and app.state.pool_manager:
+    # Shutdown Claude SDK session manager if it was created
+    if hasattr(app.state, "session_manager") and app.state.session_manager:
         try:
-            await app.state.pool_manager.shutdown()
-            logger.debug("claude_sdk_pool_shutdown")
+            await app.state.session_manager.shutdown()
+            logger.debug("claude_sdk_session_manager_shutdown")
         except Exception as e:
-            logger.error("claude_sdk_pool_shutdown_failed", error=str(e))
+            logger.error("claude_sdk_session_manager_shutdown_failed", error=str(e))
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:

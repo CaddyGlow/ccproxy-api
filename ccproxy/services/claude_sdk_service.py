@@ -10,7 +10,7 @@ from ccproxy.auth.manager import AuthManager
 from ccproxy.claude_sdk.client import ClaudeSDKClient
 from ccproxy.claude_sdk.converter import MessageConverter
 from ccproxy.claude_sdk.exceptions import StreamTimeoutError
-from ccproxy.claude_sdk.manager import PoolManager
+from ccproxy.claude_sdk.manager import SessionManager
 from ccproxy.claude_sdk.options import OptionsHandler
 from ccproxy.claude_sdk.streaming import ClaudeStreamProcessor
 from ccproxy.config.claude import SDKMessageMode
@@ -46,8 +46,7 @@ class ClaudeSDKService:
         auth_manager: AuthManager | None = None,
         metrics: PrometheusMetrics | None = None,
         settings: Settings | None = None,
-        use_pool: bool = False,
-        pool_manager: PoolManager | None = None,
+        session_manager: SessionManager | None = None,
     ) -> None:
         """
         Initialize Claude SDK service.
@@ -57,11 +56,10 @@ class ClaudeSDKService:
             auth_manager: Authentication manager (optional)
             metrics: Prometheus metrics instance (optional)
             settings: Application settings (optional)
-            use_pool: Whether to use connection pooling for improved performance
-            pool_manager: Pool manager for dependency injection (optional)
+            session_manager: Session manager for dependency injection (optional)
         """
         self.sdk_client = sdk_client or ClaudeSDKClient(
-            use_pool=use_pool, settings=settings, pool_manager=pool_manager
+            settings=settings, session_manager=session_manager
         )
         self.auth_manager = auth_manager
         self.metrics = metrics
@@ -391,12 +389,14 @@ class ClaudeSDKService:
         # Store handle in session client if available for cleanup
         if (
             session_id
-            and hasattr(self.sdk_client, "_pool_manager")
-            and self.sdk_client._pool_manager
+            and hasattr(self.sdk_client, "_session_manager")
+            and self.sdk_client._session_manager
         ):
             try:
-                session_client = await self.sdk_client._pool_manager.get_session_client(
-                    session_id, options
+                session_client = (
+                    await self.sdk_client._session_manager.get_session_client(
+                        session_id, options
+                    )
                 )
                 if session_client:
                     session_client.active_stream_handle = stream_handle

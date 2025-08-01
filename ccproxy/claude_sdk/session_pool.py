@@ -14,7 +14,7 @@ from ccproxy.core.errors import ClaudeProxyError, ServiceUnavailableError
 
 
 if TYPE_CHECKING:
-    from claude_code_sdk import ClaudeSDKClient as ImportedClaudeSDKClient
+    pass
 
 
 logger = structlog.get_logger(__name__)
@@ -151,32 +151,85 @@ class SessionPool:
                     session_client.has_active_stream
                     or session_client.active_stream_handle
                 ):
-                    logger.warning(
+                    logger.debug(
                         "session_pool_active_stream_detected",
                         session_id=session_id,
                         client_id=session_client.client_id,
                         has_stream=session_client.has_active_stream,
                         has_handle=bool(session_client.active_stream_handle),
-                        message="Session has active stream/handle, clearing before reuse",
+                        idle_seconds=session_client.metrics.idle_seconds,
+                        message="Session has active stream/handle, checking if cleanup needed",
                     )
-                    # Simply clear the old stream handle and flags without interrupting
-                    # The old handle should already be completed or will be cleaned up automatically
-                    if session_client.active_stream_handle:
+
+                    # Check if the stream is idle/stale (idle for more than 10 seconds)
+                    # If it's been idle for a while, it's likely abandoned and should be interrupted
+                    is_stream_stale = session_client.metrics.idle_seconds > 10.0
+
+                    if session_client.active_stream_handle and is_stream_stale:
+                        old_handle_id = session_client.active_stream_handle.handle_id
+                        logger.info(
+                            "session_pool_interrupting_stale_stream",
+                            session_id=session_id,
+                            old_handle_id=old_handle_id,
+                            idle_seconds=session_client.metrics.idle_seconds,
+                            message="Interrupting stale stream handle before reuse",
+                        )
+
+                        try:
+                            # Interrupt the old stream handle to stop its worker
+                            interrupted = (
+                                await session_client.active_stream_handle.interrupt()
+                            )
+                            if interrupted:
+                                logger.info(
+                                    "session_pool_interrupted_stale_stream",
+                                    session_id=session_id,
+                                    old_handle_id=old_handle_id,
+                                    message="Successfully interrupted stale stream handle",
+                                )
+                            else:
+                                logger.debug(
+                                    "session_pool_interrupt_stale_stream_not_needed",
+                                    session_id=session_id,
+                                    old_handle_id=old_handle_id,
+                                    message="Stale stream handle was already completed",
+                                )
+                        except Exception as e:
+                            logger.warning(
+                                "session_pool_interrupt_stale_stream_failed",
+                                session_id=session_id,
+                                old_handle_id=old_handle_id,
+                                error=str(e),
+                                error_type=type(e).__name__,
+                                message="Failed to interrupt stale stream handle, clearing anyway",
+                            )
+                        finally:
+                            # Always clear the handle after interrupt attempt
+                            session_client.active_stream_handle = None
+                            session_client.has_active_stream = False
+                    elif session_client.active_stream_handle and not is_stream_stale:
+                        # Stream is recent, likely from a previous request that just finished
+                        # Just clear the handle without interrupting to allow immediate reuse
                         logger.debug(
-                            "session_pool_clearing_old_handle",
+                            "session_pool_clearing_recent_stream",
                             session_id=session_id,
                             old_handle_id=session_client.active_stream_handle.handle_id,
+                            idle_seconds=session_client.metrics.idle_seconds,
+                            message="Clearing recent stream handle for immediate reuse",
                         )
                         session_client.active_stream_handle = None
+                        session_client.has_active_stream = False
+                    else:
+                        # No handle but has_active_stream flag is set, just clear the flag
+                        session_client.has_active_stream = False
 
-                    # Clear active stream flag
-                    session_client.has_active_stream = False
-
-                    logger.info(
+                    logger.debug(
                         "session_pool_stream_cleared",
                         session_id=session_id,
                         client_id=session_client.client_id,
-                        message="Old stream state cleared, session ready for reuse",
+                        was_interrupted=is_stream_stale,
+                        was_recent=not is_stream_stale,
+                        message="Stream state cleared, session ready for reuse",
                     )
                 # Check if session is still valid
                 elif session_client.is_expired():
@@ -222,67 +275,6 @@ class SessionPool:
             session_message_count=session_client.metrics.message_count,
         )
         return session_client
-
-    async def adopt_client(
-        self,
-        session_id: str,
-        client_id: str,
-        client: ImportedClaudeSDKClient,
-        options: ClaudeCodeOptions,
-    ) -> SessionClient:
-        """Adopt a pre-connected client from the general pool.
-
-        Args:
-            session_id: The session ID for this client
-            client: Pre-connected Claude SDK client
-            options: Claude Code options used for the client
-
-        Returns:
-            The created SessionClient
-        """
-        async with self._lock:
-            # Check session limit
-            if (
-                session_id not in self.sessions
-                and len(self.sessions) >= self.config.max_sessions
-            ):
-                logger.error(
-                    "session_pool_at_capacity_for_adoption",
-                    session_id=session_id,
-                    current_sessions=len(self.sessions),
-                    max_sessions=self.config.max_sessions,
-                )
-                # Disconnect the client since we can't adopt it
-                await client.disconnect()
-                raise ServiceUnavailableError(
-                    f"Session pool at capacity: {self.config.max_sessions}"
-                )
-
-            # Create session client wrapper
-            session_client = SessionClient(
-                session_id=session_id,
-                client_id=client_id,
-                options=options,
-                ttl_seconds=self.config.session_ttl,
-            )
-
-            # Adopt the pre-connected client
-            session_client.claude_client = client
-            session_client.status = SessionStatus.ACTIVE
-            session_client.connection_attempts = 1
-
-            # Add to sessions
-            self.sessions[session_id] = session_client
-
-            logger.info(
-                "session_adopted",
-                session_id=session_id,
-                client_id=session_client.client_id,
-                total_sessions=len(self.sessions),
-                message="Adopted pre-connected client from general pool",
-            )
-
-            return session_client
 
     async def _create_session(
         self, session_id: str, options: ClaudeCodeOptions

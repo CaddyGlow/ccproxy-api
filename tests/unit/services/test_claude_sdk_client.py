@@ -30,42 +30,6 @@ from ccproxy.core.errors import ClaudeProxyError, ServiceUnavailableError
 from ccproxy.models import claude_sdk as sdk_models
 
 
-class PoolMockBuilder:
-    """Builder for creating pool-related mock patterns (simplified version)."""
-
-    @staticmethod
-    def create_pool_config_mock(pool_size: int = 3, max_pool_size: int = 10) -> Mock:
-        """Create a mock pool configuration."""
-        mock_config = Mock()
-        mock_config.claude.use_client_pool = True
-        mock_config.claude.pool_settings.pool_size = pool_size
-        mock_config.claude.pool_settings.max_pool_size = max_pool_size
-        mock_config.claude.pool_settings.connection_timeout = 30.0
-        mock_config.claude.pool_settings.idle_timeout = 300.0
-        mock_config.claude.pool_settings.health_check_interval = 60.0
-        mock_config.claude.pool_settings.enable_health_checks = True
-        return mock_config
-
-    @staticmethod
-    def create_pooled_client_context_manager(
-        response_text: str = "Pooled response",
-    ) -> tuple[AsyncMock, AsyncMock]:
-        """Create a complete pooled client context manager setup."""
-        mock_pooled_client = AsyncMock()
-        mock_pooled_client.query = AsyncMock()
-
-        async def mock_receive_response() -> AsyncGenerator[Any, None]:
-            yield AssistantMessage(content=[TextBlock(text=response_text)])
-
-        mock_pooled_client.receive_response.return_value = mock_receive_response()
-
-        mock_acquire_context = AsyncMock()
-        mock_acquire_context.__aenter__.return_value = mock_pooled_client
-        mock_acquire_context.__aexit__.return_value = None
-
-        return mock_pooled_client, mock_acquire_context
-
-
 class TestClaudeSDKClient:
     """Test suite for ClaudeSDKClient class."""
 
@@ -74,18 +38,19 @@ class TestClaudeSDKClient:
         client: ClaudeSDKClient = ClaudeSDKClient()
 
         assert client._last_api_call_time_ms == 0.0
-        assert client._use_pool is False
         assert client._settings is None
+        assert client._session_manager is None
 
-    def test_init_with_pool_enabled(self) -> None:
-        """Test client initialization with pool enabled."""
-        mock_pool_settings: Mock = Mock()  # Descriptive mock for pool settings
+    def test_init_with_session_manager(self) -> None:
+        """Test client initialization with session manager."""
+        mock_settings: Mock = Mock()  # Descriptive mock for settings
+        mock_session_manager: Mock = Mock()  # Descriptive mock for session manager
         client: ClaudeSDKClient = ClaudeSDKClient(
-            use_pool=True, settings=mock_pool_settings
+            settings=mock_settings, session_manager=mock_session_manager
         )
 
-        assert client._use_pool is True
-        assert client._settings is mock_pool_settings
+        assert client._settings is mock_settings
+        assert client._session_manager is mock_session_manager
 
     @pytest.mark.asyncio
     async def test_validate_health_success(self) -> None:
@@ -117,27 +82,20 @@ class TestClaudeSDKClient:
         await client.close()
         # Claude SDK doesn't require explicit cleanup, so this should pass without error
 
-    @pytest.mark.asyncio
-    async def test_context_manager(self) -> None:
-        """Test client as async context manager."""
-        async with ClaudeSDKClient() as client:
-            assert isinstance(client, ClaudeSDKClient)
-            # Context manager should not raise errors
-
-    def test_get_last_api_call_time_ms_initial(self) -> None:
+    def test_last_api_call_time_ms_initial(self) -> None:
         """Test getting last API call time when no calls made."""
         client: ClaudeSDKClient = ClaudeSDKClient()
 
-        result: float = client.get_last_api_call_time_ms()
+        result: float = client._last_api_call_time_ms
 
         assert result == 0.0
 
-    def test_get_last_api_call_time_ms_after_call(self) -> None:
+    def test_last_api_call_time_ms_after_call(self) -> None:
         """Test getting last API call time after setting it."""
         client: ClaudeSDKClient = ClaudeSDKClient()
         client._last_api_call_time_ms = 123.45
 
-        result: float = client.get_last_api_call_time_ms()
+        result: float = client._last_api_call_time_ms
 
         assert result == 123.45
 
@@ -150,7 +108,7 @@ class TestClaudeSDKClientStatelessQueries:
         self, mock_sdk_client_instance: AsyncMock
     ) -> None:
         """Test successful stateless query execution."""
-        client: ClaudeSDKClient = ClaudeSDKClient(use_pool=False)
+        client: ClaudeSDKClient = ClaudeSDKClient()
         options: ClaudeCodeOptions = ClaudeCodeOptions()
 
         with patch(
@@ -180,7 +138,7 @@ class TestClaudeSDKClientStatelessQueries:
         self, mock_sdk_client_cli_not_found: AsyncMock
     ) -> None:
         """Test handling of CLINotFoundError."""
-        client: ClaudeSDKClient = ClaudeSDKClient(use_pool=False)
+        client: ClaudeSDKClient = ClaudeSDKClient()
         options: ClaudeCodeOptions = ClaudeCodeOptions()
 
         with (
@@ -207,7 +165,7 @@ class TestClaudeSDKClientStatelessQueries:
         self, mock_sdk_client_cli_connection_error: AsyncMock
     ) -> None:
         """Test handling of CLIConnectionError."""
-        client: ClaudeSDKClient = ClaudeSDKClient(use_pool=False)
+        client: ClaudeSDKClient = ClaudeSDKClient()
         options: ClaudeCodeOptions = ClaudeCodeOptions()
 
         with (
@@ -234,7 +192,7 @@ class TestClaudeSDKClientStatelessQueries:
         self, mock_sdk_client_process_error: AsyncMock
     ) -> None:
         """Test handling of ProcessError."""
-        client: ClaudeSDKClient = ClaudeSDKClient(use_pool=False)
+        client: ClaudeSDKClient = ClaudeSDKClient()
         options: ClaudeCodeOptions = ClaudeCodeOptions()
 
         with (
@@ -262,7 +220,7 @@ class TestClaudeSDKClientStatelessQueries:
         self, mock_sdk_client_json_decode_error: AsyncMock
     ) -> None:
         """Test handling of CLIJSONDecodeError."""
-        client: ClaudeSDKClient = ClaudeSDKClient(use_pool=False)
+        client: ClaudeSDKClient = ClaudeSDKClient()
         options: ClaudeCodeOptions = ClaudeCodeOptions()
 
         with (
@@ -290,7 +248,7 @@ class TestClaudeSDKClientStatelessQueries:
         self, mock_sdk_client_unexpected_error: AsyncMock
     ) -> None:
         """Test handling of unexpected errors."""
-        client: ClaudeSDKClient = ClaudeSDKClient(use_pool=False)
+        client: ClaudeSDKClient = ClaudeSDKClient()
         options: ClaudeCodeOptions = ClaudeCodeOptions()
 
         with (
@@ -316,7 +274,7 @@ class TestClaudeSDKClientStatelessQueries:
     @pytest.mark.asyncio
     async def test_query_completion_unknown_message_type(self) -> None:
         """Test handling of unknown message types."""
-        client: ClaudeSDKClient = ClaudeSDKClient(use_pool=False)
+        client: ClaudeSDKClient = ClaudeSDKClient()
         options: ClaudeCodeOptions = ClaudeCodeOptions()
 
         # Create a mock unknown message type - descriptive mock for unknown type handling
@@ -355,7 +313,7 @@ class TestClaudeSDKClientStatelessQueries:
     @pytest.mark.asyncio
     async def test_query_completion_message_conversion_failure(self) -> None:
         """Test handling of message conversion failures."""
-        client: ClaudeSDKClient = ClaudeSDKClient(use_pool=False)
+        client: ClaudeSDKClient = ClaudeSDKClient()
         options: ClaudeCodeOptions = ClaudeCodeOptions()
 
         # Create a message that will fail conversion
@@ -403,7 +361,7 @@ class TestClaudeSDKClientStatelessQueries:
         self, mock_sdk_client_streaming: AsyncMock
     ) -> None:
         """Test query with multiple message types."""
-        client: ClaudeSDKClient = ClaudeSDKClient(use_pool=False)
+        client: ClaudeSDKClient = ClaudeSDKClient()
         options: ClaudeCodeOptions = ClaudeCodeOptions()
 
         with patch(
@@ -437,7 +395,7 @@ class TestClaudeSDKClientStatelessQueries:
         This test shows how organized fixtures can provide consistent mock behavior
         without complex inline setup, improving test maintainability.
         """
-        client: ClaudeSDKClient = ClaudeSDKClient(use_pool=False)
+        client: ClaudeSDKClient = ClaudeSDKClient()
         options: ClaudeCodeOptions = ClaudeCodeOptions()
 
         # Organized fixtures provide pre-configured, consistent mock responses
@@ -469,165 +427,6 @@ class TestClaudeSDKClientStatelessQueries:
         result: bool = await client.validate_health()
 
         assert result is True
-
-
-class TestClaudeSDKClientPooledQueries:
-    """Test suite for pooled query execution."""
-
-    @pytest.mark.skip(
-        reason="Complex pool mocking - requires real pool integration testing"
-    )
-    @pytest.mark.asyncio
-    async def test_query_completion_pooled_success(self) -> None:
-        """Test successful pooled query execution."""
-        # Use PoolMockBuilder for pool configuration
-        mock_pool_config = PoolMockBuilder.create_pool_config_mock()
-        options: ClaudeCodeOptions = ClaudeCodeOptions()
-
-        # Use PoolMockBuilder for pool components
-        mock_pooled_client, mock_acquire_context = (
-            PoolMockBuilder.create_pooled_client_context_manager()
-        )
-
-        mock_connection_pool = AsyncMock()
-        mock_connection_pool.acquire_client.return_value = mock_acquire_context
-
-        # Create a PoolManager with the mocked pool
-        from ccproxy.claude_sdk.manager import PoolManager
-
-        mock_pool_manager = AsyncMock(spec=PoolManager)
-        mock_pool_manager.get_pool.return_value = mock_connection_pool
-
-        # Create client with the mocked pool manager
-        client: ClaudeSDKClient = ClaudeSDKClient(
-            use_pool=True, settings=mock_pool_config, pool_manager=mock_pool_manager
-        )
-
-        with patch(
-            "ccproxy.claude_sdk.pool.ClaudeSDKClientPool",
-            return_value=mock_connection_pool,
-        ):
-            messages: list[Any] = []
-            # Create a proper SDKMessage for the test
-            from ccproxy.models.claude_sdk import create_sdk_message
-
-            sdk_message = create_sdk_message(content="Hello")
-
-            stream_handle = await client.query_completion(
-                sdk_message, options, "req_123"
-            )
-
-            async for message in stream_handle.create_listener():
-                messages.append(message)
-
-        assert len(messages) == 1
-        assert isinstance(messages[0], sdk_models.AssistantMessage)
-        assert isinstance(messages[0].content[0], sdk_models.TextBlock)
-        assert messages[0].content[0].text == "Pooled response"
-
-        # Verify pool interactions
-        mock_connection_pool.acquire_client.assert_called_once_with(options)
-        mock_pooled_client.query.assert_called_once_with("Hello")
-
-    @pytest.mark.asyncio
-    async def test_query_completion_pooled_fallback_to_stateless(
-        self, isolated_environment: Any
-    ) -> None:
-        """Test fallback to stateless mode when pool fails."""
-        # Use PoolMockBuilder for fallback settings
-        mock_fallback_settings = PoolMockBuilder.create_pool_config_mock(pool_size=3)
-
-        # Create a failing PoolManager
-        from ccproxy.claude_sdk.manager import PoolManager
-
-        mock_pool_manager = AsyncMock(spec=PoolManager)
-
-        # Make the pool manager's get_pool method fail
-        mock_pool_manager.get_pool.side_effect = Exception("Pool initialization failed")
-
-        client: ClaudeSDKClient = ClaudeSDKClient(
-            use_pool=True,
-            settings=mock_fallback_settings,
-            pool_manager=mock_pool_manager,
-        )
-        options: ClaudeCodeOptions = ClaudeCodeOptions()
-
-        # Create a mock SDK client for fallback
-        mock_fallback_client = AsyncMock()
-        mock_fallback_client.connect = AsyncMock()
-        mock_fallback_client.disconnect = AsyncMock()
-        mock_fallback_client.query = AsyncMock()
-
-        async def fallback_response() -> AsyncGenerator[Any, None]:
-            yield AssistantMessage(content=[TextBlock(text="Fallback response")])
-
-        mock_fallback_client.receive_response = fallback_response
-
-        with patch(
-            "ccproxy.claude_sdk.client.ImportedClaudeSDKClient",
-            return_value=mock_fallback_client,
-        ):
-            messages: list[Any] = []
-            # Create a proper SDKMessage for the test
-            from ccproxy.models.claude_sdk import create_sdk_message
-
-            sdk_message = create_sdk_message(content="Hello")
-
-            stream_handle = await client.query_completion(sdk_message, options)
-
-            async for message in stream_handle.create_listener():
-                messages.append(message)
-
-        assert len(messages) == 1
-        assert isinstance(messages[0], sdk_models.AssistantMessage)
-        assert isinstance(messages[0].content[0], sdk_models.TextBlock)
-        assert messages[0].content[0].text == "Fallback response"
-
-    @pytest.mark.skip(
-        reason="Complex pool mocking - requires real pool integration testing"
-    )
-    @pytest.mark.asyncio
-    async def test_query_completion_pooled_no_settings(self) -> None:
-        """Test pooled query when settings are not available."""
-        options: ClaudeCodeOptions = ClaudeCodeOptions()
-
-        # Use PoolMockBuilder for no-settings scenario
-        mock_no_settings_client, mock_acquire_context = (
-            PoolMockBuilder.create_pooled_client_context_manager("No settings response")
-        )
-
-        mock_default_pool = AsyncMock()
-        mock_default_pool.acquire_client.return_value = mock_acquire_context
-
-        # Create a PoolManager with the mocked pool
-        from ccproxy.claude_sdk.manager import PoolManager
-
-        mock_pool_manager = AsyncMock(spec=PoolManager)
-        mock_pool_manager.get_pool.return_value = mock_default_pool
-
-        # Create client with the mocked pool manager
-        client: ClaudeSDKClient = ClaudeSDKClient(
-            use_pool=True, settings=None, pool_manager=mock_pool_manager
-        )
-
-        with patch(
-            "ccproxy.claude_sdk.pool.ClaudeSDKClientPool",
-            return_value=mock_default_pool,
-        ):
-            messages: list[Any] = []
-            # Create a proper SDKMessage for the test
-            from ccproxy.models.claude_sdk import create_sdk_message
-
-            sdk_message = create_sdk_message(content="Hello")
-
-            stream_handle = await client.query_completion(sdk_message, options)
-
-            async for message in stream_handle.create_listener():
-                messages.append(message)
-
-        assert len(messages) == 1
-        # Should call get_global_pool with None config when no settings
-        mock_default_pool.acquire_client.assert_called_once_with(options)
 
 
 class TestClaudeSDKClientMessageConversion:

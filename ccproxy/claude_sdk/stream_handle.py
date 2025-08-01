@@ -74,7 +74,7 @@ class StreamHandle:
         if self._first_listener_at is None:
             self._first_listener_at = time.time()
 
-        logger.info(
+        logger.debug(
             "stream_handle_listener_created",
             handle_id=self.handle_id,
             listener_id=listener.listener_id,
@@ -89,11 +89,41 @@ class StreamHandle:
 
         except GeneratorExit:
             # Client disconnected
-            logger.info(
+            logger.debug(
                 "stream_handle_listener_disconnected",
                 handle_id=self.handle_id,
                 listener_id=listener.listener_id,
             )
+
+            # Check if this will be the last listener after removal
+            remaining_listeners = len(self._listeners) - 1
+            if remaining_listeners == 0 and self._session_client:
+                logger.info(
+                    "stream_handle_last_listener_disconnected",
+                    handle_id=self.handle_id,
+                    listener_id=listener.listener_id,
+                    message="Last listener disconnected, triggering SDK interrupt",
+                )
+
+                # Trigger interrupt asynchronously to avoid blocking the cleanup
+                try:
+                    # Create interrupt task but don't await it to avoid blocking cleanup
+                    interrupt_task = asyncio.create_task(
+                        self._session_client.interrupt()
+                    )
+                    logger.debug(
+                        "stream_handle_interrupt_triggered",
+                        handle_id=self.handle_id,
+                        message="SDK interrupt task created",
+                    )
+                except Exception as e:
+                    logger.error(
+                        "stream_handle_interrupt_error",
+                        handle_id=self.handle_id,
+                        error=str(e),
+                        message="Failed to trigger SDK interrupt on client disconnection",
+                    )
+
             raise
 
         finally:
@@ -120,7 +150,7 @@ class StreamHandle:
                 # Start worker
                 await self._worker.start()
 
-                logger.info(
+                logger.debug(
                     "stream_handle_worker_created",
                     handle_id=self.handle_id,
                     worker_id=worker_id,
@@ -141,7 +171,7 @@ class StreamHandle:
                 queue = self._worker.get_message_queue()
                 await queue.remove_listener(listener_id)
 
-            logger.info(
+            logger.debug(
                 "stream_handle_listener_removed",
                 handle_id=self.handle_id,
                 listener_id=listener_id,
@@ -152,13 +182,41 @@ class StreamHandle:
         """Check if cleanup is needed when no listeners remain."""
         async with self._worker_lock:
             if len(self._listeners) == 0 and self._worker:
-                # No more listeners - worker continues but messages are discarded
-                logger.info(
-                    "stream_handle_no_listeners",
-                    handle_id=self.handle_id,
-                    worker_status=self._worker.status.value,
-                    message="Worker continues without listeners",
-                )
+                # No more listeners - trigger interrupt if session client available
+                if self._session_client:
+                    logger.info(
+                        "stream_handle_all_listeners_disconnected",
+                        handle_id=self.handle_id,
+                        worker_status=self._worker.status.value,
+                        message="All listeners disconnected, triggering SDK interrupt",
+                    )
+
+                    # Trigger interrupt asynchronously to avoid blocking cleanup
+                    try:
+                        # Create interrupt task but don't await it to avoid blocking cleanup
+                        interrupt_task = asyncio.create_task(
+                            self._session_client.interrupt()
+                        )
+                        logger.debug(
+                            "stream_handle_cleanup_interrupt_triggered",
+                            handle_id=self.handle_id,
+                            message="SDK interrupt task created during cleanup",
+                        )
+                    except Exception as e:
+                        logger.error(
+                            "stream_handle_cleanup_interrupt_error",
+                            handle_id=self.handle_id,
+                            error=str(e),
+                            message="Failed to trigger SDK interrupt during cleanup",
+                        )
+                else:
+                    # No more listeners - worker continues but messages are discarded
+                    logger.debug(
+                        "stream_handle_no_listeners",
+                        handle_id=self.handle_id,
+                        worker_status=self._worker.status.value,
+                        message="Worker continues without listeners",
+                    )
 
                 # Don't stop the worker - let it complete naturally
                 # This ensures proper stream completion and interrupt capability
@@ -176,7 +234,7 @@ class StreamHandle:
             )
             return False
 
-        logger.info(
+        logger.debug(
             "stream_handle_interrupting",
             handle_id=self.handle_id,
             worker_status=self._worker.status.value,
