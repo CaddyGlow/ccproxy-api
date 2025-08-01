@@ -423,6 +423,16 @@ class ClaudeSDKService:
                 if request_id:
                     await self._log_sdk_streaming_chunk(request_id, chunk, timestamp)
                 yield chunk
+        except GeneratorExit:
+            # Client disconnected - log and re-raise to propagate to create_listener()
+            logger.info(
+                "claude_sdk_service_client_disconnected",
+                request_id=request_id,
+                session_id=session_id,
+                message="Client disconnected from SDK service stream, propagating to stream handle",
+            )
+            # CRITICAL: Re-raise GeneratorExit to trigger interrupt in create_listener()
+            raise
         except StreamTimeoutError as e:
             # Send error events to the client
             logger.error(

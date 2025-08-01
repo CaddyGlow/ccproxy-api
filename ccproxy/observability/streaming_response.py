@@ -76,6 +76,15 @@ class StreamingResponseWithLogging(StreamingResponse):
             # Stream all content from the original generator
             async for chunk in content:
                 yield chunk
+        except GeneratorExit:
+            # Client disconnected - log this and re-raise to propagate to underlying generators
+            logger.info(
+                "streaming_response_client_disconnected",
+                request_id=context.request_id,
+                message="Client disconnected from streaming response, propagating GeneratorExit",
+            )
+            # CRITICAL: Re-raise GeneratorExit to propagate disconnect to create_listener()
+            raise
         finally:
             # Log access when stream completes (success or error)
             try:

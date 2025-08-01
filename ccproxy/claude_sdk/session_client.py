@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import time
 from enum import Enum
 from typing import Any
@@ -204,6 +203,15 @@ class SessionClient:
             )
             return
 
+        # Check if already interrupting to prevent duplicate interrupt calls
+        if self.status == SessionStatus.INTERRUPTING:
+            logger.debug(
+                "session_interrupt_already_in_progress",
+                session_id=self.session_id,
+                message="Interrupt already in progress, skipping duplicate call",
+            )
+            return
+
         # Set status to INTERRUPTING to prevent reuse during interrupt
         self.status = SessionStatus.INTERRUPTING
 
@@ -254,33 +262,13 @@ class SessionClient:
             )
 
             try:
-                # Create interrupt task
-                interrupt_task = asyncio.create_task(self.claude_client.interrupt())
-
-                # Wait for interrupt with timeout
-                done, pending = await asyncio.wait(
-                    [interrupt_task], timeout=30.0, return_when=asyncio.FIRST_COMPLETED
+                # Call interrupt directly with timeout - avoid creating separate tasks
+                await asyncio.wait_for(self.claude_client.interrupt(), timeout=30.0)
+                logger.info(
+                    "session_interrupted_gracefully", session_id=self.session_id
                 )
-
-                if interrupt_task in done:
-                    # Interrupt completed - get the result or exception
-                    await interrupt_task
-                    logger.info(
-                        "session_interrupted_gracefully", session_id=self.session_id
-                    )
-                    # Reset status after successful interrupt
-                    self.status = SessionStatus.DISCONNECTED
-                else:
-                    # Timeout - interrupt is still pending
-                    logger.warning(
-                        "session_interrupt_timeout_canceling",
-                        session_id=self.session_id,
-                        message="Interrupt did not complete within 30s, canceling",
-                    )
-                    interrupt_task.cancel()
-                    with contextlib.suppress(asyncio.CancelledError):
-                        await interrupt_task
-                    raise TimeoutError("Interrupt did not complete within timeout")
+                # Reset status after successful interrupt
+                self.status = SessionStatus.DISCONNECTED
 
             except TimeoutError:
                 # Interrupt timed out

@@ -315,12 +315,17 @@ class ClaudeSDKClient:
             message, options, request_id, session_id
         )
 
-        return StreamHandle(
+        stream_handle = StreamHandle(
             message_iterator=message_iterator,
             session_id=session_id,
             request_id=request_id,
             session_client=session_client,
         )
+
+        # Set the active stream handle on the session client for proper cleanup
+        session_client.active_stream_handle = stream_handle
+
+        return stream_handle
 
     async def _query(
         self,

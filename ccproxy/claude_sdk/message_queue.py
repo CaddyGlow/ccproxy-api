@@ -286,6 +286,22 @@ class MessageQueue:
                 listeners_count=len(self._listeners),
             )
 
+    async def broadcast_shutdown(self) -> None:
+        """Broadcast shutdown signal to all listeners (for interrupts)."""
+        async with self._lock:
+            queue_msg = QueueMessage(type=MessageType.SHUTDOWN)
+
+            for listener in self._listeners.values():
+                if not listener.is_closed:
+                    with contextlib.suppress(asyncio.QueueFull):
+                        listener._queue.put_nowait(queue_msg)
+
+            logger.info(
+                "message_queue_broadcast_shutdown",
+                listeners_count=len(self._listeners),
+                message="Shutdown signal sent to all listeners due to interrupt",
+            )
+
     async def close(self) -> None:
         """Close the message queue and all listeners."""
         async with self._lock:

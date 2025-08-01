@@ -102,27 +102,8 @@ class StreamHandle:
                     "stream_handle_last_listener_disconnected",
                     handle_id=self.handle_id,
                     listener_id=listener.listener_id,
-                    message="Last listener disconnected, triggering SDK interrupt",
+                    message="Last listener disconnected, will trigger SDK interrupt in cleanup",
                 )
-
-                # Trigger interrupt asynchronously to avoid blocking the cleanup
-                try:
-                    # Create interrupt task but don't await it to avoid blocking cleanup
-                    interrupt_task = asyncio.create_task(
-                        self._session_client.interrupt()
-                    )
-                    logger.debug(
-                        "stream_handle_interrupt_triggered",
-                        handle_id=self.handle_id,
-                        message="SDK interrupt task created",
-                    )
-                except Exception as e:
-                    logger.error(
-                        "stream_handle_interrupt_error",
-                        handle_id=self.handle_id,
-                        error=str(e),
-                        message="Failed to trigger SDK interrupt on client disconnection",
-                    )
 
             raise
 
@@ -182,44 +163,153 @@ class StreamHandle:
         """Check if cleanup is needed when no listeners remain."""
         async with self._worker_lock:
             if len(self._listeners) == 0 and self._worker:
-                # No more listeners - trigger interrupt if session client available
+                worker_status = self._worker.status.value
+
+                # Check if worker has already completed naturally
+                if worker_status in ("completed", "error"):
+                    logger.debug(
+                        "stream_handle_worker_already_finished",
+                        handle_id=self.handle_id,
+                        worker_status=worker_status,
+                        message="Worker already finished, no interrupt needed",
+                    )
+                    return
+
+                # Send shutdown signal to any remaining queue listeners before interrupt
+                logger.debug(
+                    "stream_handle_shutting_down_queue_before_interrupt",
+                    handle_id=self.handle_id,
+                    message="Sending shutdown signal to queue listeners before interrupt",
+                )
+                queue = self._worker.get_message_queue()
+                await queue.broadcast_shutdown()
+
+                # No more listeners - trigger interrupt if session client available and worker is still running
                 if self._session_client:
                     logger.info(
                         "stream_handle_all_listeners_disconnected",
                         handle_id=self.handle_id,
-                        worker_status=self._worker.status.value,
+                        worker_status=worker_status,
                         message="All listeners disconnected, triggering SDK interrupt",
                     )
 
-                    # Trigger interrupt asynchronously to avoid blocking cleanup
+                    # Schedule interrupt using a background task with timeout control
                     try:
-                        # Create interrupt task but don't await it to avoid blocking cleanup
-                        interrupt_task = asyncio.create_task(
-                            self._session_client.interrupt()
-                        )
+                        # Create a background task with proper timeout and error handling
+                        asyncio.create_task(self._safe_interrupt_with_timeout())
                         logger.debug(
-                            "stream_handle_cleanup_interrupt_triggered",
+                            "stream_handle_interrupt_scheduled",
                             handle_id=self.handle_id,
-                            message="SDK interrupt task created during cleanup",
+                            message="SDK interrupt scheduled with timeout control",
                         )
                     except Exception as e:
                         logger.error(
-                            "stream_handle_cleanup_interrupt_error",
+                            "stream_handle_interrupt_schedule_error",
                             handle_id=self.handle_id,
                             error=str(e),
-                            message="Failed to trigger SDK interrupt during cleanup",
+                            message="Failed to schedule SDK interrupt",
                         )
                 else:
                     # No more listeners - worker continues but messages are discarded
                     logger.debug(
                         "stream_handle_no_listeners",
                         handle_id=self.handle_id,
-                        worker_status=self._worker.status.value,
+                        worker_status=worker_status,
                         message="Worker continues without listeners",
                     )
 
                 # Don't stop the worker - let it complete naturally
                 # This ensures proper stream completion and interrupt capability
+
+    async def _safe_interrupt_with_timeout(self) -> None:
+        """Safely trigger session client interrupt with proper timeout and error handling."""
+        if not self._session_client:
+            return
+
+        try:
+            # Call SDK interrupt first - let it handle stream cleanup gracefully
+            logger.debug(
+                "stream_handle_calling_sdk_interrupt",
+                handle_id=self.handle_id,
+                message="Calling SDK interrupt to gracefully stop stream",
+            )
+
+            await asyncio.wait_for(
+                self._session_client.interrupt(),
+                timeout=10.0,  # 10 second timeout for stream handle initiated interrupts
+            )
+            logger.debug(
+                "stream_handle_interrupt_completed",
+                handle_id=self.handle_id,
+                message="SDK interrupt completed successfully",
+            )
+
+            # Stop our worker after SDK interrupt to ensure it's not blocking the session
+            if self._worker:
+                logger.info(
+                    "stream_handle_stopping_worker_after_interrupt",
+                    handle_id=self.handle_id,
+                    message="Stopping worker to free up session for reuse",
+                )
+                try:
+                    await self._worker.stop(timeout=2.0)
+                except Exception as worker_error:
+                    logger.warning(
+                        "stream_handle_worker_stop_error",
+                        handle_id=self.handle_id,
+                        error=str(worker_error),
+                        message="Worker stop failed but continuing",
+                    )
+
+        except TimeoutError:
+            logger.warning(
+                "stream_handle_interrupt_timeout",
+                handle_id=self.handle_id,
+                message="SDK interrupt timed out after 10 seconds, falling back to worker stop",
+            )
+
+            # Fallback: Stop our worker manually if SDK interrupt timed out
+            if self._worker:
+                logger.info(
+                    "stream_handle_fallback_worker_stop",
+                    handle_id=self.handle_id,
+                    message="SDK interrupt timed out, stopping worker as fallback",
+                )
+                try:
+                    await self._worker.stop(timeout=2.0)
+                except Exception as worker_error:
+                    logger.warning(
+                        "stream_handle_fallback_worker_stop_error",
+                        handle_id=self.handle_id,
+                        error=str(worker_error),
+                        message="Fallback worker stop also failed",
+                    )
+
+        except Exception as e:
+            logger.error(
+                "stream_handle_interrupt_failed",
+                handle_id=self.handle_id,
+                error=str(e),
+                error_type=type(e).__name__,
+                message="SDK interrupt failed with error",
+            )
+
+            # Fallback: Stop our worker manually if SDK interrupt failed
+            if self._worker:
+                logger.info(
+                    "stream_handle_fallback_worker_stop_after_error",
+                    handle_id=self.handle_id,
+                    message="SDK interrupt failed, stopping worker as fallback",
+                )
+                try:
+                    await self._worker.stop(timeout=2.0)
+                except Exception as worker_error:
+                    logger.warning(
+                        "stream_handle_fallback_worker_stop_error",
+                        handle_id=self.handle_id,
+                        error=str(worker_error),
+                        message="Fallback worker stop also failed",
+                    )
 
     async def interrupt(self) -> bool:
         """Interrupt the stream.

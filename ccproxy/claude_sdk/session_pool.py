@@ -139,8 +139,10 @@ class SessionPool:
                         "session_pool_interrupting_session",
                         session_id=session_id,
                         client_id=session_client.client_id,
-                        message="Session is currently being interrupted, creating new session",
+                        message="Session is currently being interrupted, waiting briefly then creating new session",
                     )
+                    # Give the interrupt process a moment to complete to avoid race conditions
+                    await asyncio.sleep(0.1)  # 100ms grace period
                     # Don't try to reuse a session that's being interrupted
                     await self._remove_session_unlocked(session_id)
                     session_client = await self._create_session_unlocked(
@@ -256,15 +258,15 @@ class SessionPool:
                     session_id, options
                 )
 
-        # Ensure session is connected before returning
-        if not await session_client.ensure_connected():
-            logger.error(
-                "session_pool_connection_failed",
-                session_id=session_id,
-            )
-            raise ServiceUnavailableError(
-                f"Failed to establish session connection: {session_id}"
-            )
+            # Ensure session is connected before returning (inside lock to prevent race conditions)
+            if not await session_client.ensure_connected():
+                logger.error(
+                    "session_pool_connection_failed",
+                    session_id=session_id,
+                )
+                raise ServiceUnavailableError(
+                    f"Failed to establish session connection: {session_id}"
+                )
 
         logger.debug(
             "session_pool_get_client_complete",

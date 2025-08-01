@@ -111,15 +111,34 @@ class StreamWorker:
             self._worker_task.cancel()
 
             try:
-                await asyncio.wait_for(self._worker_task, timeout=timeout)
-            except TimeoutError:
-                logger.warning(
-                    "stream_worker_stop_timeout",
-                    worker_id=self.worker_id,
+                # Use asyncio.wait instead of wait_for to handle cancelled tasks properly
+                done, pending = await asyncio.wait(
+                    [self._worker_task],
                     timeout=timeout,
+                    return_when=asyncio.ALL_COMPLETED,
                 )
-            except asyncio.CancelledError:
-                pass
+
+                if pending:
+                    logger.warning(
+                        "stream_worker_stop_timeout",
+                        worker_id=self.worker_id,
+                        timeout=timeout,
+                    )
+                elif done:
+                    # Task completed (likely with CancelledError)
+                    logger.debug(
+                        "stream_worker_stopped",
+                        worker_id=self.worker_id,
+                        task_cancelled=self._worker_task.cancelled(),
+                    )
+
+            except Exception as e:
+                logger.warning(
+                    "stream_worker_stop_error",
+                    worker_id=self.worker_id,
+                    error=str(e),
+                    error_type=type(e).__name__,
+                )
 
     async def wait_for_completion(self, timeout: float | None = None) -> bool:
         """Wait for the worker to complete.
