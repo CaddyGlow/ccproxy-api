@@ -90,6 +90,10 @@ class SessionClient:
             None  # StreamHandle when using queue-based approach
         )
 
+        # Interrupt synchronization
+        self._interrupt_complete_event = asyncio.Event()
+        self._interrupt_complete_event.set()  # Initially set (not interrupting)
+
     async def connect(self) -> bool:
         """Establish connection to Claude SDK."""
         async with self.lock:
@@ -215,6 +219,9 @@ class SessionClient:
         # Set status to INTERRUPTING to prevent reuse during interrupt
         self.status = SessionStatus.INTERRUPTING
 
+        # Clear the interrupt completion event to signal that interrupt is starting
+        self._interrupt_complete_event.clear()
+
         logger.info(
             "session_interrupting",
             session_id=self.session_id,
@@ -332,6 +339,9 @@ class SessionClient:
             # Mark stream as no longer active
             self.has_active_stream = False
 
+            # Signal that interrupt has completed (success or failure)
+            self._interrupt_complete_event.set()
+
     async def _force_disconnect(self) -> None:
         """Force disconnect the session when interrupt fails or times out."""
         logger.warning(
@@ -445,6 +455,34 @@ class SessionClient:
         )
         self.has_active_stream = False
         self.active_stream_task = None
+
+    async def wait_for_interrupt_complete(self, timeout: float = 5.0) -> bool:
+        """Wait for any in-progress interrupt to complete.
+
+        Args:
+            timeout: Maximum time to wait in seconds
+
+        Returns:
+            True if interrupt completed within timeout, False if timed out
+        """
+        try:
+            await asyncio.wait_for(
+                self._interrupt_complete_event.wait(), timeout=timeout
+            )
+            logger.debug(
+                "session_interrupt_wait_completed",
+                session_id=self.session_id,
+                message="Interrupt completion event signaled",
+            )
+            return True
+        except TimeoutError:
+            logger.warning(
+                "session_interrupt_wait_timeout",
+                session_id=self.session_id,
+                timeout=timeout,
+                message="Timeout waiting for interrupt to complete",
+            )
+            return False
 
     async def is_healthy(self) -> bool:
         """Check if the session connection is healthy."""

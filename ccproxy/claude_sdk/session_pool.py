@@ -139,11 +139,27 @@ class SessionPool:
                         "session_pool_interrupting_session",
                         session_id=session_id,
                         client_id=session_client.client_id,
-                        message="Session is currently being interrupted, waiting briefly then creating new session",
+                        message="Session is currently being interrupted, waiting for completion then creating new session",
                     )
-                    # Give the interrupt process a moment to complete to avoid race conditions
-                    await asyncio.sleep(0.1)  # 100ms grace period
-                    # Don't try to reuse a session that's being interrupted
+                    # Wait for the interrupt process to complete properly
+                    interrupt_completed = (
+                        await session_client.wait_for_interrupt_complete(timeout=5.0)
+                    )
+                    if interrupt_completed:
+                        logger.debug(
+                            "session_pool_interrupt_completed",
+                            session_id=session_id,
+                            client_id=session_client.client_id,
+                            message="Interrupt completed successfully, proceeding with session replacement",
+                        )
+                    else:
+                        logger.warning(
+                            "session_pool_interrupt_timeout",
+                            session_id=session_id,
+                            client_id=session_client.client_id,
+                            message="Interrupt did not complete within 5 seconds, proceeding anyway",
+                        )
+                    # Don't try to reuse a session that was being interrupted
                     await self._remove_session_unlocked(session_id)
                     session_client = await self._create_session_unlocked(
                         session_id, options
