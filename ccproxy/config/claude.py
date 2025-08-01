@@ -71,6 +71,11 @@ class SystemPromptInjectionMode(str, Enum):
 class ClaudePoolSettings(BaseModel):
     """Configuration settings for Claude SDK client connection pooling."""
 
+    enabled: bool = Field(
+        default=False,
+        description="Whether to enable the general SDK client connection pool",
+    )
+
     pool_size: int = Field(
         default=3,
         ge=0,
@@ -198,18 +203,14 @@ class ClaudeSettings(BaseModel):
         description="Whether to use pretty formatting (indented JSON, newlines after XML tags, unescaped content). When false: compact JSON, no newlines, escaped content between XML tags",
     )
 
-    use_client_pool: bool = Field(
-        default=False,
-        description="Whether to enable Claude SDK client connection pooling for improved performance. When enabled, maintains a pool of pre-connected clients to reduce subprocess startup overhead.",
-    )
-
-    pool_settings: ClaudePoolSettings = Field(
+    sdk_pool: ClaudePoolSettings = Field(
         default_factory=ClaudePoolSettings,
-        description="Configuration settings for Claude SDK client connection pooling. Only used when use_client_pool=True.",
+        description="Configuration settings for general Claude SDK client connection pooling",
     )
 
-    session_pool: SessionPoolSettings = Field(
-        default_factory=SessionPoolSettings, description="Session pool configuration"
+    sdk_session_pool: SessionPoolSettings = Field(
+        default_factory=SessionPoolSettings,
+        description="Configuration settings for session-aware SDK client pooling",
     )
 
     @field_validator("cli_path")

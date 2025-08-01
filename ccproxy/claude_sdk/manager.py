@@ -95,7 +95,7 @@ class PoolManager:
             )
             return False
 
-        session_pool_settings = getattr(self._settings.claude, "session_pool", None)
+        session_pool_settings = getattr(self._settings.claude, "sdk_session_pool", None)
         if not session_pool_settings:
             logger.debug(
                 "session_pool_check", decision="no_session_pool_settings", enabled=False
@@ -111,7 +111,7 @@ class PoolManager:
         if not self._settings or not hasattr(self._settings, "claude"):
             return SessionPoolConfig()
 
-        session_settings = getattr(self._settings.claude, "session_pool", None)
+        session_settings = getattr(self._settings.claude, "sdk_session_pool", None)
         if not session_settings:
             return SessionPoolConfig()
 

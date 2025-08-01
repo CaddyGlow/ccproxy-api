@@ -166,12 +166,12 @@ class TestPoolConfigurationIntegration:
 
         # Convert to PoolConfig
         pool_config = PoolConfig(
-            pool_size=claude_settings.pool_settings.pool_size,
-            max_pool_size=claude_settings.pool_settings.max_pool_size,
-            connection_timeout=claude_settings.pool_settings.connection_timeout,
-            idle_timeout=claude_settings.pool_settings.idle_timeout,
-            health_check_interval=claude_settings.pool_settings.health_check_interval,
-            enable_health_checks=claude_settings.pool_settings.enable_health_checks,
+            pool_size=claude_settings.sdk_pool.pool_size,
+            max_pool_size=claude_settings.sdk_pool.max_pool_size,
+            connection_timeout=claude_settings.sdk_pool.connection_timeout,
+            idle_timeout=claude_settings.sdk_pool.idle_timeout,
+            health_check_interval=claude_settings.sdk_pool.health_check_interval,
+            enable_health_checks=claude_settings.sdk_pool.enable_health_checks,
         )
 
         assert pool_config.pool_size == 5

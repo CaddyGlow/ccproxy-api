@@ -193,12 +193,13 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         # Get global metrics instance
         metrics = get_metrics()
 
-        # Check if pooling should be enabled from settings configuration
-        use_pool = settings.claude.use_client_pool
+        # Check if any pooling should be enabled from settings configuration
+        use_general_pool = settings.claude.sdk_pool.enabled
+        use_session_pool = settings.claude.sdk_session_pool.enabled
 
-        # Initialize pool manager for dependency injection when pooling is enabled
+        # Initialize pool manager if either pool is enabled
         pool_manager = None
-        if use_pool:
+        if use_general_pool or use_session_pool:
             from ccproxy.claude_sdk.manager import PoolManager
             from ccproxy.claude_sdk.pool import PoolConfig
 
@@ -210,10 +211,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             # Start the pool manager (initializes session pool if enabled)
             await pool_manager.start()
 
-            # Create pool configuration from settings
-            pool_config = None
-            if hasattr(settings, "claude") and settings.claude.use_client_pool:
-                pool_settings = settings.claude.pool_settings
+            # Create and start general pool if enabled
+            if use_general_pool:
+                pool_settings = settings.claude.sdk_pool
                 pool_config = PoolConfig(
                     pool_size=pool_settings.pool_size,
                     max_pool_size=pool_settings.max_pool_size,
@@ -223,15 +223,15 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
                     enable_health_checks=pool_settings.enable_health_checks,
                 )
 
-            # Pre-start the pool to populate it with clients
-            pool = await pool_manager.get_pool(config=pool_config)
+                # Pre-start the pool to populate it with clients
+                pool = await pool_manager.get_pool(config=pool_config)
 
         # Create ClaudeSDKService instance
         claude_service = ClaudeSDKService(
             auth_manager=auth_manager,
             metrics=metrics,
             settings=settings,
-            use_pool=use_pool,
+            use_pool=use_general_pool,
             pool_manager=pool_manager,
         )
 

@@ -34,12 +34,26 @@ def configure_structlog(log_level: int = logging.INFO) -> None:
         )
 
     # Common processors for all log levels
+    # First add timestamp with microseconds
+    processors.append(
+        structlog.processors.TimeStamper(
+            fmt="%H:%M:%S.%f" if log_level < logging.INFO else "%Y-%m-%d %H:%M:%S.%f",
+            key="timestamp_raw",
+        )
+    )
+
+    # Then add processor to convert microseconds to milliseconds
+    def format_timestamp_ms(logger, log_method, event_dict):
+        """Format timestamp with milliseconds instead of microseconds."""
+        if "timestamp_raw" in event_dict:
+            # Truncate microseconds to milliseconds (6 digits to 3)
+            timestamp_raw = event_dict.pop("timestamp_raw")
+            event_dict["timestamp"] = timestamp_raw[:-3]
+        return event_dict
+
     processors.extend(
         [
-            # Use human-readable timestamp for structlog logs in debug mode, normal otherwise
-            structlog.processors.TimeStamper(
-                fmt="%H:%M:%S" if log_level < logging.INFO else "%Y-%m-%d %H:%M:%S"
-            ),
+            format_timestamp_ms,
             structlog.processors.StackInfoRenderer(),
             structlog.dev.set_exc_info,  # Handle exceptions properly
             # This MUST be the last processor - allows different renderers per handler
@@ -140,11 +154,23 @@ def setup_logging(
         )
 
     # Add appropriate timestamper for console vs file
+    # Using custom lambda to truncate microseconds to milliseconds
     console_timestamper = (
-        structlog.processors.TimeStamper(fmt="%H:%M:%S")
+        structlog.processors.TimeStamper(fmt="%H:%M:%S.%f", key="timestamp_raw")
         if log_level < logging.INFO
-        else structlog.processors.TimeStamper(fmt="%Y-%m-%d %H:%M:%S")
+        else structlog.processors.TimeStamper(
+            fmt="%Y-%m-%d %H:%M:%S.%f", key="timestamp_raw"
+        )
     )
+
+    # Processor to convert microseconds to milliseconds
+    def format_timestamp_ms(logger, log_method, event_dict):
+        """Format timestamp with milliseconds instead of microseconds."""
+        if "timestamp_raw" in event_dict:
+            # Truncate microseconds to milliseconds (6 digits to 3)
+            timestamp_raw = event_dict.pop("timestamp_raw")
+            event_dict["timestamp"] = timestamp_raw[:-3]
+        return event_dict
 
     file_timestamper = structlog.processors.TimeStamper(fmt="iso")
 
@@ -160,7 +186,7 @@ def setup_logging(
     )
 
     # Console gets human-readable timestamps for both structlog and stdlib logs
-    console_processors = shared_processors + [console_timestamper]
+    console_processors = shared_processors + [console_timestamper, format_timestamp_ms]
     console_handler.setFormatter(
         structlog.stdlib.ProcessorFormatter(
             foreign_pre_chain=console_processors,

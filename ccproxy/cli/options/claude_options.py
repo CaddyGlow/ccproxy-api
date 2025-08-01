@@ -147,8 +147,9 @@ class ClaudeOptions:
         cwd: str | None = None,
         permission_prompt_tool_name: str | None = None,
         sdk_message_mode: str | None = None,
-        sdk_enable_pool: bool = False,
+        sdk_pool: bool = False,
         sdk_pool_size: int | None = None,
+        sdk_session_pool: bool = False,
         system_prompt_injection_mode: str | None = None,
         builtin_permissions: bool = True,
     ):
@@ -165,8 +166,9 @@ class ClaudeOptions:
             cwd: Working directory path
             permission_prompt_tool_name: Permission prompt tool name
             sdk_message_mode: SDK message handling mode
-            sdk_enable_pool: Enable Claude SDK client connection pooling
-            sdk_pool_size: Number of clients to maintain in the pool
+            sdk_pool: Enable general Claude SDK client connection pooling
+            sdk_pool_size: Number of clients to maintain in the general pool
+            sdk_session_pool: Enable session-aware Claude SDK client pooling
             system_prompt_injection_mode: System prompt injection mode
             builtin_permissions: Enable built-in permission handling infrastructure
         """
@@ -180,7 +182,8 @@ class ClaudeOptions:
         self.cwd = cwd
         self.permission_prompt_tool_name = permission_prompt_tool_name
         self.sdk_message_mode = sdk_message_mode
-        self.sdk_enable_pool = sdk_enable_pool
+        self.sdk_pool = sdk_pool
         self.sdk_pool_size = sdk_pool_size
+        self.sdk_session_pool = sdk_session_pool
         self.system_prompt_injection_mode = system_prompt_injection_mode
         self.builtin_permissions = builtin_permissions

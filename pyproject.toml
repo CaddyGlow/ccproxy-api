@@ -27,9 +27,9 @@ dependencies = [
   "uvicorn>=0.34.0",
   "sqlmodel>=0.0.24",
   "duckdb-engine>=0.17.0",
-  "claude-code-sdk>=0.0.14",
   "fastapi-mcp",
   "textual>=3.7.1",
+  "claude-code-sdk>=0.0.19",
 ]
 
 [build-system]
@@ -344,5 +344,4 @@ include = ["ccproxy*"]
 package = true
 
 [tool.uv.sources]
-claude-code-sdk = { git = "https://github.com/anthropics/claude-code-sdk-python.git" }
 fastapi-mcp = { git = "https://github.com/tadata-org/fastapi_mcp", rev = "6fdbff6168b2c84b22966886741d1f24a584856c" }

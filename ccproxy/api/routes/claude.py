@@ -14,10 +14,10 @@ from ccproxy.adapters.openai.adapter import (
 )
 from ccproxy.api.dependencies import ClaudeServiceDep
 from ccproxy.models.messages import MessageCreateParams, MessageResponse
-from ccproxy.observability.streaming_pool_response import (
-    StreamingResponseWithPoolCleanup,
-)
 from ccproxy.observability.streaming_response import StreamingResponseWithLogging
+from ccproxy.observability.streaming_session_response import (
+    StreamingResponseWithSessionInterrupt,
+)
 
 
 # Create the router for Claude SDK endpoints
@@ -77,7 +77,7 @@ async def create_openai_chat_completion(
 
             # Use pool cleanup wrapper for general pool (no session_id)
             # This monitors for disconnection and can signal cleanup
-            return StreamingResponseWithPoolCleanup(
+            return StreamingResponseWithSessionInterrupt(
                 content=openai_stream_generator(),
                 request=request,
                 request_context=request_context,
@@ -348,7 +348,7 @@ async def create_anthropic_message(
 
             # Use pool cleanup wrapper for general pool (no session_id)
             # This monitors for disconnection and can signal cleanup
-            return StreamingResponseWithPoolCleanup(
+            return StreamingResponseWithSessionInterrupt(
                 content=anthropic_stream_generator(),
                 request=request,
                 request_context=request_context,

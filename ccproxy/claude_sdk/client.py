@@ -149,9 +149,9 @@ class ClaudeSDKClient:
         if (
             self._settings
             and hasattr(self._settings, "claude")
-            and self._settings.claude.use_client_pool
+            and self._settings.claude.sdk_pool.enabled
         ):
-            pool_settings = self._settings.claude.pool_settings
+            pool_settings = self._settings.claude.sdk_pool
             pool_config = PoolConfig(
                 pool_size=pool_settings.pool_size,
                 max_pool_size=pool_settings.max_pool_size,
@@ -264,8 +264,8 @@ class ClaudeSDKClient:
             return bool(
                 self._settings
                 and self._settings.claude
-                and self._settings.claude.session_pool
-                and self._settings.claude.session_pool.enabled
+                and self._settings.claude.sdk_session_pool
+                and self._settings.claude.sdk_session_pool.enabled
             )
         except AttributeError:
             return False

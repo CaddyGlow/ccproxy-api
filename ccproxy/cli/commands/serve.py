@@ -444,11 +444,11 @@ def api(
             rich_help_panel="Claude Settings",
         ),
     ] = None,
-    sdk_enable_pool: Annotated[
+    sdk_pool: Annotated[
         bool,
         typer.Option(
-            "--sdk-enable-pool",
-            help="Enable Claude SDK client connection pooling for improved performance",
+            "--sdk-pool/--no-sdk-pool",
+            help="Enable/disable general Claude SDK client connection pooling",
             rich_help_panel="Claude Settings",
         ),
     ] = False,
@@ -456,11 +456,19 @@ def api(
         int | None,
         typer.Option(
             "--sdk-pool-size",
-            help="Number of clients to maintain in the pool (1-20)",
+            help="Number of clients to maintain in the general pool (1-20)",
             callback=validate_pool_size,
             rich_help_panel="Claude Settings",
         ),
     ] = None,
+    sdk_session_pool: Annotated[
+        bool,
+        typer.Option(
+            "--sdk-session-pool/--no-sdk-session-pool",
+            help="Enable/disable session-aware Claude SDK client pooling",
+            rich_help_panel="Claude Settings",
+        ),
+    ] = False,
     system_prompt_injection_mode: Annotated[
         str | None,
         typer.Option(
@@ -609,8 +617,9 @@ def api(
             cwd=cwd,
             permission_prompt_tool_name=permission_prompt_tool_name,
             sdk_message_mode=sdk_message_mode,
-            sdk_enable_pool=sdk_enable_pool,
+            sdk_pool=sdk_pool,
             sdk_pool_size=sdk_pool_size,
+            sdk_session_pool=sdk_session_pool,
             system_prompt_injection_mode=system_prompt_injection_mode,
             builtin_permissions=builtin_permissions,
         )
@@ -639,8 +648,9 @@ def api(
             permission_prompt_tool_name=claude_options.permission_prompt_tool_name,
             cwd=claude_options.cwd,
             sdk_message_mode=claude_options.sdk_message_mode,
-            sdk_enable_pool=claude_options.sdk_enable_pool,
+            sdk_pool=claude_options.sdk_pool,
             sdk_pool_size=claude_options.sdk_pool_size,
+            sdk_session_pool=claude_options.sdk_session_pool,
             system_prompt_injection_mode=claude_options.system_prompt_injection_mode,
             builtin_permissions=claude_options.builtin_permissions,
         )
