@@ -163,9 +163,11 @@ class TestClaudeSDKClientStatelessQueries:
 
             sdk_message = create_sdk_message(content="Hello")
 
-            async for message in client.query_completion(
+            stream_handle = await client.query_completion(
                 sdk_message, options, "req_123"
-            ):
+            )
+
+            async for message in stream_handle.create_listener():
                 messages.append(message)
 
         assert len(messages) == 1
@@ -193,7 +195,9 @@ class TestClaudeSDKClientStatelessQueries:
 
             sdk_message = create_sdk_message(content="Hello")
 
-            async for _ in client.query_completion(sdk_message, options):
+            stream_handle = await client.query_completion(sdk_message, options)
+
+            async for _ in stream_handle.create_listener():
                 pass
 
         assert "Claude CLI not available" in str(exc_info.value)
@@ -218,7 +222,9 @@ class TestClaudeSDKClientStatelessQueries:
 
             sdk_message = create_sdk_message(content="Hello")
 
-            async for _ in client.query_completion(sdk_message, options):
+            stream_handle = await client.query_completion(sdk_message, options)
+
+            async for _ in stream_handle.create_listener():
                 pass
 
         assert "Claude CLI not available" in str(exc_info.value)
@@ -243,7 +249,9 @@ class TestClaudeSDKClientStatelessQueries:
 
             sdk_message = create_sdk_message(content="Hello")
 
-            async for _ in client.query_completion(sdk_message, options):
+            stream_handle = await client.query_completion(sdk_message, options)
+
+            async for _ in stream_handle.create_listener():
                 pass
 
         assert "Claude process error" in str(exc_info.value)
@@ -269,7 +277,9 @@ class TestClaudeSDKClientStatelessQueries:
 
             sdk_message = create_sdk_message(content="Hello")
 
-            async for _ in client.query_completion(sdk_message, options):
+            stream_handle = await client.query_completion(sdk_message, options)
+
+            async for _ in stream_handle.create_listener():
                 pass
 
         assert "Claude process error" in str(exc_info.value)
@@ -295,7 +305,9 @@ class TestClaudeSDKClientStatelessQueries:
 
             sdk_message = create_sdk_message(content="Hello")
 
-            async for _ in client.query_completion(sdk_message, options):
+            stream_handle = await client.query_completion(sdk_message, options)
+
+            async for _ in stream_handle.create_listener():
                 pass
 
         assert "Unexpected error" in str(exc_info.value)
@@ -332,7 +344,9 @@ class TestClaudeSDKClientStatelessQueries:
 
             sdk_message = create_sdk_message(content="Hello")
 
-            async for message in client.query_completion(sdk_message, options):
+            stream_handle = await client.query_completion(sdk_message, options)
+
+            async for message in stream_handle.create_listener():
                 messages.append(message)
 
         # Should skip unknown message types
@@ -376,7 +390,9 @@ class TestClaudeSDKClientStatelessQueries:
 
             sdk_message = create_sdk_message(content="Hello")
 
-            async for message in client.query_completion(sdk_message, options):
+            stream_handle = await client.query_completion(sdk_message, options)
+
+            async for message in stream_handle.create_listener():
                 messages.append(message)
 
         # Should skip failed conversions
@@ -400,7 +416,9 @@ class TestClaudeSDKClientStatelessQueries:
 
             sdk_message = create_sdk_message(content="Hello")
 
-            async for message in client.query_completion(sdk_message, options):
+            stream_handle = await client.query_completion(sdk_message, options)
+
+            async for message in stream_handle.create_listener():
                 messages.append(message)
 
         assert len(messages) == 4
@@ -495,9 +513,11 @@ class TestClaudeSDKClientPooledQueries:
 
             sdk_message = create_sdk_message(content="Hello")
 
-            async for message in client.query_completion(
+            stream_handle = await client.query_completion(
                 sdk_message, options, "req_123"
-            ):
+            )
+
+            async for message in stream_handle.create_listener():
                 messages.append(message)
 
         assert len(messages) == 1
@@ -553,7 +573,9 @@ class TestClaudeSDKClientPooledQueries:
 
             sdk_message = create_sdk_message(content="Hello")
 
-            async for message in client.query_completion(sdk_message, options):
+            stream_handle = await client.query_completion(sdk_message, options)
+
+            async for message in stream_handle.create_listener():
                 messages.append(message)
 
         assert len(messages) == 1
@@ -598,7 +620,9 @@ class TestClaudeSDKClientPooledQueries:
 
             sdk_message = create_sdk_message(content="Hello")
 
-            async for message in client.query_completion(sdk_message, options):
+            stream_handle = await client.query_completion(sdk_message, options)
+
+            async for message in stream_handle.create_listener():
                 messages.append(message)
 
         assert len(messages) == 1

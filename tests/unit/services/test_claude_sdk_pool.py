@@ -144,7 +144,7 @@ class TestPoolConfig:
         assert config.idle_timeout == 300.0
         assert config.health_check_interval == 60.0
         assert config.enable_health_checks is True
-        assert config.reuse_clients is False
+        assert config.reuse_clients is True
 
     def test_pool_config_custom_values(self) -> None:
         """Test PoolConfig with custom values."""

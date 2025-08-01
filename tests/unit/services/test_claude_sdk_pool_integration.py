@@ -161,7 +161,7 @@ class TestPoolConfigurationIntegration:
 
         claude_settings = ClaudeSettings(
             use_client_pool=True,
-            pool_settings=pool_settings,
+            sdk_pool=pool_settings,
         )
 
         # Convert to PoolConfig
@@ -242,9 +242,11 @@ class TestPoolConfigurationIntegration:
 
             sdk_message = create_sdk_message(content="test")
 
-            async for _message in client.query_completion(
+            stream_handle = await client.query_completion(
                 sdk_message, ClaudeCodeOptions()
-            ):
+            )
+
+            async for _message in stream_handle.create_listener():
                 break  # Exit after first iteration to avoid timeout
         except StopAsyncIteration:
             pass
@@ -470,11 +472,13 @@ class TestPoolEndToEndIntegration:
 
         sdk_message = create_sdk_message(content="test query")
 
-        async for message in client.query_completion(
+        stream_handle = await client.query_completion(
             sdk_message,
             ClaudeCodeOptions(),
             "req_123",
-        ):
+        )
+
+        async for message in stream_handle.create_listener():
             messages.append(message)
 
         # Verify the complete flow
@@ -529,9 +533,11 @@ class TestPoolEndToEndIntegration:
 
             sdk_message = create_sdk_message(content="test")
 
-            async for message in client.query_completion(
+            stream_handle = await client.query_completion(
                 sdk_message, ClaudeCodeOptions()
-            ):
+            )
+
+            async for message in stream_handle.create_listener():
                 messages.append(message)
 
         # Should attempt pool first, then fallback

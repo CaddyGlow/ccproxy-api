@@ -229,12 +229,15 @@ class ClaudeSDKService:
         # Convert messages to single SDKMessage
         sdk_message = self._convert_messages_to_sdk_message(messages, session_id)
 
-        sdk_messages = [
-            m
-            async for m in self.sdk_client.query_completion(
-                sdk_message, options, request_id, session_id
-            )
-        ]
+        # Get stream handle
+        stream_handle = await self.sdk_client.query_completion(
+            sdk_message, options, request_id, session_id
+        )
+
+        # Create a listener and collect all messages
+        sdk_messages = []
+        async for m in stream_handle.create_listener():
+            sdk_messages.append(m)
 
         result_message = next(
             (m for m in sdk_messages if isinstance(m, sdk_models.ResultMessage)), None
@@ -380,9 +383,32 @@ class ClaudeSDKService:
         # Convert messages to single SDKMessage
         sdk_message = self._convert_messages_to_sdk_message(messages, session_id)
 
-        sdk_stream = self.sdk_client.query_completion(
+        # Get stream handle instead of direct iterator
+        stream_handle = await self.sdk_client.query_completion(
             sdk_message, options, request_id, session_id
         )
+
+        # Store handle in session client if available for cleanup
+        if (
+            session_id
+            and hasattr(self.sdk_client, "_pool_manager")
+            and self.sdk_client._pool_manager
+        ):
+            try:
+                session_client = await self.sdk_client._pool_manager.get_session_client(
+                    session_id, options
+                )
+                if session_client:
+                    session_client.active_stream_handle = stream_handle
+            except Exception as e:
+                logger.warning(
+                    "failed_to_store_stream_handle",
+                    session_id=session_id,
+                    error=str(e),
+                )
+
+        # Create a listener for this stream
+        sdk_stream = stream_handle.create_listener()
 
         try:
             async for chunk in self.stream_processor.process_stream(

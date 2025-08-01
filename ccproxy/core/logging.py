@@ -1,8 +1,9 @@
 import logging
 import shutil
 import sys
+from collections.abc import MutableMapping
 from pathlib import Path
-from typing import TextIO
+from typing import Any, TextIO
 
 import structlog
 from rich.console import Console
@@ -43,7 +44,9 @@ def configure_structlog(log_level: int = logging.INFO) -> None:
     )
 
     # Then add processor to convert microseconds to milliseconds
-    def format_timestamp_ms(logger, log_method, event_dict):
+    def format_timestamp_ms(
+        logger: Any, log_method: str, event_dict: MutableMapping[str, Any]
+    ) -> MutableMapping[str, Any]:
         """Format timestamp with milliseconds instead of microseconds."""
         if "timestamp_raw" in event_dict:
             # Truncate microseconds to milliseconds (6 digits to 3)
@@ -164,7 +167,9 @@ def setup_logging(
     )
 
     # Processor to convert microseconds to milliseconds
-    def format_timestamp_ms(logger, log_method, event_dict):
+    def format_timestamp_ms(
+        logger: Any, log_method: str, event_dict: MutableMapping[str, Any]
+    ) -> MutableMapping[str, Any]:
         """Format timestamp with milliseconds instead of microseconds."""
         if "timestamp_raw" in event_dict:
             # Truncate microseconds to milliseconds (6 digits to 3)
@@ -189,7 +194,7 @@ def setup_logging(
     console_processors = shared_processors + [console_timestamper, format_timestamp_ms]
     console_handler.setFormatter(
         structlog.stdlib.ProcessorFormatter(
-            foreign_pre_chain=console_processors,
+            foreign_pre_chain=console_processors,  # type: ignore[arg-type]
             processor=console_renderer,
         )
     )

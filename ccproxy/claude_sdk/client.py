@@ -11,7 +11,7 @@ from pydantic import BaseModel
 from ccproxy.claude_sdk.exceptions import ClaudeSDKError, StreamTimeoutError
 from ccproxy.claude_sdk.manager import PoolManager
 from ccproxy.claude_sdk.pool import PoolConfig
-from ccproxy.claude_sdk.streaming_wrapper import StreamingResponseWithCleanup
+from ccproxy.claude_sdk.stream_handle import StreamHandle
 from ccproxy.config.settings import Settings
 from ccproxy.core.async_utils import patched_typing
 from ccproxy.core.errors import ClaudeProxyError, ServiceUnavailableError
@@ -276,14 +276,9 @@ class ClaudeSDKClient:
         options: ClaudeCodeOptions,
         request_id: str | None = None,
         session_id: str | None = None,
-    ) -> AsyncIterator[
-        sdk_models.UserMessage
-        | sdk_models.AssistantMessage
-        | sdk_models.SystemMessage
-        | sdk_models.ResultMessage
-    ]:
+    ) -> StreamHandle:
         """
-        Execute a query using the Claude Code SDK and yields strongly-typed Pydantic models.
+        Execute a query using the Claude Code SDK and return a StreamHandle.
 
         Args:
             message: SDKMessage to send to Claude SDK
@@ -291,8 +286,8 @@ class ClaudeSDKClient:
             request_id: Optional request ID for correlation
             session_id: Optional session ID for conversation continuity
 
-        Yields:
-            Strongly-typed Pydantic messages from ccproxy.claude_sdk.models
+        Returns:
+            StreamHandle that can create listeners for the stream
 
         Raises:
             ClaudeSDKError: If the query fails
@@ -305,9 +300,39 @@ class ClaudeSDKClient:
         else:
             query_method = self._query
 
-        # Execute query with selected method
-        async for msg in query_method(message, options, request_id, session_id):
-            yield msg
+        # Get the message iterator from selected method
+        message_iterator = query_method(message, options, request_id, session_id)
+
+        # Get existing session client if available (don't create new one)
+        session_client = None
+        if self._should_use_session_pool(session_id) and self._pool_manager:
+            try:
+                # Check if session already exists
+                if session_id and await self._pool_manager.has_session(session_id):
+                    session_pool = self._pool_manager._session_pool
+                    if session_pool and session_id in session_pool.sessions:
+                        session_client = session_pool.sessions[session_id]
+            except Exception as e:
+                logger.debug(
+                    "query_completion_session_lookup_error",
+                    session_id=session_id,
+                    error=str(e),
+                    message="Failed to get existing session client",
+                )
+
+        # Create and return stream handle
+        stream_handle = StreamHandle(
+            message_iterator=message_iterator,
+            session_id=session_id,
+            request_id=request_id,
+            session_client=session_client,
+        )
+
+        # If we have a session client, set the active stream handle
+        if session_client:
+            session_client.active_stream_handle = stream_handle
+
+        return stream_handle
 
     async def _query(
         self,
@@ -392,149 +417,93 @@ class ClaudeSDKClient:
                     request_id=request_id,
                 )
 
-        # Create cleanup callback that will be shared
-        cleanup_callback = asyncio.Future[bool]()
-        pooled_client_ref = None
+        async with timed_operation("claude_sdk_query_pooled", request_id) as op:
+            try:
+                pool = await self._get_configured_pool()
+                server_session_id = None
 
-        # Create the streaming generator with pool management
-        async def pool_streaming_generator() -> AsyncIterator[
-            sdk_models.UserMessage
-            | sdk_models.AssistantMessage
-            | sdk_models.SystemMessage
-            | sdk_models.ResultMessage
-        ]:
-            nonlocal pooled_client_ref
-            async with timed_operation("claude_sdk_query_pooled", request_id) as op:
-                try:
-                    pool = await self._get_configured_pool()
-                    server_session_id = None
+                async with pool.acquire_transferable_client(options) as (
+                    client,
+                    pooled_client,
+                ):
+                    message_count = 0
 
-                    async with pool.acquire_transferable_client(options) as (
-                        client,
-                        pooled_client,
-                    ):
-                        pooled_client_ref = pooled_client
-                        message_count = 0
+                    try:
+                        async for msg in self._execute_with_client(
+                            client, message, session_id or "default", request_id
+                        ):
+                            message_count += 1
 
-                        # Create task to monitor cleanup signal
-                        cleanup_task = asyncio.create_task(
-                            self._monitor_cleanup_signal(
-                                cleanup_callback, pooled_client, request_id
+                            # Check if we received a session ID from the server
+                            if (
+                                isinstance(msg, sdk_models.ResultMessage)
+                                and msg.session_id
+                            ):
+                                server_session_id = msg.session_id
+                                logger.info(
+                                    "claude_sdk_received_session_id",
+                                    session_id=server_session_id,
+                                    request_id=request_id,
+                                )
+
+                            yield msg
+
+                    except GeneratorExit:
+                        # Client disconnected - mark client as unhealthy
+                        if pooled_client:
+                            pooled_client.is_healthy = False
+                            logger.warning(
+                                "pool_client_disconnection_detected",
+                                client_id=pooled_client.client_id,
+                                request_id=request_id,
+                                message="Client disconnected during streaming, marking as unhealthy",
                             )
+                        raise
+
+                    op["message_count"] = message_count
+                    self._last_api_call_time_ms = op.get("duration_ms", 0.0)
+
+                    # Transfer client to session pool if we got a session ID
+                    # and migration is allowed in pool config
+                    if (
+                        server_session_id
+                        and pooled_client
+                        and self._pool_manager
+                        and pool.config.allow_migration_to_session
+                    ):
+                        logger.info(
+                            "claude_sdk_transferring_to_session_pool",
+                            session_id=server_session_id,
+                            request_id=request_id,
+                        )
+                        await self._pool_manager.transfer_client_to_session(
+                            pooled_client, server_session_id, options
+                        )
+                    elif (
+                        server_session_id
+                        and pooled_client
+                        and not pool.config.allow_migration_to_session
+                    ):
+                        logger.debug(
+                            "claude_sdk_migration_disabled",
+                            session_id=server_session_id,
+                            request_id=request_id,
+                            message="Client migration to session pool disabled by config",
                         )
 
-                        try:
-                            async for msg in self._execute_with_client(
-                                client, message, session_id or "default", request_id
-                            ):
-                                message_count += 1
-
-                                # Check if we received a session ID from the server
-                                if (
-                                    isinstance(msg, sdk_models.ResultMessage)
-                                    and msg.session_id
-                                ):
-                                    server_session_id = msg.session_id
-                                    logger.info(
-                                        "claude_sdk_received_session_id",
-                                        session_id=server_session_id,
-                                        request_id=request_id,
-                                    )
-
-                                yield msg
-
-                        finally:
-                            # Cancel cleanup monitoring
-                            cleanup_task.cancel()
-                            with contextlib.suppress(asyncio.CancelledError):
-                                await cleanup_task
-
-                        op["message_count"] = message_count
-                        self._last_api_call_time_ms = op.get("duration_ms", 0.0)
-
-                        # Transfer client to session pool if we got a session ID
-                        # and migration is allowed in pool config
-                        if (
-                            server_session_id
-                            and pooled_client_ref
-                            and self._pool_manager
-                            and pool.config.allow_migration_to_session
-                        ):
-                            logger.info(
-                                "claude_sdk_transferring_to_session_pool",
-                                session_id=server_session_id,
-                                request_id=request_id,
-                            )
-                            await self._pool_manager.transfer_client_to_session(
-                                pooled_client_ref, server_session_id, options
-                            )
-                        elif (
-                            server_session_id
-                            and pooled_client_ref
-                            and not pool.config.allow_migration_to_session
-                        ):
-                            logger.debug(
-                                "claude_sdk_migration_disabled",
-                                session_id=server_session_id,
-                                request_id=request_id,
-                                message="Client migration to session pool disabled by config",
-                            )
-
-                except StreamTimeoutError:
-                    # Re-raise timeout errors
-                    raise
-                except Exception as e:
-                    if pooled_client_ref:
-                        pooled_client_ref.is_healthy = False
-                    logger.error(
-                        "claude_sdk_pooled_query_error",
-                        error=str(e),
-                        error_type=type(e).__name__,
-                    )
-                    # Fall back to direct connection on pool errors
-                    logger.info("claude_sdk_fallback_to_direct")
-                    async for msg in self._query(
-                        message, options, request_id, session_id
-                    ):
-                        yield msg
-
-        # Create wrapped iterator with the shared cleanup callback
-        wrapper = StreamingResponseWithCleanup(
-            pool_streaming_generator(), pooled_client_ref
-        )
-        # Attach the cleanup callback to the wrapper
-        wrapper._cleanup_callback = cleanup_callback
-
-        async for msg in wrapper:
-            yield msg
-
-    async def _monitor_cleanup_signal(
-        self,
-        cleanup_future: asyncio.Future[bool],
-        pooled_client: Any,
-        request_id: str | None,
-    ) -> None:
-        """Monitor for cleanup signal from disconnection detection.
-
-        Args:
-            cleanup_future: Future that will be set when cleanup is needed
-            pooled_client: The pooled client to mark as unhealthy
-            request_id: Request ID for logging
-        """
-        try:
-            # Wait for cleanup signal
-            needs_cleanup = await cleanup_future
-            if needs_cleanup and pooled_client:
-                pooled_client.is_healthy = False
-                logger.warning(
-                    "pool_client_disconnection_detected",
-                    client_id=pooled_client.client_id,
-                    request_id=request_id,
-                    message="Client disconnected during streaming, marking as unhealthy",
+            except StreamTimeoutError:
+                # Re-raise timeout errors
+                raise
+            except Exception as e:
+                logger.error(
+                    "claude_sdk_pooled_query_error",
+                    error=str(e),
+                    error_type=type(e).__name__,
                 )
-        except asyncio.CancelledError:
-            # Normal cancellation when streaming completes
-            pass
+                # Fall back to direct connection on pool errors
+                logger.info("claude_sdk_fallback_to_direct")
+                async for msg in self._query(message, options, request_id, session_id):
+                    yield msg
 
     async def _query_with_session_pool(
         self,

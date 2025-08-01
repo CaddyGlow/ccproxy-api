@@ -14,12 +14,7 @@ from ccproxy.adapters.openai.adapter import (
 )
 from ccproxy.api.dependencies import ClaudeServiceDep
 from ccproxy.models.messages import MessageCreateParams, MessageResponse
-from ccproxy.observability.streaming_pool_response import (
-    StreamingResponseWithPoolCleanup,
-)
-from ccproxy.observability.streaming_session_response import (
-    StreamingResponseWithSessionInterrupt,
-)
+from ccproxy.observability.streaming_response import StreamingResponseWithLogging
 
 
 # Create the router for Claude SDK endpoints
@@ -77,15 +72,12 @@ async def create_openai_chat_completion(
                 # Send final chunk
                 yield b"data: [DONE]\n\n"
 
-            # Use pool cleanup wrapper for general pool (no session_id)
-            # This monitors for disconnection and can signal cleanup
-            return StreamingResponseWithPoolCleanup(
+            # Use unified streaming wrapper with logging
+            return StreamingResponseWithLogging(
                 content=openai_stream_generator(),
-                request=request,
                 request_context=request_context,
                 metrics=getattr(claude_service, "metrics", None),
                 status_code=200,
-                cleanup_callback=getattr(response, "_cleanup_callback", None),
                 media_type="text/event-stream",
                 headers={
                     "Cache-Control": "no-cache",
@@ -168,12 +160,13 @@ async def create_openai_chat_completion_with_session(
                 # Send final chunk
                 yield b"data: [DONE]\n\n"
 
-            # Use session interrupt wrapper for disconnection detection
-            # This will trigger session interruption when client disconnects
-            return StreamingResponseWithSessionInterrupt(
+            # Use unified streaming wrapper with logging
+            # Session interrupts are now handled directly by the StreamHandle
+            return StreamingResponseWithLogging(
                 content=openai_stream_generator(),
-                session_id=session_id,
-                sdk_client=claude_service.sdk_client,
+                request_context=request_context,
+                metrics=getattr(claude_service, "metrics", None),
+                status_code=200,
                 media_type="text/event-stream",
                 headers={
                     "Cache-Control": "no-cache",
@@ -261,12 +254,13 @@ async def create_anthropic_message_with_session(
                             yield f"data: {json.dumps(chunk)}\n\n".encode()
                 # No final [DONE] chunk for Anthropic format
 
-            # Use session interrupt wrapper for disconnection detection
-            # This will trigger session interruption when client disconnects
-            return StreamingResponseWithSessionInterrupt(
+            # Use unified streaming wrapper with logging
+            # Session interrupts are now handled directly by the StreamHandle
+            return StreamingResponseWithLogging(
                 content=anthropic_stream_generator(),
-                session_id=session_id,
-                sdk_client=claude_service.sdk_client,
+                request_context=request_context,
+                metrics=getattr(claude_service, "metrics", None),
+                status_code=200,
                 media_type="text/event-stream",
                 headers={
                     "Cache-Control": "no-cache",
@@ -349,36 +343,19 @@ async def create_anthropic_message(
                             yield f"data: {json.dumps(chunk)}\n\n".encode()
                 # No final [DONE] chunk for Anthropic format
 
-            # Choose appropriate wrapper based on whether we have a session_id
-            if session_id:
-                # Use session interrupt wrapper for session-based requests
-                # This will trigger session interruption when client disconnects
-                return StreamingResponseWithSessionInterrupt(
-                    content=anthropic_stream_generator(),
-                    session_id=session_id,
-                    sdk_client=claude_service.sdk_client,
-                    media_type="text/event-stream",
-                    headers={
-                        "Cache-Control": "no-cache",
-                        "Connection": "keep-alive",
-                    },
-                )
-            else:
-                # Use pool cleanup wrapper for general pool (no session_id)
-                # This monitors for disconnection and can signal cleanup
-                return StreamingResponseWithPoolCleanup(
-                    content=anthropic_stream_generator(),
-                    request=request,
-                    request_context=request_context,
-                    metrics=getattr(claude_service, "metrics", None),
-                    status_code=200,
-                    cleanup_callback=getattr(response, "_cleanup_callback", None),
-                    media_type="text/event-stream",
-                    headers={
-                        "Cache-Control": "no-cache",
-                        "Connection": "keep-alive",
-                    },
-                )
+            # Use unified streaming wrapper with logging for all requests
+            # Session interrupts are now handled directly by the StreamHandle
+            return StreamingResponseWithLogging(
+                content=anthropic_stream_generator(),
+                request_context=request_context,
+                metrics=getattr(claude_service, "metrics", None),
+                status_code=200,
+                media_type="text/event-stream",
+                headers={
+                    "Cache-Control": "no-cache",
+                    "Connection": "keep-alive",
+                },
+            )
         else:
             # Return Anthropic format response directly
             return MessageResponse.model_validate(response)

@@ -130,38 +130,54 @@ class SessionPool:
                     "session_pool_existing_session_found",
                     session_id=session_id,
                     client_id=session_client.client_id,
+                    session_status=session_client.status.value,
                 )
 
+                # Check if session is currently being interrupted
+                if session_client.status.value == "interrupting":
+                    logger.warning(
+                        "session_pool_interrupting_session",
+                        session_id=session_id,
+                        client_id=session_client.client_id,
+                        message="Session is currently being interrupted, creating new session",
+                    )
+                    # Don't try to reuse a session that's being interrupted
+                    await self._remove_session_unlocked(session_id)
+                    session_client = await self._create_session_unlocked(
+                        session_id, options
+                    )
                 # Check if session has an active stream that needs cleanup
-                if session_client.has_active_stream:
+                elif (
+                    session_client.has_active_stream
+                    or session_client.active_stream_handle
+                ):
                     logger.warning(
                         "session_pool_active_stream_detected",
                         session_id=session_id,
                         client_id=session_client.client_id,
-                        message="Session has active stream, interrupting before reuse",
+                        has_stream=session_client.has_active_stream,
+                        has_handle=bool(session_client.active_stream_handle),
+                        message="Session has active stream/handle, clearing before reuse",
                     )
-                    # Interrupt the session to clean up the active stream
-                    try:
-                        await session_client.interrupt()
-                        # Session should now be clean and ready for reuse
-                        logger.info(
-                            "session_pool_stream_cleaned",
+                    # Simply clear the old stream handle and flags without interrupting
+                    # The old handle should already be completed or will be cleaned up automatically
+                    if session_client.active_stream_handle:
+                        logger.debug(
+                            "session_pool_clearing_old_handle",
                             session_id=session_id,
-                            client_id=session_client.client_id,
-                            message="Active stream cleaned, reusing session",
+                            old_handle_id=session_client.active_stream_handle.handle_id,
                         )
-                    except Exception as e:
-                        logger.error(
-                            "session_pool_interrupt_failed",
-                            session_id=session_id,
-                            error=str(e),
-                            message="Failed to clean active stream, creating new session",
-                        )
-                        # Only remove and recreate if interrupt fails
-                        await self._remove_session_unlocked(session_id)
-                        session_client = await self._create_session_unlocked(
-                            session_id, options
-                        )
+                        session_client.active_stream_handle = None
+
+                    # Clear active stream flag
+                    session_client.has_active_stream = False
+
+                    logger.info(
+                        "session_pool_stream_cleared",
+                        session_id=session_id,
+                        client_id=session_client.client_id,
+                        message="Old stream state cleared, session ready for reuse",
+                    )
                 # Check if session is still valid
                 elif session_client.is_expired():
                     logger.info("session_expired", session_id=session_id)
@@ -411,8 +427,8 @@ class SessionPool:
             session_client = self.sessions[session_id]
 
         try:
-            # Interrupt the session with 10-second timeout (allows for 5s interrupt + 3s disconnect + buffer)
-            await asyncio.wait_for(session_client.interrupt(), timeout=10.0)
+            # Interrupt the session with 30-second timeout (allows for longer SDK response times)
+            await asyncio.wait_for(session_client.interrupt(), timeout=30.0)
             logger.info("session_interrupted", session_id=session_id)
 
             # Remove the session to prevent reuse
@@ -425,7 +441,7 @@ class SessionPool:
                 session_id=session_id,
                 error=str(e)
                 if not isinstance(e, TimeoutError)
-                else "Timeout after 10s",
+                else "Timeout after 30s",
             )
             # Always remove the session on failure
             with contextlib.suppress(Exception):

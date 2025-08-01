@@ -107,18 +107,58 @@ class StreamingResponseWithSessionInterrupt(StreamingResponse):
                 message="Interrupting session due to client disconnection",
             )
 
-            # Call the SDK client's interrupt_session method with timeout
-            interrupted = await asyncio.wait_for(
-                self.sdk_client.interrupt_session(self.session_id),
-                timeout=5.0,  # 5 second timeout
-            )
+            # First try to interrupt via stream handle if available
+            # This is more direct and efficient than going through pool manager
+            interrupted_via_handle = False
+            if (
+                hasattr(self.sdk_client, "_pool_manager")
+                and self.sdk_client._pool_manager
+                and hasattr(self.sdk_client._pool_manager, "has_session")
+            ):
+                try:
+                    # Check if session exists without creating a new one
+                    if await self.sdk_client._pool_manager.has_session(self.session_id):
+                        # Get the session pool directly
+                        session_pool = self.sdk_client._pool_manager._session_pool
+                        if session_pool and self.session_id in session_pool.sessions:
+                            session_client = session_pool.sessions[self.session_id]
+                            if session_client and session_client.active_stream_handle:
+                                logger.debug(
+                                    "streaming_session_interrupting_via_handle",
+                                    session_id=self.session_id,
+                                    handle_id=session_client.active_stream_handle.handle_id,
+                                )
+                                await session_client.active_stream_handle.interrupt()
+                                session_client.active_stream_handle = None
+                                interrupted_via_handle = True
+                except Exception as e:
+                    logger.warning(
+                        "streaming_session_handle_interrupt_failed",
+                        session_id=self.session_id,
+                        error=str(e),
+                        message="Failed to interrupt via stream handle, falling back to session interrupt",
+                    )
 
-            logger.info(
-                "streaming_session_interrupted",
-                session_id=self.session_id,
-                interrupted=interrupted,
-                message="Session interrupt completed",
-            )
+            # If not interrupted via handle, use regular session interrupt
+            if not interrupted_via_handle:
+                # Call the SDK client's interrupt_session method with timeout
+                interrupted = await asyncio.wait_for(
+                    self.sdk_client.interrupt_session(self.session_id),
+                    timeout=5.0,  # 5 second timeout
+                )
+
+                logger.info(
+                    "streaming_session_interrupted",
+                    session_id=self.session_id,
+                    interrupted=interrupted,
+                    message="Session interrupt completed",
+                )
+            else:
+                logger.info(
+                    "streaming_session_interrupted_via_handle",
+                    session_id=self.session_id,
+                    message="Session interrupted via stream handle",
+                )
         except TimeoutError:
             logger.error(
                 "streaming_session_interrupt_timeout",

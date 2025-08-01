@@ -6,6 +6,7 @@ import asyncio
 import contextlib
 import time
 from enum import Enum
+from typing import Any
 
 import structlog
 from claude_code_sdk import ClaudeCodeOptions
@@ -27,6 +28,7 @@ class SessionStatus(str, Enum):
     ACTIVE = "active"
     IDLE = "idle"
     CONNECTING = "connecting"
+    INTERRUPTING = "interrupting"
     DISCONNECTED = "disconnected"
     ERROR = "error"
     EXPIRED = "expired"
@@ -85,6 +87,9 @@ class SessionClient:
         # Active stream tracking
         self.active_stream_task: asyncio.Task[None] | None = None
         self.has_active_stream: bool = False
+        self.active_stream_handle: Any = (
+            None  # StreamHandle when using queue-based approach
+        )
 
     async def connect(self) -> bool:
         """Establish connection to Claude SDK."""
@@ -199,6 +204,9 @@ class SessionClient:
             )
             return
 
+        # Set status to INTERRUPTING to prevent reuse during interrupt
+        self.status = SessionStatus.INTERRUPTING
+
         logger.info(
             "session_interrupting",
             session_id=self.session_id,
@@ -210,38 +218,48 @@ class SessionClient:
         max_interrupt_time = 15.0  # Maximum 15 seconds for entire interrupt
 
         try:
-            # IMPORTANT: Claude SDK interrupt requires active message consumption
-            # Start draining messages BEFORE calling interrupt
-            drain_task = None
-            if self.has_active_stream:
-                logger.debug(
-                    "session_starting_drain_before_interrupt",
+            # First, interrupt the stream handle if available
+            if self.active_stream_handle:
+                logger.info(
+                    "session_interrupt_via_stream_handle",
                     session_id=self.session_id,
-                    message="Starting message drain task before interrupt",
+                    handle_id=self.active_stream_handle.handle_id,
+                    message="Interrupting via stream handle first",
                 )
 
-                # Start draining in background
-                drain_task = asyncio.create_task(self._drain_messages_for_interrupt())
+                try:
+                    # Interrupt the stream handle - this stops the worker
+                    interrupted = await self.active_stream_handle.interrupt()
+                    if interrupted:
+                        logger.info(
+                            "session_stream_handle_interrupted",
+                            session_id=self.session_id,
+                            handle_id=self.active_stream_handle.handle_id,
+                        )
+                        # Clear the handle reference
+                        self.active_stream_handle = None
+                except Exception as e:
+                    logger.warning(
+                        "session_stream_handle_interrupt_error",
+                        session_id=self.session_id,
+                        error=str(e),
+                        message="Failed to interrupt stream handle, continuing with SDK interrupt",
+                    )
 
-                # Give the drain task a moment to actually start consuming
-                await asyncio.sleep(0.1)
-
-            # Now attempt interrupt with the drain task running
+            # Now call SDK interrupt - should complete quickly since worker is stopped
             logger.debug(
                 "session_interrupt_calling_sdk",
                 session_id=self.session_id,
-                message="Calling SDK interrupt method with drain task consuming",
-                has_drain_task=drain_task is not None,
+                message="Calling SDK interrupt method",
             )
 
-            # Call interrupt - this should complete quickly with drain task running
             try:
                 # Create interrupt task
                 interrupt_task = asyncio.create_task(self.claude_client.interrupt())
 
                 # Wait for interrupt with timeout
                 done, pending = await asyncio.wait(
-                    [interrupt_task], timeout=10.0, return_when=asyncio.FIRST_COMPLETED
+                    [interrupt_task], timeout=30.0, return_when=asyncio.FIRST_COMPLETED
                 )
 
                 if interrupt_task in done:
@@ -250,47 +268,27 @@ class SessionClient:
                     logger.info(
                         "session_interrupted_gracefully", session_id=self.session_id
                     )
+                    # Reset status after successful interrupt
+                    self.status = SessionStatus.DISCONNECTED
                 else:
                     # Timeout - interrupt is still pending
                     logger.warning(
                         "session_interrupt_timeout_canceling",
                         session_id=self.session_id,
-                        message="Interrupt did not complete within 10s, canceling",
+                        message="Interrupt did not complete within 30s, canceling",
                     )
                     interrupt_task.cancel()
                     with contextlib.suppress(asyncio.CancelledError):
                         await interrupt_task
                     raise TimeoutError("Interrupt did not complete within timeout")
 
-                # Wait for drain task to complete if it's still running
-                if drain_task and not drain_task.done():
-                    try:
-                        await asyncio.wait_for(drain_task, timeout=5.0)
-                        logger.debug(
-                            "session_drain_task_completed",
-                            session_id=self.session_id,
-                        )
-                    except TimeoutError:
-                        logger.warning(
-                            "session_drain_task_timeout_after_interrupt",
-                            session_id=self.session_id,
-                            message="Drain task timed out after successful interrupt",
-                        )
-                        drain_task.cancel()
-                        with contextlib.suppress(asyncio.CancelledError):
-                            await drain_task
-
             except TimeoutError:
                 # Interrupt timed out
                 logger.warning(
                     "session_interrupt_sdk_timeout",
                     session_id=self.session_id,
-                    message="SDK interrupt timed out after 10 seconds",
+                    message="SDK interrupt timed out after 30 seconds",
                 )
-                if drain_task:
-                    drain_task.cancel()
-                    with contextlib.suppress(asyncio.CancelledError):
-                        await drain_task
                 raise TimeoutError("Interrupt timed out") from None
 
         except TimeoutError:
@@ -336,6 +334,9 @@ class SessionClient:
                     max_seconds=max_interrupt_time,
                     message="Interrupt operation exceeded maximum time limit",
                 )
+
+            # Always reset status from INTERRUPTING
+            if self.status == SessionStatus.INTERRUPTING:
                 # Force mark as disconnected
                 self.status = SessionStatus.DISCONNECTED
                 self.claude_client = None
@@ -391,86 +392,6 @@ class SessionClient:
                 message="Session forcibly disconnected and marked for cleanup",
             )
 
-    async def _drain_messages_for_interrupt(self) -> None:
-        """Drain messages during interrupt operation to allow interrupt to process."""
-        if not self.claude_client:
-            return
-
-        logger.info(
-            "session_interrupt_drain_started",
-            session_id=self.session_id,
-            message="Starting to drain messages for interrupt",
-        )
-
-        message_count = 0
-        start_time = asyncio.get_event_loop().time()
-        max_drain_time = 10.0  # Maximum 10 seconds for draining during interrupt
-
-        try:
-            # Try to use receive_stream if available, otherwise fall back to receive_response
-            if hasattr(self.claude_client, "receive_stream"):
-                receive_method = self.claude_client.receive_stream()
-            else:
-                receive_method = self.claude_client.receive_response()
-
-            async for msg in receive_method:
-                message_count += 1
-                logger.debug(
-                    "session_interrupt_drain_message",
-                    session_id=self.session_id,
-                    message_count=message_count,
-                    message_type=type(msg).__name__,
-                )
-
-                # Check if we've exceeded time limit
-                elapsed_time = asyncio.get_event_loop().time() - start_time
-                if elapsed_time > max_drain_time:
-                    logger.warning(
-                        "session_interrupt_drain_timeout",
-                        session_id=self.session_id,
-                        message_count=message_count,
-                        elapsed_seconds=elapsed_time,
-                        message="Interrupt drain exceeded time limit",
-                    )
-                    break
-
-                # Check if we've reached ResultMessage (end of stream)
-                if (
-                    hasattr(msg, "__class__")
-                    and msg.__class__.__name__ == "ResultMessage"
-                ):
-                    logger.info(
-                        "session_interrupt_drain_complete",
-                        session_id=self.session_id,
-                        total_messages=message_count,
-                        message="Reached ResultMessage during interrupt drain",
-                    )
-                    break
-
-        except asyncio.CancelledError:
-            logger.debug(
-                "session_interrupt_drain_cancelled",
-                session_id=self.session_id,
-                messages_drained=message_count,
-            )
-            raise
-        except StopAsyncIteration:
-            # Stream ended - this is expected after interrupt
-            logger.info(
-                "session_interrupt_drain_stream_ended",
-                session_id=self.session_id,
-                messages_drained=message_count,
-                message="Stream ended during interrupt drain (expected)",
-            )
-        except Exception as e:
-            logger.error(
-                "session_interrupt_drain_error",
-                session_id=self.session_id,
-                error=str(e),
-                error_type=type(e).__name__,
-                messages_drained=message_count,
-            )
-
     async def drain_active_stream(self) -> None:
         """Drain any active stream to prevent stale messages on reconnection."""
         if not self.has_active_stream:
@@ -486,83 +407,56 @@ class SessionClient:
             message="Draining active stream after client disconnection",
         )
 
-        if not self.claude_client:
-            logger.warning(
-                "session_no_client_for_drain",
+        # With queue-based architecture, we use the stream handle
+        if self.active_stream_handle:
+            logger.info(
+                "session_draining_via_handle",
                 session_id=self.session_id,
+                handle_id=self.active_stream_handle.handle_id,
+                message="Using stream handle to drain messages",
             )
-            self.has_active_stream = False
+
+            try:
+                # Wait for the worker to complete
+                completed = await self.active_stream_handle.wait_for_completion(
+                    timeout=30.0
+                )
+                if completed:
+                    logger.info(
+                        "session_stream_drained_via_handle",
+                        session_id=self.session_id,
+                        handle_id=self.active_stream_handle.handle_id,
+                    )
+                else:
+                    logger.warning(
+                        "session_stream_drain_timeout_via_handle",
+                        session_id=self.session_id,
+                        handle_id=self.active_stream_handle.handle_id,
+                        message="Stream drain timed out after 30 seconds",
+                    )
+            except Exception as e:
+                logger.error(
+                    "session_stream_drain_error_via_handle",
+                    session_id=self.session_id,
+                    handle_id=self.active_stream_handle.handle_id,
+                    error=str(e),
+                    error_type=type(e).__name__,
+                )
+            finally:
+                self.active_stream_handle = None
+                self.has_active_stream = False
+                self.active_stream_task = None
+
             return
 
-        try:
-            # Continue receiving messages from the existing stream
-            message_count = 0
-            max_messages = 1000  # Safety limit
-            start_time = asyncio.get_event_loop().time()
-            max_drain_time = 30.0  # Maximum 30 seconds for draining
-
-            # Get the response iterator from the Claude client
-            response_iterator = self.claude_client.receive_response()
-
-            async for msg in response_iterator:
-                message_count += 1
-                logger.debug(
-                    "session_draining_message",
-                    session_id=self.session_id,
-                    message_count=message_count,
-                    message_type=type(msg).__name__,
-                )
-
-                # Check if we've exceeded time limit
-                elapsed_time = asyncio.get_event_loop().time() - start_time
-                if elapsed_time > max_drain_time:
-                    logger.warning(
-                        "session_drain_time_limit_reached",
-                        session_id=self.session_id,
-                        message_count=message_count,
-                        elapsed_seconds=elapsed_time,
-                    )
-                    break
-
-                # Safety check to prevent infinite loops
-                if message_count >= max_messages:
-                    logger.warning(
-                        "session_drain_limit_reached",
-                        session_id=self.session_id,
-                        message_count=message_count,
-                    )
-                    break
-
-                # Check if we've reached the end (ResultMessage)
-                if (
-                    hasattr(msg, "__class__")
-                    and msg.__class__.__name__ == "ResultMessage"
-                ):
-                    logger.info(
-                        "session_drain_completed",
-                        session_id=self.session_id,
-                        total_messages=message_count,
-                    )
-                    break
-
-        except StopAsyncIteration:
-            # Stream ended
-            logger.info(
-                "session_stream_drained",
-                session_id=self.session_id,
-                drained_messages=message_count,
-            )
-        except Exception as e:
-            logger.error(
-                "session_stream_drain_error",
-                session_id=self.session_id,
-                error=str(e),
-                error_type=type(e).__name__,
-                drained_messages=message_count,
-            )
-        finally:
-            self.has_active_stream = False
-            self.active_stream_task = None
+        # Legacy path - should not happen with queue-based architecture
+        logger.warning(
+            "session_no_handle_for_drain",
+            session_id=self.session_id,
+            message="No stream handle available for draining",
+        )
+        self.has_active_stream = False
+        self.active_stream_task = None
 
     async def is_healthy(self) -> bool:
         """Check if the session connection is healthy."""
