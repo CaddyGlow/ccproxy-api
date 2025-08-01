@@ -7,6 +7,7 @@ from ccproxy.config.settings import Settings
 from .core import Scheduler
 from .registry import register_task
 from .tasks import (
+    PoolStatsTask,
     PricingCacheUpdateTask,
     PushgatewayTask,
     StatsPrintingTask,
@@ -147,6 +148,8 @@ def _register_default_tasks(settings: Settings) -> None:
         register_task("pricing_cache_update", PricingCacheUpdateTask)
     if not registry.is_registered("version_update_check"):
         register_task("version_update_check", VersionUpdateCheckTask)
+    if not registry.is_registered("pool_stats"):
+        register_task("pool_stats", PoolStatsTask)
 
 
 async def start_scheduler(settings: Settings) -> Scheduler | None:

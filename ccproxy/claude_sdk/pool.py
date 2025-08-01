@@ -2,7 +2,6 @@
 
 import asyncio
 import time
-import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass
@@ -12,6 +11,7 @@ import structlog
 from pydantic import BaseModel
 
 from ccproxy.core.async_utils import patched_typing
+from ccproxy.utils.id_generator import generate_client_id
 
 
 if TYPE_CHECKING:
@@ -38,7 +38,10 @@ class PoolConfig:
     enable_health_checks: bool = True
     startup_delay: float = 1
     creation_delay: float = 0
-    reuse_clients: bool = False  # If False, clients are discarded after each use
+    reuse_clients: bool = True  # If False, clients are discarded after each use
+    allow_migration_to_session: bool = (
+        False  # If False, clients won't migrate to session pool
+    )
 
 
 class PoolStats(BaseModel):
@@ -60,7 +63,7 @@ class PooledClient:
     def __init__(self, client: SDKClient, options: ClaudeCodeOptions):
         self.client = client
         self.options = options
-        self.client_id = str(uuid.uuid4()).split("-")[0]  # First part of UUID
+        self.client_id = generate_client_id()
         self.created_at = time.time()
         self.last_used = time.time()
         self.is_connected = False
@@ -95,6 +98,16 @@ class PooledClient:
         if self.is_connected:
             try:
                 await self.client.disconnect()
+            except RuntimeError as e:
+                # Suppress the specific anyio/trio cancel scope error
+                if "cancel scope in a different task" in str(e):
+                    logger.debug(
+                        "pooled_client_disconnect_cancel_scope_error",
+                        client_id=self.client_id,
+                        message="Suppressed expected cancel scope error during disconnect",
+                    )
+                else:
+                    logger.warning("pooled_client_disconnect_error", error=str(e))
             except Exception as e:
                 logger.warning("pooled_client_disconnect_error", error=str(e))
             finally:
@@ -388,6 +401,19 @@ class ClaudeSDKClientPool:
                     use_count=pooled_client.use_count,
                 )
 
+                # After discarding a client, check if we need to create a new one
+                # to maintain the minimum pool size
+                current_total = len(self._all_clients)
+                if current_total < self.config.pool_size:
+                    logger.info(
+                        "sdk_pool_replenishing",
+                        current_size=current_total,
+                        min_size=self.config.pool_size,
+                        reason="client_discarded",
+                    )
+                    # Create task to replenish the pool (don't block the return)
+                    asyncio.create_task(self._replenish_pool())
+
     async def extract_client(self, pooled_client: PooledClient) -> SDKClient:
         """Extract a client from the pool for transfer to another pool.
 
@@ -415,6 +441,17 @@ class ClaudeSDKClientPool:
                 use_count=pooled_client.use_count,
                 total_clients=len(self._all_clients),
             )
+
+            # Check if we need to replenish after extraction
+            current_total = len(self._all_clients)
+            if current_total < self.config.pool_size:
+                logger.info(
+                    "sdk_pool_replenishing_after_extraction",
+                    current_size=current_total,
+                    min_size=self.config.pool_size,
+                )
+                # Create task to replenish the pool
+                asyncio.create_task(self._replenish_pool())
 
             # Return the raw SDK client
             return pooled_client.client
@@ -446,6 +483,52 @@ class ClaudeSDKClientPool:
             total_clients=len(self._all_clients),
         )
         return pooled_client
+
+    async def _replenish_pool(self) -> None:
+        """Replenish the pool to maintain minimum size."""
+        try:
+            # Check current size under lock
+            async with self._lock:
+                current_size = len(self._all_clients)
+                needed = self.config.pool_size - current_size
+
+            if needed > 0:
+                logger.info(
+                    "sdk_pool_replenishment_starting",
+                    current_size=current_size,
+                    min_size=self.config.pool_size,
+                    creating=needed,
+                )
+
+                # Create the needed clients
+                for i in range(needed):
+                    try:
+                        pooled_client = await self._create_client()
+                        # Start connection in background
+                        await pooled_client.connect_background()
+                        # Add to available pool
+                        await self._available_clients.put(pooled_client)
+                        logger.debug(
+                            "sdk_pool_replenishment_client_added",
+                            client_id=pooled_client.client_id,
+                            index=i + 1,
+                            total=needed,
+                        )
+                    except Exception as e:
+                        logger.error(
+                            "sdk_pool_replenishment_failed",
+                            error=str(e),
+                            index=i + 1,
+                            total=needed,
+                        )
+                        break
+
+        except Exception as e:
+            logger.error(
+                "sdk_pool_replenishment_error",
+                error=str(e),
+                error_type=type(e).__name__,
+            )
 
     async def _remove_client(self, pooled_client: PooledClient) -> None:
         """Remove a client from the pool (acquires lock)."""

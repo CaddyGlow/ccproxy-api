@@ -14,6 +14,9 @@ from ccproxy.adapters.openai.adapter import (
 )
 from ccproxy.api.dependencies import ClaudeServiceDep
 from ccproxy.models.messages import MessageCreateParams, MessageResponse
+from ccproxy.observability.streaming_pool_response import (
+    StreamingResponseWithPoolCleanup,
+)
 from ccproxy.observability.streaming_response import StreamingResponseWithLogging
 
 
@@ -72,10 +75,15 @@ async def create_openai_chat_completion(
                 # Send final chunk
                 yield b"data: [DONE]\n\n"
 
-            return StreamingResponseWithLogging(
+            # Use pool cleanup wrapper for general pool (no session_id)
+            # This monitors for disconnection and can signal cleanup
+            return StreamingResponseWithPoolCleanup(
                 content=openai_stream_generator(),
+                request=request,
                 request_context=request_context,
                 metrics=getattr(claude_service, "metrics", None),
+                status_code=200,
+                cleanup_callback=getattr(response, "_cleanup_callback", None),
                 media_type="text/event-stream",
                 headers={
                     "Cache-Control": "no-cache",
@@ -338,10 +346,15 @@ async def create_anthropic_message(
                             yield f"data: {json.dumps(chunk)}\n\n".encode()
                 # No final [DONE] chunk for Anthropic format
 
-            return StreamingResponseWithLogging(
+            # Use pool cleanup wrapper for general pool (no session_id)
+            # This monitors for disconnection and can signal cleanup
+            return StreamingResponseWithPoolCleanup(
                 content=anthropic_stream_generator(),
+                request=request,
                 request_context=request_context,
                 metrics=getattr(claude_service, "metrics", None),
+                status_code=200,
+                cleanup_callback=getattr(response, "_cleanup_callback", None),
                 media_type="text/event-stream",
                 headers={
                     "Cache-Control": "no-cache",

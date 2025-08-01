@@ -483,6 +483,128 @@ class PricingCacheUpdateTask(BaseScheduledTask):
             return False
 
 
+class PoolStatsTask(BaseScheduledTask):
+    """Task for displaying pool statistics periodically."""
+
+    def __init__(
+        self,
+        name: str,
+        interval_seconds: float,
+        enabled: bool = True,
+        pool_manager: Any | None = None,
+    ):
+        """
+        Initialize pool stats task.
+
+        Args:
+            name: Task name
+            interval_seconds: Interval between stats display
+            enabled: Whether task is enabled
+            pool_manager: Injected pool manager instance
+        """
+        super().__init__(
+            name=name,
+            interval_seconds=interval_seconds,
+            enabled=enabled,
+        )
+        self._pool_manager = pool_manager
+
+    async def setup(self) -> None:
+        """Initialize pool manager instance if not injected."""
+        if self._pool_manager is None:
+            logger.warning(
+                "pool_stats_task_no_manager",
+                task_name=self.name,
+                message="Pool manager not injected, task will be disabled",
+            )
+
+    async def run(self) -> bool:
+        """Display pool statistics."""
+        try:
+            if not self._pool_manager:
+                return True  # Not an error, just no pool manager available
+
+            # Get general pool stats
+            general_pool = self._pool_manager._pool
+            general_stats = None
+            if general_pool:
+                general_stats = general_pool.get_stats()
+
+            # Get session pool stats
+            session_pool = self._pool_manager._session_pool
+            session_stats = None
+            if session_pool:
+                session_stats = await session_pool.get_stats()
+
+            # Log pool statistics
+            logger.info(
+                "pool_stats_report",
+                task_name=self.name,
+                general_pool={
+                    "enabled": bool(general_pool),
+                    "total_clients": general_stats.total_clients
+                    if general_stats
+                    else 0,
+                    "available_clients": general_stats.available_clients
+                    if general_stats
+                    else 0,
+                    "active_clients": general_stats.active_clients
+                    if general_stats
+                    else 0,
+                    "connections_created": general_stats.connections_created
+                    if general_stats
+                    else 0,
+                    "connections_closed": general_stats.connections_closed
+                    if general_stats
+                    else 0,
+                    "acquire_count": general_stats.acquire_count
+                    if general_stats
+                    else 0,
+                    "release_count": general_stats.release_count
+                    if general_stats
+                    else 0,
+                    "health_check_failures": general_stats.health_check_failures
+                    if general_stats
+                    else 0,
+                }
+                if general_pool
+                else None,
+                session_pool={
+                    "enabled": session_stats.get("enabled", False)
+                    if session_stats
+                    else False,
+                    "total_sessions": session_stats.get("total_sessions", 0)
+                    if session_stats
+                    else 0,
+                    "active_sessions": session_stats.get("active_sessions", 0)
+                    if session_stats
+                    else 0,
+                    "max_sessions": session_stats.get("max_sessions", 0)
+                    if session_stats
+                    else 0,
+                    "total_messages": session_stats.get("total_messages", 0)
+                    if session_stats
+                    else 0,
+                    "session_ttl": session_stats.get("session_ttl", 0)
+                    if session_stats
+                    else 0,
+                }
+                if session_pool
+                else None,
+            )
+
+            return True
+
+        except Exception as e:
+            logger.error(
+                "pool_stats_task_error",
+                task_name=self.name,
+                error=str(e),
+                error_type=type(e).__name__,
+            )
+            return False
+
+
 class VersionUpdateCheckTask(BaseScheduledTask):
     """Task for checking version updates periodically."""
 

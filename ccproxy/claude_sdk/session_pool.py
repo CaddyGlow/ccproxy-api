@@ -125,10 +125,12 @@ class SessionPool:
             options.continue_conversation = True
             # Get existing session or create new one
             if session_id in self.sessions:
-                logger.debug(
-                    "session_pool_existing_session_found", session_id=session_id
-                )
                 session_client = self.sessions[session_id]
+                logger.debug(
+                    "session_pool_existing_session_found",
+                    session_id=session_id,
+                    client_id=session_client.client_id,
+                )
 
                 # Check if session is still valid
                 if session_client.is_expired():
@@ -145,7 +147,9 @@ class SessionPool:
                     await session_client.connect()
                 else:
                     logger.debug(
-                        "session_pool_reusing_healthy_session", session_id=session_id
+                        "session_pool_reusing_healthy_session",
+                        session_id=session_id,
+                        client_id=session_client.client_id,
                     )
             else:
                 logger.debug("session_pool_creating_new_session", session_id=session_id)
@@ -166,6 +170,7 @@ class SessionPool:
         logger.debug(
             "session_pool_get_client_complete",
             session_id=session_id,
+            client_id=session_client.client_id,
             session_status=session_client.status,
             session_age_seconds=session_client.metrics.age_seconds,
             session_message_count=session_client.metrics.message_count,
@@ -175,6 +180,7 @@ class SessionPool:
     async def adopt_client(
         self,
         session_id: str,
+        client_id: str,
         client: ImportedClaudeSDKClient,
         options: ClaudeCodeOptions,
     ) -> SessionClient:
@@ -209,6 +215,7 @@ class SessionPool:
             # Create session client wrapper
             session_client = SessionClient(
                 session_id=session_id,
+                client_id=client_id,
                 options=options,
                 ttl_seconds=self.config.session_ttl,
             )
@@ -224,6 +231,7 @@ class SessionPool:
             logger.info(
                 "session_adopted",
                 session_id=session_id,
+                client_id=session_client.client_id,
                 total_sessions=len(self.sessions),
                 message="Adopted pre-connected client from general pool",
             )
@@ -256,10 +264,14 @@ class SessionPool:
         logger.debug(
             "session_connecting_background",
             session_id=session_id,
+            client_id=session_client.client_id,
         )
 
         logger.info(
-            "session_created", session_id=session_id, total_sessions=len(self.sessions)
+            "session_created",
+            session_id=session_id,
+            client_id=session_client.client_id,
+            total_sessions=len(self.sessions),
         )
 
         return session_client

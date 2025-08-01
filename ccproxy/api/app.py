@@ -248,6 +248,25 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         scheduler = await start_scheduler(settings)
         app.state.scheduler = scheduler
         logger.debug("scheduler_initialized")
+
+        # Add pool stats task if pool manager is available
+        if scheduler and hasattr(app.state, "pool_manager") and app.state.pool_manager:
+            try:
+                # Add pool stats task that runs every minute
+                await scheduler.add_task(
+                    task_name="pool_stats",
+                    task_type="pool_stats",
+                    interval_seconds=60,  # Every minute
+                    enabled=True,
+                    pool_manager=app.state.pool_manager,
+                )
+                logger.debug("pool_stats_task_added", interval_seconds=60)
+            except Exception as e:
+                logger.error(
+                    "pool_stats_task_add_failed",
+                    error=str(e),
+                    error_type=type(e).__name__,
+                )
     except SchedulerError as e:
         logger.error("scheduler_initialization_failed", error=str(e))
         # Continue startup even if scheduler fails (graceful degradation)

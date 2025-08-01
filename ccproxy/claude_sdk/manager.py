@@ -277,7 +277,9 @@ class PoolManager:
             sdk_client = await self._pool.extract_client(pooled_client)
 
             # Adopt it into the session pool
-            await self._session_pool.adopt_client(session_id, sdk_client, options)
+            await self._session_pool.adopt_client(
+                session_id, pooled_client.client_id, sdk_client, options
+            )
 
             logger.info(
                 "pool_manager_client_transferred",

@@ -11,6 +11,7 @@ from claude_code_sdk import ClaudeCodeOptions
 from pydantic import BaseModel
 
 from ccproxy.core.async_utils import patched_typing
+from ccproxy.utils.id_generator import generate_client_id
 
 
 with patched_typing():
@@ -52,9 +53,14 @@ class SessionClient:
     """Manages a persistent Claude SDK connection with session state."""
 
     def __init__(
-        self, session_id: str, options: ClaudeCodeOptions, ttl_seconds: int = 3600
+        self,
+        session_id: str,
+        options: ClaudeCodeOptions,
+        client_id: str | None = None,
+        ttl_seconds: int = 3600,
     ):
         self.session_id = session_id
+        self.client_id = client_id or generate_client_id()
         self.options = options
         self.ttl_seconds = ttl_seconds
 
@@ -88,6 +94,7 @@ class SessionClient:
                 logger.info(
                     "session_connecting",
                     session_id=self.session_id,
+                    client_id=self.client_id,
                     attempt=self.connection_attempts,
                 )
 
@@ -100,6 +107,7 @@ class SessionClient:
                 logger.info(
                     "session_connected",
                     session_id=self.session_id,
+                    client_id=self.client_id,
                     attempt=self.connection_attempts,
                 )
 
