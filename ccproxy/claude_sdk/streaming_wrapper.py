@@ -52,6 +52,14 @@ class StreamingResponseWithCleanup(AsyncIterator[T]):
         except StopAsyncIteration:
             # Stream completed normally
             raise
+        except GeneratorExit:
+            # Client disconnected - signal cleanup needed
+            logger.warning(
+                "streaming_wrapper_generator_exit",
+                message="Client disconnected during streaming",
+            )
+            self.cleanup_needed()
+            raise
         except Exception:
             # Error during streaming - mark client as unhealthy
             if self._pooled_client:

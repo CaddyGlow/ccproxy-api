@@ -132,8 +132,38 @@ class SessionPool:
                     client_id=session_client.client_id,
                 )
 
+                # Check if session has an active stream that needs cleanup
+                if session_client.has_active_stream:
+                    logger.warning(
+                        "session_pool_active_stream_detected",
+                        session_id=session_id,
+                        client_id=session_client.client_id,
+                        message="Session has active stream, interrupting before reuse",
+                    )
+                    # Interrupt the session to clean up the active stream
+                    try:
+                        await session_client.interrupt()
+                        # Session should now be clean and ready for reuse
+                        logger.info(
+                            "session_pool_stream_cleaned",
+                            session_id=session_id,
+                            client_id=session_client.client_id,
+                            message="Active stream cleaned, reusing session",
+                        )
+                    except Exception as e:
+                        logger.error(
+                            "session_pool_interrupt_failed",
+                            session_id=session_id,
+                            error=str(e),
+                            message="Failed to clean active stream, creating new session",
+                        )
+                        # Only remove and recreate if interrupt fails
+                        await self._remove_session_unlocked(session_id)
+                        session_client = await self._create_session_unlocked(
+                            session_id, options
+                        )
                 # Check if session is still valid
-                if session_client.is_expired():
+                elif session_client.is_expired():
                     logger.info("session_expired", session_id=session_id)
                     await self._remove_session_unlocked(session_id)
                     session_client = await self._create_session_unlocked(

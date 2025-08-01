@@ -579,20 +579,59 @@ class ClaudeSDKClient:
                             f"Session client not connected for session {session_id}"
                         )
 
-                    message_count = 0
-                    async for msg in self._execute_with_client(
-                        session_client.claude_client,
-                        message,
-                        session_id,
-                        request_id,
-                        session_client=session_client,
-                    ):
-                        message_count += 1
-                        yield msg
+                    # Mark session as having active stream
+                    session_client.has_active_stream = True
 
-                    op["message_count"] = message_count
-                    op["session_id"] = session_id
-                    self._last_api_call_time_ms = op.get("duration_ms", 0.0)
+                    # Create wrapped stream generator
+                    async def stream_with_cleanup() -> AsyncIterator[
+                        sdk_models.UserMessage
+                        | sdk_models.AssistantMessage
+                        | sdk_models.SystemMessage
+                        | sdk_models.ResultMessage
+                    ]:
+                        stream_iterator = None
+                        try:
+                            message_count = 0
+                            if not session_client.claude_client:
+                                raise ClaudeSDKError("Session client not connected")
+
+                            stream_iterator = self._execute_with_client(
+                                session_client.claude_client,
+                                message,
+                                session_id,
+                                request_id,
+                                session_client=session_client,
+                            )
+
+                            async for msg in stream_iterator:
+                                message_count += 1
+                                yield msg
+
+                            op["message_count"] = message_count
+                            op["session_id"] = session_id
+                            self._last_api_call_time_ms = op.get("duration_ms", 0.0)
+
+                        except GeneratorExit:
+                            # Client disconnected - mark session for drain
+                            logger.warning(
+                                "claude_sdk_session_stream_interrupted",
+                                session_id=session_id,
+                                request_id=request_id,
+                                message="Client disconnected, session will drain stream on next interrupt",
+                            )
+
+                            # Just mark that stream needs draining
+                            # The SessionClient.interrupt() will handle the actual draining
+                            session_client.has_active_stream = True
+                            raise
+                        finally:
+                            # Clean up if stream completed normally
+                            if not session_client.has_active_stream:
+                                session_client.has_active_stream = False
+
+                    # Yield from the wrapped generator
+                    async for msg in stream_with_cleanup():
+                        yield msg
 
             except StreamTimeoutError:
                 raise  # Let service layer handle
@@ -674,6 +713,7 @@ class ClaudeSDKClient:
         request_id: str | None = None,
         session_id: str | None = None,
         session_client: Any = None,  # SessionClient for session pool
+        drain_mode: bool = False,  # If True, consume but don't yield
     ) -> AsyncIterator[
         sdk_models.UserMessage
         | sdk_models.AssistantMessage
@@ -688,9 +728,10 @@ class ClaudeSDKClient:
             request_id: Optional request ID for logging
             session_id: Optional session ID for logging
             session_client: Optional session context for session pool operations
+            drain_mode: If True, consume messages without yielding (for cleanup)
 
         Yields:
-            Converted Pydantic model messages
+            Converted Pydantic model messages (unless drain_mode is True)
         """
         async for sdk_msg in message_iterator:
             # Find matching type and convert
@@ -711,7 +752,16 @@ class ClaudeSDKClient:
                         ):
                             session_client.sdk_session_id = converted_message.session_id
 
-                        yield converted_message
+                        # Only yield if not in drain mode
+                        if not drain_mode:
+                            yield converted_message
+                        else:
+                            logger.debug(
+                                "claude_sdk_draining_message",
+                                message_type=type(converted_message).__name__,
+                                request_id=request_id,
+                                session_id=session_id,
+                            )
                     except Exception as e:
                         logger.warning(
                             "claude_sdk_message_conversion_failed",
@@ -729,6 +779,64 @@ class ClaudeSDKClient:
                     request_id=request_id,
                     session_id=session_id,
                 )
+
+    async def _create_drain_task(
+        self,
+        message_iterator: AsyncIterator[Any],
+        session_client: Any,
+        request_id: str | None = None,
+        session_id: str | None = None,
+    ) -> asyncio.Task[None]:
+        """Create a background task to drain remaining messages from stream.
+
+        Args:
+            message_iterator: The message iterator to drain
+            session_client: Session client to update stream status
+            request_id: Optional request ID for logging
+            session_id: Optional session ID for logging
+
+        Returns:
+            Task that completes when stream is drained
+        """
+
+        async def drain_stream() -> None:
+            try:
+                logger.info(
+                    "claude_sdk_starting_stream_drain",
+                    session_id=session_id,
+                    request_id=request_id,
+                )
+
+                message_count = 0
+                async for _ in self._process_message_stream(
+                    message_iterator,
+                    request_id=request_id,
+                    session_id=session_id,
+                    session_client=session_client,
+                    drain_mode=True,
+                ):
+                    message_count += 1
+
+                logger.info(
+                    "claude_sdk_stream_drained",
+                    session_id=session_id,
+                    request_id=request_id,
+                    drained_messages=message_count,
+                )
+            except Exception as e:
+                logger.error(
+                    "claude_sdk_stream_drain_error",
+                    session_id=session_id,
+                    request_id=request_id,
+                    error=str(e),
+                    error_type=type(e).__name__,
+                )
+            finally:
+                if session_client:
+                    session_client.has_active_stream = False
+                    session_client.active_stream_task = None
+
+        return asyncio.create_task(drain_stream())
 
     def _convert_message(self, message: Any, model_class: type[T]) -> T:
         """Convert SDK message to Pydantic model."""

@@ -14,7 +14,9 @@ from ccproxy.adapters.openai.adapter import (
 )
 from ccproxy.api.dependencies import ClaudeServiceDep
 from ccproxy.models.messages import MessageCreateParams, MessageResponse
-from ccproxy.observability.streaming_response import StreamingResponseWithLogging
+from ccproxy.observability.streaming_pool_response import (
+    StreamingResponseWithPoolCleanup,
+)
 from ccproxy.observability.streaming_session_response import (
     StreamingResponseWithSessionInterrupt,
 )
@@ -77,7 +79,7 @@ async def create_openai_chat_completion(
 
             # Use pool cleanup wrapper for general pool (no session_id)
             # This monitors for disconnection and can signal cleanup
-            return StreamingResponseWithSessionInterrupt(
+            return StreamingResponseWithPoolCleanup(
                 content=openai_stream_generator(),
                 request=request,
                 request_context=request_context,
@@ -166,15 +168,12 @@ async def create_openai_chat_completion_with_session(
                 # Send final chunk
                 yield b"data: [DONE]\n\n"
 
-            # Use session monitoring wrapper for disconnection detection
-            # This automatically includes access logging functionality
-            return StreamingResponseWithLogging(
+            # Use session interrupt wrapper for disconnection detection
+            # This will trigger session interruption when client disconnects
+            return StreamingResponseWithSessionInterrupt(
                 content=openai_stream_generator(),
-                # request=request,
-                # session_id=session_id,
-                claude_service=claude_service,
-                request_context=request_context,
-                metrics=getattr(claude_service, "metrics", None),
+                session_id=session_id,
+                sdk_client=claude_service.sdk_client,
                 media_type="text/event-stream",
                 headers={
                     "Cache-Control": "no-cache",
@@ -262,15 +261,12 @@ async def create_anthropic_message_with_session(
                             yield f"data: {json.dumps(chunk)}\n\n".encode()
                 # No final [DONE] chunk for Anthropic format
 
-            # Use session monitoring wrapper for disconnection detection
-            # This automatically includes access logging functionality
-            return StreamingResponseWithLogging(
+            # Use session interrupt wrapper for disconnection detection
+            # This will trigger session interruption when client disconnects
+            return StreamingResponseWithSessionInterrupt(
                 content=anthropic_stream_generator(),
-                # request=request,
-                # session_id=session_id,
-                # claude_service=claude_service,
-                request_context=request_context,
-                metrics=getattr(claude_service, "metrics", None),
+                session_id=session_id,
+                sdk_client=claude_service.sdk_client,
                 media_type="text/event-stream",
                 headers={
                     "Cache-Control": "no-cache",
@@ -318,6 +314,12 @@ async def create_anthropic_message(
                 status_code=500, detail="Internal server error: no request context"
             )
 
+        # Extract session_id from metadata if present
+        session_id = None
+        if message_request.metadata:
+            metadata_dict = message_request.metadata.model_dump()
+            session_id = metadata_dict.get("session_id")
+
         # Call Claude SDK service directly with Anthropic format
         response = await claude_service.create_completion(
             messages=messages,
@@ -326,6 +328,7 @@ async def create_anthropic_message(
             max_tokens=max_tokens,
             stream=stream,
             user_id=getattr(message_request, "user_id", None),
+            session_id=session_id,
             request_context=request_context,
         )
 
@@ -346,21 +349,36 @@ async def create_anthropic_message(
                             yield f"data: {json.dumps(chunk)}\n\n".encode()
                 # No final [DONE] chunk for Anthropic format
 
-            # Use pool cleanup wrapper for general pool (no session_id)
-            # This monitors for disconnection and can signal cleanup
-            return StreamingResponseWithSessionInterrupt(
-                content=anthropic_stream_generator(),
-                request=request,
-                request_context=request_context,
-                metrics=getattr(claude_service, "metrics", None),
-                status_code=200,
-                cleanup_callback=getattr(response, "_cleanup_callback", None),
-                media_type="text/event-stream",
-                headers={
-                    "Cache-Control": "no-cache",
-                    "Connection": "keep-alive",
-                },
-            )
+            # Choose appropriate wrapper based on whether we have a session_id
+            if session_id:
+                # Use session interrupt wrapper for session-based requests
+                # This will trigger session interruption when client disconnects
+                return StreamingResponseWithSessionInterrupt(
+                    content=anthropic_stream_generator(),
+                    session_id=session_id,
+                    sdk_client=claude_service.sdk_client,
+                    media_type="text/event-stream",
+                    headers={
+                        "Cache-Control": "no-cache",
+                        "Connection": "keep-alive",
+                    },
+                )
+            else:
+                # Use pool cleanup wrapper for general pool (no session_id)
+                # This monitors for disconnection and can signal cleanup
+                return StreamingResponseWithPoolCleanup(
+                    content=anthropic_stream_generator(),
+                    request=request,
+                    request_context=request_context,
+                    metrics=getattr(claude_service, "metrics", None),
+                    status_code=200,
+                    cleanup_callback=getattr(response, "_cleanup_callback", None),
+                    media_type="text/event-stream",
+                    headers={
+                        "Cache-Control": "no-cache",
+                        "Connection": "keep-alive",
+                    },
+                )
         else:
             # Return Anthropic format response directly
             return MessageResponse.model_validate(response)

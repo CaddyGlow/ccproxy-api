@@ -133,7 +133,7 @@ class SessionPoolSettings(BaseModel):
     """Session pool configuration settings."""
 
     enabled: bool = Field(
-        default=True, description="Enable session-aware persistent pooling"
+        default=False, description="Enable session-aware persistent pooling"
     )
 
     session_ttl: int = Field(
