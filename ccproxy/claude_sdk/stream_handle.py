@@ -186,29 +186,58 @@ class StreamHandle:
 
                 # No more listeners - trigger interrupt if session client available and worker is still running
                 if self._session_client:
-                    logger.info(
-                        "stream_handle_all_listeners_disconnected",
-                        handle_id=self.handle_id,
-                        worker_status=worker_status,
-                        message="All listeners disconnected, triggering SDK interrupt",
-                    )
-
-                    # Schedule interrupt using a background task with timeout control
-                    try:
-                        # Create a background task with proper timeout and error handling
-                        asyncio.create_task(self._safe_interrupt_with_timeout())
+                    # Check if worker is already stopped/interrupted - no need to interrupt SDK
+                    if self._worker and self._worker.status.value in (
+                        "interrupted",
+                        "completed",
+                        "error",
+                    ):
                         logger.debug(
-                            "stream_handle_interrupt_scheduled",
+                            "stream_handle_worker_already_stopped",
                             handle_id=self.handle_id,
-                            message="SDK interrupt scheduled with timeout control",
+                            worker_status=worker_status,
+                            message="Worker already stopped, skipping SDK interrupt entirely",
                         )
-                    except Exception as e:
-                        logger.error(
-                            "stream_handle_interrupt_schedule_error",
+                        # Still stop the worker to ensure cleanup
+                        if self._worker:
+                            logger.info(
+                                "stream_handle_stopping_worker_direct",
+                                handle_id=self.handle_id,
+                                message="Stopping worker directly since SDK interrupt not needed",
+                            )
+                            try:
+                                await self._worker.stop(timeout=2.0)
+                            except Exception as worker_error:
+                                logger.warning(
+                                    "stream_handle_worker_stop_error",
+                                    handle_id=self.handle_id,
+                                    error=str(worker_error),
+                                    message="Worker stop failed but continuing",
+                                )
+                    else:
+                        logger.info(
+                            "stream_handle_all_listeners_disconnected",
                             handle_id=self.handle_id,
-                            error=str(e),
-                            message="Failed to schedule SDK interrupt",
+                            worker_status=worker_status,
+                            message="All listeners disconnected, triggering SDK interrupt",
                         )
+
+                        # Schedule interrupt using a background task with timeout control
+                        try:
+                            # Create a background task with proper timeout and error handling
+                            asyncio.create_task(self._safe_interrupt_with_timeout())
+                            logger.debug(
+                                "stream_handle_interrupt_scheduled",
+                                handle_id=self.handle_id,
+                                message="SDK interrupt scheduled with timeout control",
+                            )
+                        except Exception as e:
+                            logger.error(
+                                "stream_handle_interrupt_schedule_error",
+                                handle_id=self.handle_id,
+                                error=str(e),
+                                message="Failed to schedule SDK interrupt",
+                            )
                 else:
                     # No more listeners - worker continues but messages are discarded
                     logger.debug(
