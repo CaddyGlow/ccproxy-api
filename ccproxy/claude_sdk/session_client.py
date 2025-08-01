@@ -72,6 +72,9 @@ class SessionClient:
         self.connection_attempts = 0
         self.max_connection_attempts = 3
 
+        # Background connection task
+        self._connection_task: asyncio.Task[bool] | None = None
+
     async def connect(self) -> bool:
         """Establish connection to Claude SDK."""
         async with self.lock:
@@ -123,6 +126,39 @@ class SessionClient:
                     )
 
                 return False
+
+    def connect_background(self) -> asyncio.Task[bool]:
+        """Start connection in background without blocking.
+
+        Returns:
+            Task that completes when connection is established
+        """
+        if self._connection_task is None or self._connection_task.done():
+            self._connection_task = asyncio.create_task(self._connect_async())
+            logger.debug(
+                "session_background_connection_started",
+                session_id=self.session_id,
+            )
+        return self._connection_task
+
+    async def _connect_async(self) -> bool:
+        """Internal async connection method for background task."""
+        try:
+            return await self.connect()
+        except Exception as e:
+            logger.error(
+                "session_background_connection_failed",
+                session_id=self.session_id,
+                error=str(e),
+            )
+            return False
+
+    async def ensure_connected(self) -> bool:
+        """Ensure connection is established, waiting for background task if needed."""
+        if self._connection_task and not self._connection_task.done():
+            # Wait for background connection to complete
+            return await self._connection_task
+        return await self.connect()
 
     async def disconnect(self) -> None:
         """Gracefully disconnect from Claude SDK."""

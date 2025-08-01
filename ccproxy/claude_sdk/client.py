@@ -362,24 +362,78 @@ class ClaudeSDKClient:
         | sdk_models.SystemMessage
         | sdk_models.ResultMessage
     ]:
-        if not session_id:
-            session_id = "default"  # str(uuid4())
+        """Execute query using hybrid pool approach (session pool first, then general pool)."""
+        # If we have a session_id and session pool is available, check if session exists
+        if (
+            session_id
+            and self._pool_manager
+            and await self._pool_manager.has_session_pool()
+        ):
+            try:
+                # Check if session exists before trying to use it
+                if await self._pool_manager.has_session(session_id):
+                    logger.debug(
+                        "claude_sdk_using_existing_session",
+                        session_id=session_id,
+                        request_id=request_id,
+                    )
+                    async for msg in self._query_with_session_pool(
+                        message, options, request_id, session_id
+                    ):
+                        yield msg
+                    return
+            except Exception as e:
+                # Error checking session, fall through to general pool
+                logger.debug(
+                    "claude_sdk_session_check_error",
+                    session_id=session_id,
+                    error=str(e),
+                    request_id=request_id,
+                )
 
-        """Execute query using pooled connection."""
+        # Use general pool with transfer capability
         async with timed_operation("claude_sdk_query_pooled", request_id) as op:
             try:
                 pool = await self._get_configured_pool()
+                server_session_id = None
+                pooled_client_ref = None
 
-                async with pool.acquire_client(options) as client:
+                async with pool.acquire_transferable_client(options) as (
+                    client,
+                    pooled_client,
+                ):
+                    pooled_client_ref = pooled_client
                     message_count = 0
+
                     async for msg in self._execute_with_client(
-                        client, message, session_id, request_id
+                        client, message, session_id or "default", request_id
                     ):
                         message_count += 1
+
+                        # Check if we received a session ID from the server
+                        if isinstance(msg, sdk_models.ResultMessage) and msg.session_id:
+                            server_session_id = msg.session_id
+                            logger.info(
+                                "claude_sdk_received_session_id",
+                                session_id=server_session_id,
+                                request_id=request_id,
+                            )
+
                         yield msg
 
                     op["message_count"] = message_count
                     self._last_api_call_time_ms = op.get("duration_ms", 0.0)
+
+                    # Transfer client to session pool if we got a session ID
+                    if server_session_id and pooled_client_ref and self._pool_manager:
+                        logger.info(
+                            "claude_sdk_transferring_to_session_pool",
+                            session_id=server_session_id,
+                            request_id=request_id,
+                        )
+                        await self._pool_manager.transfer_client_to_session(
+                            pooled_client_ref, server_session_id, options
+                        )
 
             except StreamTimeoutError:
                 # Re-raise timeout errors
@@ -496,6 +550,7 @@ class ClaudeSDKClient:
         """
         try:
             # Wait for the first chunk with timeout - don't care about message type
+            logger.debug("waiting_for_first_chunk", timeout=timeout_seconds)
             first_message = await asyncio.wait_for(
                 anext(message_iterator), timeout=timeout_seconds
             )

@@ -8,6 +8,7 @@ using dependency injection patterns without any global state.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 from collections.abc import Callable
 
 # Type alias for metrics factory function
@@ -16,7 +17,7 @@ from typing import Any, TypeAlias
 import structlog
 from claude_code_sdk import ClaudeCodeOptions
 
-from ccproxy.claude_sdk.pool import ClaudeSDKClientPool, PoolConfig
+from ccproxy.claude_sdk.pool import ClaudeSDKClientPool, PoolConfig, PooledClient
 from ccproxy.claude_sdk.session_client import SessionClient
 from ccproxy.claude_sdk.session_pool import SessionPool, SessionPoolConfig
 from ccproxy.config.settings import Settings
@@ -246,11 +247,55 @@ class PoolManager:
         logger.info("pool_manager_interrupt_all_sessions")
         return await self._session_pool.interrupt_all_sessions()
 
-    def get_session_pool_stats(self) -> dict[str, Any]:
+    async def get_session_pool_stats(self) -> dict[str, Any]:
         """Get session pool statistics."""
         if not self._session_pool:
             return {"enabled": False}
-        return self._session_pool.get_stats()
+        return await self._session_pool.get_stats()
+
+    async def transfer_client_to_session(
+        self, pooled_client: PooledClient, session_id: str, options: ClaudeCodeOptions
+    ) -> None:
+        """Transfer a client from the general pool to the session pool.
+
+        Args:
+            pooled_client: The pooled client to transfer
+            session_id: The session ID assigned by the server
+            options: Claude Code options for the client
+        """
+        if not self._pool or not self._session_pool:
+            logger.warning(
+                "pool_manager_transfer_failed_no_pools",
+                session_id=session_id,
+                has_pool=bool(self._pool),
+                has_session_pool=bool(self._session_pool),
+            )
+            return
+
+        try:
+            # Extract the client from the general pool
+            sdk_client = await self._pool.extract_client(pooled_client)
+
+            # Adopt it into the session pool
+            await self._session_pool.adopt_client(session_id, sdk_client, options)
+
+            logger.info(
+                "pool_manager_client_transferred",
+                session_id=session_id,
+                message="Client successfully transferred from general pool to session pool",
+            )
+
+        except Exception as e:
+            logger.error(
+                "pool_manager_transfer_failed",
+                session_id=session_id,
+                error=str(e),
+                error_type=type(e).__name__,
+            )
+            # If transfer fails, ensure client is cleaned up
+            if pooled_client:
+                with contextlib.suppress(Exception):
+                    await pooled_client.disconnect()
 
     def reset_for_testing(self) -> None:
         """Synchronous reset for test environments.
@@ -266,3 +311,20 @@ class PoolManager:
     def is_active(self) -> bool:
         """Check if the pool manager has an active pool."""
         return self._pool is not None
+
+    async def has_session_pool(self) -> bool:
+        """Check if session pool is available and enabled."""
+        return self._session_pool is not None and self._session_pool.config.enabled
+
+    async def has_session(self, session_id: str) -> bool:
+        """Check if a session exists in the session pool.
+
+        Args:
+            session_id: The session ID to check
+
+        Returns:
+            True if session exists, False otherwise
+        """
+        if not self._session_pool:
+            return False
+        return await self._session_pool.has_session(session_id)

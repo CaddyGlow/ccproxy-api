@@ -144,7 +144,7 @@ class TestPoolConfig:
         assert config.idle_timeout == 300.0
         assert config.health_check_interval == 60.0
         assert config.enable_health_checks is True
-        assert config.reuse_clients is True
+        assert config.reuse_clients is False
 
     def test_pool_config_custom_values(self) -> None:
         """Test PoolConfig with custom values."""
@@ -798,7 +798,7 @@ class TestClaudeSDKClientPool:
         pool._available_clients.put_nowait(mock_pooled_client)
         pool._all_clients.add(mock_pooled_client)
 
-        with patch.object(pool, "_remove_client") as mock_remove:
+        with patch.object(pool, "_remove_client_unlocked") as mock_remove:
             async with pool.acquire_client() as client:
                 assert client is mock_pooled_client.client
                 mock_pooled_client.connect.assert_called_once()
@@ -815,7 +815,8 @@ class TestClaudeSDKClientPool:
 
         Uses organized fixture: mock_pooled_client
         """
-        pool: ClaudeSDKClientPool = ClaudeSDKClientPool()
+        config = PoolConfig(reuse_clients=True)
+        pool: ClaudeSDKClientPool = ClaudeSDKClientPool(config=config)
         pool._all_clients.add(mock_pooled_client)
         pool._active_clients.add(mock_pooled_client)
 
@@ -827,13 +828,14 @@ class TestClaudeSDKClientPool:
     @pytest.mark.asyncio
     async def test_pool_return_client_unhealthy(self) -> None:
         """Test returning an unhealthy client removes it."""
-        pool: ClaudeSDKClientPool = ClaudeSDKClientPool()
+        config = PoolConfig(reuse_clients=True)
+        pool: ClaudeSDKClientPool = ClaudeSDKClientPool(config=config)
 
         mock_unhealthy_client = PooledClientMockBuilder.create_unhealthy_pooled_client()
         pool._all_clients.add(mock_unhealthy_client)
         pool._active_clients.add(mock_unhealthy_client)
 
-        with patch.object(pool, "_remove_client") as mock_remove:
+        with patch.object(pool, "_remove_client_unlocked") as mock_remove:
             await pool._return_client(mock_unhealthy_client)
 
         mock_remove.assert_called_once_with(mock_unhealthy_client)
@@ -852,7 +854,7 @@ class TestClaudeSDKClientPool:
         pool._all_clients.add(mock_pooled_client)
         pool._active_clients.add(mock_pooled_client)
 
-        with patch.object(pool, "_remove_client") as mock_remove:
+        with patch.object(pool, "_remove_client_unlocked") as mock_remove:
             await pool._return_client(mock_pooled_client)
 
         # Should always remove client when reuse is disabled
@@ -876,7 +878,7 @@ class TestClaudeSDKClientPool:
         pool._available_clients.put_nowait(mock_healthy_client)
         pool._available_clients.put_nowait(mock_unhealthy_client)
 
-        with patch.object(pool, "_remove_client") as mock_remove:
+        with patch.object(pool, "_remove_client_unlocked") as mock_remove:
             # Start health check loop
             task: asyncio.Task[Any] = asyncio.create_task(pool._health_check_loop())
 
@@ -909,7 +911,7 @@ class TestClaudeSDKClientPool:
         mock_unhealthy_client.health_check = AsyncMock(return_value=False)
         pool._available_clients.put_nowait(mock_unhealthy_client)
 
-        with patch.object(pool, "_remove_client"):
+        with patch.object(pool, "_remove_client_unlocked"):
             await pool._perform_health_checks()
 
         mock_prometheus_metrics.inc_pool_health_check_failures.assert_called_once()
@@ -937,7 +939,7 @@ class TestClaudeSDKClientPool:
         pool._all_clients.add(mock_active_client)
         pool._available_clients.put_nowait(mock_active_client)
 
-        with patch.object(pool, "_remove_client") as mock_remove:
+        with patch.object(pool, "_remove_client_unlocked") as mock_remove:
             await pool._cleanup_idle_clients()
 
         # Should remove idle client but keep active one
@@ -955,7 +957,7 @@ class TestClaudeSDKClientPool:
             mock_minimum_client: Mock = Mock(spec=PooledClient)
             pool._all_clients.add(mock_minimum_client)
 
-        with patch.object(pool, "_remove_client") as mock_remove:
+        with patch.object(pool, "_remove_client_unlocked") as mock_remove:
             await pool._cleanup_idle_clients()
 
         # Should not remove any clients

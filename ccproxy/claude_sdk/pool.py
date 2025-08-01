@@ -74,6 +74,22 @@ class PooledClient:
             self.is_connected = True
             logger.debug("pooled_client_connected", client_id=self.client_id)
 
+    async def connect_background(self) -> None:
+        """Connect the client in background without blocking."""
+
+        async def _connect() -> None:
+            try:
+                await self.connect()
+            except Exception as e:
+                logger.error(
+                    "pooled_client_background_connect_failed",
+                    client_id=self.client_id,
+                    error=str(e),
+                )
+
+        # Create task to connect in background
+        asyncio.create_task(_connect())
+
     async def disconnect(self) -> None:
         """Disconnect the client."""
         if self.is_connected:
@@ -239,6 +255,7 @@ class ClaudeSDKClientPool:
             self._metrics.record_pool_acquisition_time(acquisition_time)
 
         try:
+            # Ensure client is connected (will wait if still connecting in background)
             await pooled_client.connect()
             pooled_client.mark_used()
             yield pooled_client.client
@@ -253,6 +270,56 @@ class ClaudeSDKClientPool:
                 self._metrics.update_pool_gauges(
                     stats.total_clients, stats.available_clients, stats.active_clients
                 )
+
+    @asynccontextmanager
+    async def acquire_transferable_client(
+        self, options: ClaudeCodeOptions | None = None
+    ) -> AsyncIterator[tuple[SDKClient, PooledClient]]:
+        """
+        Acquire a client that can be transferred to session pool.
+
+        Args:
+            options: Claude Code options (uses default if None)
+
+        Yields:
+            Tuple of (Connected Claude SDK client, PooledClient wrapper)
+        """
+        start_time = time.time()
+        pooled_client = await self._get_client(options or self.default_options)
+        acquisition_time = time.time() - start_time
+
+        self._stats.acquire_count += 1
+
+        # Record metrics
+        if self._metrics:
+            self._metrics.inc_pool_acquisitions()
+            self._metrics.record_pool_acquisition_time(acquisition_time)
+
+        transferred = False
+        try:
+            await pooled_client.connect()
+            pooled_client.mark_used()
+            # Yield both the client and the wrapper for potential transfer
+            yield pooled_client.client, pooled_client
+
+            # Check if client was transferred (will be removed from pool)
+            async with self._lock:
+                transferred = pooled_client not in self._all_clients
+
+        finally:
+            if not transferred:
+                await self._return_client(pooled_client)
+                self._stats.release_count += 1
+
+                # Record metrics
+                if self._metrics:
+                    self._metrics.inc_pool_releases()
+                    stats = self.get_stats()
+                    self._metrics.update_pool_gauges(
+                        stats.total_clients,
+                        stats.available_clients,
+                        stats.active_clients,
+                    )
 
     async def _get_client(self, options: ClaudeCodeOptions) -> PooledClient:
         """Get a client from the pool or create a new one."""
@@ -311,7 +378,7 @@ class ClaudeSDKClientPool:
                 )
             else:
                 # Discard clients after use or if unhealthy/unknown
-                await self._remove_client(pooled_client)
+                await self._remove_client_unlocked(pooled_client)
                 logger.debug(
                     "sdk_pool_client_discarded",
                     client_id=pooled_client.client_id,
@@ -320,6 +387,37 @@ class ClaudeSDKClientPool:
                     else "unhealthy_or_unknown",
                     use_count=pooled_client.use_count,
                 )
+
+    async def extract_client(self, pooled_client: PooledClient) -> SDKClient:
+        """Extract a client from the pool for transfer to another pool.
+
+        This removes the client from pool management without disconnecting it.
+
+        Args:
+            pooled_client: The pooled client to extract
+
+        Returns:
+            The underlying SDK client
+        """
+        async with self._lock:
+            # Remove from active clients
+            if pooled_client in self._active_clients:
+                self._active_clients.remove(pooled_client)
+
+            # Remove from all clients tracking
+            if pooled_client in self._all_clients:
+                self._all_clients.remove(pooled_client)
+                self._stats.connections_closed += 1
+
+            logger.info(
+                "sdk_pool_client_extracted",
+                client_id=pooled_client.client_id,
+                use_count=pooled_client.use_count,
+                total_clients=len(self._all_clients),
+            )
+
+            # Return the raw SDK client
+            return pooled_client.client
 
     async def _create_client(self) -> PooledClient:
         """Create a new pooled client."""
@@ -350,7 +448,12 @@ class ClaudeSDKClientPool:
         return pooled_client
 
     async def _remove_client(self, pooled_client: PooledClient) -> None:
-        """Remove a client from the pool."""
+        """Remove a client from the pool (acquires lock)."""
+        async with self._lock:
+            await self._remove_client_unlocked(pooled_client)
+
+    async def _remove_client_unlocked(self, pooled_client: PooledClient) -> None:
+        """Remove a client from the pool (requires lock to be held)."""
         await pooled_client.disconnect()
 
         if pooled_client in self._all_clients:
@@ -390,6 +493,10 @@ class ClaudeSDKClientPool:
 
             try:
                 pooled_client = await self._create_client()
+
+                # Start connection in background
+                await pooled_client.connect_background()
+
                 await self._available_clients.put(pooled_client)
                 clients_created += 1
 

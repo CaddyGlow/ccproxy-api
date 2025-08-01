@@ -112,6 +112,11 @@ class OptionsHandler:
         if system_message is not None:
             options.system_prompt = system_message
 
+        # If session_id is provided via additional_options, enable continue_conversation
+        # This ensures conversation continuity when using session IDs
+        if additional_options.get("session_id"):
+            options.continue_conversation = True
+
         # Note: temperature and max_tokens are API-level parameters, not ClaudeCodeOptions parameters
         # These are handled at the API request level, not in the options object
 

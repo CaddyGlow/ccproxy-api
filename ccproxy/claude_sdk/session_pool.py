@@ -4,13 +4,17 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import structlog
 from claude_code_sdk import ClaudeCodeOptions
 
 from ccproxy.claude_sdk.session_client import SessionClient, SessionStatus
 from ccproxy.core.errors import ClaudeProxyError, ServiceUnavailableError
+
+
+if TYPE_CHECKING:
+    from claude_code_sdk import ClaudeSDKClient as ImportedClaudeSDKClient
 
 
 logger = structlog.get_logger(__name__)
@@ -44,6 +48,7 @@ class SessionPool:
         self.sessions: dict[str, SessionClient] = {}
         self.cleanup_task: asyncio.Task[None] | None = None
         self._shutdown = False
+        self._lock = asyncio.Lock()
 
     async def start(self) -> None:
         """Start the session pool and cleanup task."""
@@ -69,14 +74,16 @@ class SessionPool:
                 await self.cleanup_task
 
         # Disconnect all active sessions
-        disconnect_tasks = [
-            session_client.disconnect() for session_client in self.sessions.values()
-        ]
+        async with self._lock:
+            disconnect_tasks = [
+                session_client.disconnect() for session_client in self.sessions.values()
+            ]
 
-        if disconnect_tasks:
-            await asyncio.gather(*disconnect_tasks, return_exceptions=True)
+            if disconnect_tasks:
+                await asyncio.gather(*disconnect_tasks, return_exceptions=True)
 
-        self.sessions.clear()
+            self.sessions.clear()
+
         logger.info("session_pool_stopped")
 
     async def get_session_client(
@@ -100,44 +107,61 @@ class SessionPool:
                 status_code=500,
             )
 
-        # Check session limit
-        if (
-            session_id not in self.sessions
-            and len(self.sessions) >= self.config.max_sessions
-        ):
+        # Check session limit and get/create session
+        async with self._lock:
+            if (
+                session_id not in self.sessions
+                and len(self.sessions) >= self.config.max_sessions
+            ):
+                logger.error(
+                    "session_pool_at_capacity",
+                    session_id=session_id,
+                    current_sessions=len(self.sessions),
+                    max_sessions=self.config.max_sessions,
+                )
+                raise ServiceUnavailableError(
+                    f"Session pool at capacity: {self.config.max_sessions}"
+                )
+            options.continue_conversation = True
+            # Get existing session or create new one
+            if session_id in self.sessions:
+                logger.debug(
+                    "session_pool_existing_session_found", session_id=session_id
+                )
+                session_client = self.sessions[session_id]
+
+                # Check if session is still valid
+                if session_client.is_expired():
+                    logger.info("session_expired", session_id=session_id)
+                    await self._remove_session_unlocked(session_id)
+                    session_client = await self._create_session_unlocked(
+                        session_id, options
+                    )
+                elif (
+                    not await session_client.is_healthy()
+                    and self.config.connection_recovery
+                ):
+                    logger.info("session_unhealthy_recovering", session_id=session_id)
+                    await session_client.connect()
+                else:
+                    logger.debug(
+                        "session_pool_reusing_healthy_session", session_id=session_id
+                    )
+            else:
+                logger.debug("session_pool_creating_new_session", session_id=session_id)
+                session_client = await self._create_session_unlocked(
+                    session_id, options
+                )
+
+        # Ensure session is connected before returning
+        if not await session_client.ensure_connected():
             logger.error(
-                "session_pool_at_capacity",
+                "session_pool_connection_failed",
                 session_id=session_id,
-                current_sessions=len(self.sessions),
-                max_sessions=self.config.max_sessions,
             )
             raise ServiceUnavailableError(
-                f"Session pool at capacity: {self.config.max_sessions}"
+                f"Failed to establish session connection: {session_id}"
             )
-
-        # Get existing session or create new one
-        if session_id in self.sessions:
-            logger.debug("session_pool_existing_session_found", session_id=session_id)
-            session_client = self.sessions[session_id]
-
-            # Check if session is still valid
-            if session_client.is_expired():
-                logger.info("session_expired", session_id=session_id)
-                await self._remove_session(session_id)
-                session_client = await self._create_session(session_id, options)
-            elif (
-                not await session_client.is_healthy()
-                and self.config.connection_recovery
-            ):
-                logger.info("session_unhealthy_recovering", session_id=session_id)
-                await session_client.connect()
-            else:
-                logger.debug(
-                    "session_pool_reusing_healthy_session", session_id=session_id
-                )
-        else:
-            logger.debug("session_pool_creating_new_session", session_id=session_id)
-            session_client = await self._create_session(session_id, options)
 
         logger.debug(
             "session_pool_get_client_complete",
@@ -148,21 +172,91 @@ class SessionPool:
         )
         return session_client
 
+    async def adopt_client(
+        self,
+        session_id: str,
+        client: ImportedClaudeSDKClient,
+        options: ClaudeCodeOptions,
+    ) -> SessionClient:
+        """Adopt a pre-connected client from the general pool.
+
+        Args:
+            session_id: The session ID for this client
+            client: Pre-connected Claude SDK client
+            options: Claude Code options used for the client
+
+        Returns:
+            The created SessionClient
+        """
+        async with self._lock:
+            # Check session limit
+            if (
+                session_id not in self.sessions
+                and len(self.sessions) >= self.config.max_sessions
+            ):
+                logger.error(
+                    "session_pool_at_capacity_for_adoption",
+                    session_id=session_id,
+                    current_sessions=len(self.sessions),
+                    max_sessions=self.config.max_sessions,
+                )
+                # Disconnect the client since we can't adopt it
+                await client.disconnect()
+                raise ServiceUnavailableError(
+                    f"Session pool at capacity: {self.config.max_sessions}"
+                )
+
+            # Create session client wrapper
+            session_client = SessionClient(
+                session_id=session_id,
+                options=options,
+                ttl_seconds=self.config.session_ttl,
+            )
+
+            # Adopt the pre-connected client
+            session_client.claude_client = client
+            session_client.status = SessionStatus.ACTIVE
+            session_client.connection_attempts = 1
+
+            # Add to sessions
+            self.sessions[session_id] = session_client
+
+            logger.info(
+                "session_adopted",
+                session_id=session_id,
+                total_sessions=len(self.sessions),
+                message="Adopted pre-connected client from general pool",
+            )
+
+            return session_client
+
     async def _create_session(
         self, session_id: str, options: ClaudeCodeOptions
     ) -> SessionClient:
-        """Create a new session context."""
+        """Create a new session context (acquires lock)."""
+        async with self._lock:
+            return await self._create_session_unlocked(session_id, options)
+
+    async def _create_session_unlocked(
+        self, session_id: str, options: ClaudeCodeOptions
+    ) -> SessionClient:
+        """Create a new session context (requires lock to be held)."""
         session_client = SessionClient(
             session_id=session_id, options=options, ttl_seconds=self.config.session_ttl
         )
 
-        # Connect to Claude SDK
-        if not await session_client.connect():
-            raise ServiceUnavailableError(
-                f"Failed to establish session connection: {session_id}"
-            )
+        # Start connection in background
+        connection_task = session_client.connect_background()
 
+        # Add to sessions immediately (will connect in background)
         self.sessions[session_id] = session_client
+
+        # Optionally wait for connection to verify it works
+        # For now, we'll let it connect in background and check on first use
+        logger.debug(
+            "session_connecting_background",
+            session_id=session_id,
+        )
 
         logger.info(
             "session_created", session_id=session_id, total_sessions=len(self.sessions)
@@ -171,7 +265,12 @@ class SessionPool:
         return session_client
 
     async def _remove_session(self, session_id: str) -> None:
-        """Remove and cleanup a session."""
+        """Remove and cleanup a session (acquires lock)."""
+        async with self._lock:
+            await self._remove_session_unlocked(session_id)
+
+    async def _remove_session_unlocked(self, session_id: str) -> None:
+        """Remove and cleanup a session (requires lock to be held)."""
         if session_id not in self.sessions:
             return
 
@@ -202,7 +301,12 @@ class SessionPool:
         sessions_to_remove = []
         stuck_sessions = []
 
-        for session_id, session_client in self.sessions.items():
+        # Get a snapshot of sessions to check
+        async with self._lock:
+            sessions_snapshot = list(self.sessions.items())
+
+        # Check sessions outside the lock to avoid holding it too long
+        for session_id, session_client in sessions_snapshot:
             # Check if session is potentially stuck (active too long)
             is_stuck = (
                 session_client.status.value == "active"
@@ -257,11 +361,12 @@ class SessionPool:
         Returns:
             True if session was found and interrupted, False otherwise
         """
-        if session_id not in self.sessions:
-            logger.warning("session_not_found", session_id=session_id)
-            return False
+        async with self._lock:
+            if session_id not in self.sessions:
+                logger.warning("session_not_found", session_id=session_id)
+                return False
 
-        session_client = self.sessions[session_id]
+            session_client = self.sessions[session_id]
 
         try:
             # Interrupt the session with 10-second timeout (allows for 5s interrupt + 3s disconnect + buffer)
@@ -291,17 +396,19 @@ class SessionPool:
         Returns:
             Number of sessions that were interrupted
         """
-        session_ids = list(self.sessions.keys())
+        # Get snapshot of all sessions
+        async with self._lock:
+            session_items = list(self.sessions.items())
+
         interrupted_count = 0
 
         logger.info(
             "session_interrupt_all_requested",
-            total_sessions=len(session_ids),
+            total_sessions=len(session_items),
         )
 
-        for session_id in session_ids:
+        for session_id, session_client in session_items:
             try:
-                session_client = self.sessions[session_id]
                 await session_client.interrupt()
                 interrupted_count += 1
             except Exception as e:
@@ -314,22 +421,38 @@ class SessionPool:
         logger.info(
             "session_interrupt_all_completed",
             interrupted_count=interrupted_count,
-            total_requested=len(session_ids),
+            total_requested=len(session_items),
         )
 
         return interrupted_count
 
-    def get_stats(self) -> dict[str, Any]:
+    async def has_session(self, session_id: str) -> bool:
+        """Check if a session exists in the pool.
+
+        Args:
+            session_id: The session ID to check
+
+        Returns:
+            True if session exists, False otherwise
+        """
+        async with self._lock:
+            return session_id in self.sessions
+
+    async def get_stats(self) -> dict[str, Any]:
         """Get session pool statistics."""
+        async with self._lock:
+            sessions_list = list(self.sessions.values())
+            total_sessions = len(self.sessions)
+
         active_sessions = sum(
-            1 for s in self.sessions.values() if s.status == SessionStatus.ACTIVE
+            1 for s in sessions_list if s.status == SessionStatus.ACTIVE
         )
 
-        total_messages = sum(s.metrics.message_count for s in self.sessions.values())
+        total_messages = sum(s.metrics.message_count for s in sessions_list)
 
         return {
             "enabled": self.config.enabled,
-            "total_sessions": len(self.sessions),
+            "total_sessions": total_sessions,
             "active_sessions": active_sessions,
             "max_sessions": self.config.max_sessions,
             "total_messages": total_messages,
