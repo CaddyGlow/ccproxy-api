@@ -84,8 +84,8 @@ WORKDIR /app
 # ENV PATH="/app/.venv/bin:/app/node_modules/.bin:$PATH"
 ENV PATH="/app/.venv/bin:/app/bun_global/bin:$PATH"
 ENV PYTHONPATH=/app
-ENV HOST=0.0.0.0
-ENV PORT=8000
+ENV SERVER__HOST=0.0.0.0
+ENV SERVER__PORT=8000
 
 EXPOSE ${PORT:-8000}
 
