@@ -87,10 +87,10 @@ ENV PYTHONPATH=/app
 ENV SERVER__HOST=0.0.0.0
 ENV SERVER__PORT=8000
 
-EXPOSE ${PORT:-8000}
+EXPOSE ${SERVER__PORT:-8000}
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-  CMD curl -f http://localhost:${PORT:-8000}/health || exit 1
+  CMD curl -f http://localhost:${SERVER__PORT:-8000}/health || exit 1
 
 # Entrypoint used to create user and set
 # user home folder

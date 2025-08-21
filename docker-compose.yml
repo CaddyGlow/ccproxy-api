@@ -6,16 +6,16 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - HOST=0.0.0.0
-      - PORT=8000
-      - LOG_LEVEL=INFO
+      - SERVER__HOST=0.0.0.0
+      - SERVER__PORT=8000
+      - SERVER__LOG_LEVEL=INFO
       - PUID=${PUID:-1000}
       - PGID=${PGID:-1000}
     # env_file:
     #   - .env
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:$SERVER__PORT/health"]
       interval: 30s
       timeout: 10s
       retries: 3
