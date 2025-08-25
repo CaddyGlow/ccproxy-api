@@ -25,9 +25,10 @@ from claude_code_sdk import (
     TextBlock,
 )
 
-from ccproxy.claude_sdk.client import ClaudeSDKClient
 from ccproxy.core.errors import ClaudeProxyError, ServiceUnavailableError
-from ccproxy.models import claude_sdk as sdk_models
+from plugins.claude_sdk import models as sdk_models
+from plugins.claude_sdk.client import ClaudeSDKClient
+from plugins.claude_sdk.config import ClaudeSDKSettings
 
 
 class TestClaudeSDKClient:
@@ -35,27 +36,30 @@ class TestClaudeSDKClient:
 
     def test_init_default_values(self) -> None:
         """Test client initialization with default values."""
-        client: ClaudeSDKClient = ClaudeSDKClient()
+        config = ClaudeSDKSettings()
+        client: ClaudeSDKClient = ClaudeSDKClient(config=config)
 
         assert client._last_api_call_time_ms == 0.0
-        assert client._settings is None
+        assert client.config is config
         assert client._session_manager is None
 
     def test_init_with_session_manager(self) -> None:
         """Test client initialization with session manager."""
-        mock_settings: Mock = Mock()  # Descriptive mock for settings
+        from plugins.claude_sdk.config import ClaudeSDKSettings
+
+        config = ClaudeSDKSettings()
         mock_session_manager: Mock = Mock()  # Descriptive mock for session manager
         client: ClaudeSDKClient = ClaudeSDKClient(
-            settings=mock_settings, session_manager=mock_session_manager
+            config=config, session_manager=mock_session_manager
         )
 
-        assert client._settings is mock_settings
+        assert client.config is config
         assert client._session_manager is mock_session_manager
 
     @pytest.mark.asyncio
     async def test_validate_health_success(self) -> None:
         """Test health validation returns True when SDK is available."""
-        client: ClaudeSDKClient = ClaudeSDKClient()
+        client: ClaudeSDKClient = ClaudeSDKClient(config=ClaudeSDKSettings())
 
         result: bool = await client.validate_health()
 
@@ -64,7 +68,7 @@ class TestClaudeSDKClient:
     @pytest.mark.asyncio
     async def test_validate_health_exception(self) -> None:
         """Test health validation returns False when exceptions occur."""
-        client: ClaudeSDKClient = ClaudeSDKClient()
+        client: ClaudeSDKClient = ClaudeSDKClient(config=ClaudeSDKSettings())
 
         # Mock an exception during health check
         with patch.object(
@@ -77,14 +81,14 @@ class TestClaudeSDKClient:
     @pytest.mark.asyncio
     async def test_close_cleanup(self) -> None:
         """Test client cleanup on close."""
-        client: ClaudeSDKClient = ClaudeSDKClient()
+        client: ClaudeSDKClient = ClaudeSDKClient(config=ClaudeSDKSettings())
 
         await client.close()
         # Claude SDK doesn't require explicit cleanup, so this should pass without error
 
     def test_last_api_call_time_ms_initial(self) -> None:
         """Test getting last API call time when no calls made."""
-        client: ClaudeSDKClient = ClaudeSDKClient()
+        client: ClaudeSDKClient = ClaudeSDKClient(config=ClaudeSDKSettings())
 
         result: float = client._last_api_call_time_ms
 
@@ -92,7 +96,7 @@ class TestClaudeSDKClient:
 
     def test_last_api_call_time_ms_after_call(self) -> None:
         """Test getting last API call time after setting it."""
-        client: ClaudeSDKClient = ClaudeSDKClient()
+        client: ClaudeSDKClient = ClaudeSDKClient(config=ClaudeSDKSettings())
         client._last_api_call_time_ms = 123.45
 
         result: float = client._last_api_call_time_ms
@@ -108,16 +112,16 @@ class TestClaudeSDKClientStatelessQueries:
         self, mock_sdk_client_instance: AsyncMock
     ) -> None:
         """Test successful stateless query execution."""
-        client: ClaudeSDKClient = ClaudeSDKClient()
+        client: ClaudeSDKClient = ClaudeSDKClient(config=ClaudeSDKSettings())
         options: ClaudeCodeOptions = ClaudeCodeOptions()
 
         with patch(
-            "ccproxy.claude_sdk.client.ImportedClaudeSDKClient",
+            "plugins.claude_sdk.client.ImportedClaudeSDKClient",
             return_value=mock_sdk_client_instance,
         ):
             messages: list[Any] = []
             # Create a proper SDKMessage for the test
-            from ccproxy.models.claude_sdk import create_sdk_message
+            from plugins.claude_sdk.models import create_sdk_message
 
             sdk_message = create_sdk_message(content="Hello")
 
@@ -138,18 +142,18 @@ class TestClaudeSDKClientStatelessQueries:
         self, mock_sdk_client_cli_not_found: AsyncMock
     ) -> None:
         """Test handling of CLINotFoundError."""
-        client: ClaudeSDKClient = ClaudeSDKClient()
+        client: ClaudeSDKClient = ClaudeSDKClient(config=ClaudeSDKSettings())
         options: ClaudeCodeOptions = ClaudeCodeOptions()
 
         with (
             patch(
-                "ccproxy.claude_sdk.client.ImportedClaudeSDKClient",
+                "plugins.claude_sdk.client.ImportedClaudeSDKClient",
                 return_value=mock_sdk_client_cli_not_found,
             ),
             pytest.raises(ServiceUnavailableError) as exc_info,
         ):
             # Create a proper SDKMessage for the test
-            from ccproxy.models.claude_sdk import create_sdk_message
+            from plugins.claude_sdk.models import create_sdk_message
 
             sdk_message = create_sdk_message(content="Hello")
 
@@ -165,18 +169,18 @@ class TestClaudeSDKClientStatelessQueries:
         self, mock_sdk_client_cli_connection_error: AsyncMock
     ) -> None:
         """Test handling of CLIConnectionError."""
-        client: ClaudeSDKClient = ClaudeSDKClient()
+        client: ClaudeSDKClient = ClaudeSDKClient(config=ClaudeSDKSettings())
         options: ClaudeCodeOptions = ClaudeCodeOptions()
 
         with (
             patch(
-                "ccproxy.claude_sdk.client.ImportedClaudeSDKClient",
+                "plugins.claude_sdk.client.ImportedClaudeSDKClient",
                 return_value=mock_sdk_client_cli_connection_error,
             ),
             pytest.raises(ServiceUnavailableError) as exc_info,
         ):
             # Create a proper SDKMessage for the test
-            from ccproxy.models.claude_sdk import create_sdk_message
+            from plugins.claude_sdk.models import create_sdk_message
 
             sdk_message = create_sdk_message(content="Hello")
 
@@ -192,18 +196,18 @@ class TestClaudeSDKClientStatelessQueries:
         self, mock_sdk_client_process_error: AsyncMock
     ) -> None:
         """Test handling of ProcessError."""
-        client: ClaudeSDKClient = ClaudeSDKClient()
+        client: ClaudeSDKClient = ClaudeSDKClient(config=ClaudeSDKSettings())
         options: ClaudeCodeOptions = ClaudeCodeOptions()
 
         with (
             patch(
-                "ccproxy.claude_sdk.client.ImportedClaudeSDKClient",
+                "plugins.claude_sdk.client.ImportedClaudeSDKClient",
                 return_value=mock_sdk_client_process_error,
             ),
             pytest.raises(ClaudeProxyError) as exc_info,
         ):
             # Create a proper SDKMessage for the test
-            from ccproxy.models.claude_sdk import create_sdk_message
+            from plugins.claude_sdk.models import create_sdk_message
 
             sdk_message = create_sdk_message(content="Hello")
 
@@ -220,18 +224,18 @@ class TestClaudeSDKClientStatelessQueries:
         self, mock_sdk_client_json_decode_error: AsyncMock
     ) -> None:
         """Test handling of CLIJSONDecodeError."""
-        client: ClaudeSDKClient = ClaudeSDKClient()
+        client: ClaudeSDKClient = ClaudeSDKClient(config=ClaudeSDKSettings())
         options: ClaudeCodeOptions = ClaudeCodeOptions()
 
         with (
             patch(
-                "ccproxy.claude_sdk.client.ImportedClaudeSDKClient",
+                "plugins.claude_sdk.client.ImportedClaudeSDKClient",
                 return_value=mock_sdk_client_json_decode_error,
             ),
             pytest.raises(ClaudeProxyError) as exc_info,
         ):
             # Create a proper SDKMessage for the test
-            from ccproxy.models.claude_sdk import create_sdk_message
+            from plugins.claude_sdk.models import create_sdk_message
 
             sdk_message = create_sdk_message(content="Hello")
 
@@ -248,18 +252,18 @@ class TestClaudeSDKClientStatelessQueries:
         self, mock_sdk_client_unexpected_error: AsyncMock
     ) -> None:
         """Test handling of unexpected errors."""
-        client: ClaudeSDKClient = ClaudeSDKClient()
+        client: ClaudeSDKClient = ClaudeSDKClient(config=ClaudeSDKSettings())
         options: ClaudeCodeOptions = ClaudeCodeOptions()
 
         with (
             patch(
-                "ccproxy.claude_sdk.client.ImportedClaudeSDKClient",
+                "plugins.claude_sdk.client.ImportedClaudeSDKClient",
                 return_value=mock_sdk_client_unexpected_error,
             ),
             pytest.raises(ClaudeProxyError) as exc_info,
         ):
             # Create a proper SDKMessage for the test
-            from ccproxy.models.claude_sdk import create_sdk_message
+            from plugins.claude_sdk.models import create_sdk_message
 
             sdk_message = create_sdk_message(content="Hello")
 
@@ -274,7 +278,7 @@ class TestClaudeSDKClientStatelessQueries:
     @pytest.mark.asyncio
     async def test_query_completion_unknown_message_type(self) -> None:
         """Test handling of unknown message types."""
-        client: ClaudeSDKClient = ClaudeSDKClient()
+        client: ClaudeSDKClient = ClaudeSDKClient(config=ClaudeSDKSettings())
         options: ClaudeCodeOptions = ClaudeCodeOptions()
 
         # Create a mock unknown message type - descriptive mock for unknown type handling
@@ -293,12 +297,12 @@ class TestClaudeSDKClientStatelessQueries:
         mock_sdk_client.receive_response = unknown_message_response
 
         with patch(
-            "ccproxy.claude_sdk.client.ImportedClaudeSDKClient",
+            "plugins.claude_sdk.client.ImportedClaudeSDKClient",
             return_value=mock_sdk_client,
         ):
             messages: list[Any] = []
             # Create a proper SDKMessage for the test
-            from ccproxy.models.claude_sdk import create_sdk_message
+            from plugins.claude_sdk.models import create_sdk_message
 
             sdk_message = create_sdk_message(content="Hello")
 
@@ -313,7 +317,7 @@ class TestClaudeSDKClientStatelessQueries:
     @pytest.mark.asyncio
     async def test_query_completion_message_conversion_failure(self) -> None:
         """Test handling of message conversion failures."""
-        client: ClaudeSDKClient = ClaudeSDKClient()
+        client: ClaudeSDKClient = ClaudeSDKClient(config=ClaudeSDKSettings())
         options: ClaudeCodeOptions = ClaudeCodeOptions()
 
         # Create a message that will fail conversion
@@ -335,7 +339,7 @@ class TestClaudeSDKClientStatelessQueries:
         # Mock the conversion to fail
         with (
             patch(
-                "ccproxy.claude_sdk.client.ImportedClaudeSDKClient",
+                "plugins.claude_sdk.client.ImportedClaudeSDKClient",
                 return_value=mock_sdk_client,
             ),
             patch.object(
@@ -344,7 +348,7 @@ class TestClaudeSDKClientStatelessQueries:
         ):
             messages: list[Any] = []
             # Create a proper SDKMessage for the test
-            from ccproxy.models.claude_sdk import create_sdk_message
+            from plugins.claude_sdk.models import create_sdk_message
 
             sdk_message = create_sdk_message(content="Hello")
 
@@ -361,16 +365,16 @@ class TestClaudeSDKClientStatelessQueries:
         self, mock_sdk_client_streaming: AsyncMock
     ) -> None:
         """Test query with multiple message types."""
-        client: ClaudeSDKClient = ClaudeSDKClient()
+        client: ClaudeSDKClient = ClaudeSDKClient(config=ClaudeSDKSettings())
         options: ClaudeCodeOptions = ClaudeCodeOptions()
 
         with patch(
-            "ccproxy.claude_sdk.client.ImportedClaudeSDKClient",
+            "plugins.claude_sdk.client.ImportedClaudeSDKClient",
             return_value=mock_sdk_client_streaming,
         ):
             messages: list[Any] = []
             # Create a proper SDKMessage for the test
-            from ccproxy.models.claude_sdk import create_sdk_message
+            from plugins.claude_sdk.models import create_sdk_message
 
             sdk_message = create_sdk_message(content="Hello")
 
@@ -395,7 +399,7 @@ class TestClaudeSDKClientStatelessQueries:
         This test shows how organized fixtures can provide consistent mock behavior
         without complex inline setup, improving test maintainability.
         """
-        client: ClaudeSDKClient = ClaudeSDKClient()
+        client: ClaudeSDKClient = ClaudeSDKClient(config=ClaudeSDKSettings())
         options: ClaudeCodeOptions = ClaudeCodeOptions()
 
         # Organized fixtures provide pre-configured, consistent mock responses
@@ -418,7 +422,7 @@ class TestClaudeSDKClientStatelessQueries:
         This test demonstrates how organized fixtures can be used for
         non-query operations like health checks.
         """
-        client: ClaudeSDKClient = ClaudeSDKClient()
+        client: ClaudeSDKClient = ClaudeSDKClient(config=ClaudeSDKSettings())
 
         # Mock the validate_health method from the organized fixture
         mock_internal_claude_sdk_service.validate_health.return_value = True
@@ -434,7 +438,7 @@ class TestClaudeSDKClientMessageConversion:
 
     def test_convert_message_with_dict(self) -> None:
         """Test message conversion with object having __dict__."""
-        client: ClaudeSDKClient = ClaudeSDKClient()
+        client: ClaudeSDKClient = ClaudeSDKClient(config=ClaudeSDKSettings())
 
         # Create a mock message with __dict__ - structured mock for dict-based conversion
         mock_dict_message: Mock = Mock()
@@ -449,7 +453,7 @@ class TestClaudeSDKClientMessageConversion:
 
     def test_convert_message_with_dataclass(self) -> None:
         """Test message conversion with dataclass object."""
-        client: ClaudeSDKClient = ClaudeSDKClient()
+        client: ClaudeSDKClient = ClaudeSDKClient(config=ClaudeSDKSettings())
 
         # Create a mock dataclass-like object - structured mock for dataclass conversion
         mock_dataclass_message: Mock = Mock()
@@ -468,7 +472,7 @@ class TestClaudeSDKClientMessageConversion:
 
     def test_convert_message_with_attributes(self) -> None:
         """Test message conversion by extracting common attributes."""
-        client: ClaudeSDKClient = ClaudeSDKClient()
+        client: ClaudeSDKClient = ClaudeSDKClient(config=ClaudeSDKSettings())
 
         # Create a mock message with common attributes - structured mock for attribute extraction
         mock_attributes_message: Mock = Mock()

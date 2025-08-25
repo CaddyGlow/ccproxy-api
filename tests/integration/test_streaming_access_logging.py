@@ -78,17 +78,13 @@ class TestStreamingAccessLogging:  # type: ignore[unreachable]
         app = create_app(settings=test_settings)
 
         # Override dependencies
-        from ccproxy.api.dependencies import (
-            get_cached_claude_service,
-            get_cached_settings,
-        )
+        from ccproxy.api.dependencies import get_cached_settings
         from ccproxy.config.settings import get_settings as original_get_settings
 
         app.dependency_overrides[original_get_settings] = lambda: test_settings
         app.dependency_overrides[get_cached_settings] = lambda request: test_settings
-        app.dependency_overrides[get_cached_claude_service] = (
-            lambda request: mock_internal_claude_sdk_service_streaming
-        )
+        # Note: Plugin-based architecture no longer uses get_cached_claude_service
+        # ProxyService is initialized at startup and stored in app.state
 
         client = TestClient(app)
 
@@ -99,7 +95,7 @@ class TestStreamingAccessLogging:  # type: ignore[unreachable]
             # Make streaming request to Anthropic endpoint
             with client.stream(
                 "POST",
-                "/sdk/v1/messages",
+                "/api/v1/messages",
                 json={
                     "model": "claude-3-5-sonnet-20241022",
                     "messages": [{"role": "user", "content": "Hello"}],
@@ -202,17 +198,13 @@ class TestStreamingAccessLogging:  # type: ignore[unreachable]
         app = create_app(settings=test_settings)
 
         # Override dependencies
-        from ccproxy.api.dependencies import (
-            get_cached_claude_service,
-            get_cached_settings,
-        )
+        from ccproxy.api.dependencies import get_cached_settings
         from ccproxy.config.settings import get_settings as original_get_settings
 
         app.dependency_overrides[original_get_settings] = lambda: test_settings
         app.dependency_overrides[get_cached_settings] = lambda request: test_settings
-        app.dependency_overrides[get_cached_claude_service] = (
-            lambda request: mock_internal_claude_sdk_service_streaming
-        )
+        # Note: Plugin-based architecture no longer uses get_cached_claude_service
+        # ProxyService is initialized at startup and stored in app.state
 
         client = TestClient(app)
 
@@ -223,7 +215,7 @@ class TestStreamingAccessLogging:  # type: ignore[unreachable]
             # Make streaming request to OpenAI endpoint
             with client.stream(
                 "POST",
-                "/sdk/v1/chat/completions",
+                "/api/v1/chat/completions",
                 json={
                     "model": "claude-3-5-sonnet-20241022",
                     "messages": [{"role": "user", "content": "Hello"}],
@@ -290,17 +282,13 @@ class TestStreamingAccessLogging:  # type: ignore[unreachable]
         app = create_app(settings=test_settings)
 
         # Override dependencies
-        from ccproxy.api.dependencies import (
-            get_cached_claude_service,
-            get_cached_settings,
-        )
+        from ccproxy.api.dependencies import get_cached_settings
         from ccproxy.config.settings import get_settings as original_get_settings
 
         app.dependency_overrides[original_get_settings] = lambda: test_settings
         app.dependency_overrides[get_cached_settings] = lambda request: test_settings
-        app.dependency_overrides[get_cached_claude_service] = (
-            lambda request: mock_internal_claude_sdk_service_streaming
-        )
+        # Note: Plugin-based architecture no longer uses get_cached_claude_service
+        # ProxyService is initialized at startup and stored in app.state
 
         client = TestClient(app)
 
@@ -310,7 +298,7 @@ class TestStreamingAccessLogging:  # type: ignore[unreachable]
         ) as mock_log:
             # Make streaming request that will fail
             response = client.post(
-                "/sdk/v1/messages",
+                "/api/v1/messages",
                 json={
                     "model": "invalid-model",
                     "messages": [{"role": "user", "content": "Hello"}],
@@ -370,17 +358,13 @@ class TestStreamingAccessLogging:  # type: ignore[unreachable]
         app = create_app(settings=test_settings)
 
         # Override dependencies
-        from ccproxy.api.dependencies import (
-            get_cached_claude_service,
-            get_cached_settings,
-        )
+        from ccproxy.api.dependencies import get_cached_settings
         from ccproxy.config.settings import get_settings as original_get_settings
 
         app.dependency_overrides[original_get_settings] = lambda: test_settings
         app.dependency_overrides[get_cached_settings] = lambda request: test_settings
-        app.dependency_overrides[get_cached_claude_service] = (
-            lambda request: mock_internal_claude_sdk_service_streaming
-        )
+        # Note: Plugin-based architecture no longer uses get_cached_claude_service
+        # ProxyService is initialized at startup and stored in app.state
 
         client = TestClient(app)
 
@@ -397,7 +381,7 @@ class TestStreamingAccessLogging:  # type: ignore[unreachable]
                 # Make streaming request - should still work despite logging failure
                 with client.stream(
                     "POST",
-                    "/sdk/v1/messages",
+                    "/api/v1/messages",
                     json={
                         "model": "claude-3-5-sonnet-20241022",
                         "messages": [{"role": "user", "content": "Hello"}],
@@ -453,23 +437,19 @@ class TestStreamingAccessLogging:  # type: ignore[unreachable]
         app = create_app(settings=test_settings)
 
         # Override dependencies
-        from ccproxy.api.dependencies import (
-            get_cached_claude_service,
-            get_cached_settings,
-        )
+        from ccproxy.api.dependencies import get_cached_settings
         from ccproxy.config.settings import get_settings as original_get_settings
 
         app.dependency_overrides[original_get_settings] = lambda: test_settings
         app.dependency_overrides[get_cached_settings] = lambda request: test_settings
-        app.dependency_overrides[get_cached_claude_service] = (
-            lambda request: mock_internal_claude_sdk_service_streaming
-        )
+        # Note: Plugin-based architecture no longer uses get_cached_claude_service
+        # ProxyService is initialized at startup and stored in app.state
 
         client = TestClient(app)
 
         # Make non-streaming request to Anthropic endpoint
         response = client.post(
-            "/sdk/v1/messages",
+            "/api/v1/messages",
             json={
                 "model": "claude-3-5-sonnet-20241022",
                 "messages": [{"role": "user", "content": "Hello"}],

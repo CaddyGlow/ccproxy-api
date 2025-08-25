@@ -621,7 +621,7 @@ All configuration values are automatically validated:
 
 - **Port**: Must be between 1-65535
 - **Log Level**: Must be DEBUG, INFO, WARNING, ERROR, or CRITICAL
-- **CORS Origins**: Must be valid URLs or "*"
+- **CORS Origins**: Must be valid URLs (avoid using "*" for security)
 - **Claude CLI Path**: Must exist and be executable
 - **Tools Handling**: Must be "error", "warning", or "ignore"
 
@@ -660,7 +660,7 @@ CLAUDE_GROUP=claude
   "host": "${HOST:-0.0.0.0}",
   "port": "${PORT:-8000}",
   "claude_cli_path": "${CLAUDE_CLI_PATH}",
-  "cors_origins": ["${CORS_ORIGIN:-*}"]
+  "cors_origins": ["${CORS_ORIGIN:-http://localhost:3000}"]
 }
 ```
 

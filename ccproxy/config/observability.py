@@ -154,5 +154,5 @@ class ObservabilitySettings(BaseModel):
 
     @property
     def enabled(self) -> bool:
-        """Check if observability is enabled (backward compatibility property)."""
+        """Check if observability is enabled."""
         return self.any_endpoint_enabled or self.logging_pipeline_enabled

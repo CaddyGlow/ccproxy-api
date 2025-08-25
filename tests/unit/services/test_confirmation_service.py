@@ -5,15 +5,15 @@ from collections.abc import AsyncGenerator
 
 import pytest
 
-from ccproxy.api.services.permission_service import (
-    PermissionService,
-    get_permission_service,
-)
 from ccproxy.core.errors import (
     PermissionNotFoundError,
 )
-from ccproxy.models.permissions import (
+from plugins.permissions.models import (
     PermissionStatus,
+)
+from plugins.permissions.service import (
+    PermissionService,
+    get_permission_service,
 )
 
 

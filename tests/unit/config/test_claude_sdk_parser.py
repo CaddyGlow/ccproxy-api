@@ -3,7 +3,7 @@
 import json
 from typing import Any
 
-from ccproxy.claude_sdk.parser import (
+from plugins.claude_sdk.parser import (
     parse_formatted_sdk_content,
     parse_result_message_tags,
     parse_system_message_tags,

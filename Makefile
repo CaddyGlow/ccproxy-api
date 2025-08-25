@@ -98,6 +98,23 @@ test: check
 	@if [ ! -d "tests" ]; then echo "Error: tests/ directory not found. Create tests/ directory and add test files."; exit 1; fi
 	$(UV_RUN) pytest tests/ -v --cov=ccproxy --cov-report=term-missing
 
+# New test suite targets
+test-new:
+	@echo "Running new test suite..."
+	$(UV_RUN) pytest tests_new/ -v --tb=short
+
+test-new-api:
+	@echo "Running API endpoint tests..."
+	$(UV_RUN) pytest tests_new/api -v --tb=short
+
+test-new-integration:
+	@echo "Running integration tests..."
+	$(UV_RUN) pytest tests_new/integration -v --tb=short
+
+test-new-coverage:
+	@echo "Running new test suite with coverage..."
+	$(UV_RUN) pytest tests_new/ --cov=ccproxy --cov-report=term-missing --cov-report=html
+
 # Run fast unit tests only (exclude tests marked with 'real_api')
 test-unit: check
 	@echo "Running fast unit tests (excluding real API calls)..."
@@ -218,12 +235,11 @@ docker-compose-down:
 
 # Development server
 dev:
-	# uv run fastapi dev ccproxy/main.py
-	CCPROXY_REQUEST_LOG_DIR=/tmp/ccproxy/request \
-	  CCPROXY_VERBOSE_API=true \
-	  SERVER__LOG_FILE=/tmp/ccproxy/ccproxy.log \
-	  SERVER__LOG_LEVEL=debug \
-		uv run ccproxy serve --reload
+  PLUGINS__RAWHTTPLOGGERCONFIG__ENABLED=true \
+		PLUGINS__RAWHTTPLOGGERCONFIG__LOG_DIR=/tmp/ccproxy/raw \
+		SERVER__LOG_FILE=/tmp/ccproxy/ccproxy.log \
+		SERVER__LOG_LEVEL=debug \
+		uv run ccproxy-api serve --port 8000 --reload
 
 prod:
 	uv run ccproxy serve

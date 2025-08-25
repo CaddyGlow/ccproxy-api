@@ -61,19 +61,7 @@ class OAuthError(AuthenticationError):
     pass
 
 
-class OAuthLoginError(OAuthError):
-    """OAuth login failed."""
-
-    pass
-
-
 class OAuthTokenRefreshError(OAuthError):
     """OAuth token refresh failed."""
-
-    pass
-
-
-class OAuthCallbackError(OAuthError):
-    """OAuth callback failed."""
 
     pass

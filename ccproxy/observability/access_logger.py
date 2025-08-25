@@ -10,7 +10,7 @@ from __future__ import annotations
 import time
 from typing import TYPE_CHECKING, Any
 
-import structlog
+from ccproxy.core.logging import get_logger
 
 
 if TYPE_CHECKING:
@@ -22,7 +22,7 @@ if TYPE_CHECKING:
     )
 
 
-logger = structlog.get_logger(__name__)
+logger = get_logger(__name__)
 
 
 async def log_request_access(
@@ -158,16 +158,18 @@ async def log_request_access(
     logger = context.logger.bind(**log_data)
 
     if context.metadata.get("error"):
-        logger.warn("access_log", exc_info=context.metadata.get("error"))
+        logger.warning(
+            "access_log", exc_info=context.metadata.get("error"), category="access"
+        )
     elif not is_streaming:
         # Log as access_log event (structured logging)
-        logger.info("access_log")
+        logger.info("access_log", category="access")
     elif is_streaming_complete:
-        logger.info("access_log")
+        logger.info("access_log", category="access")
     else:
         # if streaming is true, and not streaming_complete log as debug
         # real access_log will come later
-        logger.info("access_log_streaming_start")
+        logger.info("access_log_streaming_start", category="access")
 
     # Store in DuckDB if available
     await _store_access_log(log_data, storage)
@@ -422,7 +424,7 @@ def log_request_start(
     # Remove None values
     log_data = {k: v for k, v in log_data.items() if v is not None}
 
-    logger.debug("access_log_start", **log_data)
+    logger.debug("access_log_start", **log_data, category="access")
 
     # Emit SSE event for real-time dashboard updates
     # Note: This is a synchronous function, so we schedule the async emission

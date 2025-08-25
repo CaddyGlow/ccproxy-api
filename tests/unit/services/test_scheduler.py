@@ -1,7 +1,7 @@
 """Integration tests for the scheduler system."""
 
 import asyncio
-from collections.abc import Generator
+from collections.abc import AsyncGenerator, Generator
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 
 from ccproxy.config.scheduler import SchedulerSettings
 from ccproxy.config.settings import Settings
+from ccproxy.core.async_task_manager import start_task_manager, stop_task_manager
 from ccproxy.scheduler.core import Scheduler
 from ccproxy.scheduler.errors import (
     TaskNotFoundError,
@@ -18,7 +19,6 @@ from ccproxy.scheduler.errors import (
 from ccproxy.scheduler.manager import start_scheduler, stop_scheduler
 from ccproxy.scheduler.registry import TaskRegistry, get_task_registry
 from ccproxy.scheduler.tasks import (
-    PricingCacheUpdateTask,
     PushgatewayTask,
     StatsPrintingTask,
 )
@@ -28,11 +28,19 @@ class TestSchedulerCore:
     """Test the core Scheduler functionality."""
 
     @pytest.fixture
+    async def task_manager_lifecycle(self) -> AsyncGenerator[None, None]:
+        """Start and stop the task manager for tests that need it."""
+        await start_task_manager()
+        try:
+            yield
+        finally:
+            await stop_task_manager()
+
+    @pytest.fixture
     def scheduler(self) -> Generator[Scheduler, None, None]:
         """Create a test scheduler instance."""
         # Register tasks before creating scheduler
         from ccproxy.scheduler.tasks import (
-            PricingCacheUpdateTask,
             PushgatewayTask,
             StatsPrintingTask,
         )
@@ -43,7 +51,6 @@ class TestSchedulerCore:
         # Register default tasks
         registry.register("pushgateway", PushgatewayTask)
         registry.register("stats_printing", StatsPrintingTask)
-        registry.register("pricing_cache_update", PricingCacheUpdateTask)
 
         scheduler = Scheduler(
             max_concurrent_tasks=5,
@@ -66,7 +73,9 @@ class TestSchedulerCore:
         assert not scheduler.is_running
 
     @pytest.mark.asyncio
-    async def test_add_task_success(self, scheduler: Scheduler) -> None:
+    async def test_add_task_success(
+        self, scheduler: Scheduler, task_manager_lifecycle: None
+    ) -> None:
         """Test successful task addition."""
         await scheduler.start()
 
@@ -82,7 +91,9 @@ class TestSchedulerCore:
         await scheduler.stop()
 
     @pytest.mark.asyncio
-    async def test_add_task_invalid_type(self, scheduler: Scheduler) -> None:
+    async def test_add_task_invalid_type(
+        self, scheduler: Scheduler, task_manager_lifecycle: None
+    ) -> None:
         """Test adding task with invalid type raises error."""
         await scheduler.start()
 
@@ -97,7 +108,9 @@ class TestSchedulerCore:
         await scheduler.stop()
 
     @pytest.mark.asyncio
-    async def test_remove_task_success(self, scheduler: Scheduler) -> None:
+    async def test_remove_task_success(
+        self, scheduler: Scheduler, task_manager_lifecycle: None
+    ) -> None:
         """Test successful task removal."""
         await scheduler.start()
 
@@ -119,7 +132,9 @@ class TestSchedulerCore:
         await scheduler.stop()
 
     @pytest.mark.asyncio
-    async def test_remove_nonexistent_task(self, scheduler: Scheduler) -> None:
+    async def test_remove_nonexistent_task(
+        self, scheduler: Scheduler, task_manager_lifecycle: None
+    ) -> None:
         """Test removing non-existent task raises error."""
         await scheduler.start()
 
@@ -129,7 +144,9 @@ class TestSchedulerCore:
         await scheduler.stop()
 
     @pytest.mark.asyncio
-    async def test_get_task_info(self, scheduler: Scheduler) -> None:
+    async def test_get_task_info(
+        self, scheduler: Scheduler, task_manager_lifecycle: None
+    ) -> None:
         """Test getting task information."""
         await scheduler.start()
 
@@ -149,7 +166,9 @@ class TestSchedulerCore:
         await scheduler.stop()
 
     @pytest.mark.asyncio
-    async def test_get_scheduler_status(self, scheduler: Scheduler) -> None:
+    async def test_get_scheduler_status(
+        self, scheduler: Scheduler, task_manager_lifecycle: None
+    ) -> None:
         """Test getting scheduler status information."""
         await scheduler.start()
 
@@ -309,43 +328,6 @@ class TestScheduledTasks:
             await task.cleanup()
 
     @pytest.mark.asyncio
-    async def test_pricing_cache_update_task_lifecycle(self) -> None:
-        """Test PricingCacheUpdateTask lifecycle management."""
-        with patch(
-            "ccproxy.pricing.updater.PricingUpdater"
-        ) as mock_pricing_updater_class:
-            mock_pricing_updater = AsyncMock()
-            mock_pricing_updater.get_current_pricing.return_value = {
-                "model": "claude-3"
-            }
-            mock_pricing_updater.force_refresh.return_value = True
-            mock_pricing_updater_class.return_value = mock_pricing_updater
-
-            task = PricingCacheUpdateTask(
-                name="test_pricing",
-                interval_seconds=0.1,
-                enabled=True,
-                force_refresh_on_startup=True,
-            )
-
-            await task.setup()
-            assert task._pricing_updater is not None
-
-            # Test force refresh on first run
-            result = await task.run()
-            assert result is True
-            mock_pricing_updater.force_refresh.assert_called_once()
-
-            # Test regular update on second run
-            result = await task.run()
-            assert result is True
-            mock_pricing_updater.get_current_pricing.assert_called_with(
-                force_refresh=False
-            )
-
-            await task.cleanup()
-
-    @pytest.mark.asyncio
     async def test_task_error_handling(self) -> None:
         """Test task error handling and backoff calculation."""
         with patch("ccproxy.observability.metrics.get_metrics") as mock_get_metrics:
@@ -426,12 +408,20 @@ class TestSchedulerConfiguration:
 class TestSchedulerManagerIntegration:
     """Test scheduler manager FastAPI integration."""
 
+    @pytest.fixture
+    async def task_manager_lifecycle(self) -> AsyncGenerator[None, None]:
+        """Start and stop the task manager for tests that need it."""
+        await start_task_manager()
+        try:
+            yield
+        finally:
+            await stop_task_manager()
+
     @pytest.fixture(autouse=True)
     def setup_registry(self) -> Generator[None, None, None]:
         """Setup task registry for integration tests."""
         from ccproxy.scheduler.registry import get_task_registry
         from ccproxy.scheduler.tasks import (
-            PricingCacheUpdateTask,
             PushgatewayTask,
             StatsPrintingTask,
         )
@@ -442,7 +432,6 @@ class TestSchedulerManagerIntegration:
         # Register default tasks
         registry.register("pushgateway", PushgatewayTask)
         registry.register("stats_printing", StatsPrintingTask)
-        registry.register("pricing_cache_update", PricingCacheUpdateTask)
 
         yield
 
@@ -479,7 +468,9 @@ class TestSchedulerManagerIntegration:
         await stop_scheduler(None)
 
     @pytest.mark.asyncio
-    async def test_scheduler_with_tasks_configured(self) -> None:
+    async def test_scheduler_with_tasks_configured(
+        self, task_manager_lifecycle: None
+    ) -> None:
         """Test scheduler with all task types configured."""
         settings = Settings()
         settings.scheduler.enabled = True
@@ -573,7 +564,6 @@ class TestSchedulerFastAPIIntegration:
                 "ccproxy.observability.stats_printer.get_stats_collector"
             ) as mock_stats,
             patch("ccproxy.pricing.updater.PricingUpdater") as mock_pricing,
-            patch("ccproxy.services.credentials.CredentialsManager") as mock_creds,
         ):
             # Mock settings to return our test configuration
             mock_get_settings.return_value = settings
@@ -588,12 +578,20 @@ class TestSchedulerFastAPIIntegration:
 class TestSchedulerErrorScenarios:
     """Test error scenarios and edge cases."""
 
+    @pytest.fixture
+    async def task_manager_lifecycle(self) -> AsyncGenerator[None, None]:
+        """Start and stop the task manager for tests that need it."""
+        await start_task_manager()
+        try:
+            yield
+        finally:
+            await stop_task_manager()
+
     @pytest.fixture(autouse=True)
     def setup_registry(self) -> Generator[None, None, None]:
         """Setup task registry for error scenario tests."""
         from ccproxy.scheduler.registry import get_task_registry
         from ccproxy.scheduler.tasks import (
-            PricingCacheUpdateTask,
             PushgatewayTask,
             StatsPrintingTask,
         )
@@ -604,7 +602,6 @@ class TestSchedulerErrorScenarios:
         # Register default tasks
         registry.register("pushgateway", PushgatewayTask)
         registry.register("stats_printing", StatsPrintingTask)
-        registry.register("pricing_cache_update", PricingCacheUpdateTask)
 
         yield
 
@@ -612,7 +609,9 @@ class TestSchedulerErrorScenarios:
         registry.clear()
 
     @pytest.mark.asyncio
-    async def test_scheduler_task_failure_recovery(self) -> None:
+    async def test_scheduler_task_failure_recovery(
+        self, task_manager_lifecycle: None
+    ) -> None:
         """Test scheduler handles task failures gracefully."""
         scheduler = Scheduler(max_concurrent_tasks=2)
         await scheduler.start()
@@ -644,7 +643,9 @@ class TestSchedulerErrorScenarios:
         await scheduler.stop()
 
     @pytest.mark.asyncio
-    async def test_scheduler_concurrent_task_limit(self) -> None:
+    async def test_scheduler_concurrent_task_limit(
+        self, task_manager_lifecycle: None
+    ) -> None:
         """Test scheduler respects concurrent task limits."""
         scheduler = Scheduler(max_concurrent_tasks=1)
         await scheduler.start()
@@ -670,7 +671,9 @@ class TestSchedulerErrorScenarios:
         await scheduler.stop()
 
     @pytest.mark.asyncio
-    async def test_scheduler_graceful_shutdown_timeout(self) -> None:
+    async def test_scheduler_graceful_shutdown_timeout(
+        self, task_manager_lifecycle: None
+    ) -> None:
         """Test scheduler graceful shutdown with timeout."""
         scheduler = Scheduler(
             max_concurrent_tasks=2,

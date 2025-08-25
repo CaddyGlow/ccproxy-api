@@ -395,13 +395,13 @@ class TestProxyServiceObservabilityIntegration:
         from ccproxy.api.dependencies import get_proxy_service
         from ccproxy.config.settings import Settings
         from ccproxy.observability import PrometheusMetrics
-        from ccproxy.services.credentials.manager import CredentialsManager
+        # from ccproxy.services.credentials.manager import CredentialsManager
 
         # Create test settings
         settings = Settings()
 
-        # Create credentials manager
-        credentials_manager = CredentialsManager(config=settings.auth)
+        # Create credentials manager - commented out as CredentialsManager no longer exists
+        # credentials_manager = CredentialsManager(config=settings.auth)
 
         # Create mock request with app state
         from unittest.mock import Mock
@@ -410,7 +410,7 @@ class TestProxyServiceObservabilityIntegration:
         mock_request.app.state = Mock()
 
         # Get proxy service (this should use the new observability system)
-        proxy_service = get_proxy_service(mock_request, settings, credentials_manager)
+        proxy_service = get_proxy_service(mock_request, settings)
 
         # Verify it has metrics attribute (new system)
         assert hasattr(proxy_service, "metrics")

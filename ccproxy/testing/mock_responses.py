@@ -227,6 +227,75 @@ class RealisticMockResponseGenerator:
 
         return openai_chunks
 
+    def generate_short_response(self, model: str | None = None) -> dict[str, Any]:
+        """Generate a short mock response."""
+        content, input_tokens, output_tokens = self.generate_response_content(
+            "short", model or "claude-3-sonnet"
+        )
+        return {
+            "id": f"msg_{random.randint(1000, 9999)}",
+            "type": "message",
+            "role": "assistant",
+            "content": [{"type": "text", "text": content}],
+            "model": model or "claude-3-sonnet",
+            "stop_reason": "end_turn",
+            "usage": {"input_tokens": input_tokens, "output_tokens": output_tokens},
+        }
+
+    def generate_medium_response(self, model: str | None = None) -> dict[str, Any]:
+        """Generate a medium mock response."""
+        content, input_tokens, output_tokens = self.generate_response_content(
+            "medium", model or "claude-3-sonnet"
+        )
+        return {
+            "id": f"msg_{random.randint(1000, 9999)}",
+            "type": "message",
+            "role": "assistant",
+            "content": [{"type": "text", "text": content}],
+            "model": model or "claude-3-sonnet",
+            "stop_reason": "end_turn",
+            "usage": {"input_tokens": input_tokens, "output_tokens": output_tokens},
+        }
+
+    def generate_long_response(self, model: str | None = None) -> dict[str, Any]:
+        """Generate a long mock response."""
+        content, input_tokens, output_tokens = self.generate_response_content(
+            "long", model or "claude-3-sonnet"
+        )
+        return {
+            "id": f"msg_{random.randint(1000, 9999)}",
+            "type": "message",
+            "role": "assistant",
+            "content": [{"type": "text", "text": content}],
+            "model": model or "claude-3-sonnet",
+            "stop_reason": "end_turn",
+            "usage": {"input_tokens": input_tokens, "output_tokens": output_tokens},
+        }
+
+    def generate_tool_use_response(self, model: str | None = None) -> dict[str, Any]:
+        """Generate a tool use mock response."""
+        content, input_tokens, output_tokens = self.generate_response_content(
+            "tool_use", model or "claude-3-sonnet"
+        )
+        result = random.randint(1, 1000)
+        return {
+            "id": f"msg_{random.randint(1000, 9999)}",
+            "type": "message",
+            "role": "assistant",
+            "content": [
+                {"type": "text", "text": content},
+                {
+                    "type": "tool_use",
+                    "id": f"toolu_{random.randint(1000, 9999)}",
+                    "name": "calculator",
+                    "input": {"expression": "23 * 45"},
+                },
+            ],
+            "model": model or "claude-3-sonnet",
+            "stop_reason": "tool_use",
+            "usage": {"input_tokens": input_tokens, "output_tokens": output_tokens},
+        }
+
     def calculate_realistic_cost(
         self,
         input_tokens: int,

@@ -1,0 +1,27 @@
+# Raw HTTP Logger plugin configuration
+[plugins.raw_http_logger]
+enabled = true
+log_dir = "/tmp/ccproxy/raw"
+log_client_request = true
+log_client_response = true
+log_provider_request = true
+log_provider_response = true
+exclude_headers = []
+
+[plugins.claude_api]
+enabled = true
+
+[plugins.codex]
+enabled = true
+
+[plugins.claude_sdk]
+enabled = true
+# default_session_id = "default-session"  # Commented out - should be None for normal operations
+
+[plugins.claude_sdk.sdk_session_pool]
+enabled = true
+session_ttl = 3600
+max_sessions = 1000
+
+[plugins.permissions]
+enabled = false

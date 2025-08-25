@@ -1,0 +1,19 @@
+[project]
+name = "ccproxy-codex"
+version = "1.0.0"
+description = "OpenAI Codex provider plugin for CCProxy"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "openai>=1.93.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project.entry-points."ccproxy.plugins"]
+codex = "plugins.codex.plugin:Plugin"
+
+[tool.hatch.build.targets.wheel]
+packages = ["plugins/codex"]

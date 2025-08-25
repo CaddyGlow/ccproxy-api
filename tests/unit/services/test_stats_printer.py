@@ -165,7 +165,7 @@ class TestStatsCollector:
             overall_analytics,
             last_minute_analytics,
         ]
-        self.mock_storage.query.return_value = top_model_results
+        self.mock_storage.query_top_model.return_value = top_model_results
 
         collector = StatsCollector(
             settings=self.settings,
@@ -817,6 +817,19 @@ class TestStatsCollectorIntegration:
         mock_active_requests._value._value = 5
         mock_metrics.active_requests = mock_active_requests
 
+        # Mock request counter to avoid iteration error
+        mock_request_counter = Mock()
+        mock_request_counter.collect.return_value = []
+        mock_metrics.request_counter = mock_request_counter
+
+        # Mock other metrics to avoid AttributeError
+        mock_metrics.response_time_histogram = Mock()
+        mock_metrics.response_time_histogram.collect.return_value = []
+        mock_metrics.token_counter = Mock()
+        mock_metrics.token_counter.collect.return_value = []
+        mock_metrics.cost_counter = Mock()
+        mock_metrics.cost_counter.collect.return_value = []
+
         # Mock storage instance
         mock_storage = AsyncMock()
         mock_storage.is_enabled.return_value = True
@@ -842,6 +855,11 @@ class TestStatsCollectorIntegration:
         ]
         mock_storage.query.return_value = [
             {"model": "claude-3-sonnet", "request_count": 4}
+        ]
+
+        # Mock query_top_model to return proper structure
+        mock_storage.query_top_model.return_value = [
+            {"model": "claude-3-sonnet", "request_count": 4, "percentage": 80.0}
         ]
 
         settings = ObservabilitySettings(

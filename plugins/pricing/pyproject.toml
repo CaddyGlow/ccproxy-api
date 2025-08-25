@@ -1,0 +1,14 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ccproxy-pricing-plugin"
+version = "1.0.0"
+description = "Dynamic pricing plugin for CCProxy"
+dependencies = [
+    "pydantic>=2.0",
+    "pydantic-settings>=2.0",
+    "structlog>=23.0",
+    "httpx>=0.25.0",
+]

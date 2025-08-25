@@ -1,0 +1,87 @@
+# CCProxy Configuration Example
+# This file demonstrates how to configure CCProxy and its plugins
+
+# Server settings
+[server]
+host = "0.0.0.0"
+port = 8000
+log_level = "INFO"
+# log_file = "/var/log/ccproxy/ccproxy.log"  # Optional: Log to file
+
+# Security settings
+[security]
+enable_auth = false # Set to true to require authentication
+# auth_token = "your-secret-token"  # Required if enable_auth is true
+
+# CORS settings
+[cors]
+allow_origins = ["*"]
+allow_credentials = true
+allow_methods = ["*"]
+allow_headers = ["*"]
+
+# Claude settings (for Claude SDK integration)
+[claude]
+cli_path = "auto"                        # Auto-detect Claude CLI, or specify path
+builtin_permissions = true
+include_system_messages_in_stream = true
+
+# Scheduler settings
+[scheduler]
+enabled = true
+max_concurrent_tasks = 10
+graceful_shutdown_timeout = 30.0
+default_retry_attempts = 3
+default_retry_delay = 60.0
+
+# Plugin system settings
+enable_plugins = true
+plugin_dir = "plugins"
+
+# Plugin configurations
+# Each plugin can have its own configuration section under [plugins.PLUGIN_NAME]
+[plugins.raw_http_logger]
+enabled = true
+# Codex plugin configuration
+[plugins.codex]
+name = "codex"
+base_url = "https://chatgpt.com/backend-api/codex"
+supports_streaming = true
+requires_auth = true
+auth_type = "oauth"
+models = ["gpt-5"]
+verbose_logging = false
+callback_port = 1455
+redirect_uri = "http://localhost:1455/auth/callback"
+
+# OAuth settings for Codex
+[plugins.codex.oauth]
+base_url = "https://auth.openai.com"
+client_id = "app_EMoamEEZ73f0CkXaXp7hrann"
+scopes = ["openid", "profile", "email", "offline_access"]
+
+# Example: Additional plugin configuration
+# [plugins.another_plugin]
+# name = "another_plugin"
+# base_url = "https://api.example.com"
+# api_key = "your-api-key"
+
+# Observability settings
+[observability]
+metrics_enabled = true
+metrics_endpoint_enabled = true
+logs_endpoints_enabled = false
+dashboard_enabled = false
+# pushgateway_url = "http://localhost:9091"  # Optional: Prometheus pushgateway
+
+# Docker settings (for running Claude in containers)
+[docker]
+enabled = false
+# docker_image = "ghcr.io/anthropics/claude-code:latest"
+# docker_volumes = ["/host/data:/container/data"]
+
+# Pricing settings
+[pricing]
+update_interval_hours = 24
+cache_duration_hours = 24
+# pricing_file = "/path/to/custom/pricing.json"  # Optional: Custom pricing file

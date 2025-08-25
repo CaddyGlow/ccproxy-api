@@ -3,11 +3,10 @@
 from typing import Any
 
 from ccproxy.auth.exceptions import AuthenticationError
-from ccproxy.auth.manager import BaseAuthManager
 from ccproxy.auth.models import ClaudeCredentials, UserProfile
 
 
-class BearerTokenAuthManager(BaseAuthManager):
+class BearerTokenAuthManager:
     """Authentication manager for static bearer tokens."""
 
     def __init__(self, token: str) -> None:
@@ -66,3 +65,31 @@ class BearerTokenAuthManager(BaseAuthManager):
     async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
         """Async context manager exit."""
         pass
+
+    # ==================== Provider-Generic Methods ====================
+
+    async def get_auth_headers(self) -> dict[str, str]:
+        """Get authentication headers for the request.
+
+        Returns:
+            Dictionary of headers to add to requests
+        """
+        if not self.token:
+            raise AuthenticationError("No bearer token available")
+        return {"Authorization": f"Bearer {self.token}"}
+
+    async def validate_credentials(self) -> bool:
+        """Validate that credentials are available and valid.
+
+        Returns:
+            True if credentials are valid, False otherwise
+        """
+        return bool(self.token)
+
+    def get_provider_name(self) -> str:
+        """Get the provider name for logging.
+
+        Returns:
+            Provider name string
+        """
+        return "bearer-token"

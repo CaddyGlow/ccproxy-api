@@ -9,13 +9,22 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from ccproxy.api.routes.permissions import router as confirmation_router
-from ccproxy.api.services.permission_service import (
+from ccproxy.config.settings import Settings, get_settings
+from ccproxy.core.async_task_manager import start_task_manager, stop_task_manager
+from plugins.permissions.models import PermissionStatus
+from plugins.permissions.routes import router as confirmation_router
+from plugins.permissions.service import (
     PermissionService,
     get_permission_service,
 )
-from ccproxy.config.settings import Settings, get_settings
-from ccproxy.models.permissions import PermissionStatus
+
+
+@pytest.fixture(autouse=True)
+async def task_manager_fixture():
+    """Start and stop task manager for each test."""
+    await start_task_manager()
+    yield
+    await stop_task_manager()
 
 
 @pytest.fixture
@@ -82,7 +91,7 @@ def test_client(app: FastAPI) -> TestClient:
 class TestConfirmationIntegration:
     """Integration tests for the confirmation system."""
 
-    @patch("ccproxy.api.routes.permissions.get_permission_service")
+    @patch("plugins.permissions.routes.get_permission_service")
     async def test_mcp_permission_flow(
         self,
         mock_get_service: Mock,
@@ -180,7 +189,7 @@ class TestConfirmationIntegration:
             await confirmation_service.unsubscribe_from_events(queue1)
             await confirmation_service.unsubscribe_from_events(queue2)
 
-    @patch("ccproxy.api.routes.permissions.get_permission_service")
+    @patch("plugins.permissions.routes.get_permission_service")
     async def test_confirmation_expiration(
         self,
         mock_get_service: Mock,
@@ -219,7 +228,7 @@ class TestConfirmationIntegration:
         finally:
             await service.stop()
 
-    @patch("ccproxy.api.routes.permissions.get_permission_service")
+    @patch("plugins.permissions.routes.get_permission_service")
     async def test_concurrent_confirmations(
         self,
         mock_get_service: Mock,
@@ -266,7 +275,7 @@ class TestConfirmationIntegration:
             )
             assert status == expected
 
-    @patch("ccproxy.api.routes.permissions.get_permission_service")
+    @patch("plugins.permissions.routes.get_permission_service")
     async def test_duplicate_resolution_attempts(
         self,
         mock_get_service: Mock,

@@ -5,16 +5,14 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
-from ccproxy.api.routes.mcp import PermissionCheckRequest, check_permission
-from ccproxy.api.services.permission_service import (
-    PermissionService,
-)
 from ccproxy.config.settings import Settings
-from ccproxy.models.permissions import PermissionStatus
 from ccproxy.models.responses import (
     PermissionToolAllowResponse,
     PermissionToolDenyResponse,
 )
+from plugins.permissions.mcp import PermissionCheckRequest, check_permission
+from plugins.permissions.models import PermissionStatus
+from plugins.permissions.service import PermissionService
 
 
 @pytest.fixture
@@ -51,7 +49,9 @@ class TestMCPPermissionCheck:
         )
 
         # Patch the service getter
-        with patch("ccproxy.api.routes.mcp.get_permission_service") as mock_get_service:
+        with patch(
+            "plugins.permissions.mcp.get_permission_service"
+        ) as mock_get_service:
             mock_get_service.return_value = mock_permission_service
 
             # Create request
@@ -86,7 +86,9 @@ class TestMCPPermissionCheck:
         # Setup mock to return allowed status
         mock_permission_service.get_status.return_value = PermissionStatus.ALLOWED
 
-        with patch("ccproxy.api.routes.mcp.get_permission_service") as mock_get_service:
+        with patch(
+            "plugins.permissions.mcp.get_permission_service"
+        ) as mock_get_service:
             mock_get_service.return_value = mock_permission_service
 
             # Create request with permission ID
@@ -115,7 +117,9 @@ class TestMCPPermissionCheck:
         # Setup mock to return denied status
         mock_permission_service.get_status.return_value = PermissionStatus.DENIED
 
-        with patch("ccproxy.api.routes.mcp.get_permission_service") as mock_get_service:
+        with patch(
+            "plugins.permissions.mcp.get_permission_service"
+        ) as mock_get_service:
             mock_get_service.return_value = mock_permission_service
 
             # Create request with permission ID
@@ -141,7 +145,9 @@ class TestMCPPermissionCheck:
         # Setup mock to return expired status
         mock_permission_service.get_status.return_value = PermissionStatus.EXPIRED
 
-        with patch("ccproxy.api.routes.mcp.get_permission_service") as mock_get_service:
+        with patch(
+            "plugins.permissions.mcp.get_permission_service"
+        ) as mock_get_service:
             mock_get_service.return_value = mock_permission_service
 
             # Create request with permission ID
@@ -169,7 +175,9 @@ class TestMCPPermissionCheck:
             PermissionStatus.DENIED
         )
 
-        with patch("ccproxy.api.routes.mcp.get_permission_service") as mock_get_service:
+        with patch(
+            "plugins.permissions.mcp.get_permission_service"
+        ) as mock_get_service:
             mock_get_service.return_value = mock_permission_service
 
             # Create request
@@ -195,7 +203,9 @@ class TestMCPPermissionCheck:
         # Setup mock to raise TimeoutError
         mock_permission_service.wait_for_permission.side_effect = TimeoutError()
 
-        with patch("ccproxy.api.routes.mcp.get_permission_service") as mock_get_service:
+        with patch(
+            "plugins.permissions.mcp.get_permission_service"
+        ) as mock_get_service:
             mock_get_service.return_value = mock_permission_service
 
             # Create request
@@ -222,7 +232,9 @@ class TestMCPPermissionCheck:
             PermissionStatus.ALLOWED
         )
 
-        with patch("ccproxy.api.routes.mcp.get_permission_service") as mock_get_service:
+        with patch(
+            "plugins.permissions.mcp.get_permission_service"
+        ) as mock_get_service:
             mock_get_service.return_value = mock_permission_service
 
             # Create request with empty tool name - this is allowed by the model
@@ -248,10 +260,12 @@ class TestMCPPermissionCheck:
             PermissionStatus.ALLOWED
         )
 
-        with patch("ccproxy.api.routes.mcp.get_permission_service") as mock_get_service:
+        with patch(
+            "plugins.permissions.mcp.get_permission_service"
+        ) as mock_get_service:
             mock_get_service.return_value = mock_permission_service
 
-            with patch("ccproxy.api.routes.mcp.logger") as mock_logger:
+            with patch("plugins.permissions.mcp.logger") as mock_logger:
                 # Create request
                 request = PermissionCheckRequest(
                     tool_name="python",
@@ -290,7 +304,9 @@ class TestMCPPermissionCheck:
             PermissionStatus.ALLOWED
         )
 
-        with patch("ccproxy.api.routes.mcp.get_permission_service") as mock_get_service:
+        with patch(
+            "plugins.permissions.mcp.get_permission_service"
+        ) as mock_get_service:
             mock_get_service.return_value = mock_permission_service
 
             # Create request with tool_use_id
@@ -325,7 +341,9 @@ class TestMCPPermissionCheck:
             PermissionStatus.ALLOWED
         )
 
-        with patch("ccproxy.api.routes.mcp.get_permission_service") as mock_get_service:
+        with patch(
+            "plugins.permissions.mcp.get_permission_service"
+        ) as mock_get_service:
             mock_get_service.return_value = mock_permission_service
 
             # Create multiple requests

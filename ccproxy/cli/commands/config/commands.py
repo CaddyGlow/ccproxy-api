@@ -5,6 +5,7 @@ import secrets
 from pathlib import Path
 from typing import Any
 
+import structlog
 import typer
 from click import get_current_context
 from pydantic import BaseModel
@@ -13,6 +14,9 @@ from pydantic.fields import FieldInfo
 from ccproxy._version import __version__
 from ccproxy.cli.helpers import get_rich_toolkit
 from ccproxy.config.settings import Settings, get_settings
+
+
+logger = structlog.get_logger(__name__)
 
 
 def _create_config_table(title: str, rows: list[tuple[str, str, str]]) -> Any:
@@ -218,7 +222,20 @@ def config_list() -> None:
             Panel(info_text, title="Configuration Sources", border_style="green")
         )
 
+    except (OSError, PermissionError) as e:
+        logger.error("config_list_file_access_error", error=str(e), exc_info=e)
+        toolkit.print(f"Error accessing configuration files: {e}", tag="error")
+        raise typer.Exit(1) from e
+    except (json.JSONDecodeError, ValueError) as e:
+        logger.error("config_list_parsing_error", error=str(e), exc_info=e)
+        toolkit.print(f"Configuration parsing error: {e}", tag="error")
+        raise typer.Exit(1) from e
+    except ImportError as e:
+        logger.error("config_list_import_error", error=str(e), exc_info=e)
+        toolkit.print(f"Module import error: {e}", tag="error")
+        raise typer.Exit(1) from e
     except Exception as e:
+        logger.error("config_list_unexpected_error", error=str(e), exc_info=e)
         toolkit.print(f"Error loading configuration: {e}", tag="error")
         raise typer.Exit(1) from e
 
@@ -300,7 +317,22 @@ def config_init(
         toolkit.print(f"  export CONFIG_FILE={output_file}", tag="command")
         toolkit.print("  ccproxy api", tag="command")
 
+    except (OSError, PermissionError) as e:
+        logger.error("config_init_file_access_error", error=str(e), exc_info=e)
+        toolkit.print(
+            f"Error creating configuration file (permission/IO error): {e}", tag="error"
+        )
+        raise typer.Exit(1) from e
+    except ImportError as e:
+        logger.error("config_init_import_error", error=str(e), exc_info=e)
+        toolkit.print(f"Module import error: {e}", tag="error")
+        raise typer.Exit(1) from e
+    except ValueError as e:
+        logger.error("config_init_value_error", error=str(e), exc_info=e)
+        toolkit.print(f"Configuration value error: {e}", tag="error")
+        raise typer.Exit(1) from e
     except Exception as e:
+        logger.error("config_init_unexpected_error", error=str(e), exc_info=e)
         toolkit.print(f"Error creating configuration file: {e}", tag="error")
         raise typer.Exit(1) from e
 
@@ -436,7 +468,32 @@ def generate_token(
                     config_data = Settings.load_config_file(config_file)
                     existing_token = config_data.get("auth_token")
                     console.print("[dim]Found existing configuration file[/dim]")
+                except (OSError, PermissionError) as e:
+                    logger.warning(
+                        "generate_token_config_file_access_error",
+                        error=str(e),
+                        exc_info=e,
+                    )
+                    console.print(
+                        f"[yellow]Warning: Could not access existing config file: {e}[/yellow]"
+                    )
+                    console.print("[dim]Will create new configuration file[/dim]")
+                except (json.JSONDecodeError, ValueError) as e:
+                    logger.warning(
+                        "generate_token_config_file_parse_error",
+                        error=str(e),
+                        exc_info=e,
+                    )
+                    console.print(
+                        f"[yellow]Warning: Could not parse existing config file: {e}[/yellow]"
+                    )
+                    console.print("[dim]Will create new configuration file[/dim]")
                 except Exception as e:
+                    logger.warning(
+                        "generate_token_config_file_read_error",
+                        error=str(e),
+                        exc_info=e,
+                    )
                     console.print(
                         f"[yellow]Warning: Could not read existing config file: {e}[/yellow]"
                     )
@@ -473,7 +530,20 @@ def generate_token(
             console.print(f"[cyan]export CONFIG_FILE={config_file}[/cyan]")
             console.print("[cyan]ccproxy api[/cyan]")
 
+    except (OSError, PermissionError) as e:
+        logger.error("generate_token_file_write_error", error=str(e), exc_info=e)
+        toolkit.print(f"Error writing configuration file: {e}", tag="error")
+        raise typer.Exit(1) from e
+    except ValueError as e:
+        logger.error("generate_token_value_error", error=str(e), exc_info=e)
+        toolkit.print(f"Token generation configuration error: {e}", tag="error")
+        raise typer.Exit(1) from e
+    except ImportError as e:
+        logger.error("generate_token_import_error", error=str(e), exc_info=e)
+        toolkit.print(f"Module import error: {e}", tag="error")
+        raise typer.Exit(1) from e
     except Exception as e:
+        logger.error("generate_token_unexpected_error", error=str(e), exc_info=e)
         toolkit.print(f"Error generating token: {e}", tag="error")
         raise typer.Exit(1) from e
 
@@ -762,5 +832,16 @@ def _write_toml_config(config_file: Path, config_data: dict[str, Any]) -> None:
                     elif value is None:
                         f.write(f"# {key} = null\n")
 
+    except (OSError, PermissionError) as e:
+        logger.error("write_toml_config_file_access_error", error=str(e), exc_info=e)
+        raise ValueError(
+            f"Failed to write TOML configuration (permission/IO error): {e}"
+        ) from e
+    except (TypeError, ValueError) as e:
+        logger.error("write_toml_config_encoding_error", error=str(e), exc_info=e)
+        raise ValueError(
+            f"Failed to write TOML configuration (encoding error): {e}"
+        ) from e
     except Exception as e:
+        logger.error("write_toml_config_unexpected_error", error=str(e), exc_info=e)
         raise ValueError(f"Failed to write TOML configuration: {e}") from e

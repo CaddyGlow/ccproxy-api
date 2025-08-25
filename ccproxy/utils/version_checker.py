@@ -61,9 +61,23 @@ async def fetch_latest_github_version() -> str | None:
     except httpx.HTTPStatusError as e:
         logger.warning("github_version_http_error", status_code=e.response.status_code)
         return None
+    except httpx.RequestError as e:
+        logger.warning(
+            "github_version_fetch_http_error",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+        return None
+    except (json.JSONDecodeError, KeyError, TypeError) as e:
+        logger.warning(
+            "github_version_parse_error",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+        return None
     except Exception as e:
         logger.warning(
-            "github_version_fetch_failed",
+            "github_version_fetch_unexpected_error",
             error=str(e),
             error_type=type(e).__name__,
         )
@@ -101,9 +115,18 @@ def compare_versions(current: str, latest: str) -> bool:
             return latest_parsed > current_base
 
         return latest_parsed > current_parsed
+    except (ValueError, TypeError, AttributeError) as e:
+        logger.error(
+            "version_comparison_parse_error",
+            current=current,
+            latest=latest,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+        return False
     except Exception as e:
         logger.error(
-            "version_comparison_failed",
+            "version_comparison_unexpected_error",
             current=current,
             latest=latest,
             error=str(e),
@@ -130,9 +153,25 @@ async def load_check_state(path: Path) -> VersionCheckState | None:
             content = await f.read()
             data = json.loads(content)
             return VersionCheckState(**data)
+    except (OSError, FileNotFoundError, PermissionError) as e:
+        logger.warning(
+            "version_check_state_load_file_error",
+            path=str(path),
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+        return None
+    except (json.JSONDecodeError, ValueError, TypeError) as e:
+        logger.warning(
+            "version_check_state_load_parse_error",
+            path=str(path),
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+        return None
     except Exception as e:
         logger.warning(
-            "version_check_state_load_failed",
+            "version_check_state_load_unexpected_error",
             path=str(path),
             error=str(e),
             error_type=type(e).__name__,
@@ -160,9 +199,23 @@ async def save_check_state(path: Path, state: VersionCheckState) -> None:
             await f.write(json.dumps(state_dict, indent=2))
 
         logger.debug("version_check_state_saved", path=str(path))
+    except (OSError, FileNotFoundError, PermissionError) as e:
+        logger.warning(
+            "version_check_state_save_file_error",
+            path=str(path),
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+    except (TypeError, ValueError) as e:
+        logger.warning(
+            "version_check_state_save_serialize_error",
+            path=str(path),
+            error=str(e),
+            error_type=type(e).__name__,
+        )
     except Exception as e:
         logger.warning(
-            "version_check_state_save_failed",
+            "version_check_state_save_unexpected_error",
             path=str(path),
             error=str(e),
             error_type=type(e).__name__,

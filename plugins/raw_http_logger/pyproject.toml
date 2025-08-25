@@ -1,0 +1,19 @@
+[project]
+name = "ccproxy-raw-http-logger"
+version = "1.0.0"
+description = "Raw HTTP Logger plugin for CCProxy - logs raw HTTP requests and responses for debugging"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "aiofiles>=24.1.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project.entry-points."ccproxy.plugins"]
+raw_http_logger = "plugins.raw_http_logger.plugin:Plugin"
+
+[tool.hatch.build.targets.wheel]
+packages = ["plugins/raw_http_logger"]

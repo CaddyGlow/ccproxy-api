@@ -19,7 +19,6 @@ def setup_cors_middleware(app: FastAPI, settings: Settings) -> None:
         app: FastAPI application instance
         settings: Application settings containing CORS configuration
     """
-    logger.debug("cors_middleware_setup_start")
 
     app.add_middleware(
         CORSMiddleware,
@@ -32,7 +31,11 @@ def setup_cors_middleware(app: FastAPI, settings: Settings) -> None:
         max_age=settings.cors.max_age,
     )
 
-    logger.debug("cors_middleware_configured", origins=settings.cors.origins)
+    logger.debug(
+        "cors_middleware_configured",
+        origins=settings.cors.origins,
+        category="middleware",
+    )
 
 
 def get_cors_config(settings: Settings) -> dict[str, Any]:

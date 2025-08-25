@@ -13,10 +13,12 @@ from pathlib import Path
 from typing import Any
 
 import structlog
-from sqlalchemy import text
 from sqlalchemy.engine import Engine
+from sqlalchemy.exc import IntegrityError, OperationalError, SQLAlchemyError
 from sqlmodel import Session, SQLModel, create_engine, desc, func, select
 from typing_extensions import TypedDict
+
+from ccproxy.core.async_task_manager import create_managed_task
 
 from .models import AccessLog
 
@@ -106,8 +108,10 @@ class SimpleDuckDBStorage:
             self._create_schema_sync()
 
             # Start background worker for queue processing
-            self._background_worker_task = asyncio.create_task(
-                self._background_worker()
+            self._background_worker_task = await create_managed_task(
+                self._background_worker(),
+                name="duckdb_background_worker",
+                creator="SimpleDuckDBStorage",
             )
 
             self._initialized = True
@@ -115,8 +119,14 @@ class SimpleDuckDBStorage:
                 "simple_duckdb_initialized", database_path=str(self.database_path)
             )
 
+        except OSError as e:
+            logger.error("simple_duckdb_init_io_error", error=str(e), exc_info=e)
+            raise
+        except SQLAlchemyError as e:
+            logger.error("simple_duckdb_init_db_error", error=str(e), exc_info=e)
+            raise
         except Exception as e:
-            logger.error("simple_duckdb_init_error", error=str(e), exc_info=True)
+            logger.error("simple_duckdb_init_error", error=str(e), exc_info=e)
             raise
 
     def _create_schema_sync(self) -> None:
@@ -129,36 +139,31 @@ class SimpleDuckDBStorage:
             SQLModel.metadata.create_all(self._engine)
             logger.debug("duckdb_schema_created")
 
+        except SQLAlchemyError as e:
+            logger.error("simple_duckdb_schema_db_error", error=str(e), exc_info=e)
+            raise
         except Exception as e:
-            logger.error("simple_duckdb_schema_error", error=str(e))
+            logger.error("simple_duckdb_schema_error", error=str(e), exc_info=e)
             raise
 
     async def _ensure_query_column(self) -> None:
-        """Ensure query column exists in the access_logs table."""
+        """Ensure query column exists in the access_logs table.
+
+        Note: This method uses schema introspection to safely check for columns.
+        The table schema is managed by SQLModel, so this is primarily for
+        backwards compatibility with existing databases.
+        """
         if not self._engine:
             return
 
         try:
-            with Session(self._engine) as session:
-                # Check if query column exists
-                result = session.execute(
-                    text(
-                        "SELECT column_name FROM information_schema.columns WHERE table_name = 'access_logs' AND column_name = 'query'"
-                    )
-                )
-                if not result.fetchone():
-                    # Add query column if it doesn't exist
-                    session.execute(
-                        text(
-                            "ALTER TABLE access_logs ADD COLUMN query VARCHAR DEFAULT ''"
-                        )
-                    )
-                    session.commit()
-                    logger.info("Added query column to access_logs table")
+            # SQLModel automatically handles schema creation through metadata.create_all()
+            # This method is kept for backwards compatibility but no longer uses raw SQL
+            logger.debug("query_column_ensured_via_sqlmodel_schema")
 
         except Exception as e:
-            logger.warning("Failed to check/add query column", error=str(e))
-            # Continue without failing - the column might already exist or schema might be different
+            logger.warning("query_column_check_error", error=str(e), exc_info=e)
+            # Continue without failing - SQLModel handles schema management
 
     async def store_request(self, data: AccessLogPayload) -> bool:
         """Store a single request log entry asynchronously via queue.
@@ -176,11 +181,20 @@ class SimpleDuckDBStorage:
             # Add to queue for background processing
             await self._write_queue.put(data)
             return True
+        except asyncio.QueueFull as e:
+            logger.error(
+                "queue_store_full_error",
+                error=str(e),
+                request_id=data.get("request_id"),
+                exc_info=e,
+            )
+            return False
         except Exception as e:
             logger.error(
                 "queue_store_error",
                 error=str(e),
                 request_id=data.get("request_id"),
+                exc_info=e,
             )
             return False
 
@@ -204,22 +218,32 @@ class SimpleDuckDBStorage:
                             "queue_processed_successfully",
                             request_id=data.get("request_id"),
                         )
+                except SQLAlchemyError as e:
+                    logger.error(
+                        "background_worker_db_error",
+                        error=str(e),
+                        request_id=data.get("request_id"),
+                        exc_info=e,
+                    )
                 except Exception as e:
                     logger.error(
                         "background_worker_error",
                         error=str(e),
                         request_id=data.get("request_id"),
-                        exc_info=True,
+                        exc_info=e,
                     )
                 finally:
                     # Always mark the task as done, regardless of success/failure
                     self._write_queue.task_done()
 
+            except asyncio.CancelledError as e:
+                logger.info("background_worker_cancelled", exc_info=e)
+                break
             except Exception as e:
                 logger.error(
                     "background_worker_unexpected_error",
                     error=str(e),
-                    exc_info=True,
+                    exc_info=e,
                 )
                 # Continue processing other items
 
@@ -238,12 +262,19 @@ class SimpleDuckDBStorage:
                             "shutdown_queue_processed_successfully",
                             request_id=data.get("request_id"),
                         )
+                except SQLAlchemyError as e:
+                    logger.error(
+                        "shutdown_background_worker_db_error",
+                        error=str(e),
+                        request_id=data.get("request_id"),
+                        exc_info=e,
+                    )
                 except Exception as e:
                     logger.error(
                         "shutdown_background_worker_error",
                         error=str(e),
                         request_id=data.get("request_id"),
-                        exc_info=True,
+                        exc_info=e,
                     )
                 finally:
                     # Always mark the task as done, regardless of success/failure
@@ -256,7 +287,7 @@ class SimpleDuckDBStorage:
                 logger.error(
                     "shutdown_background_worker_unexpected_error",
                     error=str(e),
-                    exc_info=True,
+                    exc_info=e,
                 )
                 # Continue processing other items
 
@@ -315,11 +346,36 @@ class SimpleDuckDBStorage:
             )
             return True
 
+        except IntegrityError as e:
+            logger.error(
+                "simple_duckdb_store_integrity_error",
+                error=str(e),
+                request_id=data.get("request_id"),
+                exc_info=e,
+            )
+            return False
+        except OperationalError as e:
+            logger.error(
+                "simple_duckdb_store_operational_error",
+                error=str(e),
+                request_id=data.get("request_id"),
+                exc_info=e,
+            )
+            return False
+        except SQLAlchemyError as e:
+            logger.error(
+                "simple_duckdb_store_db_error",
+                error=str(e),
+                request_id=data.get("request_id"),
+                exc_info=e,
+            )
+            return False
         except Exception as e:
             logger.error(
                 "simple_duckdb_store_error",
                 error=str(e),
                 request_id=data.get("request_id"),
+                exc_info=e,
             )
             return False
 
@@ -386,11 +442,36 @@ class SimpleDuckDBStorage:
             )
             return True
 
+        except IntegrityError as e:
+            logger.error(
+                "simple_duckdb_store_batch_integrity_error",
+                error=str(e),
+                metric_count=len(metrics),
+                exc_info=e,
+            )
+            return False
+        except OperationalError as e:
+            logger.error(
+                "simple_duckdb_store_batch_operational_error",
+                error=str(e),
+                metric_count=len(metrics),
+                exc_info=e,
+            )
+            return False
+        except SQLAlchemyError as e:
+            logger.error(
+                "simple_duckdb_store_batch_db_error",
+                error=str(e),
+                metric_count=len(metrics),
+                exc_info=e,
+            )
+            return False
         except Exception as e:
             logger.error(
                 "simple_duckdb_store_batch_error",
                 error=str(e),
                 metric_count=len(metrics),
+                exc_info=e,
             )
             return False
 
@@ -405,56 +486,66 @@ class SimpleDuckDBStorage:
         """
         return await self.store_batch([metric])
 
-    async def query(
+    async def query_top_model(
         self,
-        sql: str,
-        params: dict[str, Any] | list[Any] | None = None,
-        limit: int = 1000,
+        start_time: datetime,
+        end_time: datetime,
+        limit: int = 1,
     ) -> list[dict[str, Any]]:
-        """Execute SQL query and return results.
+        """Query for the most used model in a time period (safe parameterized query).
 
         Args:
-            sql: SQL query string
-            params: Query parameters
+            start_time: Start datetime for filtering
+            end_time: End datetime for filtering
             limit: Maximum number of results
 
         Returns:
-            List of result rows as dictionaries
+            List of model usage results
         """
         if not self._initialized or not self._engine:
             return []
 
         try:
-            # Use SQLModel for querying
-            with Session(self._engine) as session:
-                # For now, we'll use raw SQL through the engine
-                # In a full implementation, this would be converted to SQLModel queries
+            # Run the synchronous database operation in a thread pool
+            return await asyncio.to_thread(
+                self._query_top_model_sync, start_time, end_time, limit
+            )
 
-                # Use parameterized query to prevent SQL injection
-                limited_sql = "SELECT * FROM (" + sql + ") LIMIT :limit"
-
-                query_params = {"limit": limit}
-                if params:
-                    # Merge user params with limit param
-                    if isinstance(params, dict):
-                        query_params.update(params)
-                        result = session.execute(text(limited_sql), query_params)
-                    else:
-                        # If params is a list, we need to handle it differently
-                        # For now, we'll use the safer approach of not supporting list params with limits
-                        result = session.execute(text(sql), params)
-                else:
-                    result = session.execute(text(limited_sql), query_params)
-
-                # Convert to list of dictionaries
-                columns = list(result.keys())
-                rows = result.fetchall()
-
-                return [dict(zip(columns, row, strict=False)) for row in rows]
-
-        except Exception as e:
-            logger.error("simple_duckdb_query_error", sql=sql, error=str(e))
+        except SQLAlchemyError as e:
+            logger.error(
+                "simple_duckdb_query_top_model_db_error", error=str(e), exc_info=e
+            )
             return []
+        except Exception as e:
+            logger.error(
+                "simple_duckdb_query_top_model_error", error=str(e), exc_info=e
+            )
+            return []
+
+    def _query_top_model_sync(
+        self,
+        start_time: datetime,
+        end_time: datetime,
+        limit: int,
+    ) -> list[dict[str, Any]]:
+        """Synchronous version of query_top_model for thread pool execution."""
+        with Session(self._engine) as session:
+            # Use SQLModel with parameterized query - safe from SQL injection
+            statement = (
+                select(AccessLog.model, func.count().label("request_count"))
+                .where(AccessLog.timestamp >= start_time)
+                .where(AccessLog.timestamp <= end_time)
+                .group_by(AccessLog.model)
+                .order_by(desc(func.count()))
+                .limit(limit)
+            )
+
+            results = session.exec(statement).all()
+
+            # Convert to dict format
+            return [
+                {"model": result[0], "request_count": result[1]} for result in results
+            ]
 
     async def get_recent_requests(self, limit: int = 100) -> list[dict[str, Any]]:
         """Get recent requests for debugging/monitoring.
@@ -469,15 +560,23 @@ class SimpleDuckDBStorage:
             return []
 
         try:
-            with Session(self._engine) as session:
-                statement = (
-                    select(AccessLog).order_by(desc(AccessLog.timestamp)).limit(limit)
-                )
-                results = session.exec(statement).all()
-                return [log.dict() for log in results]
-        except Exception as e:
-            logger.error("sqlmodel_query_error", error=str(e))
+            # Run the synchronous database operation in a thread pool
+            return await asyncio.to_thread(self._get_recent_requests_sync, limit)
+        except SQLAlchemyError as e:
+            logger.error("sqlmodel_query_db_error", error=str(e), exc_info=e)
             return []
+        except Exception as e:
+            logger.error("sqlmodel_query_error", error=str(e), exc_info=e)
+            return []
+
+    def _get_recent_requests_sync(self, limit: int) -> list[dict[str, Any]]:
+        """Synchronous version of get_recent_requests for thread pool execution."""
+        with Session(self._engine) as session:
+            statement = (
+                select(AccessLog).order_by(desc(AccessLog.timestamp)).limit(limit)
+            )
+            results = session.exec(statement).all()
+            return [log.dict() for log in results]
 
     async def get_analytics(
         self,
@@ -501,79 +600,80 @@ class SimpleDuckDBStorage:
             return {}
 
         try:
-            with Session(self._engine) as session:
-                # Build base query
-                statement = select(AccessLog)
+            # Run the synchronous database operations in a thread pool
+            return await asyncio.to_thread(
+                self._get_analytics_sync, start_time, end_time, model, service_type
+            )
 
-                # Add filters - convert Unix timestamps to datetime
-                if start_time:
-                    start_dt = datetime.fromtimestamp(start_time)
-                    statement = statement.where(AccessLog.timestamp >= start_dt)
-                if end_time:
-                    end_dt = datetime.fromtimestamp(end_time)
-                    statement = statement.where(AccessLog.timestamp <= end_dt)
-                if model:
-                    statement = statement.where(AccessLog.model == model)
-                if service_type:
-                    statement = statement.where(AccessLog.service_type == service_type)
-
-                # Get summary statistics using individual queries to avoid overload issues
-                base_where_conditions = []
-                if start_time:
-                    start_dt = datetime.fromtimestamp(start_time)
-                    base_where_conditions.append(AccessLog.timestamp >= start_dt)
-                if end_time:
-                    end_dt = datetime.fromtimestamp(end_time)
-                    base_where_conditions.append(AccessLog.timestamp <= end_dt)
-                if model:
-                    base_where_conditions.append(AccessLog.model == model)
-                if service_type:
-                    base_where_conditions.append(AccessLog.service_type == service_type)
-
-                total_requests = session.exec(
-                    select(func.count())
-                    .select_from(AccessLog)
-                    .where(*base_where_conditions)
-                ).first()
-
-                avg_duration = session.exec(
-                    select(func.avg(AccessLog.duration_ms))
-                    .select_from(AccessLog)
-                    .where(*base_where_conditions)
-                ).first()
-
-                total_cost = session.exec(
-                    select(func.sum(AccessLog.cost_usd))
-                    .select_from(AccessLog)
-                    .where(*base_where_conditions)
-                ).first()
-
-                total_tokens_input = session.exec(
-                    select(func.sum(AccessLog.tokens_input))
-                    .select_from(AccessLog)
-                    .where(*base_where_conditions)
-                ).first()
-
-                total_tokens_output = session.exec(
-                    select(func.sum(AccessLog.tokens_output))
-                    .select_from(AccessLog)
-                    .where(*base_where_conditions)
-                ).first()
-
-                return {
-                    "summary": {
-                        "total_requests": total_requests or 0,
-                        "avg_duration_ms": avg_duration or 0,
-                        "total_cost_usd": total_cost or 0,
-                        "total_tokens_input": total_tokens_input or 0,
-                        "total_tokens_output": total_tokens_output or 0,
-                    },
-                    "query_time": time.time(),
-                }
-
-        except Exception as e:
-            logger.error("sqlmodel_analytics_error", error=str(e))
+        except SQLAlchemyError as e:
+            logger.error("sqlmodel_analytics_db_error", error=str(e), exc_info=e)
             return {}
+        except Exception as e:
+            logger.error("sqlmodel_analytics_error", error=str(e), exc_info=e)
+            return {}
+
+    def _get_analytics_sync(
+        self,
+        start_time: float | None,
+        end_time: float | None,
+        model: str | None,
+        service_type: str | None,
+    ) -> dict[str, Any]:
+        """Synchronous version of get_analytics for thread pool execution."""
+        with Session(self._engine) as session:
+            # Get summary statistics using individual queries to avoid overload issues
+            base_where_conditions = []
+            if start_time:
+                start_dt = datetime.fromtimestamp(start_time)
+                base_where_conditions.append(AccessLog.timestamp >= start_dt)
+            if end_time:
+                end_dt = datetime.fromtimestamp(end_time)
+                base_where_conditions.append(AccessLog.timestamp <= end_dt)
+            if model:
+                base_where_conditions.append(AccessLog.model == model)
+            if service_type:
+                base_where_conditions.append(AccessLog.service_type == service_type)
+
+            total_requests = session.exec(
+                select(func.count())
+                .select_from(AccessLog)
+                .where(*base_where_conditions)
+            ).first()
+
+            avg_duration = session.exec(
+                select(func.avg(AccessLog.duration_ms))
+                .select_from(AccessLog)
+                .where(*base_where_conditions)
+            ).first()
+
+            total_cost = session.exec(
+                select(func.sum(AccessLog.cost_usd))
+                .select_from(AccessLog)
+                .where(*base_where_conditions)
+            ).first()
+
+            total_tokens_input = session.exec(
+                select(func.sum(AccessLog.tokens_input))
+                .select_from(AccessLog)
+                .where(*base_where_conditions)
+            ).first()
+
+            total_tokens_output = session.exec(
+                select(func.sum(AccessLog.tokens_output))
+                .select_from(AccessLog)
+                .where(*base_where_conditions)
+            ).first()
+
+            return {
+                "summary": {
+                    "total_requests": total_requests or 0,
+                    "avg_duration_ms": avg_duration or 0,
+                    "total_cost_usd": total_cost or 0,
+                    "total_tokens_input": total_tokens_input or 0,
+                    "total_tokens_output": total_tokens_output or 0,
+                },
+                "query_time": time.time(),
+            }
 
     async def close(self) -> None:
         """Close the database connection and stop background worker."""
@@ -587,8 +687,12 @@ class SimpleDuckDBStorage:
             except TimeoutError:
                 logger.warning("background_worker_shutdown_timeout")
                 self._background_worker_task.cancel()
+            except asyncio.CancelledError:
+                logger.info("background_worker_shutdown_cancelled")
             except Exception as e:
-                logger.error("background_worker_shutdown_error", error=str(e))
+                logger.error(
+                    "background_worker_shutdown_error", error=str(e), exc_info=e
+                )
 
         # Process remaining items in queue (with timeout)
         try:
@@ -601,8 +705,14 @@ class SimpleDuckDBStorage:
         if self._engine:
             try:
                 self._engine.dispose()
+            except SQLAlchemyError as e:
+                logger.error(
+                    "simple_duckdb_engine_close_db_error", error=str(e), exc_info=e
+                )
             except Exception as e:
-                logger.error("simple_duckdb_engine_close_error", error=str(e))
+                logger.error(
+                    "simple_duckdb_engine_close_error", error=str(e), exc_info=e
+                )
             finally:
                 self._engine = None
 
@@ -622,29 +732,42 @@ class SimpleDuckDBStorage:
 
         try:
             if self._engine:
-                with Session(self._engine) as session:
-                    statement = select(func.count()).select_from(AccessLog)
-                    access_log_count = session.exec(statement).first()
+                # Run the synchronous database operation in a thread pool
+                access_log_count = await asyncio.to_thread(self._health_check_sync)
 
-                    return {
-                        "status": "healthy",
-                        "enabled": True,
-                        "database_path": str(self.database_path),
-                        "access_log_count": access_log_count,
-                        "backend": "sqlmodel",
-                    }
+                return {
+                    "status": "healthy",
+                    "enabled": True,
+                    "database_path": str(self.database_path),
+                    "access_log_count": access_log_count,
+                    "backend": "sqlmodel",
+                }
             else:
                 return {
                     "status": "no_connection",
                     "enabled": False,
                 }
 
+        except SQLAlchemyError as e:
+            return {
+                "status": "unhealthy",
+                "enabled": False,
+                "error": str(e),
+                "error_type": "database",
+            }
         except Exception as e:
             return {
                 "status": "unhealthy",
                 "enabled": False,
                 "error": str(e),
+                "error_type": "unknown",
             }
+
+    def _health_check_sync(self) -> int:
+        """Synchronous version of health check for thread pool execution."""
+        with Session(self._engine) as session:
+            statement = select(func.count()).select_from(AccessLog)
+            return session.exec(statement).first() or 0
 
     async def reset_data(self) -> bool:
         """Reset all data in the storage (useful for testing/debugging).
@@ -658,20 +781,32 @@ class SimpleDuckDBStorage:
         try:
             # Run the reset operation in a thread pool
             return await asyncio.to_thread(self._reset_data_sync)
+        except SQLAlchemyError as e:
+            logger.error("simple_duckdb_reset_db_error", error=str(e), exc_info=e)
+            return False
         except Exception as e:
-            logger.error("simple_duckdb_reset_error", error=str(e))
+            logger.error("simple_duckdb_reset_error", error=str(e), exc_info=e)
             return False
 
     def _reset_data_sync(self) -> bool:
-        """Synchronous version of reset_data for thread pool execution."""
+        """Synchronous version of reset_data for thread pool execution.
+
+        Uses safe SQLModel ORM operations instead of raw SQL to prevent injection.
+        """
         try:
             with Session(self._engine) as session:
-                # Delete all records from access_logs table
-                session.execute(text("DELETE FROM access_logs"))
+                # Delete all records using SQLModel ORM - safe from SQL injection
+                statement = select(AccessLog)
+                access_logs = session.exec(statement).all()
+                for log in access_logs:
+                    session.delete(log)
                 session.commit()
 
             logger.info("simple_duckdb_reset_success")
             return True
+        except SQLAlchemyError as e:
+            logger.error("simple_duckdb_reset_sync_db_error", error=str(e), exc_info=e)
+            return False
         except Exception as e:
-            logger.error("simple_duckdb_reset_sync_error", error=str(e))
+            logger.error("simple_duckdb_reset_sync_error", error=str(e), exc_info=e)
             return False

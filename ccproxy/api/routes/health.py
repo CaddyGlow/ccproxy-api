@@ -22,9 +22,6 @@ from pydantic import BaseModel
 from structlog import get_logger
 
 from ccproxy import __version__
-from ccproxy.auth.exceptions import CredentialsExpiredError, CredentialsNotFoundError
-from ccproxy.core.async_utils import patched_typing
-from ccproxy.services.credentials import CredentialsManager
 
 
 router = APIRouter()
@@ -83,91 +80,18 @@ _cache_ttl_seconds = 300  # Cache for 5 minutes
 async def _check_oauth2_credentials() -> tuple[str, dict[str, Any]]:
     """Check OAuth2 credentials health status.
 
+    This function is deprecated as authentication is now handled by individual plugins.
+    Returns a pass status for backward compatibility.
+
     Returns:
-        Tuple of (status, details) where status is 'pass'/'fail'/'warn'
-        Details include token metadata without exposing sensitive data
+        Tuple of (status, details) where status is 'pass'
+        Details indicate auth is plugin-managed
     """
-    try:
-        manager = CredentialsManager()
-        validation = await manager.validate()
-
-        if validation.valid and not validation.expired:
-            # Get token metadata without exposing sensitive information
-            credentials = validation.credentials
-            oauth_token = credentials.claude_ai_oauth if credentials else None
-
-            details = {
-                "auth_status": "valid",
-                "credentials_path": str(validation.path) if validation.path else None,
-            }
-
-            if oauth_token:
-                details.update(
-                    {
-                        "expiration": oauth_token.expires_at_datetime.isoformat()
-                        if oauth_token.expires_at_datetime
-                        else None,
-                        "subscription_type": oauth_token.subscription_type,
-                        "expires_in_hours": str(
-                            int(
-                                (
-                                    oauth_token.expires_at_datetime - datetime.now(UTC)
-                                ).total_seconds()
-                                / 3600
-                            )
-                        )
-                        if oauth_token.expires_at_datetime
-                        else None,
-                    }
-                )
-
-            return "pass", details
-        else:
-            # Handle expired credentials
-            credentials = validation.credentials
-            oauth_token = credentials.claude_ai_oauth if credentials else None
-
-            details = {
-                "auth_status": "expired" if validation.expired else "invalid",
-                "credentials_path": str(validation.path) if validation.path else None,
-            }
-
-            if oauth_token and oauth_token.expires_at_datetime:
-                details.update(
-                    {
-                        "expiration": oauth_token.expires_at_datetime.isoformat(),
-                        "subscription_type": oauth_token.subscription_type,
-                        "expired_hours_ago": str(
-                            int(
-                                (
-                                    datetime.now(UTC) - oauth_token.expires_at_datetime
-                                ).total_seconds()
-                                / 3600
-                            )
-                        )
-                        if validation.expired
-                        else None,
-                    }
-                )
-
-            return "warn", details
-
-    except CredentialsNotFoundError:
-        return "warn", {
-            "auth_status": "not_configured",
-            "error": "Claude credentials file not found",
-            "credentials_path": None,
-        }
-    except CredentialsExpiredError:
-        return "warn", {
-            "auth_status": "expired",
-            "error": "Claude credentials have expired",
-        }
-    except Exception as e:
-        return "fail", {
-            "auth_status": "error",
-            "error": f"Unexpected error: {str(e)}",
-        }
+    # Authentication is now handled by individual plugins
+    return "pass", {
+        "auth_status": "plugin_managed",
+        "message": "Authentication handled by plugins",
+    }
 
 
 @functools.lru_cache(maxsize=1)
@@ -197,10 +121,10 @@ async def check_claude_code() -> tuple[str, dict[str, Any]]:
     if _claude_cli_cache is not None:
         cache_time, cached_result = _claude_cli_cache
         if current_time - cache_time < _cache_ttl_seconds:
-            logger.debug("claude_cli_check_cache_hit")
+            logger.debug("claude_cli_check_cache_hit", category="cache")
             return cached_result
 
-    logger.debug("claude_cli_check_cache_miss")
+    logger.debug("claude_cli_check_cache_miss", category="cache")
 
     # First check if claude binary exists in PATH (cached)
     claude_path = _get_claude_cli_path()
@@ -295,7 +219,23 @@ async def check_claude_code() -> tuple[str, dict[str, Any]]:
         # Cache the result
         _claude_cli_cache = (current_time, result)
         return result
+    except (OSError, PermissionError) as e:
+        logger.error("claude_cli_check_io_failed", error=str(e), exc_info=e)
+        result = (
+            "fail",
+            {
+                "installation_status": "error",
+                "cli_status": "error",
+                "error": f"Process execution error: {str(e)}",
+                "version": None,
+                "binary_path": claude_path,
+            },
+        )
+        # Cache the result
+        _claude_cli_cache = (current_time, result)
+        return result
     except Exception as e:
+        logger.error("claude_cli_check_failed", error=str(e), exc_info=e)
         result = (
             "fail",
             {
@@ -354,10 +294,10 @@ async def check_codex_cli() -> tuple[str, dict[str, Any]]:
     if _codex_cli_cache is not None:
         cache_time, cached_result = _codex_cli_cache
         if current_time - cache_time < _cache_ttl_seconds:
-            logger.debug("codex_cli_check_cache_hit")
+            logger.debug("codex_cli_check_cache_hit", category="cache")
             return cached_result
 
-    logger.debug("codex_cli_check_cache_miss")
+    logger.debug("codex_cli_check_cache_miss", category="cache")
 
     # First check if codex binary exists in PATH (cached)
     codex_path = _get_codex_cli_path()
@@ -452,7 +392,23 @@ async def check_codex_cli() -> tuple[str, dict[str, Any]]:
         _codex_cli_cache = (current_time, result)
         return result
 
+    except (OSError, PermissionError) as e:
+        logger.error("codex_cli_check_io_failed", error=str(e), exc_info=e)
+        result = (
+            "fail",
+            {
+                "installation_status": "error",
+                "cli_status": "error",
+                "error": f"Process execution error: {str(e)}",
+                "version": None,
+                "binary_path": codex_path,
+            },
+        )
+        # Cache the result
+        _codex_cli_cache = (current_time, result)
+        return result
     except Exception as e:
+        logger.error("codex_cli_check_failed", error=str(e), exc_info=e)
         result = (
             "fail",
             {
@@ -500,38 +456,23 @@ async def get_codex_cli_info() -> CodexCliInfo:
 async def _check_claude_sdk() -> tuple[str, dict[str, Any]]:
     """Check Claude SDK installation and version.
 
+    Note: Claude SDK is now only available as a plugin and not part of core.
+    This check always returns 'warn' status to indicate SDK should be accessed
+    via the plugin system.
+
     Returns:
         Tuple of (status, details) where status is 'pass'/'fail'/'warn'
         Details include SDK version and availability
     """
-    try:
-        # Try to import Claude Code SDK
-        with patched_typing():
-            from claude_code_sdk import __version__ as sdk_version
-
-        return "pass", {
-            "installation_status": "found",
-            "sdk_status": "available",
-            "version": sdk_version,
-            "import_successful": True,
-        }
-
-    except ImportError as e:
-        return "warn", {
-            "installation_status": "not_found",
-            "sdk_status": "not_installed",
-            "error": f"Claude SDK not available: {str(e)}",
-            "version": None,
-            "import_successful": False,
-        }
-    except Exception as e:
-        return "fail", {
-            "installation_status": "error",
-            "sdk_status": "error",
-            "error": f"Unexpected error checking SDK: {str(e)}",
-            "version": None,
-            "import_successful": False,
-        }
+    # Claude SDK has been moved to plugin system and is not available in core
+    return "warn", {
+        "installation_status": "plugin_only",
+        "sdk_status": "moved_to_plugin",
+        "error": "Claude SDK is now available via the claude_sdk plugin only",
+        "version": None,
+        "import_successful": False,
+        "plugin_name": "claude_sdk",
+    }
 
 
 @router.get("/health/live")
@@ -548,7 +489,7 @@ async def liveness_probe(response: Response) -> dict[str, Any]:
     response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     response.headers["Content-Type"] = "application/health+json"
 
-    logger.debug("Liveness probe request")
+    logger.debug("liveness_probe_request")
 
     return {
         "status": "pass",
@@ -571,7 +512,7 @@ async def readiness_probe(response: Response) -> dict[str, Any]:
     response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     response.headers["Content-Type"] = "application/health+json"
 
-    logger.debug("Readiness probe request")
+    logger.debug("readiness_probe_request")
 
     # Check OAuth credentials, CLI, and SDK separately
     oauth_status, oauth_details = await _check_oauth2_credentials()
@@ -678,7 +619,7 @@ async def detailed_health_check(response: Response) -> dict[str, Any]:
     response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     response.headers["Content-Type"] = "application/health+json"
 
-    logger.debug("Detailed health check request")
+    logger.debug("detailed_health_check_request")
 
     # Perform all health checks
     oauth_status, oauth_details = await _check_oauth2_credentials()

@@ -80,6 +80,15 @@ class BaseTransformer(ABC):
                 processing_time=duration_ms,
             )
 
+        except (AttributeError, TypeError) as e:
+            # Don't let metrics collection fail the transformation
+            logger = get_logger(__name__)
+            # logger = logging.getLogger(__name__)
+            logger.debug(
+                "transformation_metrics_attribute_error",
+                error=str(e),
+                exc_info=e,
+            )
         except Exception as e:
             # Don't let metrics collection fail the transformation
             logger = get_logger(__name__)

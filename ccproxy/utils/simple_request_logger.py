@@ -9,6 +9,8 @@ from typing import Any
 
 import structlog
 
+from ccproxy.core.async_task_manager import create_managed_task
+
 
 logger = structlog.get_logger(__name__)
 
@@ -41,11 +43,20 @@ def get_request_log_dir() -> Path | None:
     try:
         path.mkdir(parents=True, exist_ok=True)
         return path
-    except Exception as e:
+    except OSError as e:
         logger.error(
-            "failed_to_create_request_log_dir",
+            "failed_to_create_request_log_dir_io_error",
             log_dir=log_dir,
             error=str(e),
+            exc_info=e,
+        )
+        return None
+    except Exception as e:
+        logger.error(
+            "failed_to_create_request_log_dir_unexpected_error",
+            log_dir=log_dir,
+            error=str(e),
+            exc_info=e,
         )
         return None
 
@@ -100,13 +111,32 @@ async def write_request_log(
             file_path=str(file_path),
         )
 
-    except Exception as e:
+    except OSError as e:
         logger.error(
-            "failed_to_write_request_log",
+            "failed_to_write_request_log_io_error",
             request_id=request_id,
             log_type=log_type,
             file_path=str(file_path),
             error=str(e),
+            exc_info=e,
+        )
+    except (UnicodeEncodeError, UnicodeDecodeError) as e:
+        logger.error(
+            "failed_to_write_request_log_encoding_error",
+            request_id=request_id,
+            log_type=log_type,
+            file_path=str(file_path),
+            error=str(e),
+            exc_info=e,
+        )
+    except Exception as e:
+        logger.error(
+            "failed_to_write_request_log_unexpected_error",
+            request_id=request_id,
+            log_type=log_type,
+            file_path=str(file_path),
+            error=str(e),
+            exc_info=e,
         )
 
 
@@ -152,13 +182,32 @@ async def write_streaming_log(
             data_size=len(data),
         )
 
-    except Exception as e:
+    except OSError as e:
         logger.error(
-            "failed_to_write_streaming_log",
+            "failed_to_write_streaming_log_io_error",
             request_id=request_id,
             log_type=log_type,
             file_path=str(file_path),
             error=str(e),
+            exc_info=e,
+        )
+    except (UnicodeEncodeError, UnicodeDecodeError) as e:
+        logger.error(
+            "failed_to_write_streaming_log_encoding_error",
+            request_id=request_id,
+            log_type=log_type,
+            file_path=str(file_path),
+            error=str(e),
+            exc_info=e,
+        )
+    except Exception as e:
+        logger.error(
+            "failed_to_write_streaming_log_unexpected_error",
+            request_id=request_id,
+            log_type=log_type,
+            file_path=str(file_path),
+            error=str(e),
+            exc_info=e,
         )
 
 
@@ -216,8 +265,10 @@ async def append_streaming_log(
         await _flush_streaming_batch(batch_key)
     else:
         # Schedule a delayed flush
-        batch["last_flush_task"] = asyncio.create_task(
-            _delayed_flush_streaming_batch(batch_key, _STREAMING_BATCH_TIMEOUT)
+        batch["last_flush_task"] = await create_managed_task(
+            _delayed_flush_streaming_batch(batch_key, _STREAMING_BATCH_TIMEOUT),
+            name=f"flush_batch_{batch_key}",
+            creator="simple_request_logger",
         )
 
 
@@ -267,13 +318,32 @@ async def _flush_streaming_batch(batch_key: str) -> None:
             chunk_count=batch["chunk_count"],
         )
 
-    except Exception as e:
+    except OSError as e:
         logger.error(
-            "failed_to_flush_streaming_batch",
+            "failed_to_flush_streaming_batch_io_error",
             request_id=batch["request_id"],
             log_type=batch["log_type"],
             file_path=str(file_path),
             error=str(e),
+            exc_info=e,
+        )
+    except (UnicodeEncodeError, UnicodeDecodeError) as e:
+        logger.error(
+            "failed_to_flush_streaming_batch_encoding_error",
+            request_id=batch["request_id"],
+            log_type=batch["log_type"],
+            file_path=str(file_path),
+            error=str(e),
+            exc_info=e,
+        )
+    except Exception as e:
+        logger.error(
+            "failed_to_flush_streaming_batch_unexpected_error",
+            request_id=batch["request_id"],
+            log_type=batch["log_type"],
+            file_path=str(file_path),
+            error=str(e),
+            exc_info=e,
         )
 
 

@@ -57,6 +57,20 @@ class ResponseHandler:
                 "format": scenario.api_format,
             }
 
+        except json.JSONDecodeError as e:
+            return {
+                "status_code": response.status_code,
+                "headers": dict(response.headers),
+                "error": f"Failed to parse {scenario.api_format} JSON response: {str(e)}",
+                "raw_text": response.text[:500] if hasattr(response, "text") else "",
+            }
+        except (OSError, PermissionError) as e:
+            return {
+                "status_code": response.status_code,
+                "headers": dict(response.headers),
+                "error": f"IO/Permission error parsing {scenario.api_format} response: {str(e)}",
+                "raw_text": response.text[:500] if hasattr(response, "text") else "",
+            }
         except Exception as e:
             return {
                 "status_code": response.status_code,
@@ -109,6 +123,12 @@ class ResponseHandler:
                 "format": scenario.api_format,
             }
 
+        except (OSError, PermissionError) as e:
+            return {
+                "status_code": response.status_code,
+                "headers": dict(response.headers),
+                "error": f"IO/Permission error processing {scenario.api_format} stream: {str(e)}",
+            }
         except Exception as e:
             return {
                 "status_code": response.status_code,

@@ -10,6 +10,9 @@ from typing import Any
 
 import structlog
 
+from ccproxy.core.async_task_manager import create_managed_task
+from ccproxy.scheduler.errors import SchedulerError
+
 
 logger = structlog.get_logger(__name__)
 
@@ -115,8 +118,22 @@ class BaseScheduledTask(ABC):
 
         try:
             await self.setup()
-            self._task = asyncio.create_task(self._run_loop())
+            self._task = await create_managed_task(
+                self._run_loop(),
+                name=f"scheduled_task_{self.name}",
+                creator="BaseScheduledTask",
+            )
             logger.debug("task_started", task_name=self.name)
+        except SchedulerError as e:
+            self._running = False
+            logger.error(
+                "task_start_scheduler_error",
+                task_name=self.name,
+                error=str(e),
+                error_type=type(e).__name__,
+                exc_info=e,
+            )
+            raise
         except Exception as e:
             self._running = False
             logger.error(
@@ -124,6 +141,7 @@ class BaseScheduledTask(ABC):
                 task_name=self.name,
                 error=str(e),
                 error_type=type(e).__name__,
+                exc_info=e,
             )
             raise
 
@@ -144,12 +162,21 @@ class BaseScheduledTask(ABC):
         try:
             await self.cleanup()
             logger.debug("task_stopped", task_name=self.name)
+        except SchedulerError as e:
+            logger.error(
+                "task_cleanup_scheduler_error",
+                task_name=self.name,
+                error=str(e),
+                error_type=type(e).__name__,
+                exc_info=e,
+            )
         except Exception as e:
             logger.error(
                 "task_cleanup_failed",
                 task_name=self.name,
                 error=str(e),
                 error_type=type(e).__name__,
+                exc_info=e,
             )
 
     async def _run_loop(self) -> None:
@@ -199,6 +226,32 @@ class BaseScheduledTask(ABC):
             except asyncio.CancelledError:
                 logger.debug("task_cancelled", task_name=self.name)
                 break
+            except TimeoutError as e:
+                self._consecutive_failures += 1
+                logger.error(
+                    "task_execution_timeout_error",
+                    task_name=self.name,
+                    error=str(e),
+                    error_type=type(e).__name__,
+                    consecutive_failures=self._consecutive_failures,
+                    exc_info=e,
+                )
+                # Use backoff delay for exceptions too
+                backoff_delay = self.calculate_next_delay()
+                await asyncio.sleep(backoff_delay)
+            except SchedulerError as e:
+                self._consecutive_failures += 1
+                logger.error(
+                    "task_execution_scheduler_error",
+                    task_name=self.name,
+                    error=str(e),
+                    error_type=type(e).__name__,
+                    consecutive_failures=self._consecutive_failures,
+                    exc_info=e,
+                )
+                # Use backoff delay for exceptions too
+                backoff_delay = self.calculate_next_delay()
+                await asyncio.sleep(backoff_delay)
             except Exception as e:
                 self._consecutive_failures += 1
                 logger.error(
@@ -207,8 +260,8 @@ class BaseScheduledTask(ABC):
                     error=str(e),
                     error_type=type(e).__name__,
                     consecutive_failures=self._consecutive_failures,
+                    exc_info=e,
                 )
-
                 # Use backoff delay for exceptions too
                 backoff_delay = self.calculate_next_delay()
                 await asyncio.sleep(backoff_delay)
@@ -280,12 +333,22 @@ class PushgatewayTask(BaseScheduledTask):
 
             self._metrics_instance = get_metrics()
             logger.debug("pushgateway_task_setup_complete", task_name=self.name)
+        except ImportError as e:
+            logger.error(
+                "pushgateway_task_setup_import_error",
+                task_name=self.name,
+                error=str(e),
+                error_type=type(e).__name__,
+                exc_info=e,
+            )
+            raise
         except Exception as e:
             logger.error(
                 "pushgateway_task_setup_failed",
                 task_name=self.name,
                 error=str(e),
                 error_type=type(e).__name__,
+                exc_info=e,
             )
             raise
 
@@ -315,6 +378,7 @@ class PushgatewayTask(BaseScheduledTask):
                 task_name=self.name,
                 error=str(e),
                 error_type=type(e).__name__,
+                exc_info=e,
             )
             return False
 
@@ -358,12 +422,22 @@ class StatsPrintingTask(BaseScheduledTask):
                 metrics_instance=self._metrics_instance,
             )
             logger.debug("stats_printing_task_setup_complete", task_name=self.name)
+        except ImportError as e:
+            logger.error(
+                "stats_printing_task_setup_import_error",
+                task_name=self.name,
+                error=str(e),
+                error_type=type(e).__name__,
+                exc_info=e,
+            )
+            raise
         except Exception as e:
             logger.error(
                 "stats_printing_task_setup_failed",
                 task_name=self.name,
                 error=str(e),
                 error_type=type(e).__name__,
+                exc_info=e,
             )
             raise
 
@@ -384,101 +458,7 @@ class StatsPrintingTask(BaseScheduledTask):
                 task_name=self.name,
                 error=str(e),
                 error_type=type(e).__name__,
-            )
-            return False
-
-
-class PricingCacheUpdateTask(BaseScheduledTask):
-    """Task for updating pricing cache periodically."""
-
-    def __init__(
-        self,
-        name: str,
-        interval_seconds: float,
-        enabled: bool = True,
-        force_refresh_on_startup: bool = False,
-        pricing_updater: Any | None = None,
-    ):
-        """
-        Initialize pricing cache update task.
-
-        Args:
-            name: Task name
-            interval_seconds: Interval between pricing updates
-            enabled: Whether task is enabled
-            force_refresh_on_startup: Whether to force refresh on first run
-            pricing_updater: Injected pricing updater instance
-        """
-        super().__init__(
-            name=name,
-            interval_seconds=interval_seconds,
-            enabled=enabled,
-        )
-        self.force_refresh_on_startup = force_refresh_on_startup
-        self._pricing_updater = pricing_updater
-        self._first_run = True
-
-    async def setup(self) -> None:
-        """Initialize pricing updater instance if not injected."""
-        if self._pricing_updater is None:
-            try:
-                from ccproxy.config.pricing import PricingSettings
-                from ccproxy.pricing.cache import PricingCache
-                from ccproxy.pricing.updater import PricingUpdater
-
-                # Create pricing components with dependency injection
-                settings = PricingSettings()
-                cache = PricingCache(settings)
-                self._pricing_updater = PricingUpdater(cache, settings)
-                logger.debug("pricing_update_task_setup_complete", task_name=self.name)
-            except Exception as e:
-                logger.error(
-                    "pricing_update_task_setup_failed",
-                    task_name=self.name,
-                    error=str(e),
-                    error_type=type(e).__name__,
-                )
-                raise
-        else:
-            logger.debug(
-                "pricing_update_task_using_injected_updater", task_name=self.name
-            )
-
-    async def run(self) -> bool:
-        """Execute pricing cache update."""
-        try:
-            if not self._pricing_updater:
-                logger.warning("pricing_update_no_updater", task_name=self.name)
-                return False
-
-            # Force refresh on first run if configured
-            force_refresh = self._first_run and self.force_refresh_on_startup
-            self._first_run = False
-
-            if force_refresh:
-                logger.info("pricing_update_force_refresh_startup", task_name=self.name)
-                refresh_result = await self._pricing_updater.force_refresh()
-                success = bool(refresh_result)
-            else:
-                # Regular update check
-                pricing_data = await self._pricing_updater.get_current_pricing(
-                    force_refresh=False
-                )
-                success = pricing_data is not None
-
-            if success:
-                logger.debug("pricing_update_success", task_name=self.name)
-            else:
-                logger.warning("pricing_update_failed", task_name=self.name)
-
-            return success
-
-        except Exception as e:
-            logger.error(
-                "pricing_update_task_error",
-                task_name=self.name,
-                error=str(e),
-                error_type=type(e).__name__,
+                exc_info=e,
             )
             return False
 
@@ -601,6 +581,7 @@ class PoolStatsTask(BaseScheduledTask):
                 task_name=self.name,
                 error=str(e),
                 error_type=type(e).__name__,
+                exc_info=e,
             )
             return False
 
@@ -761,11 +742,21 @@ class VersionUpdateCheckTask(BaseScheduledTask):
 
             return True
 
+        except ImportError as e:
+            logger.error(
+                "version_check_task_import_error",
+                task_name=self.name,
+                error=str(e),
+                error_type=type(e).__name__,
+                exc_info=e,
+            )
+            return False
         except Exception as e:
             logger.error(
                 "version_check_task_error",
                 task_name=self.name,
                 error=str(e),
                 error_type=type(e).__name__,
+                exc_info=e,
             )
             return False

@@ -298,7 +298,7 @@ class PrometheusMetrics:
                     settings.observability.pushgateway_job,
                 )
         except Exception as e:
-            logger.warning("pushgateway_init_failed: error=%s", str(e))
+            logger.warning("pushgateway_init_failed", error=str(e), exc_info=e)
             self._pushgateway_client = None
 
     def record_request(
@@ -677,10 +677,10 @@ def reset_metrics() -> None:
             collectors = list(REGISTRY._collector_to_names.keys())
             for collector in collectors:
                 REGISTRY.unregister(collector)
-        except Exception:
+        except Exception as e:
             # If clearing the registry fails, just continue
             # This is mainly for testing and shouldn't break functionality
-            pass
+            logger.debug("registry_clear_failed", error=str(e), exc_info=e)
 
     # Also reset pushgateway client
     from .pushgateway import reset_pushgateway_client

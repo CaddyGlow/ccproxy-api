@@ -29,17 +29,6 @@ from ccproxy.docker import (
 from ..docker import (
     _create_docker_adapter_from_settings,
 )
-from ..options.claude_options import (
-    ClaudeOptions,
-    validate_claude_cli_path,
-    validate_cwd,
-    validate_max_thinking_tokens,
-    validate_max_turns,
-    validate_permission_mode,
-    validate_pool_size,
-    validate_sdk_message_mode,
-    validate_system_prompt_injection_mode,
-)
 from ..options.security_options import SecurityOptions, validate_auth_token
 from ..options.server_options import (
     ServerOptions,
@@ -79,9 +68,10 @@ def _show_api_usage_info(toolkit: Any, settings: Settings) -> None:
     # Use rich console for code blocks
     console = Console()
 
-    exports = f"""export ANTHROPIC_API_KEY={settings.security.auth_token}
+    auth_token = "YOUR_AUTH_TOKEN" if settings.security.auth_token else "NOT_SET"
+    exports = f"""export ANTHROPIC_API_KEY={auth_token}
 export ANTHROPIC_BASE_URL={anthropic_base_url}
-export OPENAI_API_KEY={settings.security.auth_token}
+export OPENAI_API_KEY={auth_token}
 export OPENAI_BASE_URL={openai_base_url}"""
 
     console.print(Syntax(exports, "bash", theme="monokai", background_color="default"))
@@ -220,7 +210,9 @@ def _run_docker_server(
     )
 
 
-def _run_local_server(settings: Settings, cli_overrides: dict[str, Any]) -> None:
+def _run_local_server(
+    settings: Settings, cli_overrides: dict[str, Any], config: Path | None = None
+) -> None:
     """Run the server locally."""
     in_docker = is_running_in_docker()
     toolkit = get_rich_toolkit()
@@ -253,6 +245,11 @@ def _run_local_server(settings: Settings, cli_overrides: dict[str, Any]) -> None
     if cli_overrides:
         os.environ["CCPROXY_CONFIG_OVERRIDES"] = json.dumps(cli_overrides)
 
+    # Set config file path for the app to use
+    if config:
+        os.environ["CONFIG_FILE"] = str(config)
+        logger.debug("config_file_set_in_env", path=str(config))
+
     logger.debug(
         "server_starting",
         host=settings.server.host,
@@ -262,7 +259,7 @@ def _run_local_server(settings: Settings, cli_overrides: dict[str, Any]) -> None
 
     reload_includes = None
     if settings.server.reload:
-        reload_includes = ["ccproxy", "pyproject.toml", "uv.lock"]
+        reload_includes = ["ccproxy", "pyproject.toml", "uv.lock", "plugins"]
 
     # Run uvicorn with our already configured logging
     uvicorn.run(
@@ -275,6 +272,7 @@ def _run_local_server(settings: Settings, cli_overrides: dict[str, Any]) -> None
         log_config=None,
         access_log=False,  # Disable uvicorn's default access logs
         server_header=False,  # Disable uvicorn's server header to preserve upstream headers
+        date_header=False,  # Disable uvicorn's date header to preserve upstream headers
         reload_includes=reload_includes,
         # log_config=get_uvicorn_log_config(),
     )
@@ -340,14 +338,6 @@ def api(
             rich_help_panel="Server Settings",
         ),
     ] = None,
-    use_terminal_permission_handler: Annotated[
-        bool,
-        typer.Option(
-            "--terminal-permission-handler",
-            help="Enable terminal permission terminal handler",
-            rich_help_panel="Server Settings",
-        ),
-    ] = False,
     # Security options
     auth_token: Annotated[
         str | None,
@@ -358,135 +348,15 @@ def api(
             rich_help_panel="Security Settings",
         ),
     ] = None,
-    # Claude options
-    max_thinking_tokens: Annotated[
-        int | None,
+    # Plugin settings
+    plugin_setting: Annotated[
+        list[str] | None,
         typer.Option(
-            "--max-thinking-tokens",
-            help="Maximum thinking tokens for Claude Code",
-            callback=validate_max_thinking_tokens,
-            rich_help_panel="Claude Settings",
+            "--plugin-setting",
+            help="Set a plugin setting, e.g., claude_sdk.cli_path=/path/to/claude",
+            rich_help_panel="Plugin Settings",
         ),
     ] = None,
-    allowed_tools: Annotated[
-        str | None,
-        typer.Option(
-            "--allowed-tools",
-            help="List of allowed tools (comma-separated)",
-            rich_help_panel="Claude Settings",
-        ),
-    ] = None,
-    disallowed_tools: Annotated[
-        str | None,
-        typer.Option(
-            "--disallowed-tools",
-            help="List of disallowed tools (comma-separated)",
-            rich_help_panel="Claude Settings",
-        ),
-    ] = None,
-    claude_cli_path: Annotated[
-        str | None,
-        typer.Option(
-            "--claude-cli-path",
-            help="Path to Claude CLI executable",
-            callback=validate_claude_cli_path,
-            rich_help_panel="Claude Settings",
-        ),
-    ] = None,
-    append_system_prompt: Annotated[
-        str | None,
-        typer.Option(
-            "--append-system-prompt",
-            help="Additional system prompt to append",
-            rich_help_panel="Claude Settings",
-        ),
-    ] = None,
-    permission_mode: Annotated[
-        str | None,
-        typer.Option(
-            "--permission-mode",
-            help="Permission mode: default, acceptEdits, or bypassPermissions",
-            callback=validate_permission_mode,
-            rich_help_panel="Claude Settings",
-        ),
-    ] = None,
-    max_turns: Annotated[
-        int | None,
-        typer.Option(
-            "--max-turns",
-            help="Maximum conversation turns",
-            callback=validate_max_turns,
-            rich_help_panel="Claude Settings",
-        ),
-    ] = None,
-    cwd: Annotated[
-        str | None,
-        typer.Option(
-            "--cwd",
-            help="Working directory path",
-            callback=validate_cwd,
-            rich_help_panel="Claude Settings",
-        ),
-    ] = None,
-    permission_prompt_tool_name: Annotated[
-        str | None,
-        typer.Option(
-            "--permission-prompt-tool-name",
-            help="Permission prompt tool name",
-            rich_help_panel="Claude Settings",
-        ),
-    ] = None,
-    sdk_message_mode: Annotated[
-        str | None,
-        typer.Option(
-            "--sdk-message-mode",
-            help="SDK message handling mode: forward (direct SDK blocks), ignore (skip blocks), formatted (XML tags with JSON data)",
-            callback=validate_sdk_message_mode,
-            rich_help_panel="Claude Settings",
-        ),
-    ] = None,
-    sdk_pool: Annotated[
-        bool,
-        typer.Option(
-            "--sdk-pool/--no-sdk-pool",
-            help="Enable/disable general Claude SDK client connection pooling",
-            rich_help_panel="Claude Settings",
-        ),
-    ] = False,
-    sdk_pool_size: Annotated[
-        int | None,
-        typer.Option(
-            "--sdk-pool-size",
-            help="Number of clients to maintain in the general pool (1-20)",
-            callback=validate_pool_size,
-            rich_help_panel="Claude Settings",
-        ),
-    ] = None,
-    sdk_session_pool: Annotated[
-        bool,
-        typer.Option(
-            "--sdk-session-pool/--no-sdk-session-pool",
-            help="Enable/disable session-aware Claude SDK client pooling",
-            rich_help_panel="Claude Settings",
-        ),
-    ] = False,
-    system_prompt_injection_mode: Annotated[
-        str | None,
-        typer.Option(
-            "--system-prompt-injection-mode",
-            help="System prompt injection mode: minimal (Claude Code ID only), full (all detected system messages)",
-            callback=validate_system_prompt_injection_mode,
-            rich_help_panel="Claude Settings",
-        ),
-    ] = None,
-    builtin_permissions: Annotated[
-        bool,
-        typer.Option(
-            "--builtin-permissions/--no-builtin-permissions",
-            help="Enable built-in permission handling infrastructure (MCP server and SSE endpoints). When disabled, users can configure custom MCP servers and permission tools.",
-            rich_help_panel="Claude Settings",
-        ),
-    ] = True,
     # Core settings
     docker: Annotated[
         bool,
@@ -629,25 +499,6 @@ def api(
             reload=reload,
             log_level=log_level,
             log_file=log_file,
-            use_terminal_confirmation_handler=use_terminal_permission_handler,
-        )
-
-        claude_options = ClaudeOptions(
-            max_thinking_tokens=max_thinking_tokens,
-            allowed_tools=allowed_tools,
-            disallowed_tools=disallowed_tools,
-            claude_cli_path=claude_cli_path,
-            append_system_prompt=append_system_prompt,
-            permission_mode=permission_mode,
-            max_turns=max_turns,
-            cwd=cwd,
-            permission_prompt_tool_name=permission_prompt_tool_name,
-            sdk_message_mode=sdk_message_mode,
-            sdk_pool=sdk_pool,
-            sdk_pool_size=sdk_pool_size,
-            sdk_session_pool=sdk_session_pool,
-            system_prompt_injection_mode=system_prompt_injection_mode,
-            builtin_permissions=builtin_permissions,
         )
 
         security_options = SecurityOptions(auth_token=auth_token)
@@ -676,22 +527,8 @@ def api(
             use_terminal_confirmation_handler=server_options.use_terminal_confirmation_handler,
             # Security options
             auth_token=security_options.auth_token,
-            # Claude options
-            claude_cli_path=claude_options.claude_cli_path,
-            max_thinking_tokens=claude_options.max_thinking_tokens,
-            allowed_tools=claude_options.allowed_tools,
-            disallowed_tools=claude_options.disallowed_tools,
-            append_system_prompt=claude_options.append_system_prompt,
-            permission_mode=claude_options.permission_mode,
-            max_turns=claude_options.max_turns,
-            permission_prompt_tool_name=claude_options.permission_prompt_tool_name,
-            cwd=claude_options.cwd,
-            sdk_message_mode=claude_options.sdk_message_mode,
-            sdk_pool=claude_options.sdk_pool,
-            sdk_pool_size=claude_options.sdk_pool_size,
-            sdk_session_pool=claude_options.sdk_session_pool,
-            system_prompt_injection_mode=claude_options.system_prompt_injection_mode,
-            builtin_permissions=claude_options.builtin_permissions,
+            # Plugin settings
+            plugin_setting=plugin_setting,
         )
 
         # Add scheduler overrides if any
@@ -750,7 +587,6 @@ def api(
             duckdb_path=settings.observability.duckdb_path
             if settings.observability.duckdb_enabled
             else None,
-            claude_cli_path=settings.claude.cli_path,
         )
 
         if docker:
@@ -767,11 +603,21 @@ def api(
                 user_gid=user_gid,
             )
         else:
-            _run_local_server(settings, cli_overrides)
+            _run_local_server(settings, cli_overrides, config)
 
     except ConfigurationError as e:
         toolkit = get_rich_toolkit()
         toolkit.print(f"Configuration error: {e}", tag="error")
+        raise typer.Exit(1) from e
+    except OSError as e:
+        toolkit = get_rich_toolkit()
+        toolkit.print(
+            f"Server startup failed (port/permission issue): {e}", tag="error"
+        )
+        raise typer.Exit(1) from e
+    except ImportError as e:
+        toolkit = get_rich_toolkit()
+        toolkit.print(f"Import error during server startup: {e}", tag="error")
         raise typer.Exit(1) from e
     except Exception as e:
         toolkit = get_rich_toolkit()
@@ -949,36 +795,96 @@ def claude(
                 user_context=user_context,
             )
         else:
-            # Get claude path from settings
-            claude_path = settings.claude.cli_path
-            if not claude_path:
+            # Get claude command using binary resolver
+            import shutil
+            from pathlib import Path
+
+            from ccproxy.utils.binary_resolver import BinaryResolver
+
+            # Check common installation locations first
+            claude_paths = [
+                shutil.which("claude"),
+                Path.home() / ".cache" / ".bun" / "bin" / "claude",
+                Path.home() / ".local" / "bin" / "claude",
+                Path("/usr/local/bin/claude"),
+            ]
+
+            claude_cmd: str | list[str] | None = None
+            for path in claude_paths:
+                if path and Path(str(path)).exists():
+                    claude_cmd = str(path)
+                    break
+
+            # If not found, try package manager fallback
+            if not claude_cmd:
+                resolver = BinaryResolver()
+                result = resolver.find_binary("claude", "@anthropic-ai/claude-code")
+                if result:
+                    # Store the command as a string for direct binaries, or as the full command for package managers
+                    claude_cmd = (
+                        result.command[0] if result.is_direct else result.command
+                    )
+
+            if not claude_cmd:
                 toolkit.print("Error: Claude CLI not found.", tag="error")
                 toolkit.print(
-                    "Please install Claude CLI or configure claude_cli_path.",
+                    "Please install Claude CLI.",
                     tag="error",
                 )
                 raise typer.Exit(1)
 
-            # Resolve to absolute path
-            if not Path(claude_path).is_absolute():
-                claude_path = str(Path(claude_path).resolve())
+            # Handle both direct path and command list
+            if isinstance(claude_cmd, str):
+                # Direct path - resolve to absolute if needed
+                if not Path(claude_cmd).is_absolute():
+                    claude_cmd = str(Path(claude_cmd).resolve())
 
-            logger.info("local_claude_execution", claude_path=claude_path, args=args)
-            toolkit.print(f"Executing: {claude_path} {' '.join(args)}", tag="claude")
-            toolkit.print_line()
+                logger.info("local_claude_execution", claude_path=claude_cmd, args=args)
+                toolkit.print(f"Executing: {claude_cmd} {' '.join(args)}", tag="claude")
+                toolkit.print_line()
 
-            # Execute command directly
-            try:
-                # Use os.execvp to replace current process with claude
-                # This hands over full control to claude, including signal handling
-                os.execvp(claude_path, [claude_path] + args)
-            except OSError as e:
-                toolkit.print(f"Failed to execute command: {e}", tag="error")
-                raise typer.Exit(1) from e
+                # Execute command directly
+                try:
+                    # Use os.execvp to replace current process with claude
+                    # This hands over full control to claude, including signal handling
+                    os.execvp(claude_cmd, [claude_cmd] + args)
+                except OSError as e:
+                    toolkit.print(f"Failed to execute command: {e}", tag="error")
+                    raise typer.Exit(1) from e
+            else:
+                # Package manager command - use subprocess
+                if not isinstance(claude_cmd, list):
+                    raise ValueError("Expected list for package manager command")
+                full_cmd = claude_cmd + args
+                logger.info(
+                    "local_claude_execution_via_package_manager",
+                    command=full_cmd,
+                    package_manager=claude_cmd[0],
+                )
+                toolkit.print(f"Executing: {' '.join(full_cmd)}", tag="claude")
+                toolkit.print_line()
+
+                try:
+                    # Use subprocess.run for package manager execution
+                    import subprocess
+
+                    proc_result = subprocess.run(full_cmd, check=False)
+                    raise typer.Exit(proc_result.returncode)
+                except subprocess.SubprocessError as e:
+                    toolkit.print(f"Failed to execute command: {e}", tag="error")
+                    raise typer.Exit(1) from e
 
     except ConfigurationError as e:
         logger.error("cli_configuration_error", error=str(e), command="claude")
         toolkit.print(f"Configuration error: {e}", tag="error")
+        raise typer.Exit(1) from e
+    except FileNotFoundError as e:
+        logger.error("cli_command_not_found", error=str(e), command="claude")
+        toolkit.print(f"Claude command not found: {e}", tag="error")
+        raise typer.Exit(1) from e
+    except OSError as e:
+        logger.error("cli_os_error", error=str(e), command="claude")
+        toolkit.print(f"System error executing claude command: {e}", tag="error")
         raise typer.Exit(1) from e
     except Exception as e:
         logger.error("cli_unexpected_error", error=str(e), command="claude")

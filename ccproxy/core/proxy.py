@@ -1,6 +1,5 @@
 """Core proxy abstractions for handling HTTP and WebSocket connections."""
 
-from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 from ccproxy.core.types import ProxyRequest, ProxyResponse
@@ -10,31 +9,20 @@ if TYPE_CHECKING:
     from ccproxy.core.http import HTTPClient
 
 
-class BaseProxy(ABC):
-    """Abstract base class for all proxy implementations."""
+@runtime_checkable
+class ProxyProtocol(Protocol):
+    """Protocol defining the proxy interface."""
 
-    @abstractmethod
     async def forward(self, request: ProxyRequest) -> ProxyResponse:
-        """Forward a request and return the response.
+        """Forward a request and return the response."""
+        ...
 
-        Args:
-            request: The proxy request to forward
-
-        Returns:
-            The proxy response
-
-        Raises:
-            ProxyError: If the request cannot be forwarded
-        """
-        pass
-
-    @abstractmethod
     async def close(self) -> None:
         """Close any resources held by the proxy."""
-        pass
+        ...
 
 
-class HTTPProxy(BaseProxy):
+class HTTPProxy(ProxyProtocol):
     """HTTP proxy implementation using HTTPClient abstractions."""
 
     def __init__(self, http_client: "HTTPClient") -> None:
@@ -110,34 +98,11 @@ class HTTPProxy(BaseProxy):
 
         except HTTPError as e:
             raise ProxyError(f"HTTP request failed: {e}") from e
+        except (ValueError, TypeError) as e:
+            raise ProxyError(f"Invalid request data: {e}") from e
         except Exception as e:
             raise ProxyError(f"Unexpected error during HTTP request: {e}") from e
 
     async def close(self) -> None:
         """Close HTTP proxy resources."""
         await self.http_client.close()
-
-
-class WebSocketProxy(BaseProxy):
-    """WebSocket proxy implementation placeholder."""
-
-    async def forward(self, request: ProxyRequest) -> ProxyResponse:
-        """Forward a WebSocket request."""
-        raise NotImplementedError("WebSocketProxy.forward not yet implemented")
-
-    async def close(self) -> None:
-        """Close WebSocket proxy resources."""
-        pass
-
-
-@runtime_checkable
-class ProxyProtocol(Protocol):
-    """Protocol defining the proxy interface."""
-
-    async def forward(self, request: ProxyRequest) -> ProxyResponse:
-        """Forward a request and return the response."""
-        ...
-
-    async def close(self) -> None:
-        """Close any resources held by the proxy."""
-        ...

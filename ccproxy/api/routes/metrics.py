@@ -14,6 +14,8 @@ from ccproxy.api.dependencies import (
     ObservabilityMetricsDep,
     SettingsDep,
 )
+
+# get_cached_settings is already imported above from ccproxy.api.dependencies
 from ccproxy.observability.storage.models import AccessLog
 
 
@@ -138,6 +140,14 @@ async def get_metrics_dashboard() -> HTMLResponse:
                 "Content-Type": "text/html; charset=utf-8",
             },
         )
+    except (OSError, PermissionError) as e:
+        raise HTTPException(
+            status_code=500, detail=f"Dashboard file access error: {str(e)}"
+        ) from e
+    except UnicodeDecodeError as e:
+        raise HTTPException(
+            status_code=500, detail=f"Dashboard file encoding error: {str(e)}"
+        ) from e
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Failed to serve dashboard: {str(e)}"
@@ -217,6 +227,10 @@ async def get_prometheus_metrics(metrics: ObservabilityMetricsDep) -> Response:
 
     except HTTPException:
         raise
+    except ImportError as e:
+        raise HTTPException(
+            status_code=503, detail=f"Prometheus dependencies missing: {str(e)}"
+        ) from e
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Failed to generate Prometheus metrics: {str(e)}"
@@ -296,11 +310,26 @@ async def query_logs(
                         "timestamp": time.time(),
                     }
 
+            except (OSError, PermissionError) as e:
+                import structlog
+
+                logger = structlog.get_logger(__name__)
+                logger.error(
+                    "sqlmodel_query_io_error",
+                    error=str(e),
+                    exc_info=e,
+                    category="metrics",
+                )
+                raise HTTPException(
+                    status_code=500, detail=f"Database access error: {str(e)}"
+                ) from e
             except Exception as e:
                 import structlog
 
                 logger = structlog.get_logger(__name__)
-                logger.error("sqlmodel_query_error", error=str(e))
+                logger.error(
+                    "sqlmodel_query_error", error=str(e), exc_info=e, category="metrics"
+                )
                 raise HTTPException(
                     status_code=500, detail=f"Query execution failed: {str(e)}"
                 ) from e
@@ -312,6 +341,10 @@ async def query_logs(
 
     except HTTPException:
         raise
+    except (OSError, PermissionError) as e:
+        raise HTTPException(
+            status_code=500, detail=f"Database access error: {str(e)}"
+        ) from e
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Query execution failed: {str(e)}"
@@ -639,11 +672,29 @@ async def get_logs_analytics(
 
                     return cast(AnalyticsResult, analytics)
 
+            except (OSError, PermissionError) as e:
+                import structlog
+
+                logger = structlog.get_logger(__name__)
+                logger.error(
+                    "sqlmodel_analytics_io_error",
+                    error=str(e),
+                    exc_info=e,
+                    category="metrics",
+                )
+                raise HTTPException(
+                    status_code=500, detail=f"Database access error: {str(e)}"
+                ) from e
             except Exception as e:
                 import structlog
 
                 logger = structlog.get_logger(__name__)
-                logger.error("sqlmodel_analytics_error", error=str(e))
+                logger.error(
+                    "sqlmodel_analytics_error",
+                    error=str(e),
+                    exc_info=e,
+                    category="metrics",
+                )
                 raise HTTPException(
                     status_code=500, detail=f"Analytics query failed: {str(e)}"
                 ) from e
@@ -655,6 +706,10 @@ async def get_logs_analytics(
 
     except HTTPException:
         raise
+    except (OSError, PermissionError) as e:
+        raise HTTPException(
+            status_code=500, detail=f"Database access error: {str(e)}"
+        ) from e
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Analytics generation failed: {str(e)}"
@@ -664,6 +719,7 @@ async def get_logs_analytics(
 @logs_router.get("/stream")
 async def stream_logs(
     request: Request,
+    settings: SettingsDep,
     model: str | None = Query(None, description="Filter by model name"),
     service_type: str | None = Query(
         None,
@@ -814,8 +870,18 @@ async def stream_logs(
         except asyncio.CancelledError:
             # Connection was cancelled, cleanup handled by SSE manager
             pass
+        except (OSError, PermissionError) as e:
+            # Send error event for IO issues
+            import json
+
+            error_event = {
+                "type": "error",
+                "message": f"Stream access error: {str(e)}",
+                "timestamp": time.time(),
+            }
+            yield f"data: {json.dumps(error_event)}\n\n"
         except Exception as e:
-            # Send error event
+            # Send error event for other issues
             import json
 
             error_event = {
@@ -825,15 +891,30 @@ async def stream_logs(
             }
             yield f"data: {json.dumps(error_event)}\n\n"
 
+    # Prepare headers for streaming response
+    response_headers = {
+        "Cache-Control": "no-cache",
+        "Connection": "keep-alive",
+    }
+
+    # Add secure CORS headers using proper configuration
+    from ccproxy.utils.cors import get_cors_headers, get_request_origin
+
+    request_headers = dict(request.headers)
+    request_origin = get_request_origin(request_headers)
+    cors_headers = get_cors_headers(settings.cors, request_origin, request_headers)
+    response_headers.update(cors_headers)
+
+    # For SSE, also need to explicitly allow Cache-Control header
+    if "Access-Control-Allow-Headers" in response_headers:
+        current_headers = response_headers["Access-Control-Allow-Headers"]
+        if "Cache-Control" not in current_headers:
+            response_headers["Access-Control-Allow-Headers"] += ", Cache-Control"
+
     return StreamingResponse(
         event_stream(),
         media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Headers": "Cache-Control",
-        },
+        headers=response_headers,
     )
 
 
@@ -951,11 +1032,29 @@ async def get_logs_entries(
                         "backend": "sqlmodel",
                     }
 
+            except (OSError, PermissionError) as e:
+                import structlog
+
+                logger = structlog.get_logger(__name__)
+                logger.error(
+                    "sqlmodel_entries_io_error",
+                    error=str(e),
+                    exc_info=e,
+                    category="metrics",
+                )
+                raise HTTPException(
+                    status_code=500, detail=f"Database access error: {str(e)}"
+                ) from e
             except Exception as e:
                 import structlog
 
                 logger = structlog.get_logger(__name__)
-                logger.error("sqlmodel_entries_error", error=str(e))
+                logger.error(
+                    "sqlmodel_entries_error",
+                    error=str(e),
+                    exc_info=e,
+                    category="metrics",
+                )
                 raise HTTPException(
                     status_code=500, detail=f"Failed to retrieve entries: {str(e)}"
                 ) from e
@@ -967,6 +1066,10 @@ async def get_logs_entries(
 
     except HTTPException:
         raise
+    except (OSError, PermissionError) as e:
+        raise HTTPException(
+            status_code=500, detail=f"Database access error: {str(e)}"
+        ) from e
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Failed to retrieve database entries: {str(e)}"
@@ -1023,6 +1126,10 @@ async def reset_logs_data(
 
     except HTTPException:
         raise
+    except (OSError, PermissionError) as e:
+        raise HTTPException(
+            status_code=500, detail=f"Database access error: {str(e)}"
+        ) from e
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Reset operation failed: {str(e)}"

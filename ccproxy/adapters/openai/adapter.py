@@ -9,13 +9,13 @@ from __future__ import annotations
 import json
 import re
 import time
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator, AsyncIterator
 from typing import Any, Literal, cast
 
-import structlog
 from pydantic import ValidationError
 
-from ccproxy.core.interfaces import APIAdapter
+from ccproxy.adapters.base import APIAdapter
+from ccproxy.core.logging import get_logger
 from ccproxy.utils.model_mapping import map_model_to_claude
 
 from .models import (
@@ -28,10 +28,11 @@ from .models import (
     generate_openai_response_id,
     generate_openai_system_fingerprint,
 )
+from .response_adapter import ResponseAdapter
 from .streaming import OpenAIStreamProcessor
 
 
-logger = structlog.get_logger(__name__)
+logger = get_logger(__name__)
 
 
 class OpenAIAdapter(APIAdapter):
@@ -40,8 +41,9 @@ class OpenAIAdapter(APIAdapter):
     def __init__(self, include_sdk_content_as_xml: bool = False) -> None:
         """Initialize the OpenAI adapter."""
         self.include_sdk_content_as_xml = include_sdk_content_as_xml
+        self.response_adapter = ResponseAdapter()
 
-    def adapt_request(self, request: dict[str, Any]) -> dict[str, Any]:
+    async def adapt_request(self, request: dict[str, Any]) -> dict[str, Any]:
         """Convert OpenAI request format to Anthropic format.
 
         Args:
@@ -53,6 +55,9 @@ class OpenAIAdapter(APIAdapter):
         Raises:
             ValueError: If the request format is invalid or unsupported
         """
+        # Get logger with request context at the start of the function
+        logger = get_logger(__name__)
+
         try:
             # Parse OpenAI request
             openai_req = OpenAIChatCompletionRequest(**request)
@@ -256,6 +261,9 @@ class OpenAIAdapter(APIAdapter):
         self, openai_req: OpenAIChatCompletionRequest
     ) -> None:
         """Log warnings for unsupported OpenAI parameters."""
+        # Get logger with request context at the start of the function
+        logger = get_logger(__name__)
+
         if openai_req.seed is not None:
             logger.debug(
                 "unsupported_parameter_ignored",
@@ -318,7 +326,7 @@ class OpenAIAdapter(APIAdapter):
                 openai_req.function_call
             )
 
-    def adapt_response(self, response: dict[str, Any]) -> dict[str, Any]:
+    async def adapt_response(self, response: dict[str, Any]) -> dict[str, Any]:
         """Convert Anthropic response format to OpenAI format.
 
         Args:
@@ -330,6 +338,9 @@ class OpenAIAdapter(APIAdapter):
         Raises:
             ValueError: If the response format is invalid or unsupported
         """
+        # Get logger with request context at the start of the function
+        logger = get_logger(__name__)
+
         try:
             # Extract original model from response metadata if available
             original_model = response.get("model", "gpt-4")
@@ -395,7 +406,7 @@ class OpenAIAdapter(APIAdapter):
                 elif block.get("type") == "system_message":
                     # Handle custom system_message content blocks
                     system_text = block.get("text", "")
-                    source = block.get("source", "claude_code_sdk")
+                    source = block.get("source", "ccproxy")
                     # Format as text with clear source attribution
                     content += f"[{source}]: {system_text}"
                 elif block.get("type") == "tool_use_sdk":
@@ -409,7 +420,7 @@ class OpenAIAdapter(APIAdapter):
                     tool_calls.append(format_openai_tool_call(tool_call_block))
                 elif block.get("type") == "tool_result_sdk":
                     # Handle custom tool_result_sdk content blocks - add as text with source attribution
-                    source = block.get("source", "claude_code_sdk")
+                    source = block.get("source", "ccproxy")
                     tool_use_id = block.get("tool_use_id", "")
                     result_content = block.get("content", "")
                     is_error = block.get("is_error", False)
@@ -417,7 +428,7 @@ class OpenAIAdapter(APIAdapter):
                     content += f"[{source} tool_result {tool_use_id}{error_indicator}]: {result_content}"
                 elif block.get("type") == "result_message":
                     # Handle custom result_message content blocks - add as text with source attribution
-                    source = block.get("source", "claude_code_sdk")
+                    source = block.get("source", "ccproxy")
                     result_data = block.get("data", {})
                     session_id = result_data.get("session_id", "")
                     stop_reason = result_data.get("stop_reason", "")
@@ -494,9 +505,9 @@ class OpenAIAdapter(APIAdapter):
             + usage_info.get("output_tokens", 0),
         )
 
-    async def adapt_stream(
+    def adapt_stream(
         self, stream: AsyncIterator[dict[str, Any]]
-    ) -> AsyncIterator[dict[str, Any]]:
+    ) -> AsyncGenerator[dict[str, Any], None]:
         """Convert Anthropic streaming response to OpenAI streaming format.
 
         Args:
@@ -508,6 +519,15 @@ class OpenAIAdapter(APIAdapter):
         Raises:
             ValueError: If the stream format is invalid or unsupported
         """
+        return self._adapt_stream_impl(stream)
+
+    async def _adapt_stream_impl(
+        self, stream: AsyncIterator[dict[str, Any]]
+    ) -> AsyncGenerator[dict[str, Any], None]:
+        """Implementation of stream adaptation."""
+        # Get logger with request context at the start of the function
+        logger = get_logger(__name__)
+
         # Create stream processor with dict output format
         processor = OpenAIStreamProcessor(
             enable_usage=True,
@@ -519,13 +539,22 @@ class OpenAIAdapter(APIAdapter):
             # Process the stream - now yields dict objects directly
             async for chunk in processor.process_stream(stream):
                 yield chunk  # type: ignore[misc]  # chunk is guaranteed to be dict when output_format="dict"
+        except (OSError, PermissionError) as e:
+            logger.error(
+                "streaming_conversion_io_failed",
+                error=str(e),
+                error_type=type(e).__name__,
+                operation="adapt_stream",
+                exc_info=e,
+            )
+            raise ValueError(f"IO error processing streaming response: {e}") from e
         except Exception as e:
             logger.error(
                 "streaming_conversion_failed",
                 error=str(e),
                 error_type=type(e).__name__,
                 operation="adapt_stream",
-                exc_info=True,
+                exc_info=e,
             )
             raise ValueError(f"Error processing streaming response: {e}") from e
 
@@ -908,6 +937,47 @@ class OpenAIAdapter(APIAdapter):
         }
 
         return mapping.get(stop_reason, "stop")
+
+    # Response API integration methods
+    def adapt_chat_to_response_request(self, request: dict[str, Any]) -> dict[str, Any]:
+        """Convert Chat Completions request to Response API format.
+
+        Args:
+            request: OpenAI Chat Completions request
+
+        Returns:
+            Response API formatted request as dict
+        """
+        response_request = self.response_adapter.chat_to_response_request(request)
+        return response_request.model_dump()
+
+    def adapt_response_to_chat(self, response_data: dict[str, Any]) -> dict[str, Any]:
+        """Convert Response API response to Chat Completions format.
+
+        Args:
+            response_data: Response API response
+
+        Returns:
+            Chat Completions formatted response as dict
+        """
+        chat_response = self.response_adapter.response_to_chat_completion(response_data)
+        return chat_response.model_dump()
+
+    async def adapt_response_stream_to_chat(
+        self, response_stream: AsyncIterator[bytes]
+    ) -> AsyncIterator[dict[str, Any]]:
+        """Convert Response API SSE stream to Chat Completions format.
+
+        Args:
+            response_stream: Async iterator of SSE bytes from Response API
+
+        Yields:
+            Chat Completions formatted streaming chunks as dicts
+        """
+        async for chunk in self.response_adapter.stream_response_to_chat(
+            response_stream
+        ):
+            yield chunk
 
     def adapt_error(self, error_body: dict[str, Any]) -> dict[str, Any]:
         """Convert Anthropic error format to OpenAI error format.

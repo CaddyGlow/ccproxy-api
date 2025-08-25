@@ -11,9 +11,10 @@ from ccproxy.cli.helpers import (
     get_rich_toolkit,
 )
 
+# from plugins.permissions.handlers.cli import app as permission_handler_app
 from .commands.auth import app as auth_app
 from .commands.config import app as config_app
-from .commands.permission_handler import app as permission_handler_app
+from .commands.plugins import app as plugins_app
 from .commands.serve import api
 
 
@@ -85,7 +86,10 @@ app.add_typer(config_app)
 app.add_typer(auth_app)
 
 # Register permission handler command
-app.add_typer(permission_handler_app)
+# app.add_typer(permission_handler_app)
+
+# Register plugins command
+app.add_typer(plugins_app)
 
 
 # Register imported commands

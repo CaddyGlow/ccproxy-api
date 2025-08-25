@@ -52,6 +52,7 @@ class StreamingResponseWithLogging(StreamingResponse):
         logged_content = self._wrap_with_logging(
             content, request_context, metrics, status_code
         )
+
         super().__init__(logged_content, status_code=status_code, **kwargs)
 
     async def _wrap_with_logging(
@@ -104,4 +105,5 @@ class StreamingResponseWithLogging(StreamingResponse):
                     "streaming_access_log_failed",
                     error=str(e),
                     request_id=context.request_id,
+                    exc_info=e,
                 )

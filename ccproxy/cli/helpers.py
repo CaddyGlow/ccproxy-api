@@ -1,12 +1,9 @@
 """CLI helper utilities for CCProxy API."""
 
 from pathlib import Path
-from typing import Any
 
 from rich_toolkit import RichToolkit, RichToolkitTheme
 from rich_toolkit.styles import TaggedStyle
-
-from ccproxy.core.async_utils import patched_typing
 
 
 def get_rich_toolkit() -> RichToolkit:
@@ -77,65 +74,6 @@ def success(text: str) -> str:
 
 def link(text: str, link: str) -> str:
     return f"[link={link}]{text}[/link]"
-
-
-def merge_claude_code_options(base_options: Any, **overrides: Any) -> Any:
-    """
-    Create a new ClaudeCodeOptions instance by merging base options with overrides.
-
-    Args:
-        base_options: Base ClaudeCodeOptions instance to copy from
-        **overrides: Dictionary of option overrides
-
-    Returns:
-        New ClaudeCodeOptions instance with merged options
-    """
-    with patched_typing():
-        from claude_code_sdk import ClaudeCodeOptions
-
-    # Create a new options instance with the base values
-    options = ClaudeCodeOptions()
-
-    # Copy all attributes from base_options
-    if base_options:
-        for attr in [
-            "model",
-            "max_thinking_tokens",
-            "max_turns",
-            "cwd",
-            "system_prompt",
-            "append_system_prompt",
-            "permission_mode",
-            "permission_prompt_tool_name",
-            "continue_conversation",
-            "resume",
-            "allowed_tools",
-            "disallowed_tools",
-            "mcp_servers",
-            "mcp_tools",
-            # Anthropic API fields
-            "temperature",
-            "top_p",
-            "top_k",
-            "stop_sequences",
-            "tools",
-            "metadata",
-            "service_tier",
-        ]:
-            if hasattr(base_options, attr):
-                base_value = getattr(base_options, attr)
-                if base_value is not None:
-                    setattr(options, attr, base_value)
-
-    # Apply overrides
-    for key, value in overrides.items():
-        if value is not None and hasattr(options, key):
-            # Handle special type conversions for specific fields
-            if key == "cwd" and not isinstance(value, str):
-                value = str(value)
-            setattr(options, key, value)
-
-    return options
 
 
 def is_running_in_docker() -> bool:

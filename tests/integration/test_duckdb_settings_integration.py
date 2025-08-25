@@ -8,10 +8,19 @@ import pytest
 
 from ccproxy.config.observability import ObservabilitySettings
 from ccproxy.config.settings import Settings
+from ccproxy.core.async_task_manager import start_task_manager, stop_task_manager
 from ccproxy.observability.storage.duckdb_simple import (
     AccessLogPayload,
     SimpleDuckDBStorage,
 )
+
+
+@pytest.fixture(autouse=True)
+async def task_manager_fixture():
+    """Start and stop task manager for each test."""
+    await start_task_manager()
+    yield
+    await stop_task_manager()
 
 
 @pytest.mark.unit

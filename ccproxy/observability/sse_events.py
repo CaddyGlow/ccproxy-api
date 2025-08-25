@@ -174,6 +174,7 @@ class SSEEventManager:
                         "sse_overflow_error",
                         connection_id=connection_id,
                         error=str(e),
+                        exc_info=e,
                     )
                     failed_connections.append(connection_id)
             except Exception as e:
@@ -181,6 +182,7 @@ class SSEEventManager:
                     "sse_broadcast_error",
                     connection_id=connection_id,
                     error=str(e),
+                    exc_info=e,
                 )
                 failed_connections.append(connection_id)
 
@@ -213,6 +215,7 @@ class SSEEventManager:
                     "sse_disconnect_error",
                     connection_id=connection_id,
                     error=str(e),
+                    exc_info=e,
                 )
 
         logger.debug("sse_all_connections_disconnected")
@@ -290,7 +293,7 @@ async def emit_sse_event(event_type: str, data: dict[str, Any]) -> None:
         await manager.emit_event(event_type, data)
     except Exception as e:
         # Log error but don't fail the request
-        logger.debug("sse_emit_failed", event_type=event_type, error=str(e))
+        logger.debug("sse_emit_failed", event_type=event_type, error=str(e), exc_info=e)
 
 
 async def cleanup_sse_manager() -> None:

@@ -1,13 +1,20 @@
-"""Authentication manager interfaces for centralized auth handling."""
+"""Unified authentication manager interface for all providers."""
 
-from abc import ABC, abstractmethod
-from typing import Any, Protocol
+from typing import Any, Protocol, runtime_checkable
 
 from ccproxy.auth.models import ClaudeCredentials, UserProfile
 
 
+@runtime_checkable
 class AuthManager(Protocol):
-    """Protocol for authentication managers."""
+    """Unified authentication manager protocol for all providers.
+
+    This protocol defines the complete interface that all authentication managers
+    must implement, supporting both provider-specific methods (like Claude credentials)
+    and generic methods (like auth headers) for maximum flexibility.
+    """
+
+    # ==================== Core Authentication Methods ====================
 
     async def get_access_token(self) -> str:
         """Get valid access token.
@@ -23,11 +30,14 @@ class AuthManager(Protocol):
     async def get_credentials(self) -> ClaudeCredentials:
         """Get valid credentials.
 
+        Note: For non-Claude providers, this may return minimal/dummy credentials
+        or raise AuthenticationError if not supported.
+
         Returns:
             Valid credentials
 
         Raises:
-            AuthenticationError: If authentication fails
+            AuthenticationError: If authentication fails or not supported
         """
         ...
 
@@ -47,56 +57,38 @@ class AuthManager(Protocol):
         """
         ...
 
+    # ==================== Provider-Generic Methods ====================
 
-class BaseAuthManager(ABC):
-    """Base class for authentication managers."""
-
-    @abstractmethod
-    async def get_access_token(self) -> str:
-        """Get valid access token.
+    async def get_auth_headers(self) -> dict[str, str]:
+        """Get authentication headers for the request.
 
         Returns:
-            Access token string
-
-        Raises:
-            AuthenticationError: If authentication fails
+            Dictionary of headers to add to requests
         """
-        pass
+        ...
 
-    @abstractmethod
-    async def get_credentials(self) -> ClaudeCredentials:
-        """Get valid credentials.
+    async def validate_credentials(self) -> bool:
+        """Validate that credentials are available and valid.
 
         Returns:
-            Valid credentials
-
-        Raises:
-            AuthenticationError: If authentication fails
+            True if credentials are valid, False otherwise
         """
-        pass
+        ...
 
-    @abstractmethod
-    async def is_authenticated(self) -> bool:
-        """Check if current authentication is valid.
+    def get_provider_name(self) -> str:
+        """Get the provider name for logging.
 
         Returns:
-            True if authenticated, False otherwise
+            Provider name string (e.g., "anthropic-claude", "openai-codex")
         """
-        pass
+        ...
 
-    async def get_user_profile(self) -> UserProfile | None:
-        """Get user profile information.
+    # ==================== Context Manager Support ====================
 
-        Returns:
-            UserProfile if available, None otherwise
-        """
-        return None
-
-    async def __aenter__(self) -> "BaseAuthManager":
+    async def __aenter__(self) -> "AuthManager":
         """Async context manager entry."""
-        return self
+        ...
 
-    @abstractmethod
     async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
         """Async context manager exit."""
-        pass
+        ...

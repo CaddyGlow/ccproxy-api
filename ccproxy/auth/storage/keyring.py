@@ -2,9 +2,11 @@
 
 import json
 
+from pydantic import ValidationError
 from structlog import get_logger
 
 from ccproxy.auth.exceptions import (
+    CredentialsInvalidError,
     CredentialsStorageError,
 )
 from ccproxy.auth.models import ClaudeCredentials
@@ -14,7 +16,7 @@ from ccproxy.auth.storage.base import TokenStorage
 logger = get_logger(__name__)
 
 
-class KeyringTokenStorage(TokenStorage):
+class KeyringTokenStorage(TokenStorage[ClaudeCredentials]):
     """OS keyring storage implementation for Claude credentials."""
 
     def __init__(
@@ -52,6 +54,7 @@ class KeyringTokenStorage(TokenStorage):
                 "credentials_load_start",
                 source="keyring",
                 service_name=self.service_name,
+                category="auth",
             )
             password = keyring.get_password(self.service_name, self.username)
 
@@ -74,9 +77,50 @@ class KeyringTokenStorage(TokenStorage):
             raise CredentialsStorageError(
                 f"Failed to parse credentials from keyring: {e}"
             ) from e
+        except KeyError as e:
+            logger.error(
+                "keyring_key_error",
+                service_name=self.service_name,
+                error=str(e),
+                exc_info=e,
+                category="auth",
+            )
+            raise CredentialsStorageError(f"Invalid keyring data structure: {e}") from e
+        except ValidationError as e:
+            logger.error(
+                "keyring_validation_error",
+                service_name=self.service_name,
+                error=str(e),
+                exc_info=e,
+                category="auth",
+            )
+            raise CredentialsInvalidError(f"Invalid credentials format: {e}") from e
         except Exception as e:
+            # Import keyring errors here to avoid import issues if keyring not available
+            try:
+                import keyring.errors
+
+                if isinstance(e, keyring.errors.KeyringError):
+                    logger.error(
+                        "keyring_error",
+                        service_name=self.service_name,
+                        error=str(e),
+                        exc_info=e,
+                    )
+                    raise CredentialsStorageError(
+                        f"Keyring error loading credentials: {e}"
+                    ) from e
+            except ImportError:
+                pass
+            logger.error(
+                "unexpected_keyring_load_error",
+                service_name=self.service_name,
+                error=str(e),
+                exc_info=e,
+                category="auth",
+            )
             raise CredentialsStorageError(
-                f"Error loading credentials from keyring: {e}"
+                f"Unexpected error loading credentials from keyring: {e}"
             ) from e
 
     def _log_credential_details(self, credentials: ClaudeCredentials) -> None:
@@ -126,9 +170,52 @@ class KeyringTokenStorage(TokenStorage):
             )
             return True
 
-        except Exception as e:
+        except (TypeError, ValueError) as e:
+            logger.error(
+                "keyring_json_encode_error",
+                service_name=self.service_name,
+                error=str(e),
+                exc_info=e,
+                category="auth",
+            )
             raise CredentialsStorageError(
-                f"Error saving credentials to keyring: {e}"
+                f"Failed to encode credentials as JSON: {e}"
+            ) from e
+        except ValidationError as e:
+            logger.error(
+                "keyring_validation_error",
+                service_name=self.service_name,
+                error=str(e),
+                exc_info=e,
+                category="auth",
+            )
+            raise CredentialsInvalidError(f"Invalid credentials format: {e}") from e
+        except Exception as e:
+            # Import keyring errors here to avoid import issues if keyring not available
+            try:
+                import keyring.errors
+
+                if isinstance(e, keyring.errors.KeyringError):
+                    logger.error(
+                        "keyring_error",
+                        service_name=self.service_name,
+                        error=str(e),
+                        exc_info=e,
+                    )
+                    raise CredentialsStorageError(
+                        f"Keyring error saving credentials: {e}"
+                    ) from e
+            except ImportError:
+                pass
+            logger.error(
+                "unexpected_keyring_save_error",
+                service_name=self.service_name,
+                error=str(e),
+                exc_info=e,
+                category="auth",
+            )
+            raise CredentialsStorageError(
+                f"Unexpected error saving credentials to keyring: {e}"
             ) from e
 
     async def exists(self) -> bool:
@@ -145,7 +232,14 @@ class KeyringTokenStorage(TokenStorage):
         try:
             password = keyring.get_password(self.service_name, self.username)
             return password is not None
-        except Exception:
+        except Exception as e:
+            logger.debug(
+                "keyring_exists_check_failed",
+                service_name=self.service_name,
+                error=str(e),
+                exc_info=e,
+                category="auth",
+            )
             return False
 
     async def delete(self) -> bool:
@@ -176,8 +270,31 @@ class KeyringTokenStorage(TokenStorage):
                 return True
             return False
         except Exception as e:
+            # Import keyring errors here to avoid import issues if keyring not available
+            try:
+                import keyring.errors
+
+                if isinstance(e, keyring.errors.KeyringError):
+                    logger.error(
+                        "keyring_error",
+                        service_name=self.service_name,
+                        error=str(e),
+                        exc_info=e,
+                    )
+                    raise CredentialsStorageError(
+                        f"Keyring error deleting credentials: {e}"
+                    ) from e
+            except ImportError:
+                pass
+            logger.error(
+                "unexpected_keyring_delete_error",
+                service_name=self.service_name,
+                error=str(e),
+                exc_info=e,
+                category="auth",
+            )
             raise CredentialsStorageError(
-                f"Error deleting credentials from keyring: {e}"
+                f"Unexpected error deleting credentials from keyring: {e}"
             ) from e
 
     def get_location(self) -> str:

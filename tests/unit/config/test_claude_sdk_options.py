@@ -2,14 +2,16 @@
 
 from typing import Any, cast
 
-from ccproxy.claude_sdk.options import OptionsHandler
-from ccproxy.config.claude import ClaudeSettings
+from claude_code_sdk import ClaudeCodeOptions
+
 from ccproxy.config.settings import Settings
 from ccproxy.core.async_utils import patched_typing
+from plugins.claude_sdk.config import ClaudeSDKSettings
+from plugins.claude_sdk.options import OptionsHandler
 
 
 with patched_typing():
-    from claude_code_sdk import ClaudeCodeOptions
+    pass
 
 
 class TestOptionsHandler:
@@ -29,7 +31,9 @@ class TestOptionsHandler:
     def test_create_options_with_default_mcp_configuration(self):
         """Test that default MCP configuration is applied from settings."""
         # Create settings with default Claude configuration (includes MCP defaults)
-        claude_settings = ClaudeSettings()  # Uses the default factory with MCP config
+        claude_settings = (
+            ClaudeSDKSettings()
+        )  # Uses the default factory with MCP config
         settings = Settings(claude=claude_settings)
 
         handler = OptionsHandler(settings=settings)
@@ -52,14 +56,14 @@ class TestOptionsHandler:
 
     def test_create_options_with_custom_configuration(self):
         """Test that custom configuration overrides defaults."""
-        # Create custom ClaudeCodeOptions with different values
+        # Create custom code options object with different values
         custom_code_options = ClaudeCodeOptions(
             mcp_servers={"custom": {"type": "sse", "url": "http://localhost:9000/mcp"}},
             permission_prompt_tool_name="custom_permission_tool",
             max_thinking_tokens=15000,
         )
 
-        claude_settings = ClaudeSettings(code_options=custom_code_options)
+        claude_settings = ClaudeSDKSettings(code_options=custom_code_options)
         settings = Settings(claude=claude_settings)
 
         handler = OptionsHandler(settings=settings)
@@ -78,7 +82,7 @@ class TestOptionsHandler:
 
     def test_create_options_api_parameters_override_settings(self):
         """Test that API parameters override settings."""
-        claude_settings = ClaudeSettings()  # Uses defaults
+        claude_settings = ClaudeSDKSettings()  # Uses defaults
         settings = Settings(claude=claude_settings)
 
         handler = OptionsHandler(settings=settings)
@@ -103,7 +107,7 @@ class TestOptionsHandler:
 
     def test_create_options_with_kwargs_override(self):
         """Test that additional kwargs are applied correctly."""
-        claude_settings = ClaudeSettings()
+        claude_settings = ClaudeSDKSettings()
         settings = Settings(claude=claude_settings)
         handler = OptionsHandler(settings=settings)
 
@@ -143,7 +147,7 @@ class TestOptionsHandler:
             append_system_prompt="Additional context",
         )
 
-        claude_settings = ClaudeSettings(code_options=custom_code_options)
+        claude_settings = ClaudeSDKSettings(code_options=custom_code_options)
         settings = Settings(claude=claude_settings)
         handler = OptionsHandler(settings=settings)
 
@@ -168,7 +172,7 @@ class TestOptionsHandler:
             model="claude-3-opus-20240229"  # Different model in settings
         )
 
-        claude_settings = ClaudeSettings(code_options=custom_code_options)
+        claude_settings = ClaudeSDKSettings(code_options=custom_code_options)
         settings = Settings(claude=claude_settings)
         handler = OptionsHandler(settings=settings)
 

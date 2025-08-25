@@ -57,6 +57,8 @@ def validate_url(url: str) -> str:
         parsed = urlparse(url)
         if not parsed.scheme or not parsed.netloc:
             raise ValidationError(f"Invalid URL format: {url}")
+    except (ValueError, TypeError) as e:
+        raise ValidationError(f"Invalid URL format: {url}") from e
     except Exception as e:
         raise ValidationError(f"Invalid URL format: {url}") from e
 

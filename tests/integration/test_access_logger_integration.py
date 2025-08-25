@@ -14,10 +14,19 @@ from unittest.mock import patch
 import pytest
 from sqlmodel import Session, select
 
+from ccproxy.core.async_task_manager import start_task_manager, stop_task_manager
 from ccproxy.observability.access_logger import log_request_access
 from ccproxy.observability.context import RequestContext
 from ccproxy.observability.storage.duckdb_simple import SimpleDuckDBStorage
 from ccproxy.observability.storage.models import AccessLog
+
+
+@pytest.fixture(autouse=True)
+async def task_manager_fixture():
+    """Start and stop task manager for each test."""
+    await start_task_manager()
+    yield
+    await stop_task_manager()
 
 
 @pytest.fixture

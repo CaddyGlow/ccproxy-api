@@ -104,6 +104,10 @@ class DockerUserContext(BaseModel):
             raise RuntimeError(
                 f"Failed to detect user on {current_platform}: {e}"
             ) from e
+        except (OSError, PermissionError) as e:
+            raise RuntimeError(
+                f"Permission error detecting user on {current_platform}: {e}"
+            ) from e
         except Exception as e:
             raise RuntimeError(f"Unexpected error detecting user: {e}") from e
 

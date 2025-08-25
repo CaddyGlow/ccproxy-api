@@ -4,6 +4,10 @@ from typing import Any
 
 from fastapi import Response
 from starlette.types import Receive, Scope, Send
+from structlog import get_logger
+
+
+logger = get_logger()
 
 
 class ProxyResponse(Response):
@@ -72,6 +76,8 @@ class ProxyResponse(Response):
         has_content_type = any(h[0] == b"content-type" for h in headers_list)
         if not has_content_type and self.media_type:
             headers_list.append((b"content-type", self.media_type.encode()))
+
+        logger.error("headers", headers=headers_list)
 
         await send(
             {

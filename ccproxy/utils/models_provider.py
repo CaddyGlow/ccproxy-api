@@ -69,6 +69,12 @@ def get_openai_models() -> list[dict[str, Any]]:
     """
     return [
         {
+            "id": "gpt-5",
+            "object": "model",
+            "created": 1747526400,  # 2025-05-22
+            "owned_by": "openai",
+        },
+        {
             "id": "gpt-4o",
             "object": "model",
             "created": 1715367049,

@@ -9,7 +9,7 @@ Key features:
 - Accurate timing measurement using time.perf_counter()
 - Request correlation with unique IDs
 - Structured logging integration
-- Async-safe context management
+- Async-safe context management with contextvars
 - Exception handling and error tracking
 """
 
@@ -20,14 +20,22 @@ import time
 import uuid
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
+from contextvars import ContextVar, Token
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
 
 import structlog
 
+from ccproxy.core.logging import TraceBoundLogger, get_logger
 
-logger = structlog.get_logger(__name__)
+
+logger = get_logger(__name__)
+
+# Context variable for async-safe request context propagation
+request_context_var: ContextVar[RequestContext | None] = ContextVar(
+    "request_context", default=None
+)
 
 
 @dataclass
@@ -41,10 +49,11 @@ class RequestContext:
 
     request_id: str
     start_time: float
-    logger: structlog.BoundLogger
+    logger: structlog.stdlib.BoundLogger | TraceBoundLogger
     metadata: dict[str, Any] = field(default_factory=dict)
     storage: Any | None = None  # Optional DuckDB storage instance
     log_timestamp: datetime | None = None  # Datetime for consistent logging filenames
+    metrics: dict[str, Any] = field(default_factory=dict)  # Request metrics storage
 
     @property
     def duration_ms(self) -> float:
@@ -79,6 +88,31 @@ class RequestContext:
         else:
             # Fallback to current time if not set
             return datetime.now(UTC).strftime("%Y%m%d%H%M%S")
+
+    def set_current(self) -> Token[RequestContext | None]:
+        """Set this context as the current request context.
+
+        Returns:
+            Token that can be used to restore the previous context
+        """
+        return request_context_var.set(self)
+
+    @staticmethod
+    def get_current() -> RequestContext | None:
+        """Get the current request context from async context.
+
+        Returns:
+            The current RequestContext or None if not set
+        """
+        return request_context_var.get()
+
+    def clear_current(self, token: Token[RequestContext | None]) -> None:
+        """Clear the current context and restore the previous one.
+
+        Args:
+            token: The token returned by set_current()
+        """
+        request_context_var.reset(token)
 
 
 @asynccontextmanager
@@ -142,6 +176,9 @@ async def request_context(
         log_timestamp=log_timestamp,
     )
 
+    # Set as current context for async propagation
+    token = ctx.set_current()
+
     try:
         yield ctx
 
@@ -161,12 +198,21 @@ async def request_context(
         )
 
         # Also keep the original request_success event for debugging
+        # Merge metadata, avoiding duplicates
+        success_log_data = {
+            "request_id": request_id,
+            "duration_ms": duration_ms,
+            "duration_seconds": ctx.duration_seconds,
+        }
+
+        # Add metadata, avoiding duplicates
+        for key, value in ctx.metadata.items():
+            if key not in ("duration_ms", "duration_seconds", "request_id"):
+                success_log_data[key] = value
+
         request_logger.debug(
             "request_success",
-            request_id=request_id,
-            duration_ms=duration_ms,
-            duration_seconds=ctx.duration_seconds,
-            **ctx.metadata,
+            **success_log_data,
         )
 
     except Exception as e:
@@ -174,14 +220,24 @@ async def request_context(
         duration_ms = ctx.duration_ms
         error_type = type(e).__name__
 
+        # Merge metadata but ensure no duplicate duration fields
+        log_data = {
+            "request_id": request_id,
+            "duration_ms": duration_ms,
+            "duration_seconds": ctx.duration_seconds,
+            "error_type": error_type,
+            "error_message": str(e),
+        }
+
+        # Add metadata, avoiding duplicates
+        for key, value in ctx.metadata.items():
+            if key not in ("duration_ms", "duration_seconds"):
+                log_data[key] = value
+
         request_logger.error(
             "request_error",
-            request_id=request_id,
-            duration_ms=duration_ms,
-            duration_seconds=ctx.duration_seconds,
-            error_type=error_type,
-            error_message=str(e),
-            **ctx.metadata,
+            exc_info=e,
+            **log_data,
         )
 
         # Emit SSE event for real-time dashboard updates
@@ -190,6 +246,9 @@ async def request_context(
         # Re-raise the exception
         raise
     finally:
+        # Clear the current context
+        ctx.clear_current(token)
+
         # Decrement active requests if metrics provided
         if metrics:
             metrics.dec_active_requests()
@@ -273,6 +332,7 @@ async def timed_operation(
             duration_ms=duration_ms,
             error_type=error_type,
             error_message=str(e),
+            exc_info=e,
             **{
                 k: v for k, v in op_context.items() if k not in ("logger", "start_time")
             },
@@ -426,6 +486,7 @@ async def _emit_request_start_event(
             event_type="request_start",
             error=str(e),
             request_id=request_id,
+            exc_info=e,
         )
 
 
@@ -460,4 +521,5 @@ async def _emit_request_error_event(
             event_type="request_error",
             error=str(e),
             request_id=request_id,
+            exc_info=e,
         )

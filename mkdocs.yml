@@ -56,12 +56,19 @@ nav:
     - Quick Start: getting-started/quickstart.md
     - Installation: getting-started/installation.md
     - Configuration: getting-started/configuration.md
+  - Plugin System:
+    - Overview: PLUGIN_SYSTEM_DOCUMENTATION.md
+    - OAuth Integration: OAUTH_PLUGIN_ARCHITECTURE.md
   - User Guide:
     - API Usage: user-guide/api-usage.md
     - MCP Integration: user-guide/mcp-integration.md
     - Authentication: user-guide/authentication.md
     - Observability: observability.md
-  - API Reference: api-reference.md
+  - Development:
+    - Debugging Guide: development/debugging-with-proxy.md
+  - Deployment:
+    - SystemD Setup: systemd-setup.md
+    - Metrics API: metrics-api.md
   - Examples: examples.md
   - Contributing: contributing.md
   - Code Reference:
@@ -73,7 +80,6 @@ nav:
     - CLI: reference/ccproxy/cli/
     - Utilities: reference/ccproxy/utils/
     - Docker: reference/ccproxy/docker/
-    - Middleware: reference/ccproxy/middleware/
 
 # Plugins
 plugins:

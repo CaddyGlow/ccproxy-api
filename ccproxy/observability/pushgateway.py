@@ -5,6 +5,7 @@ from __future__ import annotations
 import time
 from typing import Any
 
+import httpx
 from structlog import get_logger
 
 from ccproxy.config.observability import ObservabilitySettings
@@ -159,6 +160,7 @@ class PushgatewayClient:
                 method=method,
                 error=str(e),
                 error_type=type(e).__name__,
+                exc_info=e,
             )
             return False
 
@@ -212,6 +214,7 @@ class PushgatewayClient:
                 method=method,
                 error=str(e),
                 error_type=type(e).__name__,
+                exc_info=e,
             )
             return False
 
@@ -222,7 +225,6 @@ class PushgatewayClient:
         via the /api/v1/import/prometheus endpoint, which is simpler than
         the full remote write protocol that requires protobuf encoding.
         """
-        import httpx
         from prometheus_client.exposition import generate_latest
 
         if not self.settings.pushgateway_url:
@@ -276,6 +278,16 @@ class PushgatewayClient:
                 url=import_url,
                 error=str(e),
                 error_type=type(e).__name__,
+                exc_info=e,
+            )
+            return False
+        except Exception as e:
+            logger.error(
+                "pushgateway_import_unexpected_error",
+                url=import_url,
+                error=str(e),
+                error_type=type(e).__name__,
+                exc_info=e,
             )
             return False
 
@@ -332,6 +344,7 @@ class PushgatewayClient:
                 job=self.settings.pushgateway_job,
                 error=str(e),
                 error_type=type(e).__name__,
+                exc_info=e,
             )
             return False
 

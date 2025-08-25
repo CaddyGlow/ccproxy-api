@@ -21,8 +21,10 @@ import pytest
 import structlog
 from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
+from pydantic import SecretStr
 
 from ccproxy.api.app import create_app
+from ccproxy.core.async_task_manager import start_task_manager, stop_task_manager
 from ccproxy.observability.context import RequestContext
 
 
@@ -38,6 +40,20 @@ from ccproxy.docker.adapter import DockerAdapter
 from ccproxy.docker.docker_path import DockerPath, DockerPathSet
 from ccproxy.docker.models import DockerUserContext
 from ccproxy.docker.stream_process import DefaultOutputMiddleware
+
+
+# Global fixture for task manager (needed by many async tests)
+@pytest.fixture(autouse=True)
+async def task_manager_fixture():
+    """Start and stop the global task manager for each test.
+
+    This fixture ensures the AsyncTaskManager is properly started before
+    tests that use managed tasks (like PermissionService, scheduler, etc.)
+    and properly cleaned up afterwards.
+    """
+    await start_task_manager()
+    yield
+    await stop_task_manager()
 
 
 # Import organized fixture modules
@@ -179,7 +195,9 @@ def auth_settings(isolated_environment: Path) -> Settings:
     """
     return Settings(
         server=ServerSettings(log_level="WARNING"),
-        security=SecuritySettings(auth_token="test-auth-token-12345"),  # Auth enabled
+        security=SecuritySettings(
+            auth_token=SecretStr("test-auth-token-12345")
+        ),  # Auth enabled
         auth=AuthSettings(
             storage=CredentialStorageSettings(
                 storage_paths=[isolated_environment / ".claude/"]
@@ -238,7 +256,7 @@ def app_with_claude_sdk_environment(
     app = create_app(settings=test_settings)
 
     # Override the settings dependency for testing
-    from ccproxy.api.dependencies import get_cached_claude_service, get_cached_settings
+    from ccproxy.api.dependencies import get_cached_settings
     from ccproxy.config.settings import get_settings as original_get_settings
 
     app.dependency_overrides[original_get_settings] = lambda: test_settings
@@ -250,13 +268,10 @@ def app_with_claude_sdk_environment(
         mock_get_cached_settings_for_claude_sdk
     )
 
-    # Override the actual dependency being used (get_cached_claude_service)
-    def mock_get_cached_claude_service_for_sdk(request: Request) -> AsyncMock:
-        return mock_internal_claude_sdk_service
-
-    app.dependency_overrides[get_cached_claude_service] = (
-        mock_get_cached_claude_service_for_sdk
-    )
+    # NOTE: Plugin-based architecture no longer uses get_cached_claude_service
+    # ProxyService is initialized at startup and stored in app.state
+    # Store mock in app state for compatibility if needed by tests
+    app.state.claude_service_mock = mock_internal_claude_sdk_service
 
     return app
 
@@ -1000,8 +1015,10 @@ def client_with_mock_codex(
     # Mock OpenAI credentials
     from unittest.mock import patch
 
-    with patch("ccproxy.auth.openai.OpenAITokenManager.load_credentials") as mock_load:
-        from ccproxy.auth.openai import OpenAICredentials
+    with patch(
+        "plugins.codex.auth.manager.CodexTokenManager.load_credentials"
+    ) as mock_load:
+        from ccproxy.auth.models import OpenAICredentials
 
         mock_load.return_value = OpenAICredentials(**mock_openai_credentials)
 
@@ -1023,8 +1040,10 @@ def client_with_mock_codex_streaming(
     # Mock OpenAI credentials
     from unittest.mock import patch
 
-    with patch("ccproxy.auth.openai.OpenAITokenManager.load_credentials") as mock_load:
-        from ccproxy.auth.openai import OpenAICredentials
+    with patch(
+        "plugins.codex.auth.manager.CodexTokenManager.load_credentials"
+    ) as mock_load:
+        from ccproxy.auth.models import OpenAICredentials
 
         mock_load.return_value = OpenAICredentials(**mock_openai_credentials)
 

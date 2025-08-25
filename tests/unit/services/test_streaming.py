@@ -5,8 +5,8 @@ including proper SSE format compliance, error handling, and stream interruption.
 Uses factory fixtures for flexible test configuration and reduced duplication.
 
 The tests cover:
-- OpenAI streaming format (/sdk/v1/chat/completions with stream=true)
-- Anthropic streaming format (/sdk/v1/messages with stream=true)
+- OpenAI streaming format (/api/v1/chat/completions with stream=true)
+- Anthropic streaming format (/api/v1/messages with stream=true)
 - SSE format compliance verification
 - Streaming event sequence validation
 - Error handling for failed streams
@@ -43,7 +43,7 @@ def test_openai_streaming_response(
 
     # Make streaming request to OpenAI SDK endpoint
     with client.stream(
-        "POST", "/sdk/v1/chat/completions", json=STREAMING_OPENAI_REQUEST
+        "POST", "/api/v1/chat/completions", json=STREAMING_OPENAI_REQUEST
     ) as response:
         assert response.status_code == 200
         assert_sse_headers(response)
@@ -61,8 +61,8 @@ def test_openai_streaming_response(
 @pytest.mark.parametrize(
     "endpoint_path,request_data",
     [
-        ("/sdk/v1/messages", STREAMING_ANTHROPIC_REQUEST),
-        ("/sdk/v1/chat/completions", STREAMING_OPENAI_REQUEST),
+        ("/api/v1/messages", STREAMING_ANTHROPIC_REQUEST),
+        ("/api/v1/chat/completions", STREAMING_OPENAI_REQUEST),
     ],
     ids=["anthropic_streaming", "openai_streaming"],
 )
@@ -102,7 +102,7 @@ def test_sse_json_parsing_and_validation(
     )
 
     with client.stream(
-        "POST", "/sdk/v1/messages", json=STREAMING_ANTHROPIC_REQUEST
+        "POST", "/api/v1/messages", json=STREAMING_ANTHROPIC_REQUEST
     ) as response:
         assert response.status_code == 200
 
@@ -140,9 +140,9 @@ def test_streaming_error_handling(
     )
 
     # Test streaming request also fails properly
-    response = client.post("/sdk/v1/chat/completions", json=STREAMING_OPENAI_REQUEST)
+    response = client.post("/api/v1/chat/completions", json=STREAMING_OPENAI_REQUEST)
     assert response.status_code == 503
 
     # Should get service unavailable error instead of streaming response
-    response = client.post("/sdk/v1/messages", json=STREAMING_ANTHROPIC_REQUEST)
+    response = client.post("/api/v1/messages", json=STREAMING_ANTHROPIC_REQUEST)
     assert response.status_code == 503

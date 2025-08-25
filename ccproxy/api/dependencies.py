@@ -2,18 +2,23 @@
 
 from __future__ import annotations
 
-from typing import Annotated
+from typing import TYPE_CHECKING, Annotated, Any
 
+import httpx
 from fastapi import Depends, Request
-from structlog import get_logger
 
 from ccproxy.config.settings import Settings, get_settings
 from ccproxy.core.http import BaseProxyClient
+from ccproxy.core.http_client import get_shared_http_client
+from ccproxy.core.logging import get_logger
+from ccproxy.hooks import HookManager
 from ccproxy.observability import PrometheusMetrics, get_metrics
 from ccproxy.observability.storage.duckdb_simple import SimpleDuckDBStorage
-from ccproxy.services.claude_sdk_service import ClaudeSDKService
-from ccproxy.services.credentials.manager import CredentialsManager
 from ccproxy.services.proxy_service import ProxyService
+
+
+if TYPE_CHECKING:
+    pass
 
 
 logger = get_logger(__name__)
@@ -39,102 +44,31 @@ def get_cached_settings(request: Request) -> Settings:
         # Fallback to get_settings() for safety, but this should not happen
         # in normal operation after lifespan startup
         logger.warning(
-            "Settings not found in app state, falling back to get_settings()"
+            "Settings not found in app state, falling back to get_settings()",
+            category="lifecycle",
         )
         settings = get_settings()
     return settings
 
 
-def get_cached_claude_service(request: Request) -> ClaudeSDKService:
-    """Get cached ClaudeSDKService from app state.
-
-    This avoids recreating the ClaudeSDKService on every request by using the
-    service instance created during application startup.
-
-    Args:
-        request: FastAPI request object
-
-    Returns:
-        ClaudeSDKService instance from app state
-
-    Raises:
-        RuntimeError: If ClaudeSDKService is not available in app state
-    """
-    claude_service = getattr(request.app.state, "claude_service", None)
-    if claude_service is None:
-        # Fallback to get_claude_service() for safety, but this should not happen
-        # in normal operation after lifespan startup
-        logger.warning(
-            "ClaudeSDKService not found in app state, falling back to get_claude_service()"
-        )
-        # Get dependencies manually for fallback
-        settings = get_cached_settings(request)
-
-        claude_service = get_claude_service(settings)
-    return claude_service
-
-
-# Type aliases for dependency injection
-SettingsDep = Annotated[Settings, Depends(get_cached_settings)]
-
-
-def get_claude_service(
-    settings: SettingsDep,
-) -> ClaudeSDKService:
-    """Get Claude SDK service instance.
+async def get_http_client(
+    settings: Annotated[Settings, Depends(get_cached_settings)],
+) -> httpx.AsyncClient:
+    """Get shared HTTP client instance.
 
     Args:
         settings: Application settings dependency
 
     Returns:
-        Claude SDK service instance
+        Shared HTTP client instance
     """
-    logger.debug("Creating Claude SDK service instance")
-    # Get global metrics instance
-    metrics = get_metrics()
-
-    # Check if pooling should be enabled from configuration
-    use_pool = settings.claude.sdk_session_pool.enabled
-    session_manager = None
-
-    if use_pool:
-        logger.info(
-            "claude_sdk_pool_enabled",
-            message="Using Claude SDK client pooling for improved performance",
-            pool_size=settings.claude.sdk_session_pool.max_sessions,
-            max_pool_size=settings.claude.sdk_session_pool.max_sessions,
-        )
-        # Note: Session manager should be created in the lifespan function, not here
-        # This dependency function should not create stateful resources
-
-    return ClaudeSDKService(
-        metrics=metrics,
-        settings=settings,
-        session_manager=session_manager,
-    )
-
-
-def get_credentials_manager(
-    settings: SettingsDep,
-) -> CredentialsManager:
-    """Get credentials manager instance.
-
-    Args:
-        settings: Application settings dependency
-
-    Returns:
-        Credentials manager instance
-    """
-    logger.debug("Creating credentials manager instance")
-    return CredentialsManager(config=settings.auth)
+    logger.debug("getting_shared_http_client_instance", category="lifecycle")
+    return await get_shared_http_client(settings)
 
 
 def get_proxy_service(
     request: Request,
-    settings: SettingsDep,
-    credentials_manager: Annotated[
-        CredentialsManager, Depends(get_credentials_manager)
-    ],
+    settings: Annotated[Settings, Depends(get_cached_settings)],
 ) -> ProxyService:
     """Get proxy service instance.
 
@@ -146,9 +80,23 @@ def get_proxy_service(
     Returns:
         Proxy service instance
     """
-    logger.debug("get_proxy_service")
+    logger.debug("get_proxy_service", category="lifecycle")
+
+    # Check if proxy service is already initialized in app state
+    proxy_service = getattr(request.app.state, "proxy_service", None)
+    if proxy_service:
+        typed_proxy_service: ProxyService = proxy_service
+        return typed_proxy_service
+
+    # Fallback to creating a new instance (for backward compatibility)
+    logger.warning(
+        "Proxy service not found in app state, creating new instance",
+        category="lifecycle",
+    )
+
     # Create HTTP client for proxy
     from ccproxy.core.http import HTTPXClient
+    from ccproxy.services.container import ServiceContainer
 
     http_client = HTTPXClient()
     proxy_client = BaseProxyClient(http_client)
@@ -156,14 +104,11 @@ def get_proxy_service(
     # Get global metrics instance
     metrics = get_metrics()
 
-    return ProxyService(
+    # Use ServiceContainer to create ProxyService
+    container = ServiceContainer(settings)
+    return container.create_proxy_service(
         proxy_client=proxy_client,
-        credentials_manager=credentials_manager,
-        settings=settings,
-        proxy_mode="full",
-        target_base_url=settings.reverse_proxy.target_url,
         metrics=metrics,
-        app_state=request.app.state,  # Pass app state for detection data access
     )
 
 
@@ -173,7 +118,7 @@ def get_observability_metrics() -> PrometheusMetrics:
     Returns:
         PrometheusMetrics instance
     """
-    logger.debug("get_observability_metrics")
+    logger.debug("get_observability_metrics", category="lifecycle")
     return get_metrics()
 
 
@@ -205,11 +150,86 @@ async def get_duckdb_storage(request: Request) -> SimpleDuckDBStorage | None:
     return storage
 
 
+def get_hook_manager(request: Request) -> HookManager | None:
+    """Get hook manager from app state.
+
+    Args:
+        request: FastAPI request object
+
+    Returns:
+        HookManager instance if available, None otherwise
+    """
+    return getattr(request.app.state, "hook_manager", None)
+
+
+# V2 Plugin system dependencies
+def get_plugin_adapter(plugin_name: str) -> Any:
+    """Create a dependency function for a specific plugin's adapter.
+
+    Args:
+        plugin_name: Name of the plugin
+
+    Returns:
+        Dependency function that retrieves the plugin's adapter
+    """
+    from fastapi import HTTPException
+
+    from ccproxy.services.adapters.base import BaseAdapter
+
+    def _get_adapter(request: Request) -> BaseAdapter:
+        """Get adapter for the specified plugin.
+
+        Args:
+            request: FastAPI request object
+
+        Returns:
+            Plugin adapter instance
+
+        Raises:
+            HTTPException: If plugin or adapter not available
+        """
+        if not hasattr(request.app.state, "plugin_registry"):
+            raise HTTPException(
+                status_code=503, detail="Plugin registry not initialized"
+            )
+
+        from ccproxy.plugins.factory import PluginRegistry
+        from ccproxy.plugins.runtime import ProviderPluginRuntime
+
+        registry: PluginRegistry = request.app.state.plugin_registry
+        runtime = registry.get_runtime(plugin_name)
+
+        if not runtime:
+            raise HTTPException(
+                status_code=503, detail=f"Plugin {plugin_name} not initialized"
+            )
+
+        if not isinstance(runtime, ProviderPluginRuntime):
+            raise HTTPException(
+                status_code=503, detail=f"Plugin {plugin_name} is not a provider plugin"
+            )
+
+        if not runtime.adapter:
+            raise HTTPException(
+                status_code=503, detail=f"Plugin {plugin_name} adapter not available"
+            )
+
+        # Cast is safe because we've verified runtime is ProviderPluginRuntime
+        adapter: BaseAdapter = runtime.adapter
+        return adapter
+
+    return _get_adapter
+
+
 # Type aliases for service dependencies
-ClaudeServiceDep = Annotated[ClaudeSDKService, Depends(get_cached_claude_service)]
+SettingsDep = Annotated[Settings, Depends(get_cached_settings)]
 ProxyServiceDep = Annotated[ProxyService, Depends(get_proxy_service)]
+HTTPClientDep = Annotated[httpx.AsyncClient, Depends(get_http_client)]
 ObservabilityMetricsDep = Annotated[
     PrometheusMetrics, Depends(get_observability_metrics)
 ]
 LogStorageDep = Annotated[SimpleDuckDBStorage | None, Depends(get_log_storage)]
 DuckDBStorageDep = Annotated[SimpleDuckDBStorage | None, Depends(get_duckdb_storage)]
+HookManagerDep = Annotated[HookManager | None, Depends(get_hook_manager)]
+
+# Plugin-specific adapter dependencies are declared in each plugin's routes module

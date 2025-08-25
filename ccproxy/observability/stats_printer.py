@@ -107,7 +107,9 @@ class StatsCollector:
                 await self._collect_from_prometheus(stats_data)
             except Exception as e:
                 logger.warning(
-                    "Failed to collect from Prometheus metrics", error=str(e)
+                    "failed_to_collect_from_prometheus_metrics",
+                    error=str(e),
+                    exc_info=e,
                 )
 
         # Collect from DuckDB storage if available
@@ -115,7 +117,9 @@ class StatsCollector:
             try:
                 await self._collect_from_duckdb(stats_data, current_time)
             except Exception as e:
-                logger.warning("Failed to collect from DuckDB storage", error=str(e))
+                logger.warning(
+                    "failed_to_collect_from_duckdb_storage", error=str(e), exc_info=e
+                )
 
         snapshot = StatsSnapshot(
             timestamp=stats_data["timestamp"],
@@ -317,7 +321,9 @@ class StatsCollector:
             )
 
         except Exception as e:
-            logger.debug("Failed to get metrics from Prometheus", error=str(e))
+            logger.debug(
+                "failed_to_get_metrics_from_prometheus", error=str(e), exc_info=e
+            )
 
     async def _collect_from_duckdb(
         self, stats_data: dict[str, Any], current_time: float
@@ -368,7 +374,7 @@ class StatsCollector:
             await self._get_top_model(stats_data, one_minute_ago, current_time)
 
         except Exception as e:
-            logger.debug("Failed to collect from DuckDB", error=str(e))
+            logger.debug("failed_to_collect_from_duckdb", error=str(e), exc_info=e)
 
     async def _get_top_model(
         self, stats_data: dict[str, Any], start_time: float, end_time: float
@@ -378,21 +384,12 @@ class StatsCollector:
             return
 
         try:
-            # Query for model usage
-            sql = """
-                SELECT model, COUNT(*) as request_count
-                FROM access_logs
-                WHERE timestamp >= ? AND timestamp <= ?
-                GROUP BY model
-                ORDER BY request_count DESC
-                LIMIT 1
-            """
-
             start_dt = datetime.fromtimestamp(start_time)
             end_dt = datetime.fromtimestamp(end_time)
 
-            results = await self._storage_instance.query(
-                sql, [start_dt, end_dt], limit=1
+            # Use the safe parameterized query method
+            results = await self._storage_instance.query_top_model(
+                start_dt, end_dt, limit=1
             )
 
             if results:
@@ -408,7 +405,7 @@ class StatsCollector:
                     stats_data["top_model_percentage"] = 0.0
 
         except Exception as e:
-            logger.debug("Failed to get top model", error=str(e))
+            logger.debug("failed_to_get_top_model", error=str(e), exc_info=e)
 
     def _has_meaningful_activity(self, snapshot: StatsSnapshot) -> bool:
         """
@@ -587,13 +584,15 @@ class StatsCollector:
 
             return output.strip()
 
-        except ImportError:
+        except ImportError as e:
             # Fallback to console format if rich is not available
-            logger.warning("Rich not available, falling back to console format")
+            logger.warning(
+                "rich_not_available_fallback_to_console", error=str(e), exc_info=e
+            )
             return self._format_console(snapshot)
         except Exception as e:
             logger.warning(
-                f"Rich formatting failed: {e}, falling back to console format"
+                "rich_formatting_failed_fallback_to_console", error=str(e), exc_info=e
             )
             return self._format_console(snapshot)
 
@@ -690,7 +689,7 @@ class StatsCollector:
                 )
 
         except Exception as e:
-            logger.error("Failed to print stats", error=str(e), exc_info=True)
+            logger.error("failed_to_print_stats", error=str(e), exc_info=e)
 
 
 # Global stats collector instance
@@ -727,7 +726,9 @@ def get_stats_collector(
 
                 metrics_instance = get_metrics()
             except Exception as e:
-                logger.warning("Failed to get metrics instance", error=str(e))
+                logger.warning(
+                    "failed_to_get_metrics_instance", error=str(e), exc_info=e
+                )
 
         if storage_instance is None:
             try:
@@ -736,7 +737,9 @@ def get_stats_collector(
                 storage_instance = SimpleDuckDBStorage(settings.duckdb_path)
                 # Note: Storage needs to be initialized before use
             except Exception as e:
-                logger.warning("Failed to get storage instance", error=str(e))
+                logger.warning(
+                    "failed_to_get_storage_instance", error=str(e), exc_info=e
+                )
 
         _global_stats_collector = StatsCollector(
             settings=settings,

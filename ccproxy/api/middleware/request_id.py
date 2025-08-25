@@ -1,18 +1,19 @@
 """Request ID middleware for generating and tracking request IDs."""
 
 import uuid
+from collections.abc import Awaitable, Callable, MutableMapping
 from datetime import UTC, datetime
 from typing import Any
 
-import structlog
 from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.types import ASGIApp
+from starlette.types import ASGIApp, Receive, Send
 
+from ccproxy.core.logging import get_logger
 from ccproxy.observability.context import request_context
 
 
-logger = structlog.get_logger(__name__)
+logger = get_logger(__name__)
 
 
 class RequestIDMiddleware(BaseHTTPMiddleware):
@@ -26,7 +27,32 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
         """
         super().__init__(app)
 
-    async def dispatch(self, request: Request, call_next: Any) -> Response:
+    async def __call__(
+        self, scope: MutableMapping[str, Any], receive: Receive, send: Send
+    ) -> None:
+        """ASGI interface to inject request ID early."""
+        if scope["type"] == "http":
+            # Generate or extract request ID
+            headers_dict = dict(scope.get("headers", []))
+            request_id = headers_dict.get(b"x-request-id", b"").decode("utf-8") or str(
+                uuid.uuid4()
+            )
+
+            # Store in ASGI extensions for other middleware
+            if "extensions" not in scope:
+                scope["extensions"] = {}
+            scope["extensions"]["request_id"] = request_id
+
+            # If not in headers, add it
+            if b"x-request-id" not in headers_dict:
+                scope["headers"] = list(scope.get("headers", []))
+                scope["headers"].append((b"x-request-id", request_id.encode("utf-8")))
+
+        return await super().__call__(scope, receive, send)
+
+    async def dispatch(
+        self, request: Request, call_next: Callable[[Request], Awaitable[Response]]
+    ) -> Response:
         """Process the request and add request ID/context.
 
         Args:
@@ -71,4 +97,4 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
             # Add request ID to response headers
             response.headers["x-request-id"] = request_id
 
-            return response  # type: ignore[no-any-return]
+            return response

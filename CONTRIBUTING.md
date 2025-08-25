@@ -6,9 +6,10 @@ Thank you for your interest in contributing to CCProxy API! This guide will help
 
 ### Prerequisites
 
-- Python 3.10+
+- Python 3.11+
 - [uv](https://docs.astral.sh/uv/) for dependency management
 - Git
+- (Optional) [bun](https://bun.sh/) for Claude Code SDK installation
 
 ### Initial Setup
 
@@ -19,384 +20,279 @@ Thank you for your interest in contributing to CCProxy API! This guide will help
    make setup  # Installs dependencies and sets up dev environment
    ```
 
-   > **Note**: Pre-commit hooks are automatically installed with `make setup` and `make dev-install`
-
-## Code Quality Standards
-
-This project maintains high code quality through automated checks that run both locally (via pre-commit) and in CI.
-
-### Pre-commit Hooks vs Individual Commands
-
-| Check | Pre-commit Hook | Individual Make Command | Purpose |
-|-------|----------------|----------------------|---------|
-| **Linting** | `ruff check --fix` | `make lint` | Code style and error detection |
-| **Formatting** | `ruff format` | `make format` | Consistent code formatting |
-| **Type Checking** | `mypy` | `make typecheck` | Static type validation |
-| **Security** | `bandit` *(disabled)* | *(not available)* | Security vulnerability scanning |
-| **File Hygiene** | Various hooks | *(not available individually)* | Trailing whitespace, EOF, etc. |
-| **Tests** | *(not included)* | `make test` | Unit and integration tests |
-
-**Key Differences:**
-
-- **Pre-commit hooks**: Auto-fix issues, comprehensive file checks, runs on commit
-- **Individual commands**: Granular control, useful for debugging specific issues
-- **CI pipeline**: Runs pre-commit + tests (most comprehensive)
-
-### Running Quality Checks
-
-**Recommended Workflow:**
-```bash
-# Comprehensive checks with auto-fixes (RECOMMENDED)
-make pre-commit    # or: uv run pre-commit run --all-files
-
-# Full CI pipeline (pre-commit + tests)
-make ci
-```
-
-**Alternative Commands:**
-```bash
-# Pre-commit only (runs automatically on commit)
-uv run pre-commit run              # Run on staged files
-uv run pre-commit run --all-files  # Run on all files
-
-# Individual checks (for debugging)
-make lint          # Linting only
-make typecheck     # Type checking only  
-make format        # Format code
-make test          # Tests only
-```
-
-### Why Use Pre-commit for Most Checks?
-
-Pre-commit hooks handle most quality checks because:
-
-- **Auto-fixing**: Automatically fixes formatting and many linting issues
-- **Comprehensive**: Includes file hygiene checks not available in individual commands
-- **Consistent**: Same checks run locally and in CI
-- **Fast**: Only checks changed files by default
-
-**Tests run separately because:**
-
-- **Speed**: Tests can be slow and would make commits frustrating
-- **Scope**: Unit tests should pass, but integration tests might need external services  
-- **CI Coverage**: Full test suite with coverage runs in CI pipeline (`make ci`)
+   > **Note**: Pre-commit hooks are automatically installed with `make setup`
 
 ## Development Workflow
 
 ### 1. Create a Feature Branch
 ```bash
 git checkout -b feature/your-feature-name
+# Or: fix/bug-description, docs/update-something
 ```
 
 ### 2. Make Changes
 
-- Write code following the existing patterns
+- Follow existing code patterns (see CONVENTIONS.md)
 - Add tests for new functionality
 - Update documentation as needed
 
-### 3. Pre-commit Validation
-Pre-commit hooks will automatically run when you commit:
+### 3. Quality Checks (Required Before Commits)
+
 ```bash
+# Recommended: Run comprehensive checks with auto-fixes
+make pre-commit
+
+# Alternative: Run individual checks
+make format      # Format code
+make lint        # Check linting
+make typecheck   # Check types
+make test-unit   # Run fast tests
+```
+
+### 4. Commit Your Changes
+
+Pre-commit hooks run automatically on commit:
+```bash
+git add specific/files.py  # Never use git add .
+git commit -m "feat: add new feature"
+
+# If hooks modify files, stage and commit again:
 git add .
 git commit -m "feat: add new feature"
-# Pre-commit hooks run automatically and may modify files
-# If files are modified, you'll need to add and commit again
 ```
 
-### 4. Run Full Validation
+### 5. Full Validation
+
+Before pushing:
 ```bash
-make ci  # Runs pre-commit hooks + tests (recommended)
-
-# Alternative: run components separately
-make pre-commit  # Comprehensive checks with auto-fixes
-make test        # Tests with coverage
+make ci  # Runs full CI pipeline locally (pre-commit + tests)
 ```
 
-### 5. Create Pull Request
+### 6. Push and Create PR
 
-- Push your branch and create a PR
-- CI will run the full pipeline
-- Address any CI failures
-
-## CI/CD Workflows
-
-The project uses **split CI/CD workflows** for efficient, parallel testing of backend and frontend components.
-
-### Workflow Architecture
-
-We use **two independent GitHub Actions workflows** rather than a single monolithic one:
-
-| Workflow | Triggers | Purpose | Duration |
-|----------|----------|---------|----------|
-| **Backend CI** | Changes to `ccproxy/**`, `tests/**`, `pyproject.toml` | Python code quality & tests | ~3-5 min |
-| **Frontend CI** | Changes to `dashboard/**` | TypeScript/Svelte quality & build | ~2-3 min |
-
-### Backend Workflow (`.github/workflows/backend.yml`)
-
-**Jobs:**
-1. **Quality Checks** - ruff linting + mypy type checking
-2. **Tests** - Unit tests across Python 3.10, 3.11, 3.12
-3. **Build Verification** - Package build + CLI installation test
-
-**Commands tested:**
 ```bash
-make dev-install  # Dependency installation
-make check        # Quality checks (lint + typecheck)
-make test-unit    # Fast unit tests
-make build        # Package build
+git push origin feature/your-feature-name
+# Create PR on GitHub
 ```
 
-### Frontend Workflow (`.github/workflows/frontend.yml`)
+## Code Quality Standards
 
-**Jobs:**
-1. **Quality Checks** - Biome linting/formatting + TypeScript checks  
-2. **Build & Test** - Dashboard build + verification + artifact upload
+### Quality Gates
 
-**Commands tested:**
-```bash
-bun install       # Dependency installation
-bun run lint      # Biome linting
-bun run format:check  # Biome formatting check
-bun run check     # TypeScript + Biome checks
-bun run build     # Dashboard build
-bun run build:prod   # Production build + copy to ccproxy/static/
-```
+All code must pass these checks before merging:
 
-### Dashboard Development
-
-The dashboard is a **SvelteKit SPA** with its own toolchain:
-
-**Dependencies:**
-```bash
-# Install dashboard dependencies
-make dashboard-install
-# Or manually:
-cd dashboard && bun install
-```
-
-**Quality Checks:**
-```bash
-# All dashboard checks
-make dashboard-check
-# Individual checks:
-cd dashboard && bun run lint          # Biome linting  
-cd dashboard && bun run format:check  # Format checking
-cd dashboard && bun run check         # TypeScript + Biome
-```
-
-**Building:**
-```bash
-# Build for production (includes copy to ccproxy/static/)
-make dashboard-build
-# Or manually:
-cd dashboard && bun run build:prod
-```
-
-**Cleaning:**
-```bash
-# Clean dashboard build artifacts
-make dashboard-clean
-```
-
-### Path-Based Triggers
-
-Workflows only run when relevant files change:
-
-**Backend triggers:**
-- `ccproxy/**` - Core Python application code
-- `tests/**` - Test files
-- `pyproject.toml` - Python dependencies
-- `uv.lock` - Dependency lock file
-- `Makefile` - Build configuration
-
-**Frontend triggers:**
-- `dashboard/**` - All dashboard files (SvelteKit app)
-
-**Benefits:**
-- **Faster feedback** - Only relevant checks run
-- **Parallel execution** - Both workflows can run simultaneously
-- **Resource efficiency** - Saves CI minutes
-- **Clear failure isolation** - Know exactly what broke
-
-### CI Status Checks
-
-Both workflows must pass for PR merges:
-
-- ✅ **Backend CI** - All Python quality checks and tests pass
-- ✅ **Frontend CI** - All TypeScript/Svelte checks and build succeeds
-
-### Local Testing
-
-Test workflows locally before pushing:
-
-**Backend:**
-```bash
-make check     # Same checks as CI quality job
-make test-unit # Same tests as CI (without matrix)
-make build     # Same build verification as CI
-```
-
-**Frontend:**
-```bash
-make dashboard-check  # Same checks as CI quality job
-make dashboard-build  # Same build as CI
-```
-
-**Full pipeline:**
-```bash
-make ci               # Backend: pre-commit + tests
-make dashboard-build  # Frontend: checks + build
-```
-
-### Troubleshooting CI Failures
-
-**Backend failures:**
-1. **Lint/Type errors**: Run `make check` locally and fix issues
-2. **Test failures**: Run `make test-unit` and debug specific tests  
-3. **Build failures**: Run `make build` and check for import errors
-
-**Frontend failures:**
-1. **TypeScript errors**: Run `cd dashboard && bun run check`
-2. **Lint/Format errors**: Run `cd dashboard && bun run lint` and `bun run format`
-3. **Build failures**: Run `cd dashboard && bun run build` and check for missing dependencies
-
-**Path trigger issues:**
-- Verify your changes match the path patterns in workflow files
-- Force workflow run with empty commit: `git commit --allow-empty -m "trigger CI"`
-
-## Code Style Guidelines
-
-### Python Style
-
-- **Line Length**: 88 characters (ruff default)
-- **Imports**: Use absolute imports, sorted by isort
-- **Type Hints**: Required for all public APIs
-- **Docstrings**: Google style for public functions/classes
-
-### Commit Messages
-Follow [Conventional Commits](https://www.conventionalcommits.org/):
-```
-feat: add user authentication
-fix: resolve connection pool timeout
-docs: update API documentation
-test: add integration tests for streaming
-```
-
-## Testing
+| Check | Command | Purpose | Auto-fix |
+|-------|---------|---------|----------|
+| **Formatting** | `make format` | Code style consistency | ✅ |
+| **Linting** | `make lint` | Error detection | Partial (`make lint-fix`) |
+| **Type Checking** | `make typecheck` | Type safety | ❌ |
+| **Tests** | `make test` | Functionality | ❌ |
+| **Pre-commit** | `make pre-commit` | All checks combined | ✅ |
 
 ### Running Tests
 
 ```bash
-# Run all tests
+# All tests with coverage
 make test
 
-# Quick test run (no coverage)  
-make test-fast
+# Fast unit tests only
+make test-unit
 
-# Run specific test file
-make test-file FILE=test_auth.py
+# Integration tests
+make test-integration
 
-# Run tests matching a pattern
-make test-match MATCH="auth"
+# Specific test file
+make test-file FILE=unit/api/test_api.py
+
+# Tests matching pattern
+make test-match MATCH="authentication"
+
+# Watch mode (auto-run on changes)
+make test-watch
+
+# Coverage report
+make test-coverage
 ```
 
-### Writing Tests
+## Plugin Development
 
-- Put all tests in `tests/` directory
-- Name test files clearly: `test_feature.py`
-- Most tests should hit your API endpoints (integration-style)
-- Only write isolated unit tests for complex logic
-- Use fixtures in `conftest.py` for common setup
-- Mock external services (Claude SDK, OAuth endpoints)
+### Creating a New Plugin
 
-### What to Test
+1. **Create plugin structure:**
+   ```
+   plugins/your_plugin/
+   ├── __init__.py
+   ├── adapter.py          # Main interface (required)
+   ├── plugin.py           # Plugin declaration (required)
+   ├── routes.py           # API routes (optional)
+   ├── transformers/       # Request/response transformation
+   │   ├── request.py
+   │   └── response.py
+   ├── detection_service.py # Capability detection (optional)
+   ├── format_adapter.py   # Protocol conversion (optional)
+   └── auth/               # Authentication (optional)
+       └── manager.py
+   ```
 
-**Focus on:**
-- API endpoints (both Anthropic and OpenAI formats)
-- Authentication flows
-- Request/response format conversion
-- Error handling
-- Streaming responses
+2. **Implement the adapter (delegation pattern):**
+   ```python
+   from ccproxy.adapters.base import BaseAdapter
 
-**Skip:**
-- Simple configuration
-- Third-party library internals
-- Logging
+   class YourAdapter(BaseAdapter):
+       async def handle_request(self, request, endpoint, method):
+           context = self._build_provider_context()
+           return await self.proxy_service.handle_provider_request(
+               request, endpoint, method, context
+           )
+   ```
 
-## Security
+3. **Register in pyproject.toml:**
+   ```toml
+   [project.entry-points."ccproxy.plugins"]
+   your_plugin = "plugins.your_plugin.plugin:Plugin"
+   ```
 
-### Security Scanning
-The project uses [Bandit](https://bandit.readthedocs.io/) for security scanning:
+4. **Add tests:**
+   ```bash
+   tests/unit/plugins/test_your_plugin.py
+   ```
 
+## Commit Message Format
+
+Follow [Conventional Commits](https://www.conventionalcommits.org/):
+
+```
+feat: add user authentication
+fix: resolve connection pool timeout  
+docs: update API documentation
+test: add streaming integration tests
+refactor: extract pricing service
+chore: update dependencies
+```
+
+## CI/CD Pipeline
+
+### GitHub Actions Workflows
+
+| Workflow | Trigger | Checks |
+|----------|---------|--------|
+| **CI** | Push/PR to main, develop | Linting, types, tests (Python 3.11-3.13) |
+| **Build** | Push to main | Docker image build and push |
+| **Release** | Git tag/release | PyPI publish, Docker release |
+| **Docs** | Push to main/dev | Documentation build and deploy |
+
+### Local CI Testing
+
+Test the full CI pipeline locally:
 ```bash
-# Run security scan (currently disabled in pre-commit but available)
-uv run bandit -c pyproject.toml -r ccproxy/
+make ci  # Same as GitHub Actions CI workflow
 ```
 
-### Security Guidelines
+## Common Development Tasks
 
-- Never commit secrets or API keys
-- Use environment variables for sensitive configuration
-- Follow principle of least privilege
-- Validate all inputs
-
-## Documentation
-
-### Building Documentation
+### Running the Dev Server
 ```bash
-make docs-build   # Build static documentation
-make docs-serve   # Serve documentation locally
-make docs-clean   # Clean documentation build files
+make dev  # Starts with debug logging and auto-reload
 ```
 
-### Development Server
+### Debugging Requests
 ```bash
-make dev          # Start development server with auto-reload
-make setup        # Quick setup for new contributors
+# Enable verbose logging
+CCPROXY_VERBOSE_API=true \
+CCPROXY_REQUEST_LOG_DIR=/tmp/ccproxy/request \
+make dev
+
+# View last request
+scripts/show_request.sh
 ```
 
-### Documentation Files
+### Building and Testing Docker
+```bash
+make docker-build
+make docker-run
+```
 
-- **API Docs**: Auto-generated from docstrings
-- **User Guide**: Manual documentation in `docs/`
-- **Examples**: Working examples in `examples/`
+### Documentation
+```bash
+make docs-build  # Build docs
+make docs-serve  # Serve locally at http://localhost:8000
+```
 
 ## Troubleshooting
 
-### Pre-commit Issues
-If pre-commit hooks fail:
-
-1. **Check the output**: Pre-commit shows what failed and why
-2. **Fix issues**: Address linting/formatting issues
-3. **Re-stage and commit**: `git add . && git commit`
-
-### Common Issues
-
-**Mypy errors:**
+### Type Errors
 ```bash
-# Run mypy manually to see full output
-uv run mypy .
+make typecheck
+# Or for detailed output:
+uv run mypy . --show-error-codes
 ```
 
-**Ruff formatting:**
+### Formatting Issues
 ```bash
-# Auto-fix most issues
-uv run ruff check --fix .
-uv run ruff format .
+make format  # Auto-fixes most issues
 ```
 
-**Test failures:**
+### Linting Errors
 ```bash
-# Run specific failing test
-uv run pytest tests/test_specific.py::test_function -v
+make lint-fix  # Auto-fix what's possible
+# Manual fix required for remaining issues
+```
+
+### Test Failures
+```bash
+# Run specific failing test with verbose output
+uv run pytest tests/test_file.py::test_function -vvs
+
+# Debug with print statements
+uv run pytest tests/test_file.py -s
+```
+
+### Pre-commit Hook Failures
+```bash
+# Run manually to see all issues
+make pre-commit
+
+# Skip hooks temporarily (not recommended)
+git commit --no-verify -m "WIP: debugging"
+```
+
+## Project Structure
+
+```
+ccproxy-api/
+├── ccproxy/           # Core application
+│   ├── api/           # FastAPI routes and middleware
+│   ├── auth/          # Authentication system
+│   ├── config/        # Configuration management
+│   ├── core/          # Core utilities and interfaces
+│   ├── models/        # Pydantic models
+│   └── services/      # Business logic services
+├── plugins/           # Provider plugins
+│   ├── claude_api/    # Claude API plugin
+│   ├── claude_sdk/    # Claude SDK plugin
+│   ├── codex/         # OpenAI Codex plugin
+│   └── ...           # Other plugins
+├── tests/            # Test suite
+│   ├── unit/         # Unit tests
+│   ├── integration/  # Integration tests
+│   └── fixtures/     # Test fixtures
+├── docs/             # Documentation
+├── scripts/          # Utility scripts
+└── Makefile          # Development commands
 ```
 
 ## Getting Help
 
 - **Issues**: [GitHub Issues](https://github.com/CaddyGlow/ccproxy-api/issues)
 - **Discussions**: [GitHub Discussions](https://github.com/CaddyGlow/ccproxy-api/discussions)
-- **Documentation**: See `docs/` directory
+- **Documentation**: See `docs/` directory and inline code documentation
+
+## Code of Conduct
+
+- Be respectful and inclusive
+- Focus on constructive feedback
+- Help others learn and grow
 
 ## License
 
-By contributing, you agree that your contributions will be licensed under the same license as the project.
+By contributing, you agree that your contributions will be licensed under the same license as the project (see LICENSE file).

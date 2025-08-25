@@ -1,14 +1,34 @@
 """Generate the code reference pages and navigation."""
 
+import importlib.util
 from pathlib import Path
 
 import mkdocs_gen_files
+
+
+def can_import_module(module_name: str) -> bool:
+    """Check if a module can be imported without errors."""
+    try:
+        spec = importlib.util.find_spec(module_name)
+        return spec is not None
+    except (ImportError, ModuleNotFoundError, ValueError):
+        return False
 
 
 nav = mkdocs_gen_files.Nav()
 
 src = Path(__file__).parent.parent
 package_dir = src / "ccproxy"
+
+# Modules to skip due to known issues
+SKIP_MODULES = {
+    "ccproxy.api.dependencies",  # Has parameter annotation issues
+}
+
+# Skip entire directories that have issues
+SKIP_PATTERNS = {
+    "ccproxy.services.http",  # HTTP service modules have import/annotation issues
+}
 
 for path in sorted(package_dir.rglob("*.py")):
     module_path = path.relative_to(src).with_suffix("")
@@ -26,6 +46,26 @@ for path in sorted(package_dir.rglob("*.py")):
 
     # Skip private modules
     if any(part.startswith("_") and part != "__init__" for part in parts):
+        continue
+
+    # Check if module is in skip list
+    module_name = ".".join(parts)
+    if module_name in SKIP_MODULES:
+        continue
+
+    # Check if module matches skip patterns
+    skip_module = False
+    for pattern in SKIP_PATTERNS:
+        if module_name.startswith(pattern):
+            skip_module = True
+            break
+
+    if skip_module:
+        continue
+
+    # Check if module can be imported
+    if not can_import_module(module_name):
+        print(f"Skipping module that cannot be imported: {module_name}")
         continue
 
     nav[parts] = doc_path.as_posix()

@@ -81,6 +81,7 @@ class Scheduler:
                 "scheduler_start_failed",
                 error=str(e),
                 error_type=type(e).__name__,
+                exc_info=e,
             )
             raise SchedulerError(f"Failed to start scheduler: {e}") from e
 
@@ -123,6 +124,7 @@ class Scheduler:
                     "scheduler_shutdown_error",
                     error=str(e),
                     error_type=type(e).__name__,
+                    exc_info=e,
                 )
                 raise SchedulerShutdownError(
                     f"Error during scheduler shutdown: {e}"
@@ -191,6 +193,7 @@ class Scheduler:
                 task_type=task_type,
                 error=str(e),
                 error_type=type(e).__name__,
+                exc_info=e,
             )
             raise SchedulerError(f"Failed to add task '{task_name}': {e}") from e
 
@@ -222,6 +225,7 @@ class Scheduler:
                 task_name=task_name,
                 error=str(e),
                 error_type=type(e).__name__,
+                exc_info=e,
             )
             raise SchedulerError(f"Failed to remove task '{task_name}': {e}") from e
 

@@ -1,0 +1,23 @@
+[project]
+name = "ccproxy-claude-sdk"
+version = "1.0.0"
+description = "Claude SDK provider plugin for CCProxy"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "claude-code-sdk>=0.0.19",
+    "httpx-sse>=0.4.1",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project.entry-points."ccproxy.plugins"]
+claude_sdk = "plugins.claude_sdk.plugin:Plugin"
+
+[tool.hatch.build.targets.wheel]
+packages = ["plugins/claude_sdk"]
+
+[tool.uv.sources]
+claude-code-sdk = { git = "https://github.com/anthropics/claude-code-sdk-python.git" }

@@ -24,6 +24,8 @@ repos:
           # Type stubs
           # - types-toml
           # - types-PyYAML
+          - types-aiofiles>=24.0.0
+          - types-PyYAML>=6.0.12.12
           # Core dependencies
           - pydantic>=2.8.0
           - pydantic-settings>=2.4.0
@@ -35,6 +37,8 @@ repos:
           - typer>=0.16.0
           - uvicorn>=0.34.0
           - check-jsonschema>=0.33.2
+          - aiohttp>=3.12.0
+          - aiofiles>=24.1.0
           # Test dependencies
           - pytest>=7.0.0
           - pytest-asyncio>=0.23.0
@@ -49,15 +53,12 @@ repos:
           - claude-code-sdk>=0.0.14
           - keyring>=24.0.0
           - aiosqlite>=0.21.0
-          - types-PyYAML>=6.0.12.12
           - sqlmodel>=0.0.24
           - duckdb-engine>=0.17.0
           - tomli>=2.0.0
           - fastapi-mcp>=0.1.0
           - sse-starlette>=1.0.0
           - textual>=3.7.1
-          - aiofiles>=24.1.0
-          - types-aiofiles>=24.0.0
           - pyjwt>=2.10.0
         args: [--config-file=pyproject.toml]
         exclude: ^(docs/|examples/)

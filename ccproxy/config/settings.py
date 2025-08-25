@@ -7,19 +7,18 @@ import tomllib
 from pathlib import Path
 from typing import Any
 
-import structlog
-from pydantic import Field, field_validator, model_validator
+from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from ccproxy.config.discovery import find_toml_config_file
+from ccproxy.core.logging import get_logger
 
 from .auth import AuthSettings
-from .claude import ClaudeSettings
-from .codex import CodexSettings
+from .binary import BinarySettings
 from .cors import CORSSettings
 from .docker_settings import DockerSettings
+from .http import HTTPSettings
 from .observability import ObservabilitySettings
-from .pricing import PricingSettings
 from .reverse_proxy import ReverseProxySettings
 from .scheduler import SchedulerSettings
 from .security import SecuritySettings
@@ -39,6 +38,29 @@ class ConfigurationError(Exception):
     """Raised when configuration loading or validation fails."""
 
     pass
+
+
+class LoggingHooksSettings(BaseModel):
+    """Settings for logging hooks migration."""
+
+    use_hook_logging: bool = True
+    enable_access_logging: bool = True
+    enable_content_logging: bool = True
+    enable_streaming_logging: bool = True
+    parallel_run_mode: bool = False
+    disable_middleware_during_parallel: bool = False
+
+
+class HooksSettings(BaseModel):
+    """Hook system configuration."""
+
+    enabled: bool = True
+    metrics_enabled: bool = True
+    logging_enabled: bool = True
+    analytics_enabled: bool = False
+    analytics_batch_size: int = 100
+    enable_chunk_events: bool = False  # For streaming chunk events
+    logging: LoggingHooksSettings = Field(default_factory=LoggingHooksSettings)
 
 
 # PoolSettings class removed - connection pooling functionality has been removed
@@ -80,16 +102,9 @@ class Settings(BaseSettings):
         description="CORS configuration settings",
     )
 
-    # Claude-specific settings
-    claude: ClaudeSettings = Field(
-        default_factory=ClaudeSettings,
-        description="Claude-specific configuration settings",
-    )
-
-    # Codex-specific settings
-    codex: CodexSettings = Field(
-        default_factory=CodexSettings,
-        description="OpenAI Codex-specific configuration settings",
+    http: HTTPSettings = Field(
+        default_factory=HTTPSettings,
+        description="HTTP client configuration settings",
     )
 
     # Proxy and authentication
@@ -101,6 +116,12 @@ class Settings(BaseSettings):
     auth: AuthSettings = Field(
         default_factory=AuthSettings,
         description="Authentication and credentials configuration",
+    )
+
+    # Binary resolution settings
+    binary: BinarySettings = Field(
+        default_factory=BinarySettings,
+        description="Binary resolution and package manager fallback configuration",
     )
 
     # Container settings
@@ -121,156 +142,30 @@ class Settings(BaseSettings):
         description="Task scheduler configuration settings",
     )
 
-    # Pricing settings
-    pricing: PricingSettings = Field(
-        default_factory=PricingSettings,
-        description="Pricing and cost calculation configuration settings",
+    # Plugin settings
+    plugin_dir: str = Field(
+        default="plugins",
+        description="Directory to load plugins from",
     )
 
-    @field_validator("server", mode="before")
-    @classmethod
-    def validate_server(cls, v: Any) -> Any:
-        """Validate and convert server settings."""
-        if v is None:
-            return ServerSettings()
-        if isinstance(v, ServerSettings):
-            return v
-        if isinstance(v, dict):
-            return ServerSettings(**v)
-        return v
+    enable_plugins: bool = Field(
+        default=True,
+        description="Enable plugin system",
+    )
 
-    @field_validator("security", mode="before")
-    @classmethod
-    def validate_security(cls, v: Any) -> Any:
-        """Validate and convert security settings."""
-        if v is None:
-            return SecuritySettings()
-        if isinstance(v, SecuritySettings):
-            return v
-        if isinstance(v, dict):
-            return SecuritySettings(**v)
-        return v
+    # Plugin configurations
+    plugins: dict[str, dict[str, Any]] = Field(
+        default_factory=dict,
+        description="Plugin-specific configurations keyed by plugin name",
+    )
 
-    @field_validator("cors", mode="before")
-    @classmethod
-    def validate_cors(cls, v: Any) -> Any:
-        """Validate and convert CORS settings."""
-        if v is None:
-            return CORSSettings()
-        if isinstance(v, CORSSettings):
-            return v
-        if isinstance(v, dict):
-            return CORSSettings(**v)
-        return v
+    # Hook system settings
+    hooks: HooksSettings = Field(
+        default_factory=HooksSettings,
+        description="Hook system configuration settings",
+    )
 
-    @field_validator("claude", mode="before")
-    @classmethod
-    def validate_claude(cls, v: Any) -> Any:
-        """Validate and convert Claude settings."""
-        if v is None:
-            return ClaudeSettings()
-        if isinstance(v, ClaudeSettings):
-            return v
-        if isinstance(v, dict):
-            return ClaudeSettings(**v)
-        return v
-
-    @field_validator("codex", mode="before")
-    @classmethod
-    def validate_codex(cls, v: Any) -> Any:
-        """Validate and convert Codex settings."""
-        if v is None:
-            return CodexSettings()
-        if isinstance(v, CodexSettings):
-            return v
-        if isinstance(v, dict):
-            return CodexSettings(**v)
-        return v
-
-    @field_validator("reverse_proxy", mode="before")
-    @classmethod
-    def validate_reverse_proxy(cls, v: Any) -> Any:
-        """Validate and convert reverse proxy settings."""
-        if v is None:
-            return ReverseProxySettings()
-        if isinstance(v, ReverseProxySettings):
-            return v
-        if isinstance(v, dict):
-            return ReverseProxySettings(**v)
-        return v
-
-    @field_validator("auth", mode="before")
-    @classmethod
-    def validate_auth(cls, v: Any) -> Any:
-        """Validate and convert auth settings."""
-        if v is None:
-            return AuthSettings()
-        if isinstance(v, AuthSettings):
-            return v
-        if isinstance(v, dict):
-            return AuthSettings(**v)
-        return v
-
-    @field_validator("docker", mode="before")
-    @classmethod
-    def validate_docker_settings(cls, v: Any) -> Any:
-        """Validate and convert Docker settings."""
-        if v is None:
-            return DockerSettings()
-
-        # If it's already a DockerSettings instance, return as-is
-        if isinstance(v, DockerSettings):
-            return v
-
-        # If it's a dict, create DockerSettings from it
-        if isinstance(v, dict):
-            return DockerSettings(**v)
-
-        # Try to convert to dict if possible
-        if hasattr(v, "model_dump"):
-            return DockerSettings(**v.model_dump())
-        elif hasattr(v, "__dict__"):
-            return DockerSettings(**v.__dict__)
-
-        return v
-
-    @field_validator("observability", mode="before")
-    @classmethod
-    def validate_observability(cls, v: Any) -> Any:
-        """Validate and convert observability settings."""
-        if v is None:
-            return ObservabilitySettings()
-        if isinstance(v, ObservabilitySettings):
-            return v
-        if isinstance(v, dict):
-            return ObservabilitySettings(**v)
-        return v
-
-    @field_validator("scheduler", mode="before")
-    @classmethod
-    def validate_scheduler(cls, v: Any) -> Any:
-        """Validate and convert scheduler settings."""
-        if v is None:
-            return SchedulerSettings()
-        if isinstance(v, SchedulerSettings):
-            return v
-        if isinstance(v, dict):
-            return SchedulerSettings(**v)
-        return v
-
-    @field_validator("pricing", mode="before")
-    @classmethod
-    def validate_pricing(cls, v: Any) -> Any:
-        """Validate and convert pricing settings."""
-        if v is None:
-            return PricingSettings()
-        if isinstance(v, PricingSettings):
-            return v
-        if isinstance(v, dict):
-            return PricingSettings(**v)
-        return v
-
-    # validate_pool_settings method removed - connection pooling functionality has been removed
+    # Redundant validators removed - Pydantic handles these automatically with default_factory
 
     @property
     def server_url(self) -> str:
@@ -282,28 +177,6 @@ class Settings(BaseSettings):
         """Check if running in development mode."""
         return self.server.reload or self.server.log_level == "DEBUG"
 
-    @model_validator(mode="after")
-    def setup_claude_cli_path(self) -> "Settings":
-        """Set up Claude CLI path in environment if provided or found."""
-        # If not explicitly set, try to find it
-        if not self.claude.cli_path:
-            found_path, found_in_path = self.claude.find_claude_cli()
-            if found_path:
-                self.claude.cli_path = found_path
-                # Only add to PATH if it wasn't found via which()
-                if not found_in_path:
-                    cli_dir = str(Path(self.claude.cli_path).parent)
-                    current_path = os.environ.get("PATH", "")
-                    if cli_dir not in current_path:
-                        os.environ["PATH"] = f"{cli_dir}:{current_path}"
-        elif self.claude.cli_path:
-            # If explicitly set, always add to PATH
-            cli_dir = str(Path(self.claude.cli_path).parent)
-            current_path = os.environ.get("PATH", "")
-            if cli_dir not in current_path:
-                os.environ["PATH"] = f"{cli_dir}:{current_path}"
-        return self
-
     def model_dump_safe(self) -> dict[str, Any]:
         """
         Dump model data with sensitive information masked.
@@ -311,7 +184,8 @@ class Settings(BaseSettings):
         Returns:
             dict: Configuration with sensitive data masked
         """
-        return self.model_dump()
+        # Use serialization mode that properly handles SecretStr
+        return self.model_dump(mode="json")
 
     @classmethod
     def load_toml_config(cls, toml_path: Path) -> dict[str, Any]:
@@ -404,12 +278,23 @@ class Settings(BaseSettings):
         config_data = {}
         if config_path and config_path.exists():
             config_data = cls.load_config_file(config_path)
+            # Log loaded config only if not already logged by config manager
+            if not config_manager._config_logged:
+                logger = get_logger(__name__)
+                logger.info(
+                    "config_file_loaded",
+                    path=str(config_path),
+                    category="config",
+                )
+                config_manager.mark_config_logged()
 
         # Merge config with kwargs (kwargs take precedence)
         merged_config = {**config_data, **kwargs}
 
         # Create Settings instance with merged config
-        return cls(**merged_config)
+        settings = cls(**merged_config)
+
+        return settings
 
 
 class ConfigurationManager:
@@ -419,6 +304,52 @@ class ConfigurationManager:
         self._settings: Settings | None = None
         self._config_path: Path | None = None
         self._logging_configured = False
+        self._config_logged = False
+
+    def _apply_plugin_settings_overrides(
+        self, settings: dict[str, Any], overrides: list[str]
+    ) -> None:
+        """Apply plugin settings overrides from the CLI."""
+        if not overrides:
+            return
+
+        if "plugins" not in settings:
+            settings["plugins"] = {}
+
+        for override in overrides:
+            try:
+                key, value = override.split("=", 1)
+                plugin_name, setting_key = key.split(".", 1)
+
+                # Convert value to appropriate type
+                if value.lower() == "true":
+                    typed_value: Any = True
+                elif value.lower() == "false":
+                    typed_value = False
+                elif value.isdigit():
+                    typed_value = int(value)
+                else:
+                    try:
+                        typed_value = float(value)
+                    except ValueError:
+                        typed_value = value
+
+                # Update nested dictionaries
+                plugin_settings = settings["plugins"].setdefault(plugin_name, {})
+                keys = setting_key.split(".")
+                current_level = plugin_settings
+                for k in keys[:-1]:
+                    current_level = current_level.setdefault(k, {})
+                current_level[keys[-1]] = typed_value
+
+            except ValueError:
+                logger.warning(
+                    f"Invalid plugin setting format: {override}", category="config"
+                )
+
+    def mark_config_logged(self) -> None:
+        """Mark that config loading has been logged to prevent duplicates."""
+        self._config_logged = True
 
     def load_settings(
         self,
@@ -428,10 +359,39 @@ class ConfigurationManager:
         """Load settings with CLI overrides and caching."""
         if self._settings is None or config_path != self._config_path:
             try:
-                self._settings = Settings.from_config(
-                    config_path=config_path, **(cli_overrides or {})
-                )
+                # Load base settings from file
+                config_data = {}
+                if config_path and config_path.exists():
+                    config_data = Settings.load_config_file(config_path)
+                    # Log config loading once
+                    if not self._config_logged:
+                        logger.info(
+                            "config_file_loaded",
+                            path=str(config_path),
+                            category="config",
+                        )
+                        self._config_logged = True
+
+                # Apply CLI overrides to the loaded config data
+                if cli_overrides:
+                    # Apply plugin settings overrides
+                    plugin_settings_overrides = cli_overrides.pop("plugin_settings", [])
+                    self._apply_plugin_settings_overrides(
+                        config_data, plugin_settings_overrides
+                    )
+
+                    # Merge other CLI overrides
+                    for key, value in cli_overrides.items():
+                        if isinstance(value, dict) and isinstance(
+                            config_data.get(key), dict
+                        ):
+                            config_data[key].update(value)
+                        else:
+                            config_data[key] = value
+
+                self._settings = Settings(**config_data)
                 self._config_path = config_path
+
             except Exception as e:
                 raise ConfigurationError(f"Failed to load configuration: {e}") from e
 
@@ -475,59 +435,6 @@ class ConfigurationManager:
         if cli_args.get("auth_token") is not None:
             overrides["security"] = {"auth_token": cli_args["auth_token"]}
 
-        # Claude settings
-        claude_settings = {}
-        if cli_args.get("claude_cli_path") is not None:
-            claude_settings["cli_path"] = cli_args["claude_cli_path"]
-
-        # Direct Claude settings (not nested in code_options)
-        for key in [
-            "sdk_message_mode",
-            "system_prompt_injection_mode",
-            "builtin_permissions",
-        ]:
-            if cli_args.get(key) is not None:
-                claude_settings[key] = cli_args[key]
-
-        # Handle pool configuration
-        if cli_args.get("sdk_pool") is not None:
-            claude_settings["sdk_pool"] = {"enabled": cli_args["sdk_pool"]}
-
-        if cli_args.get("sdk_pool_size") is not None:
-            if "sdk_pool" not in claude_settings:
-                claude_settings["sdk_pool"] = {}
-            claude_settings["sdk_pool"]["pool_size"] = cli_args["sdk_pool_size"]
-
-        if cli_args.get("sdk_session_pool") is not None:
-            claude_settings["sdk_session_pool"] = {
-                "enabled": cli_args["sdk_session_pool"]
-            }
-
-        # Claude Code options
-        claude_opts = {}
-        for key in [
-            "max_thinking_tokens",
-            "permission_mode",
-            "cwd",
-            "max_turns",
-            "append_system_prompt",
-            "permission_prompt_tool_name",
-            "continue_conversation",
-        ]:
-            if cli_args.get(key) is not None:
-                claude_opts[key] = cli_args[key]
-
-        # Handle comma-separated lists
-        for key in ["allowed_tools", "disallowed_tools"]:
-            if cli_args.get(key):
-                claude_opts[key] = [tool.strip() for tool in cli_args[key].split(",")]
-
-        if claude_opts:
-            claude_settings["code_options"] = claude_opts
-
-        if claude_settings:
-            overrides["claude"] = claude_settings
-
         # CORS settings
         if cli_args.get("cors_origins"):
             overrides["cors"] = {
@@ -536,6 +443,10 @@ class ConfigurationManager:
                 ]
             }
 
+        # Plugin settings
+        if cli_args.get("plugin_setting"):
+            overrides["plugin_settings"] = cli_args["plugin_setting"]
+
         return overrides
 
     def reset(self) -> None:
@@ -543,12 +454,13 @@ class ConfigurationManager:
         self._settings = None
         self._config_path = None
         self._logging_configured = False
+        self._config_logged = False
 
 
 # Global configuration manager instance
 config_manager = ConfigurationManager()
 
-logger = structlog.get_logger(__name__)
+logger = get_logger(__name__)
 
 
 def get_settings(config_path: Path | str | None = None) -> Settings:

@@ -5,10 +5,10 @@ import structlog
 from ccproxy.config.settings import Settings
 
 from .core import Scheduler
+from .errors import SchedulerError, TaskRegistrationError
 from .registry import register_task
 from .tasks import (
     PoolStatsTask,
-    PricingCacheUpdateTask,
     PushgatewayTask,
     StatsPrintingTask,
     VersionUpdateCheckTask,
@@ -59,11 +59,19 @@ async def setup_scheduler_tasks(scheduler: Scheduler, settings: Settings) -> Non
                 "pushgateway_task_added",
                 interval_seconds=scheduler_config.pushgateway_interval_seconds,
             )
+        except TaskRegistrationError as e:
+            logger.error(
+                "pushgateway_task_registration_failed",
+                error=str(e),
+                error_type=type(e).__name__,
+                exc_info=e,
+            )
         except Exception as e:
             logger.error(
                 "pushgateway_task_add_failed",
                 error=str(e),
                 error_type=type(e).__name__,
+                exc_info=e,
             )
 
     # Add stats printing task if enabled
@@ -79,37 +87,28 @@ async def setup_scheduler_tasks(scheduler: Scheduler, settings: Settings) -> Non
                 "stats_printing_task_added",
                 interval_seconds=scheduler_config.stats_printing_interval_seconds,
             )
+        except TaskRegistrationError as e:
+            logger.error(
+                "stats_printing_task_registration_failed",
+                error=str(e),
+                error_type=type(e).__name__,
+                exc_info=e,
+            )
         except Exception as e:
             logger.error(
                 "stats_printing_task_add_failed",
                 error=str(e),
                 error_type=type(e).__name__,
+                exc_info=e,
             )
 
-    # Add pricing cache update task if enabled
+    # Pricing cache update task is now handled by the pricing plugin
     if scheduler_config.pricing_update_enabled:
-        try:
-            # Convert hours to seconds
-            interval_seconds = scheduler_config.pricing_update_interval_hours * 3600
-
-            await scheduler.add_task(
-                task_name="pricing_cache_update",
-                task_type="pricing_cache_update",
-                interval_seconds=interval_seconds,
-                enabled=True,
-                force_refresh_on_startup=scheduler_config.pricing_force_refresh_on_startup,
-            )
-            logger.debug(
-                "pricing_update_task_added",
-                interval_hours=scheduler_config.pricing_update_interval_hours,
-                force_refresh_on_startup=scheduler_config.pricing_force_refresh_on_startup,
-            )
-        except Exception as e:
-            logger.error(
-                "pricing_update_task_add_failed",
-                error=str(e),
-                error_type=type(e).__name__,
-            )
+        logger.info(
+            "pricing_update_task_handled_by_plugin",
+            message="Pricing updates are now managed by the pricing plugin",
+            interval_hours=scheduler_config.pricing_update_interval_hours,
+        )
 
     # Add version update check task if enabled
     if scheduler_config.version_check_enabled:
@@ -129,11 +128,19 @@ async def setup_scheduler_tasks(scheduler: Scheduler, settings: Settings) -> Non
                 interval_hours=scheduler_config.version_check_interval_hours,
                 version_check_cache_ttl_hours=scheduler_config.version_check_cache_ttl_hours,
             )
+        except TaskRegistrationError as e:
+            logger.error(
+                "version_check_task_registration_failed",
+                error=str(e),
+                error_type=type(e).__name__,
+                exc_info=e,
+            )
         except Exception as e:
             logger.error(
                 "version_check_task_add_failed",
                 error=str(e),
                 error_type=type(e).__name__,
+                exc_info=e,
             )
 
 
@@ -157,8 +164,6 @@ def _register_default_tasks(settings: Settings) -> None:
         register_task("stats_printing", StatsPrintingTask)
 
     # Always register core tasks (not metrics-related)
-    if not registry.is_registered("pricing_cache_update"):
-        register_task("pricing_cache_update", PricingCacheUpdateTask)
     if not registry.is_registered("version_update_check"):
         register_task("version_update_check", VersionUpdateCheckTask)
     if not registry.is_registered("pool_stats"):
@@ -195,26 +200,33 @@ async def start_scheduler(settings: Settings) -> Scheduler | None:
         # Setup tasks based on configuration
         await setup_scheduler_tasks(scheduler, settings)
 
+        task_names = scheduler.list_tasks()
         logger.info(
             "scheduler_started",
             max_concurrent_tasks=settings.scheduler.max_concurrent_tasks,
             active_tasks=scheduler.task_count,
             running_tasks=len(
-                [
-                    name
-                    for name in scheduler.list_tasks()
-                    if scheduler.get_task(name).is_running
-                ]
+                [name for name in task_names if scheduler.get_task(name).is_running]
             ),
+            names=task_names,
         )
 
         return scheduler
 
+    except SchedulerError as e:
+        logger.error(
+            "scheduler_start_scheduler_error",
+            error=str(e),
+            error_type=type(e).__name__,
+            exc_info=e,
+        )
+        return None
     except Exception as e:
         logger.error(
             "scheduler_start_failed",
             error=str(e),
             error_type=type(e).__name__,
+            exc_info=e,
         )
         return None
 
@@ -231,9 +243,17 @@ async def stop_scheduler(scheduler: Scheduler | None) -> None:
 
     try:
         await scheduler.stop()
+    except SchedulerError as e:
+        logger.error(
+            "scheduler_stop_scheduler_error",
+            error=str(e),
+            error_type=type(e).__name__,
+            exc_info=e,
+        )
     except Exception as e:
         logger.error(
             "scheduler_stop_failed",
             error=str(e),
             error_type=type(e).__name__,
+            exc_info=e,
         )

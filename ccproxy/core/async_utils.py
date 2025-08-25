@@ -7,6 +7,8 @@ from contextlib import asynccontextmanager, contextmanager
 from pathlib import Path
 from typing import Any, TypeVar
 
+from structlog import get_logger
+
 
 T = TypeVar("T")
 
@@ -45,7 +47,13 @@ def get_package_dir() -> Path:
             package_dir = Path(spec.origin).parent.parent.resolve()
         else:
             package_dir = Path(__file__).parent.parent.parent.resolve()
-    except Exception:
+    except (AttributeError, ImportError, ModuleNotFoundError) as e:
+        logger = get_logger(__name__)
+        logger.debug("package_dir_fallback", error=str(e), exc_info=e)
+        package_dir = Path(__file__).parent.parent.parent.resolve()
+    except Exception as e:
+        logger = get_logger(__name__)
+        logger.debug("package_dir_unexpected_error", error=str(e), exc_info=e)
         package_dir = Path(__file__).parent.parent.parent.resolve()
 
     return package_dir
@@ -100,7 +108,11 @@ async def safe_await(awaitable: Awaitable[T], timeout: float | None = None) -> T
         return await awaitable
     except TimeoutError:
         return None
-    except Exception:
+    except asyncio.CancelledError:
+        return None
+    except Exception as e:
+        logger = get_logger(__name__)
+        logger.debug("awaitable_silent_error", error=str(e), exc_info=e)
         return None
 
 
@@ -215,7 +227,11 @@ async def wait_for_condition(
                 result = await result
             if result:
                 return True
-        except Exception:
+        except (asyncio.CancelledError, KeyboardInterrupt):
+            return False
+        except Exception as e:
+            logger = get_logger(__name__)
+            logger.debug("condition_check_error", error=str(e), exc_info=e)
             pass
 
         if asyncio.get_event_loop().time() - start_time > timeout:
@@ -528,6 +544,16 @@ def validate_config_with_schema(
                 "check-jsonschema command not found. "
                 "Install with: pip install check-jsonschema"
             ) from e
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as e:
+            # Clean up temporary files in case of error
+            Path(temp_schema_path).unlink(missing_ok=True)
+            Path(temp_json_path).unlink(missing_ok=True)
+            raise ValueError(f"Schema validation subprocess error: {e}") from e
+        except (OSError, PermissionError) as e:
+            # Clean up temporary files in case of error
+            Path(temp_schema_path).unlink(missing_ok=True)
+            Path(temp_json_path).unlink(missing_ok=True)
+            raise ValueError(f"File operation error during validation: {e}") from e
         except Exception as e:
             # Clean up temporary files in case of error
             Path(temp_schema_path).unlink(missing_ok=True)
@@ -577,6 +603,14 @@ def validate_config_with_schema(
                 "check-jsonschema command not found. "
                 "Install with: pip install check-jsonschema"
             ) from e
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as e:
+            if cleanup_schema:
+                Path(temp_schema_path).unlink(missing_ok=True)
+            raise ValueError(f"Schema validation subprocess error: {e}") from e
+        except (OSError, PermissionError) as e:
+            if cleanup_schema:
+                Path(temp_schema_path).unlink(missing_ok=True)
+            raise ValueError(f"File operation error during validation: {e}") from e
         except Exception as e:
             if cleanup_schema:
                 Path(temp_schema_path).unlink(missing_ok=True)

@@ -2,677 +2,242 @@
 
 Get up and running with CCProxy API on your local machine in minutes.
 
-## The `ccproxy` Command
-
-The `ccproxy` command is your unified interface for CCProxy API:
-
-```bash
-# Run Claude commands locally
-ccproxy claude -- /status
-
-# Run Claude commands in Docker (isolated environment)  
-ccproxy claude --docker -- /status
-```
-
-**How it works:**
-- **Unified Interface**: Same command syntax for both local and Docker execution
-- **Claude CLI Passthrough**: Forwards all Claude CLI commands and flags seamlessly
-- **Automatic Docker Management**: Handles container lifecycle when using `--docker` flag
-- **Isolated Configuration**: Docker mode uses separate config at `~/.config/cc-proxy/home`
-- **Workspace Mapping**: Working directory remains consistent between local and Docker execution
-
-## API Server Commands
-
-Choose the right command based on your use case:
-
-### `ccproxy api` - Production Ready
-```bash
-# Production server locally
-ccproxy api
-
-# Production server with Docker
-ccproxy api --docker --port 8080
-```
-**Use for**: Production deployments, maximum stability and performance.
-
-### `ccproxy run` - Balanced Development  
-```bash
-# Development server locally
-ccproxy run
-
-# Development server with reload
-ccproxy run --reload --port 8080
-```
-**Use for**: General development work, testing, and debugging.
-
-### `ccproxy dev` - Full Development Features
-```bash
-# Full development mode
-ccproxy dev
-
-# Development with all features
-ccproxy dev --reload --log-level DEBUG
-```
-**Use for**: Active development, hot-reload, detailed logging.
-
 ## Prerequisites
 
 Before starting, ensure you have:
 
 - **Python 3.11 or higher**
-- **Claude Code CLI** installed and authenticated
-- **Claude subscription** (personal or professional account)
-- **Git** for cloning the repository
-- **Docker** (optional, recommended for isolation)
+- **Claude subscription** (Max, Pro, or Team)
+- **Git** for cloning the repository (if installing from source)
+- **Claude Code SDK** (optional, for SDK mode): `npm install -g @anthropic-ai/claude-code`
 
-### Claude Code CLI Setup
+## Installation
 
-The proxy requires Claude Code CLI to be available, either installed locally or via Docker.
+### Quick Install (Recommended)
 
-#### Option 1: Local Installation
+```bash
+# Install with uv
+uv tool install ccproxy-api
 
-Install Claude Code CLI following the [official instructions](https://docs.anthropic.com/en/docs/claude-code).
+# Or with pipx
+pipx install ccproxy-api
+```
 
-**Authentication:**
+### Development Install
 
-CCProxy uses two separate authentication systems:
+```bash
+# Clone and setup
+git clone https://github.com/CaddyGlow/ccproxy-api.git
+cd ccproxy-api
+make setup  # Installs dependencies and dev environment
+```
 
-**Claude CLI (for Claude Code mode):**
+## Authentication Setup
+
+CCProxy supports multiple provider plugins, each with its own authentication:
+
+### For Claude SDK Plugin
+
+Uses the Claude Code SDK authentication:
+
 ```bash
 # Login to Claude CLI (opens browser)
 claude /login
 
 # Verify Claude CLI status
 claude /status
-```
-- Credentials stored at: `~/.claude/credentials.json` or `~/.config/claude/credentials.json`
 
-**CCProxy (for API mode):**
+# Optional: Setup long-lived token
+claude setup-token
+```
+
+### For Claude API Plugin
+
+Uses CCProxy's OAuth2 authentication:
+
 ```bash
-# For API/raw mode authentication (uses Anthropic OAuth2)
+# Login via OAuth2 (opens browser)
 ccproxy auth login
 
-# Check ccproxy auth status
-ccproxy auth validate
+# Check authentication status
+ccproxy auth status
 
-# Get detailed credential info
+# View detailed credential info
 ccproxy auth info
 ```
-- Credentials stored in system keyring (secure)
-- Fallback to: `~/.config/ccproxy/credentials.json`
 
-**Verification:**
-```bash
-# Test Claude CLI integration
-ccproxy claude -- /status
-```
+### For Codex Plugin
 
-#### Option 2: Docker (Recommended)
-
-Docker users don't need to install Claude CLI locally - it's included in the Docker image.
-
-**Docker Volume Configuration:**
-- **Claude Home**: `~/.config/cc-proxy/home` (isolated from your local Claude config)
-- **Working Directory**: Current user path (same as local execution)
-- **Custom Path**: Override with environment variables if needed
-
-**Authentication:**
-
-**Claude CLI in Docker (for Claude Code mode):**
-```bash
-# Authenticate Claude CLI in Docker (first time setup)
-ccproxy claude --docker -- /login
-```
-- Docker uses isolated config at: `~/.config/cc-proxy/home`
-
-**CCProxy (for API mode):**
-```bash
-# For API/raw mode authentication (uses Anthropic OAuth2)
-ccproxy auth login
-```
-- Credentials stored in system keyring (secure)
-- Fallback to: `~/.config/ccproxy/credentials.json`
-
-**Verification:**
-```bash
-# Test Docker Claude CLI
-ccproxy claude --docker -- /status
-```
-
-**Expected output for both options:**
-```
-Executing: /path/to/claude /status
-
-╭─────────────────────────────────────────────────────────╮
-│ ✻ Welcome to Claude Code!                               │
-│                                                         │
-│   /help for help, /status for your current setup        │
-╰─────────────────────────────────────────────────────────╯
-
- Claude Code Status v1.0.43
-
- Account • /login
-  L Login Method: Claude Max Account
-  L Organization: your-email@example.com's Organization
-  L Email: your-email@example.com
-
- Model • /model
-  L sonnet (claude-sonnet-4-20250514)
-```
-
-If you see authentication errors, refer to the [troubleshooting section](#claude-cli-not-found) below.
-
-## Installation
-
-### Option 1: Using uv (Recommended)
+Uses OpenAI OAuth2 PKCE authentication:
 
 ```bash
-# Clone the repository
-git clone https://github.com/CaddyGlow/ccproxy-api.git
-cd ccproxy-api
+# Login to OpenAI (opens browser)
+ccproxy auth login-openai
 
-# Install dependencies using uv
-uv sync
-
-# Install documentation dependencies (optional)
-uv sync --group docs
+# Check status
+ccproxy auth status
 ```
 
-### Option 2: Using pip
+## Starting the Server
 
 ```bash
-# Clone the repository
-git clone https://github.com/CaddyGlow/ccproxy-api.git
-cd ccproxy-api
+# Start the server (default port 8000)
+ccproxy serve
 
-# Install dependencies
-pip install -e .
+# With custom port
+ccproxy serve --port 8080
 
-# Install development dependencies (optional)
-pip install -e ".[dev]"
+# Development mode with auto-reload
+ccproxy serve --reload
+
+# With debug logging
+ccproxy serve --log-level debug
+
+# With verbose API logging
+CCPROXY_VERBOSE_API=true ccproxy serve
 ```
 
-### Option 3: Docker (Recommended for Security)
+The server will start at `http://127.0.0.1:8000`
 
-Docker provides isolation and security for Claude Code execution on your local machine:
+## Testing the API
+
+### Quick Test - Claude SDK Mode
 
 ```bash
-# Pull the Docker image
-docker pull ccproxy-api
+# Test with curl (Anthropic format)
+curl -X POST http://localhost:8000/claude/v1/messages \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "claude-3-5-sonnet-20241022",
+    "max_tokens": 100,
+    "messages": [
+      {"role": "user", "content": "Say hello!"}
+    ]
+  }'
 
-# Or build locally
-docker build -t ccproxy-api .
-```
-
-## Running the Server
-
-### Local Development
-
-```bash
-# Using uv (recommended)
-uv run python main.py
-
-# Or directly with Python
-python main.py
-
-# With custom port and log level
-PORT=8080 LOG_LEVEL=DEBUG uv run python main.py
-```
-
-### Docker (Isolated Execution)
-
-Run Claude Code Proxy in a secure, isolated container with proper volume mapping:
-
-```bash
-# Run with Docker (for secure local execution)
-docker run -d \
-  --name ccproxy-api \
-  -p 8000:8000 \
-  -v ~/.config/cc-proxy/home:/data/home \
-  -v $(pwd):/data/workspace \
-  ccproxy-api
-
-# With custom settings and working directory
-docker run -d \
-  --name ccproxy-api \
-  -p 8080:8000 \
-  -e PORT=8000 \
-  -e LOG_LEVEL=INFO \
-  -v ~/.config/cc-proxy/home:/data/home \
-  -v /path/to/your/workspace:/data/workspace \
-  ccproxy-api
-```
-
-## Docker Configuration Summary
-
-### 📁 **Volume Mappings**
-
-| Host Path | Container Path | Purpose | Required |
-|-----------|---------------|---------|----------|
-| `~/.config/cc-proxy/home` | `/data/home` | **Claude Home**: Isolated Claude config & cache | **Required** |
-| `$(pwd)` or custom path | `/data/workspace` | **Workspace**: Working directory for Claude operations | **Required** |
-
-**Volume Details:**
-
-- **`/data/home`** (CLAUDE_HOME):
-  - Stores Claude CLI configuration, authentication, and cache
-  - **Isolated** from your local `~/.claude` directory
-  - Contains: `.config/`, `.cache/`, `.local/` subdirectories
-  - **Persists** authentication between container restarts
-
-- **`/data/workspace`** (CLAUDE_WORKSPACE):
-  - Active working directory where Claude operates
-  - **Maps to** your project directory or any custom path
-  - Claude reads/writes files relative to this directory
-  - Should contain your code projects
-
-### 🔧 **Environment Variables**
-
-| Variable | Default | Purpose | Docker Support |
-|----------|---------|---------|----------------|
-| `HOST` | `0.0.0.0` | Server bind address | ✅ Built-in |
-| `PORT` | `8000` | Server port | ✅ Built-in |
-| `LOG_LEVEL` | `INFO` | Logging verbosity | ✅ Built-in |
-| `PUID` | `1000` | User ID for file permissions | ✅ Docker only |
-| `PGID` | `1000` | Group ID for file permissions | ✅ Docker only |
-| `CLAUDE_HOME` | `/data/home` | Claude config directory | ✅ Docker only |
-| `CLAUDE_WORKSPACE` | `/data/workspace` | Claude working directory | ✅ Docker only |
-
-**Docker-Specific Variables:**
-
-- **`PUID`/`PGID`**: Ensures files created in volumes have correct ownership
-- **`CLAUDE_HOME`**: Overrides default Claude home directory
-- **`CLAUDE_WORKSPACE`**: Sets Claude's working directory
-
-### 🛡️ **Security & Isolation Benefits**
-
-This Docker setup provides:
-
-- **Isolated Configuration**: Docker Claude config separate from local installation
-- **File Permission Management**: Proper ownership of created files via PUID/PGID
-- **Working Directory Control**: Claude operates in mapped workspace only
-- **Container Security**: Claude CLI runs in isolated container environment
-- **No Local Installation**: Claude CLI included in Docker image
-
-### 📋 **Quick Setup Commands**
-
-```bash
-# Create required directories
-mkdir -p ~/.config/cc-proxy/home
-
-# Run with automatic volume setup
-docker run -d \
-  --name ccproxy \
-  -p 8000:8000 \
-  -e PUID=$(id -u) \
-  -e PGID=$(id -g) \
-  -v ~/.config/cc-proxy/home:/data/home \
-  -v $(pwd):/data/workspace \
-  ghcr.io/caddyglow/ccproxy-api
-
-# First-time authentication
-docker exec -it ccproxy ccproxy claude -- auth login
-
-# Verify setup
-docker exec -it ccproxy ccproxy claude -- /status
-```
-
-### Docker Compose (Recommended)
-
-Complete Docker Compose setup with proper configuration:
-
-```yaml
-version: '3.8'
-services:
-  ccproxy:
-    image: ghcr.io/caddyglow/ccproxy-api:latest
-    container_name: ccproxy
-    ports:
-      - "8000:8000"
-    environment:
-      # Server Configuration
-      - HOST=0.0.0.0
-      - PORT=8000
-      - LOG_LEVEL=INFO
-
-      # File Permissions (matches your user)
-      - PUID=${PUID:-1000}
-      - PGID=${PGID:-1000}
-
-      # Docker Paths (pre-configured)
-      - CLAUDE_HOME=/data/home
-      - CLAUDE_WORKSPACE=/data/workspace
-    volumes:
-      # Claude config & auth (isolated)
-      - ~/.config/cc-proxy/home:/data/home
-      # Your workspace (current directory)
-      - .:/data/workspace
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 5s
-```
-
-**Setup Commands:**
-```bash
-# Create Docker Compose file (save as docker-compose.yml)
-# Set your user ID (optional, defaults to 1000)
-export PUID=$(id -u)
-export PGID=$(id -g)
-
-# Start the service
-docker-compose up -d
-
-# First-time authentication
-docker-compose exec ccproxy ccproxy claude -- auth login
-
-# Verify setup
-docker-compose exec ccproxy ccproxy claude -- /status
-
-# View logs
-docker-compose logs -f ccproxy
-```
-
-## First API Call
-
-Once the server is running, test it with a simple API call:
-
-### OAuth Users (Claude Subscription)
-
-OAuth users (Claude subscription):
-
-```bash
-# Using curl
-curl -X POST http://localhost:8000/v1/messages \
+# Test with curl (OpenAI format)
+curl -X POST http://localhost:8000/claude/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
     "model": "claude-3-5-sonnet-20241022",
     "messages": [
-      {
-        "role": "user",
-        "content": "Hello! Can you help me test this API?"
-      }
-    ],
-    "max_tokens": 100
+      {"role": "user", "content": "Say hello!"}
+    ]
   }'
 ```
 
-### API Key Users
-
-API key users can use any mode:
+### Quick Test - Claude API Mode
 
 ```bash
-# SDK mode (with Claude Code features)
-curl -X POST http://localhost:8000/sdk/v1/messages \
-  -H "Content-Type: application/json" \
-  -H "x-api-key: sk-ant-api03-..." \
-  -d '{
-    "model": "claude-3-5-sonnet-20241022",
-    "messages": [{"role": "user", "content": "Hello!"}],
-    "max_tokens": 100
-  }'
-
-# API mode (direct proxy)
+# Direct API access (full control)
 curl -X POST http://localhost:8000/api/v1/messages \
   -H "Content-Type: application/json" \
-  -H "x-api-key: sk-ant-api03-..." \
   -d '{
     "model": "claude-3-5-sonnet-20241022",
-    "messages": [{"role": "user", "content": "Hello!"}],
-    "max_tokens": 100
+    "max_tokens": 100,
+    "messages": [
+      {"role": "user", "content": "Say hello!"}
+    ]
   }'
 ```
 
-### Using Python
+### Using with Python
 
 ```python
-from anthropic import Anthropic
-
-# OAuth users (Claude subscription) - SDK mode
-client = Anthropic(
-    base_url="http://localhost:8000",
-    api_key="dummy"  # Ignored with OAuth
-)
-
-# API key users - any mode
-client = Anthropic(
-    base_url="http://localhost:8000/api",  # API mode
-    api_key="sk-ant-api03-..."
-)
-
-response = client.messages.create(
-    model="claude-3-5-sonnet-20241022",
-    messages=[{"role": "user", "content": "Hello!"}],
-    max_tokens=100
-)
-
-print(response.content[0].text)
-```
-
-### Using OpenAI Python Client
-
-```python
+# Using OpenAI client library
 from openai import OpenAI
 
-# OAuth users - SDK mode
+# For Claude SDK mode
 client = OpenAI(
-    base_url="http://localhost:8000/v1",
-    api_key="dummy"  # Ignored with OAuth
+    api_key="sk-dummy",  # Any dummy key
+    base_url="http://localhost:8000/claude/v1"
 )
 
-# API key users - can use any mode
+# For Claude API mode  
 client = OpenAI(
-    base_url="http://localhost:8000/api/v1",  # API mode
-    api_key="sk-ant-api03-..."
+    api_key="sk-dummy",
+    base_url="http://localhost:8000/api/v1"
 )
 
+# Make a request
 response = client.chat.completions.create(
     model="claude-3-5-sonnet-20241022",
-    messages=[{"role": "user", "content": "Hello!"}],
-    max_tokens=100
+    messages=[
+        {"role": "user", "content": "Hello!"}
+    ]
 )
-
 print(response.choices[0].message.content)
 ```
 
-## Health Check
+## Available Endpoints
 
-Verify the server is running properly:
+### Claude SDK Plugin (`/claude`)
+- `POST /claude/v1/messages` - Anthropic messages API
+- `POST /claude/v1/chat/completions` - OpenAI chat completions
+- Session support: `/claude/{session_id}/v1/...`
 
+### Claude API Plugin (`/api`)
+- `POST /api/v1/messages` - Anthropic messages API
+- `POST /api/v1/chat/completions` - OpenAI chat completions
+- `GET /api/v1/models` - List available models
+
+### Codex Plugin (`/api/codex`)
+- `POST /api/codex/responses` - Codex response API
+- `POST /api/codex/chat/completions` - OpenAI format
+- `POST /api/codex/{session_id}/responses` - Session-based responses
+- `POST /api/codex/{session_id}/chat/completions` - Session-based completions
+- `POST /api/codex/v1/chat/completions` - Standard OpenAI endpoint
+- `GET /api/codex/v1/models` - List available models
+
+## Monitoring & Debugging
+
+### Health Check
 ```bash
 curl http://localhost:8000/health
 ```
 
-Expected response:
-```json
-{
-  "status": "pass",
-  "version": "0.1.1.dev2+gc2627a4.d19800101",
-  "serviceId": "claude-code-proxy",
-  "description": "CCProxy API Server",
-  "time": "2025-07-22T14:26:08.499699+00:00",
-  "checks": {
-    "oauth2_credentials": [
-      {
-        "componentId": "oauth2-credentials",
-        "componentType": "authentication",
-        "status": "pass",
-        "time": "2025-07-22T14:26:08.499699+00:00",
-        "output": "OAuth2 credentials: valid",
-        "auth_status": "valid",
-        "credentials_path": "/home/rick/.claude/.credentials.json",
-        "expiration": "2026-07-22T12:42:33.440000+00:00",
-        "subscription_type": null,
-        "expires_in_hours": "8758"
-      }
-    ],
-    "claude_cli": [
-      {
-        "componentId": "claude-cli",
-        "componentType": "external_dependency",
-        "status": "pass",
-        "time": "2025-07-22T14:26:08.499699+00:00",
-        "output": "Claude CLI: available",
-        "installation_status": "found",
-        "cli_status": "available",
-        "version": "1.0.56",
-        "binary_path": "/home/rick/.cache/.bun/bin/claude",
-        "version_output": "1.0.56 (Claude Code)"
-      }
-    ],
-    "claude_sdk": [
-      {
-        "componentId": "claude-sdk",
-        "componentType": "python_package",
-        "status": "pass",
-        "time": "2025-07-22T14:26:08.499699+00:00",
-        "output": "Claude SDK: available",
-        "installation_status": "found",
-        "sdk_status": "available",
-        "version": "0.0.14",
-        "import_successful": true
-      }
-    ],
-    "proxy_service": [
-      {
-        "componentId": "proxy-service",
-        "componentType": "service",
-        "status": "pass",
-        "time": "2025-07-22T14:26:08.499699+00:00",
-        "output": "Proxy service operational",
-        "version": "0.1.1.dev2+gc2627a4.d19800101"
-      }
-    ]
-  }
-}
-~/projects-caddy/claude-code-proxy-api %  
-```
-
-## Available Models
-
-Check available models mostly used for tools that need it:
-
+### Metrics (Prometheus format)
 ```bash
-curl http://localhost:8000/v1/models
+curl http://localhost:8000/metrics
 ```
 
-## Proxy Modes
-
-The proxy supports two primary modes of operation:
-
-| Mode | URL Prefix | Authentication | Use Case |
-|------|------------|----------------|----------|
-| SDK | `/sdk/`  | OAuth, API Key | Claude Code features with local tools |
-| API | `/api/` | OAuth, API Key | Direct proxy with full API access |
-
-**Note**: The default endpoints (`/v1/messages`, `/v1/chat/completions`) use SDK mode, which provides access to Claude Code tools and features.
-
-## Using with Aider
-
-CCProxy works seamlessly with Aider and other AI coding assistants:
-
-### Anthropic Mode
+### Enable Debug Logging
 ```bash
-export ANTHROPIC_API_KEY=dummy
-export ANTHROPIC_BASE_URL=http://127.0.0.1:8000/api
-aider --model claude-sonnet-4-20250514
+# Verbose API request/response logging
+CCPROXY_VERBOSE_API=true \
+CCPROXY_REQUEST_LOG_DIR=/tmp/ccproxy/request \
+ccproxy serve --log-level debug
+
+# View last request
+ls -la /tmp/ccproxy/request/
 ```
 
-### OpenAI Mode with Model Mapping
-If your tool only supports OpenAI settings, ccproxy automatically maps OpenAI models to Claude:
+## Common Issues
 
+### Authentication Errors
+- **Claude SDK**: Run `claude /login` or `claude setup-token`
+- **Claude API**: Run `ccproxy auth login`
+- **Codex**: Run `ccproxy auth login-openai`
+- Check status: `ccproxy auth status`
+
+### Port Already in Use
 ```bash
-export OPENAI_API_KEY=dummy
-export OPENAI_BASE_URL=http://127.0.0.1:8000/api/v1
-aider --model o3-mini
+# Use a different port
+ccproxy serve --port 8080
 ```
 
-```
-
-### API Mode (Direct Proxy)
-For minimal interference and direct API access:
-
+### Claude Code SDK Not Found
 ```bash
-export OPENAI_API_KEY=dummy
-export OPENAI_BASE_URL=http://127.0.0.1:8000/api/v1
-aider --model o3-mini
+# Install Claude Code SDK
+npm install -g @anthropic-ai/claude-code
+
+# Or use API mode instead (doesn't require SDK)
+# Just use /api endpoints instead of /claude
 ```
 
 ## Next Steps
 
-Now that you have the server running locally:
-
-1. **[Configure the server](configuration.md)** with your preferences
-2. **[Explore the API](../api-reference/overview.md)** to understand all available endpoints
-3. **[Try examples](../examples/python-client.md)** in different programming languages
-4. **[Set up Docker isolation](../deployment/overview.md)** for enhanced security
-5. **[Learn about proxy modes](../user-guide/proxy-modes.md)** to choose the right mode for your use case
-
-## Troubleshooting
-
-### Server won't start
-
-1. Check Python version: `python --version` (should be 3.11+)
-2. Verify dependencies: `uv sync` or `pip install -e .`
-3. Check port availability: `netstat -an | grep 8000`
-
-### Claude CLI not found
-
-**For Local Installation:**
-
-1. **Install Claude CLI** following [official instructions](https://docs.anthropic.com/en/docs/claude-code)
-2. **Verify installation**: `claude --version`
-3. **Test authentication**: `claude auth login`
-4. **Verify proxy detection**: `ccproxy claude -- /status`
-5. **Set custom path** (if needed): `export CLAUDE_CLI_PATH=/path/to/claude`
-
-**For Docker Users:**
-
-1. **No local installation needed** - Claude CLI is included in Docker image
-2. **Test Docker Claude**: `ccproxy claude --docker -- /status`
-3. **Check volume mapping**: Ensure `~/.config/cc-proxy/home` directory exists
-4. **Verify workspace**: Check that workspace volume is properly mounted
-
-### Claude authentication issues
-
-**For Local Installation:**
-
-If `ccproxy claude -- /status` shows authentication errors:
-
-1. **Re-authenticate**: `claude auth login`
-2. **Check account status**: `claude /status`
-3. **Verify subscription**: Ensure your Claude account has an active subscription
-4. **Check permissions**: Ensure Claude CLI has proper permissions to access your account
-
-**For Docker Users:**
-
-If `ccproxy claude --docker -- /status` shows authentication errors:
-
-1. **Authenticate in Docker**: `ccproxy claude --docker -- auth login`
-2. **Check Docker volumes**: Verify `~/.config/cc-proxy/home` is properly mounted
-3. **Verify isolated config**: Docker uses separate config from your local Claude installation
-4. **Check container permissions**: Ensure Docker container has proper file permissions
-
-### Expected ccproxy output
-
-When running `ccproxy claude -- /status` or `ccproxy claude --docker -- /status`, you should see:
-
-- **Executing**: Shows the Claude CLI path being used (local or Docker)
-- **Welcome message**: Confirms Claude CLI is working
-- **Account info**: Shows your authentication status
-- **Model info**: Displays available model
-- **Working Directory**: Shows correct workspace path
-
-If any of these are missing, review the Claude CLI setup steps above.
-
-### API calls fail
-
-1. Check server logs for errors
-2. Verify the server is running: `curl http://localhost:8000/health`
-3. Test with simple curl command first
-4. Check network connectivity
-
-For more troubleshooting tips, see the [Developer Guide](../developer-guide/development.md#troubleshooting).
+- [API Usage Guide](../user-guide/api-usage.md) - Detailed API documentation
+- [Authentication Guide](../user-guide/authentication.md) - Managing credentials
+- [Configuration](configuration.md) - Advanced configuration options
+- [Examples](../examples.md) - Code examples in various languages

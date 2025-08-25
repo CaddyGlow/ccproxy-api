@@ -1,0 +1,19 @@
+[project]
+name = "ccproxy-permissions"
+version = "1.0.0"
+description = "Permissions management plugin for CCProxy"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi-mcp>=0.3.7",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project.entry-points."ccproxy.plugins"]
+permissions = "plugins.permissions.plugin:Plugin"
+
+[tool.hatch.build.targets.wheel]
+packages = ["plugins/permissions"]
