@@ -34,3 +34,6 @@ class ClaudeAPISettings(ProviderConfig):
     # Feature flags
     include_sdk_content_as_xml: bool = False
     support_openai_format: bool = True  # Support both Anthropic and OpenAI formats
+
+    # System prompt injection mode
+    system_prompt_injection_mode: str = "minimal"  # "none", "minimal", or "full"
