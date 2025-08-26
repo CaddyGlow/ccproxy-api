@@ -396,6 +396,13 @@ class ClaudeAPIAdapter(BaseAdapter):
                     model = request_context.metadata.get(
                         "model", "claude-3-5-sonnet-20241022"
                     )
+                    # Import pricing exceptions
+                    from plugins.pricing.exceptions import (
+                        ModelPricingNotFoundError,
+                        PricingDataNotLoadedError,
+                        PricingServiceDisabledError,
+                    )
+
                     cost_decimal = await pricing_service.calculate_cost(
                         model_name=model,
                         input_tokens=tokens_input,
@@ -403,21 +410,33 @@ class ClaudeAPIAdapter(BaseAdapter):
                         cache_read_tokens=cache_read_tokens,
                         cache_write_tokens=cache_write_tokens,
                     )
-                    if cost_decimal is not None:
-                        cost_usd = float(cost_decimal)
-                        self.logger.debug(
-                            "cost_calculated",
-                            model=model,
-                            cost_usd=cost_usd,
-                            tokens_input=tokens_input,
-                            tokens_output=tokens_output,
-                        )
-                    else:
-                        self.logger.debug(
-                            "cost_not_available",
-                            model=model,
-                            reason="pricing_service_returned_none",
-                        )
+                    cost_usd = float(cost_decimal)
+                    self.logger.debug(
+                        "cost_calculated",
+                        model=model,
+                        cost_usd=cost_usd,
+                        tokens_input=tokens_input,
+                        tokens_output=tokens_output,
+                    )
+                except ModelPricingNotFoundError as e:
+                    self.logger.warning(
+                        "model_pricing_not_found",
+                        model=model,
+                        message=str(e),
+                        tokens_input=tokens_input,
+                        tokens_output=tokens_output,
+                    )
+                except PricingDataNotLoadedError as e:
+                    self.logger.warning(
+                        "pricing_data_not_loaded",
+                        model=model,
+                        message=str(e),
+                    )
+                except PricingServiceDisabledError as e:
+                    self.logger.debug(
+                        "pricing_service_disabled",
+                        message=str(e),
+                    )
                 except Exception as e:
                     self.logger.debug(
                         "cost_calculation_failed", error=str(e), model=model
@@ -558,6 +577,13 @@ class ClaudeAPIAdapter(BaseAdapter):
                             pricing_service = self._get_pricing_service()
                             if pricing_service:
                                 try:
+                                    # Import pricing exceptions
+                                    from plugins.pricing.exceptions import (
+                                        ModelPricingNotFoundError,
+                                        PricingDataNotLoadedError,
+                                        PricingServiceDisabledError,
+                                    )
+
                                     cost_decimal = await pricing_service.calculate_cost(
                                         model_name=model,
                                         input_tokens=usage_metrics.get(
@@ -573,9 +599,7 @@ class ClaudeAPIAdapter(BaseAdapter):
                                             "cache_write_tokens", 0
                                         ),
                                     )
-
-                                    if cost_decimal is not None:
-                                        cost_usd = float(cost_decimal)
+                                    cost_usd = float(cost_decimal)
 
                                     self.logger.debug(
                                         "streaming_cost_calculated",
@@ -594,6 +618,28 @@ class ClaudeAPIAdapter(BaseAdapter):
                                         category="pricing",
                                     )
 
+                                except ModelPricingNotFoundError as e:
+                                    self.logger.warning(
+                                        "model_pricing_not_found",
+                                        model=model,
+                                        message=str(e),
+                                        tokens_input=usage_metrics.get("tokens_input"),
+                                        tokens_output=usage_metrics.get("tokens_output"),
+                                        category="pricing",
+                                    )
+                                except PricingDataNotLoadedError as e:
+                                    self.logger.warning(
+                                        "pricing_data_not_loaded",
+                                        model=model,
+                                        message=str(e),
+                                        category="pricing",
+                                    )
+                                except PricingServiceDisabledError as e:
+                                    self.logger.debug(
+                                        "pricing_service_disabled",
+                                        message=str(e),
+                                        category="pricing",
+                                    )
                                 except Exception as e:
                                     self.logger.debug(
                                         "cost_calculation_failed",

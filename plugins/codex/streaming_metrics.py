@@ -215,6 +215,13 @@ class CodexStreamingMetricsCollector:
                             if self.pricing_service:
                                 if self.model:
                                     try:
+                                        # Import pricing exceptions
+                                        from plugins.pricing.exceptions import (
+                                            ModelPricingNotFoundError,
+                                            PricingDataNotLoadedError,
+                                            PricingServiceDisabledError,
+                                        )
+
                                         cost_decimal = self.pricing_service.calculate_cost_sync(
                                             model_name=self.model,
                                             input_tokens=self.metrics["tokens_input"]
@@ -227,22 +234,41 @@ class CodexStreamingMetricsCollector:
                                             or 0,
                                             cache_write_tokens=0,  # OpenAI doesn't have cache write
                                         )
-                                        if cost_decimal is not None:
-                                            self.metrics["cost_usd"] = float(
-                                                cost_decimal
-                                            )
-                                            logger.debug(
-                                                "streaming_cost_calculated",
-                                                model=self.model,
-                                                cost_usd=self.metrics["cost_usd"],
-                                                tokens_input=self.metrics[
-                                                    "tokens_input"
-                                                ],
-                                                tokens_output=self.metrics[
-                                                    "tokens_output"
-                                                ],
-                                                request_id=self.request_id,
-                                            )
+                                        self.metrics["cost_usd"] = float(cost_decimal)
+                                        logger.debug(
+                                            "streaming_cost_calculated",
+                                            model=self.model,
+                                            cost_usd=self.metrics["cost_usd"],
+                                            tokens_input=self.metrics[
+                                                "tokens_input"
+                                            ],
+                                            tokens_output=self.metrics[
+                                                "tokens_output"
+                                            ],
+                                            request_id=self.request_id,
+                                        )
+                                    except ModelPricingNotFoundError as e:
+                                        logger.warning(
+                                            "model_pricing_not_found",
+                                            model=self.model,
+                                            message=str(e),
+                                            tokens_input=self.metrics["tokens_input"],
+                                            tokens_output=self.metrics["tokens_output"],
+                                            request_id=self.request_id,
+                                        )
+                                    except PricingDataNotLoadedError as e:
+                                        logger.warning(
+                                            "pricing_data_not_loaded",
+                                            model=self.model,
+                                            message=str(e),
+                                            request_id=self.request_id,
+                                        )
+                                    except PricingServiceDisabledError as e:
+                                        logger.debug(
+                                            "pricing_service_disabled",
+                                            message=str(e),
+                                            request_id=self.request_id,
+                                        )
                                     except Exception as e:
                                         logger.debug(
                                             "streaming_cost_calculation_failed",
