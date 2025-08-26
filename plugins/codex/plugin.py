@@ -6,10 +6,9 @@ from ccproxy.core.logging import get_plugin_logger
 from ccproxy.plugins import (
     PluginContext,
     PluginManifest,
-    ProviderPluginFactory,
     ProviderPluginRuntime,
-    RouteSpec,
 )
+from ccproxy.plugins.base_factory import BaseProviderPluginFactory
 from plugins.codex.adapter import CodexAdapter
 from plugins.codex.config import CodexSettings
 from plugins.codex.detection_service import CodexDetectionService
@@ -207,40 +206,24 @@ class CodexRuntime(ProviderPluginRuntime):
         return details
 
 
-class CodexFactory(ProviderPluginFactory):
+class CodexFactory(BaseProviderPluginFactory):
     """Factory for Codex provider plugin."""
 
-    def __init__(self) -> None:
-        """Initialize factory with manifest."""
-        # Create manifest with static declarations
-        manifest = PluginManifest(
-            name="codex",
-            version="1.0.0",
-            description="OpenAI Codex provider plugin with OAuth authentication and format conversion",
-            is_provider=True,
-            config_class=CodexSettings,
-            dependencies=[
-                "oauth_codex"
-            ],  # Depends on OAuth Codex plugin for authentication
-            routes=[
-                RouteSpec(
-                    router=codex_router,
-                    prefix="/api/codex",
-                    tags=["provider", "codex"],
-                ),
-            ],
-            # OAuth functionality now provided by oauth_codex plugin
-        )
-
-        # Initialize with manifest
-        super().__init__(manifest)
-
-    def create_runtime(self) -> CodexRuntime:
-        """Create runtime instance."""
-        return CodexRuntime(self.manifest)
+    # Plugin configuration via class attributes
+    plugin_name = "codex"
+    plugin_description = (
+        "OpenAI Codex provider plugin with OAuth authentication and format conversion"
+    )
+    runtime_class = CodexRuntime
+    adapter_class = CodexAdapter
+    detection_service_class = CodexDetectionService
+    config_class = CodexSettings
+    router = codex_router
+    route_prefix = "/api/codex"
+    dependencies = ["oauth_codex"]
 
     def create_adapter(self, context: PluginContext) -> CodexAdapter:
-        """Create the Codex adapter."""
+        """Create the Codex adapter with validation."""
         proxy_service = context.get("proxy_service")
         auth_manager = context.get("credentials_manager")
         detection_service = context.get("detection_service")
@@ -260,11 +243,11 @@ class CodexFactory(ProviderPluginFactory):
             detection_service=detection_service,
             http_client=http_client,
             logger=logger_instance,
-            context=context,  # Pass the context for plugin_registry access
+            context=context,
         )
 
     def create_detection_service(self, context: PluginContext) -> CodexDetectionService:
-        """Create the Codex detection service."""
+        """Create the Codex detection service with validation."""
         settings = context.get("settings")
         if not settings:
             raise RuntimeError("Settings are required for Codex detection service")

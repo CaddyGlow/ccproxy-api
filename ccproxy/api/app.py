@@ -212,6 +212,9 @@ async def initialize_hooks_startup(app: FastAPI, settings: Settings) -> None:
     app.state.hook_registry = hook_registry
     app.state.hook_manager = hook_manager
 
+    # Hooks middleware is already added during middleware setup and will get
+    # the hook manager from app state when processing requests
+
     # Trigger startup hook
     try:
         # Use the APP_STARTUP event from the enum
@@ -528,8 +531,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     category="lifecycle",
                 )
 
-    # Store plugin registry in app state for runtime initialization
+    # Store plugin registry and middleware manager in app state for runtime initialization
     app.state.plugin_registry = plugin_registry
+    app.state.middleware_manager = middleware_manager
 
     # Setup CORS middleware first (needs to be outermost)
     setup_cors_middleware(app, settings)
@@ -537,6 +541,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     # Setup default core middleware
     setup_default_middleware(middleware_manager)
+
+    # Hooks middleware will be added during hook system initialization
 
     # Apply all middleware in correct order
     middleware_manager.apply_to_app(app)

@@ -7,6 +7,7 @@ from typing import Any
 import aiofiles
 
 from ccproxy.core.logging import get_plugin_logger
+from ..config import RequestTracerConfig
 
 
 logger = get_plugin_logger()
@@ -15,7 +16,7 @@ logger = get_plugin_logger()
 class RawHTTPFormatter:
     """Formats and logs raw HTTP protocol data."""
 
-    def __init__(self, config: Any) -> None:
+    def __init__(self, config: RequestTracerConfig) -> None:
         """Initialize with configuration.
 
         Args:

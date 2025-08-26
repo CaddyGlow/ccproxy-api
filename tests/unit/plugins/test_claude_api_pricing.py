@@ -102,7 +102,7 @@ class TestClaudeAPIPricingIntegration:
     async def test_extract_usage_with_pricing(
         self, adapter_with_pricing, mock_pricing_service
     ):
-        """Test that usage extraction uses pricing service for cost calculation."""
+        """Test that cost calculation uses pricing service when available."""
         import time
 
         from ccproxy.observability.context import RequestContext
@@ -113,13 +113,18 @@ class TestClaudeAPIPricingIntegration:
         )
         request_context.metadata["model"] = "claude-3-5-sonnet-20241022"
 
-        # Mock response body with usage data
-        response_body = b'{"usage": {"input_tokens": 1000, "output_tokens": 500}}'
-
-        # Extract usage from response
-        await adapter_with_pricing._extract_usage_from_response(
-            response_body, request_context
+        # Simulate usage data already extracted in processor
+        request_context.metadata.update(
+            {
+                "tokens_input": 1000,
+                "tokens_output": 500,
+                "cache_read_tokens": 0,
+                "cache_write_tokens": 0,
+            }
         )
+
+        # Calculate cost with pricing service
+        await adapter_with_pricing._calculate_cost_for_usage(request_context)
 
         # Verify pricing service was called
         mock_pricing_service.calculate_cost.assert_called_once_with(
@@ -156,16 +161,22 @@ class TestClaudeAPIPricingIntegration:
         )
         request_context.metadata["model"] = "claude-3-5-sonnet-20241022"
 
-        # Mock response body with usage data
-        response_body = b'{"usage": {"input_tokens": 1000, "output_tokens": 500}}'
+        # Simulate usage data already extracted in processor
+        request_context.metadata.update(
+            {
+                "tokens_input": 1000,
+                "tokens_output": 500,
+                "tokens_total": 1500,
+            }
+        )
 
-        # Extract usage from response (should not fail)
-        await adapter._extract_usage_from_response(response_body, request_context)
+        # Calculate cost (should not fail even without pricing service)
+        await adapter._calculate_cost_for_usage(request_context)
 
-        # Verify tokens were extracted even without pricing
+        # Verify tokens are still in metadata
         assert request_context.metadata["tokens_input"] == 1000
         assert request_context.metadata["tokens_output"] == 500
         assert request_context.metadata["tokens_total"] == 1500
 
-        # Cost should be 0 when pricing service is not available
-        assert request_context.metadata["cost_usd"] == 0.0
+        # Cost should not be set when pricing service is not available
+        assert "cost_usd" not in request_context.metadata

@@ -6,11 +6,10 @@ from ccproxy.core.logging import get_plugin_logger
 from ccproxy.plugins import (
     PluginContext,
     PluginManifest,
-    ProviderPluginFactory,
     ProviderPluginRuntime,
-    RouteSpec,
     TaskSpec,
 )
+from ccproxy.plugins.base_factory import BaseProviderPluginFactory
 from plugins.claude_sdk.adapter import ClaudeSDKAdapter
 from plugins.claude_sdk.config import ClaudeSDKSettings
 from plugins.claude_sdk.detection_service import ClaudeSDKDetectionService
@@ -120,47 +119,37 @@ class ClaudeSDKRuntime(ProviderPluginRuntime):
         return details
 
 
-class ClaudeSDKFactory(ProviderPluginFactory):
+class ClaudeSDKFactory(BaseProviderPluginFactory):
     """Factory for Claude SDK plugin."""
 
-    def __init__(self) -> None:
-        """Initialize factory with manifest."""
-        # Create manifest with static declarations
-        manifest = PluginManifest(
-            name="claude_sdk",
-            version="1.0.0",
-            description="Claude SDK plugin providing access to Claude through the Claude Code SDK",
-            is_provider=True,
-            config_class=ClaudeSDKSettings,
-            optional_requires=["pricing"],  # Optional dependency on pricing service
-            routes=[
-                RouteSpec(
-                    router=router,
-                    prefix="/claude",
-                    tags=["plugin-claude_sdk"],
-                )
-            ],
-            tasks=[
-                TaskSpec(
-                    task_name="claude_sdk_detection_refresh",
-                    task_type="claude_sdk_detection_refresh",
-                    task_class=ClaudeSDKDetectionRefreshTask,
-                    interval_seconds=3600,  # Refresh every hour
-                    enabled=True,
-                    kwargs={"skip_initial_run": True},
-                )
-            ],
+    # Plugin configuration via class attributes
+    plugin_name = "claude_sdk"
+    plugin_description = (
+        "Claude SDK plugin providing access to Claude through the Claude Code SDK"
+    )
+    runtime_class = ClaudeSDKRuntime
+    adapter_class = ClaudeSDKAdapter
+    detection_service_class = ClaudeSDKDetectionService
+    config_class = ClaudeSDKSettings
+    router = router
+    route_prefix = "/claude"
+    optional_requires = ["pricing"]
+    tasks = [
+        TaskSpec(
+            task_name="claude_sdk_detection_refresh",
+            task_type="claude_sdk_detection_refresh",
+            task_class=ClaudeSDKDetectionRefreshTask,
+            interval_seconds=3600,
+            enabled=True,
+            kwargs={"skip_initial_run": True},
         )
-
-        # Initialize with manifest
-        super().__init__(manifest)
-
-    def create_runtime(self) -> ClaudeSDKRuntime:
-        """Create runtime instance."""
-        return ClaudeSDKRuntime(self.manifest)
+    ]
 
     def create_adapter(self, context: PluginContext) -> ClaudeSDKAdapter:
         """Create the Claude SDK adapter.
+
+        This method overrides the base implementation because Claude SDK
+        requires special handling of config and proxy service parameters.
 
         Args:
             context: Plugin context
@@ -175,6 +164,7 @@ class ClaudeSDKFactory(ProviderPluginFactory):
         proxy_service = context.get("proxy_service")
 
         # Create adapter with config and proxy service
+        # Note: ClaudeSDKAdapter has different constructor signature
         adapter = ClaudeSDKAdapter(config=config, proxy_service=proxy_service)
 
         return adapter
@@ -182,7 +172,7 @@ class ClaudeSDKFactory(ProviderPluginFactory):
     def create_detection_service(
         self, context: PluginContext
     ) -> ClaudeSDKDetectionService:
-        """Create the Claude SDK detection service.
+        """Create the Claude SDK detection service with validation.
 
         Args:
             context: Plugin context

@@ -6,11 +6,10 @@ from ccproxy.core.logging import get_plugin_logger
 from ccproxy.plugins import (
     PluginContext,
     PluginManifest,
-    ProviderPluginFactory,
     ProviderPluginRuntime,
-    RouteSpec,
     TaskSpec,
 )
+from ccproxy.plugins.base_factory import BaseProviderPluginFactory
 from plugins.claude_api.adapter import ClaudeAPIAdapter
 from plugins.claude_api.config import ClaudeAPISettings
 from plugins.claude_api.detection_service import ClaudeAPIDetectionService
@@ -176,96 +175,30 @@ class ClaudeAPIRuntime(ProviderPluginRuntime):
         return None
 
 
-class ClaudeAPIFactory(ProviderPluginFactory):
+class ClaudeAPIFactory(BaseProviderPluginFactory):
     """Factory for Claude API plugin."""
 
-    def __init__(self) -> None:
-        """Initialize factory with manifest."""
-        # Create manifest with static declarations
-        manifest = PluginManifest(
-            name="claude_api",
-            version="1.0.0",
-            description="Claude API provider plugin with support for both native Anthropic format and OpenAI-compatible format",
-            is_provider=True,
-            config_class=ClaudeAPISettings,
-            dependencies=[
-                "oauth_claude"
-            ],  # Depends on OAuth Claude plugin for authentication
-            optional_requires=["pricing"],  # Optional dependency on pricing service
-            routes=[
-                RouteSpec(
-                    router=claude_api_router,
-                    prefix="/api",
-                    tags=["plugin-claude-api"],
-                )
-            ],
-            tasks=[
-                TaskSpec(
-                    task_name="claude_api_detection_refresh",
-                    task_type="claude_api_detection_refresh",
-                    task_class=ClaudeAPIDetectionRefreshTask,
-                    interval_seconds=3600,  # Refresh every hour
-                    enabled=True,
-                    kwargs={"skip_initial_run": True},
-                )
-            ],
-            # OAuth functionality now provided by oauth_claude plugin
+    # Plugin configuration via class attributes
+    plugin_name = "claude_api"
+    plugin_description = "Claude API provider plugin with support for both native Anthropic format and OpenAI-compatible format"
+    runtime_class = ClaudeAPIRuntime
+    adapter_class = ClaudeAPIAdapter
+    detection_service_class = ClaudeAPIDetectionService
+    config_class = ClaudeAPISettings
+    router = claude_api_router
+    route_prefix = "/api"
+    dependencies = ["oauth_claude"]
+    optional_requires = ["pricing"]
+    tasks = [
+        TaskSpec(
+            task_name="claude_api_detection_refresh",
+            task_type="claude_api_detection_refresh",
+            task_class=ClaudeAPIDetectionRefreshTask,
+            interval_seconds=3600,
+            enabled=True,
+            kwargs={"skip_initial_run": True},
         )
-
-        # Initialize with manifest
-        super().__init__(manifest)
-
-    def create_runtime(self) -> ClaudeAPIRuntime:
-        """Create runtime instance."""
-        return ClaudeAPIRuntime(self.manifest)
-
-    def create_adapter(self, context: PluginContext) -> ClaudeAPIAdapter:
-        """Create the adapter for Claude API.
-
-        Args:
-            context: Plugin context
-
-        Returns:
-            ClaudeAPIAdapter instance
-        """
-        proxy_service = context.get("proxy_service")
-        http_client = context.get("http_client")
-        logger_instance = context.get("logger")
-
-        # Get detection service from context (already created by factory)
-        detection_service = context.get("detection_service")
-
-        # Get credentials manager from context (already created by factory)
-        credentials_manager = context.get("credentials_manager")
-
-        return ClaudeAPIAdapter(
-            proxy_service=proxy_service,
-            auth_manager=credentials_manager,
-            detection_service=detection_service,
-            http_client=http_client,
-            logger=logger_instance,
-            context=context,  # Pass the full context for plugin registry access
-        )
-
-    def create_detection_service(
-        self, context: PluginContext
-    ) -> ClaudeAPIDetectionService:
-        """Create the detection service for Claude API.
-
-        Args:
-            context: Plugin context
-
-        Returns:
-            ClaudeAPIDetectionService instance
-        """
-        settings = context.get("settings")
-        if settings is None:
-            from ccproxy.config.settings import Settings
-
-            settings = Settings()
-
-        cli_service = context.get("cli_detection_service")
-        return ClaudeAPIDetectionService(settings, cli_service)
+    ]
 
     def create_credentials_manager(self, context: PluginContext) -> Any:
         """Create the credentials manager for Claude API.

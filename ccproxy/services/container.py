@@ -75,8 +75,8 @@ class ServiceContainer:
     ) -> "ProxyService":
         """Factory method to create fully configured ProxyService.
 
-        Creates ProxyService with all required dependencies.
-        V2 plugins are managed separately via the FastAPI app lifecycle.
+        Creates ProxyService with only actively used dependencies.
+        Removed unused services: mock_handler, response_cache, connection_pool_manager.
 
         Args:
             proxy_client: HTTP proxy client
@@ -88,15 +88,12 @@ class ServiceContainer:
         # Import here to avoid circular dependency
         from ccproxy.services.proxy_service import ProxyService
 
-        # Create ProxyService without old plugin system
+        # Create ProxyService with only actively used services
         # Track components being initialized
         components = []
 
         request_tracer = self.get_request_tracer()
         components.append("request_tracer")
-
-        mock_handler = self.get_mock_handler()
-        components.append("mock_handler")
 
         streaming_handler = self.get_streaming_handler(metrics)
         components.append("streaming_handler")
@@ -107,23 +104,14 @@ class ServiceContainer:
         http_client = self.get_http_client()
         components.append("http_client")
 
-        response_cache = self.get_response_cache()
-        components.append("response_cache")
-
-        connection_pool_manager = self.get_connection_pool_manager()
-        components.append("connection_pool")
-
         proxy_service = ProxyService(
             proxy_client=proxy_client,
             settings=self.settings,
             request_tracer=request_tracer,
-            mock_handler=mock_handler,
             streaming_handler=streaming_handler,
             config=config,
             http_client=http_client,
             metrics=metrics,
-            response_cache=response_cache,
-            connection_pool_manager=connection_pool_manager,
         )
 
         logger.info(

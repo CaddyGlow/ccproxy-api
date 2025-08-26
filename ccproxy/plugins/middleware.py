@@ -202,6 +202,7 @@ def setup_default_middleware(manager: MiddlewareManager) -> None:
     Args:
         manager: Middleware manager
     """
+    from ccproxy.api.middleware.hooks import HooksMiddleware
     from ccproxy.api.middleware.logging import AccessLogMiddleware
     from ccproxy.api.middleware.request_id import RequestIDMiddleware
     from ccproxy.api.middleware.server_header import ServerHeaderMiddleware
@@ -210,6 +211,13 @@ def setup_default_middleware(manager: MiddlewareManager) -> None:
     manager.add_core_middleware(
         RequestIDMiddleware,
         priority=MiddlewareLayer.SECURITY - 50,  # Before security layer
+    )
+
+    # Hooks middleware should be early to capture all requests
+    manager.add_core_middleware(
+        HooksMiddleware,
+        priority=MiddlewareLayer.SECURITY
+        - 40,  # After request ID, before other middleware
     )
 
     # Access logging in observability layer
