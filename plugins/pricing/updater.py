@@ -190,56 +190,9 @@ class PricingUpdater:
             else:
                 logger.warning("external_pricing_validation_failed")
 
-        # Fallback to embedded pricing
-        if self.settings.fallback_to_embedded:
-            logger.info("using_embedded_pricing_fallback")
-            return self._get_embedded_pricing()
-        else:
-            logger.error("pricing_unavailable_no_fallback")
-            return None
-
-    def _get_embedded_pricing(self) -> PricingData:
-        """Get embedded (hardcoded) pricing as fallback.
-
-        Returns:
-            Embedded pricing data as PricingData model
-        """
-        # This is the current hardcoded pricing from CostCalculator
-        embedded_data = {
-            "claude-3-5-sonnet-20241022": {
-                "input": Decimal("3.00"),
-                "output": Decimal("15.00"),
-                "cache_read": Decimal("0.30"),
-                "cache_write": Decimal("3.75"),
-            },
-            "claude-3-5-haiku-20241022": {
-                "input": Decimal("0.25"),
-                "output": Decimal("1.25"),
-                "cache_read": Decimal("0.03"),
-                "cache_write": Decimal("0.30"),
-            },
-            "claude-3-opus-20240229": {
-                "input": Decimal("15.00"),
-                "output": Decimal("75.00"),
-                "cache_read": Decimal("1.50"),
-                "cache_write": Decimal("18.75"),
-            },
-            "claude-3-sonnet-20240229": {
-                "input": Decimal("3.00"),
-                "output": Decimal("15.00"),
-                "cache_read": Decimal("0.30"),
-                "cache_write": Decimal("3.75"),
-            },
-            "claude-3-haiku-20240307": {
-                "input": Decimal("0.25"),
-                "output": Decimal("1.25"),
-                "cache_read": Decimal("0.03"),
-                "cache_write": Decimal("0.30"),
-            },
-        }
-
-        # Create PricingData from embedded data
-        return PricingData.from_dict(embedded_data)
+        # No fallback - return None if external pricing not available
+        logger.error("pricing_unavailable_no_fallback")
+        return None
 
     async def force_refresh(self) -> bool:
         """Force a refresh of pricing data.
@@ -291,7 +244,6 @@ class PricingUpdater:
             "models_loaded": len(pricing_data) if pricing_data else 0,
             "model_names": pricing_data.model_names() if pricing_data else [],
             "auto_update": self.settings.auto_update,
-            "fallback_to_embedded": self.settings.fallback_to_embedded,
             "has_cached_pricing": self._cached_pricing is not None,
         }
 
