@@ -239,12 +239,8 @@ class CodexStreamingMetricsCollector:
                                             "streaming_cost_calculated",
                                             model=self.model,
                                             cost_usd=self.metrics["cost_usd"],
-                                            tokens_input=self.metrics[
-                                                "tokens_input"
-                                            ],
-                                            tokens_output=self.metrics[
-                                                "tokens_output"
-                                            ],
+                                            tokens_input=self.metrics["tokens_input"],
+                                            tokens_output=self.metrics["tokens_output"],
                                             request_id=self.request_id,
                                         )
                                     except ModelPricingNotFoundError as e:

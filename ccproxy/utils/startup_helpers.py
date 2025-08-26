@@ -256,6 +256,7 @@ async def initialize_proxy_service_startup(app: FastAPI, settings: Settings) -> 
         else:
             from ccproxy.services.factories import ConcreteServiceFactory
 
+            logger.debug("creating_new_service_container")
             factory = ConcreteServiceFactory()
             container = ServiceContainer(settings, factory)
             app.state.service_container = container
@@ -264,10 +265,6 @@ async def initialize_proxy_service_startup(app: FastAPI, settings: Settings) -> 
             proxy_client=proxy_client,
             metrics=metrics,
         )
-
-        # Initialize plugins
-        scheduler = getattr(app.state, "scheduler", None)
-        await proxy_service.initialize_plugins(scheduler)
 
         # Store in app state for reuse in dependencies
         app.state.proxy_service = proxy_service
@@ -281,44 +278,3 @@ async def initialize_proxy_service_startup(app: FastAPI, settings: Settings) -> 
             "proxy_service_initialization_unexpected_error", error=str(e), exc_info=e
         )
         # Continue startup even if ProxyService fails (graceful degradation)
-
-
-async def initialize_permission_service_startup(
-    app: FastAPI, settings: Settings
-) -> None:
-    """Initialize permission service.
-
-    Note: The plugin will handle builtin_permissions configuration.
-
-    Args:
-        app: FastAPI application instance
-        settings: Application settings
-    """
-    # Permission service initialization is now handled by the plugin
-    # The plugin will check its own builtin_permissions setting
-    pass
-
-
-async def setup_permission_service_shutdown(app: FastAPI, settings: Settings) -> None:
-    """Stop permission service (if it was initialized).
-
-    Note: The plugin will handle permission service cleanup.
-
-    Args:
-        app: FastAPI application instance
-        settings: Application settings
-    """
-    # Permission service cleanup is now handled by the plugin
-    pass
-
-
-async def flush_streaming_batches_shutdown(app: FastAPI) -> None:
-    """Flush pending streaming batches on shutdown.
-
-    Note: This is now a no-op as simple_request_logger has been removed.
-
-    Args:
-        app: FastAPI application instance
-    """
-    # Removed simple_request_logger flushing (simple_request_logger removed)
-    logger.debug("streaming_batches_flush_skipped")
