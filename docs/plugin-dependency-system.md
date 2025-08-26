@@ -71,12 +71,12 @@ The streaming cost calculation is handled at the provider level through metrics 
 ```python
 # In streaming_metrics.py
 class StreamingMetricsCollector:
-    def __init__(self, request_id: str | None = None, 
-                 pricing_service: Any = None, 
+    def __init__(self, request_id: str | None = None,
+                 pricing_service: Any = None,
                  model: str | None = None):
         self.pricing_service = pricing_service
         self.model = model
-        
+
     def process_chunk(self, chunk_str: str) -> bool:
         # Extract tokens from provider format
         # Calculate cost synchronously on final chunk

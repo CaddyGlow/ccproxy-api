@@ -186,6 +186,7 @@ class PluginHTTPHandler(BaseHTTPHandler):
                 headers=dict(response.headers),
                 status_code=response.status_code,
                 handler_config=handler_config,
+                request_context=request_context,
             )
 
             result = Response(

@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Any
 
 from fastapi import HTTPException, Request
 from httpx import AsyncClient
-from starlette.responses import Response, StreamingResponse
+from starlette.responses import StreamingResponse
 
 
 if TYPE_CHECKING:
@@ -18,9 +18,8 @@ from ccproxy.config.constants import (
     OPENAI_CHAT_COMPLETIONS_PATH,
 )
 from ccproxy.core.logging import get_plugin_logger
-from ccproxy.services.adapters.base import BaseAdapter
+from ccproxy.services.adapters.http_adapter import BaseHTTPAdapter
 from ccproxy.services.handler_config import HandlerConfig
-from ccproxy.services.http.plugin_handler import PluginHTTPHandler
 from ccproxy.streaming.deferred_streaming import DeferredStreaming
 
 from .transformers import ClaudeAPIRequestTransformer, ClaudeAPIResponseTransformer
@@ -29,7 +28,7 @@ from .transformers import ClaudeAPIRequestTransformer, ClaudeAPIResponseTransfor
 logger = get_plugin_logger()
 
 
-class ClaudeAPIAdapter(BaseAdapter):
+class ClaudeAPIAdapter(BaseHTTPAdapter):
     """Claude API adapter implementation.
 
     This adapter provides direct access to the Anthropic Claude API
@@ -55,36 +54,6 @@ class ClaudeAPIAdapter(BaseAdapter):
             logger: Optional structured logger instance
             context: Optional plugin context containing plugin_registry and other services
         """
-        # Use plugin logger for proper plugin context
-        self.logger = logger or get_plugin_logger()
-        self.proxy_service = proxy_service
-        self._auth_manager = auth_manager
-        self._detection_service = detection_service
-        self.context = context or {}
-
-        # Initialize OpenAI adapter for format conversion
-        from ccproxy.adapters.openai.adapter import OpenAIAdapter
-
-        self.openai_adapter: OpenAIAdapter | None = OpenAIAdapter()
-
-        # Initialize HTTP handler
-        request_tracer = None
-        if proxy_service and hasattr(proxy_service, "request_tracer"):
-            request_tracer = proxy_service.request_tracer
-
-        if http_client:
-            self._http_handler: PluginHTTPHandler = PluginHTTPHandler(
-                http_client=http_client, request_tracer=request_tracer
-            )
-        elif proxy_service and hasattr(proxy_service, "http_client"):
-            self._http_handler = PluginHTTPHandler(
-                http_client=proxy_service.http_client, request_tracer=request_tracer
-            )
-        else:
-            raise RuntimeError(
-                "No HTTP client available - provide http_client or proxy_service with http_client"
-            )
-
         # Get injection mode from config if available
         injection_mode = "minimal"  # default
         if context:
@@ -100,102 +69,34 @@ class ClaudeAPIAdapter(BaseAdapter):
                 )
 
         # Initialize transformers with injection mode
-        self._request_transformer: ClaudeAPIRequestTransformer | None = (
-            ClaudeAPIRequestTransformer(detection_service, mode=injection_mode)
+        request_transformer = ClaudeAPIRequestTransformer(
+            detection_service, mode=injection_mode
         )
 
         # Get CORS settings if available
         cors_settings = None
         if proxy_service and hasattr(proxy_service, "config"):
             cors_settings = getattr(proxy_service.config, "cors", None)
-        self._response_transformer: ClaudeAPIResponseTransformer | None = (
-            ClaudeAPIResponseTransformer(cors_settings)
+        response_transformer = ClaudeAPIResponseTransformer(cors_settings)
+
+        # Initialize base HTTP adapter
+        super().__init__(
+            proxy_service=proxy_service,
+            auth_manager=auth_manager,
+            detection_service=detection_service,
+            http_client=http_client,
+            logger=logger,
+            context=context,
+            request_transformer=request_transformer,
+            response_transformer=response_transformer,
         )
 
-    def _get_pricing_service(self) -> Any | None:
-        """Get pricing service from plugin registry if available."""
-        try:
-            if not self.context or "plugin_registry" not in self.context:
-                return None
+        # Initialize OpenAI adapter for format conversion
+        from ccproxy.adapters.openai.adapter import OpenAIAdapter
 
-            plugin_registry = self.context["plugin_registry"]
+        self.openai_adapter: OpenAIAdapter | None = OpenAIAdapter()
 
-            # Import locally to avoid circular dependency
-            from plugins.pricing.service import PricingService
-
-            # Get service from registry with type checking
-            return plugin_registry.get_service("pricing", PricingService)
-
-        except Exception as e:
-            self.logger.debug("failed_to_get_pricing_service", error=str(e))
-            return None
-
-    async def handle_request(
-        self, request: Request, endpoint: str, method: str, **kwargs: Any
-    ) -> Response | StreamingResponse | DeferredStreaming:
-        """Handle a request to the Claude API.
-
-        Args:
-            request: FastAPI request object
-            endpoint: Target endpoint path
-            method: HTTP method
-            **kwargs: Additional arguments
-
-        Returns:
-            Response from Claude API
-        """
-        # Validate prerequisites
-        self._validate_prerequisites()
-
-        # Get RequestContext - it must exist when called via ProxyService
-        from ccproxy.observability.context import RequestContext
-
-        request_context: RequestContext | None = RequestContext.get_current()
-        if not request_context:
-            raise HTTPException(
-                status_code=500,
-                detail="RequestContext not available - plugin must be called via ProxyService",
-            )
-
-        # Get request body and auth
-        body = await request.body()
-
-        # Get access token directly from auth manager
-        access_token = await self._auth_manager.get_access_token()
-
-        # Build auth headers with Bearer token
-        auth_headers = {"Authorization": f"Bearer {access_token}"}
-
-        # Determine endpoint handling
-        target_url, needs_conversion = self._resolve_endpoint(endpoint)
-
-        # Create handler configuration
-        handler_config = self._create_handler_config(needs_conversion, request_context)
-
-        # Prepare and execute request
-        return await self._execute_request(
-            method=method,
-            target_url=target_url,
-            body=body,
-            auth_headers=auth_headers,
-            access_token=access_token,
-            request_headers=dict(request.headers),
-            handler_config=handler_config,
-            endpoint=endpoint,
-            needs_conversion=needs_conversion,
-            request_context=request_context,
-        )
-
-    def _validate_prerequisites(self) -> None:
-        """Validate that required components are available."""
-        if not self._auth_manager:
-            raise HTTPException(
-                status_code=503, detail="Authentication manager not available"
-            )
-        if not self._http_handler:
-            raise HTTPException(status_code=503, detail="HTTP handler not initialized")
-
-    def _resolve_endpoint(self, endpoint: str) -> tuple[str, bool]:
+    async def _resolve_endpoint(self, endpoint: str) -> tuple[str, bool]:
         """Resolve the target URL and determine if format conversion is needed.
 
         Args:
@@ -216,7 +117,7 @@ class ClaudeAPIAdapter(BaseAdapter):
                 detail=f"Endpoint {endpoint} not supported by Claude API plugin",
             )
 
-    def _create_handler_config(
+    async def _create_handler_config(
         self,
         needs_conversion: bool,
         request_context: "RequestContext | None" = None,
@@ -231,19 +132,11 @@ class ClaudeAPIAdapter(BaseAdapter):
             HandlerConfig instance
         """
         # Create metrics collector for this request with cost calculation capability
-        metrics_collector: IStreamingMetricsCollector | None = None
-        if request_context:
-            from .streaming_metrics import StreamingMetricsCollector
-
-            request_id = getattr(request_context, "request_id", None)
-            # Get pricing service for cost calculation
-            pricing_service = self._get_pricing_service()
-
-            # Create enhanced metrics collector with pricing capability
-            # The collector will extract the model from the streaming chunks
-            metrics_collector = StreamingMetricsCollector(
-                request_id=request_id, pricing_service=pricing_service
-            )
+        metrics_collector = (
+            await self._create_metrics_collector(request_context)
+            if request_context
+            else None
+        )
 
         return HandlerConfig(
             request_adapter=self.openai_adapter if needs_conversion else None,
@@ -254,59 +147,46 @@ class ClaudeAPIAdapter(BaseAdapter):
             metrics_collector=metrics_collector,
         )
 
-    async def _execute_request(
-        self,
-        method: str,
-        target_url: str,
-        body: bytes,
-        auth_headers: dict[str, str],
-        access_token: str | None,
-        request_headers: dict[str, str],
-        handler_config: HandlerConfig,
-        endpoint: str,
-        needs_conversion: bool,
-        request_context: "RequestContext",
-    ) -> Response | StreamingResponse | DeferredStreaming:
-        """Execute the HTTP request.
+    async def _create_metrics_collector(
+        self, request_context: "RequestContext"
+    ) -> "IStreamingMetricsCollector | None":
+        """Create a metrics collector for this request.
 
         Args:
-            method: HTTP method
-            target_url: Target API URL
-            body: Request body
-            auth_headers: Authentication headers
-            access_token: Access token if available
-            request_headers: Original request headers
-            handler_config: Handler configuration
-            endpoint: Original endpoint for logging
-            needs_conversion: Whether conversion was needed for logging
-            request_context: Request context for observability
+            request_context: Request context containing request_id
 
         Returns:
-            Response or StreamingResponse
+            Metrics collector or None
         """
-        # Handler is guaranteed to exist after _validate_prerequisites
-        assert self._http_handler is not None
+        from .streaming_metrics import StreamingMetricsCollector
 
-        # Prepare request
-        (
-            transformed_body,
-            headers,
-            is_streaming,
-        ) = await self._http_handler.prepare_request(
-            request_body=body,
-            handler_config=handler_config,
-            auth_headers=auth_headers,
-            request_headers=request_headers,
-            access_token=access_token,
+        request_id = getattr(request_context, "request_id", None)
+        # Get pricing service for cost calculation
+        pricing_service = self._get_pricing_service()
+
+        # Create enhanced metrics collector with pricing capability
+        # The collector will extract the model from the streaming chunks
+        return StreamingMetricsCollector(
+            request_id=request_id, pricing_service=pricing_service
         )
 
-        # Parse request body to extract model and other metadata
-        try:
-            request_data = json.loads(transformed_body) if transformed_body else {}
-        except json.JSONDecodeError:
-            request_data = {}
+    async def _update_request_context(
+        self,
+        request_context: "RequestContext",
+        endpoint: str,
+        request_data: dict[str, Any],
+        is_streaming: bool,
+        needs_conversion: bool,
+    ) -> None:
+        """Update request context with provider-specific metadata.
 
-        # Update context with claude_api specific metadata
+        Args:
+            request_context: Request context to update
+            endpoint: Target endpoint path
+            request_data: Parsed request data
+            is_streaming: Whether this is a streaming request
+            needs_conversion: Whether format conversion is needed
+        """
         request_context.metadata.update(
             {
                 "provider": "claude_api",
@@ -320,6 +200,23 @@ class ClaudeAPIAdapter(BaseAdapter):
             }
         )
 
+    def _log_request(
+        self,
+        endpoint: str,
+        request_context: "RequestContext",
+        is_streaming: bool,
+        needs_conversion: bool,
+        target_url: str,
+    ) -> None:
+        """Log the request with provider-specific information.
+
+        Args:
+            endpoint: Target endpoint path
+            request_context: Request context with metadata
+            is_streaming: Whether this is a streaming request
+            needs_conversion: Whether format conversion is needed
+            target_url: Target API URL
+        """
         self.logger.info(
             "plugin_request",
             plugin="claude_api",
@@ -330,156 +227,187 @@ class ClaudeAPIAdapter(BaseAdapter):
             target_url=target_url,
         )
 
-        # Get streaming handler if needed
-        streaming_handler = None
-        if is_streaming and self.proxy_service:
-            streaming_handler = getattr(self.proxy_service, "streaming_handler", None)
+    def _get_pricing_service(self) -> Any | None:
+        """Get pricing service from plugin registry if available."""
+        try:
+            if not self.context or "plugin_registry" not in self.context:
+                return None
 
-        # Execute request with proper request_context
-        response = await self._http_handler.handle_request(
-            method=method,
-            url=target_url,
-            headers=headers,
-            body=transformed_body,
-            handler_config=handler_config,
-            is_streaming=is_streaming,
-            streaming_handler=streaming_handler,
-            request_context=request_context,  # Pass the actual RequestContext object
-        )
+            plugin_registry = self.context["plugin_registry"]
 
-        # For deferred streaming responses, return directly (metrics collector already has cost calculation)
-        if isinstance(response, DeferredStreaming):
-            return response
+            # Import locally to avoid circular dependency
+            from plugins.pricing.service import PricingService
 
-        # For regular streaming responses, wrap to accumulate chunks and extract headers
-        if is_streaming and isinstance(response, StreamingResponse):
-            return await self._wrap_streaming_response(response, request_context)
+            # Get service from registry with type checking
+            return plugin_registry.get_service("pricing", PricingService)
 
-        # For non-streaming responses, extract usage data if available
-        if not is_streaming and hasattr(response, "body"):
-            # Get response body (might be bytes or memoryview)
-            response_body = response.body
-            if isinstance(response_body, memoryview):
-                response_body = bytes(response_body)
-            await self._extract_usage_from_response(response_body, request_context)
+        except Exception as e:
+            self.logger.debug("failed_to_get_pricing_service", error=str(e))
+            return None
 
-        return response
-
-    async def _extract_usage_from_response(
-        self, body: bytes | str, request_context: "RequestContext"
+    async def _calculate_cost_for_usage(
+        self, request_context: "RequestContext"
     ) -> None:
-        """Extract usage data from response body and update context.
-
-        Common function used by both streaming and non-streaming responses.
+        """Calculate cost for usage data already extracted in processor.
 
         Args:
-            body: Response body (bytes or string)
-            request_context: Request context to update with usage data
+            request_context: Request context with usage data from processor
         """
+        # Check if we have usage data from the processor
+        metadata = request_context.metadata
+        tokens_input = metadata.get("tokens_input", 0)
+        tokens_output = metadata.get("tokens_output", 0)
+
+        # Skip if no usage data available
+        if not (tokens_input or tokens_output):
+            return
+
+        # Get pricing service and calculate cost
+        pricing_service = self._get_pricing_service()
+        if not pricing_service:
+            return
+
         try:
-            import json
+            model = metadata.get("model", "claude-3-5-sonnet-20241022")
+            cache_read_tokens = metadata.get("cache_read_tokens", 0)
+            cache_write_tokens = metadata.get("cache_write_tokens", 0)
 
-            # Convert body to string if needed
-            body_str = body
-            if isinstance(body_str, bytes):
-                body_str = body_str.decode("utf-8")
-
-            # Parse response to extract usage
-            response_data = json.loads(body_str)
-            usage = response_data.get("usage", {})
-
-            if not usage:
-                return
-
-            # Extract Claude-specific usage fields
-            tokens_input = usage.get("input_tokens", 0)
-            tokens_output = usage.get("output_tokens", 0)
-            cache_read_tokens = usage.get("cache_read_input_tokens", 0)
-            cache_write_tokens = usage.get("cache_creation_input_tokens", 0)
-
-            # Calculate cost using pricing service if available
-            cost_usd = None
-            pricing_service = self._get_pricing_service()
-            self.logger.debug(
-                "pricing_service_check",
-                has_pricing_service=pricing_service is not None,
-                source="non_streaming",
-            )
-            if pricing_service:
-                try:
-                    model = request_context.metadata.get(
-                        "model", "claude-3-5-sonnet-20241022"
-                    )
-                    # Import pricing exceptions
-                    from plugins.pricing.exceptions import (
-                        ModelPricingNotFoundError,
-                        PricingDataNotLoadedError,
-                        PricingServiceDisabledError,
-                    )
-
-                    cost_decimal = await pricing_service.calculate_cost(
-                        model_name=model,
-                        input_tokens=tokens_input,
-                        output_tokens=tokens_output,
-                        cache_read_tokens=cache_read_tokens,
-                        cache_write_tokens=cache_write_tokens,
-                    )
-                    cost_usd = float(cost_decimal)
-                    self.logger.debug(
-                        "cost_calculated",
-                        model=model,
-                        cost_usd=cost_usd,
-                        tokens_input=tokens_input,
-                        tokens_output=tokens_output,
-                    )
-                except ModelPricingNotFoundError as e:
-                    self.logger.warning(
-                        "model_pricing_not_found",
-                        model=model,
-                        message=str(e),
-                        tokens_input=tokens_input,
-                        tokens_output=tokens_output,
-                    )
-                except PricingDataNotLoadedError as e:
-                    self.logger.warning(
-                        "pricing_data_not_loaded",
-                        model=model,
-                        message=str(e),
-                    )
-                except PricingServiceDisabledError as e:
-                    self.logger.debug(
-                        "pricing_service_disabled",
-                        message=str(e),
-                    )
-                except Exception as e:
-                    self.logger.debug(
-                        "cost_calculation_failed", error=str(e), model=model
-                    )
-
-            # Update request context with usage data
-            request_context.metadata.update(
-                {
-                    "tokens_input": tokens_input,
-                    "tokens_output": tokens_output,
-                    "tokens_total": tokens_input + tokens_output,
-                    "cache_read_tokens": cache_read_tokens,
-                    "cache_write_tokens": cache_write_tokens,
-                    "cost_usd": cost_usd or 0.0,
-                }
+            # Import pricing exceptions
+            from plugins.pricing.exceptions import (
+                ModelPricingNotFoundError,
+                PricingDataNotLoadedError,
+                PricingServiceDisabledError,
             )
 
+            cost_decimal = await pricing_service.calculate_cost(
+                model_name=model,
+                input_tokens=tokens_input,
+                output_tokens=tokens_output,
+                cache_read_tokens=cache_read_tokens,
+                cache_write_tokens=cache_write_tokens,
+            )
+            cost_usd = float(cost_decimal)
+
+            # Update context with calculated cost
+            metadata["cost_usd"] = cost_usd
+
             self.logger.debug(
-                "usage_extracted",
+                "cost_calculated",
+                model=model,
+                cost_usd=cost_usd,
                 tokens_input=tokens_input,
                 tokens_output=tokens_output,
                 cache_read_tokens=cache_read_tokens,
                 cache_write_tokens=cache_write_tokens,
-                cost_usd=cost_usd,
-                source="response_body",
+                source="non_streaming",
+            )
+        except ModelPricingNotFoundError as e:
+            self.logger.warning(
+                "model_pricing_not_found",
+                model=model,
+                message=str(e),
+                tokens_input=tokens_input,
+                tokens_output=tokens_output,
+            )
+        except PricingDataNotLoadedError as e:
+            self.logger.warning(
+                "pricing_data_not_loaded",
+                model=model,
+                message=str(e),
+            )
+        except PricingServiceDisabledError as e:
+            self.logger.debug(
+                "pricing_service_disabled",
+                message=str(e),
+            )
+        except Exception as e:
+            self.logger.debug(
+                "cost_calculation_failed",
+                error=str(e),
+                model=metadata.get("model"),
             )
 
+    async def _calculate_cost_for_usage(
+        self, request_context: "RequestContext"
+    ) -> None:
+        """Calculate cost for usage data already extracted in processor.
+
+        Args:
+            request_context: Request context with usage data from processor
+        """
+        # Check if we have usage data from the processor
+        metadata = request_context.metadata
+        tokens_input = metadata.get("tokens_input", 0)
+        tokens_output = metadata.get("tokens_output", 0)
+
+        # Skip if no usage data available
+        if not (tokens_input or tokens_output):
+            return
+
+        # Get pricing service and calculate cost
+        pricing_service = self._get_pricing_service()
+        if not pricing_service:
+            return
+
+        try:
+            model = metadata.get("model", "claude-3-5-sonnet-20241022")
+            cache_read_tokens = metadata.get("cache_read_tokens", 0)
+            cache_write_tokens = metadata.get("cache_write_tokens", 0)
+
+            # Import pricing exceptions
+            from plugins.pricing.exceptions import (
+                ModelPricingNotFoundError,
+                PricingDataNotLoadedError,
+                PricingServiceDisabledError,
+            )
+
+            cost_decimal = await pricing_service.calculate_cost(
+                model_name=model,
+                input_tokens=tokens_input,
+                output_tokens=tokens_output,
+                cache_read_tokens=cache_read_tokens,
+                cache_write_tokens=cache_write_tokens,
+            )
+            cost_usd = float(cost_decimal)
+
+            # Update context with calculated cost
+            metadata["cost_usd"] = cost_usd
+
+            self.logger.debug(
+                "cost_calculated",
+                model=model,
+                cost_usd=cost_usd,
+                tokens_input=tokens_input,
+                tokens_output=tokens_output,
+                cache_read_tokens=cache_read_tokens,
+                cache_write_tokens=cache_write_tokens,
+                source="non_streaming",
+            )
+        except ModelPricingNotFoundError as e:
+            self.logger.warning(
+                "model_pricing_not_found",
+                model=model,
+                message=str(e),
+                tokens_input=tokens_input,
+                tokens_output=tokens_output,
+            )
+        except PricingDataNotLoadedError as e:
+            self.logger.warning(
+                "pricing_data_not_loaded",
+                model=model,
+                message=str(e),
+            )
+        except PricingServiceDisabledError as e:
+            self.logger.debug(
+                "pricing_service_disabled",
+                message=str(e),
+            )
         except Exception as e:
-            self.logger.debug("usage_extraction_failed", error=str(e))
+            self.logger.debug(
+                "cost_calculation_failed",
+                error=str(e),
+                model=metadata.get("model"),
+            )
 
     async def _wrap_streaming_response(
         self, response: StreamingResponse, request_context: "RequestContext"
@@ -638,7 +566,9 @@ class ClaudeAPIAdapter(BaseAdapter):
                                         model=model,
                                         message=str(e),
                                         tokens_input=usage_metrics.get("tokens_input"),
-                                        tokens_output=usage_metrics.get("tokens_output"),
+                                        tokens_output=usage_metrics.get(
+                                            "tokens_output"
+                                        ),
                                         category="pricing",
                                     )
                                 except PricingDataNotLoadedError as e:
@@ -782,17 +712,13 @@ class ClaudeAPIAdapter(BaseAdapter):
     async def cleanup(self) -> None:
         """Cleanup resources when shutting down."""
         try:
-            # Cleanup HTTP handler
-            if self._http_handler and hasattr(self._http_handler, "cleanup"):
-                await self._http_handler.cleanup()
+            # Call parent cleanup first
+            await super().cleanup()
 
-            # Note: We don't clear _http_handler as it's not Optional anymore
-            self.proxy_service = None
-            self._request_transformer = None
-            self._response_transformer = None
+            # Claude API specific cleanup
             self.openai_adapter = None
 
-            self.logger.debug("adapter_cleanup_completed")
+            self.logger.debug("claude_api_adapter_cleanup_completed")
 
         except Exception as e:
             self.logger.error(

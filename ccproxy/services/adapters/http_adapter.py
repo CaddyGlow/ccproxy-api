@@ -1,0 +1,420 @@
+"""Base HTTP adapter for HTTP-based providers (claude_api and codex)."""
+
+import json
+from abc import abstractmethod
+from typing import TYPE_CHECKING, Any
+
+from fastapi import HTTPException, Request
+from starlette.responses import Response, StreamingResponse
+
+from ccproxy.core.logging import get_plugin_logger
+from ccproxy.services.adapters.base import BaseAdapter
+from ccproxy.services.handler_config import HandlerConfig
+from ccproxy.services.http.plugin_handler import PluginHTTPHandler
+from ccproxy.streaming.deferred_streaming import DeferredStreaming
+
+
+if TYPE_CHECKING:
+    import httpx
+    import structlog
+
+    from ccproxy.auth.manager import AuthManager
+    from ccproxy.core.transformers import BaseTransformer
+    from ccproxy.observability.context import RequestContext
+    from ccproxy.plugins.declaration import PluginContext
+    from ccproxy.services.cli_detection import CLIDetectionService
+    from ccproxy.services.proxy_service import ProxyService
+    from ccproxy.streaming.interfaces import IStreamingMetricsCollector
+    from plugins.pricing.service import PricingService
+
+
+class BaseHTTPAdapter(BaseAdapter):
+    """Base adapter class for HTTP-based providers.
+
+    This class extracts common HTTP orchestration logic from ClaudeAPIAdapter
+    and CodexAdapter to reduce duplication. It handles:
+    - Request/response transformation with pluggable transformers
+    - Streaming vs regular responses
+    - Integration with PluginHTTPHandler for HTTP execution
+    - Provider-specific customization hooks
+    """
+
+    def __init__(
+        self,
+        proxy_service: "ProxyService | None",
+        auth_manager: "AuthManager",
+        detection_service: "CLIDetectionService",
+        http_client: "httpx.AsyncClient | None" = None,
+        logger: "structlog.BoundLogger | None" = None,
+        context: "PluginContext | None" = None,
+        request_transformer: "BaseTransformer | None" = None,
+        response_transformer: "BaseTransformer | None" = None,
+    ) -> None:
+        """Initialize the base HTTP adapter.
+
+        Args:
+            proxy_service: ProxyService instance for handling requests
+            auth_manager: Authentication manager for credentials
+            detection_service: Detection service for CLI detection
+            http_client: Optional HTTP client for making requests
+            logger: Optional structured logger instance
+            context: Optional plugin context containing plugin_registry and other services
+            request_transformer: Optional request transformer
+            response_transformer: Optional response transformer
+        """
+        self.logger = logger or get_plugin_logger()
+        self.proxy_service = proxy_service
+        self._auth_manager = auth_manager
+        self._detection_service = detection_service
+        self.context = context or {}
+
+        # Initialize transformers (can be overridden by subclasses)
+        self._request_transformer = request_transformer
+        self._response_transformer = response_transformer
+
+        # Initialize HTTP handler
+        request_tracer = None
+        if proxy_service and hasattr(proxy_service, "request_tracer"):
+            request_tracer = proxy_service.request_tracer
+
+        if http_client:
+            self._http_handler: PluginHTTPHandler = PluginHTTPHandler(
+                http_client=http_client, request_tracer=request_tracer
+            )
+        elif proxy_service and hasattr(proxy_service, "http_client"):
+            self._http_handler = PluginHTTPHandler(
+                http_client=proxy_service.http_client, request_tracer=request_tracer
+            )
+        else:
+            raise RuntimeError(
+                "No HTTP client available - provide http_client or proxy_service with http_client"
+            )
+
+    def _get_pricing_service(self) -> "PricingService | None":
+        """Get pricing service from plugin registry if available."""
+        try:
+            if not self.context or "plugin_registry" not in self.context:
+                return None
+
+            plugin_registry = self.context["plugin_registry"]
+
+            # Import locally to avoid circular dependency
+            from plugins.pricing.service import PricingService
+
+            # Get service from registry with type checking
+            return plugin_registry.get_service("pricing", PricingService)
+
+        except Exception as e:
+            self.logger.debug("failed_to_get_pricing_service", error=str(e))
+            return None
+
+    async def handle_request(
+        self, request: Request, endpoint: str, method: str, **kwargs: Any
+    ) -> Response | StreamingResponse | DeferredStreaming:
+        """Handle a request using the common HTTP flow.
+
+        Args:
+            request: FastAPI request object
+            endpoint: Target endpoint path
+            method: HTTP method
+            **kwargs: Additional arguments
+
+        Returns:
+            Response from the provider API
+        """
+        # Validate prerequisites
+        self._validate_prerequisites()
+
+        # Get RequestContext - it must exist when called via ProxyService
+        from ccproxy.observability.context import RequestContext
+
+        request_context: RequestContext | None = RequestContext.get_current()
+        if not request_context:
+            raise HTTPException(
+                status_code=500,
+                detail="RequestContext not available - plugin must be called via ProxyService",
+            )
+
+        # Get request body and auth
+        body = await request.body()
+
+        # Get access token directly from auth manager
+        access_token = await self._auth_manager.get_access_token()
+
+        # Build auth headers with Bearer token
+        auth_headers = {"Authorization": f"Bearer {access_token}"}
+
+        # Determine endpoint handling (provider-specific)
+        target_url, needs_conversion = await self._resolve_endpoint(endpoint)
+
+        # Create handler configuration (provider-specific)
+        handler_config = await self._create_handler_config(
+            needs_conversion, request_context
+        )
+
+        # Prepare and execute request
+        return await self._execute_request(
+            method=method,
+            target_url=target_url,
+            body=body,
+            auth_headers=auth_headers,
+            access_token=access_token,
+            request_headers=dict(request.headers),
+            handler_config=handler_config,
+            endpoint=endpoint,
+            needs_conversion=needs_conversion,
+            request_context=request_context,
+        )
+
+    def _validate_prerequisites(self) -> None:
+        """Validate that required components are available."""
+        if not self._auth_manager:
+            raise HTTPException(
+                status_code=503, detail="Authentication manager not available"
+            )
+        if not self._http_handler:
+            raise HTTPException(status_code=503, detail="HTTP handler not initialized")
+
+    @abstractmethod
+    async def _resolve_endpoint(self, endpoint: str) -> tuple[str, bool]:
+        """Resolve the target URL and determine if format conversion is needed.
+
+        Args:
+            endpoint: The requested endpoint path
+
+        Returns:
+            Tuple of (target_url, needs_conversion)
+        """
+        ...
+
+    @abstractmethod
+    async def _create_handler_config(
+        self,
+        needs_conversion: bool,
+        request_context: "RequestContext | None" = None,
+    ) -> HandlerConfig:
+        """Create handler configuration based on conversion needs.
+
+        Args:
+            needs_conversion: Whether format conversion is needed
+            request_context: Request context for creating metrics collector
+
+        Returns:
+            HandlerConfig instance
+        """
+        ...
+
+    @abstractmethod
+    async def _create_metrics_collector(
+        self, request_context: "RequestContext"
+    ) -> "IStreamingMetricsCollector | None":
+        """Create a metrics collector for this request.
+
+        Args:
+            request_context: Request context containing request_id
+
+        Returns:
+            Metrics collector or None
+        """
+        ...
+
+    async def _execute_request(
+        self,
+        method: str,
+        target_url: str,
+        body: bytes,
+        auth_headers: dict[str, str],
+        access_token: str | None,
+        request_headers: dict[str, str],
+        handler_config: HandlerConfig,
+        endpoint: str,
+        needs_conversion: bool,
+        request_context: "RequestContext",
+    ) -> Response | StreamingResponse | DeferredStreaming:
+        """Execute the HTTP request.
+
+        Args:
+            method: HTTP method
+            target_url: Target API URL
+            body: Request body
+            auth_headers: Authentication headers
+            access_token: Access token if available
+            request_headers: Original request headers
+            handler_config: Handler configuration
+            endpoint: Original endpoint for logging
+            needs_conversion: Whether conversion was needed for logging
+            request_context: Request context for observability
+
+        Returns:
+            Response or StreamingResponse
+        """
+        # Handler is guaranteed to exist after _validate_prerequisites
+        assert self._http_handler is not None
+
+        # Prepare request
+        (
+            transformed_body,
+            headers,
+            is_streaming,
+        ) = await self._http_handler.prepare_request(
+            request_body=body,
+            handler_config=handler_config,
+            auth_headers=auth_headers,
+            request_headers=request_headers,
+            access_token=access_token,
+        )
+
+        # Parse request body to extract model and other metadata
+        try:
+            request_data = json.loads(transformed_body) if transformed_body else {}
+        except json.JSONDecodeError:
+            request_data = {}
+
+        # Update context with provider-specific metadata
+        await self._update_request_context(
+            request_context, endpoint, request_data, is_streaming, needs_conversion
+        )
+
+        # Log the request
+        self._log_request(
+            endpoint, request_context, is_streaming, needs_conversion, target_url
+        )
+
+        # Get streaming handler if needed
+        streaming_handler = None
+        if is_streaming and self.proxy_service:
+            streaming_handler = getattr(self.proxy_service, "streaming_handler", None)
+
+        # Execute request with proper request_context
+        response = await self._http_handler.handle_request(
+            method=method,
+            url=target_url,
+            headers=headers,
+            body=transformed_body,
+            handler_config=handler_config,
+            is_streaming=is_streaming,
+            streaming_handler=streaming_handler,
+            request_context=request_context,
+        )
+
+        # Post-process response based on type
+        return await self._post_process_response(
+            response, is_streaming, request_context
+        )
+
+    @abstractmethod
+    async def _update_request_context(
+        self,
+        request_context: "RequestContext",
+        endpoint: str,
+        request_data: dict[str, Any],
+        is_streaming: bool,
+        needs_conversion: bool,
+    ) -> None:
+        """Update request context with provider-specific metadata.
+
+        Args:
+            request_context: Request context to update
+            endpoint: Target endpoint path
+            request_data: Parsed request data
+            is_streaming: Whether this is a streaming request
+            needs_conversion: Whether format conversion is needed
+        """
+        ...
+
+    @abstractmethod
+    def _log_request(
+        self,
+        endpoint: str,
+        request_context: "RequestContext",
+        is_streaming: bool,
+        needs_conversion: bool,
+        target_url: str,
+    ) -> None:
+        """Log the request with provider-specific information.
+
+        Args:
+            endpoint: Target endpoint path
+            request_context: Request context with metadata
+            is_streaming: Whether this is a streaming request
+            needs_conversion: Whether format conversion is needed
+            target_url: Target API URL
+        """
+        ...
+
+    async def _post_process_response(
+        self,
+        response: Response | StreamingResponse | DeferredStreaming,
+        is_streaming: bool,
+        request_context: "RequestContext",
+    ) -> Response | StreamingResponse | DeferredStreaming:
+        """Post-process response based on type.
+
+        Args:
+            response: The response to post-process
+            is_streaming: Whether this was a streaming request
+            request_context: Request context for observability
+
+        Returns:
+            Processed response
+        """
+        # For non-streaming responses, calculate cost based on usage already extracted in processor
+        if not is_streaming and request_context:
+            await self._calculate_cost_for_usage(request_context)
+
+        # For deferred streaming responses, return directly (metrics collector already has cost calculation)
+        if isinstance(response, DeferredStreaming):
+            return response
+
+        # For regular streaming responses, wrap to accumulate chunks and extract headers
+        if is_streaming and isinstance(response, StreamingResponse):
+            return await self._wrap_streaming_response(response, request_context)
+
+        return response
+
+    @abstractmethod
+    async def _calculate_cost_for_usage(
+        self, request_context: "RequestContext"
+    ) -> None:
+        """Calculate cost for usage data already extracted in processor.
+
+        Args:
+            request_context: Request context with usage data from processor
+        """
+        ...
+
+    @abstractmethod
+    async def _wrap_streaming_response(
+        self, response: StreamingResponse, request_context: "RequestContext"
+    ) -> StreamingResponse:
+        """Wrap streaming response to accumulate chunks and extract headers.
+
+        Args:
+            response: The streaming response to wrap
+            request_context: The request context to update
+
+        Returns:
+            Wrapped streaming response
+        """
+        ...
+
+    async def cleanup(self) -> None:
+        """Cleanup resources when shutting down."""
+        try:
+            # Cleanup HTTP handler
+            if self._http_handler and hasattr(self._http_handler, "cleanup"):
+                await self._http_handler.cleanup()
+
+            # Clear references
+            self.proxy_service = None
+            self._request_transformer = None
+            self._response_transformer = None
+
+            self.logger.debug("http_adapter_cleanup_completed")
+
+        except Exception as e:
+            self.logger.error(
+                "http_adapter_cleanup_failed",
+                error=str(e),
+                exc_info=e,
+            )

@@ -6,8 +6,9 @@ from typing import TYPE_CHECKING, Annotated, Any
 from fastapi import APIRouter, Depends, Request
 from starlette.responses import Response, StreamingResponse
 
-from ccproxy.api.dependencies import ProxyServiceDep, get_plugin_adapter
+from ccproxy.api.dependencies import get_plugin_adapter
 from ccproxy.auth.conditional import ConditionalAuthDep
+from ccproxy.streaming.deferred_streaming import DeferredStreaming
 
 
 if TYPE_CHECKING:
@@ -40,10 +41,9 @@ def codex_path_transformer(path: str) -> str:
 @router.post("/responses", response_model=None)
 async def codex_responses(
     request: Request,
-    proxy_service: ProxyServiceDep,
     auth: ConditionalAuthDep,
     adapter: CodexAdapterDep,
-) -> StreamingResponse | Response:
+) -> StreamingResponse | Response | DeferredStreaming:
     """Create Codex completion with auto-generated session_id.
 
     Delegates to the adapter which will handle the request properly.
@@ -52,14 +52,11 @@ async def codex_responses(
     header_session_id = request.headers.get("session_id")
     session_id = header_session_id or str(uuid.uuid4())
 
-    # Use ProxyService.handle_request to enable hook emissions
-    return await proxy_service.handle_request(
+    # Call adapter directly - hooks are now handled by HooksMiddleware
+    return await adapter.handle_request(
         request=request,
         endpoint="/responses",
         method=request.method,
-        provider="codex",
-        plugin_name="codex",
-        adapter_handler=adapter.handle_request,
         session_id=session_id,
     )
 
@@ -68,22 +65,18 @@ async def codex_responses(
 async def codex_responses_with_session(
     session_id: str,
     request: Request,
-    proxy_service: ProxyServiceDep,
     auth: ConditionalAuthDep,
     adapter: CodexAdapterDep,
-) -> StreamingResponse | Response:
+) -> StreamingResponse | Response | DeferredStreaming:
     """Create Codex completion with specific session_id.
 
     Delegates to the adapter which will handle the request properly.
     """
-    # Use ProxyService.handle_request to enable hook emissions
-    return await proxy_service.handle_request(
+    # Call adapter directly - hooks are now handled by HooksMiddleware
+    return await adapter.handle_request(
         request=request,
         endpoint="/{session_id}/responses",
         method=request.method,
-        provider="codex",
-        plugin_name="codex",
-        adapter_handler=adapter.handle_request,
         session_id=session_id,
     )
 
@@ -91,10 +84,9 @@ async def codex_responses_with_session(
 @router.post("/chat/completions", response_model=None)
 async def codex_chat_completions(
     request: Request,
-    proxy_service: ProxyServiceDep,
     auth: ConditionalAuthDep,
     adapter: CodexAdapterDep,
-) -> StreamingResponse | Response:
+) -> StreamingResponse | Response | DeferredStreaming:
     """Create a chat completion using Codex with OpenAI-compatible format.
 
     This endpoint handles OpenAI format requests and converts them
@@ -105,14 +97,11 @@ async def codex_chat_completions(
     header_session_id = request.headers.get("session_id")
     session_id = header_session_id or str(uuid.uuid4())
 
-    # Use ProxyService.handle_request to enable hook emissions
-    return await proxy_service.handle_request(
+    # Call adapter directly - hooks are now handled by HooksMiddleware
+    return await adapter.handle_request(
         request=request,
         endpoint="/chat/completions",
         method=request.method,
-        provider="codex",
-        plugin_name="codex",
-        adapter_handler=adapter.handle_request,
         session_id=session_id,
     )
 
@@ -121,22 +110,18 @@ async def codex_chat_completions(
 async def codex_chat_completions_with_session(
     session_id: str,
     request: Request,
-    proxy_service: ProxyServiceDep,
     auth: ConditionalAuthDep,
     adapter: CodexAdapterDep,
-) -> StreamingResponse | Response:
+) -> StreamingResponse | Response | DeferredStreaming:
     """Create a chat completion with specific session_id using OpenAI format.
 
     This endpoint handles OpenAI format requests with a specific session_id.
     """
-    # Use ProxyService.handle_request to enable hook emissions
-    return await proxy_service.handle_request(
+    # Call adapter directly - hooks are now handled by HooksMiddleware
+    return await adapter.handle_request(
         request=request,
         endpoint="/{session_id}/chat/completions",
         method=request.method,
-        provider="codex",
-        plugin_name="codex",
-        adapter_handler=adapter.handle_request,
         session_id=session_id,
     )
 
@@ -144,15 +129,14 @@ async def codex_chat_completions_with_session(
 @router.post("/v1/chat/completions", response_model=None)
 async def codex_v1_chat_completions(
     request: Request,
-    proxy_service: ProxyServiceDep,
     auth: ConditionalAuthDep,
     adapter: CodexAdapterDep,
-) -> StreamingResponse | Response:
+) -> StreamingResponse | Response | DeferredStreaming:
     """OpenAI v1 compatible chat completions endpoint.
 
     Maps to the standard chat completions handler.
     """
-    return await codex_chat_completions(request, proxy_service, auth, adapter)
+    return await codex_chat_completions(request, auth, adapter)
 
 
 @router.get("/v1/models", response_model=None)

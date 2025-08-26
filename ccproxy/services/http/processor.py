@@ -95,6 +95,7 @@ class RequestProcessor:
         status_code: int,
         handler_config: HandlerConfig,
         request_headers: dict[str, str] | None = None,
+        request_context: Any | None = None,
     ) -> tuple[bytes, dict[str, str]]:
         """Process response through adapters and transformers.
 
@@ -104,10 +105,15 @@ class RequestProcessor:
             status_code: HTTP status code
             handler_config: Handler configuration
             request_headers: Original request headers for CORS processing
+            request_context: Optional request context for storing extracted data
 
         Returns:
             Tuple of (processed_body, processed_headers)
         """
+        # Extract usage from original response BEFORE format conversion
+        if request_context and status_code < 400:
+            self._extract_usage_before_conversion(body, request_context)
+
         # Apply response adapter for successful responses
         processed_body = body
         if handler_config.response_adapter and status_code < 400:
@@ -199,6 +205,69 @@ class RequestProcessor:
                 exc_info=e,
             )
             return body
+
+    def _extract_usage_before_conversion(
+        self, body: bytes, request_context: Any
+    ) -> None:
+        """Extract usage data from Anthropic response before format conversion.
+
+        Args:
+            body: Response body in Anthropic format
+            request_context: Request context to store usage data
+        """
+        try:
+            # Parse response body
+            response_data = json.loads(body)
+            usage = response_data.get("usage", {})
+
+            if not usage:
+                return
+
+            # Extract Anthropic-specific usage fields
+            tokens_input = usage.get("input_tokens", 0)
+            tokens_output = usage.get("output_tokens", 0)
+            cache_read_tokens = usage.get("cache_read_input_tokens", 0)
+
+            # Handle both old and new cache creation token formats
+            cache_write_tokens = usage.get("cache_creation_input_tokens", 0)
+
+            # New format has cache_creation as nested object
+            if "cache_creation" in usage and isinstance(usage["cache_creation"], dict):
+                cache_creation = usage["cache_creation"]
+                # Sum all cache creation tokens from different tiers
+                cache_write_tokens = cache_creation.get(
+                    "ephemeral_5m_input_tokens", 0
+                ) + cache_creation.get("ephemeral_1h_input_tokens", 0)
+
+            # Update request context with usage data
+            if hasattr(request_context, "metadata"):
+                request_context.metadata.update(
+                    {
+                        "tokens_input": tokens_input,
+                        "tokens_output": tokens_output,
+                        "tokens_total": tokens_input + tokens_output,
+                        "cache_read_tokens": cache_read_tokens,
+                        "cache_write_tokens": cache_write_tokens,
+                        # Note: cost calculation happens in the adapter with pricing service
+                    }
+                )
+
+                self.logger.debug(
+                    "usage_extracted_before_conversion",
+                    tokens_input=tokens_input,
+                    tokens_output=tokens_output,
+                    cache_read_tokens=cache_read_tokens,
+                    cache_write_tokens=cache_write_tokens,
+                    source="processor",
+                )
+
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            # Silent fail - usage extraction is non-critical
+            pass
+        except Exception as e:
+            self.logger.debug(
+                "usage_extraction_failed", error=str(e), source="processor"
+            )
 
     def _filter_internal_headers(self, headers: dict[str, str]) -> dict[str, str]:
         """Filter out internal headers that shouldn't be sent upstream.

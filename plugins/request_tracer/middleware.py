@@ -52,9 +52,11 @@ class RequestTracingMiddleware:
 
         # Buffer to collect request body
         request_body_chunks = []
+        headers_logged = False
 
         # Wrap receive to capture request body chunks
         async def wrapped_receive() -> dict[str, Any]:
+            nonlocal headers_logged
             message: dict[str, Any] = await receive()
 
             # Capture request body chunks
@@ -62,23 +64,25 @@ class RequestTracingMiddleware:
                 body = message.get("body", b"")
                 if body:
                     request_body_chunks.append(body)
-                    # Log for raw HTTP tracing
-                    if self.tracer:
-                        await self.tracer.log_raw_client_request(request_id, body)
 
-                # If this is the last chunk, emit the request event with full body
+                # If this is the last chunk, build and log complete HTTP request
                 more_body = message.get("more_body", False)
                 if not more_body:
                     full_body = (
                         b"".join(request_body_chunks) if request_body_chunks else None
                     )
+                    # Log complete raw HTTP request
+                    if (
+                        self.tracer
+                        and self.tracer.should_log_raw()
+                        and not headers_logged
+                    ):
+                        await self._log_complete_request(scope, request_id, full_body)
+                        headers_logged = True
                     # Emit client request event with body
                     await self._emit_client_request_event(scope, request_id, full_body)
 
             return message
-
-        # Log initial request headers (for raw tracing if enabled)
-        await self._log_request_headers(scope, request_id)
 
         # Track request start time for response event
         request_start_time = time.time()
@@ -168,10 +172,10 @@ class RequestTracingMiddleware:
 
         await self.pipeline.notify_client_request(event)
 
-    async def _log_request_headers(
-        self, scope: dict[str, Any], request_id: str
+    async def _log_complete_request(
+        self, scope: dict[str, Any], request_id: str, body: bytes | None = None
     ) -> None:
-        """Log the initial request headers."""
+        """Log the complete HTTP/1.1 request with headers and body."""
         # Build raw request line
         method = scope.get("method", "GET")
         path = scope.get("path", "/")
@@ -200,9 +204,13 @@ class RequestTracingMiddleware:
             else:
                 lines.append(f"{name.decode('ascii')}: [REDACTED]")
 
-        # Build raw request
+        # Build complete raw request
         raw = "\r\n".join(lines).encode("utf-8")
         raw += b"\r\n\r\n"
+
+        # Add body if present
+        if body:
+            raw += body
 
         if self.tracer:
             await self.tracer.log_raw_client_request(request_id, raw)
@@ -214,57 +222,31 @@ class RequestTracingMiddleware:
         request_start_time: float,
     ) -> Callable[[dict[str, Any]], Any]:
         """Wrap send to capture response chunks."""
-        logged_headers = False
         response_status = 200
         response_body_size = 0
         response_headers = {}
         response_body_chunks: list[bytes] = []  # Buffer for accumulating body
+        response_headers_raw: list[tuple[bytes, bytes]] = []  # Raw headers for logging
 
         async def wrapped(message: dict[str, Any]) -> None:
             nonlocal \
-                logged_headers, \
                 response_status, \
                 response_body_size, \
                 response_headers, \
-                response_body_chunks
+                response_body_chunks, \
+                response_headers_raw
 
             if message["type"] == "http.response.start":
                 # Capture status for event
                 response_status = message.get("status", 200)
                 headers = message.get("headers", [])
+                response_headers_raw = headers
 
                 # Convert headers to dict for event
                 for name, value in headers:
                     response_headers[name.decode("utf-8", errors="ignore")] = (
                         value.decode("utf-8", errors="ignore")
                     )
-
-                # Log response headers for raw tracing if enabled
-                if self.tracer and self.tracer.should_log_raw():
-                    # Build raw response headers
-                    lines = [f"HTTP/1.1 {response_status} OK"]
-
-                    # Add headers (with optional filtering)
-                    exclude_headers = []
-                    if hasattr(self.tracer.config, "exclude_headers"):
-                        exclude_headers = [
-                            h.lower().encode()
-                            for h in self.tracer.config.exclude_headers
-                        ]
-
-                    for name, value in headers:
-                        if name.lower() not in exclude_headers:
-                            lines.append(
-                                f"{name.decode('ascii')}: {value.decode('ascii', errors='ignore')}"
-                            )
-                        else:
-                            lines.append(f"{name.decode('ascii')}: [REDACTED]")
-
-                    raw = "\r\n".join(lines).encode("utf-8")
-                    raw += b"\r\n\r\n"
-
-                    await self.tracer.log_raw_client_response(request_id, raw)
-                logged_headers = True
 
             elif message["type"] == "http.response.body":
                 # Track body size and accumulate chunks
@@ -273,23 +255,25 @@ class RequestTracingMiddleware:
                     response_body_size += len(body)
                     response_body_chunks.append(body)  # Accumulate chunks
 
-                    # Log response body chunks for raw tracing if enabled
-                    if self.tracer and self.tracer.should_log_raw():
-                        await self.tracer.log_raw_client_response(request_id, body)
-
-                # If this is the final chunk, emit response event with full body
+                # If this is the final chunk, log complete response and emit event
                 more_body = message.get("more_body", False)
                 if not more_body:
+                    # Combine all body chunks
+                    full_body = (
+                        b"".join(response_body_chunks) if response_body_chunks else None
+                    )
+
+                    # Log complete raw HTTP response
+                    if self.tracer and self.tracer.should_log_raw():
+                        await self._log_complete_response(
+                            request_id, response_status, response_headers_raw, full_body
+                        )
+
                     # Calculate duration
                     duration_ms = (time.time() - request_start_time) * 1000
 
                     # Get current context
                     context = RequestContext.get_current()
-
-                    # Combine all body chunks
-                    full_body = (
-                        b"".join(response_body_chunks) if response_body_chunks else None
-                    )
 
                     # Emit client response event with full body
                     event = ClientResponseEvent(
@@ -307,3 +291,53 @@ class RequestTracingMiddleware:
             await send(message)
 
         return wrapped
+
+    async def _log_complete_response(
+        self,
+        request_id: str,
+        status: int,
+        headers: list[tuple[bytes, bytes]],
+        body: bytes | None = None,
+    ) -> None:
+        """Log the complete HTTP/1.1 response with headers and body."""
+        # Build status line - map common status codes to proper reason phrases
+        status_phrases = {
+            200: "OK",
+            201: "Created",
+            204: "No Content",
+            400: "Bad Request",
+            401: "Unauthorized",
+            403: "Forbidden",
+            404: "Not Found",
+            500: "Internal Server Error",
+            502: "Bad Gateway",
+            503: "Service Unavailable",
+        }
+        reason = status_phrases.get(status, "Unknown")
+        lines = [f"HTTP/1.1 {status} {reason}"]
+
+        # Add headers (with optional filtering)
+        exclude_headers = []
+        if self.tracer and hasattr(self.tracer.config, "exclude_headers"):
+            exclude_headers = [
+                h.lower().encode() for h in self.tracer.config.exclude_headers
+            ]
+
+        for name, value in headers:
+            if name.lower() not in exclude_headers:
+                lines.append(
+                    f"{name.decode('ascii')}: {value.decode('ascii', errors='ignore')}"
+                )
+            else:
+                lines.append(f"{name.decode('ascii')}: [REDACTED]")
+
+        # Build complete raw response
+        raw = "\r\n".join(lines).encode("utf-8")
+        raw += b"\r\n\r\n"
+
+        # Add body if present
+        if body:
+            raw += body
+
+        if self.tracer:
+            await self.tracer.log_raw_client_response(request_id, raw)
