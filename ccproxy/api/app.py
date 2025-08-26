@@ -41,9 +41,7 @@ from ccproxy.utils.startup_helpers import (
     check_version_updates_startup,
     initialize_log_storage_shutdown,
     initialize_log_storage_startup,
-    initialize_permission_service_startup,
     initialize_proxy_service_startup,
-    setup_permission_service_shutdown,
     setup_scheduler_shutdown,
     setup_scheduler_startup,
 )
@@ -257,11 +255,6 @@ LIFECYCLE_COMPONENTS: list[LifecycleComponent] = [
         "name": "Log Storage",
         "startup": initialize_log_storage_startup,
         "shutdown": initialize_log_storage_shutdown,
-    },
-    {
-        "name": "Permission Service",
-        "startup": initialize_permission_service_startup,
-        "shutdown": setup_permission_service_shutdown,
     },
     {
         "name": "Proxy Service",

@@ -219,7 +219,9 @@ class StreamingMetricsCollector:
                                                 ]
                                                 or 0,
                                             )
-                                            self.metrics["cost_usd"] = float(cost_decimal)
+                                            self.metrics["cost_usd"] = float(
+                                                cost_decimal
+                                            )
                                             logger.debug(
                                                 "streaming_cost_calculated",
                                                 model=self.model,
@@ -237,8 +239,12 @@ class StreamingMetricsCollector:
                                                 "model_pricing_not_found",
                                                 model=self.model,
                                                 message=str(e),
-                                                tokens_input=self.metrics["tokens_input"],
-                                                tokens_output=self.metrics["tokens_output"],
+                                                tokens_input=self.metrics[
+                                                    "tokens_input"
+                                                ],
+                                                tokens_output=self.metrics[
+                                                    "tokens_output"
+                                                ],
                                                 request_id=self.request_id,
                                             )
                                         except PricingDataNotLoadedError as e:

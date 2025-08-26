@@ -1,7 +1,6 @@
 """Pricing updater for managing periodic refresh of pricing data."""
 
 import json
-from decimal import Decimal
 from typing import Any
 
 import httpx

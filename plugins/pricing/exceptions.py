@@ -10,7 +10,10 @@ class PricingError(Exception):
 class PricingDataNotLoadedError(PricingError):
     """Raised when pricing data has not been loaded yet."""
 
-    def __init__(self, message: str = "Pricing data not loaded yet - cost calculation unavailable"):
+    def __init__(
+        self,
+        message: str = "Pricing data not loaded yet - cost calculation unavailable",
+    ):
         self.message = message
         super().__init__(self.message)
 
