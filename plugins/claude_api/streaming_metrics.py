@@ -193,8 +193,6 @@ class StreamingMetricsCollector:
                                 if self.pricing_service:
                                     if self.model:
                                         try:
-                                            from decimal import Decimal
-
                                             cost_decimal = self.pricing_service.calculate_cost_sync(
                                                 model_name=self.model,
                                                 input_tokens=self.metrics[

@@ -508,5 +508,3 @@ class DeferredStreaming(Response):
 
         # Send final [DONE] event
         yield b"data: [DONE]\n\n"
-
-
