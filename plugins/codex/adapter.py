@@ -412,6 +412,13 @@ class CodexAdapter(BaseAdapter):
                     model = request_context.metadata.get(
                         "model", response_data.get("model", "gpt-3.5-turbo")
                     )
+                    # Import pricing exceptions
+                    from plugins.pricing.exceptions import (
+                        ModelPricingNotFoundError,
+                        PricingDataNotLoadedError,
+                        PricingServiceDisabledError,
+                    )
+
                     cost_decimal = await pricing_service.calculate_cost(
                         model_name=model,
                         input_tokens=tokens_input,
@@ -419,21 +426,33 @@ class CodexAdapter(BaseAdapter):
                         cache_read_tokens=cache_read_tokens,
                         cache_write_tokens=0,  # OpenAI doesn't have cache write tokens
                     )
-                    if cost_decimal is not None:
-                        cost_usd = float(cost_decimal)
-                        self.logger.debug(
-                            "cost_calculated",
-                            model=model,
-                            cost_usd=cost_usd,
-                            tokens_input=tokens_input,
-                            tokens_output=tokens_output,
-                        )
-                    else:
-                        self.logger.debug(
-                            "cost_not_available",
-                            model=model,
-                            reason="pricing_service_returned_none",
-                        )
+                    cost_usd = float(cost_decimal)
+                    self.logger.debug(
+                        "cost_calculated",
+                        model=model,
+                        cost_usd=cost_usd,
+                        tokens_input=tokens_input,
+                        tokens_output=tokens_output,
+                    )
+                except ModelPricingNotFoundError as e:
+                    self.logger.warning(
+                        "model_pricing_not_found",
+                        model=model,
+                        message=str(e),
+                        tokens_input=tokens_input,
+                        tokens_output=tokens_output,
+                    )
+                except PricingDataNotLoadedError as e:
+                    self.logger.warning(
+                        "pricing_data_not_loaded",
+                        model=model,
+                        message=str(e),
+                    )
+                except PricingServiceDisabledError as e:
+                    self.logger.debug(
+                        "pricing_service_disabled",
+                        message=str(e),
+                    )
                 except Exception as e:
                     self.logger.debug(
                         "cost_calculation_failed", error=str(e), model=model
