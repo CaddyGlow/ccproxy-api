@@ -74,6 +74,13 @@ class PricingService:
         """Calculate cost for token usage."""
         model_pricing = await self.get_model_pricing(model_name)
         if model_pricing is None:
+            logger.warning(
+                "model_pricing_not_found",
+                model=model_name,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                message=f"No pricing data available for model '{model_name}'",
+            )
             return None
 
         # Calculate cost per million tokens, then scale to actual tokens
@@ -106,17 +113,29 @@ class PricingService:
         cache_write_tokens: int = 0,
     ) -> Decimal | None:
         """Calculate cost synchronously using cached pricing data.
-        
+
         This method uses the cached pricing data and doesn't make any async calls,
         making it safe to use in streaming contexts where we can't await.
-        
+
         Returns None if pricing data is not cached yet.
         """
         if self._current_pricing is None:
+            logger.warning(
+                "pricing_data_not_loaded",
+                model=model_name,
+                message="Pricing data not loaded yet - cost calculation unavailable",
+            )
             return None
 
         model_pricing = self._current_pricing.get(model_name)
         if model_pricing is None:
+            logger.warning(
+                "model_pricing_not_found",
+                model=model_name,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                message=f"No pricing data available for model '{model_name}'",
+            )
             return None
 
         # Calculate cost per million tokens, then scale to actual tokens
