@@ -85,9 +85,23 @@ class ClaudeAPIAdapter(BaseAdapter):
                 "No HTTP client available - provide http_client or proxy_service with http_client"
             )
 
-        # Initialize transformers
+        # Get injection mode from config if available
+        injection_mode = "minimal"  # default
+        if context:
+            # Handle both dict and TypedDict formats
+            if isinstance(context, dict):
+                config = context.get("config")
+            else:
+                config = getattr(context, "config", None)
+
+            if config:
+                injection_mode = getattr(
+                    config, "system_prompt_injection_mode", "minimal"
+                )
+
+        # Initialize transformers with injection mode
         self._request_transformer: ClaudeAPIRequestTransformer | None = (
-            ClaudeAPIRequestTransformer(detection_service)
+            ClaudeAPIRequestTransformer(detection_service, mode=injection_mode)
         )
 
         # Get CORS settings if available
