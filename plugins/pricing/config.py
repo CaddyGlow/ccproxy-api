@@ -54,11 +54,6 @@ class PricingConfig(BaseSettings):
         description="Whether to automatically update stale cache",
     )
 
-    fallback_to_embedded: bool = Field(
-        default=True,
-        description="Whether to fallback to embedded pricing on failure",
-    )
-
     # Memory cache settings
     memory_cache_ttl: int = Field(
         default=300,
