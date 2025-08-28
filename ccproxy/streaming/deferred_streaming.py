@@ -5,11 +5,15 @@ This implementation solves the header timing issue and supports SSE processing.
 
 import json
 from collections.abc import AsyncGenerator, AsyncIterator
+from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 import httpx
 import structlog
 from starlette.responses import Response, StreamingResponse
+
+from ccproxy.hooks import HookEvent, HookManager
+from ccproxy.hooks.base import HookContext
 
 
 if TYPE_CHECKING:
@@ -41,6 +45,7 @@ class DeferredStreaming(Response):
         request_tracer: "RequestTracerImpl | None" = None,
         metrics: "PrometheusMetrics | None" = None,
         verbose_streaming: bool = False,
+        hook_manager: HookManager | None = None,
     ):
         """Store request details to execute later.
 
@@ -56,6 +61,7 @@ class DeferredStreaming(Response):
             request_tracer: Optional request tracer for verbose logging
             metrics: Optional metrics collector
             verbose_streaming: Enable verbose streaming logs
+            hook_manager: Optional hook manager for emitting stream events
         """
         super().__init__(content=b"", media_type=media_type)
         self.method = method
@@ -69,6 +75,7 @@ class DeferredStreaming(Response):
         self.request_tracer = request_tracer
         self.metrics = metrics
         self.verbose_streaming = verbose_streaming
+        self.hook_manager = hook_manager
 
     async def __call__(self, scope: Any, receive: Any, send: Any) -> None:
         """Execute the request when ASGI calls us."""
@@ -139,6 +146,43 @@ class DeferredStreaming(Response):
                     await self.request_tracer.trace_stream_start(
                         request_id=request_id, headers=self.request_headers
                     )
+
+                # Emit PROVIDER_STREAM_START hook
+                if self.hook_manager:
+                    try:
+                        # Extract provider from URL or context
+                        provider = "unknown"
+                        if self.request_context and hasattr(
+                            self.request_context, "metadata"
+                        ):
+                            provider = self.request_context.metadata.get(
+                                "service_type", "unknown"
+                            )
+
+                        await self.hook_manager.emit(
+                            HookEvent.PROVIDER_STREAM_START,
+                            HookContext(
+                                event=HookEvent.PROVIDER_STREAM_START,
+                                timestamp=datetime.now(),
+                                provider=provider,
+                                data={
+                                    "url": self.url,
+                                    "method": self.method,
+                                    "headers": dict(self.request_headers),
+                                    "request_id": request_id,
+                                },
+                                metadata={
+                                    "request_id": request_id,
+                                },
+                            ),
+                        )
+                    except Exception as e:
+                        logger.debug(
+                            "hook_emission_failed",
+                            event="PROVIDER_STREAM_START",
+                            error=str(e),
+                            category="hooks",
+                        )
 
                 try:
                     # Check for error status
@@ -319,6 +363,46 @@ class DeferredStreaming(Response):
                             total_chunks=total_chunks,
                             total_bytes=total_bytes,
                         )
+
+                    # Emit PROVIDER_STREAM_END hook
+                    if self.hook_manager:
+                        try:
+                            provider = "unknown"
+                            if self.request_context and hasattr(
+                                self.request_context, "metadata"
+                            ):
+                                provider = self.request_context.metadata.get(
+                                    "service_type", "unknown"
+                                )
+
+                            await self.hook_manager.emit(
+                                HookEvent.PROVIDER_STREAM_END,
+                                HookContext(
+                                    event=HookEvent.PROVIDER_STREAM_END,
+                                    timestamp=datetime.now(),
+                                    provider=provider,
+                                    data={
+                                        "url": self.url,
+                                        "method": self.method,
+                                        "request_id": request_id,
+                                        "total_chunks": total_chunks,
+                                        "total_bytes": total_bytes,
+                                        "usage_metrics": usage_metrics
+                                        if usage_metrics
+                                        else {},
+                                    },
+                                    metadata={
+                                        "request_id": request_id,
+                                    },
+                                ),
+                            )
+                        except Exception as e:
+                            logger.debug(
+                                "hook_emission_failed",
+                                event="PROVIDER_STREAM_END",
+                                error=str(e),
+                                category="hooks",
+                            )
 
                 except httpx.TimeoutException as e:
                     logger.error(

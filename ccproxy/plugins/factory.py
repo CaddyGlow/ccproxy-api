@@ -111,6 +111,14 @@ class BasePluginFactory(PluginFactory):
         # Add plugin registry (SINGLE SOURCE for all plugin/service access)
         if hasattr(core_services, "plugin_registry"):
             context["plugin_registry"] = core_services.plugin_registry
+            
+        # Add hook registry and manager if available
+        if hasattr(core_services, "hook_registry"):
+            context["hook_registry"] = core_services.hook_registry
+        if hasattr(core_services, "hook_manager"):
+            context["hook_manager"] = core_services.hook_manager
+        if hasattr(core_services, "app"):
+            context["app"] = core_services.app
 
         # Add plugin-specific config if available
         if hasattr(core_services, "get_plugin_config"):

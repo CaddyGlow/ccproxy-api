@@ -39,7 +39,7 @@ This document outlines the plan to complete the hooks system integration and ref
   ```python
   # After middleware_manager setup
   from ccproxy.api.middleware.hooks import create_hooks_middleware
-  
+
   # Add hooks middleware to the stack
   hooks_middleware = create_hooks_middleware(hook_manager)
   middleware_manager.add_middleware(
@@ -63,7 +63,7 @@ This document outlines the plan to complete the hooks system integration and ref
 - **Changes**:
   ```python
   # In _execute_request method, add hook emissions:
-  
+
   # Before sending to provider
   if self.context and "hook_manager" in self.context:
       hook_manager = self.context["hook_manager"]
@@ -81,7 +81,7 @@ This document outlines the plan to complete the hooks system integration and ref
               metadata={"request_id": request_context.request_id}
           )
       )
-  
+
   # After receiving response
   await hook_manager.emit(
       HookEvent.PROVIDER_RESPONSE_RECEIVED,
@@ -105,10 +105,10 @@ This document outlines the plan to complete the hooks system integration and ref
   ```python
   from ccproxy.hooks import Hook, HookContext, HookEvent
   from .formatters import JSONFormatter, RawHTTPFormatter
-  
+
   class RequestTracerHook(Hook):
       """Hook-based request tracer implementation."""
-      
+
       name = "request_tracer"
       events = [
           HookEvent.REQUEST_STARTED,
@@ -119,16 +119,16 @@ This document outlines the plan to complete the hooks system integration and ref
           HookEvent.PROVIDER_STREAM_START,
           HookEvent.PROVIDER_STREAM_END,
       ]
-      
+
       def __init__(self, config: RequestTracerConfig):
           self.config = config
           self.json_formatter = JSONFormatter(config) if config.json_logs_enabled else None
           self.raw_formatter = RawHTTPFormatter(config) if config.raw_http_enabled else None
-      
+
       async def __call__(self, context: HookContext) -> None:
           if not self.config.enabled:
               return
-              
+
           # Route to appropriate handler
           handlers = {
               HookEvent.REQUEST_STARTED: self._handle_request_start,
@@ -136,7 +136,7 @@ This document outlines the plan to complete the hooks system integration and ref
               HookEvent.PROVIDER_REQUEST_SENT: self._handle_provider_request,
               HookEvent.PROVIDER_RESPONSE_RECEIVED: self._handle_provider_response,
           }
-          
+
           handler = handlers.get(context.event)
           if handler:
               await handler(context)
@@ -149,7 +149,7 @@ This document outlines the plan to complete the hooks system integration and ref
   async def _on_initialize(self) -> None:
       # Create and register hook instead of observer
       self.hook = RequestTracerHook(self.config)
-      
+
       # Get hook registry from context
       hook_registry = self.context.get("hook_registry")
       if hook_registry:

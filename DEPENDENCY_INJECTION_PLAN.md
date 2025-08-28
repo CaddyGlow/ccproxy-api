@@ -84,7 +84,7 @@ class BaseHTTPAdapter(BaseAdapter):
                  # Required dependencies
                  http_client: AsyncClient,
                  auth_manager: AuthManager,
-                 
+
                  # Optional dependencies with null defaults
                  request_tracer: IRequestTracer | None = None,
                  metrics: IMetricsCollector | None = None,
@@ -92,17 +92,17 @@ class BaseHTTPAdapter(BaseAdapter):
                  request_transformer: RequestTransformer | None = None,
                  response_transformer: ResponseTransformer | None = None,
                  logger: structlog.BoundLogger | None = None):
-        
+
         # Store required dependencies
         self.http_client = http_client
         self.auth_manager = auth_manager
-        
+
         # Use null object pattern for optional dependencies
         self.request_tracer = request_tracer or NullRequestTracer()
         self.metrics = metrics or NullMetricsCollector()
         self.streaming_handler = streaming_handler
         self.logger = logger or structlog.get_logger()
-        
+
         # Initialize HTTP handler with explicit dependencies
         self._http_handler = PluginHTTPHandler(
             http_client=http_client,
@@ -120,7 +120,7 @@ class ClaudeAPIAdapter(BaseHTTPAdapter):
                  http_client: AsyncClient,
                  auth_manager: ClaudeApiTokenManager,
                  detection_service: ClaudeAPIDetectionService,
-                 
+
                  # Optional dependencies
                  request_tracer: IRequestTracer | None = None,
                  metrics: IMetricsCollector | None = None,
@@ -128,14 +128,14 @@ class ClaudeAPIAdapter(BaseHTTPAdapter):
                  pricing_service: Any | None = None,
                  openai_adapter: OpenAIAdapter | None = None,
                  logger: structlog.BoundLogger | None = None,
-                 
+
                  # Configuration
                  config: ClaudeAPISettings | None = None):
-        
+
         # Initialize transformers
         request_transformer = ClaudeAPIRequestTransformer(detection_service)
         response_transformer = ClaudeAPIResponseTransformer()
-        
+
         # Call parent with explicit dependencies
         super().__init__(
             http_client=http_client,
@@ -147,7 +147,7 @@ class ClaudeAPIAdapter(BaseHTTPAdapter):
             response_transformer=response_transformer,
             logger=logger
         )
-        
+
         # Store Claude-specific dependencies
         self.detection_service = detection_service
         self.pricing_service = pricing_service
@@ -191,21 +191,21 @@ class ClaudeSDKAdapter(BaseAdapter):
 class BaseProviderPluginFactory:
     def create_adapter(self, context: PluginContext) -> BaseAdapter:
         """Create adapter with explicit dependencies."""
-        
+
         # Extract services from context (one-time extraction)
         http_client = context.get("http_client")
         request_tracer = context.get("request_tracer")
         metrics = context.get("metrics")
         streaming_handler = context.get("streaming_handler")
         logger = context.get("logger")
-        
+
         # Create auth and detection services
         auth_manager = self.create_credentials_manager(context)
         detection_service = self.create_detection_service(context)
-        
+
         # Get pricing service if available
         pricing_service = self._get_pricing_service(context)
-        
+
         # Create adapter with explicit dependencies
         if issubclass(self.adapter_class, BaseHTTPAdapter):
             return self.adapter_class(
@@ -235,7 +235,7 @@ class BaseProviderPluginFactory:
 ```python
 class ServiceContainer:
     """Service container that provides individual services, not ProxyService."""
-    
+
     def get_adapter_dependencies(self) -> dict[str, Any]:
         """Get all services an adapter might need."""
         return {
@@ -245,7 +245,7 @@ class ServiceContainer:
             "streaming_handler": self.get_streaming_handler(),
             "logger": self.get_logger(),
         }
-    
+
     # Remove create_proxy_service method entirely
     # Individual service getters remain
 ```
@@ -291,7 +291,7 @@ def test_adapter():
     mock_proxy.metrics = Mock()
     mock_proxy.request_tracer = Mock()
     # ... many more mocks
-    
+
     adapter = ClaudeAPIAdapter(
         proxy_service=mock_proxy,
         auth_manager=Mock(),
@@ -309,7 +309,7 @@ def test_adapter():
         detection_service=Mock()
         # Optional dependencies default to null implementations
     )
-    
+
     # Or test with specific service
     adapter = ClaudeAPIAdapter(
         http_client=Mock(),

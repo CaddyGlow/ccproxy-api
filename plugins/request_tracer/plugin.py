@@ -1,8 +1,10 @@
 """Request Tracer plugin implementation."""
 
+import os
 from typing import Any
 
 from ccproxy.core.logging import get_plugin_logger
+from ccproxy.hooks import HookRegistry
 from ccproxy.observability import get_observability_pipeline
 from ccproxy.plugins import (
     MiddlewareLayer,
@@ -14,6 +16,7 @@ from ccproxy.plugins import (
 )
 
 from .config import RequestTracerConfig
+from .hook import RequestTracerHook
 from .middleware import RequestTracingMiddleware
 from .observer import TracerObserver
 from .tracer import RequestTracerImpl
@@ -32,7 +35,10 @@ class RequestTracerRuntime(SystemPluginRuntime):
         self.config: RequestTracerConfig | None = None
         self.tracer_instance: RequestTracerImpl | None = None
         self.observer: TracerObserver | None = None
+        self.hook: RequestTracerHook | None = None
         self.original_transport: Any | None = None
+        # Feature flag to control observer vs hook mode
+        self.use_hooks = os.getenv("HOOKS_ENABLED", "false").lower() == "true"
 
     async def _on_initialize(self) -> None:
         """Initialize the request tracer."""
@@ -55,13 +61,54 @@ class RequestTracerRuntime(SystemPluginRuntime):
         self.observer = TracerObserver(self.config)
 
         if self.config.enabled:
-            # Register observer with ObservabilityPipeline
-            pipeline = get_observability_pipeline()
-            pipeline.register_observer(self.observer)
-            logger.info(
-                "tracer_observer_registered_with_pipeline",
-                observer_count=pipeline.get_observer_count(),
-            )
+            if self.use_hooks:
+                # Hook-based mode
+                self.hook = RequestTracerHook(self.config)
+
+                # Try to get hook registry from context
+                hook_registry = None
+
+                # Try direct from context first (provided by CoreServicesAdapter)
+                hook_registry = self.context.get("hook_registry")
+                logger.debug(
+                    "hook_registry_from_context",
+                    found=hook_registry is not None,
+                    context_keys=list(self.context.keys()) if self.context else [],
+                )
+                
+                # If not found, try app state
+                if not hook_registry:
+                    app = self.context.get("app")
+                    if app and hasattr(app.state, "hook_registry"):
+                        hook_registry = app.state.hook_registry
+                        logger.debug("hook_registry_from_app_state", found=True)
+
+                if hook_registry and isinstance(hook_registry, HookRegistry):
+                    hook_registry.register(self.hook)
+                    logger.info(
+                        "request_tracer_hook_registered",
+                        mode="hooks",
+                        verbose_api=self.config.verbose_api,
+                        raw_http=self.config.raw_http_enabled,
+                    )
+                else:
+                    logger.warning(
+                        "hook_registry_not_available",
+                        mode="hooks",
+                        fallback="observer",
+                    )
+                    # Fall back to observer mode
+                    self.use_hooks = False
+
+            if not self.use_hooks:
+                # Observer-based mode (legacy)
+                pipeline = get_observability_pipeline()
+                pipeline.register_observer(self.observer)
+                logger.info(
+                    "tracer_observer_registered_with_pipeline",
+                    mode="observer",
+                    observer_count=pipeline.get_observer_count(),
+                )
 
             # Register tracer with service container (for backward compatibility)
             service_container = self.context.get("service_container")
@@ -130,8 +177,23 @@ class RequestTracerRuntime(SystemPluginRuntime):
 
     async def _on_shutdown(self) -> None:
         """Cleanup on shutdown."""
-        # Unregister observer from pipeline
-        if self.observer:
+        # Unregister hook from registry
+        if self.use_hooks and self.hook:
+            # Try to get hook registry
+            hook_registry = None
+            if self.context:
+                app = self.context.get("app")
+                if app and hasattr(app.state, "hook_registry"):
+                    hook_registry = app.state.hook_registry
+                if not hook_registry:
+                    hook_registry = self.context.get("hook_registry")
+
+            if hook_registry and isinstance(hook_registry, HookRegistry):
+                hook_registry.unregister(self.hook)
+                logger.debug("tracer_hook_unregistered", category="middleware")
+
+        # Unregister observer from pipeline (if in observer mode)
+        if not self.use_hooks and self.observer:
             pipeline = get_observability_pipeline()
             pipeline.unregister_observer(self.observer)
             logger.debug("tracer_observer_unregistered", category="middleware")

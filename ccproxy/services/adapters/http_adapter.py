@@ -2,12 +2,15 @@
 
 import json
 from abc import abstractmethod
+from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 from fastapi import HTTPException, Request
 from starlette.responses import Response, StreamingResponse
 
 from ccproxy.core.logging import get_plugin_logger
+from ccproxy.hooks import HookEvent, HookManager
+from ccproxy.hooks.base import HookContext
 from ccproxy.services.adapters.base import BaseAdapter
 from ccproxy.services.handler_config import HandlerConfig
 from ccproxy.services.http.plugin_handler import PluginHTTPHandler
@@ -89,6 +92,26 @@ class BaseHTTPAdapter(BaseAdapter):
             raise RuntimeError(
                 "No HTTP client available - provide http_client or proxy_service with http_client"
             )
+
+    def _get_hook_manager(self) -> "HookManager | None":
+        """Get hook manager from context if available."""
+        try:
+            if not self.context:
+                return None
+
+            # Try to get from context directly
+            if "hook_manager" in self.context:
+                return self.context["hook_manager"]
+
+            # Try to get from app state
+            if "app" in self.context and hasattr(
+                self.context["app"].state, "hook_manager"
+            ):
+                return self.context["app"].state.hook_manager
+
+            return None
+        except Exception:
+            return None
 
     def _get_pricing_service(self) -> "PricingService | None":
         """Get pricing service from plugin registry if available."""
@@ -285,17 +308,120 @@ class BaseHTTPAdapter(BaseAdapter):
         if is_streaming and self.proxy_service:
             streaming_handler = getattr(self.proxy_service, "streaming_handler", None)
 
+        # Emit PROVIDER_REQUEST_SENT hook before sending to provider
+        hook_manager = self._get_hook_manager()
+        if hook_manager:
+            provider_name = self.__class__.__name__.replace("Adapter", "")
+            try:
+                await hook_manager.emit(
+                    HookEvent.PROVIDER_REQUEST_SENT,
+                    HookContext(
+                        event=HookEvent.PROVIDER_REQUEST_SENT,
+                        timestamp=datetime.now(),
+                        provider=provider_name,
+                        data={
+                            "url": target_url,
+                            "method": method,
+                            "headers": dict(headers),
+                            "is_streaming": is_streaming,
+                            "endpoint": endpoint,
+                            "model": request_data.get("model", "unknown"),
+                        },
+                        metadata={
+                            "request_id": request_context.request_id,
+                            "needs_conversion": needs_conversion,
+                        },
+                    ),
+                )
+            except Exception as e:
+                self.logger.debug(
+                    "hook_emission_failed",
+                    event="PROVIDER_REQUEST_SENT",
+                    error=str(e),
+                    category="hooks",
+                )
+
         # Execute request with proper request_context
-        response = await self._http_handler.handle_request(
-            method=method,
-            url=target_url,
-            headers=headers,
-            body=transformed_body,
-            handler_config=handler_config,
-            is_streaming=is_streaming,
-            streaming_handler=streaming_handler,
-            request_context=request_context,
-        )
+        try:
+            response = await self._http_handler.handle_request(
+                method=method,
+                url=target_url,
+                headers=headers,
+                body=transformed_body,
+                handler_config=handler_config,
+                is_streaming=is_streaming,
+                streaming_handler=streaming_handler,
+                request_context=request_context,
+            )
+
+            # Emit PROVIDER_RESPONSE_RECEIVED hook after receiving response
+            if hook_manager:
+                try:
+                    response_data = {
+                        "url": target_url,
+                        "method": method,
+                        "is_streaming": is_streaming,
+                        "endpoint": endpoint,
+                        "model": request_data.get("model", "unknown"),
+                    }
+
+                    # Add response status for non-streaming responses
+                    if hasattr(response, "status_code"):
+                        response_data["status_code"] = response.status_code
+
+                    await hook_manager.emit(
+                        HookEvent.PROVIDER_RESPONSE_RECEIVED,
+                        HookContext(
+                            event=HookEvent.PROVIDER_RESPONSE_RECEIVED,
+                            timestamp=datetime.now(),
+                            provider=provider_name,
+                            data=response_data,
+                            metadata={
+                                "request_id": request_context.request_id,
+                                "needs_conversion": needs_conversion,
+                            },
+                            response=response,
+                        ),
+                    )
+                except Exception as e:
+                    self.logger.debug(
+                        "hook_emission_failed",
+                        event="PROVIDER_RESPONSE_RECEIVED",
+                        error=str(e),
+                        category="hooks",
+                    )
+
+        except Exception as e:
+            # Emit PROVIDER_ERROR hook on error
+            if hook_manager:
+                try:
+                    await hook_manager.emit(
+                        HookEvent.PROVIDER_ERROR,
+                        HookContext(
+                            event=HookEvent.PROVIDER_ERROR,
+                            timestamp=datetime.now(),
+                            provider=provider_name,
+                            data={
+                                "url": target_url,
+                                "method": method,
+                                "endpoint": endpoint,
+                                "error": str(e),
+                            },
+                            metadata={
+                                "request_id": request_context.request_id,
+                            },
+                            error=e,
+                        ),
+                    )
+                except Exception as hook_error:
+                    self.logger.debug(
+                        "hook_emission_failed",
+                        event="PROVIDER_ERROR",
+                        error=str(hook_error),
+                        category="hooks",
+                    )
+            # Re-raise the original error
+            raise
 
         # Post-process response based on type
         return await self._post_process_response(

@@ -6,6 +6,7 @@ from typing import Any
 import httpx
 import structlog
 
+from ccproxy.hooks import HookManager
 from ccproxy.observability.context import RequestContext
 from ccproxy.observability.metrics import PrometheusMetrics
 from ccproxy.services.handler_config import HandlerConfig
@@ -24,16 +25,19 @@ class StreamingHandler:
         metrics: PrometheusMetrics | None = None,
         verbose_streaming: bool = False,
         request_tracer: RequestTracerImpl | None = None,
+        hook_manager: HookManager | None = None,
     ) -> None:
         """Initialize with metrics collector and debug settings.
 
         - Sets up Prometheus metrics if provided
         - Configures verbose streaming from environment
         - Optional request tracer for verbose logging
+        - Optional hook manager for emitting stream events
         """
         self.metrics = metrics
         self.verbose_streaming = verbose_streaming
         self.request_tracer = request_tracer
+        self.hook_manager = hook_manager
 
     def should_stream_response(self, headers: dict[str, str]) -> bool:
         """Check Accept header for streaming indicators.
@@ -107,4 +111,5 @@ class StreamingHandler:
             request_tracer=self.request_tracer,
             metrics=self.metrics,
             verbose_streaming=self.verbose_streaming,
+            hook_manager=self.hook_manager,
         )

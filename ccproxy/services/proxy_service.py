@@ -66,7 +66,6 @@ class ProxyService:
             category="lifecycle",
         )
 
-
     async def close(self) -> None:
         """Clean up resources on shutdown.
 

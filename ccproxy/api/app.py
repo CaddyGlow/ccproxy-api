@@ -121,6 +121,17 @@ async def initialize_plugins_startup(app: FastAPI, settings: Settings) -> None:
         app.state.service_container = ServiceContainer(settings, factory)
 
     service_container = app.state.service_container
+    
+    # Create hook system early if enabled so plugins can register hooks
+    hook_registry = None
+    hook_manager = None
+    if settings.hooks.enabled:
+        hook_registry = HookRegistry()
+        hook_manager = HookManager(hook_registry)
+        # Store in app state so plugins can access during initialization
+        app.state.hook_registry = hook_registry
+        app.state.hook_manager = hook_manager
+        logger.debug("hook_system_created_early_for_plugins", category="lifecycle")
 
     # Create a core services adapter for the plugin system
     # The plugin system expects certain attributes that we need to provide
@@ -134,6 +145,11 @@ async def initialize_plugins_startup(app: FastAPI, settings: Settings) -> None:
             self.scheduler = getattr(app.state, "scheduler", None)
             self.plugin_registry = app.state.plugin_registry
             self._container = container
+            # Add hook registry and manager if available
+            self.hook_registry = getattr(app.state, "hook_registry", None)
+            self.hook_manager = getattr(app.state, "hook_manager", None)
+            # Also expose app for plugins that need app.state access
+            self.app = app
 
         def get_plugin_config(self, plugin_name: str) -> Any:
             """Get plugin configuration."""
@@ -177,9 +193,18 @@ async def initialize_hooks_startup(app: FastAPI, settings: Settings) -> None:
         logger.info("hook_system_disabled", category="lifecycle")
         return
 
-    # Create hook system
-    hook_registry = HookRegistry()
-    hook_manager = HookManager(hook_registry)
+    # Check if hook system was already created during plugin init
+    if hasattr(app.state, "hook_registry") and hasattr(app.state, "hook_manager"):
+        hook_registry = app.state.hook_registry
+        hook_manager = app.state.hook_manager
+        logger.debug("hook_system_already_created", category="lifecycle")
+    else:
+        # Create hook system if not already created
+        hook_registry = HookRegistry()
+        hook_manager = HookManager(hook_registry)
+        # Store hook manager in app state
+        app.state.hook_registry = hook_registry
+        app.state.hook_manager = hook_manager
 
     # Get plugin registry from app state
     if hasattr(app.state, "plugin_registry"):
@@ -207,10 +232,6 @@ async def initialize_hooks_startup(app: FastAPI, settings: Settings) -> None:
                         exc_info=e,
                         category="lifecycle",
                     )
-
-    # Store hook manager in app state
-    app.state.hook_registry = hook_registry
-    app.state.hook_manager = hook_manager
 
     # Hooks middleware is already added during middleware setup and will get
     # the hook manager from app state when processing requests
