@@ -411,64 +411,10 @@ def status_command(
     )
     toolkit.print_line()
 
-    async def get_plugin_profile_info(provider_name: str) -> dict[str, Any] | None:
-        """Get profile info using plugin's method."""
-        try:
-            plugin = await get_plugin_for_provider(provider_name)
-
-            # Initialize plugin with minimal CoreServices
-            import httpx
-            import structlog
-
-            from ccproxy.core.services import CoreServices
-
-            settings = get_settings()
-
-            async with httpx.AsyncClient() as client:
-                services = CoreServices(
-                    settings=settings,
-                    http_client=client,
-                    logger=structlog.get_logger(),
-                )
-                await plugin.initialize(services)
-
-                # Get profile info
-                profile_info = await plugin.get_profile_info()
-                if profile_info is None:
-                    return None
-                # Ensure we return a dict as specified in the function signature
-                if isinstance(profile_info, dict):
-                    return profile_info
-                # Convert other types to dict if possible
-                if hasattr(profile_info, "__dict__"):
-                    return dict(profile_info.__dict__)
-                return {"profile_info": str(profile_info)}
-        except ValueError as e:
-            # Provider doesn't support OAuth or doesn't exist
-            logger.debug(
-                "profile_info_value_error",
-                provider=provider_name,
-                error=str(e),
-                exc_info=e,
-            )
-            return None
-        except AttributeError as e:
-            logger.debug(
-                "profile_info_missing_attribute",
-                provider=provider_name,
-                error=str(e),
-                exc_info=e,
-            )
-            return None
-        except Exception as e:
-            logger.debug(
-                "profile_info_failed", provider=provider_name, error=str(e), exc_info=e
-            )
-            return None
-
     try:
         # Try to get profile info based on provider type
         profile_info = None
+        credentials = None
 
         if provider == "codex":
             # Check Codex/OpenAI credentials directly
@@ -652,6 +598,7 @@ def logout_command(
     try:
         if provider == "codex":
             token_manager = asyncio.run(get_token_manager_for_provider("codex"))
+            existing_creds = None
             if token_manager:
                 existing_creds = asyncio.run(token_manager.load_credentials())
 
