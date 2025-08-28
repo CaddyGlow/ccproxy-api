@@ -65,8 +65,8 @@ class BaseTransformer(ABC):
 
         try:
             # Calculate data sizes
-            input_size = self._calculate_data_size(input_data)
-            output_size = self._calculate_data_size(output_data) if output_data else 0
+            # input_size = self._calculate_data_size(input_data)
+            # output_size = self._calculate_data_size(output_data) if output_data else 0
 
             # Create a unique request ID for this transformation
             request_id = (

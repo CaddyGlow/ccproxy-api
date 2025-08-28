@@ -206,7 +206,6 @@ def setup_error_handlers(app: FastAPI) -> None:
 
         # Don't log stack trace for expected errors (404, 401)
         if exc.status_code in (404, 401):
-            log_level = "debug" if exc.status_code == 404 else "warning"
             log_func = logger.debug if exc.status_code == 404 else logger.warning
 
             log_func(

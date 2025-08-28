@@ -105,10 +105,6 @@ from ccproxy.core.middleware import (
     MiddlewareProtocol,
     NextMiddleware,
 )
-from ccproxy.core.proxy import (
-    HTTPProxy,
-    ProxyProtocol,
-)
 from ccproxy.core.transformers import (
     BaseTransformer,
     ChainedTransformer,
@@ -126,20 +122,6 @@ from ccproxy.core.types import (
 )
 from ccproxy.core.types import (
     ProxyProtocol as ProxyProtocolEnum,
-)
-from ccproxy.core.validators import (
-    ValidationError,
-    validate_choice,
-    validate_dict,
-    validate_email,
-    validate_list,
-    validate_non_empty_string,
-    validate_path,
-    validate_port,
-    validate_range,
-    validate_timeout,
-    validate_url,
-    validate_uuid,
 )
 
 
@@ -257,16 +239,4 @@ __all__ = [
     "URL_PATTERN",
     "UUID_PATTERN",
     "YAML_EXTENSIONS",
-    # Validators
-    "validate_choice",
-    "validate_dict",
-    "validate_email",
-    "validate_list",
-    "validate_non_empty_string",
-    "validate_path",
-    "validate_port",
-    "validate_range",
-    "validate_timeout",
-    "validate_url",
-    "validate_uuid",
 ]

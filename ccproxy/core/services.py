@@ -92,7 +92,7 @@ class CoreServices:
                     # Validate and return config using plugin's schema
                     try:
                         validated_config = config_class(**raw_config)
-                        return validated_config.model_dump()  # type: ignore[no-any-return]
+                        return validated_config.model_dump()
                     except (ValueError, TypeError) as e:
                         self.logger.error(
                             "config_validation_error",
