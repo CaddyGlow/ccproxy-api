@@ -211,8 +211,7 @@ async def request_context(
         "request_start", request_id=request_id, timestamp=time.time(), **initial_context
     )
 
-    # Emit SSE event for real-time dashboard updates
-    await _emit_request_start_event(request_id, initial_context)
+    # SSE events removed - functionality moved to plugins
 
     # Increment active requests if metrics provided
     if metrics:
@@ -280,8 +279,7 @@ async def request_context(
             **log_data,
         )
 
-        # Emit SSE event for real-time dashboard updates
-        await _emit_request_error_event(request_id, error_type, str(e), ctx.metadata)
+        # SSE events removed - functionality moved to plugins
 
         # Re-raise the exception
         raise
@@ -497,69 +495,4 @@ async def tracked_request_context(
             await tracker.remove_context(ctx.request_id)
 
 
-async def _emit_request_start_event(
-    request_id: str, initial_context: dict[str, Any]
-) -> None:
-    """Emit SSE event for request start."""
-    try:
-        from ccproxy.observability.sse_events import emit_sse_event
-
-        # Create event data for SSE
-        sse_data = {
-            "request_id": request_id,
-            "method": initial_context.get("method"),
-            "path": initial_context.get("path"),
-            "client_ip": initial_context.get("client_ip"),
-            "user_agent": initial_context.get("user_agent"),
-            "query": initial_context.get("query"),
-        }
-
-        # Remove None values
-        sse_data = {k: v for k, v in sse_data.items() if v is not None}
-
-        await emit_sse_event("request_start", sse_data)
-
-    except Exception as e:
-        # Log error but don't fail the request
-        logger.debug(
-            "sse_emit_failed",
-            event_type="request_start",
-            error=str(e),
-            request_id=request_id,
-            exc_info=e,
-        )
-
-
-async def _emit_request_error_event(
-    request_id: str, error_type: str, error_message: str, metadata: dict[str, Any]
-) -> None:
-    """Emit SSE event for request error."""
-    try:
-        from ccproxy.observability.sse_events import emit_sse_event
-
-        # Create event data for SSE
-        sse_data = {
-            "request_id": request_id,
-            "error_type": error_type,
-            "error_message": error_message,
-            "method": metadata.get("method"),
-            "path": metadata.get("path"),
-            "client_ip": metadata.get("client_ip"),
-            "user_agent": metadata.get("user_agent"),
-            "query": metadata.get("query"),
-        }
-
-        # Remove None values
-        sse_data = {k: v for k, v in sse_data.items() if v is not None}
-
-        await emit_sse_event("request_error", sse_data)
-
-    except Exception as e:
-        # Log error but don't fail the request
-        logger.debug(
-            "sse_emit_failed",
-            event_type="request_error",
-            error=str(e),
-            request_id=request_id,
-            exc_info=e,
-        )
+# SSE event emission functions removed - functionality moved to plugins

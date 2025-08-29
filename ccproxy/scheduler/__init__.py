@@ -21,7 +21,7 @@ from .registry import TaskRegistry, register_task
 from .tasks import (
     BaseScheduledTask,
     PushgatewayTask,
-    StatsPrintingTask,
+    # StatsPrintingTask removed - functionality moved to metrics plugin
 )
 
 
@@ -34,5 +34,5 @@ __all__ = [
     "register_task",
     "BaseScheduledTask",
     "PushgatewayTask",
-    "StatsPrintingTask",
+    # "StatsPrintingTask",  # removed - functionality moved to metrics plugin
 ]

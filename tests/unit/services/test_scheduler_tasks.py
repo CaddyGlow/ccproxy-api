@@ -12,7 +12,7 @@ from ccproxy.core.async_task_manager import start_task_manager, stop_task_manage
 from ccproxy.scheduler.tasks import (
     BaseScheduledTask,
     PushgatewayTask,
-    StatsPrintingTask,
+    # StatsPrintingTask removed - functionality moved to metrics plugin
     VersionUpdateCheckTask,
 )
 
@@ -282,114 +282,116 @@ class TestPushgatewayTask:
             await task.cleanup()
 
 
-class TestStatsPrintingTask:
-    """Test StatsPrintingTask specific functionality."""
+# TestStatsPrintingTask removed - functionality moved to metrics plugin
 
-    @pytest.mark.asyncio
-    async def test_stats_printing_task_setup(self) -> None:
-        """Test StatsPrintingTask setup process."""
-        with (
-            patch("ccproxy.config.settings.get_settings") as mock_get_settings,
-            patch("ccproxy.observability.metrics.get_metrics") as mock_get_metrics,
-            patch(
-                "ccproxy.observability.stats_printer.get_stats_collector"
-            ) as mock_get_stats,
-        ):
-            # Setup mocks
-            mock_settings = MagicMock()
-            mock_settings.observability = MagicMock()
-            mock_get_settings.return_value = mock_settings
-
-            mock_metrics = MagicMock()
-            mock_get_metrics.return_value = mock_metrics
-
-            mock_stats_collector = AsyncMock()
-            mock_get_stats.return_value = mock_stats_collector
-
-            task = StatsPrintingTask(
-                name="stats_setup_test",
-                interval_seconds=60.0,
-                enabled=True,
-            )
-
-            await task.setup()
-            assert task._stats_collector_instance is not None
-            assert task._metrics_instance is not None
-
-            await task.cleanup()
-
-    @pytest.mark.asyncio
-    async def test_stats_printing_task_run_success(self) -> None:
-        """Test successful stats printing task execution."""
-        with (
-            patch("ccproxy.config.settings.get_settings") as mock_get_settings,
-            patch("ccproxy.observability.metrics.get_metrics") as mock_get_metrics,
-            patch(
-                "ccproxy.observability.stats_printer.get_stats_collector"
-            ) as mock_get_stats,
-        ):
-            # Setup mocks
-            mock_settings = MagicMock()
-            mock_settings.observability = MagicMock()
-            mock_get_settings.return_value = mock_settings
-
-            mock_metrics = MagicMock()
-            mock_get_metrics.return_value = mock_metrics
-
-            mock_stats_collector = AsyncMock()
-            mock_get_stats.return_value = mock_stats_collector
-
-            task = StatsPrintingTask(
-                name="stats_success_test",
-                interval_seconds=60.0,
-                enabled=True,
-            )
-
-            await task.setup()
-            result = await task.run()
-
-            assert result is True
-            mock_stats_collector.print_stats.assert_called_once()
-
-            await task.cleanup()
-
-    @pytest.mark.asyncio
-    async def test_stats_printing_task_error_handling(self) -> None:
-        """Test stats printing task error handling."""
-        with (
-            patch("ccproxy.config.settings.get_settings") as mock_get_settings,
-            patch("ccproxy.observability.metrics.get_metrics") as mock_get_metrics,
-            patch(
-                "ccproxy.observability.stats_printer.get_stats_collector"
-            ) as mock_get_stats,
-        ):
-            # Setup mocks
-            mock_settings = MagicMock()
-            mock_settings.observability = MagicMock()
-            mock_get_settings.return_value = mock_settings
-
-            mock_metrics = MagicMock()
-            mock_get_metrics.return_value = mock_metrics
-
-            mock_stats_collector = AsyncMock()
-            mock_stats_collector.print_stats.side_effect = Exception("Print error")
-            mock_get_stats.return_value = mock_stats_collector
-
-            task = StatsPrintingTask(
-                name="stats_error_test",
-                interval_seconds=60.0,
-                enabled=True,
-            )
-
-            await task.setup()
-            result = await task.run()
-
-            assert result is False
-            mock_stats_collector.print_stats.assert_called_once()
-
-            await task.cleanup()
-
-
+# class TestStatsPrintingTask:
+#     """Test StatsPrintingTask specific functionality."""
+# 
+#     @pytest.mark.asyncio
+#     async def test_stats_printing_task_setup(self) -> None:
+#         """Test StatsPrintingTask setup process."""
+#         with (
+#             patch("ccproxy.config.settings.get_settings") as mock_get_settings,
+#             patch("ccproxy.observability.metrics.get_metrics") as mock_get_metrics,
+#             patch(
+#                 "ccproxy.observability.stats_printer.get_stats_collector"
+#             ) as mock_get_stats,
+#         ):
+#             # Setup mocks
+#             mock_settings = MagicMock()
+#             mock_settings.observability = MagicMock()
+#             mock_get_settings.return_value = mock_settings
+# 
+#             mock_metrics = MagicMock()
+#             mock_get_metrics.return_value = mock_metrics
+# 
+#             mock_stats_collector = AsyncMock()
+#             mock_get_stats.return_value = mock_stats_collector
+# 
+#             task = StatsPrintingTask(
+#                 name="stats_setup_test",
+#                 interval_seconds=60.0,
+#                 enabled=True,
+#             )
+# 
+#             await task.setup()
+#             assert task._stats_collector_instance is not None
+#             assert task._metrics_instance is not None
+# 
+#             await task.cleanup()
+# 
+#     @pytest.mark.asyncio
+#     async def test_stats_printing_task_run_success(self) -> None:
+#         """Test successful stats printing task execution."""
+#         with (
+#             patch("ccproxy.config.settings.get_settings") as mock_get_settings,
+#             patch("ccproxy.observability.metrics.get_metrics") as mock_get_metrics,
+#             patch(
+#                 "ccproxy.observability.stats_printer.get_stats_collector"
+#             ) as mock_get_stats,
+#         ):
+#             # Setup mocks
+#             mock_settings = MagicMock()
+#             mock_settings.observability = MagicMock()
+#             mock_get_settings.return_value = mock_settings
+# 
+#             mock_metrics = MagicMock()
+#             mock_get_metrics.return_value = mock_metrics
+# 
+#             mock_stats_collector = AsyncMock()
+#             mock_get_stats.return_value = mock_stats_collector
+# 
+#             task = StatsPrintingTask(
+#                 name="stats_success_test",
+#                 interval_seconds=60.0,
+#                 enabled=True,
+#             )
+# 
+#             await task.setup()
+#             result = await task.run()
+# 
+#             assert result is True
+#             mock_stats_collector.print_stats.assert_called_once()
+# 
+#             await task.cleanup()
+# 
+#     @pytest.mark.asyncio
+#     async def test_stats_printing_task_error_handling(self) -> None:
+#         """Test stats printing task error handling."""
+#         with (
+#             patch("ccproxy.config.settings.get_settings") as mock_get_settings,
+#             patch("ccproxy.observability.metrics.get_metrics") as mock_get_metrics,
+#             patch(
+#                 "ccproxy.observability.stats_printer.get_stats_collector"
+#             ) as mock_get_stats,
+#         ):
+#             # Setup mocks
+#             mock_settings = MagicMock()
+#             mock_settings.observability = MagicMock()
+#             mock_get_settings.return_value = mock_settings
+# 
+#             mock_metrics = MagicMock()
+#             mock_get_metrics.return_value = mock_metrics
+# 
+#             mock_stats_collector = AsyncMock()
+#             mock_stats_collector.print_stats.side_effect = Exception("Print error")
+#             mock_get_stats.return_value = mock_stats_collector
+# 
+#             task = StatsPrintingTask(
+#                 name="stats_error_test",
+#                 interval_seconds=60.0,
+#                 enabled=True,
+#             )
+# 
+#             await task.setup()
+#             result = await task.run()
+# 
+#             assert result is False
+#             mock_stats_collector.print_stats.assert_called_once()
+# 
+#             await task.cleanup()
+# 
+# 
 class TestVersionUpdateCheckTask:
     """Test VersionUpdateCheckTask specific functionality."""
 

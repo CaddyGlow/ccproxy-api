@@ -10,7 +10,7 @@ from .registry import register_task
 from .tasks import (
     PoolStatsTask,
     PushgatewayTask,
-    StatsPrintingTask,
+    # StatsPrintingTask removed - functionality moved to metrics plugin
     VersionUpdateCheckTask,
 )
 
@@ -74,33 +74,13 @@ async def setup_scheduler_tasks(scheduler: Scheduler, settings: Settings) -> Non
                 exc_info=e,
             )
 
-    # Add stats printing task if enabled
+    # Stats printing task removed - functionality moved to metrics plugin
+    # The metrics plugin now handles stats collection and reporting
     if scheduler_config.stats_printing_enabled:
-        try:
-            await scheduler.add_task(
-                task_name="stats_printing",
-                task_type="stats_printing",
-                interval_seconds=scheduler_config.stats_printing_interval_seconds,
-                enabled=True,
-            )
-            logger.info(
-                "stats_printing_task_added",
-                interval_seconds=scheduler_config.stats_printing_interval_seconds,
-            )
-        except TaskRegistrationError as e:
-            logger.error(
-                "stats_printing_task_registration_failed",
-                error=str(e),
-                error_type=type(e).__name__,
-                exc_info=e,
-            )
-        except Exception as e:
-            logger.error(
-                "stats_printing_task_add_failed",
-                error=str(e),
-                error_type=type(e).__name__,
-                exc_info=e,
-            )
+        logger.info(
+            "stats_printing_task_skipped",
+            message="Stats printing functionality has been moved to the metrics plugin",
+        )
 
     # Pricing cache update task is now handled by the pricing plugin
     if scheduler_config.pricing_update_enabled:
@@ -158,10 +138,7 @@ def _register_default_tasks(settings: Settings) -> None:
         register_task("pushgateway", PushgatewayTask)
 
     # Only register stats printing task if enabled
-    if scheduler_config.stats_printing_enabled and not registry.is_registered(
-        "stats_printing"
-    ):
-        register_task("stats_printing", StatsPrintingTask)
+    # Stats printing task removed - functionality moved to metrics plugin
 
     # Always register core tasks (not metrics-related)
     if not registry.is_registered("version_update_check"):

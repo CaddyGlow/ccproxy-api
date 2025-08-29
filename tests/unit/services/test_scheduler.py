@@ -20,7 +20,7 @@ from ccproxy.scheduler.manager import start_scheduler, stop_scheduler
 from ccproxy.scheduler.registry import TaskRegistry, get_task_registry
 from ccproxy.scheduler.tasks import (
     PushgatewayTask,
-    StatsPrintingTask,
+    # StatsPrintingTask removed - functionality moved to metrics plugin
 )
 
 
@@ -42,7 +42,7 @@ class TestSchedulerCore:
         # Register tasks before creating scheduler
         from ccproxy.scheduler.tasks import (
             PushgatewayTask,
-            StatsPrintingTask,
+            # StatsPrintingTask removed
         )
 
         registry = get_task_registry()
@@ -50,7 +50,7 @@ class TestSchedulerCore:
 
         # Register default tasks
         registry.register("pushgateway", PushgatewayTask)
-        registry.register("stats_printing", StatsPrintingTask)
+        # registry.register("stats_printing", StatsPrintingTask)  # removed
 
         scheduler = Scheduler(
             max_concurrent_tasks=5,
@@ -210,7 +210,7 @@ class TestTaskRegistry:
         registry.register("duplicate_task", PushgatewayTask)
 
         with pytest.raises(TaskRegistrationError, match="already registered"):
-            registry.register("duplicate_task", StatsPrintingTask)
+            registry.register("duplicate_task", PushgatewayTask)  # Changed from StatsPrintingTask
 
     def test_register_invalid_task_class_error(self, registry: TaskRegistry) -> None:
         """Test registering invalid task class raises error."""
@@ -244,18 +244,18 @@ class TestTaskRegistry:
     def test_registry_info(self, registry: TaskRegistry) -> None:
         """Test getting registry information."""
         registry.register("task1", PushgatewayTask)
-        registry.register("task2", StatsPrintingTask)
+        registry.register("task2", PushgatewayTask)  # Changed from StatsPrintingTask
 
         info = registry.get_registry_info()
         assert info["total_tasks"] == 2
         assert set(info["registered_tasks"]) == {"task1", "task2"}
         assert info["task_classes"]["task1"] == "PushgatewayTask"
-        assert info["task_classes"]["task2"] == "StatsPrintingTask"
+        assert info["task_classes"]["task2"] == "PushgatewayTask"  # Changed from StatsPrintingTask
 
     def test_clear_registry(self, registry: TaskRegistry) -> None:
         """Test clearing the registry."""
         registry.register("task1", PushgatewayTask)
-        registry.register("task2", StatsPrintingTask)
+        registry.register("task2", PushgatewayTask)  # Changed from StatsPrintingTask
         assert len(registry.list_tasks()) == 2
 
         registry.clear()
@@ -290,42 +290,7 @@ class TestScheduledTasks:
 
             await task.cleanup()
 
-    @pytest.mark.asyncio
-    async def test_stats_printing_task_lifecycle(self) -> None:
-        """Test StatsPrintingTask lifecycle management."""
-        with (
-            patch("ccproxy.config.settings.get_settings") as mock_get_settings,
-            patch("ccproxy.observability.metrics.get_metrics") as mock_get_metrics,
-            patch(
-                "ccproxy.observability.stats_printer.get_stats_collector"
-            ) as mock_get_stats,
-        ):
-            # Setup mocks
-            mock_settings = MagicMock()
-            mock_settings.observability = MagicMock()
-            mock_get_settings.return_value = mock_settings
-
-            mock_metrics = MagicMock()
-            mock_get_metrics.return_value = mock_metrics
-
-            mock_stats_collector = AsyncMock()
-            mock_get_stats.return_value = mock_stats_collector
-
-            task = StatsPrintingTask(
-                name="test_stats",
-                interval_seconds=0.1,
-                enabled=True,
-            )
-
-            await task.setup()
-            assert task._stats_collector_instance is not None
-
-            # Test single run
-            result = await task.run()
-            assert result is True
-            mock_stats_collector.print_stats.assert_called_once()
-
-            await task.cleanup()
+    # StatsPrintingTask test removed - functionality moved to metrics plugin
 
     @pytest.mark.asyncio
     async def test_task_error_handling(self) -> None:
@@ -423,7 +388,7 @@ class TestSchedulerManagerIntegration:
         from ccproxy.scheduler.registry import get_task_registry
         from ccproxy.scheduler.tasks import (
             PushgatewayTask,
-            StatsPrintingTask,
+            # StatsPrintingTask removed
         )
 
         registry = get_task_registry()
@@ -431,7 +396,7 @@ class TestSchedulerManagerIntegration:
 
         # Register default tasks
         registry.register("pushgateway", PushgatewayTask)
-        registry.register("stats_printing", StatsPrintingTask)
+        # registry.register("stats_printing", StatsPrintingTask)  # removed
 
         yield
 
@@ -593,7 +558,7 @@ class TestSchedulerErrorScenarios:
         from ccproxy.scheduler.registry import get_task_registry
         from ccproxy.scheduler.tasks import (
             PushgatewayTask,
-            StatsPrintingTask,
+            # StatsPrintingTask removed
         )
 
         registry = get_task_registry()
@@ -601,7 +566,7 @@ class TestSchedulerErrorScenarios:
 
         # Register default tasks
         registry.register("pushgateway", PushgatewayTask)
-        registry.register("stats_printing", StatsPrintingTask)
+        # registry.register("stats_printing", StatsPrintingTask)  # removed
 
         yield
 
