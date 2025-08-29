@@ -80,15 +80,7 @@ class AccessLogHook(Hook):
             context: Hook context with event data
         """
         if not self.config.enabled:
-            logger.debug("access_log_hook_disabled", hook_event=context.event.value if context.event else "unknown")
             return
-        
-        logger.debug(
-            "access_log_hook_called",
-            hook_event=context.event.value if context.event else "unknown",
-            request_id=context.data.get("request_id", "unknown"),
-            data_keys=list(context.data.keys()) if context.data else [],
-        )
         
         # Map hook events to handler methods
         handlers = {
@@ -103,12 +95,6 @@ class AccessLogHook(Hook):
         handler = handlers.get(context.event)
         if handler:
             try:
-                logger.debug(
-                    "access_log_hook_calling_handler",
-                    hook_event=context.event.value,
-                    handler=handler.__name__,
-                    request_id=context.data.get("request_id", "unknown"),
-                )
                 await handler(context)
             except Exception as e:
                 logger.error(
@@ -117,16 +103,10 @@ class AccessLogHook(Hook):
                     error=str(e),
                     exc_info=e,
                 )
-        else:
-            logger.debug(
-                "access_log_hook_no_handler",
-                hook_event=context.event.value if context.event else "unknown",
-            )
     
     async def _handle_request_start(self, context: HookContext) -> None:
         """Handle REQUEST_STARTED event."""
         if not self.config.client_enabled:
-            logger.debug("access_log_client_disabled", handler="request_start")
             return
         
         # Extract request data from context
@@ -139,12 +119,6 @@ class AccessLogHook(Hook):
             # Extract path from URL
             url = context.data.get("url", "")
             path = self._extract_path(url)
-            logger.debug(
-                "access_log_extracted_path",
-                url=url,
-                extracted_path=path,
-                request_id=request_id,
-            )
         
         query = context.data.get("query", "")
         
@@ -161,23 +135,8 @@ class AccessLogHook(Hook):
             headers = context.data.get("headers", {})
             user_agent = headers.get("user-agent", "-")
         
-        logger.debug(
-            "access_log_request_start_data",
-            request_id=request_id,
-            method=method,
-            path=path,
-            client_ip=client_ip,
-            user_agent=user_agent,
-        )
-        
         # Check path filters
         if self._should_exclude_path(path):
-            logger.debug(
-                "access_log_path_excluded",
-                path=path,
-                request_id=request_id,
-                exclude_paths=self.config.exclude_paths,
-            )
             return
         
         # Store request data for later
@@ -193,37 +152,16 @@ class AccessLogHook(Hook):
             "user_agent": user_agent,
             "start_time": current_time,
         }
-        
-        logger.debug(
-            "access_log_request_stored",
-            request_id=request_id,
-            path=path,
-            method=method,
-            stored_count=len(self.client_requests),
-        )
     
     async def _handle_request_complete(self, context: HookContext) -> None:
         """Handle REQUEST_COMPLETED event."""
         if not self.config.client_enabled:
-            logger.debug("access_log_client_disabled", handler="request_complete")
             return
         
         request_id = context.data.get("request_id", "unknown")
         
-        logger.debug(
-            "access_log_request_complete",
-            request_id=request_id,
-            stored_requests=list(self.client_requests.keys()),
-            data_keys=list(context.data.keys()) if context.data else [],
-        )
-        
         # Check if we have the request data
         if request_id not in self.client_requests:
-            logger.debug(
-                "access_log_request_not_found",
-                request_id=request_id,
-                stored_requests=list(self.client_requests.keys()),
-            )
             return
         
         # Get and remove request data
@@ -252,14 +190,6 @@ class AccessLogHook(Hook):
                 log_data, self.config.client_format
             )
             await self.client_writer.write(formatted)
-            logger.debug(
-                "access_log_written_to_file",
-                request_id=request_id,
-                path=log_data.get("path"),
-                status_code=status_code,
-                log_file=self.config.client_log_file,
-                format=self.config.client_format,
-            )
         
         # Also log to structured logger
         await self._log_to_structured_logger(log_data, "client")
