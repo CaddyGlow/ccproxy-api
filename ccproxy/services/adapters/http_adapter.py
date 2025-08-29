@@ -37,6 +37,9 @@ if TYPE_CHECKING:
     from ccproxy.streaming.interfaces import IStreamingMetricsCollector
 
 
+logger = get_plugin_logger()
+
+
 class BaseHTTPAdapter(BaseAdapter):
     """Base adapter class for HTTP-based providers.
 
@@ -61,8 +64,6 @@ class BaseHTTPAdapter(BaseAdapter):
         streaming_handler: "IStreamingHandler | None" = None,
         request_transformer: "BaseTransformer | None" = None,
         response_transformer: "BaseTransformer | None" = None,
-        logger: "structlog.BoundLogger | None" = None,
-        
         # Context for plugin-specific services
         context: "PluginContext | None" = None,
     ) -> None:
@@ -77,7 +78,6 @@ class BaseHTTPAdapter(BaseAdapter):
             streaming_handler: Optional streaming handler
             request_transformer: Optional request transformer
             response_transformer: Optional response transformer
-            logger: Optional structured logger instance
             context: Optional plugin context containing plugin_registry and other services
         """
         # Store required dependencies
@@ -89,8 +89,7 @@ class BaseHTTPAdapter(BaseAdapter):
         self.request_tracer = request_tracer or NullRequestTracer()
         self.metrics = metrics or NullMetricsCollector()
         self.streaming_handler = streaming_handler or NullStreamingHandler()
-        self.logger = logger or get_plugin_logger()
-        
+
         # Store context for plugin-specific needs
         self.context = context or {}
 
@@ -129,7 +128,7 @@ class BaseHTTPAdapter(BaseAdapter):
             return plugin_registry.get_service("pricing")
 
         except Exception as e:
-            self.logger.debug("failed_to_get_pricing_service", error=str(e))
+            logger.debug("failed_to_get_pricing_service", error=str(e))
             return None
 
     async def handle_request(
@@ -331,7 +330,7 @@ class BaseHTTPAdapter(BaseAdapter):
                 )
                 await hook_manager.emit_with_context(hook_context)
             except Exception as e:
-                self.logger.debug(
+                logger.debug(
                     "hook_emission_failed",
                     event="PROVIDER_REQUEST_SENT",
                     error=str(e),
@@ -379,7 +378,7 @@ class BaseHTTPAdapter(BaseAdapter):
                     )
                     await hook_manager.emit_with_context(response_hook_context)
                 except Exception as e:
-                    self.logger.debug(
+                    logger.debug(
                         "hook_emission_failed",
                         event="PROVIDER_RESPONSE_RECEIVED",
                         error=str(e),
@@ -407,7 +406,7 @@ class BaseHTTPAdapter(BaseAdapter):
                     )
                     await hook_manager.emit_with_context(error_hook_context)
                 except Exception as hook_error:
-                    self.logger.debug(
+                    logger.debug(
                         "hook_emission_failed",
                         event="PROVIDER_ERROR",
                         error=str(hook_error),
@@ -532,10 +531,10 @@ class BaseHTTPAdapter(BaseAdapter):
             self.metrics = None
             self.streaming_handler = None
 
-            self.logger.debug("http_adapter_cleanup_completed")
+            logger.debug("http_adapter_cleanup_completed")
 
         except Exception as e:
-            self.logger.error(
+            logger.error(
                 "http_adapter_cleanup_failed",
                 error=str(e),
                 exc_info=e,

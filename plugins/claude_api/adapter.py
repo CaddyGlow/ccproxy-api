@@ -56,8 +56,6 @@ class ClaudeAPIAdapter(BaseHTTPAdapter):
         request_tracer: "IRequestTracer | None" = None,
         metrics: "IMetricsCollector | None" = None,
         streaming_handler: "IStreamingHandler | None" = None,
-        logger: "structlog.BoundLogger | None" = None,
-        
         # Plugin-specific context
         context: "PluginContext | dict[str, Any] | None" = None,
         
@@ -73,7 +71,6 @@ class ClaudeAPIAdapter(BaseHTTPAdapter):
             request_tracer: Optional request tracer
             metrics: Optional metrics collector
             streaming_handler: Optional streaming handler
-            logger: Optional structured logger instance
             context: Optional plugin context containing plugin_registry and other services
             proxy_service: Legacy ProxyService for backward compatibility
         """
@@ -118,7 +115,6 @@ class ClaudeAPIAdapter(BaseHTTPAdapter):
             streaming_handler=streaming_handler,
             request_transformer=request_transformer,
             response_transformer=response_transformer,
-            logger=logger,
             context=context,
         )
 
@@ -248,7 +244,7 @@ class ClaudeAPIAdapter(BaseHTTPAdapter):
             needs_conversion: Whether format conversion is needed
             target_url: Target API URL
         """
-        self.logger.info(
+        logger.info(
             "plugin_request",
             plugin="claude_api",
             endpoint=endpoint,
@@ -273,7 +269,7 @@ class ClaudeAPIAdapter(BaseHTTPAdapter):
             return plugin_registry.get_service("pricing", PricingService)
 
         except Exception as e:
-            self.logger.debug("failed_to_get_pricing_service", error=str(e))
+            logger.debug("failed_to_get_pricing_service", error=str(e))
             return None
 
     async def _calculate_cost_for_usage(
@@ -322,7 +318,7 @@ class ClaudeAPIAdapter(BaseHTTPAdapter):
             # Update context with calculated cost
             metadata["cost_usd"] = cost_usd
 
-            self.logger.debug(
+            logger.debug(
                 "cost_calculated",
                 model=model,
                 cost_usd=cost_usd,
@@ -333,7 +329,7 @@ class ClaudeAPIAdapter(BaseHTTPAdapter):
                 source="non_streaming",
             )
         except ModelPricingNotFoundError as e:
-            self.logger.warning(
+            logger.warning(
                 "model_pricing_not_found",
                 model=model,
                 message=str(e),
@@ -341,18 +337,18 @@ class ClaudeAPIAdapter(BaseHTTPAdapter):
                 tokens_output=tokens_output,
             )
         except PricingDataNotLoadedError as e:
-            self.logger.warning(
+            logger.warning(
                 "pricing_data_not_loaded",
                 model=model,
                 message=str(e),
             )
         except PricingServiceDisabledError as e:
-            self.logger.debug(
+            logger.debug(
                 "pricing_service_disabled",
                 message=str(e),
             )
         except Exception as e:
-            self.logger.debug(
+            logger.debug(
                 "cost_calculation_failed",
                 error=str(e),
                 model=metadata.get("model"),
@@ -414,7 +410,7 @@ class ClaudeAPIAdapter(BaseHTTPAdapter):
                         # Also store the headers dictionary for display
                         request_context.metadata["headers"] = headers_for_log
 
-                        self.logger.debug(
+                        logger.debug(
                             "claude_api_headers_extracted",
                             headers_count=len(headers_for_log),
                             headers=headers_for_log,
@@ -435,7 +431,7 @@ class ClaudeAPIAdapter(BaseHTTPAdapter):
 
                 # Debug: Log first few chunks to see what we're processing
                 if len(chunks) <= 3:
-                    self.logger.debug(
+                    logger.debug(
                         "streaming_chunk_debug",
                         chunk_length=len(chunk_str),
                         chunk_preview=chunk_str[:200],
@@ -447,7 +443,7 @@ class ClaudeAPIAdapter(BaseHTTPAdapter):
                 is_final = collector.process_chunk(chunk_str)
 
                 # Debug: Log collector state
-                self.logger.debug(
+                logger.debug(
                     "streaming_collector_state",
                     is_final=is_final,
                     metrics=collector.get_metrics(),
@@ -492,7 +488,7 @@ class ClaudeAPIAdapter(BaseHTTPAdapter):
                                     )
                                     cost_usd = float(cost_decimal)
 
-                                    self.logger.debug(
+                                    logger.debug(
                                         "streaming_cost_calculated",
                                         model=model,
                                         cost_usd=cost_usd,
@@ -510,7 +506,7 @@ class ClaudeAPIAdapter(BaseHTTPAdapter):
                                     )
 
                                 except ModelPricingNotFoundError as e:
-                                    self.logger.warning(
+                                    logger.warning(
                                         "model_pricing_not_found",
                                         model=model,
                                         message=str(e),
@@ -521,27 +517,27 @@ class ClaudeAPIAdapter(BaseHTTPAdapter):
                                         category="pricing",
                                     )
                                 except PricingDataNotLoadedError as e:
-                                    self.logger.warning(
+                                    logger.warning(
                                         "pricing_data_not_loaded",
                                         model=model,
                                         message=str(e),
                                         category="pricing",
                                     )
                                 except PricingServiceDisabledError as e:
-                                    self.logger.debug(
+                                    logger.debug(
                                         "pricing_service_disabled",
                                         message=str(e),
                                         category="pricing",
                                     )
                                 except Exception as e:
-                                    self.logger.debug(
+                                    logger.debug(
                                         "cost_calculation_failed",
                                         error=str(e),
                                         model=model,
                                         category="pricing",
                                     )
                             else:
-                                self.logger.debug(
+                                logger.debug(
                                     "pricing_service_not_available",
                                     category="pricing",
                                 )
@@ -567,7 +563,7 @@ class ClaudeAPIAdapter(BaseHTTPAdapter):
                             }
                         )
 
-                        self.logger.debug(
+                        logger.debug(
                             "usage_extracted",
                             tokens_input=usage_metrics.get("tokens_input"),
                             tokens_output=usage_metrics.get("tokens_output"),
@@ -667,10 +663,10 @@ class ClaudeAPIAdapter(BaseHTTPAdapter):
             # Claude API specific cleanup
             self.openai_adapter = None
 
-            self.logger.debug("claude_api_adapter_cleanup_completed")
+            logger.debug("claude_api_adapter_cleanup_completed")
 
         except Exception as e:
-            self.logger.error(
+            logger.error(
                 "claude_api_adapter_cleanup_failed",
                 error=str(e),
                 exc_info=e,

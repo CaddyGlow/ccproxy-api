@@ -230,7 +230,6 @@ class CodexFactory(BaseProviderPluginFactory):
         request_tracer = context.get("request_tracer")
         metrics = context.get("metrics")
         streaming_handler = context.get("streaming_handler")
-        logger_instance = context.get("logger")
 
         if not http_client:
             raise RuntimeError("HTTP client is required for Codex adapter")
@@ -246,7 +245,6 @@ class CodexFactory(BaseProviderPluginFactory):
             request_tracer=request_tracer,
             metrics=metrics,
             streaming_handler=streaming_handler,
-            logger=logger_instance,
             context=context,
         )
 

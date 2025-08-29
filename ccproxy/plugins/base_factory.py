@@ -144,8 +144,7 @@ class BaseProviderPluginFactory(ProviderPluginFactory):
         request_tracer: IRequestTracer | None = context.get("request_tracer")
         metrics: IMetricsCollector | None = context.get("metrics")
         streaming_handler: IStreamingHandler | None = context.get("streaming_handler")
-        logger_instance: "structlog.BoundLogger | None" = context.get("logger")
-        
+
         # Get auth and detection services that may have been created by factory
         auth_manager = context.get("credentials_manager")
         detection_service = context.get("detection_service")
@@ -172,7 +171,6 @@ class BaseProviderPluginFactory(ProviderPluginFactory):
                 request_tracer=request_tracer or NullRequestTracer(),
                 metrics=metrics or NullMetricsCollector(),
                 streaming_handler=streaming_handler or NullStreamingHandler(),
-                logger=logger_instance,
                 context=context,
                 proxy_service=proxy_service,  # Legacy support
             )
@@ -197,7 +195,6 @@ class BaseProviderPluginFactory(ProviderPluginFactory):
                 "request_tracer": request_tracer,
                 "metrics": metrics,
                 "streaming_handler": streaming_handler,
-                "logger": logger_instance,
                 "context": context,
                 "proxy_service": proxy_service,  # Legacy support
             }

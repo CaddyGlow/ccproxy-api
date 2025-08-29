@@ -163,14 +163,12 @@ class ClaudeSDKFactory(BaseProviderPluginFactory):
 
         # Get optional dependencies
         metrics = context.get("metrics")
-        logger_instance = context.get("logger")
         
         # Create adapter with config and optional dependencies
         # Note: ClaudeSDKAdapter doesn't need http_client as it uses SDK
         adapter = ClaudeSDKAdapter(
             config=config, 
-            metrics=metrics,
-            logger=logger_instance
+            metrics=metrics
         )
 
         return adapter
