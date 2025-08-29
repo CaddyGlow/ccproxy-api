@@ -10,7 +10,6 @@ from ccproxy.hooks.events import HookEvent
 
 from .config import RequestTracerConfig
 from .formatters.json import JSONFormatter
-from .formatters.raw import RawHTTPFormatter
 
 
 logger = structlog.get_logger(__name__)
@@ -45,19 +44,18 @@ class RequestTracerHook(Hook):
         self.config = config or RequestTracerConfig()
 
         # Initialize formatters based on config
+        # Note: Only JSON formatter is supported in hooks mode
+        # Raw HTTP logging requires access to actual network bytes
         self.json_formatter = (
             JSONFormatter(self.config) if self.config.json_logs_enabled else None
-        )
-        self.raw_formatter = (
-            RawHTTPFormatter(self.config) if self.config.raw_http_enabled else None
         )
 
         logger.info(
             "request_tracer_hook_initialized",
             enabled=self.config.enabled,
             json_logs=self.config.json_logs_enabled,
-            raw_http=self.config.raw_http_enabled,
             log_dir=str(self.config.log_dir),
+            note="Raw HTTP logging not available in hooks mode",
         )
 
     async def __call__(self, context: HookContext) -> None:
@@ -89,7 +87,7 @@ class RequestTracerHook(Hook):
             except Exception as e:
                 logger.error(
                     "request_tracer_hook_error",
-                    event=context.event.value if context.event else "unknown",
+                    hook_event=context.event.value if context.event else "unknown",
                     error=str(e),
                     exc_info=e,
                 )
@@ -112,23 +110,17 @@ class RequestTracerHook(Hook):
 
         # Log with JSON formatter
         if self.json_formatter and self.config.verbose_api:
-            await self.json_formatter.log_client_request(
+            await self.json_formatter.log_request(
                 request_id=request_id,
                 method=method,
                 url=url,
                 headers=headers,
                 body=None,  # Body not available in hook context yet
+                request_type="client",
             )
 
-        # Log with raw formatter
-        if self.raw_formatter:
-            await self.raw_formatter.log_client_request(
-                request_id=request_id,
-                method=method,
-                url=url,
-                headers=headers,
-                body=None,
-            )
+        # Note: Raw formatter requires actual HTTP bytes which aren't available in hooks
+        # Raw logging must be done at the network layer, not via hooks
 
     async def _handle_request_complete(self, context: HookContext) -> None:
         """Handle REQUEST_COMPLETED event."""
@@ -148,23 +140,15 @@ class RequestTracerHook(Hook):
 
         # Log with JSON formatter
         if self.json_formatter and self.config.verbose_api:
-            await self.json_formatter.log_client_response(
+            await self.json_formatter.log_response(
                 request_id=request_id,
-                status_code=status_code,
+                status=status_code,
                 headers=headers,
-                body=None,  # Body not available in hook context
-                duration=duration,
+                body=b"",  # Body not available in hook context
+                response_type="client",
             )
 
-        # Log with raw formatter
-        if self.raw_formatter:
-            await self.raw_formatter.log_client_response(
-                request_id=request_id,
-                status_code=status_code,
-                headers=headers,
-                body=None,
-                duration=duration,
-            )
+        # Note: Raw formatter requires actual HTTP bytes which aren't available in hooks
 
     async def _handle_request_failed(self, context: HookContext) -> None:
         """Handle REQUEST_FAILED event."""
@@ -213,16 +197,7 @@ class RequestTracerHook(Hook):
                 body=None,  # Body not included in hook for security
             )
 
-        # Log with raw formatter
-        if self.raw_formatter:
-            await self.raw_formatter.log_provider_request(
-                request_id=request_id,
-                provider=provider,
-                method=method,
-                url=url,
-                headers=headers,
-                body=None,
-            )
+        # Note: Raw formatter requires actual HTTP bytes which aren't available in hooks
 
     async def _handle_provider_response(self, context: HookContext) -> None:
         """Handle PROVIDER_RESPONSE_RECEIVED event."""
@@ -248,15 +223,7 @@ class RequestTracerHook(Hook):
                 body=None,
             )
 
-        # Log with raw formatter
-        if self.raw_formatter:
-            await self.raw_formatter.log_provider_response(
-                request_id=request_id,
-                provider=provider,
-                status_code=status_code,
-                headers={},
-                body=None,
-            )
+        # Note: Raw formatter requires actual HTTP bytes which aren't available in hooks
 
     async def _handle_provider_error(self, context: HookContext) -> None:
         """Handle PROVIDER_ERROR event."""

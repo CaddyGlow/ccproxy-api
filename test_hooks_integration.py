@@ -4,7 +4,9 @@
 import asyncio
 import os
 import sys
+from datetime import datetime
 from pathlib import Path
+
 
 # Set the hooks enabled flag
 os.environ["HOOKS_ENABLED"] = "true"
@@ -13,10 +15,9 @@ os.environ["HOOKS_ENABLED"] = "true"
 project_root = Path(__file__).parent
 sys.path.insert(0, str(project_root))
 
-from ccproxy.config.settings import Settings, get_settings
-from ccproxy.hooks import HookEvent, HookManager, HookRegistry
-from ccproxy.hooks.base import HookContext
-from datetime import datetime
+from ccproxy.config.settings import Settings, get_settings  # noqa: E402
+from ccproxy.hooks import HookEvent, HookManager, HookRegistry  # noqa: E402
+from ccproxy.hooks.base import HookContext  # noqa: E402
 
 
 # Test hook to verify events are being emitted

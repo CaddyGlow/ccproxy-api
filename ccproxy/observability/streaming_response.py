@@ -13,8 +13,6 @@ from typing import TYPE_CHECKING, Any
 import structlog
 from fastapi.responses import StreamingResponse
 
-from ccproxy.observability.access_logger import log_request_access
-
 
 if TYPE_CHECKING:
     from ccproxy.observability.context import RequestContext
@@ -95,11 +93,6 @@ class StreamingResponseWithLogging(StreamingResponse):
                 # Check if status_code was updated in context metadata (e.g., due to error)
                 final_status_code = context.metadata.get("status_code", status_code)
 
-                await log_request_access(
-                    context=context,
-                    status_code=final_status_code,
-                    metrics=metrics,
-                )
             except Exception as e:
                 logger.warning(
                     "streaming_access_log_failed",

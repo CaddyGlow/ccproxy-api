@@ -7,6 +7,7 @@ from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import StreamingResponse
 
+from ccproxy.api.middleware.streaming_hooks import StreamingResponseWithHooks
 from ccproxy.core.logging import TraceBoundLogger, get_logger
 from ccproxy.hooks import HookEvent, HookManager
 from ccproxy.hooks.base import HookContext
@@ -92,7 +93,7 @@ class HooksMiddleware(BaseHTTPMiddleware):
 
         try:
             # Emit REQUEST_STARTED before processing
-            await hook_manager.emit(HookEvent.REQUEST_STARTED, hook_context)
+            await hook_manager.emit_with_context(hook_context)
 
             # Process the request
             response = await call_next(request)
@@ -118,14 +119,11 @@ class HooksMiddleware(BaseHTTPMiddleware):
 
             # Handle streaming responses specially
             if isinstance(response, StreamingResponse):
-                # For streaming responses, emit REQUEST_COMPLETED immediately
-                # The actual streaming completion will be handled elsewhere
-                await hook_manager.emit(
-                    HookEvent.REQUEST_COMPLETED, response_hook_context
-                )
+                # For streaming responses, wrap with hook emission on completion
+                # Don't emit REQUEST_COMPLETED here - it will be emitted when streaming actually completes
 
                 logger.debug(
-                    "hooks_middleware_streaming_request_completed",
+                    "hooks_middleware_wrapping_streaming_response",
                     request_id=request_id,
                     method=request.method,
                     url=str(request.url),
@@ -134,11 +132,29 @@ class HooksMiddleware(BaseHTTPMiddleware):
                     response_type="streaming",
                     category="hooks",
                 )
+
+                # Wrap the streaming response to emit hooks on completion
+                request_data = {
+                    "method": request.method,
+                    "url": str(request.url),
+                    "headers": dict(request.headers),
+                }
+
+                wrapped_response = StreamingResponseWithHooks(
+                    content=response.body_iterator,
+                    hook_manager=hook_manager,
+                    request_id=request_id,
+                    request_data=request_data,
+                    start_time=start_time,
+                    status_code=response.status_code,
+                    headers=dict(response.headers),
+                    media_type=response.media_type,
+                )
+
+                return wrapped_response
             else:
                 # For regular responses, emit REQUEST_COMPLETED
-                await hook_manager.emit(
-                    HookEvent.REQUEST_COMPLETED, response_hook_context
-                )
+                await hook_manager.emit_with_context(response_hook_context)
 
                 logger.debug(
                     "hooks_middleware_request_completed",
@@ -173,7 +189,7 @@ class HooksMiddleware(BaseHTTPMiddleware):
 
             # Emit REQUEST_FAILED on error
             try:
-                await hook_manager.emit(HookEvent.REQUEST_FAILED, error_hook_context)
+                await hook_manager.emit_with_context(error_hook_context)
             except Exception as hook_error:
                 logger.error(
                     "hooks_middleware_hook_emission_failed",

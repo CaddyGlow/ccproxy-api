@@ -75,7 +75,7 @@ class RequestTracerRuntime(SystemPluginRuntime):
                     found=hook_registry is not None,
                     context_keys=list(self.context.keys()) if self.context else [],
                 )
-                
+
                 # If not found, try app state
                 if not hook_registry:
                     app = self.context.get("app")

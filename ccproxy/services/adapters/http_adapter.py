@@ -313,26 +313,24 @@ class BaseHTTPAdapter(BaseAdapter):
         if hook_manager:
             provider_name = self.__class__.__name__.replace("Adapter", "")
             try:
-                await hook_manager.emit(
-                    HookEvent.PROVIDER_REQUEST_SENT,
-                    HookContext(
-                        event=HookEvent.PROVIDER_REQUEST_SENT,
-                        timestamp=datetime.now(),
-                        provider=provider_name,
-                        data={
-                            "url": target_url,
-                            "method": method,
-                            "headers": dict(headers),
-                            "is_streaming": is_streaming,
-                            "endpoint": endpoint,
-                            "model": request_data.get("model", "unknown"),
-                        },
-                        metadata={
-                            "request_id": request_context.request_id,
-                            "needs_conversion": needs_conversion,
-                        },
-                    ),
+                hook_context = HookContext(
+                    event=HookEvent.PROVIDER_REQUEST_SENT,
+                    timestamp=datetime.now(),
+                    provider=provider_name,
+                    data={
+                        "url": target_url,
+                        "method": method,
+                        "headers": dict(headers),
+                        "is_streaming": is_streaming,
+                        "endpoint": endpoint,
+                        "model": request_data.get("model", "unknown"),
+                    },
+                    metadata={
+                        "request_id": request_context.request_id,
+                        "needs_conversion": needs_conversion,
+                    },
                 )
+                await hook_manager.emit_with_context(hook_context)
             except Exception as e:
                 self.logger.debug(
                     "hook_emission_failed",
@@ -369,20 +367,18 @@ class BaseHTTPAdapter(BaseAdapter):
                     if hasattr(response, "status_code"):
                         response_data["status_code"] = response.status_code
 
-                    await hook_manager.emit(
-                        HookEvent.PROVIDER_RESPONSE_RECEIVED,
-                        HookContext(
-                            event=HookEvent.PROVIDER_RESPONSE_RECEIVED,
-                            timestamp=datetime.now(),
-                            provider=provider_name,
-                            data=response_data,
-                            metadata={
-                                "request_id": request_context.request_id,
-                                "needs_conversion": needs_conversion,
-                            },
-                            response=response,
-                        ),
+                    response_hook_context = HookContext(
+                        event=HookEvent.PROVIDER_RESPONSE_RECEIVED,
+                        timestamp=datetime.now(),
+                        provider=provider_name,
+                        data=response_data,
+                        metadata={
+                            "request_id": request_context.request_id,
+                            "needs_conversion": needs_conversion,
+                        },
+                        response=response,
                     )
+                    await hook_manager.emit_with_context(response_hook_context)
                 except Exception as e:
                     self.logger.debug(
                         "hook_emission_failed",
@@ -395,24 +391,22 @@ class BaseHTTPAdapter(BaseAdapter):
             # Emit PROVIDER_ERROR hook on error
             if hook_manager:
                 try:
-                    await hook_manager.emit(
-                        HookEvent.PROVIDER_ERROR,
-                        HookContext(
-                            event=HookEvent.PROVIDER_ERROR,
-                            timestamp=datetime.now(),
-                            provider=provider_name,
-                            data={
-                                "url": target_url,
-                                "method": method,
-                                "endpoint": endpoint,
-                                "error": str(e),
-                            },
-                            metadata={
-                                "request_id": request_context.request_id,
-                            },
-                            error=e,
-                        ),
+                    error_hook_context = HookContext(
+                        event=HookEvent.PROVIDER_ERROR,
+                        timestamp=datetime.now(),
+                        provider=provider_name,
+                        data={
+                            "url": target_url,
+                            "method": method,
+                            "endpoint": endpoint,
+                            "error": str(e),
+                        },
+                        metadata={
+                            "request_id": request_context.request_id,
+                        },
+                        error=e,
                     )
+                    await hook_manager.emit_with_context(error_hook_context)
                 except Exception as hook_error:
                     self.logger.debug(
                         "hook_emission_failed",

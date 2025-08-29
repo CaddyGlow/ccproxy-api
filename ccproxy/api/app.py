@@ -121,7 +121,7 @@ async def initialize_plugins_startup(app: FastAPI, settings: Settings) -> None:
         app.state.service_container = ServiceContainer(settings, factory)
 
     service_container = app.state.service_container
-    
+
     # Create hook system early if enabled so plugins can register hooks
     hook_registry = None
     hook_manager = None

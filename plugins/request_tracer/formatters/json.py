@@ -306,18 +306,6 @@ class JSONFormatter:
             return "<binary data>"
 
     # Streaming methods
-    async def log_stream_start(self, request_id: str, headers: dict[str, str]) -> None:
-        """Mark beginning of stream with initial headers."""
-        if not self.verbose_api:
-            return
-
-        logger.info(
-            "stream_start",
-            category="streaming",
-            request_id=request_id,
-            headers=dict(headers),
-        )
-
     async def log_stream_chunk(
         self, request_id: str, chunk: bytes, chunk_number: int
     ) -> None:
@@ -333,17 +321,107 @@ class JSONFormatter:
             chunk_size=len(chunk),
         )
 
-    async def log_stream_complete(
-        self, request_id: str, total_chunks: int, total_bytes: int
+    async def log_error(
+        self,
+        request_id: str,
+        error: Exception | None,
+        duration: float | None = None,
+        provider: str | None = None,
     ) -> None:
-        """Mark stream completion with statistics."""
+        """Log error information."""
         if not self.verbose_api:
             return
 
-        logger.info(
-            "stream_complete",
-            category="streaming",
+        error_data = {
+            "request_id": request_id,
+            "error": str(error) if error else "unknown",
+            "category": "error",
+        }
+
+        if duration is not None:
+            error_data["duration"] = duration
+        if provider:
+            error_data["provider"] = provider
+
+        logger.error("request_error", **error_data)
+
+    async def log_provider_request(
+        self,
+        request_id: str,
+        provider: str,
+        method: str,
+        url: str,
+        headers: dict[str, str],
+        body: bytes | None,
+    ) -> None:
+        """Log provider request."""
+        await self.log_request(
             request_id=request_id,
-            total_chunks=total_chunks,
-            total_bytes=total_bytes,
+            method=method,
+            url=url,
+            headers=headers,
+            body=body,
+            request_type="provider",
         )
+
+    async def log_provider_response(
+        self,
+        request_id: str,
+        provider: str,
+        status_code: int,
+        headers: dict[str, str],
+        body: bytes | None,
+    ) -> None:
+        """Log provider response."""
+        await self.log_response(
+            request_id=request_id,
+            status=status_code,
+            headers=headers,
+            body=body or b"",
+            response_type="provider",
+        )
+
+    async def log_stream_start(
+        self,
+        request_id: str,
+        provider: str | None = None,
+    ) -> None:
+        """Log stream start."""
+        if not self.verbose_api:
+            return
+
+        log_data = {
+            "request_id": request_id,
+            "category": "streaming",
+        }
+        if provider:
+            log_data["provider"] = provider
+
+        logger.info("stream_start", **log_data)
+
+    async def log_stream_complete(
+        self,
+        request_id: str,
+        provider: str | None = None,
+        total_chunks: int | None = None,
+        total_bytes: int | None = None,
+        usage_metrics: dict[str, Any] | None = None,
+    ) -> None:
+        """Log stream completion with metrics."""
+        if not self.verbose_api:
+            return
+
+        log_data = {
+            "request_id": request_id,
+            "category": "streaming",
+        }
+        if provider:
+            log_data["provider"] = provider
+        if total_chunks is not None:
+            log_data["total_chunks"] = total_chunks
+        if total_bytes is not None:
+            log_data["total_bytes"] = total_bytes
+        if usage_metrics:
+            log_data["usage_metrics"] = usage_metrics
+
+        logger.info("stream_complete", **log_data)

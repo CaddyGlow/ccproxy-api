@@ -159,23 +159,21 @@ class DeferredStreaming(Response):
                                 "service_type", "unknown"
                             )
 
-                        await self.hook_manager.emit(
-                            HookEvent.PROVIDER_STREAM_START,
-                            HookContext(
-                                event=HookEvent.PROVIDER_STREAM_START,
-                                timestamp=datetime.now(),
-                                provider=provider,
-                                data={
-                                    "url": self.url,
-                                    "method": self.method,
-                                    "headers": dict(self.request_headers),
-                                    "request_id": request_id,
-                                },
-                                metadata={
-                                    "request_id": request_id,
-                                },
-                            ),
+                        stream_start_context = HookContext(
+                            event=HookEvent.PROVIDER_STREAM_START,
+                            timestamp=datetime.now(),
+                            provider=provider,
+                            data={
+                                "url": self.url,
+                                "method": self.method,
+                                "headers": dict(self.request_headers),
+                                "request_id": request_id,
+                            },
+                            metadata={
+                                "request_id": request_id,
+                            },
                         )
+                        await self.hook_manager.emit_with_context(stream_start_context)
                     except Exception as e:
                         logger.debug(
                             "hook_emission_failed",
@@ -375,26 +373,26 @@ class DeferredStreaming(Response):
                                     "service_type", "unknown"
                                 )
 
-                            await self.hook_manager.emit(
-                                HookEvent.PROVIDER_STREAM_END,
-                                HookContext(
-                                    event=HookEvent.PROVIDER_STREAM_END,
-                                    timestamp=datetime.now(),
-                                    provider=provider,
-                                    data={
-                                        "url": self.url,
-                                        "method": self.method,
-                                        "request_id": request_id,
-                                        "total_chunks": total_chunks,
-                                        "total_bytes": total_bytes,
-                                        "usage_metrics": usage_metrics
-                                        if usage_metrics
-                                        else {},
-                                    },
-                                    metadata={
-                                        "request_id": request_id,
-                                    },
-                                ),
+                            stream_end_context = HookContext(
+                                event=HookEvent.PROVIDER_STREAM_END,
+                                timestamp=datetime.now(),
+                                provider=provider,
+                                data={
+                                    "url": self.url,
+                                    "method": self.method,
+                                    "request_id": request_id,
+                                    "total_chunks": total_chunks,
+                                    "total_bytes": total_bytes,
+                                    "usage_metrics": usage_metrics
+                                    if usage_metrics
+                                    else {},
+                                },
+                                metadata={
+                                    "request_id": request_id,
+                                },
+                            )
+                            await self.hook_manager.emit_with_context(
+                                stream_end_context
                             )
                         except Exception as e:
                             logger.debug(
