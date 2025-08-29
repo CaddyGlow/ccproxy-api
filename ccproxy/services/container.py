@@ -289,8 +289,6 @@ class ServiceContainer:
             "logger": structlog.get_logger(),
             "config": self.get_proxy_config(),
             "cli_detection_service": self.get_cli_detection_service(),
-            # Legacy ProxyService creation for backward compatibility
-            "proxy_service": None,  # Will be removed completely after migration
         }
 
     async def close(self) -> None:

@@ -1,11 +1,9 @@
 """Request Tracer plugin implementation."""
 
-import os
 from typing import Any
 
 from ccproxy.core.logging import get_plugin_logger
 from ccproxy.hooks import HookRegistry
-from ccproxy.observability import get_observability_pipeline
 from ccproxy.plugins import (
     MiddlewareLayer,
     MiddlewareSpec,
@@ -18,9 +16,7 @@ from ccproxy.plugins import (
 from .config import RequestTracerConfig
 from .hook import RequestTracerHook
 from .middleware import RequestTracingMiddleware
-from .observer import TracerObserver
 from .tracer import RequestTracerImpl
-from .transport import TracingHTTPTransport
 
 
 logger = get_plugin_logger()
@@ -34,11 +30,9 @@ class RequestTracerRuntime(SystemPluginRuntime):
         super().__init__(manifest)
         self.config: RequestTracerConfig | None = None
         self.tracer_instance: RequestTracerImpl | None = None
-        self.observer: TracerObserver | None = None
         self.hook: RequestTracerHook | None = None
-        self.original_transport: Any | None = None
-        # Feature flag to control observer vs hook mode
-        self.use_hooks = os.getenv("HOOKS_ENABLED", "false").lower() == "true"
+        # Feature flag to control hook mode only
+        self.use_hooks = True  # os.getenv("HOOKS_ENABLED", "false").lower() == "true"
 
     async def _on_initialize(self) -> None:
         """Initialize the request tracer."""
@@ -56,9 +50,6 @@ class RequestTracerRuntime(SystemPluginRuntime):
 
         # Create tracer instance (for backward compatibility)
         self.tracer_instance = RequestTracerImpl(self.config)
-
-        # Create observer for the new pipeline
-        self.observer = TracerObserver(self.config)
 
         if self.config.enabled:
             if self.use_hooks:
@@ -95,20 +86,10 @@ class RequestTracerRuntime(SystemPluginRuntime):
                     logger.warning(
                         "hook_registry_not_available",
                         mode="hooks",
-                        fallback="observer",
+                        fallback=None,
                     )
-                    # Fall back to observer mode
+                    # If hook registry not available, do not register
                     self.use_hooks = False
-
-            if not self.use_hooks:
-                # Observer-based mode (legacy)
-                pipeline = get_observability_pipeline()
-                pipeline.register_observer(self.observer)
-                logger.info(
-                    "tracer_observer_registered_with_pipeline",
-                    mode="observer",
-                    observer_count=pipeline.get_observer_count(),
-                )
 
             # Register tracer with service container (for backward compatibility)
             service_container = self.context.get("service_container")
@@ -121,9 +102,8 @@ class RequestTracerRuntime(SystemPluginRuntime):
                     raw_http=self.config.raw_http_enabled,
                 )
 
-            # Wrap HTTP client transport for provider logging if raw HTTP is enabled
-            if self.config.raw_http_enabled:
-                await self._wrap_http_client_transport()
+            # Note: Transport wrapping is not used with hooks mode
+            # Raw HTTP logging is handled by the hooks/observer pattern
 
             logger.info(
                 "request_tracer_enabled",
@@ -142,38 +122,6 @@ class RequestTracerRuntime(SystemPluginRuntime):
         else:
             logger.info("request_tracer_disabled")
 
-    async def _wrap_http_client_transport(self) -> None:
-        """Wrap the shared HTTP client's transport with tracing."""
-        if not self.context:
-            return
-
-        http_client = self.context.get("http_client")
-        if not http_client:
-            logger.warning("no_http_client_to_wrap")
-            return
-
-        # Get the current transport
-        current_transport = http_client._transport
-
-        # Only wrap if not already wrapped
-        if not isinstance(current_transport, TracingHTTPTransport):
-            # Store original for potential unwrapping
-            self.original_transport = current_transport
-
-            # Create and set tracing transport
-            from httpx import AsyncHTTPTransport
-
-            wrapped = (
-                current_transport
-                if isinstance(current_transport, AsyncHTTPTransport)
-                else None
-            )
-            tracing_transport = TracingHTTPTransport(
-                wrapped_transport=wrapped, tracer=self.tracer_instance
-            )
-            http_client._transport = tracing_transport
-
-            logger.debug("http_client_transport_wrapped", category="middleware")
 
     async def _on_shutdown(self) -> None:
         """Cleanup on shutdown."""
@@ -192,18 +140,6 @@ class RequestTracerRuntime(SystemPluginRuntime):
                 hook_registry.unregister(self.hook)
                 logger.debug("tracer_hook_unregistered", category="middleware")
 
-        # Unregister observer from pipeline (if in observer mode)
-        if not self.use_hooks and self.observer:
-            pipeline = get_observability_pipeline()
-            pipeline.unregister_observer(self.observer)
-            logger.debug("tracer_observer_unregistered", category="middleware")
-
-        # Restore original transport if we wrapped it
-        if self.context and self.original_transport:
-            http_client = self.context.get("http_client")
-            if http_client:
-                http_client._transport = self.original_transport
-                logger.debug("http_client_transport_restored", category="middleware")
 
         # Restore null tracer on shutdown
         if self.context:
@@ -275,21 +211,15 @@ class RequestTracerFactory(SystemPluginFactory):
             and config.enabled
             and config.raw_http_enabled
         ):
-            # Check if compression is enabled and warn the user
-            from ccproxy.config import get_settings
-
-            settings = get_settings()
-            if (
-                settings
-                and hasattr(settings, "http")
-                and settings.http.compression_enabled
-            ):
-                logger.warning(
-                    "request_tracer_with_compression_warning",
-                    message="Request tracer is enabled with HTTP compression. Response bodies may be compressed/unreadable in JSON logs.",
-                    recommendation="Set HTTP__COMPRESSION_ENABLED=false for readable response bodies",
-                    compression_enabled=settings.http.compression_enabled,
-                    accept_encoding=settings.http.accept_encoding,
+            # Disable HTTP compression for readable traces
+            settings = getattr(core_services, 'settings', None)
+            if settings and hasattr(settings, 'http'):
+                settings.http.compression_enabled = False
+                logger.info(
+                    "request_tracer_disabled_compression",
+                    message="Disabled HTTP compression for raw HTTP tracing",
+                    reason="Ensures captured response bodies are human-readable in trace logs",
+                    raw_http_enabled=config.raw_http_enabled,
                 )
 
             # Create tracer instance for middleware

@@ -27,7 +27,6 @@ if TYPE_CHECKING:
     from ccproxy.scheduler.tasks import BaseScheduledTask
     from ccproxy.services.adapters.base import BaseAdapter
     from ccproxy.services.cli_detection import CLIDetectionService
-    from ccproxy.services.proxy_service import ProxyService
 else:
     # Runtime import - mypy doesn't have stubs for fastapi.middleware
     from starlette.middleware.base import BaseHTTPMiddleware
@@ -182,7 +181,6 @@ class PluginContext(TypedDict, total=False):
     settings: "Settings"  # Application settings
     http_client: httpx.AsyncClient  # Shared HTTP client
     logger: structlog.BoundLogger  # Structured logger
-    proxy_service: "ProxyService"  # ProxyService instance
     scheduler: "Scheduler"  # Scheduler instance
     config: BaseModel | None  # Plugin-specific configuration
     cli_detection_service: "CLIDetectionService"  # Shared CLI detection service

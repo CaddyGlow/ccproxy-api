@@ -151,9 +151,6 @@ class BaseProviderPluginFactory(ProviderPluginFactory):
         # Get config if available
         config = context.get("config")
 
-        # Legacy proxy_service for backward compatibility
-        proxy_service = context.get("proxy_service")
-
         # Check if this is an HTTP-based adapter
         if issubclass(self.adapter_class, BaseHTTPAdapter):
             # HTTP adapters require http_client
@@ -171,7 +168,6 @@ class BaseProviderPluginFactory(ProviderPluginFactory):
                 metrics=metrics or NullMetricsCollector(),
                 streaming_handler=streaming_handler or NullStreamingHandler(),
                 context=context,
-                proxy_service=proxy_service,  # Legacy support
             )
         else:
             # Non-HTTP adapters (like ClaudeSDK) have different dependencies
@@ -195,7 +191,6 @@ class BaseProviderPluginFactory(ProviderPluginFactory):
                 "metrics": metrics,
                 "streaming_handler": streaming_handler,
                 "context": context,
-                "proxy_service": proxy_service,  # Legacy support
             }
 
             # Add parameters that the adapter expects

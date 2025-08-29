@@ -1,6 +1,5 @@
 """Hook-based request tracer implementation."""
 
-
 import structlog
 
 from ccproxy.hooks import Hook

@@ -11,7 +11,6 @@ from ccproxy.config.settings import Settings
 if TYPE_CHECKING:
     from ccproxy.plugins.factory import PluginRegistry
     from ccproxy.scheduler.core import Scheduler
-    from ccproxy.services.interfaces import IRequestHandler
 
 
 class CoreServices:
@@ -24,7 +23,6 @@ class CoreServices:
         settings: Settings,
         scheduler: "Scheduler | None" = None,
         plugin_registry: "PluginRegistry | None" = None,
-        proxy_service: "IRequestHandler | None" = None,
     ):
         """Initialize core services.
 
@@ -34,14 +32,12 @@ class CoreServices:
             settings: Application settings
             scheduler: Optional scheduler for plugin tasks
             plugin_registry: Optional plugin registry for config introspection
-            proxy_service: Optional request handler reference for adapter initialization
         """
         self.http_client = http_client
         self.logger = logger
         self.settings = settings
         self.scheduler = scheduler
         self.plugin_registry = plugin_registry
-        self.proxy_service = proxy_service
 
     def is_plugin_logging_enabled(self, plugin_name: str) -> bool:
         """Check if logging is enabled for a specific plugin.

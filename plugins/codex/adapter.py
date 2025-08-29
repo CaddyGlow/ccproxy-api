@@ -22,7 +22,6 @@ from ccproxy.services.handler_config import HandlerConfig
 
 
 if TYPE_CHECKING:
-
     from ccproxy.observability.context import RequestContext
     from ccproxy.plugins.declaration import PluginContext
     from ccproxy.services.cli_detection import CLIDetectionService
@@ -41,10 +40,10 @@ logger = get_plugin_logger()
 
 
 class CodexAdapter(BaseHTTPAdapter):
-    """Codex adapter using ProxyService delegation pattern.
+    """Codex adapter using HTTP adapter delegation pattern.
 
     This adapter follows the same pattern as Claude API adapter,
-    delegating actual HTTP operations to ProxyService.
+    delegating actual HTTP operations to base HTTP adapter.
     """
 
     def __init__(
@@ -59,8 +58,6 @@ class CodexAdapter(BaseHTTPAdapter):
         streaming_handler: "IStreamingHandler | None" = None,
         # Plugin-specific context
         context: "PluginContext | dict[str, Any] | None" = None,
-        # Legacy proxy_service for backward compatibility (to be removed)
-        proxy_service: Any | None = None,
     ):
         """Initialize the Codex adapter with explicit dependencies.
 
@@ -72,14 +69,13 @@ class CodexAdapter(BaseHTTPAdapter):
             metrics: Optional metrics collector
             streaming_handler: Optional streaming handler
             context: Optional plugin context containing plugin_registry and other services
-            proxy_service: Legacy ProxyService for backward compatibility
         """
         # Initialize transformers
         request_transformer = CodexRequestTransformer(detection_service)
 
         # Initialize response transformer with CORS settings
         cors_settings = None
-        # Try from context first, then from legacy proxy_service
+        # Try from context
         if context:
             config = (
                 context.get("config")
@@ -88,12 +84,6 @@ class CodexAdapter(BaseHTTPAdapter):
             )
             if config:
                 cors_settings = getattr(config, "cors", None)
-        elif proxy_service:
-            # Legacy support - check if proxy_service has config
-            from ccproxy.services.proxy_service import ProxyService
-
-            if isinstance(proxy_service, ProxyService):
-                cors_settings = getattr(proxy_service.config, "cors", None)
 
         response_transformer = CodexResponseTransformer(cors_settings)
 

@@ -9,7 +9,6 @@ from starlette.responses import StreamingResponse
 
 
 if TYPE_CHECKING:
-
     from ccproxy.auth.manager import AuthManager
     from ccproxy.observability.context import RequestContext
     from ccproxy.plugins.declaration import PluginContext

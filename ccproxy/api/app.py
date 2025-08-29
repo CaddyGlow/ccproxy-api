@@ -41,7 +41,7 @@ from ccproxy.utils.startup_helpers import (
     check_version_updates_startup,
     initialize_log_storage_shutdown,
     initialize_log_storage_startup,
-    initialize_proxy_service_startup,
+    initialize_service_container_startup,
     setup_scheduler_shutdown,
     setup_scheduler_startup,
 )
@@ -282,8 +282,8 @@ LIFECYCLE_COMPONENTS: list[LifecycleComponent] = [
         "shutdown": initialize_log_storage_shutdown,
     },
     {
-        "name": "Proxy Service",
-        "startup": initialize_proxy_service_startup,
+        "name": "Service Container",
+        "startup": initialize_service_container_startup,
         "shutdown": setup_service_container_shutdown,
     },
     {
@@ -486,7 +486,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 self.settings = settings
                 self.http_client = None  # Not needed for manifest population
                 self.logger = structlog.get_logger()
-                self.proxy_service = None  # Legacy - removed
 
             def get_plugin_config(self, plugin_name: str) -> dict[str, Any]:
                 # Use the settings.plugins dictionary populated by Pydantic

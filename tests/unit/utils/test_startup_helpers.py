@@ -19,11 +19,8 @@ from ccproxy.config.settings import Settings
 from ccproxy.scheduler.errors import SchedulerError
 from ccproxy.utils.startup_helpers import (
     check_claude_cli_startup,
-    flush_streaming_batches_shutdown,
     initialize_log_storage_shutdown,
     initialize_log_storage_startup,
-    initialize_permission_service_startup,
-    setup_permission_service_shutdown,
     setup_scheduler_shutdown,
     setup_scheduler_startup,
     setup_session_manager_shutdown,
@@ -446,22 +443,6 @@ class TestFlushStreamingBatchesShutdown:
         """Create a mock FastAPI app."""
         return FastAPI()
 
-    async def test_flush_streaming_batches_success(self, mock_app: FastAPI) -> None:
-        """Test successful streaming batches flushing - now just logs skip."""
-        with patch("ccproxy.utils.startup_helpers.logger") as mock_logger:
-            await flush_streaming_batches_shutdown(mock_app)
-
-            # Verify skip log was called
-            mock_logger.debug.assert_called_once_with("streaming_batches_flush_skipped")
-
-    async def test_flush_streaming_batches_error(self, mock_app: FastAPI) -> None:
-        """Test error handling during streaming batches flushing - now just logs skip."""
-        with patch("ccproxy.utils.startup_helpers.logger") as mock_logger:
-            await flush_streaming_batches_shutdown(mock_app)
-
-            # Verify skip log was called
-            mock_logger.debug.assert_called_once_with("streaming_batches_flush_skipped")
-
 
 class TestClaudeDetectionStartup:
     """Test Claude detection service initialization."""
@@ -479,89 +460,3 @@ class TestClaudeDetectionStartup:
         return Mock(spec=Settings)
 
     # Removed deprecated Claude detection startup tests - function no longer exists
-
-
-class TestPermissionServiceLifecycle:
-    """Test permission service initialization and shutdown."""
-
-    @pytest.fixture
-    def mock_app(self) -> FastAPI:
-        """Create a mock FastAPI app."""
-        app = FastAPI()
-        app.state = Mock()
-        return app
-
-    @pytest.fixture
-    def mock_settings_enabled(self) -> Mock:
-        """Create mock settings with permissions enabled."""
-        settings = Mock(spec=Settings)
-        # Configure nested attributes properly
-        settings.claude = Mock()
-        settings.claude.builtin_permissions = True
-        settings.server = Mock()
-        settings.server.use_terminal_permission_handler = False
-        return settings
-
-    @pytest.fixture
-    def mock_settings_disabled(self) -> Mock:
-        """Create mock settings with permissions disabled."""
-        settings = Mock(spec=Settings)
-        # Configure nested attributes properly
-        settings.claude = Mock()
-        settings.claude.builtin_permissions = False
-        return settings
-
-    async def test_permission_service_startup_success(
-        self, mock_app: FastAPI, mock_settings_enabled: Mock
-    ) -> None:
-        """Test successful permission service initialization."""
-        with patch("ccproxy.utils.startup_helpers.logger") as mock_logger:
-            await initialize_permission_service_startup(mock_app, mock_settings_enabled)
-
-            # The function now just passes (handled by plugin)
-            # Verify no logs were called
-            mock_logger.debug.assert_not_called()
-            mock_logger.error.assert_not_called()
-
-    async def test_permission_service_startup_disabled(
-        self, mock_app: FastAPI, mock_settings_disabled: Mock
-    ) -> None:
-        """Test when permission service is disabled."""
-        with patch("ccproxy.utils.startup_helpers.logger") as mock_logger:
-            await initialize_permission_service_startup(
-                mock_app, mock_settings_disabled
-            )
-
-            # The function now just passes (handled by plugin)
-            # Verify no logs were called
-            mock_logger.debug.assert_not_called()
-            mock_logger.error.assert_not_called()
-
-    async def test_permission_service_shutdown_success(
-        self, mock_app: FastAPI, mock_settings_enabled: Mock
-    ) -> None:
-        """Test successful permission service shutdown."""
-        mock_permission_service = AsyncMock()
-        mock_app.state.permission_service = mock_permission_service
-
-        with patch("ccproxy.utils.startup_helpers.logger") as mock_logger:
-            await setup_permission_service_shutdown(mock_app, mock_settings_enabled)
-
-            # The function now just passes (handled by plugin)
-            # Verify no logs were called
-            mock_logger.debug.assert_not_called()
-            mock_logger.error.assert_not_called()
-
-    async def test_permission_service_shutdown_disabled(
-        self, mock_app: FastAPI, mock_settings_disabled: Mock
-    ) -> None:
-        """Test shutdown when permission service is disabled."""
-        mock_app.state.permission_service = AsyncMock()  # Present but disabled
-
-        with patch("ccproxy.utils.startup_helpers.logger") as mock_logger:
-            await setup_permission_service_shutdown(mock_app, mock_settings_disabled)
-
-            # The function now just passes (handled by plugin)
-            # Verify no logs were called
-            mock_logger.debug.assert_not_called()
-            mock_logger.error.assert_not_called()

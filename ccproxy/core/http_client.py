@@ -117,6 +117,14 @@ class HTTPClientFactory:
             **kwargs,
         }
 
+        # Determine effective compression status
+        compression_status = "httpx default"
+        if "accept-encoding" in default_headers:
+            if default_headers["accept-encoding"] == "identity":
+                compression_status = "disabled"
+            else:
+                compression_status = default_headers["accept-encoding"]
+
         logger.info(
             "http_client_created",
             timeout_connect=timeout_connect,
@@ -128,7 +136,7 @@ class HTTPClientFactory:
             compression_enabled=settings.http.compression_enabled
             if settings and hasattr(settings, "http")
             else True,
-            accept_encoding=default_headers.get("accept-encoding", "httpx default"),
+            accept_encoding=compression_status,
         )
 
         return httpx.AsyncClient(**client_config)

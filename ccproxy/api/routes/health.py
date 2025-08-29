@@ -695,13 +695,13 @@ async def detailed_health_check(response: Response) -> dict[str, Any]:
                     **sdk_details,
                 }
             ],
-            "proxy_service": [
+            "service_container": [
                 {
-                    "componentId": "proxy-service",
+                    "componentId": "service-container",
                     "componentType": "service",
                     "status": "pass",
                     "time": current_time,
-                    "output": "Proxy service operational",
+                    "output": "Service container operational",
                     "version": __version__,
                 }
             ],

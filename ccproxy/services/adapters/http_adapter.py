@@ -120,7 +120,7 @@ class BaseHTTPAdapter(BaseAdapter):
         except Exception:
             return None
 
-    def _get_pricing_service(self) -> "PricingService | None":
+    def _get_pricing_service(self) -> Any:
         """Get pricing service from plugin registry if available."""
         try:
             if not self.context or "plugin_registry" not in self.context:
