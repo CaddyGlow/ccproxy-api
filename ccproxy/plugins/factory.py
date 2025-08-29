@@ -100,6 +100,14 @@ class BasePluginFactory(PluginFactory):
             "proxy_service": core_services.proxy_service,
         }
 
+        # Add explicit dependency injection services
+        if hasattr(core_services, "request_tracer"):
+            context["request_tracer"] = core_services.request_tracer
+        if hasattr(core_services, "streaming_handler"):
+            context["streaming_handler"] = core_services.streaming_handler
+        if hasattr(core_services, "metrics"):
+            context["metrics"] = core_services.metrics
+
         # Add CLI detection service if available
         if hasattr(core_services, "cli_detection_service"):
             context["cli_detection_service"] = core_services.cli_detection_service

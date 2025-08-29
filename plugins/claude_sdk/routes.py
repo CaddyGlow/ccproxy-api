@@ -17,7 +17,7 @@ ClaudeSDKAdapterDep = Annotated[Any, Depends(get_plugin_adapter("claude_sdk"))]
 router = APIRouter(tags=["plugin-claude_sdk"])
 
 
-@router.post("/v1/messages")
+@router.post("/v1/messages", response_model=None)
 async def claude_sdk_messages(
     request: Request,
     auth: ConditionalAuthDep,
@@ -42,7 +42,7 @@ async def claude_sdk_messages(
     )
 
 
-@router.post("/v1/chat/completions")
+@router.post("/v1/chat/completions", response_model=None)
 async def claude_sdk_chat_completions(
     request: Request,
     auth: ConditionalAuthDep,
@@ -67,7 +67,7 @@ async def claude_sdk_chat_completions(
     )
 
 
-@router.post("/{session_id}/v1/messages")
+@router.post("/{session_id}/v1/messages", response_model=None)
 async def claude_sdk_messages_with_session(
     request: Request,
     session_id: str,
@@ -96,7 +96,7 @@ async def claude_sdk_messages_with_session(
     )
 
 
-@router.post("/{session_id}/v1/chat/completions")
+@router.post("/{session_id}/v1/chat/completions", response_model=None)
 async def claude_sdk_chat_completions_with_session(
     request: Request,
     session_id: str,

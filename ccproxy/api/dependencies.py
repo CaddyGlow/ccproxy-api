@@ -14,7 +14,6 @@ from ccproxy.core.logging import get_logger
 from ccproxy.hooks import HookManager
 from ccproxy.observability import PrometheusMetrics, get_metrics
 from ccproxy.observability.storage.duckdb_simple import SimpleDuckDBStorage
-from ccproxy.services.proxy_service import ProxyService
 
 
 if TYPE_CHECKING:
@@ -66,50 +65,7 @@ async def get_http_client(
     return await get_shared_http_client(settings)
 
 
-def get_proxy_service(
-    request: Request,
-    settings: Annotated[Settings, Depends(get_cached_settings)],
-) -> ProxyService:
-    """Get proxy service instance.
-
-    Args:
-        request: FastAPI request object (for app state access)
-        settings: Application settings dependency
-        credentials_manager: Credentials manager dependency
-
-    Returns:
-        Proxy service instance
-    """
-    logger.debug("get_proxy_service", category="lifecycle")
-
-    # Check if proxy service is already initialized in app state
-    proxy_service = getattr(request.app.state, "proxy_service", None)
-    if proxy_service:
-        typed_proxy_service: ProxyService = proxy_service
-        return typed_proxy_service
-
-    # Fallback to creating a new instance (for backward compatibility)
-    logger.warning(
-        "Proxy service not found in app state, creating new instance",
-        category="lifecycle",
-    )
-
-    # Create HTTP client for proxy
-    from ccproxy.core.http import HTTPXClient
-    from ccproxy.services.container import ServiceContainer
-
-    http_client = HTTPXClient()
-    proxy_client = BaseProxyClient(http_client)
-
-    # Get global metrics instance
-    metrics = get_metrics()
-
-    # Use ServiceContainer to create ProxyService
-    container = ServiceContainer(settings)
-    return container.create_proxy_service(
-        proxy_client=proxy_client,
-        metrics=metrics,
-    )
+# ProxyService removed - use ServiceContainer directly for dependency injection
 
 
 def get_observability_metrics() -> PrometheusMetrics:
@@ -223,7 +179,7 @@ def get_plugin_adapter(plugin_name: str) -> Any:
 
 # Type aliases for service dependencies
 SettingsDep = Annotated[Settings, Depends(get_cached_settings)]
-ProxyServiceDep = Annotated[ProxyService, Depends(get_proxy_service)]
+# ProxyServiceDep removed - ProxyService no longer used
 HTTPClientDep = Annotated[httpx.AsyncClient, Depends(get_http_client)]
 ObservabilityMetricsDep = Annotated[
     PrometheusMetrics, Depends(get_observability_metrics)

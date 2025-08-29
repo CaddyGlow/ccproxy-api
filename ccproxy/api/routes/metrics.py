@@ -1,5 +1,6 @@
 """Metrics endpoints for CCProxy API Server."""
 
+import json
 import time
 from datetime import datetime as dt
 from typing import Any, cast
@@ -392,9 +393,6 @@ async def get_logs_analytics(
         if hasattr(storage, "_engine") and storage._engine:
             try:
                 with Session(storage._engine) as session:
-                    # Build base query
-                    statement = select(AccessLog)
-
                     # Add filters - convert Unix timestamps to datetime
                     start_dt = dt.fromtimestamp(start_time) if start_time else None
                     end_dt = dt.fromtimestamp(end_time) if end_time else None
@@ -847,8 +845,8 @@ async def stream_logs(
                 # Parse event data to check for filtering
                 if event_data.startswith("data: "):
                     try:
-                        import json
-
+                        json_str = None
+                        event_obj = None
                         json_str = event_data[6:].strip()
                         if json_str:
                             event_obj = json.loads(json_str)

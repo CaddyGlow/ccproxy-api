@@ -85,17 +85,17 @@ async def setup_http_client_shutdown(app: FastAPI) -> None:
     logger.debug("shared_http_client_shutdown_completed", category="lifecycle")
 
 
-async def setup_proxy_service_shutdown(app: FastAPI) -> None:
-    """Close the proxy service and its resources."""
-    if hasattr(app.state, "proxy_service"):
-        proxy_service = app.state.proxy_service
-        if hasattr(proxy_service, "close"):
+async def setup_service_container_shutdown(app: FastAPI) -> None:
+    """Close the service container and its resources."""
+    if hasattr(app.state, "service_container"):
+        service_container = app.state.service_container
+        if hasattr(service_container, "close"):
             try:
-                await proxy_service.close()
-                logger.debug("proxy_service_shutdown_completed", category="lifecycle")
+                await service_container.close()
+                logger.debug("service_container_shutdown_completed", category="lifecycle")
             except Exception as e:
                 logger.error(
-                    "proxy_service_shutdown_failed",
+                    "service_container_shutdown_failed",
                     error=str(e),
                     exc_info=e,
                     category="lifecycle",
@@ -129,11 +129,18 @@ async def initialize_plugins_startup(app: FastAPI, settings: Settings) -> None:
             self.settings = container.settings
             self.http_client = container.get_http_client()
             self.logger = structlog.get_logger()
-            self.proxy_service = getattr(app.state, "proxy_service", None)
             self.cli_detection_service = container.get_cli_detection_service()
             self.scheduler = getattr(app.state, "scheduler", None)
             self.plugin_registry = app.state.plugin_registry
             self._container = container
+            
+            # Add explicit dependency injection services
+            self.streaming_handler = container.get_streaming_handler(metrics=None)
+            self.request_tracer = container.get_request_tracer()
+            self.metrics = getattr(app.state, "metrics", None)
+            
+            # Legacy proxy_service - removed, no longer needed
+            self.proxy_service = None
 
         def get_plugin_config(self, plugin_name: str) -> Any:
             """Get plugin configuration."""
@@ -262,7 +269,7 @@ LIFECYCLE_COMPONENTS: list[LifecycleComponent] = [
     {
         "name": "Proxy Service",
         "startup": initialize_proxy_service_startup,
-        "shutdown": setup_proxy_service_shutdown,
+        "shutdown": setup_service_container_shutdown,
     },
     {
         "name": "Plugin System",
@@ -464,7 +471,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 self.settings = settings
                 self.http_client = None  # Not needed for manifest population
                 self.logger = structlog.get_logger()
-                self.proxy_service = None  # Not needed for manifest population
+                self.proxy_service = None  # Legacy - removed
 
             def get_plugin_config(self, plugin_name: str) -> dict[str, Any]:
                 # Use the settings.plugins dictionary populated by Pydantic

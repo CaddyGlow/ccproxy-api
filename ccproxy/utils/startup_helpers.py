@@ -233,7 +233,7 @@ async def setup_session_manager_shutdown(app: FastAPI) -> None:
 
 
 async def initialize_proxy_service_startup(app: FastAPI, settings: Settings) -> None:
-    """Initialize ProxyService and store in app state.
+    """Initialize proxy client and store in ServiceContainer.
 
     Args:
         app: FastAPI application instance
@@ -261,20 +261,19 @@ async def initialize_proxy_service_startup(app: FastAPI, settings: Settings) -> 
             container = ServiceContainer(settings, factory)
             app.state.service_container = container
 
-        proxy_service = container.create_proxy_service(
-            proxy_client=proxy_client,
-            metrics=metrics,
-        )
-
-        # Store in app state for reuse in dependencies
-        app.state.proxy_service = proxy_service
-        logger.debug("proxy_service_initialized")
+        # Set proxy client in container for lifecycle management
+        container.set_proxy_client(proxy_client)
+        
+        # Store metrics in app state if needed
+        app.state.metrics = metrics
+        
+        logger.debug("proxy_client_initialized")
     except (ImportError, ModuleNotFoundError) as e:
         logger.error(
-            "proxy_service_initialization_import_error", error=str(e), exc_info=e
+            "proxy_client_initialization_import_error", error=str(e), exc_info=e
         )
     except Exception as e:
         logger.error(
-            "proxy_service_initialization_unexpected_error", error=str(e), exc_info=e
+            "proxy_client_initialization_unexpected_error", error=str(e), exc_info=e
         )
-        # Continue startup even if ProxyService fails (graceful degradation)
+        # Continue startup even if proxy client fails (graceful degradation)

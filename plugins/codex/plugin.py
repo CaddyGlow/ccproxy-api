@@ -224,24 +224,28 @@ class CodexFactory(BaseProviderPluginFactory):
 
     def create_adapter(self, context: PluginContext) -> CodexAdapter:
         """Create the Codex adapter with validation."""
-        proxy_service = context.get("proxy_service")
+        http_client = context.get("http_client")
         auth_manager = context.get("credentials_manager")
         detection_service = context.get("detection_service")
-        http_client = context.get("http_client")
+        request_tracer = context.get("request_tracer")
+        metrics = context.get("metrics")
+        streaming_handler = context.get("streaming_handler")
         logger_instance = context.get("logger")
 
-        if not proxy_service:
-            raise RuntimeError("ProxyService is required for Codex adapter")
+        if not http_client:
+            raise RuntimeError("HTTP client is required for Codex adapter")
         if not auth_manager:
             raise RuntimeError("Auth manager is required for Codex adapter")
         if not detection_service:
             raise RuntimeError("Detection service is required for Codex adapter")
 
         return CodexAdapter(
-            proxy_service=proxy_service,
+            http_client=http_client,
             auth_manager=auth_manager,
             detection_service=detection_service,
-            http_client=http_client,
+            request_tracer=request_tracer,
+            metrics=metrics,
+            streaming_handler=streaming_handler,
             logger=logger_instance,
             context=context,
         )

@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING, Any
 import structlog
 from fastapi.responses import StreamingResponse
 
-from ccproxy.observability.access_logger import log_request_access
+# Access logging now handled by ObservabilityPipeline
 
 
 if TYPE_CHECKING:
@@ -87,23 +87,18 @@ class StreamingResponseWithLogging(StreamingResponse):
             # CRITICAL: Re-raise GeneratorExit to propagate disconnect to create_listener()
             raise
         finally:
-            # Log access when stream completes (success or error)
+            # Access logging is now handled by ObservabilityPipeline
+            # Add streaming completion event type to context for pipeline
             try:
-                # Add streaming completion event type to context
                 context.add_metadata(event_type="streaming_complete")
-
                 # Check if status_code was updated in context metadata (e.g., due to error)
                 final_status_code = context.metadata.get("status_code", status_code)
-
-                await log_request_access(
-                    context=context,
-                    status_code=final_status_code,
-                    metrics=metrics,
-                )
+                # Update context with final status for the pipeline
+                context.add_metadata(status_code=final_status_code)
             except Exception as e:
                 logger.warning(
-                    "streaming_access_log_failed",
+                    "streaming_metadata_update_failed",
                     error=str(e),
-                    request_id=context.request_id,
+                    request_id=context.request_id if context else None,
                     exc_info=e,
                 )
