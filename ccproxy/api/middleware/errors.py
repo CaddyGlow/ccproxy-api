@@ -25,7 +25,6 @@ from ccproxy.core.errors import (
     TransformationError,
     ValidationError,
 )
-from ccproxy.observability.metrics import get_metrics
 
 
 logger = get_logger(__name__)
@@ -39,26 +38,8 @@ def setup_error_handlers(app: FastAPI) -> None:
     """
     logger.debug("error_handlers_setup_start", category="lifecycle")
 
-    # Get metrics instance for error recording
-    try:
-        metrics = get_metrics()
-        logger.debug("error_handlers_metrics_loaded", category="lifecycle")
-    except ImportError as e:
-        logger.warning(
-            "error_handlers_metrics_import_failed",
-            error=str(e),
-            exc_info=e,
-            category="lifecycle",
-        )
-        metrics = None
-    except (AttributeError, TypeError) as e:
-        logger.warning(
-            "error_handlers_metrics_unavailable",
-            error=str(e),
-            exc_info=e,
-            category="lifecycle",
-        )
-        metrics = None
+    # Metrics are now handled by the metrics plugin via hooks
+    metrics = None
 
     # Define error type mappings with status codes and error types
     ERROR_MAPPINGS: dict[type[Exception], tuple[int | None, str]] = {

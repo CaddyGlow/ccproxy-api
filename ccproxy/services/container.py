@@ -11,7 +11,6 @@ import structlog
 
 from ccproxy.config.settings import Settings
 from ccproxy.core.http import BaseProxyClient
-from ccproxy.observability.metrics import PrometheusMetrics
 from ccproxy.services.cache import ResponseCache
 from ccproxy.services.cli_detection import CLIDetectionService
 from ccproxy.services.config import ProxyConfiguration
@@ -124,7 +123,7 @@ class ServiceContainer:
 
     def get_streaming_handler(
         self,
-        metrics: PrometheusMetrics | None = None,
+        metrics: Any | None = None,
     ) -> StreamingHandler:
         """Get streaming handler service instance.
 
@@ -268,7 +267,7 @@ class ServiceContainer:
         return self._services[service_key]  # type: ignore
 
     def get_adapter_dependencies(
-        self, metrics: PrometheusMetrics | None = None
+        self, metrics: Any | None = None
     ) -> dict[str, Any]:
         """Get all services an adapter might need.
 

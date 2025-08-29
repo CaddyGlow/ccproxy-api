@@ -385,6 +385,10 @@ members = [
   "plugins/claude_api",
   "plugins/codex",
   "plugins/permissions",
+  "plugins/metrics",
+  "plugins/request_tracer",
+  "plugins/access_log",
+  "plugins/pricing",
 ]
 
 [tool.pyright]

@@ -1,7 +1,7 @@
 from typing import Any
 
 from ccproxy.core.logging import get_plugin_logger
-from ccproxy.observability import get_observability_pipeline
+from ccproxy.hooks import HookRegistry
 from ccproxy.plugins import (
     PluginManifest,
     SystemPluginFactory,
@@ -9,7 +9,7 @@ from ccproxy.plugins import (
 )
 
 from .config import AccessLogConfig
-from .observer import AccessLogObserver
+from .hook import AccessLogHook
 
 
 logger = get_plugin_logger()
@@ -18,12 +18,12 @@ logger = get_plugin_logger()
 class AccessLogRuntime(SystemPluginRuntime):
     """Runtime for access log plugin.
 
-    Integrates with the ObservabilityPipeline to receive and log events.
+    Integrates with the Hook system to receive and log events.
     """
 
     def __init__(self, manifest: PluginManifest):
         super().__init__(manifest)
-        self.observer: AccessLogObserver | None = None
+        self.hook: AccessLogHook | None = None
         self.config: AccessLogConfig | None = None
 
     async def _on_initialize(self) -> None:
@@ -34,40 +34,73 @@ class AccessLogRuntime(SystemPluginRuntime):
         # Get configuration
         config = self.context.get("config")
         if not isinstance(config, AccessLogConfig):
+            logger.warning("plugin_no_config")
             config = AccessLogConfig()
+            logger.info("plugin_using_default_config")
         self.config = config
 
         if not config.enabled:
             logger.info("access_log_disabled")
             return
 
-        # Create observer
-        self.observer = AccessLogObserver(config)
+        # Create hook instance
+        self.hook = AccessLogHook(config)
 
-        # Register with ObservabilityPipeline
-        pipeline = get_observability_pipeline()
-        pipeline.register_observer(self.observer)
+        # Get hook registry from context
+        hook_registry = None
 
-        logger.info(
-            "access_log_enabled",
-            client_enabled=config.client_enabled,
-            client_format=config.client_format,
-            client_log_file=config.client_log_file,
-            provider_enabled=config.provider_enabled,
-            provider_log_file=config.provider_log_file,
-            observers_count=pipeline.get_observer_count(),
-            note="Integrated with ObservabilityPipeline",
+        # Try direct from context first (provided by CoreServicesAdapter)
+        hook_registry = self.context.get("hook_registry")
+        logger.debug(
+            "hook_registry_from_context",
+            found=hook_registry is not None,
+            context_keys=list(self.context.keys()) if self.context else [],
         )
+
+        # If not found, try app state
+        if not hook_registry:
+            app = self.context.get("app")
+            if app and hasattr(app, "state") and hasattr(app.state, "hook_registry"):
+                hook_registry = app.state.hook_registry
+                logger.debug("hook_registry_from_app_state", found=True)
+
+        if hook_registry and isinstance(hook_registry, HookRegistry):
+            hook_registry.register(self.hook)
+            logger.info(
+                "access_log_hook_registered",
+                mode="hooks",
+                client_enabled=config.client_enabled,
+                client_format=config.client_format,
+                client_log_file=config.client_log_file,
+                provider_enabled=config.provider_enabled,
+                provider_log_file=config.provider_log_file,
+            )
+        else:
+            logger.warning(
+                "hook_registry_not_available",
+                mode="hooks",
+                fallback="No fallback - access logging disabled",
+            )
 
     async def _on_shutdown(self) -> None:
         """Cleanup on shutdown."""
-        if self.observer:
-            # Unregister from pipeline
-            pipeline = get_observability_pipeline()
-            pipeline.unregister_observer(self.observer)
+        # Unregister hook from registry
+        if self.hook:
+            # Try to get hook registry
+            hook_registry = None
+            if self.context:
+                hook_registry = self.context.get("hook_registry")
+                if not hook_registry:
+                    app = self.context.get("app")
+                    if app and hasattr(app, "state") and hasattr(app.state, "hook_registry"):
+                        hook_registry = app.state.hook_registry
 
-            # Close observer
-            await self.observer.close()
+            if hook_registry and isinstance(hook_registry, HookRegistry):
+                hook_registry.unregister(self.hook)
+                logger.debug("access_log_hook_unregistered")
+
+            # Close hook (flushes writers)
+            await self.hook.close()
             logger.debug("access_log_shutdown")
 
     async def _get_health_details(self) -> dict[str, Any]:
@@ -80,12 +113,12 @@ class AccessLogRuntime(SystemPluginRuntime):
             "enabled": config.enabled if config else False,
             "client_enabled": config.client_enabled if config else False,
             "provider_enabled": config.provider_enabled if config else False,
-            "mode": "pipeline",  # Now integrated with ObservabilityPipeline
+            "mode": "hooks",  # Now integrated with Hook system
         }
 
-    def get_observer(self) -> AccessLogObserver | None:
-        """Get the observer instance (for testing or manual integration)."""
-        return self.observer
+    def get_hook(self) -> AccessLogHook | None:
+        """Get the hook instance (for testing or manual integration)."""
+        return self.hook
 
 
 class AccessLogFactory(SystemPluginFactory):

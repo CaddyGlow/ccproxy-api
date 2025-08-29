@@ -1,4 +1,4 @@
-"""Prometheus Pushgateway integration for batch metrics."""
+"""Prometheus Pushgateway integration for the metrics plugin."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from typing import Any
 import httpx
 from structlog import get_logger
 
-from ccproxy.config.observability import ObservabilitySettings
+from .config import MetricsConfig
 
 
 logger = get_logger(__name__)
@@ -93,22 +93,22 @@ class PushgatewayClient:
     Also supports VictoriaMetrics remote write protocol for compatibility.
     """
 
-    def __init__(self, settings: ObservabilitySettings) -> None:
+    def __init__(self, config: MetricsConfig) -> None:
         """Initialize Pushgateway client.
 
         Args:
-            settings: Observability configuration settings
+            config: Metrics plugin configuration
         """
-        self.settings = settings
+        self.config = config
         # Pushgateway is enabled if URL is configured and prometheus_client is available
-        self._enabled = PROMETHEUS_AVAILABLE and bool(settings.pushgateway_url)
+        self._enabled = PROMETHEUS_AVAILABLE and bool(config.pushgateway_url) and config.pushgateway_enabled
         self._circuit_breaker = CircuitBreaker(
             failure_threshold=5,
             recovery_timeout=60.0,
         )
 
         # Only log if pushgateway URL is configured but prometheus is not available
-        if settings.pushgateway_url and not PROMETHEUS_AVAILABLE:
+        if config.pushgateway_url and config.pushgateway_enabled and not PROMETHEUS_AVAILABLE:
             logger.warning(
                 "prometheus_client not available. Pushgateway will be disabled. "
                 "Install with: pip install prometheus-client"
@@ -125,7 +125,7 @@ class PushgatewayClient:
             True if push succeeded, False otherwise
         """
 
-        if not self._enabled or not self.settings.pushgateway_url:
+        if not self._enabled or not self.config.pushgateway_url:
             return False
 
         # Check circuit breaker before attempting operation
@@ -139,7 +139,7 @@ class PushgatewayClient:
 
         try:
             # Check if URL looks like VictoriaMetrics remote write endpoint
-            if "/api/v1/write" in self.settings.pushgateway_url:
+            if "/api/v1/write" in self.config.pushgateway_url:
                 success = self._push_remote_write(registry)
             else:
                 success = self._push_standard(registry, method)
@@ -155,8 +155,8 @@ class PushgatewayClient:
             self._circuit_breaker.record_failure()
             logger.error(
                 "pushgateway_push_failed",
-                url=self.settings.pushgateway_url,
-                job=self.settings.pushgateway_job,
+                url=self.config.pushgateway_url,
+                job=self.config.pushgateway_job,
                 method=method,
                 error=str(e),
                 error_type=type(e).__name__,
@@ -171,27 +171,27 @@ class PushgatewayClient:
             registry: Prometheus metrics registry
             method: Push method - "push" (replace), "pushadd" (add), or "delete"
         """
-        if not self.settings.pushgateway_url:
+        if not self.config.pushgateway_url:
             return False
 
         try:
             # Use the appropriate prometheus_client function based on method
             if method == "push":
                 push_to_gateway(
-                    gateway=self.settings.pushgateway_url,
-                    job=self.settings.pushgateway_job,
+                    gateway=self.config.pushgateway_url,
+                    job=self.config.pushgateway_job,
                     registry=registry,
                 )
             elif method == "pushadd":
                 pushadd_to_gateway(
-                    gateway=self.settings.pushgateway_url,
-                    job=self.settings.pushgateway_job,
+                    gateway=self.config.pushgateway_url,
+                    job=self.config.pushgateway_job,
                     registry=registry,
                 )
             elif method == "delete":
                 delete_from_gateway(
-                    gateway=self.settings.pushgateway_url,
-                    job=self.settings.pushgateway_job,
+                    gateway=self.config.pushgateway_url,
+                    job=self.config.pushgateway_job,
                 )
             else:
                 logger.error("pushgateway_invalid_method", method=method)
@@ -199,8 +199,8 @@ class PushgatewayClient:
 
             logger.debug(
                 "pushgateway_push_success",
-                url=self.settings.pushgateway_url,
-                job=self.settings.pushgateway_job,
+                url=self.config.pushgateway_url,
+                job=self.config.pushgateway_job,
                 protocol="standard",
                 method=method,
             )
@@ -209,8 +209,8 @@ class PushgatewayClient:
         except Exception as e:
             logger.error(
                 "pushgateway_standard_push_failed",
-                url=self.settings.pushgateway_url,
-                job=self.settings.pushgateway_job,
+                url=self.config.pushgateway_url,
+                job=self.config.pushgateway_job,
                 method=method,
                 error=str(e),
                 error_type=type(e).__name__,
@@ -227,7 +227,7 @@ class PushgatewayClient:
         """
         from prometheus_client.exposition import generate_latest
 
-        if not self.settings.pushgateway_url:
+        if not self.config.pushgateway_url:
             return False
 
         # Generate metrics in Prometheus exposition format
@@ -235,13 +235,13 @@ class PushgatewayClient:
 
         # Convert /api/v1/write URL to /api/v1/import/prometheus for VictoriaMetrics
         # This endpoint accepts Prometheus exposition format directly
-        if "/api/v1/write" in self.settings.pushgateway_url:
-            import_url = self.settings.pushgateway_url.replace(
+        if "/api/v1/write" in self.config.pushgateway_url:
+            import_url = self.config.pushgateway_url.replace(
                 "/api/v1/write", "/api/v1/import/prometheus"
             )
         else:
             # Fallback - assume it's already the correct import URL
-            import_url = self.settings.pushgateway_url
+            import_url = self.config.pushgateway_url
 
         try:
             # VictoriaMetrics import endpoint accepts text/plain exposition format
@@ -259,7 +259,7 @@ class PushgatewayClient:
                 logger.debug(
                     "pushgateway_import_success",
                     url=import_url,
-                    job=self.settings.pushgateway_job,
+                    job=self.config.pushgateway_job,
                     protocol="victoriametrics_import",
                     status=response.status_code,
                 )
@@ -309,7 +309,7 @@ class PushgatewayClient:
             True if delete succeeded, False otherwise
         """
 
-        if not self._enabled or not self.settings.pushgateway_url:
+        if not self._enabled or not self.config.pushgateway_url:
             return False
 
         # Check circuit breaker before attempting operation
@@ -323,7 +323,7 @@ class PushgatewayClient:
 
         try:
             # Only standard pushgateway supports delete operation
-            if "/api/v1/write" in self.settings.pushgateway_url:
+            if "/api/v1/write" in self.config.pushgateway_url:
                 logger.warning("pushgateway_delete_not_supported_for_remote_write")
                 return False
             else:
@@ -340,8 +340,8 @@ class PushgatewayClient:
             self._circuit_breaker.record_failure()
             logger.error(
                 "pushgateway_delete_failed",
-                url=self.settings.pushgateway_url,
-                job=self.settings.pushgateway_job,
+                url=self.config.pushgateway_url,
+                job=self.config.pushgateway_job,
                 error=str(e),
                 error_type=type(e).__name__,
                 exc_info=e,
@@ -350,28 +350,6 @@ class PushgatewayClient:
 
     def is_enabled(self) -> bool:
         """Check if Pushgateway client is enabled and configured."""
-        return self._enabled and bool(self.settings.pushgateway_url)
+        return self._enabled and bool(self.config.pushgateway_url)
 
 
-# Global pushgateway client instance
-_global_pushgateway_client: PushgatewayClient | None = None
-
-
-def get_pushgateway_client() -> PushgatewayClient:
-    """Get or create global pushgateway client instance."""
-    global _global_pushgateway_client
-
-    if _global_pushgateway_client is None:
-        # Import here to avoid circular imports
-        from ccproxy.config.settings import get_settings
-
-        settings = get_settings()
-        _global_pushgateway_client = PushgatewayClient(settings.observability)
-
-    return _global_pushgateway_client
-
-
-def reset_pushgateway_client() -> None:
-    """Reset global pushgateway client instance (mainly for testing)."""
-    global _global_pushgateway_client
-    _global_pushgateway_client = None

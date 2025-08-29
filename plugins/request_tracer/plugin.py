@@ -122,7 +122,6 @@ class RequestTracerRuntime(SystemPluginRuntime):
         else:
             logger.info("request_tracer_disabled")
 
-
     async def _on_shutdown(self) -> None:
         """Cleanup on shutdown."""
         # Unregister hook from registry
@@ -139,7 +138,6 @@ class RequestTracerRuntime(SystemPluginRuntime):
             if hook_registry and isinstance(hook_registry, HookRegistry):
                 hook_registry.unregister(self.hook)
                 logger.debug("tracer_hook_unregistered", category="middleware")
-
 
         # Restore null tracer on shutdown
         if self.context:
@@ -212,8 +210,8 @@ class RequestTracerFactory(SystemPluginFactory):
             and config.raw_http_enabled
         ):
             # Disable HTTP compression for readable traces
-            settings = getattr(core_services, 'settings', None)
-            if settings and hasattr(settings, 'http'):
+            settings = getattr(core_services, "settings", None)
+            if settings and hasattr(settings, "http"):
                 settings.http.compression_enabled = False
                 logger.info(
                     "request_tracer_disabled_compression",

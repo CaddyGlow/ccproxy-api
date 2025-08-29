@@ -11,7 +11,6 @@ from ccproxy.config.settings import Settings, get_settings
 from ccproxy.core.http_client import get_shared_http_client
 from ccproxy.core.logging import get_logger
 from ccproxy.hooks import HookManager
-from ccproxy.observability import PrometheusMetrics, get_metrics
 from ccproxy.observability.storage.duckdb_simple import SimpleDuckDBStorage
 
 
@@ -67,14 +66,17 @@ async def get_http_client(
 # ProxyService removed - use ServiceContainer directly for dependency injection
 
 
-def get_observability_metrics() -> PrometheusMetrics:
+def get_observability_metrics() -> Any:
     """Get observability metrics instance.
+    
+    Note: Metrics are now handled by the metrics plugin.
+    This returns None for backward compatibility.
 
     Returns:
-        PrometheusMetrics instance
+        None (metrics handled by plugin)
     """
-    logger.debug("get_observability_metrics", category="lifecycle")
-    return get_metrics()
+    logger.debug("get_observability_metrics_deprecated", category="lifecycle")
+    return None
 
 
 async def get_log_storage(request: Request) -> SimpleDuckDBStorage | None:
@@ -181,7 +183,7 @@ SettingsDep = Annotated[Settings, Depends(get_cached_settings)]
 # ProxyServiceDep removed - ProxyService no longer used
 HTTPClientDep = Annotated[httpx.AsyncClient, Depends(get_http_client)]
 ObservabilityMetricsDep = Annotated[
-    PrometheusMetrics, Depends(get_observability_metrics)
+    Any, Depends(get_observability_metrics)
 ]
 LogStorageDep = Annotated[SimpleDuckDBStorage | None, Depends(get_log_storage)]
 DuckDBStorageDep = Annotated[SimpleDuckDBStorage | None, Depends(get_duckdb_storage)]

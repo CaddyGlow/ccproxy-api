@@ -19,7 +19,6 @@ from fastapi.responses import StreamingResponse
 
 if TYPE_CHECKING:
     from ccproxy.observability.context import RequestContext
-    from ccproxy.observability.metrics import PrometheusMetrics
 
 logger = structlog.get_logger(__name__)
 
@@ -36,7 +35,7 @@ class StreamingResponseWithLogging(StreamingResponse):
         self,
         content: AsyncGenerator[bytes, None] | AsyncIterator[bytes],
         request_context: RequestContext,
-        metrics: PrometheusMetrics | None = None,
+        metrics: Any | None = None,
         status_code: int = 200,
         **kwargs: Any,
     ) -> None:

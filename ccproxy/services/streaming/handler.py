@@ -8,7 +8,6 @@ import structlog
 
 from ccproxy.hooks import HookManager
 from ccproxy.observability.context import RequestContext
-from ccproxy.observability.metrics import PrometheusMetrics
 from ccproxy.services.handler_config import HandlerConfig
 from ccproxy.streaming.deferred_streaming import DeferredStreaming
 from plugins.request_tracer.tracer import RequestTracerImpl
@@ -22,7 +21,7 @@ class StreamingHandler:
 
     def __init__(
         self,
-        metrics: PrometheusMetrics | None = None,
+        metrics: Any | None = None,
         verbose_streaming: bool = False,
         request_tracer: RequestTracerImpl | None = None,
         hook_manager: HookManager | None = None,

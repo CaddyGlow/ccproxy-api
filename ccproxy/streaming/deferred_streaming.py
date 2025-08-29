@@ -19,7 +19,6 @@ from ccproxy.hooks.base import HookContext
 if TYPE_CHECKING:
     from ccproxy.adapters.base import APIAdapter
     from ccproxy.observability.context import RequestContext
-    from ccproxy.observability.metrics import PrometheusMetrics
     from ccproxy.services.handler_config import HandlerConfig
 
     # Import the specific implementation that has both interfaces
@@ -43,7 +42,7 @@ class DeferredStreaming(Response):
         handler_config: "HandlerConfig | None" = None,
         request_context: "RequestContext | None" = None,
         request_tracer: "RequestTracerImpl | None" = None,
-        metrics: "PrometheusMetrics | None" = None,
+        metrics: "Any | None" = None,
         verbose_streaming: bool = False,
         hook_manager: HookManager | None = None,
     ):

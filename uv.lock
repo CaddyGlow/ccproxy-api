@@ -8,7 +8,11 @@ members = [
     "ccproxy-claude-api",
     "ccproxy-claude-sdk",
     "ccproxy-codex",
+    "ccproxy-metrics",
     "ccproxy-permissions",
+    "ccproxy-plugin-access-log",
+    "ccproxy-pricing-plugin",
+    "ccproxy-request-tracer",
 ]
 
 [[package]]
@@ -428,6 +432,36 @@ dependencies = [
 requires-dist = [{ name = "openai", specifier = ">=1.93.0" }]
 
 [[package]]
+name = "ccproxy-metrics"
+version = "1.0.0"
+source = { editable = "plugins/metrics" }
+dependencies = [
+    { name = "httpx" },
+    { name = "prometheus-client" },
+    { name = "pydantic" },
+    { name = "structlog" },
+]
+
+[package.optional-dependencies]
+dev = [
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+    { name = "pytest-cov" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "httpx", specifier = ">=0.25.0" },
+    { name = "prometheus-client", specifier = ">=0.19.0" },
+    { name = "pydantic", specifier = ">=2.5.0" },
+    { name = "pytest", marker = "extra == 'dev'", specifier = ">=7.4.0" },
+    { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.21.0" },
+    { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=4.1.0" },
+    { name = "structlog", specifier = ">=24.1.0" },
+]
+provides-extras = ["dev"]
+
+[[package]]
 name = "ccproxy-permissions"
 version = "1.0.0"
 source = { editable = "plugins/permissions" }
@@ -437,6 +471,47 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [{ name = "fastapi-mcp", specifier = ">=0.3.7" }]
+
+[[package]]
+name = "ccproxy-plugin-access-log"
+version = "1.0.0"
+source = { editable = "plugins/access_log" }
+
+[[package]]
+name = "ccproxy-pricing-plugin"
+version = "1.0.0"
+source = { editable = "plugins/pricing" }
+dependencies = [
+    { name = "httpx" },
+    { name = "pydantic" },
+    { name = "pydantic-settings" },
+    { name = "structlog" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "httpx", specifier = ">=0.25.0" },
+    { name = "pydantic", specifier = ">=2.0" },
+    { name = "pydantic-settings", specifier = ">=2.0" },
+    { name = "structlog", specifier = ">=23.0" },
+]
+
+[[package]]
+name = "ccproxy-request-tracer"
+version = "2.0.0"
+source = { editable = "plugins/request_tracer" }
+dependencies = [
+    { name = "aiofiles" },
+    { name = "httpx" },
+    { name = "structlog" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "aiofiles" },
+    { name = "httpx" },
+    { name = "structlog" },
+]
 
 [[package]]
 name = "certifi"

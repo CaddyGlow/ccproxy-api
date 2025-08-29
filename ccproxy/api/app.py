@@ -309,10 +309,14 @@ SHUTDOWN_ONLY_COMPONENTS: list[ShutdownComponent] = [
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Application lifespan manager using component-based approach."""
-    settings = get_settings()
-
-    # Store settings in app state for reuse in dependencies
-    app.state.settings = settings
+    # Use settings from app.state if available (modified by plugins during create_app)
+    # Otherwise get fresh settings
+    if hasattr(app.state, "settings"):
+        settings = app.state.settings
+    else:
+        settings = get_settings()
+        # Store settings in app state for reuse in dependencies
+        app.state.settings = settings
 
     # Startup
     logger.info(
@@ -555,6 +559,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # Store plugin registry and middleware manager in app state for runtime initialization
     app.state.plugin_registry = plugin_registry
     app.state.middleware_manager = middleware_manager
+    
+    # Store settings object that was potentially modified by plugins
+    # This ensures the same settings object is used throughout the app lifecycle
+    app.state.settings = settings
 
     # Setup CORS middleware first (needs to be outermost)
     setup_cors_middleware(app, settings)

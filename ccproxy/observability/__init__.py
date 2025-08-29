@@ -30,17 +30,11 @@ from .events import (
     ProviderRequestEvent,
     ProviderResponseEvent,
 )
-from .metrics import PrometheusMetrics, get_metrics, reset_metrics
 from .pipeline import (
     ObservabilityPipeline,
     RequestObserver,
     get_observability_pipeline,
     reset_observability_pipeline,
-)
-from .pushgateway import (
-    PushgatewayClient,
-    get_pushgateway_client,
-    reset_pushgateway_client,
 )
 
 
@@ -57,19 +51,9 @@ __all__ = [
     "ClientResponseEvent",
     "ProviderRequestEvent",
     "ProviderResponseEvent",
-    # Adapters
-    "RequestTracerAdapter",
-    # Prometheus metrics
-    "PrometheusMetrics",
-    "get_metrics",
-    "reset_metrics",
     # Pipeline
     "ObservabilityPipeline",
     "RequestObserver",
     "get_observability_pipeline",
     "reset_observability_pipeline",
-    # Pushgateway
-    "PushgatewayClient",
-    "get_pushgateway_client",
-    "reset_pushgateway_client",
 ]

@@ -12,7 +12,6 @@ from typing import TYPE_CHECKING
 import structlog
 from fastapi import FastAPI
 
-from ccproxy.observability import get_metrics
 
 # Note: get_claude_cli_info is imported locally to avoid circular imports
 from ccproxy.observability.storage.duckdb_simple import SimpleDuckDBStorage
@@ -249,9 +248,6 @@ async def initialize_service_container_startup(
         http_client = HTTPXClient()
         proxy_client = BaseProxyClient(http_client)
 
-        # Get global metrics instance
-        metrics = get_metrics()
-
         # Reuse ServiceContainer from app state or create new one
         if hasattr(app.state, "service_container"):
             container = app.state.service_container
@@ -266,8 +262,8 @@ async def initialize_service_container_startup(
         # Set proxy client in container for lifecycle management
         container.set_proxy_client(proxy_client)
 
-        # Store metrics in app state if needed
-        app.state.metrics = metrics
+        # Metrics are now handled by the metrics plugin
+        app.state.metrics = None
 
         logger.debug("service_container_initialized")
     except (ImportError, ModuleNotFoundError) as e:
