@@ -3,7 +3,13 @@
 import asyncio
 import json
 from collections.abc import AsyncIterator
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
+
+if TYPE_CHECKING:
+    import structlog
+
+    from ccproxy.observability.metrics import PrometheusMetrics
+    from ccproxy.services.interfaces import IMetricsCollector
 
 import httpx
 from fastapi import HTTPException, Request
@@ -33,14 +39,26 @@ class ClaudeSDKAdapter(BaseAdapter):
     """
 
     def __init__(
-        self, config: ClaudeSDKSettings, proxy_service: Any | None = None
+        self,
+        config: ClaudeSDKSettings,
+        # Optional dependencies
+        session_manager: SessionManager | None = None,
+        metrics: "IMetricsCollector | None" = None,
+        logger: "structlog.BoundLogger | None" = None,
     ) -> None:
-        """Initialize the Claude SDK adapter."""
+        """Initialize the Claude SDK adapter with explicit dependencies.
+        
+        Args:
+            config: SDK configuration settings
+            session_manager: Optional session manager for session handling
+            metrics: Optional metrics collector
+            logger: Optional structured logger
+        """
         import uuid
 
-        self.logger = get_plugin_logger()
+        self.logger = logger or get_plugin_logger()
         self.config = config
-        self.proxy_service = proxy_service
+        self.metrics = metrics
 
         # Generate or set default session ID
         self._runtime_default_session_id = None
@@ -63,9 +81,8 @@ class ClaudeSDKAdapter(BaseAdapter):
                 session_id=self._runtime_default_session_id,
             )
 
-        # Initialize SessionManager if session pool is enabled
-        session_manager = None
-        if config.sdk_session_pool and config.sdk_session_pool.enabled:
+        # Use provided session_manager or create if needed and enabled
+        if session_manager is None and config.sdk_session_pool and config.sdk_session_pool.enabled:
             session_manager = SessionManager(config=config)
             self.logger.debug(
                 "adapter_session_pool_enabled",
@@ -81,11 +98,8 @@ class ClaudeSDKAdapter(BaseAdapter):
         )
         self.format_adapter = ClaudeSDKFormatAdapter()
         self.request_transformer = ClaudeSDKRequestTransformer()
-        # Initialize response transformer with CORS settings
-        cors_settings = (
-            getattr(proxy_service.config, "cors", None) if proxy_service else None
-        )
-        self.response_transformer = ClaudeSDKResponseTransformer(cors_settings)
+        # Initialize response transformer (CORS settings can be added later if needed)
+        self.response_transformer = ClaudeSDKResponseTransformer(None)
         self.auth_manager = NoOpAuthManager()
         self._detection_service: Any | None = None
         self._initialized = False
@@ -328,16 +342,11 @@ class ClaudeSDKAdapter(BaseAdapter):
                         yield f"data: {json.dumps(error_chunk)}\n\n".encode()
                         # Don't add extra [DONE] here as OpenAIStreamProcessor already adds it
 
-                # Get metrics from proxy_service if available
-                metrics = None
-                if self.proxy_service and hasattr(self.proxy_service, "metrics"):
-                    metrics = self.proxy_service.metrics
-
                 # Use StreamingResponseWithLogging for automatic access logging
                 return StreamingResponseWithLogging(
                     content=stream_generator(),
                     request_context=request_context,
-                    metrics=metrics,
+                    metrics=self.metrics,
                     status_code=200,
                     media_type="text/event-stream",
                     headers={
@@ -486,7 +495,6 @@ class ClaudeSDKAdapter(BaseAdapter):
                 self.handler = None
 
             # Clear references to prevent memory leaks
-            self.proxy_service = None
             self._detection_service = None
 
             # Mark as not initialized

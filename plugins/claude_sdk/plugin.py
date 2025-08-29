@@ -149,7 +149,7 @@ class ClaudeSDKFactory(BaseProviderPluginFactory):
         """Create the Claude SDK adapter.
 
         This method overrides the base implementation because Claude SDK
-        requires special handling of config and proxy service parameters.
+        has different dependencies than HTTP-based adapters.
 
         Args:
             context: Plugin context
@@ -161,11 +161,17 @@ class ClaudeSDKFactory(BaseProviderPluginFactory):
         if not isinstance(config, ClaudeSDKSettings):
             raise RuntimeError("No configuration provided for Claude SDK adapter")
 
-        proxy_service = context.get("proxy_service")
-
-        # Create adapter with config and proxy service
-        # Note: ClaudeSDKAdapter has different constructor signature
-        adapter = ClaudeSDKAdapter(config=config, proxy_service=proxy_service)
+        # Get optional dependencies
+        metrics = context.get("metrics")
+        logger_instance = context.get("logger")
+        
+        # Create adapter with config and optional dependencies
+        # Note: ClaudeSDKAdapter doesn't need http_client as it uses SDK
+        adapter = ClaudeSDKAdapter(
+            config=config, 
+            metrics=metrics,
+            logger=logger_instance
+        )
 
         return adapter
 

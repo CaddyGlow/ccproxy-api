@@ -2,6 +2,7 @@
 
 import json
 import os
+import subprocess
 from pathlib import Path
 from typing import Annotated, Any
 
@@ -26,9 +27,6 @@ from ccproxy.docker import (
     create_docker_adapter,
 )
 
-from ..docker import (
-    _create_docker_adapter_from_settings,
-)
 from ..options.security_options import SecurityOptions, validate_auth_token
 from ..options.server_options import (
     ServerOptions,
@@ -173,8 +171,9 @@ def _run_docker_server(
         _show_api_usage_info(toolkit, settings)
 
     # Execute using the new Docker adapter
-    image, volumes, environment, command, user_context, additional_args = (
-        _create_docker_adapter_from_settings(
+    adapter = create_docker_adapter()
+    image, volumes, environment, command, user_context, _ = (
+        adapter.build_docker_run_args(
             settings,
             command=["ccproxy", "serve"],
             docker_image=docker_image,
@@ -755,10 +754,10 @@ def claude(
 
         if docker:
             # Prepare Docker execution using new adapter
-
+            adapter = create_docker_adapter()
             toolkit.print_title(f"image {settings.docker.docker_image}", tag="docker")
-            image, volumes, environment, command, user_context, additional_args = (
-                _create_docker_adapter_from_settings(
+            image, volumes, environment, command, user_context, _ = (
+                adapter.build_docker_run_args(
                     settings,
                     docker_image=docker_image,
                     docker_env=docker_env,
@@ -786,7 +785,6 @@ def claude(
             toolkit.print_line()
 
             # Execute using the new Docker adapter
-            adapter = create_docker_adapter()
             adapter.exec_container(
                 image=image,
                 volumes=volumes,
@@ -866,8 +864,6 @@ def claude(
 
                 try:
                     # Use subprocess.run for package manager execution
-                    import subprocess
-
                     proc_result = subprocess.run(full_cmd, check=False)
                     raise typer.Exit(proc_result.returncode)
                 except subprocess.SubprocessError as e:
@@ -875,18 +871,22 @@ def claude(
                     raise typer.Exit(1) from e
 
     except ConfigurationError as e:
+        logger = get_logger(__name__)
         logger.error("cli_configuration_error", error=str(e), command="claude")
         toolkit.print(f"Configuration error: {e}", tag="error")
         raise typer.Exit(1) from e
     except FileNotFoundError as e:
+        logger = get_logger(__name__)
         logger.error("cli_command_not_found", error=str(e), command="claude")
         toolkit.print(f"Claude command not found: {e}", tag="error")
         raise typer.Exit(1) from e
     except OSError as e:
+        logger = get_logger(__name__)
         logger.error("cli_os_error", error=str(e), command="claude")
         toolkit.print(f"System error executing claude command: {e}", tag="error")
         raise typer.Exit(1) from e
     except Exception as e:
+        logger = get_logger(__name__)
         logger.error("cli_unexpected_error", error=str(e), command="claude")
         toolkit.print(f"Error executing claude command: {e}", tag="error")
         raise typer.Exit(1) from e

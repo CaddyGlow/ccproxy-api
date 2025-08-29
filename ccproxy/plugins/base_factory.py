@@ -4,15 +4,29 @@ This module provides a BaseProviderPluginFactory that implements common patterns
 shared across all provider plugin factories, reducing code duplication by 60-70%.
 """
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from fastapi import APIRouter
 
 from ccproxy.services.adapters.base import BaseAdapter
+from ccproxy.services.adapters.http_adapter import BaseHTTPAdapter
+from ccproxy.services.interfaces import (
+    IMetricsCollector,
+    IRequestTracer,
+    IStreamingHandler,
+    NullMetricsCollector,
+    NullRequestTracer,
+    NullStreamingHandler,
+)
 
 from .declaration import PluginContext, PluginManifest, RouteSpec, TaskSpec
 from .factory import ProviderPluginFactory
 from .runtime import ProviderPluginRuntime
+
+
+if TYPE_CHECKING:
+    import httpx
+    import structlog
 
 
 class BaseProviderPluginFactory(ProviderPluginFactory):
@@ -113,11 +127,11 @@ class BaseProviderPluginFactory(ProviderPluginFactory):
         return self.runtime_class(self.manifest)
 
     def create_adapter(self, context: PluginContext) -> BaseAdapter:
-        """Create adapter instance with common parameter extraction.
+        """Create adapter instance with explicit dependencies.
 
-        This method extracts common parameters from context and creates
-        the adapter. Subclasses can override this method if they need
-        custom adapter creation logic.
+        This method extracts services from context and creates the adapter
+        with explicit dependency injection. Subclasses can override this
+        method if they need custom adapter creation logic.
 
         Args:
             context: Plugin context
@@ -125,32 +139,84 @@ class BaseProviderPluginFactory(ProviderPluginFactory):
         Returns:
             Adapter instance
         """
-        # Extract common parameters
-        proxy_service = context.get("proxy_service")
-        http_client = context.get("http_client")
-        logger_instance = context.get("logger")
-
-        # Get optional components that may have been created by factory
+        # Extract services from context (one-time extraction)
+        http_client: "httpx.AsyncClient | None" = context.get("http_client")
+        request_tracer: IRequestTracer | None = context.get("request_tracer")
+        metrics: IMetricsCollector | None = context.get("metrics")
+        streaming_handler: IStreamingHandler | None = context.get("streaming_handler")
+        logger_instance: "structlog.BoundLogger | None" = context.get("logger")
+        
+        # Get auth and detection services that may have been created by factory
+        auth_manager = context.get("credentials_manager")
         detection_service = context.get("detection_service")
-        credentials_manager = context.get("credentials_manager")
-
-        # Build adapter kwargs with common parameters
-        adapter_kwargs = {
-            "proxy_service": proxy_service,
-            "http_client": http_client,
-            "logger": logger_instance,
-            "context": context,
-        }
-
-        # Add auth_manager if credentials_manager exists
-        if credentials_manager is not None:
-            adapter_kwargs["auth_manager"] = credentials_manager
-
-        # Add detection_service if it exists
-        if detection_service is not None:
-            adapter_kwargs["detection_service"] = detection_service
-
-        return self.adapter_class(**adapter_kwargs)
+        
+        # Get config if available
+        config = context.get("config")
+        
+        # Legacy proxy_service for backward compatibility
+        proxy_service = context.get("proxy_service")
+        
+        # Check if this is an HTTP-based adapter
+        if issubclass(self.adapter_class, BaseHTTPAdapter):
+            # HTTP adapters require http_client
+            if not http_client:
+                raise RuntimeError(
+                    f"HTTP client required for {self.adapter_class.__name__} but not available in context"
+                )
+                
+            # Create HTTP adapter with explicit dependencies
+            return self.adapter_class(
+                http_client=http_client,
+                auth_manager=auth_manager,
+                detection_service=detection_service,
+                request_tracer=request_tracer or NullRequestTracer(),
+                metrics=metrics or NullMetricsCollector(),
+                streaming_handler=streaming_handler or NullStreamingHandler(),
+                logger=logger_instance,
+                context=context,
+                proxy_service=proxy_service,  # Legacy support
+            )
+        else:
+            # Non-HTTP adapters (like ClaudeSDK) have different dependencies
+            # Build kwargs based on adapter class constructor signature
+            import inspect
+            
+            adapter_kwargs: dict[str, Any] = {}
+            
+            # Get the adapter's __init__ signature
+            sig = inspect.signature(self.adapter_class.__init__)
+            params = sig.parameters
+            
+            # Map available services to expected parameters
+            param_mapping = {
+                "config": config,
+                "http_client": http_client,
+                "auth_manager": auth_manager,
+                "detection_service": detection_service,
+                "session_manager": context.get("session_manager"),
+                "request_tracer": request_tracer,
+                "metrics": metrics,
+                "streaming_handler": streaming_handler,
+                "logger": logger_instance,
+                "context": context,
+                "proxy_service": proxy_service,  # Legacy support
+            }
+            
+            # Add parameters that the adapter expects
+            for param_name, param in params.items():
+                if param_name in ("self", "kwargs"):
+                    continue
+                if param_name in param_mapping and param_mapping[param_name] is not None:
+                    adapter_kwargs[param_name] = param_mapping[param_name]
+                elif param.default is inspect.Parameter.empty and param_name not in adapter_kwargs:
+                    # Required parameter missing - check if we can provide it
+                    if param_name == "config" and config is None:
+                        # Try to get config from manifest
+                        if self.manifest.config_class:
+                            config = self.manifest.config_class()
+                            adapter_kwargs["config"] = config
+            
+            return self.adapter_class(**adapter_kwargs)
 
     def create_detection_service(self, context: PluginContext) -> Any:
         """Create detection service instance if class is configured.

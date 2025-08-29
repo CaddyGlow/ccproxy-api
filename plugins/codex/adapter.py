@@ -6,6 +6,7 @@ import uuid
 from typing import TYPE_CHECKING, Any
 
 from fastapi import Request
+from httpx import AsyncClient
 from starlette.responses import Response, StreamingResponse
 
 from ccproxy.auth.manager import AuthManager
@@ -18,11 +19,19 @@ from ccproxy.config.constants import (
 from ccproxy.core.logging import get_plugin_logger
 from ccproxy.services.adapters.http_adapter import BaseHTTPAdapter
 from ccproxy.services.handler_config import HandlerConfig
-from ccproxy.services.interfaces import IRequestHandler
 
 
 if TYPE_CHECKING:
+    import structlog
+
     from ccproxy.observability.context import RequestContext
+    from ccproxy.plugins.declaration import PluginContext
+    from ccproxy.services.cli_detection import CLIDetectionService
+    from ccproxy.services.interfaces import (
+        IMetricsCollector,
+        IRequestTracer,
+        IStreamingHandler,
+    )
     from ccproxy.streaming.interfaces import IStreamingMetricsCollector
 
 from .format_adapter import CodexFormatAdapter
@@ -41,52 +50,73 @@ class CodexAdapter(BaseHTTPAdapter):
 
     def __init__(
         self,
-        proxy_service: IRequestHandler | None,
+        # Required dependencies
+        http_client: AsyncClient,
         auth_manager: AuthManager,
-        detection_service: Any,
-        http_client: Any | None = None,
-        logger: Any = None,
-        context: Any | None = None,  # Can be dict or PluginContext TypedDict
+        detection_service: "CLIDetectionService",
+        
+        # Optional dependencies
+        request_tracer: "IRequestTracer | None" = None,
+        metrics: "IMetricsCollector | None" = None,
+        streaming_handler: "IStreamingHandler | None" = None,
+        logger: "structlog.BoundLogger | None" = None,
+        
+        # Plugin-specific context
+        context: "PluginContext | dict[str, Any] | None" = None,
+        
+        # Legacy proxy_service for backward compatibility (to be removed)
+        proxy_service: Any | None = None,
     ):
-        """Initialize the Codex adapter.
+        """Initialize the Codex adapter with explicit dependencies.
 
         Args:
-            proxy_service: Request handler for processing requests (can be None, will be set later)
+            http_client: HTTP client for making requests
             auth_manager: Authentication manager for credentials
             detection_service: Detection service for Codex CLI detection
-            http_client: Not used directly (for interface compatibility)
+            request_tracer: Optional request tracer
+            metrics: Optional metrics collector
+            streaming_handler: Optional streaming handler
             logger: Structured logger instance
             context: Optional plugin context containing plugin_registry and other services
+            proxy_service: Legacy ProxyService for backward compatibility
         """
         # Initialize transformers
         request_transformer = CodexRequestTransformer(detection_service)
 
         # Initialize response transformer with CORS settings
-        from ccproxy.services.proxy_service import ProxyService
-
         cors_settings = None
-        if isinstance(proxy_service, ProxyService):
-            cors_settings = getattr(proxy_service.config, "cors", None)
+        # Try from context first, then from legacy proxy_service
+        if context:
+            config = context.get("config") if isinstance(context, dict) else getattr(context, "config", None)
+            if config:
+                cors_settings = getattr(config, "cors", None)
+        elif proxy_service:
+            # Legacy support - check if proxy_service has config
+            from ccproxy.services.proxy_service import ProxyService
+            if isinstance(proxy_service, ProxyService):
+                cors_settings = getattr(proxy_service.config, "cors", None)
+                
         response_transformer = CodexResponseTransformer(cors_settings)
 
-        # Initialize base HTTP adapter
+        # Initialize base HTTP adapter with explicit dependencies
         super().__init__(
-            proxy_service=proxy_service,
+            http_client=http_client,
             auth_manager=auth_manager,
             detection_service=detection_service,
-            http_client=http_client,
-            logger=logger,
-            context=context,
+            request_tracer=request_tracer,
+            metrics=metrics,
+            streaming_handler=streaming_handler,
             request_transformer=request_transformer,
             response_transformer=response_transformer,
+            logger=logger,
+            context=context,
         )
 
         # Initialize components
         self.format_adapter = CodexFormatAdapter()
 
-        # Complete initialization if proxy_service is available
-        if proxy_service:
-            self._complete_initialization()
+        # Complete initialization if needed
+        self._complete_initialization()
 
     async def _resolve_endpoint(self, endpoint: str) -> tuple[str, bool]:
         """Resolve the target URL and determine if format conversion is needed.
@@ -219,12 +249,10 @@ class CodexAdapter(BaseHTTPAdapter):
         )
 
     def _complete_initialization(self) -> None:
-        """Complete initialization with proxy_service dependencies."""
-        if not self.proxy_service:
-            return
-
+        """Complete initialization - no longer needed with explicit dependencies."""
         # HTTP handler is already initialized by BaseHTTPAdapter
         # Transformers are already set from constructor
+        # All dependencies are now explicitly injected - nothing to do here
         pass
 
     # _get_pricing_service is inherited from BaseHTTPAdapter

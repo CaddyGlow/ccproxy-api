@@ -14,6 +14,14 @@ from ccproxy.hooks.base import HookContext
 from ccproxy.services.adapters.base import BaseAdapter
 from ccproxy.services.handler_config import HandlerConfig
 from ccproxy.services.http.plugin_handler import PluginHTTPHandler
+from ccproxy.services.interfaces import (
+    IMetricsCollector,
+    IRequestTracer,
+    IStreamingHandler,
+    NullMetricsCollector,
+    NullRequestTracer,
+    NullStreamingHandler,
+)
 from ccproxy.streaming.deferred_streaming import DeferredStreaming
 
 
@@ -26,9 +34,7 @@ if TYPE_CHECKING:
     from ccproxy.observability.context import RequestContext
     from ccproxy.plugins.declaration import PluginContext
     from ccproxy.services.cli_detection import CLIDetectionService
-    from ccproxy.services.proxy_service import ProxyService
     from ccproxy.streaming.interfaces import IStreamingMetricsCollector
-    from plugins.pricing.service import PricingService
 
 
 class BaseHTTPAdapter(BaseAdapter):
@@ -44,41 +50,59 @@ class BaseHTTPAdapter(BaseAdapter):
 
     def __init__(
         self,
-        proxy_service: "ProxyService | None",
+        # Required dependencies
+        http_client: "httpx.AsyncClient",
         auth_manager: "AuthManager",
         detection_service: "CLIDetectionService",
-        http_client: "httpx.AsyncClient | None" = None,
-        logger: "structlog.BoundLogger | None" = None,
-        context: "PluginContext | None" = None,
+        
+        # Optional dependencies with defaults
+        request_tracer: "IRequestTracer | None" = None,
+        metrics: "IMetricsCollector | None" = None,
+        streaming_handler: "IStreamingHandler | None" = None,
         request_transformer: "BaseTransformer | None" = None,
         response_transformer: "BaseTransformer | None" = None,
+        logger: "structlog.BoundLogger | None" = None,
+        
+        # Context for plugin-specific services
+        context: "PluginContext | None" = None,
     ) -> None:
-        """Initialize the base HTTP adapter.
+        """Initialize the base HTTP adapter with explicit dependencies.
 
         Args:
-            proxy_service: ProxyService instance for handling requests
+            http_client: HTTP client for making requests
             auth_manager: Authentication manager for credentials
             detection_service: Detection service for CLI detection
-            http_client: Optional HTTP client for making requests
-            logger: Optional structured logger instance
-            context: Optional plugin context containing plugin_registry and other services
+            request_tracer: Optional request tracer
+            metrics: Optional metrics collector
+            streaming_handler: Optional streaming handler
             request_transformer: Optional request transformer
             response_transformer: Optional response transformer
+            logger: Optional structured logger instance
+            context: Optional plugin context containing plugin_registry and other services
         """
-        self.logger = logger or get_plugin_logger()
-        self.proxy_service = proxy_service
+        # Store required dependencies
+        self.http_client = http_client
         self._auth_manager = auth_manager
         self._detection_service = detection_service
+        
+        # Use null object pattern for optional dependencies
+        self.request_tracer = request_tracer or NullRequestTracer()
+        self.metrics = metrics or NullMetricsCollector()
+        self.streaming_handler = streaming_handler or NullStreamingHandler()
+        self.logger = logger or get_plugin_logger()
+        
+        # Store context for plugin-specific needs
         self.context = context or {}
 
         # Initialize transformers (can be overridden by subclasses)
         self._request_transformer = request_transformer
         self._response_transformer = response_transformer
 
-        # Initialize HTTP handler
-        request_tracer = None
-        if proxy_service and hasattr(proxy_service, "request_tracer"):
-            request_tracer = proxy_service.request_tracer
+        # Initialize HTTP handler with explicit dependencies
+        self._http_handler: PluginHTTPHandler = PluginHTTPHandler(
+            http_client=http_client,
+            request_tracer=self.request_tracer
+        )
 
         if http_client:
             self._http_handler: PluginHTTPHandler = PluginHTTPHandler(
@@ -93,26 +117,6 @@ class BaseHTTPAdapter(BaseAdapter):
                 "No HTTP client available - provide http_client or proxy_service with http_client"
             )
 
-    def _get_hook_manager(self) -> "HookManager | None":
-        """Get hook manager from context if available."""
-        try:
-            if not self.context:
-                return None
-
-            # Try to get from context directly
-            if "hook_manager" in self.context:
-                return self.context["hook_manager"]
-
-            # Try to get from app state
-            if "app" in self.context and hasattr(
-                self.context["app"].state, "hook_manager"
-            ):
-                return self.context["app"].state.hook_manager
-
-            return None
-        except Exception:
-            return None
-
     def _get_pricing_service(self) -> "PricingService | None":
         """Get pricing service from plugin registry if available."""
         try:
@@ -121,11 +125,8 @@ class BaseHTTPAdapter(BaseAdapter):
 
             plugin_registry = self.context["plugin_registry"]
 
-            # Import locally to avoid circular dependency
-            from plugins.pricing.service import PricingService
-
-            # Get service from registry with type checking
-            return plugin_registry.get_service("pricing", PricingService)
+            # Get service from registry - type is Any to avoid plugin dependency
+            return plugin_registry.get_service("pricing")
 
         except Exception as e:
             self.logger.debug("failed_to_get_pricing_service", error=str(e))
@@ -304,9 +305,7 @@ class BaseHTTPAdapter(BaseAdapter):
         )
 
         # Get streaming handler if needed
-        streaming_handler = None
-        if is_streaming and self.proxy_service:
-            streaming_handler = getattr(self.proxy_service, "streaming_handler", None)
+        streaming_handler = self.streaming_handler if is_streaming else None
 
         # Emit PROVIDER_REQUEST_SENT hook before sending to provider
         hook_manager = self._get_hook_manager()
@@ -526,9 +525,12 @@ class BaseHTTPAdapter(BaseAdapter):
                 await self._http_handler.cleanup()
 
             # Clear references
-            self.proxy_service = None
             self._request_transformer = None
             self._response_transformer = None
+            self.http_client = None  # Clear HTTP client reference
+            self.request_tracer = None
+            self.metrics = None
+            self.streaming_handler = None
 
             self.logger.debug("http_adapter_cleanup_completed")
 

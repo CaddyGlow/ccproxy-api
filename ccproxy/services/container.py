@@ -20,12 +20,19 @@ from ccproxy.services.http.connection_pool import ConnectionPoolManager
 from ccproxy.services.http_pool import HTTPPoolManager
 from ccproxy.services.mocking import MockResponseHandler
 from ccproxy.services.streaming import StreamingHandler
-from ccproxy.services.tracing import NullRequestTracer, RequestTracer
+from ccproxy.services.interfaces import (
+    IMetricsCollector,
+    IRequestTracer,
+    IStreamingHandler,
+    NullMetricsCollector,
+    NullRequestTracer,
+    NullStreamingHandler,
+)
+from ccproxy.services.tracing import NullRequestTracer as OldNullRequestTracer
+from ccproxy.services.tracing import RequestTracer
 from ccproxy.utils.binary_resolver import BinaryResolver
 
 
-if TYPE_CHECKING:
-    from ccproxy.services.proxy_service import ProxyService
 
 
 logger = structlog.get_logger(__name__)
@@ -61,6 +68,7 @@ class ServiceContainer:
         self._http_client: httpx.AsyncClient | None = None
         self._pool_manager: HTTPPoolManager | None = None
         self._request_tracer: RequestTracer | None = None  # Set by plugin
+        self._proxy_client: BaseProxyClient | None = None  # Managed proxy client
 
         logger.debug(
             "service_container_initialized",
@@ -68,60 +76,16 @@ class ServiceContainer:
             category="lifecycle",
         )
 
-    def create_proxy_service(
-        self,
-        proxy_client: BaseProxyClient,
-        metrics: PrometheusMetrics | None = None,
-    ) -> "ProxyService":
-        """Factory method to create fully configured ProxyService.
-
-        Creates ProxyService with only actively used dependencies.
-        Removed unused services: mock_handler, response_cache, connection_pool_manager.
+    def set_proxy_client(self, proxy_client: BaseProxyClient) -> None:
+        """Set the proxy client for the container to manage.
 
         Args:
-            proxy_client: HTTP proxy client
-            metrics: Optional metrics service
-
-        Returns:
-            Ready-to-use ProxyService instance with clean dependencies
+            proxy_client: HTTP proxy client to manage
         """
-        # Import here to avoid circular dependency
-        from ccproxy.services.proxy_service import ProxyService
+        self._proxy_client = proxy_client
+        logger.debug("proxy_client_set", category="lifecycle")
 
-        # Create ProxyService with only actively used services
-        # Track components being initialized
-        components = []
-
-        request_tracer = self.get_request_tracer()
-        components.append("request_tracer")
-
-        streaming_handler = self.get_streaming_handler(metrics)
-        components.append("streaming_handler")
-
-        config = self.get_proxy_config()
-        components.append("proxy_config")
-
-        http_client = self.get_http_client()
-        components.append("http_client")
-
-        proxy_service = ProxyService(
-            proxy_client=proxy_client,
-            settings=self.settings,
-            request_tracer=request_tracer,
-            streaming_handler=streaming_handler,
-            config=config,
-            http_client=http_client,
-            metrics=metrics,
-        )
-
-        logger.info(
-            "services_initialized",
-            components=components,
-            category="lifecycle",
-        )
-        return proxy_service
-
-    def get_request_tracer(self) -> RequestTracer:
+    def get_request_tracer(self) -> IRequestTracer:
         """Get request tracer service instance.
 
         Returns the plugin-injected tracer or NullRequestTracer as fallback.
@@ -308,6 +272,32 @@ class ServiceContainer:
                 self._services[service_key] = ConnectionPoolManager()
             logger.debug("connection_pool_manager_created", category="lifecycle")
         return self._services[service_key]  # type: ignore
+    
+    def get_adapter_dependencies(
+        self, metrics: PrometheusMetrics | None = None
+    ) -> dict[str, Any]:
+        """Get all services an adapter might need.
+        
+        This method provides individual services for explicit dependency injection
+        in adapters, replacing the ProxyService service locator pattern.
+        
+        Args:
+            metrics: Optional metrics service
+            
+        Returns:
+            Dictionary of services that can be injected into adapters
+        """
+        return {
+            "http_client": self.get_http_client(),
+            "request_tracer": self.get_request_tracer(),
+            "metrics": metrics or NullMetricsCollector(),
+            "streaming_handler": self.get_streaming_handler(metrics),
+            "logger": structlog.get_logger(),
+            "config": self.get_proxy_config(),
+            "cli_detection_service": self.get_cli_detection_service(),
+            # Legacy ProxyService creation for backward compatibility
+            "proxy_service": None,  # Will be removed completely after migration
+        }
 
     async def close(self) -> None:
         """Close all managed resources during shutdown.
@@ -315,6 +305,21 @@ class ServiceContainer:
         This method properly cleans up all resources managed by the container,
         ensuring graceful shutdown and preventing resource leaks.
         """
+        # Close proxy client if it exists
+        if self._proxy_client:
+            if hasattr(self._proxy_client, "close"):
+                try:
+                    await self._proxy_client.close()
+                    logger.debug("proxy_client_closed", category="lifecycle")
+                except Exception as e:
+                    logger.error(
+                        "proxy_client_close_failed",
+                        error=str(e),
+                        exc_info=e,
+                        category="lifecycle",
+                    )
+            self._proxy_client = None
+
         # Close pool manager (which closes all HTTP clients including the shared client)
         if self._pool_manager:
             await self._pool_manager.close_all()
