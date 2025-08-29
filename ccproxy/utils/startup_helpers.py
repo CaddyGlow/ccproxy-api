@@ -263,10 +263,10 @@ async def initialize_proxy_service_startup(app: FastAPI, settings: Settings) -> 
 
         # Set proxy client in container for lifecycle management
         container.set_proxy_client(proxy_client)
-        
+
         # Store metrics in app state if needed
         app.state.metrics = metrics
-        
+
         logger.debug("proxy_client_initialized")
     except (ImportError, ModuleNotFoundError) as e:
         logger.error(

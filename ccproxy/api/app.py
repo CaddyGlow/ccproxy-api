@@ -92,7 +92,9 @@ async def setup_service_container_shutdown(app: FastAPI) -> None:
         if hasattr(service_container, "close"):
             try:
                 await service_container.close()
-                logger.debug("service_container_shutdown_completed", category="lifecycle")
+                logger.debug(
+                    "service_container_shutdown_completed", category="lifecycle"
+                )
             except Exception as e:
                 logger.error(
                     "service_container_shutdown_failed",

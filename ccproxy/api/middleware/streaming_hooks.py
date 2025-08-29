@@ -134,4 +134,3 @@ class StreamingResponseWithHooks(StreamingResponse):
                 except Exception:
                     # Silently ignore hook emission errors to avoid breaking the stream
                     pass
-

@@ -192,6 +192,32 @@ class RequestProcessor:
         if not handler_config.response_adapter:
             return body
 
+        # Check if this is SSE format (Codex always returns SSE)
+        try:
+            body_str = body.decode("utf-8", errors="ignore")
+            if body_str.startswith("event:") or body_str.startswith("data:"):
+                # This is SSE format - parse it to extract the final response
+                self.logger.debug("detected_sse_response", body_preview=body_str[:100])
+
+                # Import here to avoid circular dependency
+                from plugins.codex.utils.sse_parser import extract_final_response
+
+                final_response = extract_final_response(body_str)
+                if final_response:
+                    # Apply adapter to the extracted JSON
+                    adapted_data = await handler_config.response_adapter.adapt_response(
+                        final_response
+                    )
+                    return json.dumps(adapted_data).encode()
+                else:
+                    # Couldn't extract response, return original
+                    self.logger.warning(
+                        "sse_extraction_failed", body_preview=body_str[:200]
+                    )
+                    return body
+        except Exception as e:
+            self.logger.warning("sse_detection_error", error=str(e))
+
         try:
             response_data = json.loads(body)
             adapted_data = await handler_config.response_adapter.adapt_response(

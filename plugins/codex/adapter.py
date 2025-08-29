@@ -22,7 +22,6 @@ from ccproxy.services.handler_config import HandlerConfig
 
 
 if TYPE_CHECKING:
-    import structlog
 
     from ccproxy.observability.context import RequestContext
     from ccproxy.plugins.declaration import PluginContext
@@ -54,15 +53,12 @@ class CodexAdapter(BaseHTTPAdapter):
         http_client: AsyncClient,
         auth_manager: AuthManager,
         detection_service: "CLIDetectionService",
-        
         # Optional dependencies
         request_tracer: "IRequestTracer | None" = None,
         metrics: "IMetricsCollector | None" = None,
         streaming_handler: "IStreamingHandler | None" = None,
-        
         # Plugin-specific context
         context: "PluginContext | dict[str, Any] | None" = None,
-        
         # Legacy proxy_service for backward compatibility (to be removed)
         proxy_service: Any | None = None,
     ):
@@ -85,15 +81,20 @@ class CodexAdapter(BaseHTTPAdapter):
         cors_settings = None
         # Try from context first, then from legacy proxy_service
         if context:
-            config = context.get("config") if isinstance(context, dict) else getattr(context, "config", None)
+            config = (
+                context.get("config")
+                if isinstance(context, dict)
+                else getattr(context, "config", None)
+            )
             if config:
                 cors_settings = getattr(config, "cors", None)
         elif proxy_service:
             # Legacy support - check if proxy_service has config
             from ccproxy.services.proxy_service import ProxyService
+
             if isinstance(proxy_service, ProxyService):
                 cors_settings = getattr(proxy_service.config, "cors", None)
-                
+
         response_transformer = CodexResponseTransformer(cors_settings)
 
         # Initialize base HTTP adapter with explicit dependencies

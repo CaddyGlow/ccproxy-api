@@ -26,7 +26,6 @@ from .runtime import ProviderPluginRuntime
 
 if TYPE_CHECKING:
     import httpx
-    import structlog
 
 
 class BaseProviderPluginFactory(ProviderPluginFactory):
@@ -140,7 +139,7 @@ class BaseProviderPluginFactory(ProviderPluginFactory):
             Adapter instance
         """
         # Extract services from context (one-time extraction)
-        http_client: "httpx.AsyncClient | None" = context.get("http_client")
+        http_client: httpx.AsyncClient | None = context.get("http_client")
         request_tracer: IRequestTracer | None = context.get("request_tracer")
         metrics: IMetricsCollector | None = context.get("metrics")
         streaming_handler: IStreamingHandler | None = context.get("streaming_handler")
@@ -148,13 +147,13 @@ class BaseProviderPluginFactory(ProviderPluginFactory):
         # Get auth and detection services that may have been created by factory
         auth_manager = context.get("credentials_manager")
         detection_service = context.get("detection_service")
-        
+
         # Get config if available
         config = context.get("config")
-        
+
         # Legacy proxy_service for backward compatibility
         proxy_service = context.get("proxy_service")
-        
+
         # Check if this is an HTTP-based adapter
         if issubclass(self.adapter_class, BaseHTTPAdapter):
             # HTTP adapters require http_client
@@ -162,7 +161,7 @@ class BaseProviderPluginFactory(ProviderPluginFactory):
                 raise RuntimeError(
                     f"HTTP client required for {self.adapter_class.__name__} but not available in context"
                 )
-                
+
             # Create HTTP adapter with explicit dependencies
             return self.adapter_class(
                 http_client=http_client,
@@ -178,13 +177,13 @@ class BaseProviderPluginFactory(ProviderPluginFactory):
             # Non-HTTP adapters (like ClaudeSDK) have different dependencies
             # Build kwargs based on adapter class constructor signature
             import inspect
-            
+
             adapter_kwargs: dict[str, Any] = {}
-            
+
             # Get the adapter's __init__ signature
             sig = inspect.signature(self.adapter_class.__init__)
             params = sig.parameters
-            
+
             # Map available services to expected parameters
             param_mapping = {
                 "config": config,
@@ -198,21 +197,27 @@ class BaseProviderPluginFactory(ProviderPluginFactory):
                 "context": context,
                 "proxy_service": proxy_service,  # Legacy support
             }
-            
+
             # Add parameters that the adapter expects
             for param_name, param in params.items():
                 if param_name in ("self", "kwargs"):
                     continue
-                if param_name in param_mapping and param_mapping[param_name] is not None:
+                if (
+                    param_name in param_mapping
+                    and param_mapping[param_name] is not None
+                ):
                     adapter_kwargs[param_name] = param_mapping[param_name]
-                elif param.default is inspect.Parameter.empty and param_name not in adapter_kwargs:
+                elif (
+                    param.default is inspect.Parameter.empty
+                    and param_name not in adapter_kwargs
+                ):
                     # Required parameter missing - check if we can provide it
                     if param_name == "config" and config is None:
                         # Try to get config from manifest
                         if self.manifest.config_class:
                             config = self.manifest.config_class()
                             adapter_kwargs["config"] = config
-            
+
             return self.adapter_class(**adapter_kwargs)
 
     def create_detection_service(self, context: PluginContext) -> Any:

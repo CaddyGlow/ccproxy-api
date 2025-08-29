@@ -5,10 +5,9 @@ import json
 from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING, Any, cast
 
-if TYPE_CHECKING:
-    import structlog
 
-    from ccproxy.observability.metrics import PrometheusMetrics
+if TYPE_CHECKING:
+
     from ccproxy.services.interfaces import IMetricsCollector
 
 import httpx
@@ -46,7 +45,7 @@ class ClaudeSDKAdapter(BaseAdapter):
         metrics: "IMetricsCollector | None" = None,
     ) -> None:
         """Initialize the Claude SDK adapter with explicit dependencies.
-        
+
         Args:
             config: SDK configuration settings
             session_manager: Optional session manager for session handling
@@ -79,7 +78,11 @@ class ClaudeSDKAdapter(BaseAdapter):
             )
 
         # Use provided session_manager or create if needed and enabled
-        if session_manager is None and config.sdk_session_pool and config.sdk_session_pool.enabled:
+        if (
+            session_manager is None
+            and config.sdk_session_pool
+            and config.sdk_session_pool.enabled
+        ):
             session_manager = SessionManager(config=config)
             logger.debug(
                 "adapter_session_pool_enabled",

@@ -1,6 +1,5 @@
 """Hook-based request tracer implementation."""
 
-from typing import Any
 
 import structlog
 

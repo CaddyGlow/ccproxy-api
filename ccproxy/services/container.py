@@ -4,7 +4,7 @@ This module provides a clean, testable dependency injection container that
 manages service lifecycles and dependencies without singleton anti-patterns.
 """
 
-from typing import TYPE_CHECKING, Any, cast
+from typing import Any, cast
 
 import httpx
 import structlog
@@ -18,21 +18,15 @@ from ccproxy.services.config import ProxyConfiguration
 from ccproxy.services.factories import ConcreteServiceFactory
 from ccproxy.services.http.connection_pool import ConnectionPoolManager
 from ccproxy.services.http_pool import HTTPPoolManager
-from ccproxy.services.mocking import MockResponseHandler
-from ccproxy.services.streaming import StreamingHandler
 from ccproxy.services.interfaces import (
-    IMetricsCollector,
     IRequestTracer,
-    IStreamingHandler,
     NullMetricsCollector,
     NullRequestTracer,
-    NullStreamingHandler,
 )
-from ccproxy.services.tracing import NullRequestTracer as OldNullRequestTracer
+from ccproxy.services.mocking import MockResponseHandler
+from ccproxy.services.streaming import StreamingHandler
 from ccproxy.services.tracing import RequestTracer
 from ccproxy.utils.binary_resolver import BinaryResolver
-
-
 
 
 logger = structlog.get_logger(__name__)
@@ -272,18 +266,18 @@ class ServiceContainer:
                 self._services[service_key] = ConnectionPoolManager()
             logger.debug("connection_pool_manager_created", category="lifecycle")
         return self._services[service_key]  # type: ignore
-    
+
     def get_adapter_dependencies(
         self, metrics: PrometheusMetrics | None = None
     ) -> dict[str, Any]:
         """Get all services an adapter might need.
-        
+
         This method provides individual services for explicit dependency injection
         in adapters, replacing the ProxyService service locator pattern.
-        
+
         Args:
             metrics: Optional metrics service
-            
+
         Returns:
             Dictionary of services that can be injected into adapters
         """

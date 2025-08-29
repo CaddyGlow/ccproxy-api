@@ -8,7 +8,6 @@ import httpx
 from fastapi import Depends, Request
 
 from ccproxy.config.settings import Settings, get_settings
-from ccproxy.core.http import BaseProxyClient
 from ccproxy.core.http_client import get_shared_http_client
 from ccproxy.core.logging import get_logger
 from ccproxy.hooks import HookManager

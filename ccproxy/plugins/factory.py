@@ -97,7 +97,6 @@ class BasePluginFactory(PluginFactory):
             "settings": core_services.settings,
             "http_client": core_services.http_client,
             "logger": core_services.logger.bind(plugin=self.manifest.name),
-            "proxy_service": core_services.proxy_service,
         }
 
         # Add explicit dependency injection services

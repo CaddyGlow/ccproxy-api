@@ -27,7 +27,6 @@ from ccproxy.streaming.deferred_streaming import DeferredStreaming
 
 if TYPE_CHECKING:
     import httpx
-    import structlog
 
     from ccproxy.auth.manager import AuthManager
     from ccproxy.core.transformers import BaseTransformer
@@ -57,7 +56,6 @@ class BaseHTTPAdapter(BaseAdapter):
         http_client: "httpx.AsyncClient",
         auth_manager: "AuthManager",
         detection_service: "CLIDetectionService",
-        
         # Optional dependencies with defaults
         request_tracer: "IRequestTracer | None" = None,
         metrics: "IMetricsCollector | None" = None,
@@ -84,7 +82,7 @@ class BaseHTTPAdapter(BaseAdapter):
         self.http_client = http_client
         self._auth_manager = auth_manager
         self._detection_service = detection_service
-        
+
         # Use null object pattern for optional dependencies
         self.request_tracer = request_tracer or NullRequestTracer()
         self.metrics = metrics or NullMetricsCollector()
@@ -99,22 +97,28 @@ class BaseHTTPAdapter(BaseAdapter):
 
         # Initialize HTTP handler with explicit dependencies
         self._http_handler: PluginHTTPHandler = PluginHTTPHandler(
-            http_client=http_client,
-            request_tracer=self.request_tracer
+            http_client=http_client, request_tracer=self.request_tracer
         )
 
-        if http_client:
-            self._http_handler: PluginHTTPHandler = PluginHTTPHandler(
-                http_client=http_client, request_tracer=request_tracer
-            )
-        elif proxy_service and hasattr(proxy_service, "http_client"):
-            self._http_handler = PluginHTTPHandler(
-                http_client=proxy_service.http_client, request_tracer=request_tracer
-            )
-        else:
-            raise RuntimeError(
-                "No HTTP client available - provide http_client or proxy_service with http_client"
-            )
+    def _get_hook_manager(self) -> "HookManager | None":
+        """Get hook manager from context if available."""
+        try:
+            if not self.context:
+                return None
+
+            # Try to get from context directly
+            if "hook_manager" in self.context:
+                return self.context["hook_manager"]
+
+            # Try to get from app state
+            if "app" in self.context and hasattr(
+                self.context["app"].state, "hook_manager"
+            ):
+                return self.context["app"].state.hook_manager
+
+            return None
+        except Exception:
+            return None
 
     def _get_pricing_service(self) -> "PricingService | None":
         """Get pricing service from plugin registry if available."""
@@ -124,8 +128,11 @@ class BaseHTTPAdapter(BaseAdapter):
 
             plugin_registry = self.context["plugin_registry"]
 
-            # Get service from registry - type is Any to avoid plugin dependency
-            return plugin_registry.get_service("pricing")
+            # Import locally to avoid circular dependency
+            from plugins.pricing.service import PricingService
+
+            # Get service from registry with type checking
+            return plugin_registry.get_service("pricing", PricingService)
 
         except Exception as e:
             logger.debug("failed_to_get_pricing_service", error=str(e))

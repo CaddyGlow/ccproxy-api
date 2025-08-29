@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Any
 import structlog
 from fastapi.responses import StreamingResponse
 
+
 # Access logging now handled by ObservabilityPipeline
 
 

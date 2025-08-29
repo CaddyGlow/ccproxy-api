@@ -4,7 +4,8 @@ This module defines protocol interfaces for core services that adapters need,
 enabling explicit dependency injection and removing the service locator pattern.
 """
 
-from typing import TYPE_CHECKING, Any, AsyncIterator, Protocol
+from collections.abc import AsyncIterator
+from typing import TYPE_CHECKING, Any, Protocol
 
 import httpx
 from starlette.responses import Response
@@ -109,11 +110,11 @@ class IMetricsCollector(Protocol):
         ...
 
     def track_tokens(
-        self, 
-        input_tokens: int, 
-        output_tokens: int, 
+        self,
+        input_tokens: int,
+        output_tokens: int,
         provider: str | None = None,
-        model: str | None = None
+        model: str | None = None,
     ) -> None:
         """Track token usage.
 
@@ -160,7 +161,7 @@ class IStreamingHandler(Protocol):
             Streaming response object
         """
         ...
-    
+
     async def handle_streaming_request(
         self,
         method: str,
@@ -191,6 +192,7 @@ class IStreamingHandler(Protocol):
 
 
 # Null implementations for optional dependencies
+
 
 class NullRequestTracer:
     """Null implementation of request tracer (no-op)."""
@@ -241,11 +243,11 @@ class NullMetricsCollector:
         pass
 
     def track_tokens(
-        self, 
-        input_tokens: int, 
-        output_tokens: int, 
+        self,
+        input_tokens: int,
+        output_tokens: int,
         provider: str | None = None,
-        model: str | None = None
+        model: str | None = None,
     ) -> None:
         """No-op token tracking."""
         pass
@@ -271,8 +273,9 @@ class NullStreamingHandler:
     ) -> Response:
         """Create empty response."""
         from starlette.responses import Response
+
         return Response(content=b"", headers=headers or {})
-    
+
     async def handle_streaming_request(
         self,
         method: str,
@@ -287,9 +290,9 @@ class NullStreamingHandler:
         """Null implementation - returns a simple error response."""
         # For null implementation, return a regular response instead of trying to stream
         from starlette.responses import JSONResponse
-        
+
         return JSONResponse(
             content={"error": "Streaming handler not available"},
             status_code=503,  # Service Unavailable
-            headers={"X-Error": "NullStreamingHandler"}
+            headers={"X-Error": "NullStreamingHandler"},
         )

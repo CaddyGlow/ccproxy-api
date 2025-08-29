@@ -15,7 +15,7 @@ os.environ["HOOKS_ENABLED"] = "true"
 project_root = Path(__file__).parent
 sys.path.insert(0, str(project_root))
 
-from ccproxy.config.settings import Settings, get_settings  # noqa: E402
+from ccproxy.config.settings import get_settings  # noqa: E402
 from ccproxy.hooks import HookEvent, HookManager, HookRegistry  # noqa: E402
 from ccproxy.hooks.base import HookContext  # noqa: E402
 
