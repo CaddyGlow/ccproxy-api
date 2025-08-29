@@ -559,7 +559,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # Store plugin registry and middleware manager in app state for runtime initialization
     app.state.plugin_registry = plugin_registry
     app.state.middleware_manager = middleware_manager
-    
+
     # Store settings object that was potentially modified by plugins
     # This ensures the same settings object is used throughout the app lifecycle
     app.state.settings = settings

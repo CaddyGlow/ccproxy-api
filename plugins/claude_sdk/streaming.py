@@ -5,7 +5,7 @@ from typing import Any
 from uuid import uuid4
 
 from ccproxy.core.logging import get_plugin_logger
-from ccproxy.observability.context import RequestContext
+from ccproxy.core.request_context import RequestContext
 from ccproxy.observability.metrics import PrometheusMetrics
 
 from . import models as sdk_models

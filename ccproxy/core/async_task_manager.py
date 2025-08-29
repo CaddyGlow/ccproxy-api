@@ -200,7 +200,7 @@ class AsyncTaskManager:
         # Add done callback for automatic cleanup
         task.add_done_callback(lambda t: self._schedule_cleanup_callback(task_info))
 
-        logger.trace(
+        logger.debug(
             "task_created",
             task_id=task_info.task_id,
             task_name=name,

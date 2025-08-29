@@ -6,4 +6,5 @@ using the hook system for event-driven metric updates.
 
 from .plugin import factory
 
+
 __all__ = ["factory"]

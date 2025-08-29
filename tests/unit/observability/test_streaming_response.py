@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from ccproxy.observability.context import RequestContext
+from ccproxy.core.request_context import RequestContext
 from ccproxy.observability.streaming_response import StreamingResponseWithLogging
 
 

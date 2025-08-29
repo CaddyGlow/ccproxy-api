@@ -49,16 +49,8 @@ class ObservabilitySettings(BaseModel):
         description="Path to DuckDB database file",
     )
 
-    # Pushgateway Configuration
-    pushgateway_url: str | None = Field(
-        default=None,
-        description="Pushgateway URL (e.g., http://pushgateway:9091)",
-    )
-
-    pushgateway_job: str = Field(
-        default="ccproxy",
-        description="Job name for Pushgateway metrics",
-    )
+    # Pushgateway configuration removed - functionality moved to metrics plugin
+    # The metrics plugin now manages its own pushgateway settings
 
     # Stats printing configuration
     stats_printing_format: str = Field(

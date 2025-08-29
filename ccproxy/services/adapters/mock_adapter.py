@@ -9,7 +9,7 @@ from fastapi import Request
 from fastapi.responses import Response
 from starlette.responses import StreamingResponse
 
-from ccproxy.observability.context import RequestContext
+from ccproxy.core.request_context import RequestContext
 from ccproxy.services.adapters.base import BaseAdapter
 from ccproxy.services.mocking.mock_handler import MockResponseHandler
 

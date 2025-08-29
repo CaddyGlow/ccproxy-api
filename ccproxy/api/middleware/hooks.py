@@ -66,7 +66,7 @@ class HooksMiddleware(BaseHTTPMiddleware):
             )
 
         # Get or create RequestContext
-        from ccproxy.observability.context import RequestContext
+        from ccproxy.core.request_context import RequestContext
 
         request_context = RequestContext.get_current()
         if not request_context:

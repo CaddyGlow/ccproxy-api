@@ -26,10 +26,10 @@ async def log_request_access(
     **additional_metadata: Any,
 ) -> None:
     """Log comprehensive access information for a request.
-    
+
     This function generates a unified access log entry with complete request
     metadata including timing, tokens, costs, and any additional context.
-    
+
     Args:
         request_id: Request identifier
         method: HTTP method
@@ -51,7 +51,7 @@ async def log_request_access(
         "client_ip": client_ip,
         "user_agent": user_agent,
     }
-    
+
     # Add response-specific fields
     log_data.update({
         "status_code": status_code,
@@ -59,7 +59,7 @@ async def log_request_access(
         "duration_seconds": duration_ms / 1000 if duration_ms else None,
         "error_message": error_message,
     })
-    
+
     # Add token and cost metrics if available in metadata
     token_fields = [
         "tokens_input",
@@ -69,20 +69,20 @@ async def log_request_access(
         "cost_usd",
         "num_turns",
     ]
-    
+
     for field in token_fields:
         value = additional_metadata.get(field)
         if value is not None:
             log_data[field] = value
-    
+
     # Add service and endpoint info
     service_fields = ["endpoint", "model", "streaming", "service_type", "provider"]
-    
+
     for field in service_fields:
         value = additional_metadata.get(field)
         if value is not None:
             log_data[field] = value
-    
+
     # Add session context metadata if available
     session_fields = [
         "session_id",
@@ -95,12 +95,12 @@ async def log_request_access(
         "session_error_count",
         "session_is_new",
     ]
-    
+
     for field in session_fields:
         value = additional_metadata.get(field)
         if value is not None:
             log_data[field] = value
-    
+
     # Add rate limit headers if available
     rate_limit_fields = [
         "x-ratelimit-limit",
@@ -114,30 +114,28 @@ async def log_request_access(
         "anthropic-ratelimit-tokens-reset",
         "anthropic_request_id",
     ]
-    
+
     for field in rate_limit_fields:
         value = additional_metadata.get(field)
         if value is not None:
             log_data[field] = value
-    
+
     # Add any additional metadata provided
     log_data.update(additional_metadata)
-    
+
     # Remove None values to keep log clean
     log_data = {k: v for k, v in log_data.items() if v is not None}
-    
+
     # Log with appropriate level
     bound_logger = logger.bind(**log_data)
-    
+
     if error_message:
         bound_logger.warning("access_log", exc_info=additional_metadata.get("error"))
     else:
         is_streaming = additional_metadata.get("streaming", False)
         is_streaming_complete = additional_metadata.get("event_type", "") == "streaming_complete"
-        
-        if not is_streaming:
-            bound_logger.info("access_log")
-        elif is_streaming_complete:
+
+        if not is_streaming or is_streaming_complete:
             bound_logger.info("access_log")
         else:
             # If streaming is true, and not streaming_complete log as debug
@@ -154,9 +152,9 @@ def log_request_start(
     **additional_metadata: Any,
 ) -> None:
     """Log request start event with basic information.
-    
+
     This is used for early/hook logging when full context isn't available yet.
-    
+
     Args:
         request_id: Request identifier
         method: HTTP method
@@ -176,13 +174,13 @@ def log_request_start(
         "event_type": "request_start",
         "timestamp": time.time(),
     }
-    
+
     # Add any additional metadata
     log_data.update(additional_metadata)
-    
+
     # Remove None values
     log_data = {k: v for k, v in log_data.items() if v is not None}
-    
+
     logger.debug("access_log_start", **log_data)
 
 
@@ -197,7 +195,7 @@ async def log_provider_access(
     **additional_metadata: Any,
 ) -> None:
     """Log provider access information.
-    
+
     Args:
         request_id: Request identifier
         provider: Provider name
@@ -219,7 +217,7 @@ async def log_provider_access(
         "error_message": error_message,
         "event_type": "provider_access",
     }
-    
+
     # Add token and cost metrics if available
     token_fields = [
         "tokens_input",
@@ -229,21 +227,21 @@ async def log_provider_access(
         "cost_usd",
         "model",
     ]
-    
+
     for field in token_fields:
         value = additional_metadata.get(field)
         if value is not None:
             log_data[field] = value
-    
+
     # Add any additional metadata
     log_data.update(additional_metadata)
-    
+
     # Remove None values
     log_data = {k: v for k, v in log_data.items() if v is not None}
-    
+
     # Log with appropriate level
     bound_logger = logger.bind(**log_data)
-    
+
     if error_message:
         bound_logger.warning("provider_access_log", exc_info=additional_metadata.get("error"))
     else:

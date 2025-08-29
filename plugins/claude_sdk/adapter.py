@@ -198,7 +198,7 @@ class ClaudeSDKAdapter(BaseAdapter):
             )
 
         # Get RequestContext - it must exist when called via ProxyService
-        from ccproxy.observability.context import RequestContext
+        from ccproxy.core.request_context import RequestContext
 
         request_context: RequestContext | None = RequestContext.get_current()
         if not request_context:

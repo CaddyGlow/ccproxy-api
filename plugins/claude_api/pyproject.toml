@@ -4,9 +4,7 @@ version = "1.0.0"
 description = "Claude API provider plugin for CCProxy"
 readme = "README.md"
 requires-python = ">=3.11"
-dependencies = [
-    "pyjwt>=2.10.1",
-]
+dependencies = ["pyjwt>=2.10.1"]
 
 [build-system]
 requires = ["hatchling"]
@@ -16,4 +14,4 @@ build-backend = "hatchling.build"
 claude_api = "plugins.claude_api.plugin:Plugin"
 
 [tool.hatch.build.targets.wheel]
-packages = ["plugins/claude_api"]
+packages = ["."]

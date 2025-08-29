@@ -105,7 +105,7 @@ class TestClaudeAPIPricingIntegration:
         """Test that cost calculation uses pricing service when available."""
         import time
 
-        from ccproxy.observability.context import RequestContext
+        from ccproxy.core.request_context import RequestContext
 
         # Create a mock request context with required arguments
         request_context = RequestContext(
@@ -144,7 +144,7 @@ class TestClaudeAPIPricingIntegration:
         """Test that usage extraction works without pricing service."""
         import time
 
-        from ccproxy.observability.context import RequestContext
+        from ccproxy.core.request_context import RequestContext
 
         # Create adapter without pricing service
         adapter = ClaudeAPIAdapter(

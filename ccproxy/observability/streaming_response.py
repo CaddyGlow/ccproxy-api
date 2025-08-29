@@ -18,7 +18,7 @@ from fastapi.responses import StreamingResponse
 
 
 if TYPE_CHECKING:
-    from ccproxy.observability.context import RequestContext
+    from ccproxy.core.request_context import RequestContext
 
 logger = structlog.get_logger(__name__)
 

@@ -3,6 +3,10 @@
 from __future__ import annotations
 
 import asyncio
+import os
+
+# Import from metrics plugin now
+import sys
 import time
 from unittest.mock import Mock, patch
 
@@ -10,7 +14,10 @@ import pytest
 from prometheus_client import CollectorRegistry
 
 from ccproxy.config.observability import ObservabilitySettings
-from ccproxy.observability.pushgateway import CircuitBreaker, PushgatewayClient
+
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../..', 'plugins', 'metrics'))
+from pushgateway import CircuitBreaker, PushgatewayClient
 
 
 class TestCircuitBreaker:
@@ -236,8 +243,10 @@ class TestIntegration:
         self, settings: ObservabilitySettings
     ) -> None:
         """Test scheduler behavior with failing pushgateway."""
+        from tasks import PushgatewayTask  # From metrics plugin
+
         from ccproxy.config.scheduler import SchedulerSettings
-        from ccproxy.scheduler import PushgatewayTask, Scheduler
+        from ccproxy.scheduler import Scheduler
         from ccproxy.scheduler.registry import register_task
 
         # Create scheduler settings that enable pushgateway with fast interval
@@ -288,7 +297,7 @@ class TestIntegration:
         self, settings: ObservabilitySettings
     ) -> None:
         """Test circuit breaker integration with scheduler."""
-        from ccproxy.scheduler import PushgatewayTask
+        from tasks import PushgatewayTask  # From metrics plugin
 
         client = PushgatewayClient(settings)
 

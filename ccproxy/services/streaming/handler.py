@@ -6,8 +6,8 @@ from typing import Any
 import httpx
 import structlog
 
+from ccproxy.core.request_context import RequestContext
 from ccproxy.hooks import HookManager
-from ccproxy.observability.context import RequestContext
 from ccproxy.services.handler_config import HandlerConfig
 from ccproxy.streaming.deferred_streaming import DeferredStreaming
 from plugins.request_tracer.tracer import RequestTracerImpl

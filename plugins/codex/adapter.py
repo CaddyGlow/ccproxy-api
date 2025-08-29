@@ -22,7 +22,7 @@ from ccproxy.services.handler_config import HandlerConfig
 
 
 if TYPE_CHECKING:
-    from ccproxy.observability.context import RequestContext
+    from ccproxy.core.request_context import RequestContext
     from ccproxy.plugins.declaration import PluginContext
     from ccproxy.services.cli_detection import CLIDetectionService
     from ccproxy.services.interfaces import (

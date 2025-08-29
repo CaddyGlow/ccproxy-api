@@ -4,12 +4,13 @@ import time
 from collections.abc import Callable
 from typing import Any
 
-from ccproxy.observability import (
-    ClientRequestEvent,
-    ClientResponseEvent,
-    get_observability_pipeline,
-)
-from ccproxy.observability.context import RequestContext
+# Event classes removed - functionality moved to hooks
+# from ccproxy.observability import (
+#     ClientRequestEvent,
+#     ClientResponseEvent,
+#     get_observability_pipeline,
+# )
+from ccproxy.core.request_context import RequestContext
 
 from .tracer import RequestTracerImpl
 

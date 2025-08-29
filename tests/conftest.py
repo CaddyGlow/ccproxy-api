@@ -25,7 +25,7 @@ from pydantic import SecretStr
 
 from ccproxy.api.app import create_app
 from ccproxy.core.async_task_manager import start_task_manager, stop_task_manager
-from ccproxy.observability.context import RequestContext
+from ccproxy.core.request_context import RequestContext
 
 
 if TYPE_CHECKING:

@@ -101,6 +101,7 @@ dev = [
   "types-aiofiles>=24.0.0",
   "openai>=1.99.9",
   "pyjwt>=2.10.1",
+  "claude-code-sdk>=0.0.20",
 ]
 security = [
   "keyring>=25.0.0", # Optional keyring support for secure credential storage

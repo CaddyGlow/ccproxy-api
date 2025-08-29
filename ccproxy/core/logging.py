@@ -546,7 +546,7 @@ def get_logger(name: str | None = None) -> TraceBoundLogger:
 
     # Try to get request context and bind request_id if available
     try:
-        from ccproxy.observability.context import RequestContext
+        from ccproxy.core.request_context import RequestContext
 
         context = RequestContext.get_current()
         if context and context.request_id:

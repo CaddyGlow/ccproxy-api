@@ -6,15 +6,11 @@ build-backend = "hatchling.build"
 name = "ccproxy-request-tracer"
 version = "2.0.0"
 description = "Unified request tracer plugin for CCProxy with structured JSON and raw HTTP logging"
-authors = [
-    {name = "CCProxy Team"},
-]
-dependencies = [
-    "httpx",
-    "aiofiles",
-    "structlog",
-]
+dependencies = ["httpx", "aiofiles", "structlog"]
 requires-python = ">=3.11"
 
 [project.entry-points."ccproxy.plugins"]
 request_tracer = "plugins.request_tracer.plugin:factory"
+
+[tool.hatch.build.targets.wheel]
+packages = ["."]

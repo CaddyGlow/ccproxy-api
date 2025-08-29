@@ -18,7 +18,7 @@ from ccproxy.hooks.base import HookContext
 
 if TYPE_CHECKING:
     from ccproxy.adapters.base import APIAdapter
-    from ccproxy.observability.context import RequestContext
+    from ccproxy.core.request_context import RequestContext
     from ccproxy.services.handler_config import HandlerConfig
 
     # Import the specific implementation that has both interfaces

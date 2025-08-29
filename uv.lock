@@ -283,6 +283,7 @@ dependencies = [
 [package.dev-dependencies]
 dev = [
     { name = "anthropic" },
+    { name = "claude-code-sdk" },
     { name = "mypy" },
     { name = "openai" },
     { name = "pre-commit" },
@@ -354,6 +355,7 @@ requires-dist = [
 [package.metadata.requires-dev]
 dev = [
     { name = "anthropic", specifier = ">=0.57.1" },
+    { name = "claude-code-sdk", specifier = ">=0.0.20" },
     { name = "mypy", specifier = ">=1.16.1" },
     { name = "openai", specifier = ">=1.99.9" },
     { name = "pre-commit", specifier = ">=4.2.0" },

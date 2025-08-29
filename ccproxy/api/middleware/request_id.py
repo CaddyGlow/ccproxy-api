@@ -10,7 +10,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.types import ASGIApp, Receive, Send
 
 from ccproxy.core.logging import get_logger
-from ccproxy.observability.context import request_context
+from ccproxy.core.request_context import request_context
 
 
 logger = get_logger(__name__)

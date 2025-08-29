@@ -12,7 +12,6 @@ from typing import TYPE_CHECKING
 import structlog
 from fastapi import FastAPI
 
-
 # Note: get_claude_cli_info is imported locally to avoid circular imports
 from ccproxy.observability.storage.duckdb_simple import SimpleDuckDBStorage
 from ccproxy.scheduler.errors import SchedulerError

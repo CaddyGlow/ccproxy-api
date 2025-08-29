@@ -19,9 +19,23 @@ from ccproxy.scheduler.errors import (
 from ccproxy.scheduler.manager import start_scheduler, stop_scheduler
 from ccproxy.scheduler.registry import TaskRegistry, get_task_registry
 from ccproxy.scheduler.tasks import (
-    PushgatewayTask,
+    # PushgatewayTask removed - functionality moved to metrics plugin
     # StatsPrintingTask removed - functionality moved to metrics plugin
+    BaseScheduledTask,
 )
+
+
+# Mock task for testing since PushgatewayTask moved to metrics plugin
+class MockScheduledTask(BaseScheduledTask):
+    """Mock scheduled task for testing."""
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.run_count = 0
+
+    async def run(self) -> bool:
+        self.run_count += 1
+        return True
 
 
 class TestSchedulerCore:
@@ -39,17 +53,11 @@ class TestSchedulerCore:
     @pytest.fixture
     def scheduler(self) -> Generator[Scheduler, None, None]:
         """Create a test scheduler instance."""
-        # Register tasks before creating scheduler
-        from ccproxy.scheduler.tasks import (
-            PushgatewayTask,
-            # StatsPrintingTask removed
-        )
-
         registry = get_task_registry()
         registry.clear()  # Clear any existing registrations
 
-        # Register default tasks
-        registry.register("pushgateway", PushgatewayTask)
+        # Register mock task for testing
+        registry.register("pushgateway", MockScheduledTask)
         # registry.register("stats_printing", StatsPrintingTask)  # removed
 
         scheduler = Scheduler(
@@ -198,19 +206,19 @@ class TestTaskRegistry:
 
     def test_register_task_success(self, registry: TaskRegistry) -> None:
         """Test successful task registration."""
-        registry.register("test_task", PushgatewayTask)
+        registry.register("test_task", MockScheduledTask)
 
         assert registry.is_registered("test_task")
         assert "test_task" in registry.list_tasks()
         task_class = registry.get("test_task")
-        assert task_class is PushgatewayTask
+        assert task_class is MockScheduledTask
 
     def test_register_duplicate_task_error(self, registry: TaskRegistry) -> None:
         """Test registering duplicate task raises error."""
-        registry.register("duplicate_task", PushgatewayTask)
+        registry.register("duplicate_task", MockScheduledTask)
 
         with pytest.raises(TaskRegistrationError, match="already registered"):
-            registry.register("duplicate_task", PushgatewayTask)  # Changed from StatsPrintingTask
+            registry.register("duplicate_task", MockScheduledTask)  # Changed from StatsPrintingTask
 
     def test_register_invalid_task_class_error(self, registry: TaskRegistry) -> None:
         """Test registering invalid task class raises error."""
@@ -225,7 +233,7 @@ class TestTaskRegistry:
 
     def test_unregister_task_success(self, registry: TaskRegistry) -> None:
         """Test successful task unregistration."""
-        registry.register("temp_task", PushgatewayTask)
+        registry.register("temp_task", MockScheduledTask)
         assert registry.is_registered("temp_task")
 
         registry.unregister("temp_task")
@@ -243,19 +251,19 @@ class TestTaskRegistry:
 
     def test_registry_info(self, registry: TaskRegistry) -> None:
         """Test getting registry information."""
-        registry.register("task1", PushgatewayTask)
-        registry.register("task2", PushgatewayTask)  # Changed from StatsPrintingTask
+        registry.register("task1", MockScheduledTask)
+        registry.register("task2", MockScheduledTask)  # Changed from StatsPrintingTask
 
         info = registry.get_registry_info()
         assert info["total_tasks"] == 2
         assert set(info["registered_tasks"]) == {"task1", "task2"}
-        assert info["task_classes"]["task1"] == "PushgatewayTask"
-        assert info["task_classes"]["task2"] == "PushgatewayTask"  # Changed from StatsPrintingTask
+        assert info["task_classes"]["task1"] == "MockScheduledTask"
+        assert info["task_classes"]["task2"] == "MockScheduledTask"  # Changed from StatsPrintingTask
 
     def test_clear_registry(self, registry: TaskRegistry) -> None:
         """Test clearing the registry."""
-        registry.register("task1", PushgatewayTask)
-        registry.register("task2", PushgatewayTask)  # Changed from StatsPrintingTask
+        registry.register("task1", MockScheduledTask)
+        registry.register("task2", MockScheduledTask)  # Changed from StatsPrintingTask
         assert len(registry.list_tasks()) == 2
 
         registry.clear()
@@ -266,29 +274,22 @@ class TestScheduledTasks:
     """Test individual scheduled task implementations."""
 
     @pytest.mark.asyncio
-    async def test_pushgateway_task_lifecycle(self) -> None:
-        """Test PushgatewayTask lifecycle management."""
-        with patch("ccproxy.observability.metrics.get_metrics") as mock_get_metrics:
-            mock_metrics = MagicMock()
-            mock_metrics.is_pushgateway_enabled.return_value = True
-            mock_metrics.push_to_gateway.return_value = True
-            mock_get_metrics.return_value = mock_metrics
+    async def test_mock_task_lifecycle(self) -> None:
+        """Test MockScheduledTask lifecycle management."""
+        task = MockScheduledTask(
+            name="test_mock",
+            interval_seconds=0.1,  # Fast for testing
+            enabled=True,
+        )
 
-            task = PushgatewayTask(
-                name="test_pushgateway",
-                interval_seconds=0.1,  # Fast for testing
-                enabled=True,
-            )
+        await task.setup()
 
-            await task.setup()
-            assert task._metrics_instance is not None
+        # Test single run
+        result = await task.run()
+        assert result is True
+        assert task.run_count == 1
 
-            # Test single run
-            result = await task.run()
-            assert result is True
-            mock_metrics.push_to_gateway.assert_called_once()
-
-            await task.cleanup()
+        await task.cleanup()
 
     # StatsPrintingTask test removed - functionality moved to metrics plugin
 
@@ -301,7 +302,7 @@ class TestScheduledTasks:
             mock_metrics.push_to_gateway.side_effect = Exception("Test error")
             mock_get_metrics.return_value = mock_metrics
 
-            task = PushgatewayTask(
+            task = MockScheduledTask(
                 name="error_test",
                 interval_seconds=10.0,
                 enabled=True,
@@ -387,7 +388,7 @@ class TestSchedulerManagerIntegration:
         """Setup task registry for integration tests."""
         from ccproxy.scheduler.registry import get_task_registry
         from ccproxy.scheduler.tasks import (
-            PushgatewayTask,
+            MockScheduledTask,
             # StatsPrintingTask removed
         )
 
@@ -395,7 +396,7 @@ class TestSchedulerManagerIntegration:
         registry.clear()  # Clear any existing registrations
 
         # Register default tasks
-        registry.register("pushgateway", PushgatewayTask)
+        registry.register("pushgateway", MockScheduledTask)
         # registry.register("stats_printing", StatsPrintingTask)  # removed
 
         yield
@@ -557,7 +558,7 @@ class TestSchedulerErrorScenarios:
         """Setup task registry for error scenario tests."""
         from ccproxy.scheduler.registry import get_task_registry
         from ccproxy.scheduler.tasks import (
-            PushgatewayTask,
+            MockScheduledTask,
             # StatsPrintingTask removed
         )
 
@@ -565,7 +566,7 @@ class TestSchedulerErrorScenarios:
         registry.clear()  # Clear any existing registrations
 
         # Register default tasks
-        registry.register("pushgateway", PushgatewayTask)
+        registry.register("pushgateway", MockScheduledTask)
         # registry.register("stats_printing", StatsPrintingTask)  # removed
 
         yield

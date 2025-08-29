@@ -29,8 +29,8 @@ if TYPE_CHECKING:
     import httpx
 
     from ccproxy.auth.manager import AuthManager
+    from ccproxy.core.request_context import RequestContext
     from ccproxy.core.transformers import BaseTransformer
-    from ccproxy.observability.context import RequestContext
     from ccproxy.plugins.declaration import PluginContext
     from ccproxy.services.cli_detection import CLIDetectionService
     from ccproxy.streaming.interfaces import IStreamingMetricsCollector
@@ -156,7 +156,7 @@ class BaseHTTPAdapter(BaseAdapter):
         self._validate_prerequisites()
 
         # Get RequestContext - it must exist when called via ProxyService
-        from ccproxy.observability.context import RequestContext
+        from ccproxy.core.request_context import RequestContext
 
         request_context: RequestContext | None = RequestContext.get_current()
         if not request_context:

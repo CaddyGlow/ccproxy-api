@@ -68,7 +68,7 @@ async def get_http_client(
 
 def get_observability_metrics() -> Any:
     """Get observability metrics instance.
-    
+
     Note: Metrics are now handled by the metrics plugin.
     This returns None for backward compatibility.
 

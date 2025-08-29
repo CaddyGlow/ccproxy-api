@@ -9,7 +9,7 @@ from .errors import SchedulerError, TaskRegistrationError
 from .registry import register_task
 from .tasks import (
     PoolStatsTask,
-    PushgatewayTask,
+    # PushgatewayTask removed - functionality moved to metrics plugin
     # StatsPrintingTask removed - functionality moved to metrics plugin
     VersionUpdateCheckTask,
 )
@@ -45,34 +45,14 @@ async def setup_scheduler_tasks(scheduler: Scheduler, settings: Settings) -> Non
         ),
     )
 
-    # Add pushgateway task if enabled
+    # Pushgateway task removed - functionality moved to metrics plugin
+    # The metrics plugin now registers its own pushgateway task with the scheduler
     if scheduler_config.pushgateway_enabled:
-        try:
-            await scheduler.add_task(
-                task_name="pushgateway",
-                task_type="pushgateway",
-                interval_seconds=scheduler_config.pushgateway_interval_seconds,
-                enabled=True,
-                max_backoff_seconds=scheduler_config.pushgateway_max_backoff_seconds,
-            )
-            logger.info(
-                "pushgateway_task_added",
-                interval_seconds=scheduler_config.pushgateway_interval_seconds,
-            )
-        except TaskRegistrationError as e:
-            logger.error(
-                "pushgateway_task_registration_failed",
-                error=str(e),
-                error_type=type(e).__name__,
-                exc_info=e,
-            )
-        except Exception as e:
-            logger.error(
-                "pushgateway_task_add_failed",
-                error=str(e),
-                error_type=type(e).__name__,
-                exc_info=e,
-            )
+        logger.info(
+            "pushgateway_task_handled_by_plugin",
+            message="Pushgateway task is now managed by the metrics plugin",
+            interval_seconds=scheduler_config.pushgateway_interval_seconds,
+        )
 
     # Stats printing task removed - functionality moved to metrics plugin
     # The metrics plugin now handles stats collection and reporting
@@ -129,15 +109,10 @@ def _register_default_tasks(settings: Settings) -> None:
     from .registry import get_task_registry
 
     registry = get_task_registry()
-    scheduler_config = settings.scheduler
 
-    # Only register pushgateway task if enabled
-    if scheduler_config.pushgateway_enabled and not registry.is_registered(
-        "pushgateway"
-    ):
-        register_task("pushgateway", PushgatewayTask)
+    # Pushgateway task removed - functionality moved to metrics plugin
+    # The metrics plugin now registers its own task types
 
-    # Only register stats printing task if enabled
     # Stats printing task removed - functionality moved to metrics plugin
 
     # Always register core tasks (not metrics-related)

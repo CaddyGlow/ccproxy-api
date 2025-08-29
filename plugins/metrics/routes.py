@@ -13,22 +13,22 @@ logger = get_logger(__name__)
 
 def create_metrics_router(collector: PrometheusMetrics | None) -> APIRouter:
     """Create metrics router with the given collector.
-    
+
     Args:
         collector: Prometheus metrics collector instance
-        
+
     Returns:
         FastAPI router with metrics endpoints
     """
     router = APIRouter(tags=["metrics"])
-    
+
     @router.get("/metrics")
     async def get_prometheus_metrics() -> Response:
         """Export metrics in Prometheus format.
-        
+
         This endpoint exposes operational metrics collected by the metrics plugin
         for Prometheus scraping.
-        
+
         Returns:
             Prometheus-formatted metrics text
         """
@@ -37,7 +37,7 @@ def create_metrics_router(collector: PrometheusMetrics | None) -> APIRouter:
                 status_code=503,
                 detail="Metrics collection not enabled. Ensure prometheus-client is installed.",
             )
-        
+
         try:
             # Check if prometheus_client is available
             try:
@@ -47,14 +47,14 @@ def create_metrics_router(collector: PrometheusMetrics | None) -> APIRouter:
                     status_code=503,
                     detail="Prometheus client not available. Install with: pip install prometheus-client",
                 ) from err
-            
+
             # Generate prometheus format using the registry
             from prometheus_client import REGISTRY
-            
+
             # Use the collector's registry or fall back to global
             registry = collector.registry if collector.registry is not None else REGISTRY
             prometheus_data = generate_latest(registry)
-            
+
             # Return the metrics data with proper content type
             return Response(
                 content=prometheus_data,
@@ -65,7 +65,7 @@ def create_metrics_router(collector: PrometheusMetrics | None) -> APIRouter:
                     "Expires": "0",
                 },
             )
-            
+
         except HTTPException:
             raise
         except ImportError as e:
@@ -88,11 +88,11 @@ def create_metrics_router(collector: PrometheusMetrics | None) -> APIRouter:
                 status_code=500,
                 detail=f"Failed to generate Prometheus metrics: {str(e)}"
             ) from e
-    
+
     @router.get("/metrics/health")
     async def metrics_health() -> dict[str, Any]:
         """Get metrics system health status.
-        
+
         Returns:
             Health status of the metrics collection system
         """
@@ -101,5 +101,5 @@ def create_metrics_router(collector: PrometheusMetrics | None) -> APIRouter:
             "prometheus_enabled": collector.is_enabled() if collector else False,
             "namespace": collector.namespace if collector else None,
         }
-    
+
     return router

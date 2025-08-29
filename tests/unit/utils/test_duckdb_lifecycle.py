@@ -234,7 +234,7 @@ class TestDuckDBStorageLifecycle:
         """Test that RequestContext can hold storage reference."""
         import time
 
-        from ccproxy.observability.context import RequestContext
+        from ccproxy.core.request_context import RequestContext
 
         # Create a context directly
         ctx = RequestContext(

@@ -11,13 +11,14 @@ Remaining components:
 - storage: DuckDB storage backend for metrics and access logs
 """
 
-from .context import (
+from ccproxy.core.request_context import (
     RequestContext,
     get_context_tracker,
     request_context,
     timed_operation,
     tracked_request_context,
 )
+
 from .streaming_response import StreamingResponseWithLogging
 
 

@@ -10,7 +10,7 @@ import structlog
 from fastapi.responses import StreamingResponse
 
 from ccproxy.adapters.openai.adapter import OpenAIAdapter
-from ccproxy.observability.context import RequestContext
+from ccproxy.core.request_context import RequestContext
 from ccproxy.testing import RealisticMockResponseGenerator
 
 

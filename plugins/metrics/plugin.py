@@ -1,6 +1,5 @@
 """Metrics plugin implementation."""
 
-import asyncio
 from typing import Any
 
 from ccproxy.core.logging import get_plugin_logger
@@ -22,19 +21,19 @@ logger = get_plugin_logger()
 
 class MetricsRuntime(SystemPluginRuntime):
     """Runtime for metrics plugin."""
-    
+
     def __init__(self, manifest: PluginManifest):
         """Initialize runtime."""
         super().__init__(manifest)
         self.config: MetricsConfig | None = None
         self.hook: MetricsHook | None = None
-        self.pushgateway_task: asyncio.Task[None] | None = None
-    
+        self.pushgateway_task_name = "metrics_pushgateway"
+
     async def _on_initialize(self) -> None:
         """Initialize the metrics plugin."""
         if not self.context:
             raise RuntimeError("Context not set")
-        
+
         # Get configuration
         config = self.context.get("config")
         if not isinstance(config, MetricsConfig):
@@ -43,14 +42,14 @@ class MetricsRuntime(SystemPluginRuntime):
             config = MetricsConfig()
             logger.info("metrics_using_default_config")
         self.config = config
-        
+
         if self.config.enabled:
             # Create metrics hook
             self.hook = MetricsHook(self.config)
-            
+
             # Register hook with registry
             hook_registry = None
-            
+
             # Try direct from context first
             hook_registry = self.context.get("hook_registry")
             logger.debug(
@@ -58,14 +57,14 @@ class MetricsRuntime(SystemPluginRuntime):
                 found=hook_registry is not None,
                 context_keys=list(self.context.keys()) if self.context else [],
             )
-            
+
             # If not found, try app state
             if not hook_registry:
                 app = self.context.get("app")
                 if app and hasattr(app.state, "hook_registry"):
                     hook_registry = app.state.hook_registry
                     logger.debug("hook_registry_from_app_state", found=True)
-            
+
             if hook_registry and isinstance(hook_registry, HookRegistry):
                 hook_registry.register(self.hook)
                 logger.info(
@@ -79,7 +78,7 @@ class MetricsRuntime(SystemPluginRuntime):
                     "hook_registry_not_available",
                     message="Metrics plugin will not collect metrics via hooks"
                 )
-            
+
             # Register metrics endpoint if enabled
             if self.config.metrics_endpoint_enabled and self.hook:
                 app = self.context.get("app")
@@ -91,19 +90,53 @@ class MetricsRuntime(SystemPluginRuntime):
                         "metrics_endpoint_registered",
                         endpoint="/metrics",
                     )
-            
-            # Start pushgateway push task if enabled
+
+            # Register pushgateway task with scheduler if enabled
             if self.config.pushgateway_enabled and self.hook:
-                self.pushgateway_task = asyncio.create_task(
-                    self._pushgateway_loop()
-                )
-                logger.info(
-                    "pushgateway_task_started",
-                    url=self.config.pushgateway_url,
-                    job=self.config.pushgateway_job,
-                    interval=self.config.pushgateway_push_interval,
-                )
-            
+                scheduler = self.context.get("scheduler")
+                if scheduler:
+                    try:
+                        # Register the task type if not already registered
+                        from ccproxy.scheduler.registry import (
+                            get_task_registry,
+                            register_task,
+                        )
+
+                        from .tasks import PushgatewayTask
+
+                        registry = get_task_registry()
+                        if not registry.is_registered(self.pushgateway_task_name):
+                            register_task(self.pushgateway_task_name, PushgatewayTask)
+
+                        # Add task instance to scheduler
+                        await scheduler.add_task(
+                            task_name=self.pushgateway_task_name,
+                            task_type=self.pushgateway_task_name,
+                            interval_seconds=self.config.pushgateway_push_interval,
+                            enabled=True,
+                            max_backoff_seconds=300.0,  # Default backoff
+                            metrics_config=self.config,
+                            metrics_hook=self.hook,
+                        )
+                        logger.info(
+                            "pushgateway_task_registered",
+                            task_name=self.pushgateway_task_name,
+                            url=self.config.pushgateway_url,
+                            job=self.config.pushgateway_job,
+                            interval=self.config.pushgateway_push_interval,
+                        )
+                    except Exception as e:
+                        logger.error(
+                            "pushgateway_task_registration_failed",
+                            error=str(e),
+                            exc_info=e,
+                        )
+                else:
+                    logger.warning(
+                        "scheduler_not_available",
+                        message="Pushgateway task will not be scheduled",
+                    )
+
             logger.info(
                 "metrics_plugin_enabled",
                 namespace=self.config.namespace,
@@ -115,53 +148,26 @@ class MetricsRuntime(SystemPluginRuntime):
             )
         else:
             logger.info("metrics_plugin_disabled")
-    
-    async def _pushgateway_loop(self) -> None:
-        """Background task to periodically push metrics to Pushgateway."""
-        if not self.config or not self.hook:
-            return
-        
-        while True:
-            try:
-                await asyncio.sleep(self.config.pushgateway_push_interval)
-                
-                # Push metrics
-                success = await self.hook.push_metrics()
-                if success:
-                    logger.debug(
-                        "pushgateway_push_success",
-                        url=self.config.pushgateway_url,
-                        job=self.config.pushgateway_job,
-                    )
-                else:
-                    logger.warning(
-                        "pushgateway_push_failed",
-                        url=self.config.pushgateway_url,
-                        job=self.config.pushgateway_job,
-                    )
-            except asyncio.CancelledError:
-                # Task was cancelled, exit gracefully
-                logger.debug("pushgateway_task_cancelled")
-                break
-            except Exception as e:
-                logger.error(
-                    "pushgateway_loop_error",
-                    error=str(e),
-                    exc_info=e,
-                )
-                # Continue looping despite errors
-    
+
     async def _on_shutdown(self) -> None:
         """Cleanup on shutdown."""
-        # Cancel pushgateway task if running
-        if self.pushgateway_task and not self.pushgateway_task.done():
-            self.pushgateway_task.cancel()
-            try:
-                await self.pushgateway_task
-            except asyncio.CancelledError:
-                pass
-            logger.debug("pushgateway_task_stopped")
-        
+        # Remove pushgateway task from scheduler if registered
+        if self.config and self.config.pushgateway_enabled:
+            scheduler = None
+            if self.context:
+                scheduler = self.context.get("scheduler")
+
+            if scheduler:
+                try:
+                    await scheduler.remove_task(self.pushgateway_task_name)
+                    logger.debug("pushgateway_task_removed", task_name=self.pushgateway_task_name)
+                except Exception as e:
+                    logger.warning(
+                        "pushgateway_task_removal_failed",
+                        task_name=self.pushgateway_task_name,
+                        error=str(e),
+                    )
+
         # Unregister hook from registry
         if self.hook:
             hook_registry = None
@@ -171,11 +177,11 @@ class MetricsRuntime(SystemPluginRuntime):
                     hook_registry = app.state.hook_registry
                 if not hook_registry:
                     hook_registry = self.context.get("hook_registry")
-            
+
             if hook_registry and isinstance(hook_registry, HookRegistry):
                 hook_registry.unregister(self.hook)
                 logger.debug("metrics_hook_unregistered")
-        
+
         # Push final metrics if pushgateway is enabled
         if self.config and self.config.pushgateway_enabled and self.hook:
             try:
@@ -187,7 +193,7 @@ class MetricsRuntime(SystemPluginRuntime):
                     error=str(e),
                     exc_info=e,
                 )
-    
+
     async def _get_health_details(self) -> dict[str, Any]:
         """Get health check details."""
         details = {
@@ -195,7 +201,7 @@ class MetricsRuntime(SystemPluginRuntime):
             "initialized": self.initialized,
             "enabled": self.config.enabled if self.config else False,
         }
-        
+
         if self.config and self.config.enabled:
             details.update({
                 "namespace": self.config.namespace,
@@ -204,13 +210,13 @@ class MetricsRuntime(SystemPluginRuntime):
                 "pushgateway_url": self.config.pushgateway_url,
                 "collector_enabled": self.hook.get_collector().is_enabled() if self.hook else False,
             })
-        
+
         return details
 
 
 class MetricsFactory(SystemPluginFactory):
     """Factory for metrics plugin."""
-    
+
     def __init__(self) -> None:
         """Initialize factory with manifest."""
         # Create manifest
@@ -221,29 +227,29 @@ class MetricsFactory(SystemPluginFactory):
             is_provider=False,
             config_class=MetricsConfig,
         )
-        
+
         # Initialize with manifest
         super().__init__(manifest)
-    
+
     def create_runtime(self) -> MetricsRuntime:
         """Create runtime instance."""
         return MetricsRuntime(self.manifest)
-    
+
     def create_context(self, core_services: Any) -> PluginContext:
         """Create context for the plugin.
-        
+
         Args:
             core_services: Core services from the application
-            
+
         Returns:
             Plugin context with required services
         """
         # Get base context
         context = super().create_context(core_services)
-        
+
         # The metrics plugin doesn't need special context setup
         # It will get hook_registry and app from the base context
-        
+
         return context
 
 

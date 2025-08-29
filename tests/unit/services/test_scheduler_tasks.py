@@ -11,7 +11,7 @@ import pytest
 from ccproxy.core.async_task_manager import start_task_manager, stop_task_manager
 from ccproxy.scheduler.tasks import (
     BaseScheduledTask,
-    PushgatewayTask,
+    # PushgatewayTask removed - functionality moved to metrics plugin
     # StatsPrintingTask removed - functionality moved to metrics plugin
     VersionUpdateCheckTask,
 )
@@ -190,103 +190,15 @@ class TestBaseScheduledTask:
         assert delay >= task.interval_seconds  # Should be normal interval (+jitter)
 
 
-class TestPushgatewayTask:
-    """Test PushgatewayTask specific functionality."""
-
-    @pytest.mark.asyncio
-    async def test_pushgateway_task_setup(self) -> None:
-        """Test PushgatewayTask setup process."""
-        with patch("ccproxy.observability.metrics.get_metrics") as mock_get_metrics:
-            mock_metrics = MagicMock()
-            mock_get_metrics.return_value = mock_metrics
-
-            task = PushgatewayTask(
-                name="pg_setup_test",
-                interval_seconds=60.0,
-                enabled=True,
-            )
-
-            await task.setup()
-            assert task._metrics_instance is not None
-            mock_get_metrics.assert_called_once()
-
-            await task.cleanup()
-
-    @pytest.mark.asyncio
-    async def test_pushgateway_task_run_success(self) -> None:
-        """Test successful pushgateway task execution."""
-        with patch("ccproxy.observability.metrics.get_metrics") as mock_get_metrics:
-            mock_metrics = MagicMock()
-            mock_metrics.is_pushgateway_enabled.return_value = True
-            mock_metrics.push_to_gateway.return_value = True
-            mock_get_metrics.return_value = mock_metrics
-
-            task = PushgatewayTask(
-                name="pg_success_test",
-                interval_seconds=60.0,
-                enabled=True,
-            )
-
-            await task.setup()
-            result = await task.run()
-
-            assert result is True
-            mock_metrics.push_to_gateway.assert_called_once()
-
-            await task.cleanup()
-
-    @pytest.mark.asyncio
-    async def test_pushgateway_task_disabled(self) -> None:
-        """Test pushgateway task when disabled."""
-        with patch("ccproxy.observability.metrics.get_metrics") as mock_get_metrics:
-            mock_metrics = MagicMock()
-            mock_metrics.is_pushgateway_enabled.return_value = False
-            mock_get_metrics.return_value = mock_metrics
-
-            task = PushgatewayTask(
-                name="pg_disabled_test",
-                interval_seconds=60.0,
-                enabled=True,
-            )
-
-            await task.setup()
-            result = await task.run()
-
-            # Should return True (not an error) but not call push_to_gateway
-            assert result is True
-            mock_metrics.push_to_gateway.assert_not_called()
-
-            await task.cleanup()
-
-    @pytest.mark.asyncio
-    async def test_pushgateway_task_error_handling(self) -> None:
-        """Test pushgateway task error handling."""
-        with patch("ccproxy.observability.metrics.get_metrics") as mock_get_metrics:
-            mock_metrics = MagicMock()
-            mock_metrics.is_pushgateway_enabled.return_value = True
-            mock_metrics.push_to_gateway.side_effect = Exception("Network error")
-            mock_get_metrics.return_value = mock_metrics
-
-            task = PushgatewayTask(
-                name="pg_error_test",
-                interval_seconds=60.0,
-                enabled=True,
-            )
-
-            await task.setup()
-            result = await task.run()
-
-            assert result is False
-            mock_metrics.push_to_gateway.assert_called_once()
-
-            await task.cleanup()
+# TestPushgatewayTask removed - functionality moved to metrics plugin
+# The metrics plugin now has its own tests for the PushgatewayTask
 
 
 # TestStatsPrintingTask removed - functionality moved to metrics plugin
 
 # class TestStatsPrintingTask:
 #     """Test StatsPrintingTask specific functionality."""
-# 
+#
 #     @pytest.mark.asyncio
 #     async def test_stats_printing_task_setup(self) -> None:
 #         """Test StatsPrintingTask setup process."""
@@ -301,25 +213,25 @@ class TestPushgatewayTask:
 #             mock_settings = MagicMock()
 #             mock_settings.observability = MagicMock()
 #             mock_get_settings.return_value = mock_settings
-# 
+#
 #             mock_metrics = MagicMock()
 #             mock_get_metrics.return_value = mock_metrics
-# 
+#
 #             mock_stats_collector = AsyncMock()
 #             mock_get_stats.return_value = mock_stats_collector
-# 
+#
 #             task = StatsPrintingTask(
 #                 name="stats_setup_test",
 #                 interval_seconds=60.0,
 #                 enabled=True,
 #             )
-# 
+#
 #             await task.setup()
 #             assert task._stats_collector_instance is not None
 #             assert task._metrics_instance is not None
-# 
+#
 #             await task.cleanup()
-# 
+#
 #     @pytest.mark.asyncio
 #     async def test_stats_printing_task_run_success(self) -> None:
 #         """Test successful stats printing task execution."""
@@ -334,27 +246,27 @@ class TestPushgatewayTask:
 #             mock_settings = MagicMock()
 #             mock_settings.observability = MagicMock()
 #             mock_get_settings.return_value = mock_settings
-# 
+#
 #             mock_metrics = MagicMock()
 #             mock_get_metrics.return_value = mock_metrics
-# 
+#
 #             mock_stats_collector = AsyncMock()
 #             mock_get_stats.return_value = mock_stats_collector
-# 
+#
 #             task = StatsPrintingTask(
 #                 name="stats_success_test",
 #                 interval_seconds=60.0,
 #                 enabled=True,
 #             )
-# 
+#
 #             await task.setup()
 #             result = await task.run()
-# 
+#
 #             assert result is True
 #             mock_stats_collector.print_stats.assert_called_once()
-# 
+#
 #             await task.cleanup()
-# 
+#
 #     @pytest.mark.asyncio
 #     async def test_stats_printing_task_error_handling(self) -> None:
 #         """Test stats printing task error handling."""
@@ -369,29 +281,29 @@ class TestPushgatewayTask:
 #             mock_settings = MagicMock()
 #             mock_settings.observability = MagicMock()
 #             mock_get_settings.return_value = mock_settings
-# 
+#
 #             mock_metrics = MagicMock()
 #             mock_get_metrics.return_value = mock_metrics
-# 
+#
 #             mock_stats_collector = AsyncMock()
 #             mock_stats_collector.print_stats.side_effect = Exception("Print error")
 #             mock_get_stats.return_value = mock_stats_collector
-# 
+#
 #             task = StatsPrintingTask(
 #                 name="stats_error_test",
 #                 interval_seconds=60.0,
 #                 enabled=True,
 #             )
-# 
+#
 #             await task.setup()
 #             result = await task.run()
-# 
+#
 #             assert result is False
 #             mock_stats_collector.print_stats.assert_called_once()
-# 
+#
 #             await task.cleanup()
-# 
-# 
+#
+#
 class TestVersionUpdateCheckTask:
     """Test VersionUpdateCheckTask specific functionality."""
 
