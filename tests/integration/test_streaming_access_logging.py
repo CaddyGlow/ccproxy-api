@@ -465,4 +465,4 @@ class TestStreamingAccessLogging:  # type: ignore[unreachable]
         assert len(data["content"]) > 0
 
         # Non-streaming requests use normal middleware access logging,
-        # not the StreamingResponseWithLogging wrapper
+        # handled by hooks system

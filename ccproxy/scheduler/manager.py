@@ -47,7 +47,7 @@ async def setup_scheduler_tasks(scheduler: Scheduler, settings: Settings) -> Non
 
     # Pushgateway task removed - functionality moved to metrics plugin
     # The metrics plugin now registers its own pushgateway task with the scheduler
-    if scheduler_config.pushgateway_enabled:
+    if hasattr(scheduler_config, "pushgateway_enabled") and scheduler_config.pushgateway_enabled:
         logger.info(
             "pushgateway_task_handled_by_plugin",
             message="Pushgateway task is now managed by the metrics plugin",
@@ -56,7 +56,7 @@ async def setup_scheduler_tasks(scheduler: Scheduler, settings: Settings) -> Non
 
     # Stats printing task removed - functionality moved to metrics plugin
     # The metrics plugin now handles stats collection and reporting
-    if scheduler_config.stats_printing_enabled:
+    if hasattr(scheduler_config, "stats_printing_enabled") and scheduler_config.stats_printing_enabled:
         logger.info(
             "stats_printing_task_skipped",
             message="Stats printing functionality has been moved to the metrics plugin",

@@ -24,8 +24,8 @@ pytest.skip("Access logger moved to plugin - test needs updating", allow_module_
 # Original import (commented out for reference):
 # from ccproxy.observability.access_logger import log_request_access
 from ccproxy.core.request_context import RequestContext
-from ccproxy.observability.storage.duckdb_simple import SimpleDuckDBStorage
-from ccproxy.observability.storage.models import AccessLog
+from ccproxy.storage.duckdb_simple import SimpleDuckDBStorage
+from ccproxy.storage.models import AccessLog
 
 
 @pytest.fixture(autouse=True)

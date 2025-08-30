@@ -13,7 +13,7 @@ import structlog
 from fastapi import FastAPI
 
 # Note: get_claude_cli_info is imported locally to avoid circular imports
-from ccproxy.observability.storage.duckdb_simple import SimpleDuckDBStorage
+from ccproxy.storage.duckdb_simple import SimpleDuckDBStorage
 from ccproxy.scheduler.errors import SchedulerError
 from ccproxy.scheduler.manager import start_scheduler, stop_scheduler
 

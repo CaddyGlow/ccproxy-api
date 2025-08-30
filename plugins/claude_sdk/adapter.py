@@ -14,7 +14,7 @@ from fastapi import HTTPException, Request
 from starlette.responses import Response, StreamingResponse
 
 from ccproxy.core.logging import get_plugin_logger
-from ccproxy.observability.streaming_response import StreamingResponseWithLogging
+# StreamingResponseWithLogging removed - access logging now handled by hooks
 from ccproxy.services.adapters.base import BaseAdapter
 
 from .auth import NoOpAuthManager
@@ -341,12 +341,9 @@ class ClaudeSDKAdapter(BaseAdapter):
                         yield f"data: {json.dumps(error_chunk)}\n\n".encode()
                         # Don't add extra [DONE] here as OpenAIStreamProcessor already adds it
 
-                # Use StreamingResponseWithLogging for automatic access logging
-                return StreamingResponseWithLogging(
+                # Access logging now handled by hooks
+                return StreamingResponse(
                     content=stream_generator(),
-                    request_context=request_context,
-                    metrics=self.metrics,
-                    status_code=200,
                     media_type="text/event-stream",
                     headers={
                         "Cache-Control": "no-cache",

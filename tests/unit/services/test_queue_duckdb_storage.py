@@ -14,11 +14,11 @@ from unittest.mock import patch
 import pytest
 from sqlmodel import Session, select
 
-from ccproxy.observability.storage.duckdb_simple import (
+from ccproxy.storage.duckdb_simple import (
     AccessLogPayload,
     SimpleDuckDBStorage,
 )
-from ccproxy.observability.storage.models import AccessLog
+from ccproxy.storage.models import AccessLog
 
 
 @pytest.fixture

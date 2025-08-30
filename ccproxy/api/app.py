@@ -151,6 +151,11 @@ async def initialize_plugins_startup(app: FastAPI, settings: Settings) -> None:
             self.hook_manager = getattr(app.state, "hook_manager", None)
             # Also expose app for plugins that need app.state access
             self.app = app
+            # Add streaming handler and other services
+            self.request_tracer = container.get_request_tracer()
+            self.streaming_handler = container.get_streaming_handler()
+            # Metrics is now handled by the metrics plugin, not core services
+            self.metrics = None
 
         def get_plugin_config(self, plugin_name: str) -> Any:
             """Get plugin configuration."""

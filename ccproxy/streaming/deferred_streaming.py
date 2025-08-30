@@ -436,20 +436,14 @@ class DeferredStreaming(Response):
                     yield error_msg
 
             # Create the actual streaming response with headers
-            from ccproxy.observability.streaming_response import (
-                StreamingResponseWithLogging,
-            )
-
-            # Create response based on whether we have request context
+            # Access logging now handled by hooks
             actual_response: Response
             if self.request_context:
-                actual_response = StreamingResponseWithLogging(
+                actual_response = StreamingResponse(
                     content=body_generator(),
                     status_code=response.status_code,
                     headers=final_headers,
                     media_type=self.media_type,
-                    request_context=self.request_context,
-                    metrics=self.metrics,
                 )
             else:
                 # Use regular StreamingResponse if no request context

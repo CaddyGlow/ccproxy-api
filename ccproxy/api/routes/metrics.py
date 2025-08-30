@@ -17,7 +17,7 @@ from ccproxy.api.dependencies import (
 )
 
 # get_cached_settings is already imported above from ccproxy.api.dependencies
-from ccproxy.observability.storage.models import AccessLog
+from ccproxy.storage.models import AccessLog
 
 
 class AnalyticsSummary(TypedDict):

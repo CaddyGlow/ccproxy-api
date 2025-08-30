@@ -9,7 +9,7 @@ from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
 
 from ccproxy.api.dependencies import DuckDBStorageDep, get_duckdb_storage
-from ccproxy.observability.storage.duckdb_simple import SimpleDuckDBStorage
+from ccproxy.storage.duckdb_simple import SimpleDuckDBStorage
 
 
 @pytest.fixture

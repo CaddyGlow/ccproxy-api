@@ -10,7 +10,7 @@ from pydantic import BaseModel
 from ccproxy.core.async_utils import patched_typing
 from ccproxy.core.errors import ClaudeProxyError, ServiceUnavailableError
 from ccproxy.core.logging import get_plugin_logger
-from ccproxy.observability import timed_operation
+from ccproxy.core.request_context import timed_operation
 
 from . import models as sdk_models
 from .config import ClaudeSDKSettings, SessionPoolSettings
