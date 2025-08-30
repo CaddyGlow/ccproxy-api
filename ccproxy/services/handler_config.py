@@ -6,10 +6,6 @@ from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 from ccproxy.adapters.base import APIAdapter
 
 
-if TYPE_CHECKING:
-    from ccproxy.streaming.interfaces import IStreamingMetricsCollector
-
-
 @runtime_checkable
 class PluginTransformerProtocol(Protocol):
     """Protocol for plugin-based transformers with header and body methods."""
@@ -47,6 +43,3 @@ class HandlerConfig:
 
     # Feature flag
     supports_streaming: bool = True
-
-    # Streaming metrics collection (provider-specific)
-    metrics_collector: "IStreamingMetricsCollector | None" = None

@@ -18,7 +18,6 @@ from ccproxy.services.mocking import MockResponseHandler
 from ccproxy.services.streaming import StreamingHandler
 from ccproxy.services.tracing import RequestTracer
 from ccproxy.testing import RealisticMockResponseGenerator
-from plugins.request_tracer.tracer import RequestTracerImpl
 
 
 if TYPE_CHECKING:
@@ -75,15 +74,7 @@ class ConcreteServiceFactory:
         Returns:
             Configured streaming handler instance with header preservation
         """
-        # Cast to RequestTracerImpl if it's the right type, otherwise None
-        tracer_impl = (
-            request_tracer if isinstance(request_tracer, RequestTracerImpl) else None
-        )
-
         handler = StreamingHandler(
-            metrics=metrics,
-            verbose_streaming=settings.logging.verbose_api,
-            request_tracer=tracer_impl,
             hook_manager=hook_manager,
         )
         return handler

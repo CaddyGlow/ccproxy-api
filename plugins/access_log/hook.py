@@ -34,7 +34,9 @@ class AccessLogHook(Hook):
         HookEvent.PROVIDER_ERROR,
         HookEvent.PROVIDER_STREAM_END,
     ]
-    priority = 750  # HookLayer.OBSERVATION + 50 - Access logging last to capture all data
+    priority = (
+        750  # HookLayer.OBSERVATION + 50 - Access logging last to capture all data
+    )
 
     def __init__(self, config: AccessLogConfig | None = None) -> None:
         """Initialize the access log hook.
@@ -191,18 +193,23 @@ class AccessLogHook(Hook):
         if request_id not in self.client_requests:
             return
 
-        # Check if this is a streaming response
-        is_streaming = context.data.get("streaming_completed", False)
+        # Check if this is a streaming response by looking for streaming flag
+        # For streaming responses, we'll handle logging in PROVIDER_STREAM_END
+        # to ensure we have all metrics
+        is_streaming = (
+            context.data.get("streaming_completed", False)
+            or context.data.get("streaming", False)
+            or self.client_requests.get(request_id, {}).get("streaming", False)
+        )
 
         if is_streaming:
-            # For streaming responses, check if we have metrics stored
-            if (
-                hasattr(self, "_streaming_metrics")
-                and request_id in self._streaming_metrics
-            ):
-                # We have metrics from PROVIDER_STREAM_END, log now
-                await self._log_streaming_complete(request_id, context)
-            # Either way, we're done with this request
+            # For streaming responses, just mark that we got the completion
+            # The actual logging will happen in PROVIDER_STREAM_END
+            if request_id in self.client_requests:
+                self.client_requests[request_id]["completion_time"] = time.time()
+                self.client_requests[request_id]["status_code"] = context.data.get(
+                    "response_status", 200
+                )
             return
 
         # For non-streaming responses, log immediately
@@ -216,6 +223,24 @@ class AccessLogHook(Hook):
         status_code = context.data.get("status_code", 200)
         body_size = context.data.get("body_size", 0)
 
+        # Check if we have usage metrics in context metadata
+        # These might be available from RequestContext metadata
+        usage_metrics = {}
+        if context.metadata:
+            # Extract any token/cost metrics from metadata
+            token_fields = [
+                "tokens_input",
+                "tokens_output",
+                "cache_read_tokens",
+                "cache_write_tokens",
+                "cost_usd",
+                "model",
+            ]
+            for field in token_fields:
+                value = context.metadata.get(field)
+                if value is not None:
+                    usage_metrics[field] = value
+
         # Merge request and response data
         log_data = {
             **request_data,
@@ -224,6 +249,7 @@ class AccessLogHook(Hook):
             "body_size": body_size,
             "duration_ms": duration_ms,
             "error": None,
+            **usage_metrics,  # Include any usage metrics found
         }
 
         # Format and write
@@ -405,7 +431,16 @@ class AccessLogHook(Hook):
         # Extract usage metrics from the event
         usage_metrics = context.data.get("usage_metrics", {})
 
-        # Store metrics for when REQUEST_COMPLETED fires
+        # Debug log what we received
+        logger.debug(
+            "access_log_received_context",
+            request_id=request_id,
+            usage_metrics=usage_metrics,
+            context_data_keys=list(context.data.keys()) if context.data else [],
+            has_usage_metrics="usage_metrics" in context.data,
+        )
+
+        # Store metrics for logging
         self._streaming_metrics[request_id] = {
             "usage_metrics": usage_metrics,
             "provider": context.provider or context.data.get("provider", "unknown"),
@@ -415,11 +450,64 @@ class AccessLogHook(Hook):
             "total_bytes": context.data.get("total_bytes", 0),
         }
 
-        # Extract complete metrics from usage_metrics
-        tokens_input = usage_metrics.get("tokens_input", 0)
-        tokens_output = usage_metrics.get("tokens_output", 0)
-        cache_read_tokens = usage_metrics.get("cache_read_tokens", 0)
-        cache_write_tokens = usage_metrics.get("cache_write_tokens", 0)
+        # If we have client request data for this streaming request, log it now with metrics
+        if self.config.client_enabled and request_id in self.client_requests:
+            request_data = self.client_requests.pop(request_id)
+
+            # Calculate duration
+            completion_time = request_data.get("completion_time", time.time())
+            duration_ms = (completion_time - request_data["start_time"]) * 1000
+
+            # Extract metrics (handle both naming conventions)
+            tokens_input = usage_metrics.get(
+                "input_tokens", usage_metrics.get("tokens_input", 0)
+            )
+            tokens_output = usage_metrics.get(
+                "output_tokens", usage_metrics.get("tokens_output", 0)
+            )
+            cache_read_tokens = usage_metrics.get(
+                "cache_read_input_tokens", usage_metrics.get("cache_read_tokens", 0)
+            )
+            cache_write_tokens = usage_metrics.get(
+                "cache_creation_input_tokens",
+                usage_metrics.get("cache_write_tokens", 0),
+            )
+            cost_usd = usage_metrics.get("cost_usd", 0.0)
+            model = usage_metrics.get("model") or request_data.get("model", "")
+
+            # Build complete log data
+            client_log_data = {
+                **request_data,
+                "request_id": request_id,
+                "status_code": request_data.get("status_code", 200),
+                "duration_ms": duration_ms,
+                "tokens_input": tokens_input,
+                "tokens_output": tokens_output,
+                "cache_read_tokens": cache_read_tokens,
+                "cache_write_tokens": cache_write_tokens,
+                "cost_usd": cost_usd,
+                "model": model,
+                "streaming": True,
+                "total_chunks": context.data.get("total_chunks", 0),
+                "total_bytes": context.data.get("total_bytes", 0),
+                "error": None,
+            }
+
+            # Format and write client log
+            if self.client_writer:
+                formatted = self.formatter.format_client(
+                    client_log_data, self.config.client_format
+                )
+                await self.client_writer.write(formatted)
+
+            # Log to structured logger
+            await self._log_to_structured_logger(client_log_data, "client")
+
+        # Extract complete metrics from usage_metrics (handle both naming conventions)
+        tokens_input = usage_metrics.get("input_tokens", usage_metrics.get("tokens_input", 0))
+        tokens_output = usage_metrics.get("output_tokens", usage_metrics.get("tokens_output", 0))
+        cache_read_tokens = usage_metrics.get("cache_read_input_tokens", usage_metrics.get("cache_read_tokens", 0))
+        cache_write_tokens = usage_metrics.get("cache_creation_input_tokens", usage_metrics.get("cache_write_tokens", 0))
         cost_usd = usage_metrics.get("cost_usd", 0.0)
         model = usage_metrics.get("model", "")
 

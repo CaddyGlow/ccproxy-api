@@ -30,19 +30,19 @@ class HookPriority(IntEnum):
     # Pre-processing: Setup and validation
     CRITICAL = 0          # System-critical hooks (request ID generation)
     VALIDATION = 100      # Input validation and sanitization
-    
+
     # Enrichment: Add context and metadata
     AUTH = 200           # Authentication and authorization
     CONTEXT = 300        # Context enrichment (session, user data)
-    
+
     # Processing: Core business logic
     TRANSFORM = 400      # Request/response transformation
     BUSINESS = 500       # Business logic and processing
-    
+
     # Observation: Logging and metrics
     METRICS = 600        # Metrics collection
     LOGGING = 700        # Access and audit logging
-    
+
     # Post-processing: Cleanup and finalization
     CACHE = 800          # Cache operations
     CLEANUP = 900        # Resource cleanup
@@ -74,32 +74,32 @@ class HookCapabilities:
 
 class EnhancedHook(Protocol):
     """Enhanced hook protocol with priority and capabilities"""
-    
+
     @property
     def name(self) -> str:
         """Unique hook identifier"""
         ...
-    
+
     @property
     def events(self) -> list[HookEvent]:
         """Events this hook listens to"""
         ...
-    
+
     @property
     def priority(self) -> int:
         """Execution priority (0-1000, lower executes first)"""
         ...
-    
+
     @property
     def capabilities(self) -> HookCapabilities:
         """Declared capabilities and data access patterns"""
         ...
-    
+
     @property
     def depends_on(self) -> Set[str]:
         """Names of hooks this hook depends on (optional)"""
         return set()
-    
+
     async def __call__(self, context: HookContext) -> Optional[HookContext]:
         """Execute hook, optionally returning modified context"""
         ...
@@ -113,12 +113,12 @@ from collections import ChainMap
 
 class ProtectedDict(MutableMapping):
     """Dictionary with controlled modification based on access level"""
-    
+
     def __init__(self, data: Dict[str, Any], access: DataModification):
         self._data = data
         self._access = access
         self._original_keys = set(data.keys())
-    
+
     def __setitem__(self, key: str, value: Any):
         if self._access == DataModification.READ_ONLY:
             raise PermissionError(f"Hook has read-only access")
@@ -129,18 +129,18 @@ class ProtectedDict(MutableMapping):
             if key not in self._original_keys:
                 raise PermissionError(f"Hook can only modify existing keys, not add '{key}'")
         self._data[key] = value
-    
+
     def __delitem__(self, key: str):
         if self._access != DataModification.FULL_ACCESS:
             raise PermissionError("Hook does not have delete permission")
         del self._data[key]
-    
+
     # ... other dict methods ...
 
 @dataclass
 class ProtectedHookContext:
     """Hook context with access control"""
-    
+
     event: HookEvent
     timestamp: datetime
     _data: Dict[str, Any]
@@ -150,10 +150,10 @@ class ProtectedHookContext:
     provider: Optional[str] = None
     plugin: Optional[str] = None
     error: Optional[Exception] = None
-    
+
     # Track modifications for debugging
     _modifications: List[Dict[str, Any]] = field(default_factory=list)
-    
+
     def get_protected_view(self, hook: EnhancedHook) -> 'HookContext':
         """Get a protected view of context based on hook capabilities"""
         return HookContext(
@@ -167,7 +167,7 @@ class ProtectedHookContext:
             plugin=self.plugin,
             error=self.error
         )
-    
+
     def record_modification(self, hook_name: str, field: str, old_value: Any, new_value: Any):
         """Record data modifications for audit/debugging"""
         self._modifications.append({
@@ -188,7 +188,7 @@ import networkx as nx
 
 class EnhancedHookRegistry:
     """Registry with priority ordering and dependency resolution"""
-    
+
     def __init__(self):
         # Store hooks sorted by priority
         self._hooks: Dict[HookEvent, SortedList] = defaultdict(
@@ -197,32 +197,32 @@ class EnhancedHookRegistry:
         self._hook_map: Dict[str, EnhancedHook] = {}
         self._dependency_graph = nx.DiGraph()
         self._logger = structlog.get_logger(__name__)
-    
+
     def register(self, hook: EnhancedHook) -> None:
         """Register hook with dependency checking"""
         # Validate hook
         self._validate_hook(hook)
-        
+
         # Check for conflicts
         self._check_conflicts(hook)
-        
+
         # Add to registry
         self._hook_map[hook.name] = hook
         for event in hook.events:
             self._hooks[event].add(hook)
-        
+
         # Update dependency graph
         self._dependency_graph.add_node(hook.name)
         for dep in hook.depends_on:
             if dep in self._hook_map:
                 self._dependency_graph.add_edge(dep, hook.name)
-        
+
         # Check for circular dependencies
         if not nx.is_directed_acyclic_graph(self._dependency_graph):
             # Remove and raise error
             self.unregister(hook)
             raise ValueError(f"Circular dependency detected with hook {hook.name}")
-        
+
         self._logger.info(
             "hook_registered",
             name=hook.name,
@@ -230,21 +230,21 @@ class EnhancedHookRegistry:
             events=[e.value for e in hook.events],
             depends_on=list(hook.depends_on)
         )
-    
+
     def get_hooks(self, event: HookEvent) -> List[EnhancedHook]:
         """Get hooks for event in priority and dependency order"""
         event_hooks = list(self._hooks[event])
-        
+
         # Apply topological sort for dependencies within same priority
         return self._apply_dependency_order(event_hooks)
-    
+
     def _apply_dependency_order(self, hooks: List[EnhancedHook]) -> List[EnhancedHook]:
         """Reorder hooks based on dependencies while respecting priorities"""
         # Group by priority
         by_priority = defaultdict(list)
         for hook in hooks:
             by_priority[hook.priority].append(hook)
-        
+
         # Within each priority level, sort by dependencies
         result = []
         for priority in sorted(by_priority.keys()):
@@ -257,14 +257,14 @@ class EnhancedHookRegistry:
                     sorted_names = list(nx.topological_sort(subgraph))
                     priority_hooks.sort(key=lambda h: sorted_names.index(h.name) if h.name in sorted_names else -1)
             result.extend(priority_hooks)
-        
+
         return result
-    
+
     def _validate_hook(self, hook: EnhancedHook):
         """Validate hook configuration"""
         if not 0 <= hook.priority <= 1000:
             raise ValueError(f"Hook {hook.name} priority must be between 0 and 1000")
-        
+
         # Check that required fields are available from earlier hooks
         for event in hook.events:
             available_fields = self._get_available_fields(event, hook.priority)
@@ -276,7 +276,7 @@ class EnhancedHookRegistry:
                     missing_fields=list(missing),
                     available_fields=list(available_fields)
                 )
-    
+
     def _get_available_fields(self, event: HookEvent, max_priority: int) -> Set[str]:
         """Get fields that will be available at a given priority"""
         available = set()
@@ -284,14 +284,14 @@ class EnhancedHookRegistry:
             if hook.priority < max_priority:
                 available.update(hook.capabilities.provides_fields)
         return available
-    
+
     def _check_conflicts(self, new_hook: EnhancedHook):
         """Check for field provision conflicts"""
         for event in new_hook.events:
             for existing in self._hooks[event]:
                 if existing.priority == new_hook.priority:
                     # Check for conflicting field provisions
-                    overlap = (existing.capabilities.provides_fields & 
+                    overlap = (existing.capabilities.provides_fields &
                               new_hook.capabilities.provides_fields)
                     if overlap:
                         self._logger.warning(
@@ -308,12 +308,12 @@ class EnhancedHookRegistry:
 ```python
 class EnhancedHookManager:
     """Manager with priority execution and data flow tracking"""
-    
+
     def __init__(self, registry: EnhancedHookRegistry, debug_mode: bool = False):
         self._registry = registry
         self._debug_mode = debug_mode
         self._logger = structlog.get_logger(__name__)
-    
+
     async def emit(
         self,
         event: HookEvent,
@@ -321,7 +321,7 @@ class EnhancedHookManager:
         **kwargs
     ) -> ProtectedHookContext:
         """Emit event with protected context and ordered execution"""
-        
+
         # Create protected context
         context = ProtectedHookContext(
             event=event,
@@ -330,40 +330,40 @@ class EnhancedHookManager:
             _metadata={},
             **kwargs
         )
-        
+
         # Get hooks in priority order
         hooks = self._registry.get_hooks(event)
-        
+
         if self._debug_mode:
             self._logger.debug(
                 "hook_execution_order",
                 event=event.value,
                 hooks=[{"name": h.name, "priority": h.priority} for h in hooks]
             )
-        
+
         # Execute hooks with protection
         for hook in hooks:
             try:
                 # Create protected view for this hook
                 protected_view = context.get_protected_view(hook)
-                
+
                 # Track data before execution
                 if self._debug_mode:
                     before_data = deepcopy(context._data)
                     before_metadata = deepcopy(context._metadata)
-                
+
                 # Execute hook
                 result = await self._execute_hook(hook, protected_view)
-                
+
                 # Track modifications
                 if self._debug_mode:
                     self._track_modifications(
                         hook, context, before_data, before_metadata
                     )
-                
+
                 # Validate provided fields
                 self._validate_provisions(hook, context)
-                
+
             except PermissionError as e:
                 self._logger.error(
                     "hook_permission_denied",
@@ -382,9 +382,9 @@ class EnhancedHookManager:
                     exc_info=True
                 )
                 # Continue with other hooks
-        
+
         return context
-    
+
     def _track_modifications(
         self,
         hook: EnhancedHook,
@@ -408,7 +408,7 @@ class EnhancedHookManager:
                     old_value=old_val,
                     new_value=new_val
                 )
-        
+
         # Check metadata modifications
         for key in set(before_metadata.keys()) | set(context._metadata.keys()):
             old_val = before_metadata.get(key)
@@ -417,7 +417,7 @@ class EnhancedHookManager:
                 context.record_modification(
                     hook.name, f"metadata.{key}", old_val, new_val
                 )
-    
+
     def _validate_provisions(self, hook: EnhancedHook, context: ProtectedHookContext):
         """Validate that hook provided promised fields"""
         for field in hook.capabilities.provides_fields:
@@ -467,19 +467,19 @@ class EnhancedHookManager:
 ```python
 class LegacyHookAdapter(EnhancedHook):
     """Adapter for legacy hooks"""
-    
+
     def __init__(self, legacy_hook: Hook, priority: int = 500):
         self._legacy = legacy_hook
         self._priority = priority
-    
+
     @property
     def name(self) -> str:
         return self._legacy.name
-    
+
     @property
     def priority(self) -> int:
         return self._priority
-    
+
     @property
     def capabilities(self) -> HookCapabilities:
         # Legacy hooks get full access for compatibility
@@ -487,7 +487,7 @@ class LegacyHookAdapter(EnhancedHook):
             data_access=DataModification.FULL_ACCESS,
             metadata_access=DataModification.FULL_ACCESS
         )
-    
+
     async def __call__(self, context: HookContext):
         return await self._legacy(context)
 ```
@@ -539,18 +539,18 @@ metadata_access = "read_only"
 ```python
 class AuthEnrichmentHook:
     """Adds authentication context to requests"""
-    
+
     name = "auth_enrichment"
     events = [HookEvent.REQUEST_STARTED]
     priority = HookPriority.AUTH  # 200
     depends_on = {"request_id_generator"}  # Depends on request ID
-    
+
     capabilities = HookCapabilities(
         data_access=DataModification.ADD_ONLY,
         metadata_access=DataModification.ADD_ONLY,
         provides_fields={"user_id", "auth_method", "permissions"}
     )
-    
+
     async def __call__(self, context: HookContext):
         # Extract auth from request
         if context.request:
@@ -558,7 +558,7 @@ class AuthEnrichmentHook:
             if auth_header:
                 # Parse and validate auth
                 user_info = await self._validate_auth(auth_header)
-                
+
                 # Add to context (only adding new fields)
                 context.data["user_id"] = user_info["id"]
                 context.data["auth_method"] = user_info["method"]
@@ -569,23 +569,23 @@ class AuthEnrichmentHook:
 ```python
 class MetricsHook:
     """Collects metrics from enriched request data"""
-    
+
     name = "metrics"
     events = [HookEvent.REQUEST_COMPLETED]
     priority = HookPriority.METRICS  # 600
     depends_on = {"auth_enrichment"}  # Needs user context
-    
+
     capabilities = HookCapabilities(
         data_access=DataModification.READ_ONLY,
         metadata_access=DataModification.READ_ONLY,
         required_fields={"user_id", "duration_ms"}
     )
-    
+
     async def __call__(self, context: HookContext):
         # Read data (no modifications)
         user_id = context.data.get("user_id")
         duration = context.data.get("duration_ms")
-        
+
         # Emit metrics
         await self._emit_metric(
             "request_duration",
@@ -634,15 +634,15 @@ class MetricsHook:
 ```python
 class HookDebugger:
     """Interactive hook debugging tool"""
-    
+
     def trace_execution(self, event: HookEvent, data: dict):
         """Trace hook execution with data flow"""
         ...
-    
+
     def visualize_dependencies(self):
         """Generate dependency graph visualization"""
         ...
-    
+
     def analyze_data_flow(self, request_id: str):
         """Analyze how data flowed through hooks"""
         ...

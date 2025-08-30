@@ -33,7 +33,6 @@ if TYPE_CHECKING:
     from ccproxy.core.transformers import BaseTransformer
     from ccproxy.plugins.declaration import PluginContext
     from ccproxy.services.cli_detection import CLIDetectionService
-    from ccproxy.streaming.interfaces import IStreamingMetricsCollector
 
 
 logger = get_plugin_logger()
@@ -62,6 +61,7 @@ class BaseHTTPAdapter(BaseAdapter):
         streaming_handler: "IStreamingHandler | None" = None,
         request_transformer: "BaseTransformer | None" = None,
         response_transformer: "BaseTransformer | None" = None,
+        hook_manager: "HookManager | None" = None,
         # Context for plugin-specific services
         context: "PluginContext | None" = None,
     ) -> None:
@@ -76,12 +76,14 @@ class BaseHTTPAdapter(BaseAdapter):
             streaming_handler: Optional streaming handler
             request_transformer: Optional request transformer
             response_transformer: Optional response transformer
+            hook_manager: Optional hook manager for event emission
             context: Optional plugin context containing plugin_registry and other services
         """
         # Store required dependencies
         self.http_client = http_client
         self._auth_manager = auth_manager
         self._detection_service = detection_service
+        self._hook_manager = hook_manager
 
         # Use null object pattern for optional dependencies
         self.request_tracer = request_tracer or NullRequestTracer()
@@ -101,24 +103,8 @@ class BaseHTTPAdapter(BaseAdapter):
         )
 
     def _get_hook_manager(self) -> "HookManager | None":
-        """Get hook manager from context if available."""
-        try:
-            if not self.context:
-                return None
-
-            # Try to get from context directly
-            if "hook_manager" in self.context:
-                return self.context["hook_manager"]
-
-            # Try to get from app state
-            if "app" in self.context and hasattr(
-                self.context["app"].state, "hook_manager"
-            ):
-                return self.context["app"].state.hook_manager
-
-            return None
-        except Exception:
-            return None
+        """Get the injected hook manager."""
+        return self._hook_manager
 
     def _get_pricing_service(self) -> Any:
         """Get pricing service from plugin registry if available."""
@@ -234,19 +220,6 @@ class BaseHTTPAdapter(BaseAdapter):
         """
         ...
 
-    @abstractmethod
-    async def _create_metrics_collector(
-        self, request_context: "RequestContext"
-    ) -> "IStreamingMetricsCollector | None":
-        """Create a metrics collector for this request.
-
-        Args:
-            request_context: Request context containing request_id
-
-        Returns:
-            Metrics collector or None
-        """
-        ...
 
     async def _execute_request(
         self,

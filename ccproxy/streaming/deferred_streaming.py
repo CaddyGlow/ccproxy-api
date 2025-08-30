@@ -21,9 +21,6 @@ if TYPE_CHECKING:
     from ccproxy.core.request_context import RequestContext
     from ccproxy.services.handler_config import HandlerConfig
 
-    # Import the specific implementation that has both interfaces
-    from plugins.request_tracer.tracer import RequestTracerImpl
-
 
 logger = structlog.get_logger(__name__)
 
@@ -41,9 +38,6 @@ class DeferredStreaming(StreamingResponse):
         media_type: str = "text/event-stream",
         handler_config: "HandlerConfig | None" = None,
         request_context: "RequestContext | None" = None,
-        request_tracer: "RequestTracerImpl | None" = None,
-        metrics: "Any | None" = None,
-        verbose_streaming: bool = False,
         hook_manager: HookManager | None = None,
     ):
         """Store request details to execute later.
@@ -57,9 +51,6 @@ class DeferredStreaming(StreamingResponse):
             media_type: Response media type
             handler_config: Optional handler config for SSE processing
             request_context: Optional request context for tracking
-            request_tracer: Optional request tracer for verbose logging
-            metrics: Optional metrics collector
-            verbose_streaming: Enable verbose streaming logs
             hook_manager: Optional hook manager for emitting stream events
         """
         # Store attributes first
@@ -71,9 +62,6 @@ class DeferredStreaming(StreamingResponse):
         self.media_type = media_type
         self.handler_config = handler_config
         self.request_context = request_context
-        self.request_tracer = request_tracer
-        self.metrics = metrics
-        self.verbose_streaming = verbose_streaming
         self.hook_manager = hook_manager
 
         # Create an async generator for the streaming content
@@ -131,28 +119,6 @@ class DeferredStreaming(StreamingResponse):
                 total_chunks = 0
                 total_bytes = 0
 
-                # Get metrics collector from handler config (provider-specific)
-                collector = None
-                if self.handler_config and hasattr(
-                    self.handler_config, "metrics_collector"
-                ):
-                    collector = self.handler_config.metrics_collector
-                    if not collector:
-                        logger.debug(
-                            "deferred_streaming_no_metrics_collector",
-                            service_type=getattr(
-                                self.request_context, "metadata", {}
-                            ).get("service_type")
-                            if self.request_context
-                            else None,
-                            request_id=request_id,
-                        )
-
-                # Trace stream start
-                if self.request_tracer and request_id:
-                    await self.request_tracer.trace_stream_start(
-                        request_id=request_id, headers=self.request_headers
-                    )
 
                 # Emit PROVIDER_STREAM_START hook
                 if self.hook_manager:
@@ -198,20 +164,46 @@ class DeferredStreaming(StreamingResponse):
 
                     # Stream the response with optional SSE processing
                     if self.handler_config and self.handler_config.response_adapter:
-                        # Metrics collection happens inside _process_sse_events now
+                        # Process SSE events with format adaptation
                         async for chunk in self._process_sse_events(
                             response, self.handler_config.response_adapter
                         ):
                             total_chunks += 1
                             total_bytes += len(chunk)
 
-                            # Trace each chunk if tracer is available
-                            if self.request_tracer and request_id:
-                                await self.request_tracer.trace_stream_chunk(
-                                    request_id=request_id,
-                                    chunk=chunk,
-                                    chunk_number=total_chunks,
-                                )
+                            # Emit PROVIDER_STREAM_CHUNK hook
+                            if self.hook_manager:
+                                try:
+                                    provider = "unknown"
+                                    if self.request_context and hasattr(
+                                        self.request_context, "metadata"
+                                    ):
+                                        provider = self.request_context.metadata.get(
+                                            "service_type", "unknown"
+                                        )
+
+                                    chunk_context = HookContext(
+                                        event=HookEvent.PROVIDER_STREAM_CHUNK,
+                                        timestamp=datetime.now(),
+                                        provider=provider,
+                                        data={
+                                            "chunk": chunk,
+                                            "chunk_number": total_chunks,
+                                            "chunk_size": len(chunk),
+                                            "request_id": request_id,
+                                        },
+                                        metadata={"request_id": request_id},
+                                    )
+                                    await self.hook_manager.emit_with_context(
+                                        chunk_context
+                                    )
+                                except Exception as e:
+                                    logger.trace(
+                                        "hook_emission_failed",
+                                        event="PROVIDER_STREAM_CHUNK",
+                                        error=str(e),
+                                    )
+
                             yield chunk
                     else:
                         # Check if response is SSE format based on content-type OR if
@@ -225,7 +217,7 @@ class DeferredStreaming(StreamingResponse):
                         )
                         is_sse_format = "text/event-stream" in content_type or is_codex
 
-                        if is_sse_format and collector:
+                        if is_sse_format:
                             # Buffer and parse SSE events for metrics extraction
                             sse_buffer = b""
                             async for chunk in response.aiter_bytes():
@@ -240,41 +232,44 @@ class DeferredStreaming(StreamingResponse):
                                     sse_buffer = sse_buffer[event_end:]
 
                                     # Process the complete SSE event with collector
-                                    event_str = event_data.decode(
-                                        "utf-8", errors="ignore"
-                                    )
 
-                                    # trace: Log SSE event
-                                    if total_chunks <= 3:
-                                        logger.trace(
-                                            "deferred_streaming_sse_event",
-                                            event_preview=event_str[:200],
-                                            event_number=total_chunks,
-                                            request_id=request_id,
-                                        )
+                                    # Emit PROVIDER_STREAM_CHUNK hook for SSE event
+                                    if self.hook_manager:
+                                        try:
+                                            provider = "unknown"
+                                            if self.request_context and hasattr(
+                                                self.request_context, "metadata"
+                                            ):
+                                                provider = (
+                                                    self.request_context.metadata.get(
+                                                        "service_type", "unknown"
+                                                    )
+                                                )
 
-                                    is_final = collector.process_chunk(event_str)
-
-                                    # trace: Log collector state
-                                    logger.trace(
-                                        "deferred_streaming_collector_state",
-                                        is_final=is_final,
-                                        metrics=collector.get_metrics()
-                                        if hasattr(collector, "get_metrics")
-                                        else None,
-                                        request_id=request_id,
-                                    )
+                                            chunk_context = HookContext(
+                                                event=HookEvent.PROVIDER_STREAM_CHUNK,
+                                                timestamp=datetime.now(),
+                                                provider=provider,
+                                                data={
+                                                    "chunk": event_data,
+                                                    "chunk_number": total_chunks,
+                                                    "chunk_size": len(event_data),
+                                                    "request_id": request_id,
+                                                },
+                                                metadata={"request_id": request_id},
+                                            )
+                                            await self.hook_manager.emit_with_context(
+                                                chunk_context
+                                            )
+                                        except Exception as e:
+                                            logger.trace(
+                                                "hook_emission_failed",
+                                                event="PROVIDER_STREAM_CHUNK",
+                                                error=str(e),
+                                            )
 
                                     # Yield the complete event
                                     yield event_data
-
-                                # Trace each chunk if tracer is available
-                                if self.request_tracer and request_id:
-                                    await self.request_tracer.trace_stream_chunk(
-                                        request_id=request_id,
-                                        chunk=chunk,
-                                        chunk_number=total_chunks,
-                                    )
 
                             # Yield any remaining data in buffer
                             if sse_buffer:
@@ -285,74 +280,44 @@ class DeferredStreaming(StreamingResponse):
                                 total_chunks += 1
                                 total_bytes += len(chunk)
 
-                                # Process chunk for token usage extraction if collector
-                                # available
-                                if collector and not is_sse_format:
-                                    chunk_str = chunk.decode("utf-8", errors="ignore")
 
-                                    # trace: Log first few chunks to see what we're
-                                    # processing
-                                    if total_chunks <= 3:
+                                # Emit PROVIDER_STREAM_CHUNK hook
+                                if self.hook_manager:
+                                    try:
+                                        provider = "unknown"
+                                        if self.request_context and hasattr(
+                                            self.request_context, "metadata"
+                                        ):
+                                            provider = (
+                                                self.request_context.metadata.get(
+                                                    "service_type", "unknown"
+                                                )
+                                            )
+
+                                        chunk_context = HookContext(
+                                            event=HookEvent.PROVIDER_STREAM_CHUNK,
+                                            timestamp=datetime.now(),
+                                            provider=provider,
+                                            data={
+                                                "chunk": chunk,
+                                                "chunk_number": total_chunks,
+                                                "chunk_size": len(chunk),
+                                                "request_id": request_id,
+                                            },
+                                            metadata={"request_id": request_id},
+                                        )
+                                        await self.hook_manager.emit_with_context(
+                                            chunk_context
+                                        )
+                                    except Exception as e:
                                         logger.trace(
-                                            "deferred_streaming_chunk_trace",
-                                            chunk_length=len(chunk_str),
-                                            chunk_preview=chunk_str[:200],
-                                            chunk_number=total_chunks,
-                                            request_id=request_id,
+                                            "hook_emission_failed",
+                                            event="PROVIDER_STREAM_CHUNK",
+                                            error=str(e),
                                         )
 
-                                    is_final = collector.process_chunk(chunk_str)
-
-                                    # trace: Log collector state
-                                    logger.trace(
-                                        "deferred_streaming_collector_state",
-                                        is_final=is_final,
-                                        metrics=collector.get_metrics()
-                                        if hasattr(collector, "get_metrics")
-                                        else None,
-                                        request_id=request_id,
-                                    )
-
-                                # Trace each chunk if tracer is available
-                                if self.request_tracer and request_id:
-                                    await self.request_tracer.trace_stream_chunk(
-                                        request_id=request_id,
-                                        chunk=chunk,
-                                        chunk_number=total_chunks,
-                                    )
                                 yield chunk
 
-                    # Store final usage metrics in request context
-                    usage_metrics = (
-                        collector.get_metrics()
-                        if collector and hasattr(collector, "get_metrics")
-                        else {}
-                    )
-                    if usage_metrics and self.request_context:
-                        # Get model from request context metadata for logging
-                        model = None
-                        if hasattr(self.request_context, "metadata"):
-                            model = self.request_context.metadata.get("model")
-
-                        if model:
-                            logger.debug(
-                                "deferred_streaming_final_metrics",
-                                model=model,
-                                usage_metrics=usage_metrics,
-                                request_id=request_id,
-                                tokens_input=usage_metrics.get("tokens_input"),
-                                tokens_output=usage_metrics.get("tokens_output"),
-                                cache_read_tokens=usage_metrics.get(
-                                    "cache_read_tokens"
-                                ),
-                                cache_write_tokens=usage_metrics.get(
-                                    "cache_write_tokens"
-                                ),
-                            )
-
-                        # Store usage metrics in request context
-                        if hasattr(self.request_context, "metadata"):
-                            self.request_context.metadata.update(usage_metrics)
 
                     # Update metrics if available
                     if self.request_context and hasattr(
@@ -360,14 +325,6 @@ class DeferredStreaming(StreamingResponse):
                     ):
                         self.request_context.metrics["stream_chunks"] = total_chunks
                         self.request_context.metrics["stream_bytes"] = total_bytes
-
-                    # Trace stream completion
-                    if self.request_tracer and request_id:
-                        await self.request_tracer.trace_stream_complete(
-                            request_id=request_id,
-                            total_chunks=total_chunks,
-                            total_bytes=total_bytes,
-                        )
 
                     # Emit PROVIDER_STREAM_END hook
                     if self.hook_manager:
@@ -380,6 +337,14 @@ class DeferredStreaming(StreamingResponse):
                                     "service_type", "unknown"
                                 )
 
+                            logger.debug(
+                                "emitting_provider_stream_end_hook",
+                                request_id=request_id,
+                                provider=provider,
+                                total_chunks=total_chunks,
+                                total_bytes=total_bytes,
+                            )
+
                             stream_end_context = HookContext(
                                 event=HookEvent.PROVIDER_STREAM_END,
                                 timestamp=datetime.now(),
@@ -390,9 +355,6 @@ class DeferredStreaming(StreamingResponse):
                                     "request_id": request_id,
                                     "total_chunks": total_chunks,
                                     "total_bytes": total_bytes,
-                                    "usage_metrics": usage_metrics
-                                    if usage_metrics
-                                    else {},
                                 },
                                 metadata={
                                     "request_id": request_id,
@@ -401,13 +363,23 @@ class DeferredStreaming(StreamingResponse):
                             await self.hook_manager.emit_with_context(
                                 stream_end_context
                             )
-                        except Exception as e:
                             logger.debug(
+                                "provider_stream_end_hook_emitted",
+                                request_id=request_id,
+                            )
+                        except Exception as e:
+                            logger.error(
                                 "hook_emission_failed",
                                 event="PROVIDER_STREAM_END",
                                 error=str(e),
                                 category="hooks",
+                                exc_info=e,
                             )
+                    else:
+                        logger.debug(
+                            "no_hook_manager_for_stream_end",
+                            request_id=request_id,
+                        )
 
                 except httpx.TimeoutException as e:
                     logger.error(
@@ -476,57 +448,31 @@ class DeferredStreaming(StreamingResponse):
         - Serialize adapted chunks back to SSE format
         - Optionally process converted chunks with metrics collector
         """
-        # Get metrics collector if available
-        collector = None
-        if self.handler_config and hasattr(self.handler_config, "metrics_collector"):
-            collector = self.handler_config.metrics_collector
-
         # Create streaming pipeline:
-        # 1. Parse raw SSE bytes to JSON chunks, optionally collecting metrics from raw
-        # format
-        json_stream = self._parse_sse_to_json_stream(response.aiter_bytes(), collector)
+        # 1. Parse raw SSE bytes to JSON chunks
+        json_stream = self._parse_sse_to_json_stream(response.aiter_bytes())
 
         # 2. Pass entire JSON stream through adapter (maintains state)
         adapted_stream = adapter.adapt_stream(json_stream)
 
-        # 3. Serialize adapted chunks back to SSE format, optionally collecting metrics
-        # from converted format
-        async for sse_bytes in self._serialize_json_to_sse_stream(
-            adapted_stream,
-            collector,
-        ):
+        # 3. Serialize adapted chunks back to SSE format
+        async for sse_bytes in self._serialize_json_to_sse_stream(adapted_stream):
             yield sse_bytes
 
     async def _parse_sse_to_json_stream(
-        self, raw_stream: AsyncIterator[bytes], collector: Any = None
+        self, raw_stream: AsyncIterator[bytes]
     ) -> AsyncIterator[dict[str, Any]]:
         """Parse raw SSE bytes stream into JSON chunks.
 
         Yields JSON objects extracted from SSE events without buffering
-        the entire response. Optionally processes raw chunks with metrics collector
-        before parsing.
+        the entire response.
 
         Args:
             raw_stream: Raw bytes stream from provider
-            collector: Optional metrics collector to process raw provider format
         """
         buffer = b""
 
         async for chunk in raw_stream:
-            # Process raw chunk with collector if available (before any conversion)
-            if collector and hasattr(collector, "process_raw_chunk"):
-                chunk_str = chunk.decode("utf-8", errors="ignore")
-                is_final = collector.process_raw_chunk(chunk_str)
-
-                if self.verbose_streaming:
-                    logger.debug(
-                        "raw_chunk_metrics_processing",
-                        is_final=is_final,
-                        metrics=collector.get_metrics()
-                        if hasattr(collector, "get_metrics")
-                        else None,
-                    )
-
             buffer += chunk
 
             # Process complete SSE events in buffer
@@ -552,12 +498,10 @@ class DeferredStreaming(StreamingResponse):
                         json_obj = json.loads(data)
                         yield json_obj
                     except json.JSONDecodeError:
-                        if self.verbose_streaming:
-                            logger.debug("sse_parse_error", data=data)
                         continue
 
     async def _serialize_json_to_sse_stream(
-        self, json_stream: AsyncIterator[dict[str, Any]], collector: Any = None
+        self, json_stream: AsyncIterator[dict[str, Any]]
     ) -> AsyncGenerator[bytes, None]:
         """Serialize JSON chunks back to SSE format.
 
@@ -566,27 +510,12 @@ class DeferredStreaming(StreamingResponse):
 
         Args:
             json_stream: Stream of JSON objects after format conversion
-            collector: Optional metrics collector to process converted format
         """
         async for json_obj in json_stream:
             # Convert to SSE format
             json_str = json.dumps(json_obj, ensure_ascii=False)
             sse_event = f"data: {json_str}\n\n"
             sse_bytes = sse_event.encode("utf-8")
-
-            # Process converted chunk with collector if available
-            if collector and hasattr(collector, "process_converted_chunk"):
-                is_final = collector.process_converted_chunk(sse_event)
-
-                if self.verbose_streaming:
-                    logger.debug(
-                        "converted_chunk_metrics_processing",
-                        is_final=is_final,
-                        metrics=collector.get_metrics()
-                        if hasattr(collector, "get_metrics")
-                        else None,
-                    )
-
             yield sse_bytes
 
         # Send final [DONE] event

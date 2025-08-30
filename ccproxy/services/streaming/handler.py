@@ -10,7 +10,6 @@ from ccproxy.core.request_context import RequestContext
 from ccproxy.hooks import HookManager
 from ccproxy.services.handler_config import HandlerConfig
 from ccproxy.streaming.deferred_streaming import DeferredStreaming
-from plugins.request_tracer.tracer import RequestTracerImpl
 
 
 logger = structlog.get_logger(__name__)
@@ -21,21 +20,12 @@ class StreamingHandler:
 
     def __init__(
         self,
-        metrics: Any | None = None,
-        verbose_streaming: bool = False,
-        request_tracer: RequestTracerImpl | None = None,
         hook_manager: HookManager | None = None,
     ) -> None:
-        """Initialize with metrics collector and debug settings.
+        """Initialize with hook manager for stream events.
 
-        - Sets up Prometheus metrics if provided
-        - Configures verbose streaming from environment
-        - Optional request tracer for verbose logging
         - Optional hook manager for emitting stream events
         """
-        self.metrics = metrics
-        self.verbose_streaming = verbose_streaming
-        self.request_tracer = request_tracer
         self.hook_manager = hook_manager
 
     def should_stream_response(self, headers: dict[str, str]) -> bool:
@@ -107,8 +97,5 @@ class StreamingHandler:
             media_type="text/event-stream",
             handler_config=handler_config,
             request_context=request_context,
-            request_tracer=self.request_tracer,
-            metrics=self.metrics,
-            verbose_streaming=self.verbose_streaming,
             hook_manager=self.hook_manager,
         )

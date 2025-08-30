@@ -23,6 +23,7 @@ from ccproxy.services.handler_config import HandlerConfig
 
 if TYPE_CHECKING:
     from ccproxy.core.request_context import RequestContext
+    from ccproxy.hooks import HookManager
     from ccproxy.plugins.declaration import PluginContext
     from ccproxy.services.cli_detection import CLIDetectionService
     from ccproxy.services.interfaces import (
@@ -30,7 +31,6 @@ if TYPE_CHECKING:
         IRequestTracer,
         IStreamingHandler,
     )
-    from ccproxy.streaming.interfaces import IStreamingMetricsCollector
 
 from .format_adapter import CodexFormatAdapter
 from .transformers import CodexRequestTransformer, CodexResponseTransformer
@@ -56,6 +56,7 @@ class CodexAdapter(BaseHTTPAdapter):
         request_tracer: "IRequestTracer | None" = None,
         metrics: "IMetricsCollector | None" = None,
         streaming_handler: "IStreamingHandler | None" = None,
+        hook_manager: "HookManager | None" = None,
         # Plugin-specific context
         context: "PluginContext | dict[str, Any] | None" = None,
     ):
@@ -68,6 +69,7 @@ class CodexAdapter(BaseHTTPAdapter):
             request_tracer: Optional request tracer
             metrics: Optional metrics collector
             streaming_handler: Optional streaming handler
+            hook_manager: Optional hook manager for event emission
             context: Optional plugin context containing plugin_registry and other services
         """
         # Initialize transformers
@@ -97,6 +99,7 @@ class CodexAdapter(BaseHTTPAdapter):
             streaming_handler=streaming_handler,
             request_transformer=request_transformer,
             response_transformer=response_transformer,
+            hook_manager=hook_manager,
             context=context,
         )
 
@@ -140,44 +143,14 @@ class CodexAdapter(BaseHTTPAdapter):
         Returns:
             HandlerConfig instance
         """
-        # Create metrics collector for this request with cost calculation capability
-        metrics_collector = (
-            await self._create_metrics_collector(request_context)
-            if request_context
-            else None
-        )
-
         return HandlerConfig(
             request_adapter=self.format_adapter if needs_conversion else None,
             response_adapter=self.format_adapter if needs_conversion else None,
             request_transformer=self._request_transformer,
             response_transformer=self._response_transformer,
             supports_streaming=True,
-            metrics_collector=metrics_collector,
         )
 
-    async def _create_metrics_collector(
-        self, request_context: "RequestContext"
-    ) -> "IStreamingMetricsCollector | None":
-        """Create a metrics collector for this request.
-
-        Args:
-            request_context: Request context containing request_id
-
-        Returns:
-            Metrics collector or None
-        """
-        from .streaming_metrics import CodexStreamingMetricsCollector
-
-        request_id = getattr(request_context, "request_id", None)
-        # Get pricing service for cost calculation
-        pricing_service = self._get_pricing_service()
-
-        # Create enhanced metrics collector with pricing capability
-        # The collector will extract the model from the streaming chunks
-        return CodexStreamingMetricsCollector(
-            request_id=request_id, pricing_service=pricing_service
-        )
 
     async def _update_request_context(
         self,

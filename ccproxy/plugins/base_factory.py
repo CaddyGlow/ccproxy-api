@@ -75,6 +75,12 @@ class BaseProviderPluginFactory(ProviderPluginFactory):
         # Validate required class attributes
         self._validate_class_attributes()
 
+        # Validate runtime class is a proper subclass
+        if not issubclass(self.runtime_class, ProviderPluginRuntime):
+            raise TypeError(
+                f"runtime_class {self.runtime_class.__name__} must be a subclass of ProviderPluginRuntime"
+            )
+
         # Build routes from router if provided
         routes = []
         if self.router is not None:
@@ -99,8 +105,11 @@ class BaseProviderPluginFactory(ProviderPluginFactory):
             tasks=self.tasks.copy(),
         )
 
-        # Initialize parent with manifest
-        super().__init__(manifest)
+        # Store the manifest and runtime class directly
+        # We don't call parent __init__ because ProviderPluginFactory
+        # would override our runtime_class with ProviderPluginRuntime
+        self.manifest = manifest
+        self.runtime_class = self.__class__.runtime_class
 
     def _validate_class_attributes(self) -> None:
         """Validate that required class attributes are defined."""
@@ -143,6 +152,7 @@ class BaseProviderPluginFactory(ProviderPluginFactory):
         request_tracer: IRequestTracer | None = context.get("request_tracer")
         metrics: IMetricsCollector | None = context.get("metrics")
         streaming_handler: IStreamingHandler | None = context.get("streaming_handler")
+        hook_manager = context.get("hook_manager")
 
         # Get auth and detection services that may have been created by factory
         auth_manager = context.get("credentials_manager")
@@ -167,6 +177,7 @@ class BaseProviderPluginFactory(ProviderPluginFactory):
                 request_tracer=request_tracer or NullRequestTracer(),
                 metrics=metrics or NullMetricsCollector(),
                 streaming_handler=streaming_handler or NullStreamingHandler(),
+                hook_manager=hook_manager,
                 context=context,
             )
         else:
@@ -190,6 +201,7 @@ class BaseProviderPluginFactory(ProviderPluginFactory):
                 "request_tracer": request_tracer,
                 "metrics": metrics,
                 "streaming_handler": streaming_handler,
+                "hook_manager": hook_manager,
                 "context": context,
             }
 

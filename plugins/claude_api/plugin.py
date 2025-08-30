@@ -31,17 +31,18 @@ class ClaudeAPIRuntime(ProviderPluginRuntime):
 
     async def _on_initialize(self) -> None:
         """Initialize the Claude API plugin."""
+        # Call parent initialization first
+        await super()._on_initialize()
+
         # Debug: Log what we receive in context
-        logger.debug(
-            "claude_api_initializing",
+        logger.info(
+            "claude_api_custom_init_starting",
             context_keys=list(self.context.keys()) if self.context else [],
             has_config="config" in (self.context or {}),
             config_type=type(self.context.get("config")).__name__
             if self.context
             else None,
         )
-
-        await super()._on_initialize()
 
         if not self.context:
             raise RuntimeError("Context not set")
@@ -58,6 +59,9 @@ class ClaudeAPIRuntime(ProviderPluginRuntime):
             config = ClaudeAPISettings()
             logger.info("plugin_using_default_config")
         self.config = config
+
+        # Register streaming metrics hook
+        await self._register_streaming_metrics_hook()
 
         # Initialize detection service to populate cached data
         if self.detection_service:
@@ -174,6 +178,61 @@ class ClaudeAPIRuntime(ProviderPluginRuntime):
 
         return None
 
+    async def _register_streaming_metrics_hook(self) -> None:
+        """Register the streaming metrics extraction hook."""
+        try:
+            # Get hook registry from context
+            hook_registry = self.context.get("hook_registry")
+            if not hook_registry:
+                logger.warning(
+                    "streaming_metrics_hook_not_registered",
+                    reason="no_hook_registry",
+                    plugin="claude_api",
+                    context_keys=list(self.context.keys()) if self.context else [],
+                )
+                return
+
+            # Get pricing service from plugin registry if available
+            pricing_service = None
+            if "plugin_registry" in self.context:
+                try:
+                    from plugins.pricing.service import PricingService
+
+                    plugin_registry = self.context["plugin_registry"]
+                    pricing_service = plugin_registry.get_service(
+                        "pricing", PricingService
+                    )
+                except Exception as e:
+                    logger.debug(
+                        "pricing_service_not_available_for_hook",
+                        plugin="claude_api",
+                        error=str(e),
+                    )
+
+            # Create and register the hook
+            from plugins.claude_api.hooks import ClaudeAPIStreamingMetricsHook
+
+            metrics_hook = ClaudeAPIStreamingMetricsHook(
+                pricing_service=pricing_service
+            )
+            hook_registry.register(metrics_hook)
+
+            logger.info(
+                "streaming_metrics_hook_registered",
+                plugin="claude_api",
+                hook_name=metrics_hook.name,
+                priority=metrics_hook.priority,
+                has_pricing=pricing_service is not None,
+            )
+
+        except Exception as e:
+            logger.error(
+                "streaming_metrics_hook_registration_failed",
+                plugin="claude_api",
+                error=str(e),
+                exc_info=e,
+            )
+
 
 class ClaudeAPIFactory(BaseProviderPluginFactory):
     """Factory for Claude API plugin."""
@@ -239,5 +298,8 @@ class ClaudeAPIFactory(BaseProviderPluginFactory):
         return context
 
 
-# Export the factory instance
+# Create factory instance for plugin discovery
+# Note: This follows the existing pattern but creates a singleton
 factory = ClaudeAPIFactory()
+
+__all__ = ["ClaudeAPIFactory", "ClaudeAPIRuntime", "factory"]

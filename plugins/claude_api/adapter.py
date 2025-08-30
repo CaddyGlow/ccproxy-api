@@ -11,6 +11,7 @@ from starlette.responses import StreamingResponse
 if TYPE_CHECKING:
     from ccproxy.auth.manager import AuthManager
     from ccproxy.core.request_context import RequestContext
+    from ccproxy.hooks import HookManager
     from ccproxy.plugins.declaration import PluginContext
     from ccproxy.services.cli_detection import CLIDetectionService
     from ccproxy.services.interfaces import (
@@ -18,7 +19,6 @@ if TYPE_CHECKING:
         IRequestTracer,
         IStreamingHandler,
     )
-    from ccproxy.streaming.interfaces import IStreamingMetricsCollector
 
 from ccproxy.config.constants import (
     CLAUDE_API_BASE_URL,
@@ -53,6 +53,7 @@ class ClaudeAPIAdapter(BaseHTTPAdapter):
         request_tracer: "IRequestTracer | None" = None,
         metrics: "IMetricsCollector | None" = None,
         streaming_handler: "IStreamingHandler | None" = None,
+        hook_manager: "HookManager | None" = None,
         # Plugin-specific context
         context: "PluginContext | dict[str, Any] | None" = None,
         # Legacy proxy_service for backward compatibility (to be removed)
@@ -67,6 +68,7 @@ class ClaudeAPIAdapter(BaseHTTPAdapter):
             request_tracer: Optional request tracer
             metrics: Optional metrics collector
             streaming_handler: Optional streaming handler
+            hook_manager: Optional hook manager for event emission
             context: Optional plugin context containing plugin_registry and other services
             proxy_service: Legacy ProxyService for backward compatibility
         """
@@ -115,6 +117,7 @@ class ClaudeAPIAdapter(BaseHTTPAdapter):
             streaming_handler=streaming_handler,
             request_transformer=request_transformer,
             response_transformer=response_transformer,
+            hook_manager=hook_manager,
             context=context,
         )
 
@@ -158,44 +161,14 @@ class ClaudeAPIAdapter(BaseHTTPAdapter):
         Returns:
             HandlerConfig instance
         """
-        # Create metrics collector for this request with cost calculation capability
-        metrics_collector = (
-            await self._create_metrics_collector(request_context)
-            if request_context
-            else None
-        )
-
         return HandlerConfig(
             request_adapter=self.openai_adapter if needs_conversion else None,
             response_adapter=self.openai_adapter if needs_conversion else None,
             request_transformer=self._request_transformer,
             response_transformer=self._response_transformer,
             supports_streaming=True,
-            metrics_collector=metrics_collector,
         )
 
-    async def _create_metrics_collector(
-        self, request_context: "RequestContext"
-    ) -> "IStreamingMetricsCollector | None":
-        """Create a metrics collector for this request.
-
-        Args:
-            request_context: Request context containing request_id
-
-        Returns:
-            Metrics collector or None
-        """
-        from .streaming_metrics import StreamingMetricsCollector
-
-        request_id = getattr(request_context, "request_id", None)
-        # Get pricing service for cost calculation
-        pricing_service = self._get_pricing_service()
-
-        # Create enhanced metrics collector with pricing capability
-        # The collector will extract the model from the streaming chunks
-        return StreamingMetricsCollector(
-            request_id=request_id, pricing_service=pricing_service
-        )
 
     async def _update_request_context(
         self,
@@ -375,10 +348,7 @@ class ClaudeAPIAdapter(BaseHTTPAdapter):
         chunks: list[bytes] = []
         headers_extracted = False
 
-        # Create metrics collector for usage extraction
-        from .streaming_metrics import StreamingMetricsCollector
-
-        collector = StreamingMetricsCollector(request_id=request_context.request_id)
+        # Note: Metrics extraction is now handled by ClaudeAPIStreamingMetricsHook
 
         async def wrapped_iterator() -> AsyncIterator[bytes]:
             """Wrap the stream iterator to accumulate chunks."""
@@ -426,152 +396,7 @@ class ClaudeAPIAdapter(BaseHTTPAdapter):
                     chunk = chunk.encode() if isinstance(chunk, str) else bytes(chunk)
                 chunks.append(chunk)
 
-                # Process this chunk for usage data
-                chunk_str = chunk.decode("utf-8", errors="ignore")
-
-                # Debug: Log first few chunks to see what we're processing
-                if len(chunks) <= 3:
-                    logger.debug(
-                        "streaming_chunk_debug",
-                        chunk_length=len(chunk_str),
-                        chunk_preview=chunk_str[:200],
-                        chunk_number=len(chunks),
-                        request_id=request_context.request_id,
-                        category="debug",
-                    )
-
-                is_final = collector.process_chunk(chunk_str)
-
-                # Debug: Log collector state
-                logger.debug(
-                    "streaming_collector_state",
-                    is_final=is_final,
-                    metrics=collector.get_metrics(),
-                    request_id=request_context.request_id,
-                    category="debug",
-                )
-
-                # If we got final metrics, update context
-                if is_final:
-                    usage_metrics = collector.get_metrics()
-                    if usage_metrics:
-                        # Calculate cost if we have model info
-                        model = request_context.metadata.get("model")
-                        cost_usd = None
-
-                        if model:
-                            # Try to calculate cost using pricing service
-                            pricing_service = self._get_pricing_service()
-                            if pricing_service:
-                                try:
-                                    # Import pricing exceptions
-                                    from plugins.pricing.exceptions import (
-                                        ModelPricingNotFoundError,
-                                        PricingDataNotLoadedError,
-                                        PricingServiceDisabledError,
-                                    )
-
-                                    cost_decimal = await pricing_service.calculate_cost(
-                                        model_name=model,
-                                        input_tokens=usage_metrics.get(
-                                            "tokens_input", 0
-                                        ),
-                                        output_tokens=usage_metrics.get(
-                                            "tokens_output", 0
-                                        ),
-                                        cache_read_tokens=usage_metrics.get(
-                                            "cache_read_tokens", 0
-                                        ),
-                                        cache_write_tokens=usage_metrics.get(
-                                            "cache_write_tokens", 0
-                                        ),
-                                    )
-                                    cost_usd = float(cost_decimal)
-
-                                    logger.debug(
-                                        "streaming_cost_calculated",
-                                        model=model,
-                                        cost_usd=cost_usd,
-                                        tokens_input=usage_metrics.get("tokens_input"),
-                                        tokens_output=usage_metrics.get(
-                                            "tokens_output"
-                                        ),
-                                        cache_read_tokens=usage_metrics.get(
-                                            "cache_read_tokens"
-                                        ),
-                                        cache_write_tokens=usage_metrics.get(
-                                            "cache_write_tokens"
-                                        ),
-                                        category="pricing",
-                                    )
-
-                                except ModelPricingNotFoundError as e:
-                                    logger.warning(
-                                        "model_pricing_not_found",
-                                        model=model,
-                                        message=str(e),
-                                        tokens_input=usage_metrics.get("tokens_input"),
-                                        tokens_output=usage_metrics.get(
-                                            "tokens_output"
-                                        ),
-                                        category="pricing",
-                                    )
-                                except PricingDataNotLoadedError as e:
-                                    logger.warning(
-                                        "pricing_data_not_loaded",
-                                        model=model,
-                                        message=str(e),
-                                        category="pricing",
-                                    )
-                                except PricingServiceDisabledError as e:
-                                    logger.debug(
-                                        "pricing_service_disabled",
-                                        message=str(e),
-                                        category="pricing",
-                                    )
-                                except Exception as e:
-                                    logger.debug(
-                                        "cost_calculation_failed",
-                                        error=str(e),
-                                        model=model,
-                                        category="pricing",
-                                    )
-                            else:
-                                logger.debug(
-                                    "pricing_service_not_available",
-                                    category="pricing",
-                                )
-                        else:
-                            cost_usd = usage_metrics.get("cost_usd")
-
-                        # Update request context with usage data using common format
-                        request_context.metadata.update(
-                            {
-                                "tokens_input": usage_metrics.get("tokens_input", 0),
-                                "tokens_output": usage_metrics.get("tokens_output", 0),
-                                "tokens_total": (
-                                    (usage_metrics.get("tokens_input") or 0)
-                                    + (usage_metrics.get("tokens_output") or 0)
-                                ),
-                                "cost_usd": cost_usd or 0.0,
-                                "cache_read_tokens": usage_metrics.get(
-                                    "cache_read_tokens"
-                                ),
-                                "cache_write_tokens": usage_metrics.get(
-                                    "cache_write_tokens"
-                                ),
-                            }
-                        )
-
-                        logger.debug(
-                            "usage_extracted",
-                            tokens_input=usage_metrics.get("tokens_input"),
-                            tokens_output=usage_metrics.get("tokens_output"),
-                            cache_read_tokens=usage_metrics.get("cache_read_tokens"),
-                            cache_write_tokens=usage_metrics.get("cache_write_tokens"),
-                            cost_usd=cost_usd,
-                            source="streaming",
-                        )
+                # Note: Chunk processing for metrics is handled by hooks
 
                 yield chunk
 
