@@ -128,7 +128,16 @@ class PrometheusMetrics:
             self.registry = registry
         self._enabled = PROMETHEUS_AVAILABLE
         self._histogram_buckets = histogram_buckets or [
-            0.01, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 25.0
+            0.01,
+            0.05,
+            0.1,
+            0.25,
+            0.5,
+            1.0,
+            2.5,
+            5.0,
+            10.0,
+            25.0,
         ]
 
         if self._enabled:
@@ -277,7 +286,6 @@ class PrometheusMetrics:
 
         # Set service as up
         self.up.labels(job="ccproxy").set(1)
-
 
     def record_request(
         self,
@@ -450,7 +458,6 @@ class PrometheusMetrics:
     def is_enabled(self) -> bool:
         """Check if metrics collection is enabled."""
         return self._enabled
-
 
     # Claude SDK Pool metrics methods
 

@@ -15,17 +15,19 @@ def test_compression_disabled():
 
     # Start server with raw HTTP tracing enabled
     env = os.environ.copy()
-    env.update({
-        "PLUGINS__REQUEST_TRACER__ENABLED": "true",
-        "PLUGINS__REQUEST_TRACER__RAW_HTTP_ENABLED": "true",
-    })
+    env.update(
+        {
+            "PLUGINS__REQUEST_TRACER__ENABLED": "true",
+            "PLUGINS__REQUEST_TRACER__RAW_HTTP_ENABLED": "true",
+        }
+    )
 
     server = subprocess.Popen(
         ["uv", "run", "ccproxy-api", "serve", "--port", "8002"],
         env=env,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
-        text=True
+        text=True,
     )
 
     # Wait for server to start
@@ -36,19 +38,29 @@ def test_compression_disabled():
         # Make a test request
         result = subprocess.run(
             [
-                "curl", "-X", "POST",
+                "curl",
+                "-X",
+                "POST",
                 "http://127.0.0.1:8002/api/v1/messages",
-                "-H", "Content-Type: application/json",
-                "-H", "x-api-key: test-key",
-                "-H", "anthropic-version: 2023-06-01",
-                "-d", json.dumps({
-                    "model": "claude-3-5-sonnet-20241022",
-                    "messages": [{"role": "user", "content": "Reply with just: test"}],
-                    "max_tokens": 10
-                })
+                "-H",
+                "Content-Type: application/json",
+                "-H",
+                "x-api-key: test-key",
+                "-H",
+                "anthropic-version: 2023-06-01",
+                "-d",
+                json.dumps(
+                    {
+                        "model": "claude-3-5-sonnet-20241022",
+                        "messages": [
+                            {"role": "user", "content": "Reply with just: test"}
+                        ],
+                        "max_tokens": 10,
+                    }
+                ),
             ],
             capture_output=True,
-            text=True
+            text=True,
         )
 
         print(f"Request status: {'SUCCESS' if result.returncode == 0 else 'FAILED'}")
@@ -57,8 +69,10 @@ def test_compression_disabled():
         time.sleep(1)
         raw_dir = "/tmp/ccproxy/tracer/raw"
         if os.path.exists(raw_dir):
-            files = sorted([f for f in os.listdir(raw_dir) if f.endswith("_client_response.http")],
-                          key=lambda x: os.path.getmtime(os.path.join(raw_dir, x)))
+            files = sorted(
+                [f for f in os.listdir(raw_dir) if f.endswith("_client_response.http")],
+                key=lambda x: os.path.getmtime(os.path.join(raw_dir, x)),
+            )
 
             if files:
                 latest_file = os.path.join(raw_dir, files[-1])
@@ -69,7 +83,9 @@ def test_compression_disabled():
 
                 # Check for signs of compression
                 if "content-encoding: gzip" in content.lower():
-                    print("❌ FAILED: Response is compressed (content-encoding: gzip found)")
+                    print(
+                        "❌ FAILED: Response is compressed (content-encoding: gzip found)"
+                    )
                     return False
 
                 # Check if JSON is readable
@@ -87,8 +103,14 @@ def test_compression_disabled():
                     return True
                 else:
                     # Check if it looks like compressed data
-                    if any(ord(c) < 32 or ord(c) > 126 for c in content[100:200] if c not in '\n\r\t'):
-                        print("❌ FAILED: Response appears to be compressed (binary data found)")
+                    if any(
+                        ord(c) < 32 or ord(c) > 126
+                        for c in content[100:200]
+                        if c not in "\n\r\t"
+                    ):
+                        print(
+                            "❌ FAILED: Response appears to be compressed (binary data found)"
+                        )
                         return False
                     else:
                         print("⚠️ WARNING: Could not determine compression status")
@@ -102,6 +124,7 @@ def test_compression_disabled():
         print("\nStopping server...")
         server.terminate()
         server.wait(timeout=5)
+
 
 if __name__ == "__main__":
     result = test_compression_disabled()

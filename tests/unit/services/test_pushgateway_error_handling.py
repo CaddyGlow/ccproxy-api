@@ -16,7 +16,9 @@ from prometheus_client import CollectorRegistry
 from ccproxy.config.observability import ObservabilitySettings
 
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../..', 'plugins', 'metrics'))
+sys.path.insert(
+    0, os.path.join(os.path.dirname(__file__), "../../..", "plugins", "metrics")
+)
 from pushgateway import CircuitBreaker, PushgatewayClient
 
 

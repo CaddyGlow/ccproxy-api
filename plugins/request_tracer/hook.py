@@ -32,6 +32,7 @@ class RequestTracerHook(Hook):
         HookEvent.PROVIDER_STREAM_CHUNK,
         HookEvent.PROVIDER_STREAM_END,
     ]
+    priority = 300  # HookLayer.ENRICHMENT - Capture/enrich request context early
 
     def __init__(self, config: RequestTracerConfig | None = None) -> None:
         """Initialize the request tracer hook.

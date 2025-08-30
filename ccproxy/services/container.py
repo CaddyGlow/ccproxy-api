@@ -266,9 +266,7 @@ class ServiceContainer:
             logger.debug("connection_pool_manager_created", category="lifecycle")
         return self._services[service_key]  # type: ignore
 
-    def get_adapter_dependencies(
-        self, metrics: Any | None = None
-    ) -> dict[str, Any]:
+    def get_adapter_dependencies(self, metrics: Any | None = None) -> dict[str, Any]:
         """Get all services an adapter might need.
 
         This method provides individual services for explicit dependency injection

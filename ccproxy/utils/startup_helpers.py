@@ -12,10 +12,11 @@ from typing import TYPE_CHECKING
 import structlog
 from fastapi import FastAPI
 
-# Note: get_claude_cli_info is imported locally to avoid circular imports
-from ccproxy.storage.duckdb_simple import SimpleDuckDBStorage
 from ccproxy.scheduler.errors import SchedulerError
 from ccproxy.scheduler.manager import start_scheduler, stop_scheduler
+
+# Note: get_claude_cli_info is imported locally to avoid circular imports
+from ccproxy.storage.duckdb_simple import SimpleDuckDBStorage
 
 
 # Note: get_permission_service is imported locally to avoid circular imports

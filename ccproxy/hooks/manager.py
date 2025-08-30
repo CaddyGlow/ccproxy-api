@@ -59,12 +59,27 @@ class HookManager:
         if not hooks:
             return
 
-        # Execute all hooks, catching errors
+        # Log execution order if debug logging enabled
+        self._logger.debug(
+            "hook_execution_order",
+            hook_event=event.value if hasattr(event, "value") else str(event),
+            hooks=[
+                {"name": h.name, "priority": getattr(h, "priority", 500)} for h in hooks
+            ],
+        )
+
+        # Execute all hooks in priority order, catching errors
         for hook in hooks:
             try:
                 await self._execute_hook(hook, context)
             except Exception as e:
-                self._logger.error(f"Hook {hook.name} failed for {event}", error=str(e))
+                self._logger.error(
+                    "hook_execution_failed",
+                    hook=hook.name,
+                    hook_event=event.value if hasattr(event, "value") else str(event),
+                    priority=getattr(hook, "priority", 500),
+                    error=str(e),
+                )
                 # Continue executing other hooks
 
     async def emit_with_context(self, context: HookContext) -> None:
@@ -80,13 +95,30 @@ class HookManager:
         if not hooks:
             return
 
-        # Execute all hooks, catching errors
+        # Log execution order if debug logging enabled
+        self._logger.debug(
+            "hook_execution_order",
+            hook_event=context.event.value
+            if hasattr(context.event, "value")
+            else str(context.event),
+            hooks=[
+                {"name": h.name, "priority": getattr(h, "priority", 500)} for h in hooks
+            ],
+        )
+
+        # Execute all hooks in priority order, catching errors
         for hook in hooks:
             try:
                 await self._execute_hook(hook, context)
             except Exception as e:
                 self._logger.error(
-                    f"Hook {hook.name} failed for {context.event}", error=str(e)
+                    "hook_execution_failed",
+                    hook=hook.name,
+                    hook_event=context.event.value
+                    if hasattr(context.event, "value")
+                    else str(context.event),
+                    priority=getattr(hook, "priority", 500),
+                    error=str(e),
                 )
                 # Continue executing other hooks
 

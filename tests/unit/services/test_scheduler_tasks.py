@@ -196,6 +196,7 @@ class TestBaseScheduledTask:
 
 # TestStatsPrintingTask removed - functionality moved to metrics plugin
 
+
 # class TestStatsPrintingTask:
 #     """Test StatsPrintingTask specific functionality."""
 #

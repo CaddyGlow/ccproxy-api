@@ -92,7 +92,11 @@ class AccessLogRuntime(SystemPluginRuntime):
                 hook_registry = self.context.get("hook_registry")
                 if not hook_registry:
                     app = self.context.get("app")
-                    if app and hasattr(app, "state") and hasattr(app.state, "hook_registry"):
+                    if (
+                        app
+                        and hasattr(app, "state")
+                        and hasattr(app.state, "hook_registry")
+                    ):
                         hook_registry = app.state.hook_registry
 
             if hook_registry and isinstance(hook_registry, HookRegistry):

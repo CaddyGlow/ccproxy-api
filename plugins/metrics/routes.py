@@ -52,7 +52,9 @@ def create_metrics_router(collector: PrometheusMetrics | None) -> APIRouter:
             from prometheus_client import REGISTRY
 
             # Use the collector's registry or fall back to global
-            registry = collector.registry if collector.registry is not None else REGISTRY
+            registry = (
+                collector.registry if collector.registry is not None else REGISTRY
+            )
             prometheus_data = generate_latest(registry)
 
             # Return the metrics data with proper content type
@@ -75,8 +77,7 @@ def create_metrics_router(collector: PrometheusMetrics | None) -> APIRouter:
                 exc_info=e,
             )
             raise HTTPException(
-                status_code=503,
-                detail=f"Prometheus dependencies missing: {str(e)}"
+                status_code=503, detail=f"Prometheus dependencies missing: {str(e)}"
             ) from e
         except Exception as e:
             logger.error(
@@ -86,7 +87,7 @@ def create_metrics_router(collector: PrometheusMetrics | None) -> APIRouter:
             )
             raise HTTPException(
                 status_code=500,
-                detail=f"Failed to generate Prometheus metrics: {str(e)}"
+                detail=f"Failed to generate Prometheus metrics: {str(e)}",
             ) from e
 
     @router.get("/metrics/health")

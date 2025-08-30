@@ -118,6 +118,13 @@ class HooksMiddleware(BaseHTTPMiddleware):
             )
 
             # Handle streaming responses specially
+            logger.debug(
+                "hooks_middleware_checking_response_type",
+                response_type=type(response).__name__,
+                response_class=str(type(response)),
+                is_streaming=isinstance(response, StreamingResponse),
+                request_id=request_id,
+            )
             if isinstance(response, StreamingResponse):
                 # For streaming responses, wrap with hook emission on completion
                 # Don't emit REQUEST_COMPLETED here - it will be emitted when streaming actually completes

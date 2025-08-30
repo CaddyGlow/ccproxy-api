@@ -218,7 +218,9 @@ class TestTaskRegistry:
         registry.register("duplicate_task", MockScheduledTask)
 
         with pytest.raises(TaskRegistrationError, match="already registered"):
-            registry.register("duplicate_task", MockScheduledTask)  # Changed from StatsPrintingTask
+            registry.register(
+                "duplicate_task", MockScheduledTask
+            )  # Changed from StatsPrintingTask
 
     def test_register_invalid_task_class_error(self, registry: TaskRegistry) -> None:
         """Test registering invalid task class raises error."""
@@ -258,7 +260,9 @@ class TestTaskRegistry:
         assert info["total_tasks"] == 2
         assert set(info["registered_tasks"]) == {"task1", "task2"}
         assert info["task_classes"]["task1"] == "MockScheduledTask"
-        assert info["task_classes"]["task2"] == "MockScheduledTask"  # Changed from StatsPrintingTask
+        assert (
+            info["task_classes"]["task2"] == "MockScheduledTask"
+        )  # Changed from StatsPrintingTask
 
     def test_clear_registry(self, registry: TaskRegistry) -> None:
         """Test clearing the registry."""

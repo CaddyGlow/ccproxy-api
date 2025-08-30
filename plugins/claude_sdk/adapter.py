@@ -14,6 +14,7 @@ from fastapi import HTTPException, Request
 from starlette.responses import Response, StreamingResponse
 
 from ccproxy.core.logging import get_plugin_logger
+
 # StreamingResponseWithLogging removed - access logging now handled by hooks
 from ccproxy.services.adapters.base import BaseAdapter
 

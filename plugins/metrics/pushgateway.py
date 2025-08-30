@@ -101,14 +101,22 @@ class PushgatewayClient:
         """
         self.config = config
         # Pushgateway is enabled if URL is configured and prometheus_client is available
-        self._enabled = PROMETHEUS_AVAILABLE and bool(config.pushgateway_url) and config.pushgateway_enabled
+        self._enabled = (
+            PROMETHEUS_AVAILABLE
+            and bool(config.pushgateway_url)
+            and config.pushgateway_enabled
+        )
         self._circuit_breaker = CircuitBreaker(
             failure_threshold=5,
             recovery_timeout=60.0,
         )
 
         # Only log if pushgateway URL is configured but prometheus is not available
-        if config.pushgateway_url and config.pushgateway_enabled and not PROMETHEUS_AVAILABLE:
+        if (
+            config.pushgateway_url
+            and config.pushgateway_enabled
+            and not PROMETHEUS_AVAILABLE
+        ):
             logger.warning(
                 "prometheus_client not available. Pushgateway will be disabled. "
                 "Install with: pip install prometheus-client"
@@ -351,5 +359,3 @@ class PushgatewayClient:
     def is_enabled(self) -> bool:
         """Check if Pushgateway client is enabled and configured."""
         return self._enabled and bool(self.config.pushgateway_url)
-
-

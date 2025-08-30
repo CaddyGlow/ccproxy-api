@@ -37,6 +37,7 @@ class MetricsHook(Hook):
         HookEvent.PROVIDER_STREAM_CHUNK,
         HookEvent.PROVIDER_STREAM_END,
     ]
+    priority = 710  # HookLayer.OBSERVATION + 10 - Metrics after access logging
 
     def __init__(self, config: MetricsConfig | None = None) -> None:
         """Initialize the metrics hook.
@@ -47,14 +48,20 @@ class MetricsHook(Hook):
         self.config = config or MetricsConfig()
 
         # Initialize collectors based on config
-        self.collector = PrometheusMetrics(
-            namespace=self.config.namespace,
-            histogram_buckets=self.config.histogram_buckets,
-        ) if self.config.enabled else None
+        self.collector = (
+            PrometheusMetrics(
+                namespace=self.config.namespace,
+                histogram_buckets=self.config.histogram_buckets,
+            )
+            if self.config.enabled
+            else None
+        )
 
-        self.pushgateway = PushgatewayClient(
-            self.config
-        ) if self.config.pushgateway_enabled and self.config.enabled else None
+        self.pushgateway = (
+            PushgatewayClient(self.config)
+            if self.config.pushgateway_enabled and self.config.enabled
+            else None
+        )
 
         # Track active requests and their start times
         self._request_start_times: dict[str, float] = {}
@@ -129,7 +136,9 @@ class MetricsHook(Hook):
         method = context.data.get("method", "UNKNOWN")
         endpoint = context.data.get("endpoint", context.data.get("url", "/"))
         model = context.data.get("model")
-        status_code = context.data.get("response_status", context.data.get("status_code", 200))
+        status_code = context.data.get(
+            "response_status", context.data.get("status_code", 200)
+        )
         service_type = context.data.get("service_type", "unknown")
 
         # Calculate duration if we have start time

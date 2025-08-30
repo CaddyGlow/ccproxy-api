@@ -182,9 +182,7 @@ def get_plugin_adapter(plugin_name: str) -> Any:
 SettingsDep = Annotated[Settings, Depends(get_cached_settings)]
 # ProxyServiceDep removed - ProxyService no longer used
 HTTPClientDep = Annotated[httpx.AsyncClient, Depends(get_http_client)]
-ObservabilityMetricsDep = Annotated[
-    Any, Depends(get_observability_metrics)
-]
+ObservabilityMetricsDep = Annotated[Any, Depends(get_observability_metrics)]
 LogStorageDep = Annotated[SimpleDuckDBStorage | None, Depends(get_log_storage)]
 DuckDBStorageDep = Annotated[SimpleDuckDBStorage | None, Depends(get_duckdb_storage)]
 HookManagerDep = Annotated[HookManager | None, Depends(get_hook_manager)]

@@ -28,7 +28,7 @@ if TYPE_CHECKING:
 logger = structlog.get_logger(__name__)
 
 
-class DeferredStreaming(Response):
+class DeferredStreaming(StreamingResponse):
     """Deferred response that starts the stream to get headers and processes SSE."""
 
     def __init__(
@@ -62,7 +62,7 @@ class DeferredStreaming(Response):
             verbose_streaming: Enable verbose streaming logs
             hook_manager: Optional hook manager for emitting stream events
         """
-        super().__init__(content=b"", media_type=media_type)
+        # Store attributes first
         self.method = method
         self.url = url
         self.request_headers = headers
@@ -75,6 +75,14 @@ class DeferredStreaming(Response):
         self.metrics = metrics
         self.verbose_streaming = verbose_streaming
         self.hook_manager = hook_manager
+
+        # Create an async generator for the streaming content
+        async def generate_content():
+            # This will be replaced when __call__ is invoked
+            yield b""
+
+        # Initialize StreamingResponse with a generator
+        super().__init__(content=generate_content(), media_type=media_type)
 
     async def __call__(self, scope: Any, receive: Any, send: Any) -> None:
         """Execute the request when ASGI calls us."""

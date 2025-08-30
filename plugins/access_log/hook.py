@@ -32,7 +32,9 @@ class AccessLogHook(Hook):
         HookEvent.PROVIDER_REQUEST_SENT,
         HookEvent.PROVIDER_RESPONSE_RECEIVED,
         HookEvent.PROVIDER_ERROR,
+        HookEvent.PROVIDER_STREAM_END,
     ]
+    priority = 700  # HookLayer.OBSERVATION - Access logging priority
 
     def __init__(self, config: AccessLogConfig | None = None) -> None:
         """Initialize the access log hook.
@@ -64,6 +66,8 @@ class AccessLogHook(Hook):
         # Track in-flight requests
         self.client_requests: dict[str, dict[str, Any]] = {}
         self.provider_requests: dict[str, dict[str, Any]] = {}
+        # Store streaming metrics until REQUEST_COMPLETED fires
+        self._streaming_metrics: dict[str, dict[str, Any]] = {}
 
         logger.info(
             "access_log_hook_initialized",
@@ -90,6 +94,7 @@ class AccessLogHook(Hook):
             HookEvent.PROVIDER_REQUEST_SENT: self._handle_provider_request,
             HookEvent.PROVIDER_RESPONSE_RECEIVED: self._handle_provider_response,
             HookEvent.PROVIDER_ERROR: self._handle_provider_error,
+            HookEvent.PROVIDER_STREAM_END: self._handle_provider_stream_end,
         }
 
         handler = handlers.get(context.event)
@@ -126,8 +131,12 @@ class AccessLogHook(Hook):
         client_ip = context.data.get("client_ip", "-")
         if client_ip == "-" and context.request:
             # Try to get from request object
-            if hasattr(context.request, 'client'):
-                client_ip = getattr(context.request.client, 'host', "-") if context.request.client else "-"
+            if hasattr(context.request, "client"):
+                client_ip = (
+                    getattr(context.request.client, "host", "-")
+                    if context.request.client
+                    else "-"
+                )
 
         # Try to get user_agent from headers
         user_agent = context.data.get("user_agent", "-")
@@ -143,7 +152,8 @@ class AccessLogHook(Hook):
         # Get current time for timestamp
         current_time = time.time()
 
-        self.client_requests[request_id] = {
+        # Store request data with additional context fields
+        request_data = {
             "timestamp": current_time,  # Store as float for formatter compatibility
             "method": method,
             "path": path,
@@ -152,6 +162,23 @@ class AccessLogHook(Hook):
             "user_agent": user_agent,
             "start_time": current_time,
         }
+
+        # Add additional context fields if available
+        additional_fields = [
+            "endpoint",
+            "service_type",
+            "provider",
+            "model",
+            "session_id",
+            "session_type",
+            "streaming",
+        ]
+        for field in additional_fields:
+            value = context.data.get(field)
+            if value is not None:
+                request_data[field] = value
+
+        self.client_requests[request_id] = request_data
 
     async def _handle_request_complete(self, context: HookContext) -> None:
         """Handle REQUEST_COMPLETED event."""
@@ -164,6 +191,21 @@ class AccessLogHook(Hook):
         if request_id not in self.client_requests:
             return
 
+        # Check if this is a streaming response
+        is_streaming = context.data.get("streaming_completed", False)
+
+        if is_streaming:
+            # For streaming responses, check if we have metrics stored
+            if (
+                hasattr(self, "_streaming_metrics")
+                and request_id in self._streaming_metrics
+            ):
+                # We have metrics from PROVIDER_STREAM_END, log now
+                await self._log_streaming_complete(request_id, context)
+            # Either way, we're done with this request
+            return
+
+        # For non-streaming responses, log immediately
         # Get and remove request data
         request_data = self.client_requests.pop(request_id)
 
@@ -353,6 +395,75 @@ class AccessLogHook(Hook):
         # Also log to structured logger
         await self._log_to_structured_logger(log_data, "provider", error=error_message)
 
+    async def _handle_provider_stream_end(self, context: HookContext) -> None:
+        """Handle PROVIDER_STREAM_END event to capture complete streaming metrics."""
+        if not self.config.provider_enabled and not self.config.client_enabled:
+            return
+
+        request_id = context.metadata.get("request_id", "unknown")
+
+        # Extract usage metrics from the event
+        usage_metrics = context.data.get("usage_metrics", {})
+
+        # Store metrics for when REQUEST_COMPLETED fires
+        self._streaming_metrics[request_id] = {
+            "usage_metrics": usage_metrics,
+            "provider": context.provider or context.data.get("provider", "unknown"),
+            "url": context.data.get("url", ""),
+            "method": context.data.get("method", "POST"),
+            "total_chunks": context.data.get("total_chunks", 0),
+            "total_bytes": context.data.get("total_bytes", 0),
+        }
+
+        # Extract complete metrics from usage_metrics
+        tokens_input = usage_metrics.get("tokens_input", 0)
+        tokens_output = usage_metrics.get("tokens_output", 0)
+        cache_read_tokens = usage_metrics.get("cache_read_tokens", 0)
+        cache_write_tokens = usage_metrics.get("cache_write_tokens", 0)
+        cost_usd = usage_metrics.get("cost_usd", 0.0)
+        model = usage_metrics.get("model", "")
+
+        # Get other data from context
+        provider = context.provider or context.data.get("provider", "unknown")
+        url = context.data.get("url", "")
+        method = context.data.get("method", "POST")
+        total_chunks = context.data.get("total_chunks", 0)
+        total_bytes = context.data.get("total_bytes", 0)
+
+        # Create log data for streaming complete
+        log_data = {
+            "timestamp": time.time(),
+            "request_id": request_id,
+            "provider": provider,
+            "method": method,
+            "url": url,
+            "status_code": 200,  # Streaming completion implies success
+            "tokens_input": tokens_input,
+            "tokens_output": tokens_output,
+            "cache_read_tokens": cache_read_tokens,
+            "cache_write_tokens": cache_write_tokens,
+            "cost_usd": cost_usd,
+            "model": model,
+            "total_chunks": total_chunks,
+            "total_bytes": total_bytes,
+            "streaming": True,
+            "event_type": "streaming_complete",
+        }
+
+        # Format and write to provider log
+        if self.provider_writer and self.config.provider_enabled:
+            formatted = self.formatter.format_provider(log_data)
+            await self.provider_writer.write(formatted)
+
+        # Log provider streaming metrics captured (for debugging)
+        logger.debug(
+            "access_log_provider_stream_end_captured",
+            request_id=request_id,
+            tokens_input=tokens_input,
+            tokens_output=tokens_output,
+            cost_usd=cost_usd,
+        )
+
     def _extract_path(self, url: str) -> str:
         """Extract path from URL.
 
@@ -392,7 +503,7 @@ class AccessLogHook(Hook):
             log_type: Type of log ("client" or "provider")
             error: Error message if applicable
         """
-        # Prepare structured log entry
+        # Prepare structured log entry with all available fields
         structured_data = {
             "log_type": log_type,
             "request_id": log_data.get("request_id"),
@@ -404,18 +515,57 @@ class AccessLogHook(Hook):
             "user_agent": log_data.get("user_agent"),
         }
 
-        # Add provider-specific fields
-        if log_type == "provider":
-            structured_data.update({
-                "provider": log_data.get("provider"),
-                "url": log_data.get("url"),
-                "tokens_input": log_data.get("tokens_input"),
-                "tokens_output": log_data.get("tokens_output"),
-                "cache_read_tokens": log_data.get("cache_read_tokens"),
-                "cache_write_tokens": log_data.get("cache_write_tokens"),
-                "cost_usd": log_data.get("cost_usd"),
-                "model": log_data.get("model"),
-            })
+        # Add token and cost metrics (available for both client and provider logs)
+        token_fields = [
+            "tokens_input",
+            "tokens_output",
+            "cache_read_tokens",
+            "cache_write_tokens",
+            "cost_usd",
+            "model",
+        ]
+
+        for field in token_fields:
+            value = log_data.get(field)
+            if value is not None:
+                structured_data[field] = value
+
+        # Add streaming-specific fields if present
+        streaming_fields = ["streaming", "total_chunks", "total_bytes", "event_type"]
+        for field in streaming_fields:
+            value = log_data.get(field)
+            if value is not None:
+                structured_data[field] = value
+
+        # Add service and endpoint info
+        service_fields = ["endpoint", "service_type", "provider"]
+        for field in service_fields:
+            value = log_data.get(field)
+            if value is not None:
+                structured_data[field] = value
+
+        # Add session context metadata if available
+        session_fields = [
+            "session_id",
+            "session_type",
+            "session_status",
+            "session_age_seconds",
+            "session_message_count",
+            "session_pool_enabled",
+            "session_idle_seconds",
+            "session_error_count",
+            "session_is_new",
+        ]
+        for field in session_fields:
+            value = log_data.get(field)
+            if value is not None:
+                structured_data[field] = value
+
+        # Add provider-specific URL if this is a provider log
+        if log_type == "provider" and "url" not in structured_data:
+            url = log_data.get("url")
+            if url:
+                structured_data["url"] = url
 
         # Remove None values to keep log clean
         structured_data = {k: v for k, v in structured_data.items() if v is not None}
@@ -425,6 +575,67 @@ class AccessLogHook(Hook):
             logger.warning("access_log", error=error, **structured_data)
         else:
             logger.info("access_log", **structured_data)
+
+    async def _log_streaming_complete(
+        self, request_id: str, context: HookContext
+    ) -> None:
+        """Log streaming completion with full metrics.
+
+        This is called when REQUEST_COMPLETED fires for a streaming response,
+        using the metrics we stored from PROVIDER_STREAM_END.
+        """
+        if request_id not in self.client_requests:
+            return
+
+        # Get stored metrics
+        metrics_data = self._streaming_metrics.pop(request_id, {})
+        usage_metrics = metrics_data.get("usage_metrics", {})
+
+        # Get the original request data
+        request_data = self.client_requests.pop(request_id)
+
+        # Calculate duration
+        duration_ms = (time.time() - request_data["start_time"]) * 1000
+
+        # Extract metrics
+        tokens_input = usage_metrics.get("tokens_input", 0)
+        tokens_output = usage_metrics.get("tokens_output", 0)
+        cache_read_tokens = usage_metrics.get("cache_read_tokens", 0)
+        cache_write_tokens = usage_metrics.get("cache_write_tokens", 0)
+        cost_usd = usage_metrics.get("cost_usd", 0.0)
+        model = usage_metrics.get("model", "")
+
+        # Merge request data with streaming metrics
+        client_log_data = {
+            **request_data,
+            "request_id": request_id,
+            "status_code": 200,
+            "duration_ms": duration_ms,
+            "tokens_input": tokens_input,
+            "tokens_output": tokens_output,
+            "cache_read_tokens": cache_read_tokens,
+            "cache_write_tokens": cache_write_tokens,
+            "cost_usd": cost_usd,
+            "model": model,
+            "streaming": True,
+            "total_chunks": metrics_data.get("total_chunks", 0),
+            "total_bytes": metrics_data.get("total_bytes", 0),
+            "error": None,
+        }
+
+        # Format and write client log
+        if self.client_writer:
+            formatted = self.formatter.format_client(
+                client_log_data, self.config.client_format
+            )
+            await self.client_writer.write(formatted)
+
+        # Log to structured logger for client
+        await self._log_to_structured_logger(client_log_data, "client")
+
+        logger.info(
+            "access_log", **{k: v for k, v in client_log_data.items() if v is not None}
+        )
 
     async def close(self) -> None:
         """Close writers and flush any pending data."""

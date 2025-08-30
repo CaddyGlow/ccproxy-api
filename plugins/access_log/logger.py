@@ -53,12 +53,14 @@ async def log_request_access(
     }
 
     # Add response-specific fields
-    log_data.update({
-        "status_code": status_code,
-        "duration_ms": duration_ms,
-        "duration_seconds": duration_ms / 1000 if duration_ms else None,
-        "error_message": error_message,
-    })
+    log_data.update(
+        {
+            "status_code": status_code,
+            "duration_ms": duration_ms,
+            "duration_seconds": duration_ms / 1000 if duration_ms else None,
+            "error_message": error_message,
+        }
+    )
 
     # Add token and cost metrics if available in metadata
     token_fields = [
@@ -133,7 +135,9 @@ async def log_request_access(
         bound_logger.warning("access_log", exc_info=additional_metadata.get("error"))
     else:
         is_streaming = additional_metadata.get("streaming", False)
-        is_streaming_complete = additional_metadata.get("event_type", "") == "streaming_complete"
+        is_streaming_complete = (
+            additional_metadata.get("event_type", "") == "streaming_complete"
+        )
 
         if not is_streaming or is_streaming_complete:
             bound_logger.info("access_log")
@@ -243,6 +247,8 @@ async def log_provider_access(
     bound_logger = logger.bind(**log_data)
 
     if error_message:
-        bound_logger.warning("provider_access_log", exc_info=additional_metadata.get("error"))
+        bound_logger.warning(
+            "provider_access_log", exc_info=additional_metadata.get("error")
+        )
     else:
         bound_logger.info("provider_access_log")

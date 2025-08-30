@@ -15,6 +15,7 @@ from ccproxy.core.errors import ClaudeProxyError, ServiceUnavailableError
 from ccproxy.core.logging import get_plugin_logger
 from ccproxy.core.request_context import RequestContext
 from ccproxy.models.messages import TextContentBlock
+
 # from ccproxy.observability.metrics import  # Metrics moved to plugin PrometheusMetrics
 from ccproxy.utils.model_mapping import map_model_to_claude
 from plugins.claude_sdk.exceptions import StreamTimeoutError

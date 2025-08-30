@@ -76,7 +76,7 @@ class MetricsRuntime(SystemPluginRuntime):
             else:
                 logger.warning(
                     "hook_registry_not_available",
-                    message="Metrics plugin will not collect metrics via hooks"
+                    message="Metrics plugin will not collect metrics via hooks",
                 )
 
             # Register metrics endpoint if enabled
@@ -160,7 +160,9 @@ class MetricsRuntime(SystemPluginRuntime):
             if scheduler:
                 try:
                     await scheduler.remove_task(self.pushgateway_task_name)
-                    logger.debug("pushgateway_task_removed", task_name=self.pushgateway_task_name)
+                    logger.debug(
+                        "pushgateway_task_removed", task_name=self.pushgateway_task_name
+                    )
                 except Exception as e:
                     logger.warning(
                         "pushgateway_task_removal_failed",
@@ -203,13 +205,17 @@ class MetricsRuntime(SystemPluginRuntime):
         }
 
         if self.config and self.config.enabled:
-            details.update({
-                "namespace": self.config.namespace,
-                "metrics_endpoint_enabled": self.config.metrics_endpoint_enabled,
-                "pushgateway_enabled": self.config.pushgateway_enabled,
-                "pushgateway_url": self.config.pushgateway_url,
-                "collector_enabled": self.hook.get_collector().is_enabled() if self.hook else False,
-            })
+            details.update(
+                {
+                    "namespace": self.config.namespace,
+                    "metrics_endpoint_enabled": self.config.metrics_endpoint_enabled,
+                    "pushgateway_enabled": self.config.pushgateway_enabled,
+                    "pushgateway_url": self.config.pushgateway_url,
+                    "collector_enabled": self.hook.get_collector().is_enabled()
+                    if self.hook
+                    else False,
+                }
+            )
 
         return details
 

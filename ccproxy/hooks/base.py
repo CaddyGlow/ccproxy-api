@@ -47,3 +47,12 @@ class Hook(Protocol):
     def events(self) -> list[HookEvent]:
         """Events this hook listens to"""
         ...
+
+    @property
+    def priority(self) -> int:
+        """Hook execution priority (0-1000, lower executes first).
+
+        Default is 500 (middle priority) for backward compatibility.
+        See HookLayer enum for standard priority values.
+        """
+        return 500
