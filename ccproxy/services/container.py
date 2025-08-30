@@ -124,6 +124,7 @@ class ServiceContainer:
     def get_streaming_handler(
         self,
         metrics: Any | None = None,
+        hook_manager: Any | None = None,
     ) -> StreamingHandler:
         """Get streaming handler service instance.
 
@@ -132,6 +133,7 @@ class ServiceContainer:
 
         Args:
             metrics: Optional metrics service
+            hook_manager: Optional hook manager for event emission
 
         Returns:
             Streaming handler service instance
@@ -143,6 +145,7 @@ class ServiceContainer:
                 self.settings,
                 metrics=metrics,
                 request_tracer=request_tracer,
+                hook_manager=hook_manager,
             )
         return cast(StreamingHandler, self._services[service_key])
 

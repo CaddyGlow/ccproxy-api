@@ -6,7 +6,7 @@ create and configure service instances according to their interfaces.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import httpx
 import structlog
@@ -62,6 +62,7 @@ class ConcreteServiceFactory:
         settings: Settings,
         metrics: Any | None = None,  # Metrics now handled by metrics plugin
         request_tracer: RequestTracer | None = None,
+        hook_manager: Any | None = None,  # Hook manager for event emission
     ) -> StreamingHandler:
         """Create streaming handler instance.
 
@@ -69,6 +70,7 @@ class ConcreteServiceFactory:
             settings: Application settings
             metrics: Optional metrics service
             request_tracer: Optional request tracer
+            hook_manager: Optional hook manager for event emission
 
         Returns:
             Configured streaming handler instance with header preservation
@@ -82,6 +84,7 @@ class ConcreteServiceFactory:
             metrics=metrics,
             verbose_streaming=settings.logging.verbose_api,
             request_tracer=tracer_impl,
+            hook_manager=hook_manager,
         )
         return handler
 

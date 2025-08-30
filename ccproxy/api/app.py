@@ -153,7 +153,10 @@ async def initialize_plugins_startup(app: FastAPI, settings: Settings) -> None:
             self.app = app
             # Add streaming handler and other services
             self.request_tracer = container.get_request_tracer()
-            self.streaming_handler = container.get_streaming_handler()
+            # Pass hook_manager to streaming handler for event emission
+            self.streaming_handler = container.get_streaming_handler(
+                hook_manager=self.hook_manager
+            )
             # Metrics is now handled by the metrics plugin, not core services
             self.metrics = None
 
