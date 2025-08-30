@@ -151,7 +151,6 @@ class CodexAdapter(BaseHTTPAdapter):
             supports_streaming=True,
         )
 
-
     async def _update_request_context(
         self,
         request_context: "RequestContext",
@@ -395,13 +394,7 @@ class CodexAdapter(BaseHTTPAdapter):
         chunks: list[bytes] = []
         headers_extracted = False
 
-        # Create metrics collector for usage extraction
-        from .streaming_metrics import CodexStreamingMetricsCollector
-
-        pricing_service = self._get_pricing_service()
-        collector = CodexStreamingMetricsCollector(
-            request_id=request_context.request_id, pricing_service=pricing_service
-        )
+        # Note: Metrics extraction is now handled by CodexStreamingMetricsHook
 
         async def wrapped_iterator() -> AsyncIterator[bytes]:
             """Wrap the stream iterator to accumulate chunks."""
@@ -440,68 +433,7 @@ class CodexAdapter(BaseHTTPAdapter):
                     chunk = chunk.encode() if isinstance(chunk, str) else bytes(chunk)
                 chunks.append(chunk)
 
-                # Process this chunk for usage data
-                chunk_str = chunk.decode("utf-8", errors="ignore")
-
-                # Debug: Log first few chunks to see what we're processing
-                if len(chunks) <= 3:
-                    logger.debug(
-                        "streaming_chunk_debug",
-                        chunk_length=len(chunk_str),
-                        chunk_preview=chunk_str[:200],
-                        chunk_number=len(chunks),
-                        request_id=request_context.request_id,
-                        category="debug",
-                    )
-
-                is_final = collector.process_chunk(chunk_str)
-
-                # Debug: Log collector state
-                logger.debug(
-                    "streaming_collector_state",
-                    is_final=is_final,
-                    metrics=collector.get_metrics(),
-                    request_id=request_context.request_id,
-                    category="debug",
-                )
-
-                # If we got final metrics, update context
-                if is_final:
-                    usage_metrics = collector.get_metrics()
-                    if usage_metrics:
-                        # Cost is already calculated in the collector
-                        cost_usd = usage_metrics.get("cost_usd")
-
-                        # Get reasoning tokens separately
-                        reasoning_tokens = collector.get_reasoning_tokens() or 0
-
-                        # Update request context with usage data using common format
-                        request_context.metadata.update(
-                            {
-                                "tokens_input": usage_metrics.get("tokens_input", 0),
-                                "tokens_output": usage_metrics.get("tokens_output", 0),
-                                "tokens_total": (
-                                    (usage_metrics.get("tokens_input") or 0)
-                                    + (usage_metrics.get("tokens_output") or 0)
-                                ),
-                                "cost_usd": cost_usd or 0.0,
-                                "cache_read_tokens": usage_metrics.get(
-                                    "cache_read_tokens", 0
-                                ),
-                                "cache_write_tokens": 0,  # OpenAI doesn't have cache write
-                                "reasoning_tokens": reasoning_tokens,
-                            }
-                        )
-
-                        logger.debug(
-                            "usage_extracted",
-                            tokens_input=usage_metrics.get("tokens_input"),
-                            tokens_output=usage_metrics.get("tokens_output"),
-                            cache_read_tokens=usage_metrics.get("cache_read_tokens"),
-                            reasoning_tokens=reasoning_tokens,
-                            cost_usd=cost_usd,
-                            source="streaming",
-                        )
+                # Note: Chunk processing for metrics is handled by hooks
 
                 yield chunk
 

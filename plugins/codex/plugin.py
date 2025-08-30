@@ -47,6 +47,9 @@ class CodexRuntime(ProviderPluginRuntime):
         # Call parent to initialize adapter and detection service
         await super()._on_initialize()
 
+        # Register streaming metrics hook
+        await self._register_streaming_metrics_hook()
+
         # Check CLI status
         if self.detection_service:
             version = self.detection_service.get_version()
@@ -205,6 +208,63 @@ class CodexRuntime(ProviderPluginRuntime):
 
         return details
 
+    async def _register_streaming_metrics_hook(self) -> None:
+        """Register the streaming metrics extraction hook."""
+        try:
+            # Get hook registry from context
+            hook_registry = self.context.get("hook_registry")
+            if not hook_registry:
+                logger.warning(
+                    "streaming_metrics_hook_not_registered",
+                    reason="no_hook_registry",
+                    plugin="codex",
+                    context_keys=list(self.context.keys()) if self.context else [],
+                )
+                return
+
+            # Get pricing service from plugin registry if available
+            pricing_service = None
+            if "plugin_registry" in self.context:
+                try:
+                    from plugins.pricing.service import PricingService
+
+                    plugin_registry = self.context["plugin_registry"]
+                    pricing_service = plugin_registry.get_service(
+                        "pricing", PricingService
+                    )
+                except Exception as e:
+                    logger.debug(
+                        "pricing_service_not_available_for_hook",
+                        plugin="codex",
+                        error=str(e),
+                    )
+
+            # Create and register the hook
+            from plugins.codex.hooks import CodexStreamingMetricsHook
+
+            # Pass both pricing_service (if available now) and plugin_registry (for lazy loading)
+            metrics_hook = CodexStreamingMetricsHook(
+                pricing_service=pricing_service,
+                plugin_registry=self.context.get("plugin_registry")
+            )
+            hook_registry.register(metrics_hook)
+
+            logger.info(
+                "streaming_metrics_hook_registered",
+                plugin="codex",
+                hook_name=metrics_hook.name,
+                priority=metrics_hook.priority,
+                has_pricing=pricing_service is not None,
+            )
+
+        except Exception as e:
+            logger.error(
+                "streaming_metrics_hook_registration_failed",
+                plugin="codex",
+                error=str(e),
+                exc_info=e,
+            )
+
 
 class CodexFactory(BaseProviderPluginFactory):
     """Factory for Codex provider plugin."""
@@ -230,6 +290,7 @@ class CodexFactory(BaseProviderPluginFactory):
         request_tracer = context.get("request_tracer")
         metrics = context.get("metrics")
         streaming_handler = context.get("streaming_handler")
+        hook_manager = context.get("hook_manager")
 
         if not http_client:
             raise RuntimeError("HTTP client is required for Codex adapter")
@@ -245,6 +306,7 @@ class CodexFactory(BaseProviderPluginFactory):
             request_tracer=request_tracer,
             metrics=metrics,
             streaming_handler=streaming_handler,
+            hook_manager=hook_manager,
             context=context,
         )
 

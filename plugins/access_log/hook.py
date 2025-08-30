@@ -504,10 +504,18 @@ class AccessLogHook(Hook):
             await self._log_to_structured_logger(client_log_data, "client")
 
         # Extract complete metrics from usage_metrics (handle both naming conventions)
-        tokens_input = usage_metrics.get("input_tokens", usage_metrics.get("tokens_input", 0))
-        tokens_output = usage_metrics.get("output_tokens", usage_metrics.get("tokens_output", 0))
-        cache_read_tokens = usage_metrics.get("cache_read_input_tokens", usage_metrics.get("cache_read_tokens", 0))
-        cache_write_tokens = usage_metrics.get("cache_creation_input_tokens", usage_metrics.get("cache_write_tokens", 0))
+        tokens_input = usage_metrics.get(
+            "input_tokens", usage_metrics.get("tokens_input", 0)
+        )
+        tokens_output = usage_metrics.get(
+            "output_tokens", usage_metrics.get("tokens_output", 0)
+        )
+        cache_read_tokens = usage_metrics.get(
+            "cache_read_input_tokens", usage_metrics.get("cache_read_tokens", 0)
+        )
+        cache_write_tokens = usage_metrics.get(
+            "cache_creation_input_tokens", usage_metrics.get("cache_write_tokens", 0)
+        )
         cost_usd = usage_metrics.get("cost_usd", 0.0)
         model = usage_metrics.get("model", "")
 

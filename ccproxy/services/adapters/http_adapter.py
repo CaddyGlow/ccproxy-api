@@ -220,7 +220,6 @@ class BaseHTTPAdapter(BaseAdapter):
         """
         ...
 
-
     async def _execute_request(
         self,
         method: str,

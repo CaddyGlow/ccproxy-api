@@ -15,15 +15,15 @@ class CodexOAuthConfig(BaseModel):
         description="OAuth redirect URI",
     )
     base_url: str = Field(
-        default="https://auth0.openai.com",
+        default="https://auth.openai.com",
         description="Base URL for OpenAI OAuth",
     )
     authorize_url: str = Field(
-        default="https://auth0.openai.com/authorize",
+        default="https://auth.openai.com/authorize",
         description="Authorization endpoint URL",
     )
     token_url: str = Field(
-        default="https://auth0.openai.com/oauth/token",
+        default="https://auth.openai.com/oauth/token",
         description="Token exchange endpoint URL",
     )
     scopes: list[str] = Field(

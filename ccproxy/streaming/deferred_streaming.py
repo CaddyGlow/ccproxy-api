@@ -119,7 +119,6 @@ class DeferredStreaming(StreamingResponse):
                 total_chunks = 0
                 total_bytes = 0
 
-
                 # Emit PROVIDER_STREAM_START hook
                 if self.hook_manager:
                     try:
@@ -280,7 +279,6 @@ class DeferredStreaming(StreamingResponse):
                                 total_chunks += 1
                                 total_bytes += len(chunk)
 
-
                                 # Emit PROVIDER_STREAM_CHUNK hook
                                 if self.hook_manager:
                                     try:
@@ -317,7 +315,6 @@ class DeferredStreaming(StreamingResponse):
                                         )
 
                                 yield chunk
-
 
                     # Update metrics if available
                     if self.request_context and hasattr(

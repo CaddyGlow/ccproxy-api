@@ -181,6 +181,17 @@ class ClaudeAPIRuntime(ProviderPluginRuntime):
     async def _register_streaming_metrics_hook(self) -> None:
         """Register the streaming metrics extraction hook."""
         try:
+            # Debug: Log context details
+            logger.debug(
+                "streaming_metrics_hook_context_check",
+                plugin="claude_api",
+                has_context=self.context is not None,
+                context_type=type(self.context).__name__ if self.context else None,
+                context_keys=list(self.context.keys()) if self.context else [],
+                has_hook_registry="hook_registry" in (self.context or {}),
+                has_plugin_registry="plugin_registry" in (self.context or {}),
+            )
+            
             # Get hook registry from context
             hook_registry = self.context.get("hook_registry")
             if not hook_registry:
@@ -199,21 +210,41 @@ class ClaudeAPIRuntime(ProviderPluginRuntime):
                     from plugins.pricing.service import PricingService
 
                     plugin_registry = self.context["plugin_registry"]
+                    logger.debug(
+                        "getting_pricing_service",
+                        plugin="claude_api",
+                        registry_type=type(plugin_registry).__name__,
+                    )
                     pricing_service = plugin_registry.get_service(
                         "pricing", PricingService
+                    )
+                    logger.debug(
+                        "pricing_service_obtained",
+                        plugin="claude_api",
+                        service_type=type(pricing_service).__name__ if pricing_service else None,
+                        is_none=pricing_service is None,
                     )
                 except Exception as e:
                     logger.debug(
                         "pricing_service_not_available_for_hook",
                         plugin="claude_api",
                         error=str(e),
+                        error_type=type(e).__name__,
                     )
+            else:
+                logger.debug(
+                    "plugin_registry_not_in_context",
+                    plugin="claude_api",
+                    context_keys=list(self.context.keys()) if self.context else [],
+                )
 
             # Create and register the hook
             from plugins.claude_api.hooks import ClaudeAPIStreamingMetricsHook
 
+            # Pass both pricing_service (if available now) and plugin_registry (for lazy loading)
             metrics_hook = ClaudeAPIStreamingMetricsHook(
-                pricing_service=pricing_service
+                pricing_service=pricing_service,
+                plugin_registry=self.context.get("plugin_registry")
             )
             hook_registry.register(metrics_hook)
 
@@ -223,6 +254,7 @@ class ClaudeAPIRuntime(ProviderPluginRuntime):
                 hook_name=metrics_hook.name,
                 priority=metrics_hook.priority,
                 has_pricing=pricing_service is not None,
+                pricing_service_type=type(pricing_service).__name__ if pricing_service else "None",
             )
 
         except Exception as e:

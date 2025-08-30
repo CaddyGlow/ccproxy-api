@@ -11,7 +11,7 @@ from ccproxy.auth.models import (
     UserProfile,
 )
 from ccproxy.auth.oauth.registry import get_oauth_registry
-from ccproxy.auth.storage.generic import GenericJsonStorage
+from ccproxy.auth.storage.base import TokenStorage
 from ccproxy.core.logging import get_plugin_logger
 
 from .models import OpenAIProfileInfo, OpenAITokenWrapper
@@ -28,7 +28,7 @@ class CodexTokenManager(BaseTokenManager[OpenAICredentials]):
 
     def __init__(
         self,
-        storage: GenericJsonStorage[OpenAICredentials] | None = None,
+        storage: TokenStorage[OpenAICredentials] | None = None,
     ):
         """Initialize Codex token manager.
 
@@ -36,9 +36,10 @@ class CodexTokenManager(BaseTokenManager[OpenAICredentials]):
             storage: Optional custom storage, defaults to standard location
         """
         if storage is None:
-            storage = GenericJsonStorage(
-                Path.home() / ".ccproxy" / "openai_credentials.json", OpenAICredentials
-            )
+            # Use the Codex-specific storage for ~/.codex/auth.json
+            from .storage import CodexTokenStorage
+
+            storage = CodexTokenStorage()
         super().__init__(storage)
         self._profile_cache: OpenAIProfileInfo | None = None
 

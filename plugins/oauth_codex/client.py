@@ -187,6 +187,7 @@ class CodexOAuthClient(BaseOAuthClient[OpenAICredentials]):
             "grant_type": "refresh_token",
             "refresh_token": refresh_token,
             "client_id": self.client_id,
+            "scope": "openid profile email",
         }
         headers = self.get_custom_headers()
         headers["Content-Type"] = "application/x-www-form-urlencoded"

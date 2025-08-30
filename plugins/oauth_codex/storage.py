@@ -22,7 +22,7 @@ class CodexOAuthStorage(TokenStorage[OpenAICredentials]):
         """
         if storage_path is None:
             # Default to standard OpenAI credentials location
-            storage_path = Path.home() / ".ccproxy" / "openai_credentials.json"
+            storage_path = Path.home() / ".ccproxy" / "auth.json"
 
         self.file_path = storage_path
         self.provider_name = "codex"

@@ -169,7 +169,6 @@ class ClaudeAPIAdapter(BaseHTTPAdapter):
             supports_streaming=True,
         )
 
-
     async def _update_request_context(
         self,
         request_context: "RequestContext",
