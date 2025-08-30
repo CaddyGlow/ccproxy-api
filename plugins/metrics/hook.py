@@ -37,7 +37,7 @@ class MetricsHook(Hook):
         HookEvent.PROVIDER_STREAM_CHUNK,
         HookEvent.PROVIDER_STREAM_END,
     ]
-    priority = 710  # HookLayer.OBSERVATION + 10 - Metrics after access logging
+    priority = 700  # HookLayer.OBSERVATION - Metrics collection first
 
     def __init__(self, config: MetricsConfig | None = None) -> None:
         """Initialize the metrics hook.

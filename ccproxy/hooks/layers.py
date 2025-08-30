@@ -36,6 +36,7 @@ AFTER_AUTH = HookLayer.AUTH + 10
 BEFORE_PROCESSING = HookLayer.PROCESSING - 10
 AFTER_PROCESSING = HookLayer.PROCESSING + 10
 
-METRICS = HookLayer.OBSERVATION
-LOGGING = HookLayer.OBSERVATION + 10
-TRACING = HookLayer.OBSERVATION + 20
+# Observation layer ordering (metrics first, logging last)
+METRICS = HookLayer.OBSERVATION              # 700: Collect metrics
+TRACING = HookLayer.OBSERVATION + 20         # 720: Request tracing
+ACCESS_LOGGING = HookLayer.OBSERVATION + 50  # 750: Access logs (last to capture all data)

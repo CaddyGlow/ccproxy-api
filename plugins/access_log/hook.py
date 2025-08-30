@@ -34,7 +34,7 @@ class AccessLogHook(Hook):
         HookEvent.PROVIDER_ERROR,
         HookEvent.PROVIDER_STREAM_END,
     ]
-    priority = 700  # HookLayer.OBSERVATION - Access logging priority
+    priority = 750  # HookLayer.OBSERVATION + 50 - Access logging last to capture all data
 
     def __init__(self, config: AccessLogConfig | None = None) -> None:
         """Initialize the access log hook.
