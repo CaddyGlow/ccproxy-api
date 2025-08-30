@@ -6,7 +6,7 @@ from uuid import uuid4
 
 from ccproxy.core.logging import get_plugin_logger
 from ccproxy.core.request_context import RequestContext
-from ccproxy.observability.metrics import PrometheusMetrics
+# from ccproxy.observability.metrics import  # Metrics moved to plugin PrometheusMetrics
 
 from . import models as sdk_models
 from .config import SDKMessageMode
@@ -22,7 +22,7 @@ class ClaudeStreamProcessor:
     def __init__(
         self,
         message_converter: MessageConverter,
-        metrics: PrometheusMetrics | None = None,
+        metrics: Any | None = None,  # Metrics now handled by metrics plugin
     ) -> None:
         """Initialize the stream processor.
 

@@ -44,7 +44,7 @@ class StreamingResponseWithLogging(StreamingResponse):
         Args:
             content: The async generator producing streaming content
             request_context: The request context for access logging
-            metrics: Optional PrometheusMetrics instance for recording metrics
+            metrics: Optional metrics instance (now handled by metrics plugin)
             status_code: HTTP status code for the response
             **kwargs: Additional arguments passed to StreamingResponse
         """
@@ -59,7 +59,7 @@ class StreamingResponseWithLogging(StreamingResponse):
         self,
         content: AsyncGenerator[bytes, None] | AsyncIterator[bytes],
         context: RequestContext,
-        metrics: PrometheusMetrics | None,
+        metrics: Any | None,  # Metrics now handled by metrics plugin
         status_code: int,
     ) -> AsyncGenerator[bytes, None]:
         """Wrap content generator with access logging on completion.

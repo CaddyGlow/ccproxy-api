@@ -23,7 +23,7 @@ from plugins.request_tracer.tracer import RequestTracerImpl
 
 if TYPE_CHECKING:
     from ccproxy.config.settings import Settings
-    from ccproxy.observability.metrics import PrometheusMetrics
+    # PrometheusMetrics moved to metrics plugin
 
 
 logger = structlog.get_logger(__name__)
@@ -60,7 +60,7 @@ class ConcreteServiceFactory:
     def create_streaming_handler(
         self,
         settings: Settings,
-        metrics: PrometheusMetrics | None = None,
+        metrics: Any | None = None,  # Metrics now handled by metrics plugin
         request_tracer: RequestTracer | None = None,
     ) -> StreamingHandler:
         """Create streaming handler instance.

@@ -23,7 +23,7 @@ class RequestTracingMiddleware:
     ) -> None:
         self.app = app
         self.tracer = tracer
-        self.pipeline = get_observability_pipeline()
+        # Pipeline removed - functionality moved to hooks
 
     async def __call__(
         self,
@@ -159,19 +159,21 @@ class RequestTracingMiddleware:
                         else str(client_info)
                     )
 
-        event = ClientRequestEvent(
-            request_id=request_id,
-            method=method,
-            path=path,
-            query=query,
-            headers=headers_dict,  # Include headers!
-            body=body,  # Include the body!
-            client_ip=client_ip,
-            user_agent=user_agent,
-            context=context,  # Pass the full context!
-        )
+        # Event classes removed - functionality moved to hooks
+        # event = ClientRequestEvent(
+        #     request_id=request_id,
+        #     method=method,
+        #     path=path,
+        #     query=query,
+        #     headers=headers_dict,  # Include headers!
+        #     body=body,  # Include the body!
+        #     client_ip=client_ip,
+        #     user_agent=user_agent,
+        #     context=context,  # Pass the full context!
+        # )
 
-        await self.pipeline.notify_client_request(event)
+        # Pipeline removed - events now handled by hooks
+        # await self.pipeline.notify_client_request(event)
 
     async def _log_complete_request(
         self, scope: dict[str, Any], request_id: str, body: bytes | None = None
@@ -277,16 +279,18 @@ class RequestTracingMiddleware:
                     context = RequestContext.get_current()
 
                     # Emit client response event with full body
-                    event = ClientResponseEvent(
-                        request_id=request_id,
-                        status_code=response_status,
-                        headers=response_headers,  # Include headers!
-                        body=full_body,  # Include the full accumulated body!
-                        body_size=response_body_size,
-                        duration_ms=duration_ms,
-                        context=context,  # Pass the context!
-                    )
-                    await self.pipeline.notify_client_response(event)
+                    # Event classes removed - functionality moved to hooks
+                    # event = ClientResponseEvent(
+                    #     request_id=request_id,
+                    #     status_code=response_status,
+                    #     headers=response_headers,  # Include headers!
+                    #     body=full_body,  # Include the full accumulated body!
+                    #     body_size=response_body_size,
+                    #     duration_ms=duration_ms,
+                    #     context=context,  # Pass the context!
+                    # )
+                    # Pipeline removed - events now handled by hooks
+                    # await self.pipeline.notify_client_response(event)
 
             # Forward message
             await send(message)
