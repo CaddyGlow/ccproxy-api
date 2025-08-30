@@ -34,15 +34,6 @@ class ClaudeAPIRuntime(ProviderPluginRuntime):
         # Call parent initialization first
         await super()._on_initialize()
 
-        # Debug: Log what we receive in context
-        logger.info(
-            "claude_api_custom_init_starting",
-            context_keys=list(self.context.keys()) if self.context else [],
-            has_config="config" in (self.context or {}),
-            config_type=type(self.context.get("config")).__name__
-            if self.context
-            else None,
-        )
 
         if not self.context:
             raise RuntimeError("Context not set")

@@ -431,15 +431,6 @@ class AccessLogHook(Hook):
         # Extract usage metrics from the event
         usage_metrics = context.data.get("usage_metrics", {})
 
-        # Debug log what we received
-        logger.debug(
-            "access_log_received_context",
-            request_id=request_id,
-            usage_metrics=usage_metrics,
-            context_data_keys=list(context.data.keys()) if context.data else [],
-            has_usage_metrics="usage_metrics" in context.data,
-        )
-
         # Store metrics for logging
         self._streaming_metrics[request_id] = {
             "usage_metrics": usage_metrics,
