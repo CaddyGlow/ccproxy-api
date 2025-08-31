@@ -1,9 +1,9 @@
 """Token storage for Codex OAuth plugin."""
 
-import json
 from pathlib import Path
+from typing import Any
 
-from ccproxy.auth.storage.base import TokenStorage
+from ccproxy.auth.storage.base import BaseJsonStorage
 from ccproxy.core.logging import get_plugin_logger
 from plugins.codex.auth.models import OpenAICredentials
 
@@ -11,7 +11,7 @@ from plugins.codex.auth.models import OpenAICredentials
 logger = get_plugin_logger()
 
 
-class CodexOAuthStorage(TokenStorage[OpenAICredentials]):
+class CodexOAuthStorage(BaseJsonStorage[OpenAICredentials]):
     """Codex/OpenAI OAuth-specific token storage implementation."""
 
     def __init__(self, storage_path: Path | None = None):
@@ -24,11 +24,8 @@ class CodexOAuthStorage(TokenStorage[OpenAICredentials]):
             # Default to standard OpenAI credentials location
             storage_path = Path.home() / ".ccproxy" / "auth.json"
 
-        self.file_path = storage_path
+        super().__init__(storage_path)
         self.provider_name = "codex"
-
-        # Ensure directory exists
-        self.file_path.parent.mkdir(parents=True, exist_ok=True)
 
     async def save(self, credentials: OpenAICredentials) -> bool:
         """Save OpenAI credentials.
@@ -39,12 +36,13 @@ class CodexOAuthStorage(TokenStorage[OpenAICredentials]):
         Returns:
             True if saved successfully, False otherwise
         """
-        # Convert to dict for storage
-        data = credentials.model_dump(mode="json", exclude_none=True)
-
-        # Save to file
         try:
-            self.file_path.write_text(json.dumps(data, indent=2))
+            # Convert to dict for storage
+            data = credentials.model_dump(mode="json", exclude_none=True)
+
+            # Use parent class's atomic write with backup
+            await self._write_json(data)
+
             logger.info(
                 "codex_oauth_credentials_saved",
                 has_refresh_token=bool(credentials.refresh_token),
@@ -64,19 +62,12 @@ class CodexOAuthStorage(TokenStorage[OpenAICredentials]):
         Returns:
             Stored credentials or None
         """
-        # Load from file
-        if not self.file_path.exists():
-            return None
-
         try:
-            data = json.loads(self.file_path.read_text())
-        except Exception as e:
-            logger.error(
-                "codex_oauth_load_failed", error=str(e), exc_info=e, category="auth"
-            )
-            return None
+            # Use parent class's read method
+            data = await self._read_json()
+            if not data:
+                return None
 
-        try:
             credentials = OpenAICredentials.model_validate(data)
             logger.info(
                 "codex_oauth_credentials_loaded",
@@ -93,39 +84,4 @@ class CodexOAuthStorage(TokenStorage[OpenAICredentials]):
             )
             return None
 
-    async def exists(self) -> bool:
-        """Check if credentials exist in storage.
-
-        Returns:
-            True if credentials exist, False otherwise
-        """
-        return self.file_path.exists() and self.file_path.is_file()
-
-    async def delete(self) -> bool:
-        """Delete credentials from storage.
-
-        Returns:
-            True if deleted successfully, False otherwise
-        """
-        if self.file_path.exists():
-            try:
-                self.file_path.unlink()
-                logger.info("codex_oauth_credentials_deleted", category="auth")
-                return True
-            except Exception as e:
-                logger.error(
-                    "codex_oauth_delete_failed",
-                    error=str(e),
-                    exc_info=e,
-                    category="auth",
-                )
-                return False
-        return False
-
-    def get_location(self) -> str:
-        """Get the storage location description.
-
-        Returns:
-            Human-readable description of where credentials are stored
-        """
-        return str(self.file_path)
+    # The exists(), delete(), and get_location() methods are inherited from BaseJsonStorage

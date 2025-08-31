@@ -26,6 +26,9 @@ class HookRegistry:
         self._registration_order: dict[Hook, int] = {}
         self._next_order = 0
         self._logger = structlog.get_logger(__name__)
+        # Batch logging for registration/unregistration
+        self._pending_registrations: list[tuple[str, str, int]] = []
+        self._pending_unregistrations: list[tuple[str, str]] = []
 
     def register(self, hook: Hook) -> None:
         """Register a hook for its events with priority ordering"""
@@ -38,27 +41,69 @@ class HookRegistry:
             self._registration_order[hook] = self._next_order
             self._next_order += 1
 
+        events_registered = []
         for event in hook.events:
             self._hooks[event].add(hook)
-            self._logger.info(
+            event_name = event.value if hasattr(event, "value") else str(event)
+            events_registered.append(event_name)
+            # Log individual registrations at DEBUG level
+            self._logger.debug(
                 "hook_registered",
                 name=hook.name,
-                hook_event=event.value if hasattr(event, "value") else str(event),
+                hook_event=event_name,
+                priority=priority,
+            )
+
+        # Log summary at INFO level only if multiple events
+        if len(events_registered) > 1:
+            self._logger.info(
+                "hook_registered_batch",
+                name=hook.name,
+                events=events_registered,
+                event_count=len(events_registered),
+                priority=priority,
+            )
+        elif events_registered:
+            # Single event - log at DEBUG level to reduce verbosity
+            self._logger.debug(
+                "hook_registered_single",
+                name=hook.name,
+                hook_event=events_registered[0],
                 priority=priority,
             )
 
     def unregister(self, hook: Hook) -> None:
         """Remove a hook from all events"""
+        events_unregistered = []
         for event in hook.events:
             try:
                 self._hooks[event].remove(hook)
-                self._logger.info(
+                event_name = event.value if hasattr(event, "value") else str(event)
+                events_unregistered.append(event_name)
+                # Log individual unregistrations at DEBUG level
+                self._logger.debug(
                     "hook_unregistered",
                     name=hook.name,
-                    hook_event=event.value if hasattr(event, "value") else str(event),
+                    hook_event=event_name,
                 )
             except ValueError:
                 pass  # Hook not in list, ignore
+
+        # Log summary at INFO level only if multiple events
+        if len(events_unregistered) > 1:
+            self._logger.info(
+                "hook_unregistered_batch",
+                name=hook.name,
+                events=events_unregistered,
+                event_count=len(events_unregistered),
+            )
+        elif events_unregistered:
+            # Single event - log at DEBUG level to reduce verbosity
+            self._logger.debug(
+                "hook_unregistered_single",
+                name=hook.name,
+                hook_event=events_unregistered[0],
+            )
 
         # Clean up registration order tracking
         if hook in self._registration_order:

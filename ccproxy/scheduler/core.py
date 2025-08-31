@@ -91,7 +91,7 @@ class Scheduler:
             return
 
         self._running = False
-        logger.info("scheduler_stopping", active_tasks=len(self._tasks))
+        logger.debug("scheduler_stopping", active_tasks=len(self._tasks))
 
         # Stop all tasks
         stop_tasks = []
@@ -107,7 +107,7 @@ class Scheduler:
                     asyncio.gather(*stop_tasks, return_exceptions=True),
                     timeout=self.graceful_shutdown_timeout,
                 )
-                logger.info("scheduler_stopped_gracefully")
+                logger.debug("scheduler_stopped_gracefully")
             except TimeoutError:
                 logger.warning(
                     "scheduler_shutdown_timeout",

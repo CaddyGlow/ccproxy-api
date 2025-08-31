@@ -1,6 +1,7 @@
 """OAuth integration for CLI commands."""
 
 import asyncio
+import contextlib
 import webbrowser
 from typing import Any
 
@@ -169,6 +170,7 @@ class CLIOAuthHandler:
         from aiohttp import web
 
         code_future: asyncio.Future[str] = asyncio.Future()
+        manual_entry_requested = asyncio.Event()
 
         async def handle_callback(request: web.Request) -> web.Response:
             """Handle OAuth callback request."""
@@ -235,15 +237,140 @@ class CLIOAuthHandler:
         runner = web.AppRunner(app)
         await runner.setup()
         site = web.TCPSite(runner, "localhost", self.port)
-        await site.start()
 
+        # Try to start the server, but handle port conflicts gracefully
+        try:
+            await site.start()
+        except OSError as e:
+            # Port might be in use, allow manual entry
+            console.print(
+                f"\n[yellow]Warning: Could not start callback server on port {self.port}: {e}[/yellow]"
+            )
+            console.print(
+                "[yellow]You can still enter the authorization code manually.[/yellow]"
+            )
+            manual_entry_requested.set()
+
+        try:
+            # Create task to wait for automatic callback
+            auto_callback_task = asyncio.create_task(
+                self._wait_for_auto_callback(
+                    code_future, timeout, manual_entry_requested
+                )
+            )
+
+            # Create task to handle manual input
+            manual_input_task = asyncio.create_task(
+                self._wait_for_manual_input(manual_entry_requested)
+            )
+
+            # Wait for either automatic callback or manual input
+            done, pending = await asyncio.wait(
+                [auto_callback_task, manual_input_task],
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+
+            # Cancel the other task
+            for task in pending:
+                task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await task
+
+            # Get the result from the completed task
+            for task in done:
+                if task.exception():
+                    raise task.exception()
+                return task.result()
+
+        finally:
+            # Clean up server
+            await runner.cleanup()
+
+    async def _wait_for_auto_callback(
+        self,
+        code_future: asyncio.Future[str],
+        timeout: int,
+        manual_entry_requested: asyncio.Event,
+    ) -> str:
+        """Wait for automatic OAuth callback.
+
+        Args:
+            code_future: Future to receive the authorization code
+            timeout: Timeout in seconds
+            manual_entry_requested: Event signaling manual entry was requested
+
+        Returns:
+            Authorization code from callback
+        """
         try:
             # Wait for callback with timeout
             code: str = await asyncio.wait_for(code_future, timeout=timeout)
             return code
-        finally:
-            # Clean up server
-            await runner.cleanup()
+        except TimeoutError:
+            # If we timeout and haven't requested manual entry yet, do so now
+            if not manual_entry_requested.is_set():
+                console.print(
+                    "\n[yellow]Callback timeout. You can enter the authorization code manually.[/yellow]"
+                )
+                manual_entry_requested.set()
+            # Re-raise to be handled by the caller
+            raise
+
+    async def _wait_for_manual_input(
+        self, manual_entry_requested: asyncio.Event
+    ) -> str:
+        """Wait for manual authorization code input.
+
+        Args:
+            manual_entry_requested: Event to wait for before prompting
+
+        Returns:
+            Authorization code entered by user
+        """
+        # Wait for signal that manual entry is needed
+        await manual_entry_requested.wait()
+
+        # Prompt user for manual code entry
+        console.print("\n[cyan]Manual Code Entry[/cyan]")
+        console.print(
+            "If the browser callback didn't work, you can manually enter the authorization code."
+        )
+        console.print(
+            "After authorizing in your browser, look for the 'code' parameter in the redirect URL."
+        )
+        console.print(
+            "The URL will look like: http://localhost:XXXX/callback?code=YOUR_CODE&state=..."
+        )
+        console.print("\n[dim]Press Ctrl+C to cancel at any time[/dim]")
+
+        # Use asyncio-compatible input
+        from aioconsole import ainput
+
+        while True:
+            try:
+                code = await ainput(
+                    "\nEnter the authorization code (or 'cancel' to abort): "
+                )
+                code = code.strip()
+
+                if code.lower() == "cancel":
+                    raise ValueError("OAuth flow cancelled by user")
+
+                if not code:
+                    console.print("[red]Please enter a valid authorization code.[/red]")
+                    continue
+
+                # Basic validation - codes are typically alphanumeric with hyphens/underscores
+                if len(code) < 10:
+                    console.print(
+                        "[red]Authorization code seems too short. Please check and try again.[/red]"
+                    )
+                    continue
+
+                return code
+
+            except (EOFError, KeyboardInterrupt):
+                raise ValueError("OAuth flow cancelled") from None
 
     async def refresh_token(self, provider_name: str, refresh_token: str) -> Any:
         """Refresh access token for a provider.
@@ -288,6 +415,102 @@ class CLIOAuthHandler:
             raise ValueError(f"OAuth provider '{provider_name}' not found")
 
         await provider.revoke_token(token)
+
+    async def login_manual(self, provider_name: str) -> Any:
+        """Perform OAuth login with manual code entry.
+
+        Args:
+            provider_name: Name of the OAuth provider
+
+        Returns:
+            Authentication credentials
+
+        Raises:
+            ValueError: If provider not found
+        """
+        # Get provider from registry
+        registry = get_oauth_registry()
+        provider = registry.get_provider(provider_name)
+
+        if not provider:
+            available = list(registry.list_providers().keys())
+            raise ValueError(
+                f"OAuth provider '{provider_name}' not found. "
+                f"Available providers: {', '.join(available)}"
+            )
+
+        # Generate PKCE parameters if provider supports it
+        code_verifier = None
+        if provider.supports_pkce:
+            import base64
+            import secrets
+
+            code_verifier = (
+                base64.urlsafe_b64encode(secrets.token_bytes(32)).decode().rstrip("=")
+            )
+
+        # Generate state for CSRF protection
+        import secrets
+
+        state = secrets.token_urlsafe(32)
+
+        # Get authorization URL
+        auth_url = await provider.get_authorization_url(state, code_verifier)
+
+        console.print(f"\n[cyan]Manual OAuth Login for {provider_name}[/cyan]")
+        console.print("\n[bold]Step 1:[/bold] Open this URL in your browser:")
+        console.print(f"[blue]{auth_url}[/blue]")
+
+        console.print(
+            "\n[bold]Step 2:[/bold] After authorizing, you'll be redirected to a URL like:"
+        )
+        console.print(
+            f"[dim]http://localhost:{self.port}/callback?code=AUTH_CODE&state=STATE_VALUE[/dim]"
+        )
+
+        console.print("\n[bold]Step 3:[/bold] Copy the authorization code from the URL")
+        console.print("[dim]The code is the value after 'code=' in the URL[/dim]")
+
+        # Get manual code input
+        from aioconsole import ainput
+
+        while True:
+            try:
+                code = await ainput(
+                    "\nEnter the authorization code (or 'cancel' to abort): "
+                )
+                code = code.strip()
+
+                if code.lower() == "cancel":
+                    raise ValueError("OAuth flow cancelled by user")
+
+                if not code:
+                    console.print("[red]Please enter a valid authorization code.[/red]")
+                    continue
+
+                # Basic validation - codes are typically alphanumeric with hyphens/underscores
+                if len(code) < 10:
+                    console.print(
+                        "[red]Authorization code seems too short. Please check and try again.[/red]"
+                    )
+                    continue
+
+                break
+
+            except EOFError:
+                raise ValueError("OAuth flow cancelled - no input available") from None
+
+        # Exchange code for tokens
+        console.print("\n[cyan]Exchanging authorization code for tokens...[/cyan]")
+
+        # Handle callback through provider
+        credentials = await provider.handle_callback(code, state, code_verifier)
+
+        console.print(
+            f"\n[green]✓ Successfully authenticated with {provider_name}![/green]"
+        )
+
+        return credentials
 
     async def check_status(self, provider_name: str) -> dict[str, Any]:
         """Check authentication status for a provider.

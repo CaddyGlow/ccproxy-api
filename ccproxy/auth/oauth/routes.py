@@ -399,32 +399,36 @@ async def _exchange_code_for_tokens(
                 authorization_code, state, code_verifier
             )
 
-            # Save credentials using plugin's token manager if custom paths specified
+            # Save credentials using provider's storage mechanism
             if custom_paths:
-                # Dynamic import to avoid coupling to specific plugin
-                if provider == "claude-api":
-                    from ccproxy.auth.storage.generic import GenericJsonStorage
-                    from plugins.claude_api.auth.manager import ClaudeApiTokenManager
-                    from plugins.claude_api.auth.models import ClaudeCredentials
-
-                    # Use the first custom path for storage
-                    storage = GenericJsonStorage(custom_paths[0], ClaudeCredentials)
-                    manager = ClaudeApiTokenManager(storage=storage)
-                else:
-                    logger.warning(
-                        "Custom paths not supported for provider",
-                        provider=provider,
-                        operation="exchange_code_for_tokens",
-                    )
-                    return False
-                if await manager.save_credentials(credentials):
+                # Let the provider handle storage with custom path
+                success = await oauth_provider.save_credentials(
+                    credentials, custom_path=custom_paths[0] if custom_paths else None
+                )
+                if success:
                     logger.info(
                         "Successfully saved OAuth credentials to custom path",
                         operation="exchange_code_for_tokens",
+                        path=str(custom_paths[0]),
                     )
                 else:
                     logger.error(
                         "Failed to save OAuth credentials to custom path",
+                        error_type="save_credentials_failed",
+                        operation="exchange_code_for_tokens",
+                        path=str(custom_paths[0]),
+                    )
+            else:
+                # Save using provider's default storage
+                success = await oauth_provider.save_credentials(credentials)
+                if success:
+                    logger.info(
+                        "Successfully saved OAuth credentials",
+                        operation="exchange_code_for_tokens",
+                    )
+                else:
+                    logger.error(
+                        "Failed to save OAuth credentials",
                         error_type="save_credentials_failed",
                         operation="exchange_code_for_tokens",
                     )

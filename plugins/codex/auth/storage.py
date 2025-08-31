@@ -3,8 +3,9 @@
 import json
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
-from ccproxy.auth.storage.base import TokenStorage
+from ccproxy.auth.storage.base import BaseJsonStorage
 from ccproxy.core.logging import get_plugin_logger
 from plugins.codex.auth.models import OpenAICredentials
 
@@ -12,7 +13,7 @@ from plugins.codex.auth.models import OpenAICredentials
 logger = get_plugin_logger()
 
 
-class CodexTokenStorage(TokenStorage[OpenAICredentials]):
+class CodexTokenStorage(BaseJsonStorage[OpenAICredentials]):
     """Codex/OpenAI-specific token storage implementation."""
 
     def __init__(self, storage_path: Path | None = None):
@@ -25,14 +26,11 @@ class CodexTokenStorage(TokenStorage[OpenAICredentials]):
             # Use ~/.codex/auth.json as the standard location
             storage_path = Path.home() / ".codex" / "auth.json"
 
-        self.file_path = storage_path
+        super().__init__(storage_path)
         self.provider_name = "codex"
 
-        # Ensure directory exists
-        self.file_path.parent.mkdir(parents=True, exist_ok=True)
-
     async def save(self, credentials: OpenAICredentials) -> bool:
-        """Save OpenAI credentials with backup.
+        """Save OpenAI credentials.
 
         Args:
             credentials: OpenAI credentials to save
@@ -41,28 +39,6 @@ class CodexTokenStorage(TokenStorage[OpenAICredentials]):
             True if saved successfully, False otherwise
         """
         try:
-            # Create backup if file exists
-            if self.file_path.exists():
-                backup_name = (
-                    f"auth.json.{datetime.now().strftime('%Y%m%d-%H%M%S')}.bak"
-                )
-                backup_path = self.file_path.parent / backup_name
-                try:
-                    import shutil
-
-                    shutil.copy2(self.file_path, backup_path)
-                    logger.info(
-                        "Created backup",
-                        backup_path=str(backup_path),
-                        category="auth",
-                    )
-                except Exception as e:
-                    logger.warning(
-                        "Failed to create backup",
-                        error=str(e),
-                        category="auth",
-                    )
-
             # Format data in Codex structure
             data = {
                 "OPENAI_API_KEY": None,
@@ -75,7 +51,9 @@ class CodexTokenStorage(TokenStorage[OpenAICredentials]):
                 "last_refresh": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
             }
 
-            self.file_path.write_text(json.dumps(data, indent=2))
+            # Use parent class's atomic write with backup
+            await self._write_json(data)
+
             logger.info(
                 "openai_credentials_saved",
                 has_refresh_token=bool(credentials.refresh_token),
@@ -95,12 +73,11 @@ class CodexTokenStorage(TokenStorage[OpenAICredentials]):
         Returns:
             Stored credentials or None
         """
-        # Load from file
-        if not self.file_path.exists():
-            return None
-
         try:
-            data = json.loads(self.file_path.read_text())
+            # Use parent class's read method
+            data = await self._read_json()
+            if not data:
+                return None
         except Exception as e:
             logger.error(
                 "Failed to load credentials", error=str(e), exc_info=e, category="auth"
@@ -173,42 +150,7 @@ class CodexTokenStorage(TokenStorage[OpenAICredentials]):
             )
             return None
 
-    async def exists(self) -> bool:
-        """Check if credentials exist in storage.
-
-        Returns:
-            True if credentials exist, False otherwise
-        """
-        return self.file_path.exists() and self.file_path.is_file()
-
-    async def delete(self) -> bool:
-        """Delete credentials from storage.
-
-        Returns:
-            True if deleted successfully, False otherwise
-        """
-        if self.file_path.exists():
-            try:
-                self.file_path.unlink()
-                logger.info("openai_credentials_deleted", category="auth")
-                return True
-            except Exception as e:
-                logger.error(
-                    "Failed to delete credentials",
-                    error=str(e),
-                    exc_info=e,
-                    category="auth",
-                )
-                return False
-        return False
-
-    def get_location(self) -> str:
-        """Get the storage location description.
-
-        Returns:
-            Human-readable description of where credentials are stored
-        """
-        return str(self.file_path)
+    # The exists(), delete(), and get_location() methods are inherited from BaseJsonStorage
 
     # Keep compatibility methods for provider
     async def save_credentials(self, credentials: OpenAICredentials) -> None:

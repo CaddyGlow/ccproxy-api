@@ -10,6 +10,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any, Generic, TypeVar
 
 import httpx
+
 from ccproxy.auth.exceptions import (
     OAuthError,
     OAuthTokenRefreshError,

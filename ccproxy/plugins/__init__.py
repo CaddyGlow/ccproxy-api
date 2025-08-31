@@ -17,6 +17,7 @@ from .declaration import (
 )
 from .discovery import PluginDiscovery, PluginFilter, discover_and_load_plugins
 from .factory import (
+    AuthProviderPluginFactory,
     BasePluginFactory,
     PluginFactory,
     PluginRegistry,
@@ -24,7 +25,12 @@ from .factory import (
     SystemPluginFactory,
 )
 from .middleware import CoreMiddlewareSpec, MiddlewareManager, setup_default_middleware
-from .runtime import BasePluginRuntime, ProviderPluginRuntime, SystemPluginRuntime
+from .runtime import (
+    AuthProviderPluginRuntime,
+    BasePluginRuntime,
+    ProviderPluginRuntime,
+    SystemPluginRuntime,
+)
 
 
 __all__ = [
@@ -42,11 +48,13 @@ __all__ = [
     "BasePluginRuntime",
     "SystemPluginRuntime",
     "ProviderPluginRuntime",
+    "AuthProviderPluginRuntime",
     # Factory
     "PluginFactory",
     "BasePluginFactory",
     "SystemPluginFactory",
     "ProviderPluginFactory",
+    "AuthProviderPluginFactory",
     "PluginRegistry",
     # Discovery
     "PluginDiscovery",

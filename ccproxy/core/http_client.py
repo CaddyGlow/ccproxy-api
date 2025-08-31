@@ -125,7 +125,7 @@ class HTTPClientFactory:
             else:
                 compression_status = default_headers["accept-encoding"]
 
-        logger.info(
+        logger.debug(
             "http_client_created",
             timeout_connect=timeout_connect,
             timeout_read=timeout_read,
@@ -296,7 +296,7 @@ async def get_shared_http_client(settings: Settings | None = None) -> httpx.Asyn
 
     if _shared_client is None:
         _shared_client = HTTPClientFactory.create_shared_client(settings)
-        logger.info("shared_http_client_created")
+        logger.debug("shared_http_client_created")
 
     return _shared_client
 
@@ -312,4 +312,4 @@ async def close_shared_http_client() -> None:
     if _shared_client is not None:
         await _shared_client.aclose()
         _shared_client = None
-        logger.info("shared_http_client_closed")
+        logger.debug("shared_http_client_closed")

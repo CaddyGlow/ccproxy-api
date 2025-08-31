@@ -29,11 +29,11 @@ async def setup_scheduler_tasks(scheduler: Scheduler, settings: Settings) -> Non
     scheduler_config = settings.scheduler
 
     if not scheduler_config.enabled:
-        logger.info("scheduler_disabled")
+        logger.debug("scheduler_disabled")
         return
 
     # Log network features status
-    logger.info(
+    logger.debug(
         "network_features_status",
         pricing_updates_enabled=scheduler_config.pricing_update_enabled,
         version_check_enabled=scheduler_config.version_check_enabled,
@@ -51,7 +51,7 @@ async def setup_scheduler_tasks(scheduler: Scheduler, settings: Settings) -> Non
         hasattr(scheduler_config, "pushgateway_enabled")
         and scheduler_config.pushgateway_enabled
     ):
-        logger.info(
+        logger.debug(
             "pushgateway_task_handled_by_plugin",
             message="Pushgateway task is now managed by the metrics plugin",
             interval_seconds=scheduler_config.pushgateway_interval_seconds,
@@ -63,14 +63,14 @@ async def setup_scheduler_tasks(scheduler: Scheduler, settings: Settings) -> Non
         hasattr(scheduler_config, "stats_printing_enabled")
         and scheduler_config.stats_printing_enabled
     ):
-        logger.info(
+        logger.debug(
             "stats_printing_task_skipped",
             message="Stats printing functionality has been moved to the metrics plugin",
         )
 
     # Pricing cache update task is now handled by the pricing plugin
     if scheduler_config.pricing_update_enabled:
-        logger.info(
+        logger.debug(
             "pricing_update_task_handled_by_plugin",
             message="Pricing updates are now managed by the pricing plugin",
             interval_hours=scheduler_config.pricing_update_interval_hours,
@@ -159,7 +159,7 @@ async def start_scheduler(settings: Settings) -> Scheduler | None:
         await setup_scheduler_tasks(scheduler, settings)
 
         task_names = scheduler.list_tasks()
-        logger.info(
+        logger.debug(
             "scheduler_started",
             max_concurrent_tasks=settings.scheduler.max_concurrent_tasks,
             active_tasks=scheduler.task_count,

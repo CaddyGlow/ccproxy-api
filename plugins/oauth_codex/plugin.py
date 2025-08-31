@@ -2,13 +2,12 @@
 
 from typing import Any
 
-from ccproxy.auth.oauth.registry import get_oauth_registry
 from ccproxy.core.logging import get_plugin_logger
 from ccproxy.plugins import (
+    AuthProviderPluginFactory,
+    AuthProviderPluginRuntime,
     PluginContext,
     PluginManifest,
-    ProviderPluginFactory,
-    ProviderPluginRuntime,
 )
 from plugins.oauth_codex.config import CodexOAuthConfig
 from plugins.oauth_codex.provider import CodexOAuthProvider
@@ -17,14 +16,13 @@ from plugins.oauth_codex.provider import CodexOAuthProvider
 logger = get_plugin_logger()
 
 
-class OAuthCodexRuntime(ProviderPluginRuntime):
+class OAuthCodexRuntime(AuthProviderPluginRuntime):
     """Runtime for OAuth Codex plugin."""
 
     def __init__(self, manifest: PluginManifest):
         """Initialize runtime."""
         super().__init__(manifest)
         self.config: CodexOAuthConfig | None = None
-        self.oauth_provider: CodexOAuthProvider | None = None
 
     async def _on_initialize(self) -> None:
         """Initialize the OAuth Codex plugin."""
@@ -33,64 +31,29 @@ class OAuthCodexRuntime(ProviderPluginRuntime):
             context_keys=list(self.context.keys()) if self.context else [],
         )
 
-        await super()._on_initialize()
-
-        if not self.context:
-            raise RuntimeError("Context not set")
-
         # Get configuration
-        config = self.context.get("config")
-        if not isinstance(config, CodexOAuthConfig):
-            # Use default config if none provided
-            config = CodexOAuthConfig()
-            logger.info("oauth_codex_using_default_config")
-        self.config = config
+        if self.context:
+            config = self.context.get("config")
+            if not isinstance(config, CodexOAuthConfig):
+                # Use default config if none provided
+                config = CodexOAuthConfig()
+                logger.info("oauth_codex_using_default_config")
+            self.config = config
 
-        # Create and register OAuth provider
-        self.oauth_provider = CodexOAuthProvider(config)
-        registry = get_oauth_registry()
-        registry.register_provider(self.oauth_provider)
+        # Call parent initialization which handles provider registration
+        await super()._on_initialize()
 
         logger.debug(
             "oauth_codex_plugin_initialized",
             status="initialized",
-            provider_name=self.oauth_provider.provider_name,
+            provider_name=self.auth_provider.provider_name
+            if self.auth_provider
+            else "unknown",
             category="plugin",
         )
 
-    async def _on_shutdown(self) -> None:
-        """Shutdown the OAuth Codex plugin."""
-        # Unregister OAuth provider
-        if self.oauth_provider:
-            registry = get_oauth_registry()
-            registry.unregister_provider(self.oauth_provider.provider_name)
-            logger.info(
-                "oauth_codex_provider_unregistered",
-                provider_name=self.oauth_provider.provider_name,
-                category="plugin",
-            )
 
-        await super()._on_shutdown()
-
-    async def _get_health_details(self) -> dict[str, Any]:
-        """Get health check details."""
-        details = await super()._get_health_details()
-
-        if self.oauth_provider:
-            # Check if provider is registered
-            registry = get_oauth_registry()
-            is_registered = registry.has_provider(self.oauth_provider.provider_name)
-            details.update(
-                {
-                    "oauth_provider_registered": is_registered,
-                    "oauth_provider_name": self.oauth_provider.provider_name,
-                }
-            )
-
-        return details
-
-
-class OAuthCodexFactory(ProviderPluginFactory):
+class OAuthCodexFactory(AuthProviderPluginFactory):
     """Factory for OAuth Codex plugin."""
 
     def __init__(self) -> None:
@@ -114,37 +77,22 @@ class OAuthCodexFactory(ProviderPluginFactory):
         """Create runtime instance."""
         return OAuthCodexRuntime(self.manifest)
 
-    def create_adapter(self, context: PluginContext) -> Any:
-        """OAuth plugins don't need adapters.
-
-        Args:
-            context: Plugin context
+    def create_auth_provider(self) -> CodexOAuthProvider:
+        """Create OAuth provider instance.
 
         Returns:
-            None as OAuth plugins don't proxy requests
+            CodexOAuthProvider instance
         """
-        return None
+        config = CodexOAuthConfig()
+        return CodexOAuthProvider(config)
 
-    def create_detection_service(self, context: PluginContext) -> Any:
-        """OAuth plugins don't need detection services.
-
-        Args:
-            context: Plugin context
+    def create_storage(self) -> Any | None:
+        """Create storage for OAuth credentials.
 
         Returns:
-            None as OAuth plugins don't detect capabilities
+            Storage instance or None to use provider's default
         """
-        return None
-
-    def create_credentials_manager(self, context: PluginContext) -> Any:
-        """OAuth plugins provide their own storage.
-
-        Args:
-            context: Plugin context
-
-        Returns:
-            None as OAuth providers manage their own storage
-        """
+        # CodexOAuthProvider manages its own storage internally
         return None
 
 

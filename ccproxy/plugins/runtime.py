@@ -205,6 +205,130 @@ class SystemPluginRuntime(BasePluginRuntime):
         return {"type": "system", "initialized": self.initialized}
 
 
+class AuthProviderPluginRuntime(BasePluginRuntime):
+    """Runtime for authentication provider plugins.
+
+    Auth provider plugins provide OAuth authentication flows and token management
+    for various API providers without directly proxying requests.
+    """
+
+    def __init__(self, manifest: PluginManifest):
+        """Initialize auth provider plugin runtime.
+
+        Args:
+            manifest: Plugin manifest with static declarations
+        """
+        super().__init__(manifest)
+        self.auth_provider: Any | None = None  # OAuthProviderProtocol
+        self.token_manager: Any | None = None
+        self.storage: Any | None = None
+
+    async def _on_initialize(self) -> None:
+        """Auth provider plugin initialization."""
+        logger.debug(
+            "auth_provider_plugin_initializing", plugin=self.name, category="plugin"
+        )
+
+        if not self.context:
+            raise RuntimeError("Context not set")
+
+        # Extract auth-specific components from context
+        self.auth_provider = self.context.get("auth_provider")
+        self.token_manager = self.context.get("token_manager")
+        self.storage = self.context.get("storage")
+
+        # Register OAuth provider with global registry if present
+        if self.auth_provider:
+            await self._register_auth_provider()
+
+    async def _register_auth_provider(self) -> None:
+        """Register OAuth provider with the global registry."""
+        if not self.auth_provider:
+            return
+
+        try:
+            # Import here to avoid circular dependency
+            from ccproxy.auth.oauth.registry import get_oauth_registry
+
+            # Register with global registry
+            registry = get_oauth_registry()
+            registry.register_provider(self.auth_provider)
+
+            logger.debug(
+                "oauth_provider_registered",
+                plugin=self.name,
+                provider=self.auth_provider.provider_name,
+                category="plugin",
+            )
+        except Exception as e:
+            logger.error(
+                "oauth_provider_registration_failed",
+                plugin=self.name,
+                error=str(e),
+                exc_info=e,
+                category="plugin",
+            )
+
+    async def _on_shutdown(self) -> None:
+        """Auth provider plugin shutdown."""
+        # Unregister OAuth provider if present
+        if self.auth_provider:
+            await self._unregister_auth_provider()
+
+    async def _unregister_auth_provider(self) -> None:
+        """Unregister OAuth provider from the global registry."""
+        if not self.auth_provider:
+            return
+
+        try:
+            # Import here to avoid circular dependency
+            from ccproxy.auth.oauth.registry import get_oauth_registry
+
+            # Unregister from global registry
+            registry = get_oauth_registry()
+            registry.unregister_provider(self.auth_provider.provider_name)
+
+            logger.debug(
+                "oauth_provider_unregistered",
+                plugin=self.name,
+                provider=self.auth_provider.provider_name,
+                category="plugin",
+            )
+        except Exception as e:
+            logger.error(
+                "oauth_provider_unregistration_failed",
+                plugin=self.name,
+                error=str(e),
+                exc_info=e,
+                category="plugin",
+            )
+
+    async def _get_health_details(self) -> dict[str, Any]:
+        """Auth provider plugin health details."""
+        details = {
+            "type": "auth_provider",
+            "initialized": self.initialized,
+        }
+
+        if self.auth_provider:
+            # Check if provider is registered
+            try:
+                from ccproxy.auth.oauth.registry import get_oauth_registry
+
+                registry = get_oauth_registry()
+                is_registered = registry.has_provider(self.auth_provider.provider_name)
+                details.update(
+                    {
+                        "oauth_provider_registered": is_registered,
+                        "oauth_provider_name": self.auth_provider.provider_name,
+                    }
+                )
+            except Exception:
+                pass
+
+        return details
+
+
 class ProviderPluginRuntime(BasePluginRuntime):
     """Runtime for provider plugins.
 

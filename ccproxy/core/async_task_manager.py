@@ -104,21 +104,21 @@ class AsyncTaskManager:
             return
 
         self._started = True
-        logger.info("task_manager_starting", cleanup_interval=self.cleanup_interval)
+        logger.debug("task_manager_starting", cleanup_interval=self.cleanup_interval)
 
         # Start cleanup task
         self._cleanup_task = asyncio.create_task(
             self._cleanup_loop(), name="task_manager_cleanup"
         )
 
-        logger.info("task_manager_started")
+        logger.debug("task_manager_started")
 
     async def stop(self) -> None:
         """Stop the task manager and cancel all managed tasks."""
         if not self._started:
             return
 
-        logger.info("task_manager_stopping", active_tasks=len(self._tasks))
+        logger.debug("task_manager_stopping", active_tasks=len(self._tasks))
         self._shutdown_event.set()
 
         # Stop cleanup task first
@@ -135,7 +135,7 @@ class AsyncTaskManager:
             self._tasks.clear()
 
         self._started = False
-        logger.info("task_manager_stopped")
+        logger.debug("task_manager_stopped")
 
     async def create_task(
         self,
@@ -293,7 +293,7 @@ class AsyncTaskManager:
         if not self._tasks:
             return
 
-        logger.info("cancelling_all_tasks", task_count=len(self._tasks))
+        logger.debug("cancelling_all_tasks", task_count=len(self._tasks))
 
         # Cancel all tasks
         tasks_to_cancel = []
@@ -312,7 +312,7 @@ class AsyncTaskManager:
                 asyncio.gather(*tasks_to_cancel, return_exceptions=True),
                 timeout=self.shutdown_timeout,
             )
-            logger.info("all_tasks_cancelled_gracefully")
+            logger.debug("all_tasks_cancelled_gracefully")
         except TimeoutError:
             logger.warning(
                 "task_cancellation_timeout",

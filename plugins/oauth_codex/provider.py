@@ -287,3 +287,74 @@ class CodexOAuthProvider:
                 summary["expires_at"] = str(credentials.expires_at)
 
         return summary
+
+    async def save_credentials(
+        self, credentials: Any, custom_path: Any | None = None
+    ) -> bool:
+        """Save credentials using provider's storage mechanism.
+
+        Args:
+            credentials: OpenAI credentials object
+            custom_path: Optional custom storage path (Path object)
+
+        Returns:
+            True if saved successfully, False otherwise
+        """
+        from pathlib import Path
+
+        from ccproxy.auth.storage.generic import GenericJsonStorage
+        from plugins.codex.auth.manager import CodexTokenManager
+        from plugins.codex.auth.models import OpenAICredentials
+
+        try:
+            if custom_path:
+                # Use custom path for storage
+                storage = GenericJsonStorage(Path(custom_path), OpenAICredentials)
+                manager = CodexTokenManager(storage=storage)
+            else:
+                # Use default storage
+                manager = CodexTokenManager()
+
+            return await manager.save_credentials(credentials)
+        except Exception as e:
+            logger.error(
+                "Failed to save OpenAI credentials",
+                error=str(e),
+                exc_info=e,
+                has_custom_path=bool(custom_path),
+            )
+            return False
+
+    async def load_credentials(self, custom_path: Any | None = None) -> Any | None:
+        """Load credentials from provider's storage.
+
+        Args:
+            custom_path: Optional custom storage path (Path object)
+
+        Returns:
+            Credentials if found, None otherwise
+        """
+        from pathlib import Path
+
+        from ccproxy.auth.storage.generic import GenericJsonStorage
+        from plugins.codex.auth.manager import CodexTokenManager
+        from plugins.codex.auth.models import OpenAICredentials
+
+        try:
+            if custom_path:
+                # Load from custom path
+                storage = GenericJsonStorage(Path(custom_path), OpenAICredentials)
+                manager = CodexTokenManager(storage=storage)
+            else:
+                # Load from default storage
+                manager = CodexTokenManager()
+
+            return await manager.load_credentials()
+        except Exception as e:
+            logger.error(
+                "Failed to load OpenAI credentials",
+                error=str(e),
+                exc_info=e,
+                has_custom_path=bool(custom_path),
+            )
+            return None

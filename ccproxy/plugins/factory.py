@@ -10,7 +10,12 @@ from typing import Any, TypeVar
 import structlog
 
 from .declaration import PluginContext, PluginManifest
-from .runtime import BasePluginRuntime, ProviderPluginRuntime, SystemPluginRuntime
+from .runtime import (
+    AuthProviderPluginRuntime,
+    BasePluginRuntime,
+    ProviderPluginRuntime,
+    SystemPluginRuntime,
+)
 
 
 logger = structlog.get_logger(__name__)
@@ -232,6 +237,70 @@ class ProviderPluginFactory(BasePluginFactory):
             Credentials manager instance or None
         """
         ...
+
+
+class AuthProviderPluginFactory(BasePluginFactory):
+    """Factory for authentication provider plugins.
+
+    Auth provider plugins provide OAuth authentication flows and token management
+    without directly proxying requests to API providers.
+    """
+
+    def __init__(self, manifest: PluginManifest):
+        """Initialize auth provider plugin factory.
+
+        Args:
+            manifest: Plugin manifest
+        """
+        super().__init__(manifest, AuthProviderPluginRuntime)
+
+        # Validate this is marked as a provider plugin (auth providers are a type of provider)
+        if not manifest.is_provider:
+            raise ValueError(
+                f"Plugin {manifest.name} must be marked as provider for AuthProviderPluginFactory"
+            )
+
+    def create_context(self, core_services: Any) -> PluginContext:
+        """Create context with auth provider-specific components.
+
+        Args:
+            core_services: Core services container
+
+        Returns:
+            Plugin context with auth provider components
+        """
+        # Start with base context
+        context = super().create_context(core_services)
+
+        # Auth provider plugins need to create their auth components
+        # This is typically done in the specific plugin factory implementation
+
+        return context
+
+    @abstractmethod
+    def create_auth_provider(self) -> Any:
+        """Create the OAuth provider for this auth plugin.
+
+        Returns:
+            OAuth provider instance implementing OAuthProviderProtocol
+        """
+        ...
+
+    def create_token_manager(self) -> Any | None:
+        """Create the token manager for this auth plugin.
+
+        Returns:
+            Token manager instance or None if not needed
+        """
+        return None
+
+    def create_storage(self) -> Any | None:
+        """Create the storage implementation for this auth plugin.
+
+        Returns:
+            Storage instance or None if using default
+        """
+        return None
 
 
 class PluginRegistry:
@@ -457,6 +526,11 @@ class PluginRegistry:
             context["detection_service"] = factory.create_detection_service(context)
             context["credentials_manager"] = factory.create_credentials_manager(context)
             context["adapter"] = factory.create_adapter(context)
+        # For auth provider plugins, create auth components
+        elif isinstance(factory, AuthProviderPluginFactory):
+            context["auth_provider"] = factory.create_auth_provider()
+            context["token_manager"] = factory.create_token_manager()
+            context["storage"] = factory.create_storage()
 
         # Initialize runtime
         await runtime.initialize(context)

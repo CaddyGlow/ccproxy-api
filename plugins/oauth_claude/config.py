@@ -7,7 +7,7 @@ class ClaudeOAuthConfig(BaseModel):
     """Configuration for Claude OAuth provider."""
 
     client_id: str = Field(
-        default="anthropic_client_production",
+        default="9d1c250a-e61b-44d9-88ed-5944d1962f5e",
         description="OAuth client ID for Claude",
     )
     redirect_uri: str = Field(
@@ -19,7 +19,7 @@ class ClaudeOAuthConfig(BaseModel):
         description="Base URL for Claude OAuth",
     )
     authorize_url: str = Field(
-        default="https://claude.ai/api/auth/oauth_login",
+        default="https://claude.ai/oauth/authorize",
         description="Authorization endpoint URL",
     )
     token_url: str = Field(
@@ -27,7 +27,7 @@ class ClaudeOAuthConfig(BaseModel):
         description="Token exchange endpoint URL",
     )
     scopes: list[str] = Field(
-        default_factory=lambda: ["read", "write", "claude_pro"],
+        default_factory=lambda: ["create_api_key", "user/profile", "user/inference"],
         description="OAuth scopes to request",
     )
     beta_version: str = Field(

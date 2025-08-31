@@ -124,6 +124,31 @@ class OAuthProviderProtocol(Protocol):
         """
         ...
 
+    async def save_credentials(
+        self, credentials: Any, custom_path: Any | None = None
+    ) -> bool:
+        """Save credentials using provider's storage mechanism.
+
+        Args:
+            credentials: Provider-specific credentials object
+            custom_path: Optional custom storage path
+
+        Returns:
+            True if saved successfully, False otherwise
+        """
+        ...
+
+    async def load_credentials(self, custom_path: Any | None = None) -> Any | None:
+        """Load credentials from provider's storage.
+
+        Args:
+            custom_path: Optional custom storage path
+
+        Returns:
+            Credentials if found, None otherwise
+        """
+        ...
+
 
 class OAuthRegistry:
     """Central registry for OAuth providers.
@@ -136,7 +161,7 @@ class OAuthRegistry:
         """Initialize the OAuth registry."""
         self._providers: dict[str, OAuthProviderProtocol] = {}
         self._provider_info_cache: dict[str, OAuthProviderInfo] = {}
-        logger.info("oauth_registry_initialized", category="auth")
+        logger.debug("oauth_registry_initialized", category="auth")
 
     def register_provider(self, provider: OAuthProviderProtocol) -> None:
         """Register an OAuth provider from a plugin.
@@ -158,7 +183,7 @@ class OAuthRegistry:
         try:
             info = provider.get_provider_info()
             self._provider_info_cache[provider_name] = info
-            logger.info(
+            logger.debug(
                 "oauth_provider_registered",
                 provider=provider_name,
                 display_name=info.display_name,
@@ -185,7 +210,7 @@ class OAuthRegistry:
             del self._providers[provider_name]
             if provider_name in self._provider_info_cache:
                 del self._provider_info_cache[provider_name]
-            logger.info(
+            logger.debug(
                 "oauth_provider_unregistered", provider=provider_name, category="auth"
             )
 

@@ -3,7 +3,9 @@
 import asyncio
 import contextlib
 import json
+import shutil
 from abc import ABC, abstractmethod
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Generic, TypeVar
 
@@ -82,13 +84,15 @@ class BaseJsonStorage(TokenStorage[CredentialsT], Generic[CredentialsT]):
     This is a generic class that can work with any credential type.
     """
 
-    def __init__(self, file_path: Path):
+    def __init__(self, file_path: Path, enable_backups: bool = True):
         """Initialize JSON storage.
 
         Args:
             file_path: Path to JSON file for storage
+            enable_backups: Whether to create backups before overwriting
         """
         self.file_path = file_path
+        self.enable_backups = enable_backups
 
     async def _read_json(self) -> dict[str, Any]:
         """Read JSON data from file with error handling.
@@ -146,11 +150,48 @@ class BaseJsonStorage(TokenStorage[CredentialsT], Generic[CredentialsT]):
             )
             raise CredentialsStorageError(f"Error reading {self.file_path}: {e}") from e
 
+    async def _create_backup(self) -> bool:
+        """Create a timestamped backup of the current file.
+
+        Returns:
+            True if backup was created successfully, False otherwise
+        """
+        if not await self.exists():
+            return False
+
+        try:
+            # Generate backup filename with timestamp
+            timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+            backup_name = f"{self.file_path.name}.{timestamp}.bak"
+            backup_path = self.file_path.parent / backup_name
+
+            # Copy file to backup location
+            await asyncio.to_thread(shutil.copy2, self.file_path, backup_path)
+
+            logger.info(
+                "backup_created",
+                original=str(self.file_path),
+                backup=str(backup_path),
+                category="auth",
+            )
+            return True
+
+        except Exception as e:
+            logger.warning(
+                "backup_failed",
+                path=str(self.file_path),
+                error=str(e),
+                exc_info=e,
+                category="auth",
+            )
+            return False
+
     async def _write_json(self, data: dict[str, Any]) -> None:
         """Write JSON data to file atomically with error handling.
 
         This method performs atomic writes by writing to a temporary file
-        first, then renaming it to the target file.
+        first, then renaming it to the target file. If backups are enabled
+        and the file exists, a backup will be created before overwriting.
 
         Args:
             data: Data to write as JSON
@@ -158,6 +199,10 @@ class BaseJsonStorage(TokenStorage[CredentialsT], Generic[CredentialsT]):
         Raises:
             CredentialsStorageError: If file cannot be written
         """
+        # Create backup if enabled and file exists
+        if self.enable_backups and await self.exists():
+            await self._create_backup()
+
         temp_path = self.file_path.with_suffix(".tmp")
 
         try:
