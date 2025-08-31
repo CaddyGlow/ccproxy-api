@@ -5,7 +5,7 @@ from typing import Any
 from pydantic import SecretStr
 
 from ccproxy.auth.models.base import UserProfile
-from plugins.claude_api.auth.models import ClaudeCredentials, ClaudeOAuthToken
+from plugins.oauth_claude.models import ClaudeCredentials, ClaudeOAuthToken
 
 
 class NoOpAuthManager:

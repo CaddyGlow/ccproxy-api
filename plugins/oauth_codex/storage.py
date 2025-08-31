@@ -5,17 +5,18 @@ from typing import Any
 
 from ccproxy.auth.storage.base import BaseJsonStorage
 from ccproxy.core.logging import get_plugin_logger
-from plugins.codex.auth.models import OpenAICredentials
+
+from .models import OpenAICredentials
 
 
 logger = get_plugin_logger()
 
 
-class CodexOAuthStorage(BaseJsonStorage[OpenAICredentials]):
+class CodexTokenStorage(BaseJsonStorage[OpenAICredentials]):
     """Codex/OpenAI OAuth-specific token storage implementation."""
 
     def __init__(self, storage_path: Path | None = None):
-        """Initialize Codex OAuth token storage.
+        """Initialize Codex token storage.
 
         Args:
             storage_path: Path to storage file

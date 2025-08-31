@@ -4,8 +4,8 @@ from typing import Any, Literal
 
 from ccproxy.core.logging import get_plugin_logger
 from ccproxy.plugins.protocol import HealthCheckResult
+from plugins.oauth_claude.manager import ClaudeApiTokenManager
 
-from .auth.manager import ClaudeApiTokenManager
 from .config import ClaudeAPISettings
 from .detection_service import ClaudeAPIDetectionService
 

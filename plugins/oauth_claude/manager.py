@@ -1,15 +1,15 @@
 """Claude API token manager implementation for the Claude API plugin."""
 
 from datetime import datetime
-from pathlib import Path
 from typing import Any
 
 from ccproxy.auth.managers.base import BaseTokenManager
 from ccproxy.auth.oauth.registry import get_oauth_registry
-from ccproxy.auth.storage.generic import GenericJsonStorage
+from ccproxy.auth.storage.base import TokenStorage
 from ccproxy.core.logging import get_plugin_logger
 
 from .models import ClaudeCredentials, ClaudeProfileInfo, ClaudeTokenWrapper
+from .storage import ClaudeOAuthStorage
 
 
 logger = get_plugin_logger()
@@ -18,19 +18,17 @@ logger = get_plugin_logger()
 class ClaudeApiTokenManager(BaseTokenManager[ClaudeCredentials]):
     """Manager for Claude API token storage and refresh operations.
 
-    Uses the generic storage and wrapper pattern for consistency.
+    Uses the Claude-specific storage implementation.
     """
 
-    def __init__(self, storage: GenericJsonStorage[ClaudeCredentials] | None = None):
+    def __init__(self, storage: TokenStorage[ClaudeCredentials] | None = None):
         """Initialize Claude API token manager.
 
         Args:
             storage: Optional custom storage, defaults to standard location
         """
         if storage is None:
-            storage = GenericJsonStorage(
-                Path.home() / ".claude" / ".credentials.json", ClaudeCredentials
-            )
+            storage = ClaudeOAuthStorage()
         super().__init__(storage)
         self._profile_cache: ClaudeProfileInfo | None = None
 

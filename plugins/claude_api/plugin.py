@@ -294,7 +294,7 @@ class ClaudeAPIFactory(BaseProviderPluginFactory):
         Returns:
             ClaudeApiTokenManager instance
         """
-        from plugins.claude_api.auth.manager import ClaudeApiTokenManager
+        from plugins.oauth_claude.manager import ClaudeApiTokenManager
 
         return ClaudeApiTokenManager()
 

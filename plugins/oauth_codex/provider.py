@@ -7,10 +7,10 @@ from urllib.parse import urlencode
 
 from ccproxy.auth.oauth.registry import OAuthProviderInfo
 from ccproxy.core.logging import get_plugin_logger
-from plugins.codex.auth.models import OpenAICredentials
 from plugins.oauth_codex.client import CodexOAuthClient
 from plugins.oauth_codex.config import CodexOAuthConfig
-from plugins.oauth_codex.storage import CodexOAuthStorage
+from plugins.oauth_codex.models import OpenAICredentials
+from plugins.oauth_codex.storage import CodexTokenStorage
 
 
 logger = get_plugin_logger()
@@ -22,7 +22,7 @@ class CodexOAuthProvider:
     def __init__(
         self,
         config: CodexOAuthConfig | None = None,
-        storage: CodexOAuthStorage | None = None,
+        storage: CodexTokenStorage | None = None,
     ):
         """Initialize Codex OAuth provider.
 
@@ -31,7 +31,7 @@ class CodexOAuthProvider:
             storage: Token storage
         """
         self.config = config or CodexOAuthConfig()
-        self.storage = storage or CodexOAuthStorage()
+        self.storage = storage or CodexTokenStorage()
         self.client = CodexOAuthClient(self.config, self.storage)
 
     @property
@@ -303,8 +303,8 @@ class CodexOAuthProvider:
         from pathlib import Path
 
         from ccproxy.auth.storage.generic import GenericJsonStorage
-        from plugins.codex.auth.manager import CodexTokenManager
-        from plugins.codex.auth.models import OpenAICredentials
+        from plugins.oauth_codex.manager import CodexTokenManager
+        from plugins.oauth_codex.models import OpenAICredentials
 
         try:
             if custom_path:
@@ -337,8 +337,8 @@ class CodexOAuthProvider:
         from pathlib import Path
 
         from ccproxy.auth.storage.generic import GenericJsonStorage
-        from plugins.codex.auth.manager import CodexTokenManager
-        from plugins.codex.auth.models import OpenAICredentials
+        from plugins.oauth_codex.manager import CodexTokenManager
+        from plugins.oauth_codex.models import OpenAICredentials
 
         try:
             if custom_path:

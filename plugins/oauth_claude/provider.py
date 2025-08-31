@@ -7,9 +7,9 @@ from urllib.parse import urlencode
 
 from ccproxy.auth.oauth.registry import OAuthProviderInfo
 from ccproxy.core.logging import get_plugin_logger
-from plugins.claude_api.auth.models import ClaudeCredentials
 from plugins.oauth_claude.client import ClaudeOAuthClient
 from plugins.oauth_claude.config import ClaudeOAuthConfig
+from plugins.oauth_claude.models import ClaudeCredentials
 from plugins.oauth_claude.storage import ClaudeOAuthStorage
 
 
@@ -72,6 +72,7 @@ class ClaudeOAuthProvider:
             Authorization URL to redirect user to
         """
         params = {
+            "code": "true",  # Required by Claude OAuth
             "client_id": self.config.client_id,
             "redirect_uri": self.config.redirect_uri,
             "response_type": "code",
@@ -99,6 +100,7 @@ class ClaudeOAuthProvider:
         )
 
         return auth_url
+
 
     async def handle_callback(
         self, code: str, state: str, code_verifier: str | None = None
@@ -282,8 +284,8 @@ class ClaudeOAuthProvider:
         from pathlib import Path
 
         from ccproxy.auth.storage.generic import GenericJsonStorage
-        from plugins.claude_api.auth.manager import ClaudeApiTokenManager
-        from plugins.claude_api.auth.models import ClaudeCredentials
+        from plugins.oauth_claude.manager import ClaudeApiTokenManager
+        from plugins.oauth_claude.models import ClaudeCredentials
 
         try:
             if custom_path:
@@ -316,8 +318,8 @@ class ClaudeOAuthProvider:
         from pathlib import Path
 
         from ccproxy.auth.storage.generic import GenericJsonStorage
-        from plugins.claude_api.auth.manager import ClaudeApiTokenManager
-        from plugins.claude_api.auth.models import ClaudeCredentials
+        from plugins.oauth_claude.manager import ClaudeApiTokenManager
+        from plugins.oauth_claude.models import ClaudeCredentials
 
         try:
             if custom_path:

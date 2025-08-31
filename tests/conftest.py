@@ -1016,9 +1016,9 @@ def client_with_mock_codex(
     from unittest.mock import patch
 
     with patch(
-        "plugins.codex.auth.manager.CodexTokenManager.load_credentials"
+        "plugins.oauth_codex.manager.CodexTokenManager.load_credentials"
     ) as mock_load:
-        from plugins.codex.auth.models import OpenAICredentials
+        from plugins.oauth_codex.models import OpenAICredentials
 
         mock_load.return_value = OpenAICredentials(**mock_openai_credentials)
 
@@ -1041,9 +1041,9 @@ def client_with_mock_codex_streaming(
     from unittest.mock import patch
 
     with patch(
-        "plugins.codex.auth.manager.CodexTokenManager.load_credentials"
+        "plugins.oauth_codex.manager.CodexTokenManager.load_credentials"
     ) as mock_load:
-        from plugins.codex.auth.models import OpenAICredentials
+        from plugins.oauth_codex.models import OpenAICredentials
 
         mock_load.return_value = OpenAICredentials(**mock_openai_credentials)
 

@@ -34,7 +34,7 @@ from ccproxy.auth.exceptions import (
     OAuthTokenRefreshError,
 )
 from ccproxy.auth.manager import AuthManager
-from plugins.claude_api.auth.models import (
+from plugins.oauth_claude.models import (
     ClaudeOAuthToken,
 )
 
@@ -779,7 +779,7 @@ class TestOpenAIAuthentication:
         """Test OpenAI credentials creation."""
         from datetime import UTC, datetime
 
-        from plugins.codex.auth.models import OpenAICredentials
+        from plugins.oauth_codex.models import OpenAICredentials
 
         expires_at = datetime.fromtimestamp(1234567890, UTC)
 
@@ -800,8 +800,8 @@ class TestOpenAIAuthentication:
         """Test OpenAI token manager save functionality."""
         from datetime import UTC, datetime
 
-        from plugins.codex.auth.models import OpenAICredentials
-        from plugins.codex.auth.storage import CodexTokenStorage as OpenAITokenStorage
+        from plugins.oauth_codex.models import OpenAICredentials
+        from plugins.oauth_codex.storage import CodexTokenStorage as OpenAITokenStorage
 
         mock_save.return_value = True
 
@@ -823,8 +823,8 @@ class TestOpenAIAuthentication:
         """Test OpenAI token manager load functionality."""
         from datetime import UTC, datetime
 
-        from plugins.codex.auth.models import OpenAICredentials
-        from plugins.codex.auth.storage import CodexTokenStorage as OpenAITokenStorage
+        from plugins.oauth_codex.models import OpenAICredentials
+        from plugins.oauth_codex.storage import CodexTokenStorage as OpenAITokenStorage
 
         expected_credentials = OpenAICredentials(
             access_token="test-token",
@@ -878,8 +878,8 @@ class TestOpenAIAuthentication:
         import time
         from datetime import UTC, datetime
 
-        from plugins.codex.auth.models import OpenAICredentials
-        from plugins.codex.auth.storage import CodexTokenStorage as OpenAITokenStorage
+        from plugins.oauth_codex.models import OpenAICredentials
+        from plugins.oauth_codex.storage import CodexTokenStorage as OpenAITokenStorage
 
         storage = OpenAITokenStorage(storage_path=tmp_path / "test_auth.json")
 

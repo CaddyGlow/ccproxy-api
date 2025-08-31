@@ -325,7 +325,7 @@ class CodexFactory(BaseProviderPluginFactory):
         Note: OAuth functionality is now provided by the oauth_codex plugin.
         The token manager will look up OAuth providers from the registry as needed.
         """
-        from plugins.codex.auth.manager import CodexTokenManager
+        from plugins.oauth_codex.manager import CodexTokenManager
 
         return CodexTokenManager()
 

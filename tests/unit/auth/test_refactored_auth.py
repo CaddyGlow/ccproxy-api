@@ -8,13 +8,13 @@ from pydantic import SecretStr
 
 from ccproxy.auth.models.base import BaseProfileInfo, BaseTokenInfo
 from ccproxy.auth.storage.generic import GenericJsonStorage
-from plugins.claude_api.auth.models import (
+from plugins.oauth_claude.models import (
     ClaudeCredentials,
     ClaudeOAuthToken,
     ClaudeProfileInfo,
     ClaudeTokenWrapper,
 )
-from plugins.codex.auth.models import (
+from plugins.oauth_codex.models import (
     OpenAICredentials,
     OpenAIProfileInfo,
     OpenAITokenWrapper,
@@ -271,7 +271,7 @@ class TestTokenManagers:
     @pytest.mark.asyncio
     async def test_claude_manager_with_generic_storage(self, tmp_path):
         """Test ClaudeApiTokenManager with GenericJsonStorage."""
-        from plugins.claude_api.auth.manager import ClaudeApiTokenManager
+        from plugins.oauth_claude.manager import ClaudeApiTokenManager
 
         storage_path = tmp_path / "claude_test.json"
         storage = GenericJsonStorage(storage_path, ClaudeCredentials)
@@ -296,7 +296,7 @@ class TestTokenManagers:
     @pytest.mark.asyncio
     async def test_codex_manager_with_generic_storage(self, tmp_path):
         """Test CodexTokenManager with GenericJsonStorage."""
-        from plugins.codex.auth.manager import CodexTokenManager
+        from plugins.oauth_codex.manager import CodexTokenManager
 
         storage_path = tmp_path / "openai_test.json"
         storage = GenericJsonStorage(storage_path, OpenAICredentials)
@@ -323,7 +323,7 @@ class TestTokenManagers:
     @patch("jwt.decode")
     async def test_codex_manager_profile_extraction(self, mock_decode, tmp_path):
         """Test CodexTokenManager profile extraction from JWT."""
-        from plugins.codex.auth.manager import CodexTokenManager
+        from plugins.oauth_codex.manager import CodexTokenManager
 
         # Mock JWT claims
         mock_claims = {

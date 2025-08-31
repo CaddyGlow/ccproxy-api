@@ -5,7 +5,7 @@ from typing import Any
 
 from ccproxy.auth.storage.base import BaseJsonStorage
 from ccproxy.core.logging import get_plugin_logger
-from plugins.claude_api.auth.models import ClaudeCredentials
+from plugins.oauth_claude.models import ClaudeCredentials
 
 
 logger = get_plugin_logger()
