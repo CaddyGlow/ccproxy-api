@@ -172,7 +172,38 @@ class ClaudeTokenWrapper(BaseTokenInfo):
 
     @property
     def subscription_type(self) -> str | None:
-        """Get subscription type from OAuth token."""
+        """Compute subscription type from stored profile info.
+
+        Attempts to read the Claude profile file ("~/.claude/.account.json")
+        and derive the subscription from account flags:
+          - "max" if has_claude_max is true
+          - "pro" if has_claude_pro is true
+          - "free" otherwise
+
+        Falls back to the token's own subscription_type if profile is unavailable.
+        """
+        # Lazy, best-effort read of local profile data; keep this non-fatal.
+        try:
+            from pathlib import Path
+            import json
+
+            profile_path = Path.home() / ".claude" / ".account.json"
+            if profile_path.exists():
+                with profile_path.open("r") as f:
+                    data = json.load(f)
+                account = data.get("account", {})
+                if account.get("has_claude_max") is True:
+                    return "max"
+                if account.get("has_claude_pro") is True:
+                    return "pro"
+                # If account is present but neither flag set, assume free tier
+                if account:
+                    return "free"
+        except Exception:
+            # Ignore any profile read/parse errors and fall back
+            pass
+
+        # Fallback to stored token field for backward compatibility
         return self.credentials.claude_ai_oauth.subscription_type
 
     @property

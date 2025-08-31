@@ -66,10 +66,6 @@ class RawHTTPFormatter:
         except Exception:
             cmd_id = None
 
-        # Fallback to environment variable if contextvars not available
-        if not cmd_id:
-            cmd_id = os.getenv("CCPROXY_CMD_ID")
-
         if cmd_id and request_id:
             return f"{cmd_id}_{request_id}"
         if request_id:

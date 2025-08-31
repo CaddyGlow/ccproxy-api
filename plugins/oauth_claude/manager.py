@@ -48,6 +48,58 @@ class ClaudeApiTokenManager(BaseTokenManager[ClaudeCredentials]):
             http_client = httpx.AsyncClient()
         self.http_client = http_client
 
+    # ==================== Internal helpers ====================
+
+    def _derive_subscription_type(self, profile: "ClaudeProfileInfo") -> str:
+        """Derive subscription type string from profile info.
+
+        Priority: "max" > "pro" > "free".
+        """
+        try:
+            if getattr(profile, "has_claude_max", None):
+                return "max"
+            if getattr(profile, "has_claude_pro", None):
+                return "pro"
+            return "free"
+        except Exception:
+            # Be defensive; default to free if unexpected structure
+            return "free"
+
+    async def _sync_subscription_type_with_profile(
+        self,
+        profile: "ClaudeProfileInfo",
+        credentials: "ClaudeCredentials | None" = None,
+    ) -> None:
+        """Update stored credentials with subscription type from profile.
+
+        Avoids unnecessary writes by only saving when the value changes.
+        If credentials are not provided, they will be loaded once.
+        """
+        try:
+            new_sub = self._derive_subscription_type(profile)
+
+            # Use provided credentials to avoid an extra read if available
+            creds = credentials or await self.load_credentials()
+            if not creds or not hasattr(creds, "claude_ai_oauth"):
+                return
+
+            current_sub = creds.claude_ai_oauth.subscription_type
+            if current_sub != new_sub:
+                creds.claude_ai_oauth.subscription_type = new_sub
+                await self.save_credentials(creds)
+                logger.info(
+                    "claude_subscription_type_updated",
+                    subscription_type=new_sub,
+                    category="auth",
+                )
+        except Exception as e:
+            # Non-fatal: syncing subscription type should never break profile flow
+            logger.debug(
+                "claude_subscription_type_update_failed",
+                error=str(e),
+                category="auth",
+            )
+
     @classmethod
     async def create(
         cls,
@@ -129,24 +181,6 @@ class ClaudeApiTokenManager(BaseTokenManager[ClaudeCredentials]):
                 # Clear profile cache as token changed
                 self._profile_cache = None
 
-                # Fetch and update profile with new token
-                wrapper = ClaudeTokenWrapper(credentials=new_credentials)
-                access_token = wrapper.access_token_value
-                if access_token:
-                    try:
-                        await self._fetch_and_save_profile(access_token)
-                        logger.info(
-                            "profile_updated_after_token_refresh", category="auth"
-                        )
-                    except Exception as e:
-                        logger.warning(
-                            "failed_to_update_profile_after_refresh",
-                            error=str(e),
-                            exc_info=e,
-                            category="auth",
-                        )
-                        # Don't fail the refresh if profile update fails
-
                 return new_credentials
 
             logger.error("failed_to_save_refreshed_credentials", category="auth")
@@ -165,6 +199,55 @@ class ClaudeApiTokenManager(BaseTokenManager[ClaudeCredentials]):
         """Check if credentials are expired using wrapper."""
         wrapper = ClaudeTokenWrapper(credentials=credentials)
         return wrapper.is_expired
+
+    # ==================== Targeted overrides ====================
+
+    async def load_credentials(self) -> ClaudeCredentials | None:  # type: ignore[override]
+        """Load credentials and backfill subscription_type from profile if missing.
+
+        Avoids network calls; uses cached profile or local ~/.claude/.account.json
+        and writes back only when the field actually changes.
+        """
+        creds = await super().load_credentials()
+        if not creds or not hasattr(creds, "claude_ai_oauth"):
+            return creds
+
+        sub = creds.claude_ai_oauth.subscription_type
+        if sub is None or str(sub).strip().lower() in {"", "unknown"}:
+            # Try cached profile first to avoid an extra file read
+            profile: ClaudeProfileInfo | None = self._profile_cache
+            if profile is None:
+                # Only read from disk if the profile file exists; no API calls here
+                try:
+                    from .storage import ClaudeProfileStorage
+
+                    profile_storage = ClaudeProfileStorage()
+                    if profile_storage.file_path.exists():
+                        profile = await profile_storage.load_profile()
+                        if profile:
+                            self._profile_cache = profile
+                except Exception:
+                    profile = None
+
+            if profile is not None:
+                try:
+                    new_sub = self._derive_subscription_type(profile)
+                    if new_sub != sub:
+                        creds.claude_ai_oauth.subscription_type = new_sub
+                        await self.save_credentials(creds)
+                        logger.info(
+                            "claude_subscription_type_backfilled_on_load",
+                            subscription_type=new_sub,
+                            category="auth",
+                        )
+                except Exception as e:
+                    logger.debug(
+                        "claude_subscription_type_backfill_failed",
+                        error=str(e),
+                        category="auth",
+                    )
+
+        return creds
 
     def get_account_id(self, credentials: ClaudeCredentials) -> str | None:
         """Get account ID from credentials.
@@ -261,6 +344,8 @@ class ClaudeApiTokenManager(BaseTokenManager[ClaudeCredentials]):
         profile = await profile_storage.load_profile()
         if profile:
             self._profile_cache = profile
+            # Best-effort sync of subscription type from cached profile
+            await self._sync_subscription_type_with_profile(profile)
             return profile
 
         # If not in storage, fetch from API
@@ -310,6 +395,9 @@ class ClaudeApiTokenManager(BaseTokenManager[ClaudeCredentials]):
             # Parse and cache
             profile = ClaudeProfileInfo.from_api_response(profile_data)
             self._profile_cache = profile
+
+            # Sync subscription type to credentials in a single write if changed
+            await self._sync_subscription_type_with_profile(profile, credentials=credentials)
 
             logger.info(
                 "claude_profile_fetched_from_api",

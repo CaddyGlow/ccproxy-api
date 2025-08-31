@@ -57,9 +57,6 @@ class JSONFormatter:
         except Exception:
             cmd_id = None
 
-        if not cmd_id:
-            cmd_id = os.getenv("CCPROXY_CMD_ID")
-
         return str(cmd_id) if cmd_id else None
 
     def _compose_file_id(self, request_id: str | None) -> str:
@@ -75,10 +72,6 @@ class JSONFormatter:
             cmd_id = ctx.get("cmd_id")
         except Exception:
             cmd_id = None
-
-        # Fallback to environment variable if contextvars not available
-        if not cmd_id:
-            cmd_id = os.getenv("CCPROXY_CMD_ID")
 
         if cmd_id and request_id:
             return f"{cmd_id}_{request_id}"

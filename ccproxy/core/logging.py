@@ -598,7 +598,6 @@ def get_plugin_logger(name: str | None = None) -> TraceBoundLogger:
     return logger
 
 
-
 def _parse_arg_value(argv: list[str], flag: str) -> str | None:
     """Parse a simple CLI flag value from argv.
 
@@ -648,7 +647,9 @@ def bootstrap_cli_logging(argv: list[str] | None = None) -> None:
         arg_file = _parse_arg_value(argv, "--log-file")
 
         # Decide whether to bootstrap at all: only if any override present
-        any_override = any([env_level, env_file, env_format, legacy_json_env, arg_level, arg_file])
+        any_override = any(
+            [env_level, env_file, env_format, legacy_json_env, arg_level, arg_file]
+        )
         if not any_override:
             return
 
@@ -687,11 +688,6 @@ def set_command_context(cmd_id: str | None = None) -> str:
             cmd_id = str(uuid.uuid4())
         # Bind only cmd_id to avoid colliding with per-request request_id fields
         bind_contextvars(cmd_id=cmd_id)
-        # Also expose via env for non-structlog paths and cross-context reads
-        try:
-            os.environ["CCPROXY_CMD_ID"] = cmd_id
-        except Exception:
-            pass
         return cmd_id
     except Exception:
         # Be defensive: never break CLI startup due to context binding
