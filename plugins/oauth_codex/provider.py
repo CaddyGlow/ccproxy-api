@@ -5,6 +5,8 @@ from base64 import urlsafe_b64encode
 from typing import Any
 from urllib.parse import urlencode
 
+import httpx
+
 from ccproxy.auth.oauth.registry import OAuthProviderInfo
 from ccproxy.core.logging import get_plugin_logger
 from plugins.oauth_codex.client import CodexOAuthClient
@@ -23,16 +25,23 @@ class CodexOAuthProvider:
         self,
         config: CodexOAuthConfig | None = None,
         storage: CodexTokenStorage | None = None,
+        http_client: httpx.AsyncClient | None = None,
+        hook_manager: Any | None = None,
     ):
         """Initialize Codex OAuth provider.
 
         Args:
             config: OAuth configuration
             storage: Token storage
+            http_client: Optional HTTP client (for request tracing support)
+            hook_manager: Optional hook manager for emitting events
         """
         self.config = config or CodexOAuthConfig()
         self.storage = storage or CodexTokenStorage()
-        self.client = CodexOAuthClient(self.config, self.storage)
+        self.hook_manager = hook_manager
+        self.client = CodexOAuthClient(
+            self.config, self.storage, http_client, hook_manager=hook_manager
+        )
 
     @property
     def provider_name(self) -> str:
@@ -358,3 +367,8 @@ class CodexOAuthProvider:
                 has_custom_path=bool(custom_path),
             )
             return None
+
+    async def cleanup(self) -> None:
+        """Cleanup resources."""
+        if self.client:
+            await self.client.close()

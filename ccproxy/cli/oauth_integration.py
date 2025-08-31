@@ -111,6 +111,9 @@ class CLIOAuthHandler:
 
         # Start callback server and wait for response
         console.print(f"\n[dim]Waiting for OAuth callback on port {self.port}...[/dim]")
+        console.print(
+            "[dim]Or if you see the authorization code in your browser, press Enter to input it manually[/dim]"
+        )
 
         try:
             # Start temporary HTTP server to handle callback
@@ -171,6 +174,9 @@ class CLIOAuthHandler:
 
         code_future: asyncio.Future[str] = asyncio.Future()
         manual_entry_requested = asyncio.Event()
+
+        # Allow immediate manual entry
+        manual_entry_requested.set()
 
         async def handle_callback(request: web.Request) -> web.Response:
             """Handle OAuth callback request."""
@@ -331,20 +337,24 @@ class CLIOAuthHandler:
         await manual_entry_requested.wait()
 
         # Prompt user for manual code entry
-        console.print("\n[cyan]Manual Code Entry[/cyan]")
+        console.print("\n[cyan]Manual Code Entry Available[/cyan]")
         console.print(
-            "If the browser callback didn't work, you can manually enter the authorization code."
+            "After authorizing in your browser, you can enter the authorization code here."
+        )
+        console.print("[dim]Look for the 'code' parameter in the redirect URL.[/dim]")
+        console.print(
+            "[dim]The URL will look like: http://localhost:XXXX/callback?code=YOUR_CODE&state=...[/dim]"
         )
         console.print(
-            "After authorizing in your browser, look for the 'code' parameter in the redirect URL."
+            "\n[dim]Press Enter to input code manually, or wait for automatic callback[/dim]"
         )
-        console.print(
-            "The URL will look like: http://localhost:XXXX/callback?code=YOUR_CODE&state=..."
-        )
-        console.print("\n[dim]Press Ctrl+C to cancel at any time[/dim]")
+        console.print("[dim]Press Ctrl+C to cancel at any time[/dim]")
 
         # Use asyncio-compatible input
         from aioconsole import ainput
+
+        # Wait for user to press Enter to start manual entry
+        await ainput("")
 
         while True:
             try:
@@ -359,6 +369,11 @@ class CLIOAuthHandler:
                 if not code:
                     console.print("[red]Please enter a valid authorization code.[/red]")
                     continue
+
+                # Clean the code - remove any URL fragment (part after #)
+                if "#" in code:
+                    code = code.split("#")[0]
+                    console.print("[dim]Note: Removed URL fragment from code[/dim]")
 
                 # Basic validation - codes are typically alphanumeric with hyphens/underscores
                 if len(code) < 10:
@@ -462,14 +477,29 @@ class CLIOAuthHandler:
         console.print(f"[blue]{auth_url}[/blue]")
 
         console.print(
-            "\n[bold]Step 2:[/bold] After authorizing, you'll be redirected to a URL like:"
-        )
-        console.print(
-            f"[dim]http://localhost:{self.port}/callback?code=AUTH_CODE&state=STATE_VALUE[/dim]"
+            "\n[bold]Step 2:[/bold] After authorizing, you'll be redirected to a callback URL."
         )
 
+        # Special instructions for Claude API with console callback
+        if provider_name == "claude-api" and "console.anthropic.com" in auth_url:
+            console.print(
+                "[yellow]Note: You'll be redirected to the Anthropic Console.[/yellow]"
+            )
+            console.print(
+                "[dim]The URL will look like: https://console.anthropic.com/oauth/code/callback?code=AUTH_CODE[/dim]"
+            )
+        else:
+            console.print(
+                f"[dim]The URL will look like: http://localhost:{self.port}/callback?code=AUTH_CODE&state=STATE_VALUE[/dim]"
+            )
+
         console.print("\n[bold]Step 3:[/bold] Copy the authorization code from the URL")
-        console.print("[dim]The code is the value after 'code=' in the URL[/dim]")
+        console.print(
+            "[dim]The code is the value after 'code=' in the redirect URL[/dim]"
+        )
+        console.print(
+            "[dim]Example: If the URL contains 'code=abc123def456', copy 'abc123def456'[/dim]"
+        )
 
         # Get manual code input
         from aioconsole import ainput
@@ -487,6 +517,11 @@ class CLIOAuthHandler:
                 if not code:
                     console.print("[red]Please enter a valid authorization code.[/red]")
                     continue
+
+                # Clean the code - remove any URL fragment (part after #)
+                if "#" in code:
+                    code = code.split("#")[0]
+                    console.print("[dim]Note: Removed URL fragment from code[/dim]")
 
                 # Basic validation - codes are typically alphanumeric with hyphens/underscores
                 if len(code) < 10:

@@ -13,7 +13,6 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from ccproxy.config.discovery import find_toml_config_file
 from ccproxy.core.logging import get_logger
 
-from .auth import AuthSettings
 from .binary import BinarySettings
 from .cors import CORSSettings
 from .docker_settings import DockerSettings
@@ -105,11 +104,6 @@ class Settings(BaseSettings):
     reverse_proxy: ReverseProxySettings = Field(
         default_factory=ReverseProxySettings,
         description="Reverse proxy configuration settings",
-    )
-
-    auth: AuthSettings = Field(
-        default_factory=AuthSettings,
-        description="Authentication and credentials configuration",
     )
 
     # Binary resolution settings

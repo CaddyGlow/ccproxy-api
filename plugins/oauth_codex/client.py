@@ -3,6 +3,7 @@
 from datetime import UTC, datetime
 from typing import Any
 
+import httpx
 import jwt
 
 from ccproxy.auth.exceptions import OAuthError
@@ -23,12 +24,16 @@ class CodexOAuthClient(BaseOAuthClient[OpenAICredentials]):
         self,
         config: CodexOAuthConfig,
         storage: TokenStorage[OpenAICredentials] | None = None,
+        http_client: httpx.AsyncClient | None = None,
+        hook_manager: Any | None = None,
     ):
         """Initialize Codex OAuth client.
 
         Args:
             config: OAuth configuration
             storage: Token storage backend
+            http_client: Optional HTTP client (for request tracing support)
+            hook_manager: Optional hook manager for emitting events
         """
         self.oauth_config = config
 
@@ -39,6 +44,8 @@ class CodexOAuthClient(BaseOAuthClient[OpenAICredentials]):
             base_url=config.base_url,
             scopes=config.scopes,
             storage=storage,
+            http_client=http_client,
+            hook_manager=hook_manager,
         )
 
     def _get_auth_endpoint(self) -> str:
@@ -193,19 +200,16 @@ class CodexOAuthClient(BaseOAuthClient[OpenAICredentials]):
         headers["Content-Type"] = "application/x-www-form-urlencoded"
 
         try:
-            import httpx
+            response = await self.http_client.post(
+                token_endpoint,
+                data=data,  # OpenAI uses form encoding
+                headers=headers,
+                timeout=30.0,
+            )
+            response.raise_for_status()
 
-            async with httpx.AsyncClient() as client:
-                response = await client.post(
-                    token_endpoint,
-                    data=data,  # OpenAI uses form encoding
-                    headers=headers,
-                    timeout=30.0,
-                )
-                response.raise_for_status()
-
-                token_response = response.json()
-                return await self.parse_token_response(token_response)
+            token_response = response.json()
+            return await self.parse_token_response(token_response)
 
         except Exception as e:
             logger.error(

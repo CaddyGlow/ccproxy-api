@@ -31,7 +31,6 @@ from ccproxy.core.request_context import RequestContext
 if TYPE_CHECKING:
     from tests.factories import FastAPIAppFactory, FastAPIClientFactory
 from ccproxy.auth.manager import AuthManager
-from ccproxy.config.auth import AuthSettings, CredentialStorageSettings
 from ccproxy.config.observability import ObservabilitySettings
 from ccproxy.config.security import SecuritySettings
 from ccproxy.config.server import ServerSettings
@@ -167,11 +166,6 @@ def test_settings(isolated_environment: Path) -> Settings:
     return Settings(
         server=ServerSettings(log_level="WARNING"),
         security=SecuritySettings(auth_token=None),  # No auth by default
-        auth=AuthSettings(
-            storage=CredentialStorageSettings(
-                storage_paths=[isolated_environment / ".claude/"]
-            )
-        ),
         observability=ObservabilitySettings(
             # Enable all observability endpoints for testing
             metrics_endpoint_enabled=True,

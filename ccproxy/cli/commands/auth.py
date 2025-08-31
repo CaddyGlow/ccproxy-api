@@ -12,6 +12,8 @@ from structlog import get_logger
 
 from ccproxy.cli.helpers import get_rich_toolkit
 from ccproxy.config.settings import get_settings
+from ccproxy.hooks.manager import HookManager
+from ccproxy.hooks.registry import HookRegistry
 
 
 app = typer.Typer(name="auth", help="Authentication and credential management")
@@ -30,9 +32,25 @@ async def initialize_plugins_for_oauth() -> None:
     from ccproxy.config.settings import get_settings
     from ccproxy.plugins.discovery import discover_and_load_plugins
     from ccproxy.plugins.factory import AuthProviderPluginFactory
+    from ccproxy.plugins import PluginContext
 
     settings = get_settings()
     plugins = discover_and_load_plugins(settings)
+
+    # Create hook manager for OAuth tracing if enabled
+    hook_manager = None
+    if settings.plugins.get("request_tracer", {}).get("enabled", False):
+        from plugins.request_tracer.hooks.oauth import OAuthTracerHook
+        from plugins.request_tracer.config import RequestTracerConfig
+        
+        hook_registry = HookRegistry()
+        hook_manager = HookManager(hook_registry)
+        
+        # Create and register OAuth tracer hook
+        tracer_config = RequestTracerConfig(**settings.plugins.get("request_tracer", {}))
+        oauth_hook = OAuthTracerHook(tracer_config)
+        hook_registry.register(oauth_hook)
+        logger.debug("oauth_tracer_hook_registered", category="auth")
 
     # Register OAuth providers from auth provider plugins
     registry = get_oauth_registry()
@@ -40,11 +58,14 @@ async def initialize_plugins_for_oauth() -> None:
         # Check if this is an auth provider plugin
         if isinstance(factory, AuthProviderPluginFactory):
             try:
-                provider = factory.create_auth_provider()
+                # Create plugin context with hook manager
+                context = PluginContext({"hook_manager": hook_manager}) if hook_manager else None
+                provider = factory.create_auth_provider(context)
                 registry.register_provider(provider)
                 logger.debug(
                     f"Registered OAuth provider from plugin: {plugin_name}",
                     category="auth",
+                    has_hooks=bool(hook_manager),
                 )
             except Exception as e:
                 logger.warning(
@@ -684,17 +705,34 @@ async def get_oauth_provider_for_name(provider: str) -> Any:
     from ccproxy.config.settings import get_settings
     from ccproxy.plugins.discovery import discover_and_load_plugins
     from ccproxy.plugins.factory import AuthProviderPluginFactory
+    from ccproxy.plugins import PluginContext
 
     # First ensure plugins are loaded to register providers
     settings = get_settings()
     plugins = discover_and_load_plugins(settings)
+
+    # Create hook manager for OAuth tracing if enabled
+    hook_manager = None
+    if settings.plugins.get("request_tracer", {}).get("enabled", False):
+        from plugins.request_tracer.hooks.oauth import OAuthTracerHook
+        from plugins.request_tracer.config import RequestTracerConfig
+        
+        hook_registry = HookRegistry()
+        hook_manager = HookManager(hook_registry)
+        
+        # Create and register OAuth tracer hook
+        tracer_config = RequestTracerConfig(**settings.plugins.get("request_tracer", {}))
+        oauth_hook = OAuthTracerHook(tracer_config)
+        hook_registry.register(oauth_hook)
 
     # Register OAuth providers from auth provider plugins
     registry = get_oauth_registry()
     for _plugin_name, factory in plugins.items():
         if isinstance(factory, AuthProviderPluginFactory):
             try:
-                oauth_provider = factory.create_auth_provider()
+                # Create plugin context with hook manager
+                context = PluginContext({"hook_manager": hook_manager}) if hook_manager else None
+                oauth_provider = factory.create_auth_provider(context)
                 # Register if not already registered
                 if not registry.has_provider(oauth_provider.provider_name):
                     registry.register_provider(oauth_provider)

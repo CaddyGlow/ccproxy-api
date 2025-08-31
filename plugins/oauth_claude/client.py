@@ -3,13 +3,14 @@
 from datetime import UTC, datetime
 from typing import Any
 
+import httpx
 from pydantic import SecretStr
 
 from ccproxy.auth.exceptions import OAuthError
 from ccproxy.auth.oauth.base import BaseOAuthClient
 from ccproxy.auth.storage.base import TokenStorage
 from ccproxy.core.logging import get_plugin_logger
-from plugins.claude_api.auth.models import ClaudeCredentials, ClaudeOAuthToken
+from plugins.oauth_claude.models import ClaudeCredentials, ClaudeOAuthToken
 from plugins.oauth_claude.config import ClaudeOAuthConfig
 
 
@@ -23,12 +24,16 @@ class ClaudeOAuthClient(BaseOAuthClient[ClaudeCredentials]):
         self,
         config: ClaudeOAuthConfig,
         storage: TokenStorage[ClaudeCredentials] | None = None,
+        http_client: httpx.AsyncClient | None = None,
+        hook_manager: Any | None = None,
     ):
         """Initialize Claude OAuth client.
 
         Args:
             config: OAuth configuration
             storage: Token storage backend
+            http_client: Optional HTTP client (for request tracing support)
+            hook_manager: Optional hook manager for emitting events
         """
         self.oauth_config = config
 
@@ -39,6 +44,8 @@ class ClaudeOAuthClient(BaseOAuthClient[ClaudeCredentials]):
             base_url=config.base_url,
             scopes=config.scopes,
             storage=storage,
+            http_client=http_client,
+            hook_manager=hook_manager,
         )
 
     def _get_auth_endpoint(self) -> str:
@@ -63,10 +70,23 @@ class ClaudeOAuthClient(BaseOAuthClient[ClaudeCredentials]):
         Returns:
             Dictionary of custom headers
         """
-        return {
-            "anthropic-beta": self.oauth_config.beta_version,
-            "User-Agent": self.oauth_config.user_agent,
-        }
+        # Start with headers from config
+        headers = dict(self.oauth_config.headers)
+        
+        # Try to get user agent from detection service
+        try:
+            from ccproxy.config.settings import get_settings
+            from ccproxy.services.cli_detection import CLIDetectionService
+            settings = get_settings()
+            detection_service = CLIDetectionService(settings)
+            detected_headers = detection_service.get_cached_headers()
+            if detected_headers and "user-agent" in detected_headers:
+                headers["User-Agent"] = detected_headers["user-agent"]
+        except Exception:
+            # Keep the User-Agent from config if detection service not available
+            pass
+            
+        return headers
 
     def _use_json_for_token_exchange(self) -> bool:
         """Claude uses JSON for token exchange.
@@ -167,19 +187,17 @@ class ClaudeOAuthClient(BaseOAuthClient[ClaudeCredentials]):
         headers["Content-Type"] = "application/json"
 
         try:
-            import httpx
+            # Use the HTTP client directly (always available now)
+            response = await self.http_client.post(
+                token_endpoint,
+                json=data,  # Claude uses JSON
+                headers=headers,
+                timeout=30.0,
+            )
+            response.raise_for_status()
 
-            async with httpx.AsyncClient() as client:
-                response = await client.post(
-                    token_endpoint,
-                    json=data,  # Claude uses JSON
-                    headers=headers,
-                    timeout=30.0,
-                )
-                response.raise_for_status()
-
-                token_response = response.json()
-                return await self.parse_token_response(token_response)
+            token_response = response.json()
+            return await self.parse_token_response(token_response)
 
         except Exception as e:
             logger.error(

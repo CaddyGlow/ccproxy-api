@@ -29,5 +29,12 @@ class HookEvent(str, Enum):
     PLUGIN_UNLOADED = "plugin.unloaded"
     PLUGIN_ERROR = "plugin.error"
 
+    # OAuth Operations
+    OAUTH_TOKEN_REQUEST = "oauth.token.request"
+    OAUTH_TOKEN_RESPONSE = "oauth.token.response"
+    OAUTH_REFRESH_REQUEST = "oauth.refresh.request"
+    OAUTH_REFRESH_RESPONSE = "oauth.refresh.response"
+    OAUTH_ERROR = "oauth.error"
+    
     # Custom Events
     CUSTOM_EVENT = "custom.event"

@@ -17,6 +17,7 @@ from ccproxy.auth.exceptions import (
 )
 from ccproxy.auth.models.credentials import BaseCredentials
 from ccproxy.auth.storage.base import TokenStorage
+from ccproxy.core.http_client import HTTPClientFactory
 from ccproxy.core.logging import get_logger
 
 
@@ -35,6 +36,8 @@ class BaseOAuthClient(ABC, Generic[CredentialsT]):
         base_url: str,
         scopes: list[str],
         storage: TokenStorage[CredentialsT] | None = None,
+        http_client: httpx.AsyncClient | None = None,
+        hook_manager: Any | None = None,
     ):
         """Initialize OAuth client with common parameters.
 
@@ -44,17 +47,49 @@ class BaseOAuthClient(ABC, Generic[CredentialsT]):
             base_url: OAuth provider base URL
             scopes: List of OAuth scopes to request
             storage: Optional token storage backend
+            http_client: Optional HTTP client (for request tracing support)
+            hook_manager: Optional hook manager for emitting events
         """
         self.client_id = client_id
         self.redirect_uri = redirect_uri
         self.base_url = base_url
         self.scopes = scopes
         self.storage = storage
+        self.hook_manager = hook_manager
+        
+        # Always have an HTTP client
+        if http_client:
+            self.http_client = http_client
+            self._owns_http_client = False  # Don't close provided client
+        else:
+            self.http_client = HTTPClientFactory.create_client(
+                timeout_connect=10.0,
+                timeout_read=30.0,
+                http2=True
+            )
+            self._owns_http_client = True  # We own it, close on cleanup
+        
         self._callback_server: asyncio.Task[None] | None = None
         self._auth_complete = asyncio.Event()
         self._auth_result: Any | None = None
         self._auth_error: str | None = None
 
+    async def close(self) -> None:
+        """Close resources if we own them."""
+        if self._owns_http_client and self.http_client:
+            await self.http_client.aclose()
+    
+    def __del__(self):
+        """Cleanup on deletion."""
+        if self._owns_http_client and self.http_client and not self.http_client.is_closed:
+            try:
+                # Try to get the current event loop
+                loop = asyncio.get_running_loop()
+                loop.create_task(self.http_client.aclose())
+            except RuntimeError:
+                # No running event loop, can't clean up async resources
+                pass
+    
     def _generate_pkce_pair(self) -> tuple[str, str]:
         """Generate PKCE code verifier and challenge.
 
@@ -128,13 +163,14 @@ class BaseOAuthClient(ABC, Generic[CredentialsT]):
         return base_params
 
     async def _exchange_code_for_tokens(
-        self, code: str, code_verifier: str
+        self, code: str, code_verifier: str, state: str | None = None
     ) -> dict[str, Any]:
         """Exchange authorization code for tokens.
 
         Args:
             code: Authorization code from OAuth callback
             code_verifier: PKCE code verifier
+            state: OAuth state parameter
 
         Returns:
             Token response dictionary from provider
@@ -143,81 +179,128 @@ class BaseOAuthClient(ABC, Generic[CredentialsT]):
             OAuthTokenRefreshError: If token exchange fails
         """
         token_endpoint = self._get_token_endpoint()
-        token_data = self._get_token_exchange_data(code, code_verifier)
+        token_data = self._get_token_exchange_data(code, code_verifier, state)
         headers = self._get_token_exchange_headers()
 
-        async with httpx.AsyncClient() as client:
-            try:
-                logger.debug(
-                    "token_exchange_start",
-                    endpoint=token_endpoint,
-                    has_code=bool(code),
-                    has_verifier=bool(code_verifier),
-                    category="auth",
+        try:
+            logger.debug(
+                "token_exchange_start",
+                endpoint=token_endpoint,
+                has_code=bool(code),
+                has_verifier=bool(code_verifier),
+                category="auth",
+            )
+
+            # Emit hook before token request
+            if self.hook_manager:
+                from ccproxy.hooks.events import HookEvent
+                await self.hook_manager.emit(
+                    HookEvent.OAUTH_TOKEN_REQUEST,
+                    {
+                        "provider": self.__class__.__name__,
+                        "endpoint": token_endpoint,
+                        "method": "POST",
+                        "headers": headers,
+                        "body": token_data,
+                        "is_json": self._use_json_for_token_exchange(),
+                    }
                 )
 
-                response = await client.post(
-                    token_endpoint,
-                    data=token_data,
-                    json=token_data if self._use_json_for_token_exchange() else None,
-                    headers=headers,
-                    timeout=30.0,
+            # Just use self.http_client - it always exists!
+            response = await self.http_client.post(
+                token_endpoint,
+                data=token_data if not self._use_json_for_token_exchange() else None,
+                json=token_data if self._use_json_for_token_exchange() else None,
+                headers=headers,
+                timeout=30.0,
+            )
+            response.raise_for_status()
+
+            token_response = response.json()
+            
+            # Emit hook after token response
+            if self.hook_manager:
+                await self.hook_manager.emit(
+                    HookEvent.OAUTH_TOKEN_RESPONSE,
+                    {
+                        "provider": self.__class__.__name__,
+                        "endpoint": token_endpoint,
+                        "status_code": response.status_code,
+                        "headers": dict(response.headers),
+                        "body": token_response,
+                    }
                 )
-                response.raise_for_status()
+            logger.debug(
+                "token_exchange_success",
+                has_access_token="access_token" in token_response,
+                has_refresh_token="refresh_token" in token_response,
+                expires_in=token_response.get("expires_in"),
+            )
 
-                token_response = response.json()
-                logger.debug(
-                    "token_exchange_success",
-                    has_access_token="access_token" in token_response,
-                    has_refresh_token="refresh_token" in token_response,
-                    expires_in=token_response.get("expires_in"),
+            return token_response  # type: ignore[no-any-return]
+
+        except httpx.HTTPStatusError as e:
+            error_detail = self._extract_error_detail(e.response)
+            logger.error(
+                "token_exchange_http_error",
+                status_code=e.response.status_code,
+                error_detail=error_detail,
+                exc_info=e,
+            )
+            
+            # Emit error hook
+            if self.hook_manager:
+                from ccproxy.hooks.events import HookEvent
+                await self.hook_manager.emit(
+                    HookEvent.OAUTH_ERROR,
+                    {
+                        "provider": self.__class__.__name__,
+                        "endpoint": token_endpoint,
+                        "error_type": "http_status_error",
+                        "status_code": e.response.status_code,
+                        "error_detail": error_detail,
+                        "response_body": e.response.text,
+                    }
                 )
+            
+            raise OAuthTokenRefreshError(
+                f"Token exchange failed: {error_detail}"
+            ) from e
 
-                return token_response  # type: ignore[no-any-return]
+        except httpx.TimeoutException as e:
+            logger.error(
+                "token_exchange_timeout", error=str(e), exc_info=e, category="auth"
+            )
+            raise OAuthTokenRefreshError("Token exchange timed out") from e
 
-            except httpx.HTTPStatusError as e:
-                error_detail = self._extract_error_detail(e.response)
-                logger.error(
-                    "token_exchange_http_error",
-                    status_code=e.response.status_code,
-                    error_detail=error_detail,
-                    exc_info=e,
-                )
-                raise OAuthTokenRefreshError(
-                    f"Token exchange failed: {error_detail}"
-                ) from e
+        except httpx.HTTPError as e:
+            logger.error(
+                "token_exchange_http_error",
+                error=str(e),
+                exc_info=e,
+                category="auth",
+            )
+            raise OAuthTokenRefreshError(
+                f"HTTP error during token exchange: {e}"
+            ) from e
 
-            except httpx.TimeoutException as e:
-                logger.error(
-                    "token_exchange_timeout", error=str(e), exc_info=e, category="auth"
-                )
-                raise OAuthTokenRefreshError("Token exchange timed out") from e
+        except Exception as e:
+            logger.error(
+                "token_exchange_unexpected_error", error=str(e), exc_info=e
+            )
+            raise OAuthTokenRefreshError(
+                f"Unexpected error during token exchange: {e}"
+            ) from e
 
-            except httpx.HTTPError as e:
-                logger.error(
-                    "token_exchange_http_error",
-                    error=str(e),
-                    exc_info=e,
-                    category="auth",
-                )
-                raise OAuthTokenRefreshError(
-                    f"HTTP error during token exchange: {e}"
-                ) from e
-
-            except Exception as e:
-                logger.error(
-                    "token_exchange_unexpected_error", error=str(e), exc_info=e
-                )
-                raise OAuthTokenRefreshError(
-                    f"Unexpected error during token exchange: {e}"
-                ) from e
-
-    def _get_token_exchange_data(self, code: str, code_verifier: str) -> dict[str, str]:
+    def _get_token_exchange_data(
+        self, code: str, code_verifier: str, state: str | None = None
+    ) -> dict[str, str]:
         """Get token exchange request data.
 
         Args:
             code: Authorization code
             code_verifier: PKCE code verifier
+            state: OAuth state parameter
 
         Returns:
             Dictionary of token exchange parameters
@@ -229,6 +312,10 @@ class BaseOAuthClient(ABC, Generic[CredentialsT]):
             "client_id": self.client_id,
             "code_verifier": code_verifier,
         }
+
+        # Don't include state in token exchange - not needed for OAuth 2.0
+        # if state:
+        #     base_data["state"] = state
 
         # Allow providers to add custom parameters
         custom_data = self.get_custom_token_params()
@@ -421,7 +508,9 @@ class BaseOAuthClient(ABC, Generic[CredentialsT]):
         """
         try:
             # Exchange code for tokens
-            token_response = await self._exchange_code_for_tokens(code, code_verifier)
+            token_response = await self._exchange_code_for_tokens(
+                code, code_verifier, state
+            )
 
             # Parse provider-specific response
             credentials: CredentialsT = await self.parse_token_response(token_response)

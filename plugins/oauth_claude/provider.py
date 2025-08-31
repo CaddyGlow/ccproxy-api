@@ -5,6 +5,8 @@ from base64 import urlsafe_b64encode
 from typing import Any
 from urllib.parse import urlencode
 
+import httpx
+
 from ccproxy.auth.oauth.registry import OAuthProviderInfo
 from ccproxy.core.logging import get_plugin_logger
 from plugins.oauth_claude.client import ClaudeOAuthClient
@@ -23,16 +25,30 @@ class ClaudeOAuthProvider:
         self,
         config: ClaudeOAuthConfig | None = None,
         storage: ClaudeOAuthStorage | None = None,
+        http_client: httpx.AsyncClient | None = None,
+        hook_manager: Any | None = None,
     ):
         """Initialize Claude OAuth provider.
 
         Args:
             config: OAuth configuration
             storage: Token storage
+            http_client: Optional HTTP client (for request tracing support)
+            hook_manager: Optional hook manager for emitting events
         """
         self.config = config or ClaudeOAuthConfig()
         self.storage = storage or ClaudeOAuthStorage()
-        self.client = ClaudeOAuthClient(self.config, self.storage)
+        self.hook_manager = hook_manager
+
+        # Build redirect URI from callback port if not set
+        if self.config.redirect_uri is None:
+            self.config.redirect_uri = (
+                f"http://localhost:{self.config.callback_port}/callback"
+            )
+
+        self.client = ClaudeOAuthClient(
+            self.config, self.storage, http_client, hook_manager=hook_manager
+        )
 
     @property
     def provider_name(self) -> str:
@@ -71,10 +87,13 @@ class ClaudeOAuthProvider:
         Returns:
             Authorization URL to redirect user to
         """
+        # Use the configured redirect_uri (already built in __init__ if it was None)
+        redirect_uri = self.config.redirect_uri
+
         params = {
             "code": "true",  # Required by Claude OAuth
             "client_id": self.config.client_id,
-            "redirect_uri": self.config.redirect_uri,
+            "redirect_uri": redirect_uri,
             "response_type": "code",
             "scope": " ".join(self.config.scopes),
             "state": state,
@@ -100,7 +119,6 @@ class ClaudeOAuthProvider:
         )
 
         return auth_url
-
 
     async def handle_callback(
         self, code: str, state: str, code_verifier: str | None = None
@@ -339,3 +357,8 @@ class ClaudeOAuthProvider:
                 has_custom_path=bool(custom_path),
             )
             return None
+
+    async def cleanup(self) -> None:
+        """Cleanup resources."""
+        if self.client:
+            await self.client.close()

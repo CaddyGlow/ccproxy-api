@@ -271,6 +271,25 @@ class AuthProviderPluginRuntime(BasePluginRuntime):
 
     async def _on_shutdown(self) -> None:
         """Auth provider plugin shutdown."""
+        # Cleanup provider resources if it has a cleanup method
+        if self.auth_provider and hasattr(self.auth_provider, 'cleanup'):
+            try:
+                await self.auth_provider.cleanup()
+                logger.debug(
+                    "oauth_provider_cleaned_up",
+                    plugin=self.name,
+                    provider=self.auth_provider.provider_name,
+                    category="plugin",
+                )
+            except Exception as e:
+                logger.error(
+                    "oauth_provider_cleanup_failed",
+                    plugin=self.name,
+                    error=str(e),
+                    exc_info=e,
+                    category="plugin",
+                )
+        
         # Unregister OAuth provider if present
         if self.auth_provider:
             await self._unregister_auth_provider()

@@ -278,8 +278,11 @@ class AuthProviderPluginFactory(BasePluginFactory):
         return context
 
     @abstractmethod
-    def create_auth_provider(self) -> Any:
+    def create_auth_provider(self, context: PluginContext | None = None) -> Any:
         """Create the OAuth provider for this auth plugin.
+
+        Args:
+            context: Optional plugin context for initialization
 
         Returns:
             OAuth provider instance implementing OAuthProviderProtocol
@@ -528,7 +531,7 @@ class PluginRegistry:
             context["adapter"] = factory.create_adapter(context)
         # For auth provider plugins, create auth components
         elif isinstance(factory, AuthProviderPluginFactory):
-            context["auth_provider"] = factory.create_auth_provider()
+            context["auth_provider"] = factory.create_auth_provider(context)
             context["token_manager"] = factory.create_token_manager()
             context["storage"] = factory.create_storage()
 

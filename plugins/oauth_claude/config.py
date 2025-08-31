@@ -4,41 +4,67 @@ from pydantic import BaseModel, Field
 
 
 class ClaudeOAuthConfig(BaseModel):
-    """Configuration for Claude OAuth provider."""
+    """OAuth-specific configuration for Claude."""
 
-    client_id: str = Field(
-        default="9d1c250a-e61b-44d9-88ed-5944d1962f5e",
-        description="OAuth client ID for Claude",
-    )
-    redirect_uri: str = Field(
-        default="http://localhost:9999/oauth/claude-api/callback",
-        description="OAuth redirect URI",
-    )
     base_url: str = Field(
-        default="https://claude.ai",
-        description="Base URL for Claude OAuth",
+        default="https://console.anthropic.com",
+        description="Base URL for OAuth API endpoints",
+    )
+    token_url: str = Field(
+        default="https://console.anthropic.com/v1/oauth/token",
+        description="OAuth token endpoint URL",
     )
     authorize_url: str = Field(
         default="https://claude.ai/oauth/authorize",
-        description="Authorization endpoint URL",
+        description="OAuth authorization endpoint URL",
     )
-    token_url: str = Field(
-        default="https://claude.ai/api/auth/oauth_exchange_code",
-        description="Token exchange endpoint URL",
+    profile_url: str = Field(
+        default="https://api.anthropic.com/api/oauth/profile",
+        description="OAuth profile endpoint URL",
+    )
+    client_id: str = Field(
+        default="9d1c250a-e61b-44d9-88ed-5944d1962f5e",
+        description="OAuth client ID",
+    )
+    redirect_uri: str | None = Field(
+        # default="https://console.anthropic.com/oauth/code/callback",
+        default=None,
+        # default="http://localhost:54545/callback",
+        description="OAuth redirect URI",
     )
     scopes: list[str] = Field(
-        default_factory=lambda: ["create_api_key", "user/profile", "user/inference"],
+        default_factory=lambda: [
+            "org:create_api_key",
+            "user:profile",
+            "user:inference",
+        ],
         description="OAuth scopes to request",
     )
-    beta_version: str = Field(
-        default="2024-01-01",
-        description="Anthropic API beta version",
+    headers: dict[str, str] = Field(
+        default_factory=lambda: {
+            # "anthropic-beta": "oauth-2025-04-20",
+            # "User-Agent": "Claude-Code/1.0.43",  # Match default user agent  in config
+        },
+        description="Additional headers for OAuth requests",
     )
-    user_agent: str = Field(
-        default="ccproxy-claude-oauth/1.0",
-        description="User agent for OAuth requests",
+    request_timeout: int = Field(
+        default=30,
+        description="Timeout in seconds for OAuth requests",
+    )
+    callback_timeout: int = Field(
+        default=300,
+        description="Timeout in seconds for OAuth callback",
+        ge=60,
+        le=600,
+    )
+    callback_port: int = Field(
+        default=35593,
+        # default=54545,
+        description="Port for OAuth callback server",
+        ge=1024,
+        le=65535,
     )
     use_pkce: bool = Field(
-        default=False,
-        description="Whether to use PKCE flow (Claude doesn't require it)",
+        default=True,
+        description="Whether to use PKCE flow (required for Claude OAuth)",
     )
