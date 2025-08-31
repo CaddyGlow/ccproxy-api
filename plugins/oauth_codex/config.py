@@ -10,9 +10,9 @@ class CodexOAuthConfig(BaseModel):
         default="openai_client_production",
         description="OAuth client ID for OpenAI",
     )
-    redirect_uri: str = Field(
-        default="http://localhost:9999/oauth/codex/callback",
-        description="OAuth redirect URI",
+    redirect_uri: str | None = Field(
+        default=None,
+        description="OAuth redirect URI (auto-generated from callback_port if not set)",
     )
     base_url: str = Field(
         default="https://auth.openai.com",
@@ -41,4 +41,10 @@ class CodexOAuthConfig(BaseModel):
     use_pkce: bool = Field(
         default=True,
         description="Whether to use PKCE flow (OpenAI requires it)",
+    )
+    callback_port: int = Field(
+        default=1455,
+        description="Port for OAuth callback server",
+        ge=1024,
+        le=65535,
     )

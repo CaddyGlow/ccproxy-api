@@ -544,8 +544,8 @@ def api(
 
         from ccproxy.core.logging import setup_logging
 
-        # Always reconfigure logging to ensure log level changes are picked up
-        # Use JSON logs if explicitly requested via env var
+        # always reconfigure logging to ensure log level changes are picked up
+        # use json logs if explicitly requested via env var
         setup_logging(
             json_logs=settings.logging.format == "json",
             log_level_name=settings.logging.level,

@@ -1,7 +1,13 @@
 """Claude OAuth client implementation."""
 
+import json
 from datetime import UTC, datetime
-from typing import Any
+from pathlib import Path
+from typing import TYPE_CHECKING, Any
+
+
+if TYPE_CHECKING:
+    from ccproxy.services.cli_detection import CLIDetectionService
 
 import httpx
 from pydantic import SecretStr
@@ -10,8 +16,11 @@ from ccproxy.auth.exceptions import OAuthError
 from ccproxy.auth.oauth.base import BaseOAuthClient
 from ccproxy.auth.storage.base import TokenStorage
 from ccproxy.core.logging import get_plugin_logger
-from plugins.oauth_claude.models import ClaudeCredentials, ClaudeOAuthToken
 from plugins.oauth_claude.config import ClaudeOAuthConfig
+from plugins.oauth_claude.models import (
+    ClaudeCredentials,
+    ClaudeOAuthToken,
+)
 
 
 logger = get_plugin_logger()
@@ -26,6 +35,7 @@ class ClaudeOAuthClient(BaseOAuthClient[ClaudeCredentials]):
         storage: TokenStorage[ClaudeCredentials] | None = None,
         http_client: httpx.AsyncClient | None = None,
         hook_manager: Any | None = None,
+        detection_service: "CLIDetectionService | None" = None,
     ):
         """Initialize Claude OAuth client.
 
@@ -34,13 +44,20 @@ class ClaudeOAuthClient(BaseOAuthClient[ClaudeCredentials]):
             storage: Token storage backend
             http_client: Optional HTTP client (for request tracing support)
             hook_manager: Optional hook manager for emitting events
+            detection_service: Optional CLI detection service for headers
         """
         self.oauth_config = config
+        self.detection_service = detection_service
+
+        # Build redirect URI from callback port if not set
+        redirect_uri = config.redirect_uri
+        if redirect_uri is None:
+            redirect_uri = f"http://localhost:{config.callback_port}/callback"
 
         # Initialize base class
         super().__init__(
             client_id=config.client_id,
-            redirect_uri=config.redirect_uri,
+            redirect_uri=redirect_uri,
             base_url=config.base_url,
             scopes=config.scopes,
             storage=storage,
@@ -72,20 +89,18 @@ class ClaudeOAuthClient(BaseOAuthClient[ClaudeCredentials]):
         """
         # Start with headers from config
         headers = dict(self.oauth_config.headers)
-        
-        # Try to get user agent from detection service
-        try:
-            from ccproxy.config.settings import get_settings
-            from ccproxy.services.cli_detection import CLIDetectionService
-            settings = get_settings()
-            detection_service = CLIDetectionService(settings)
-            detected_headers = detection_service.get_cached_headers()
-            if detected_headers and "user-agent" in detected_headers:
-                headers["User-Agent"] = detected_headers["user-agent"]
-        except Exception:
-            # Keep the User-Agent from config if detection service not available
-            pass
-            
+
+        # Use injected detection service if available
+        if self.detection_service:
+            try:
+                detected_headers = self.detection_service.get_cached_headers()
+                if detected_headers and "user-agent" in detected_headers:
+                    headers["User-Agent"] = detected_headers["user-agent"]
+            except Exception:
+                # Keep the User-Agent from config if detection service not available
+                pass
+        # No fallback - if detection service is not injected, use config headers only
+
         return headers
 
     def _use_json_for_token_exchange(self) -> bool:
@@ -130,8 +145,7 @@ class ClaudeOAuthClient(BaseOAuthClient[ClaudeCredentials]):
                 refreshToken=SecretStr(data.get("refresh_token", "")),
                 expiresAt=expires_at,
                 scopes=scopes or self.oauth_config.scopes,
-                subscriptionType=data.get("subscription_type", "unknown"),
-                tokenType=data.get("token_type", "Bearer"),
+                subscriptionType=data.get("subscription_type"),
             )
 
             # Create credentials (using alias for field name)
@@ -207,30 +221,3 @@ class ClaudeOAuthClient(BaseOAuthClient[ClaudeCredentials]):
                 category="auth",
             )
             raise OAuthError(f"Failed to refresh Claude token: {e}") from e
-
-    def _extract_subscription_info(self, token_data: dict[str, Any]) -> str:
-        """Extract subscription type from token response.
-
-        Args:
-            token_data: Token response data
-
-        Returns:
-            Subscription type string
-        """
-        # Check for subscription_type in response
-        if "subscription_type" in token_data:
-            return str(token_data["subscription_type"])
-
-        # Check for plan information in scope
-        scope = token_data.get("scope", "")
-        if isinstance(scope, list):
-            scope = " ".join(scope)
-
-        if "claude-pro" in scope.lower():
-            return "claude-pro"
-        elif "claude-max" in scope.lower():
-            return "claude-max"
-        elif "free" in scope.lower():
-            return "free"
-
-        return "unknown"

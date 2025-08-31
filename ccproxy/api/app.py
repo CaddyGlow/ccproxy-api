@@ -141,7 +141,7 @@ async def initialize_plugins_startup(app: FastAPI, settings: Settings) -> None:
         def __init__(self, container: ServiceContainer):
             self.settings = container.settings
             self.http_client = container.get_http_client()
-            self.logger = structlog.get_logger()
+            self.logger = get_logger()
             self.cli_detection_service = container.get_cli_detection_service()
             self.scheduler = getattr(app.state, "scheduler", None)
             self.plugin_registry = app.state.plugin_registry

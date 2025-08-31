@@ -77,7 +77,9 @@ class OAuthClaudeFactory(AuthProviderPluginFactory):
         """Create runtime instance."""
         return OAuthClaudeRuntime(self.manifest)
 
-    def create_auth_provider(self, context: PluginContext | None = None) -> ClaudeOAuthProvider:
+    def create_auth_provider(
+        self, context: PluginContext | None = None
+    ) -> ClaudeOAuthProvider:
         """Create OAuth provider instance.
 
         Args:
@@ -89,7 +91,13 @@ class OAuthClaudeFactory(AuthProviderPluginFactory):
         config = ClaudeOAuthConfig()
         http_client = context.get("http_client") if context else None
         hook_manager = context.get("hook_manager") if context else None
-        return ClaudeOAuthProvider(config, http_client=http_client, hook_manager=hook_manager)
+        detection_service = context.get("detection_service") if context else None
+        return ClaudeOAuthProvider(
+            config,
+            http_client=http_client,
+            hook_manager=hook_manager,
+            detection_service=detection_service,
+        )
 
     def create_storage(self) -> Any | None:
         """Create storage for OAuth credentials.

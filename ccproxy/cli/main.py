@@ -10,6 +10,7 @@ from ccproxy._version import __version__
 from ccproxy.cli.helpers import (
     get_rich_toolkit,
 )
+from ccproxy.core.logging import bootstrap_cli_logging
 
 # from plugins.permissions.handlers.cli import app as permission_handler_app
 from .commands.auth import app as auth_app
@@ -99,6 +100,8 @@ app.command(name="serve")(api)
 
 def main() -> None:
     """Entry point for the CLI application."""
+    # Early logging bootstrap from env/argv; safe to reconfigure later
+    bootstrap_cli_logging()
     app()
 
 

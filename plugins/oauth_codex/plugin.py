@@ -77,7 +77,9 @@ class OAuthCodexFactory(AuthProviderPluginFactory):
         """Create runtime instance."""
         return OAuthCodexRuntime(self.manifest)
 
-    def create_auth_provider(self, context: PluginContext | None = None) -> CodexOAuthProvider:
+    def create_auth_provider(
+        self, context: PluginContext | None = None
+    ) -> CodexOAuthProvider:
         """Create OAuth provider instance.
 
         Args:
@@ -89,7 +91,9 @@ class OAuthCodexFactory(AuthProviderPluginFactory):
         config = CodexOAuthConfig()
         http_client = context.get("http_client") if context else None
         hook_manager = context.get("hook_manager") if context else None
-        return CodexOAuthProvider(config, http_client=http_client, hook_manager=hook_manager)
+        return CodexOAuthProvider(
+            config, http_client=http_client, hook_manager=hook_manager
+        )
 
     def create_storage(self) -> Any | None:
         """Create storage for OAuth credentials.

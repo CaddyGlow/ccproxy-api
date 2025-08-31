@@ -39,6 +39,13 @@ class CodexOAuthProvider:
         self.config = config or CodexOAuthConfig()
         self.storage = storage or CodexTokenStorage()
         self.hook_manager = hook_manager
+
+        # Build redirect URI from callback port if not set
+        if self.config.redirect_uri is None:
+            self.config.redirect_uri = (
+                f"http://localhost:{self.config.callback_port}/callback"
+            )
+
         self.client = CodexOAuthClient(
             self.config, self.storage, http_client, hook_manager=hook_manager
         )
@@ -319,10 +326,10 @@ class CodexOAuthProvider:
             if custom_path:
                 # Use custom path for storage
                 storage = GenericJsonStorage(Path(custom_path), OpenAICredentials)
-                manager = CodexTokenManager(storage=storage)
+                manager = await CodexTokenManager.create(storage=storage)
             else:
                 # Use default storage
-                manager = CodexTokenManager()
+                manager = await CodexTokenManager.create()
 
             return await manager.save_credentials(credentials)
         except Exception as e:
@@ -353,10 +360,10 @@ class CodexOAuthProvider:
             if custom_path:
                 # Load from custom path
                 storage = GenericJsonStorage(Path(custom_path), OpenAICredentials)
-                manager = CodexTokenManager(storage=storage)
+                manager = await CodexTokenManager.create(storage=storage)
             else:
                 # Load from default storage
-                manager = CodexTokenManager()
+                manager = await CodexTokenManager.create()
 
             return await manager.load_credentials()
         except Exception as e:

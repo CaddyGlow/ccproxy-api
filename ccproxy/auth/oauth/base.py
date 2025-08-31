@@ -56,19 +56,21 @@ class BaseOAuthClient(ABC, Generic[CredentialsT]):
         self.scopes = scopes
         self.storage = storage
         self.hook_manager = hook_manager
-        
+
         # Always have an HTTP client
         if http_client:
             self.http_client = http_client
             self._owns_http_client = False  # Don't close provided client
         else:
+            # Create client with hook support if hook_manager is provided
             self.http_client = HTTPClientFactory.create_client(
-                timeout_connect=10.0,
-                timeout_read=30.0,
-                http2=True
+                timeout_connect=10.0, 
+                timeout_read=30.0, 
+                http2=True,
+                hook_manager=hook_manager,  # Pass hook manager to client
             )
             self._owns_http_client = True  # We own it, close on cleanup
-        
+
         self._callback_server: asyncio.Task[None] | None = None
         self._auth_complete = asyncio.Event()
         self._auth_result: Any | None = None
@@ -78,10 +80,14 @@ class BaseOAuthClient(ABC, Generic[CredentialsT]):
         """Close resources if we own them."""
         if self._owns_http_client and self.http_client:
             await self.http_client.aclose()
-    
+
     def __del__(self):
         """Cleanup on deletion."""
-        if self._owns_http_client and self.http_client and not self.http_client.is_closed:
+        if (
+            self._owns_http_client
+            and self.http_client
+            and not self.http_client.is_closed
+        ):
             try:
                 # Try to get the current event loop
                 loop = asyncio.get_running_loop()
@@ -89,7 +95,7 @@ class BaseOAuthClient(ABC, Generic[CredentialsT]):
             except RuntimeError:
                 # No running event loop, can't clean up async resources
                 pass
-    
+
     def _generate_pkce_pair(self) -> tuple[str, str]:
         """Generate PKCE code verifier and challenge.
 
@@ -191,20 +197,7 @@ class BaseOAuthClient(ABC, Generic[CredentialsT]):
                 category="auth",
             )
 
-            # Emit hook before token request
-            if self.hook_manager:
-                from ccproxy.hooks.events import HookEvent
-                await self.hook_manager.emit(
-                    HookEvent.OAUTH_TOKEN_REQUEST,
-                    {
-                        "provider": self.__class__.__name__,
-                        "endpoint": token_endpoint,
-                        "method": "POST",
-                        "headers": headers,
-                        "body": token_data,
-                        "is_json": self._use_json_for_token_exchange(),
-                    }
-                )
+            # No need for OAuth-specific hooks here - generic HTTP hooks will capture everything
 
             # Just use self.http_client - it always exists!
             response = await self.http_client.post(
@@ -217,19 +210,8 @@ class BaseOAuthClient(ABC, Generic[CredentialsT]):
             response.raise_for_status()
 
             token_response = response.json()
-            
-            # Emit hook after token response
-            if self.hook_manager:
-                await self.hook_manager.emit(
-                    HookEvent.OAUTH_TOKEN_RESPONSE,
-                    {
-                        "provider": self.__class__.__name__,
-                        "endpoint": token_endpoint,
-                        "status_code": response.status_code,
-                        "headers": dict(response.headers),
-                        "body": token_response,
-                    }
-                )
+
+            # No need for OAuth-specific hooks here - generic HTTP hooks will capture everything
             logger.debug(
                 "token_exchange_success",
                 has_access_token="access_token" in token_response,
@@ -247,22 +229,9 @@ class BaseOAuthClient(ABC, Generic[CredentialsT]):
                 error_detail=error_detail,
                 exc_info=e,
             )
-            
-            # Emit error hook
-            if self.hook_manager:
-                from ccproxy.hooks.events import HookEvent
-                await self.hook_manager.emit(
-                    HookEvent.OAUTH_ERROR,
-                    {
-                        "provider": self.__class__.__name__,
-                        "endpoint": token_endpoint,
-                        "error_type": "http_status_error",
-                        "status_code": e.response.status_code,
-                        "error_detail": error_detail,
-                        "response_body": e.response.text,
-                    }
-                )
-            
+
+            # No need for OAuth-specific hooks here - generic HTTP hooks will capture everything
+
             raise OAuthTokenRefreshError(
                 f"Token exchange failed: {error_detail}"
             ) from e
@@ -285,9 +254,7 @@ class BaseOAuthClient(ABC, Generic[CredentialsT]):
             ) from e
 
         except Exception as e:
-            logger.error(
-                "token_exchange_unexpected_error", error=str(e), exc_info=e
-            )
+            logger.error("token_exchange_unexpected_error", error=str(e), exc_info=e)
             raise OAuthTokenRefreshError(
                 f"Unexpected error during token exchange: {e}"
             ) from e
@@ -313,9 +280,9 @@ class BaseOAuthClient(ABC, Generic[CredentialsT]):
             "code_verifier": code_verifier,
         }
 
-        # Don't include state in token exchange - not needed for OAuth 2.0
-        # if state:
-        #     base_data["state"] = state
+        # Include state if provided (some providers like Claude require it)
+        if state:
+            base_data["state"] = state
 
         # Allow providers to add custom parameters
         custom_data = self.get_custom_token_params()

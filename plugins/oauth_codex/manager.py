@@ -42,6 +42,17 @@ class CodexTokenManager(BaseTokenManager[OpenAICredentials]):
         super().__init__(storage)
         self._profile_cache: OpenAIProfileInfo | None = None
 
+    @classmethod
+    async def create(
+        cls, storage: TokenStorage[OpenAICredentials] | None = None
+    ) -> "CodexTokenManager":
+        """Async factory for parity with other managers.
+
+        Codex/OpenAI does not need to preload remote data, but this keeps a
+        consistent async creation API across managers.
+        """
+        return cls(storage=storage)
+
     # ==================== Abstract Method Implementations ====================
 
     async def refresh_token(self, oauth_client: Any = None) -> OpenAICredentials | None:

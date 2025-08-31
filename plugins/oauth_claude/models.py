@@ -3,7 +3,15 @@
 from datetime import UTC, datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, SecretStr, computed_field, field_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    SecretStr,
+    computed_field,
+    field_serializer,
+    field_validator,
+)
 
 from ccproxy.auth.models.base import BaseProfileInfo, BaseTokenInfo
 
@@ -11,12 +19,20 @@ from ccproxy.auth.models.base import BaseProfileInfo, BaseTokenInfo
 class ClaudeOAuthToken(BaseModel):
     """OAuth token information from Claude credentials."""
 
+    model_config = ConfigDict(
+        populate_by_name=True, use_enum_values=True, arbitrary_types_allowed=True
+    )
+
     access_token: SecretStr = Field(..., alias="accessToken")
     refresh_token: SecretStr = Field(..., alias="refreshToken")
     expires_at: int | None = Field(None, alias="expiresAt")
     scopes: list[str] = Field(default_factory=list)
     subscription_type: str | None = Field(None, alias="subscriptionType")
-    token_type: str = Field(default="Bearer", alias="tokenType")
+
+    @field_serializer("access_token", "refresh_token")
+    def serialize_secret(self, value: SecretStr) -> str:
+        """Serialize SecretStr to plain string for JSON output."""
+        return value.get_secret_value() if value else ""
 
     @field_validator("access_token", "refresh_token", mode="before")
     @classmethod
@@ -54,8 +70,7 @@ class ClaudeOAuthToken(BaseModel):
             f"refresh_token='{refresh_preview}', "
             f"expires_at={expires_at}, "
             f"scopes={self.scopes}, "
-            f"subscription_type='{self.subscription_type}', "
-            f"token_type='{self.token_type}')"
+            f"subscription_type='{self.subscription_type}')"
         )
 
     @property
@@ -79,6 +94,10 @@ class ClaudeOAuthToken(BaseModel):
 class ClaudeCredentials(BaseModel):
     """Claude credentials from the credentials file."""
 
+    model_config = ConfigDict(
+        populate_by_name=True, use_enum_values=True, arbitrary_types_allowed=True
+    )
+
     claude_ai_oauth: ClaudeOAuthToken = Field(..., alias="claudeAiOauth")
 
     def __repr__(self) -> str:
@@ -92,6 +111,11 @@ class ClaudeCredentials(BaseModel):
             True if expired, False otherwise
         """
         return self.claude_ai_oauth.is_expired
+
+    def model_dump(self, **kwargs) -> dict[str, Any]:
+        """Override model_dump to use by_alias=True by default."""
+        kwargs.setdefault("by_alias", True)
+        return super().model_dump(**kwargs)
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for storage.

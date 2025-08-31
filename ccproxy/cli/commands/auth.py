@@ -1,6 +1,7 @@
 """Authentication and credential management commands."""
 
 import asyncio
+import os
 import contextlib
 from typing import Annotated, Any
 
@@ -8,7 +9,9 @@ import typer
 from rich import box
 from rich.console import Console
 from rich.table import Table
-from structlog import get_logger
+import logging
+import structlog
+from ccproxy.core.logging import bootstrap_cli_logging, get_logger, setup_logging
 
 from ccproxy.cli.helpers import get_rich_toolkit
 from ccproxy.config.settings import get_settings
@@ -22,35 +25,84 @@ console = Console()
 logger = get_logger(__name__)
 
 
-def _suppress_debug_logging() -> None:
-    pass
+def _apply_auth_logger_level() -> None:
+    """Set logger level from settings without configuring handlers.
+
+    This ensures the auth command respects the configured log level while
+    relying on the global logging configuration for handlers/formatters.
+    """
+    try:
+        level_name = get_settings().logging.level
+        level = getattr(logging, level_name.upper(), logging.INFO)
+    except Exception:
+        level = logging.INFO
+
+    # Only adjust levels; do not add or modify handlers here.
+    # Apply to root CCProxy logger and this module's logger.
+    logging.getLogger("ccproxy").setLevel(level)
+    logging.getLogger(__name__).setLevel(level)
+
+
+def _ensure_logging_configured() -> None:
+    """Ensure global logging is configured with the standard format.
+
+    - If structlog is already configured, do nothing (respect global handlers).
+    - Otherwise, configure using Settings.logging (same path as `serve`).
+    """
+    if structlog.is_configured():
+        return
+
+    # First try early bootstrap from env/argv without touching settings
+    try:
+        bootstrap_cli_logging()
+    except Exception:
+        pass
+
+    if structlog.is_configured():
+        return
+
+    # If still not configured, apply a safe default console setup.
+    # Avoid reading settings here to prevent early logs in default format.
+    level_name = os.getenv("LOGGING__LEVEL", "INFO")
+    log_file = os.getenv("LOGGING__FILE")
+    try:
+        setup_logging(json_logs=False, log_level_name=level_name, log_file=log_file)
+    except Exception:
+        # Last resort: level-only
+        _apply_auth_logger_level()
 
 
 async def initialize_plugins_for_oauth() -> None:
     """Initialize plugins to register their OAuth providers."""
     from ccproxy.auth.oauth.registry import get_oauth_registry
     from ccproxy.config.settings import get_settings
+    from ccproxy.plugins import PluginContext
     from ccproxy.plugins.discovery import discover_and_load_plugins
     from ccproxy.plugins.factory import AuthProviderPluginFactory
-    from ccproxy.plugins import PluginContext
+    from ccproxy.services.cli_detection import CLIDetectionService
 
     settings = get_settings()
     plugins = discover_and_load_plugins(settings)
 
-    # Create hook manager for OAuth tracing if enabled
+    # Create detection service for OAuth providers
+    detection_service = CLIDetectionService(settings)
+
+    # Create hook manager for HTTP tracing if enabled
     hook_manager = None
     if settings.plugins.get("request_tracer", {}).get("enabled", False):
-        from plugins.request_tracer.hooks.oauth import OAuthTracerHook
         from plugins.request_tracer.config import RequestTracerConfig
-        
+        from plugins.request_tracer.hooks.http import HTTPTracerHook
+
         hook_registry = HookRegistry()
         hook_manager = HookManager(hook_registry)
-        
-        # Create and register OAuth tracer hook
-        tracer_config = RequestTracerConfig(**settings.plugins.get("request_tracer", {}))
-        oauth_hook = OAuthTracerHook(tracer_config)
-        hook_registry.register(oauth_hook)
-        logger.debug("oauth_tracer_hook_registered", category="auth")
+
+        # Create and register HTTP tracer hook for generic interception
+        tracer_config = RequestTracerConfig(
+            **settings.plugins.get("request_tracer", {})
+        )
+        http_hook = HTTPTracerHook(tracer_config)
+        hook_registry.register(http_hook)
+        logger.debug("http_tracer_hook_registered", category="auth")
 
     # Register OAuth providers from auth provider plugins
     registry = get_oauth_registry()
@@ -58,8 +110,13 @@ async def initialize_plugins_for_oauth() -> None:
         # Check if this is an auth provider plugin
         if isinstance(factory, AuthProviderPluginFactory):
             try:
-                # Create plugin context with hook manager
-                context = PluginContext({"hook_manager": hook_manager}) if hook_manager else None
+                # Create plugin context with hook manager and detection service
+                context_data = {}
+                if hook_manager:
+                    context_data["hook_manager"] = hook_manager
+                context_data["detection_service"] = detection_service
+
+                context = PluginContext(context_data) if context_data else None
                 provider = factory.create_auth_provider(context)
                 registry.register_provider(provider)
                 logger.debug(
@@ -236,7 +293,7 @@ async def check_provider_credentials(provider: str) -> dict[str, Any]:
 @app.command(name="providers")
 def list_providers() -> None:
     """List all available OAuth providers."""
-    _suppress_debug_logging()
+    _ensure_logging_configured()
     toolkit = get_rich_toolkit()
     toolkit.print("[bold cyan]Available OAuth Providers[/bold cyan]", centered=True)
     toolkit.print_line()
@@ -302,7 +359,7 @@ def login_command(
         ccproxy auth login openai         # Alias for codex
         ccproxy auth login claude-api --manual  # Manual code entry
     """
-    _suppress_debug_logging()
+    _ensure_logging_configured()
     toolkit = get_rich_toolkit()
 
     # Normalize provider names
@@ -329,10 +386,22 @@ def login_command(
             raise typer.Exit(1)
 
         # Use the new OAuth integration handler
+        from ccproxy.auth.oauth.registry import get_oauth_registry
         from ccproxy.cli.oauth_integration import CLIOAuthHandler
 
-        # Use different ports for different providers to avoid conflicts
-        port = 9999 if provider == "claude-api" else 1455
+        # Get provider to extract port from its config
+        registry = get_oauth_registry()
+        oauth_provider = registry.get_provider(provider)
+
+        # Get port from provider config if available
+        port = 9999  # Default port
+        if oauth_provider:
+            provider_config = oauth_provider.get_config()
+            if hasattr(provider_config, "callback_port"):
+                port = provider_config.callback_port
+            elif provider == "codex":
+                port = 1455  # Keep different port for codex to avoid conflicts
+
         handler = CLIOAuthHandler(port=port)
 
         try:
@@ -421,7 +490,7 @@ def status_command(
         ccproxy auth status codex        # Codex/OpenAI status
         ccproxy auth status -d codex     # Detailed info with tokens
     """
-    _suppress_debug_logging()
+    _ensure_logging_configured()
     toolkit = get_rich_toolkit()
 
     # Store original provider name for display
@@ -703,41 +772,69 @@ async def get_oauth_provider_for_name(provider: str) -> Any:
     """
     from ccproxy.auth.oauth.registry import get_oauth_registry
     from ccproxy.config.settings import get_settings
+    from ccproxy.plugins import PluginContext
     from ccproxy.plugins.discovery import discover_and_load_plugins
     from ccproxy.plugins.factory import AuthProviderPluginFactory
-    from ccproxy.plugins import PluginContext
+    from ccproxy.services.cli_detection import CLIDetectionService
 
     # First ensure plugins are loaded to register providers
     settings = get_settings()
     plugins = discover_and_load_plugins(settings)
 
-    # Create hook manager for OAuth tracing if enabled
+    # Create detection service for OAuth providers
+    detection_service = CLIDetectionService(settings)
+
+    # Create hook manager for HTTP tracing if enabled
     hook_manager = None
     if settings.plugins.get("request_tracer", {}).get("enabled", False):
-        from plugins.request_tracer.hooks.oauth import OAuthTracerHook
         from plugins.request_tracer.config import RequestTracerConfig
-        
+        from plugins.request_tracer.hooks.http import HTTPTracerHook
+
         hook_registry = HookRegistry()
         hook_manager = HookManager(hook_registry)
-        
-        # Create and register OAuth tracer hook
-        tracer_config = RequestTracerConfig(**settings.plugins.get("request_tracer", {}))
-        oauth_hook = OAuthTracerHook(tracer_config)
-        hook_registry.register(oauth_hook)
 
-    # Register OAuth providers from auth provider plugins
+        # Create and register HTTP tracer hook for generic interception
+        tracer_config = RequestTracerConfig(
+            **settings.plugins.get("request_tracer", {})
+        )
+        http_hook = HTTPTracerHook(tracer_config)
+        hook_registry.register(http_hook)
+
+    # Get the registry
     registry = get_oauth_registry()
+
+    # Check if the requested provider is already registered
+    existing_provider = registry.get_provider(provider)
+    if existing_provider:
+        # Provider already registered, just return it
+        return existing_provider
+
+    # Provider not found, need to register all providers
     for _plugin_name, factory in plugins.items():
         if isinstance(factory, AuthProviderPluginFactory):
+            # Check if this factory's provider is already registered before creating
+            # This is a bit tricky since we don't know the provider name until we create it
+            # But we can skip if we already have enough providers registered
             try:
-                # Create plugin context with hook manager
-                context = PluginContext({"hook_manager": hook_manager}) if hook_manager else None
+                # Create plugin context with hook manager and detection service
+                context_data = {}
+                if hook_manager:
+                    context_data["hook_manager"] = hook_manager
+                context_data["detection_service"] = detection_service
+
+                context = PluginContext(context_data) if context_data else None
                 oauth_provider = factory.create_auth_provider(context)
-                # Register if not already registered
+
+                # Only register if not already registered
                 if not registry.has_provider(oauth_provider.provider_name):
                     registry.register_provider(oauth_provider)
-            except Exception:
-                pass  # Already logged in initialize_plugins_for_oauth
 
-    # Now get the provider
+                # If this was the provider we were looking for, we can stop
+                if oauth_provider.provider_name == provider:
+                    return oauth_provider
+
+            except Exception:
+                pass  # Ignore failures
+
+    # Return the provider if it was registered
     return registry.get_provider(provider)

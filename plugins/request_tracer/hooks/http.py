@@ -1,8 +1,8 @@
-"""OAuth-specific request tracer hook."""
+"""Generic HTTP request tracer hook."""
 
 import json
-from pathlib import Path
 from typing import Any
+import uuid
 
 import structlog
 
@@ -17,21 +17,19 @@ from ..formatters import JSONFormatter, RawHTTPFormatter
 logger = structlog.get_logger(__name__)
 
 
-class OAuthTracerHook(Hook):
-    """Hook for tracing OAuth HTTP requests and responses."""
+class HTTPTracerHook(Hook):
+    """Hook for tracing all HTTP requests and responses."""
 
-    name = "oauth_tracer"
+    name = "http_tracer"
     events = [
-        HookEvent.OAUTH_TOKEN_REQUEST,
-        HookEvent.OAUTH_TOKEN_RESPONSE,
-        HookEvent.OAUTH_REFRESH_REQUEST,
-        HookEvent.OAUTH_REFRESH_RESPONSE,
-        HookEvent.OAUTH_ERROR,
+        HookEvent.HTTP_REQUEST,
+        HookEvent.HTTP_RESPONSE,
+        HookEvent.HTTP_ERROR,
     ]
     priority = 100  # Run early to capture raw data
 
     def __init__(self, config: RequestTracerConfig | None = None) -> None:
-        """Initialize the OAuth tracer hook.
+        """Initialize the HTTP tracer hook.
 
         Args:
             config: Request tracer configuration
@@ -49,14 +47,14 @@ class OAuthTracerHook(Hook):
 
         if self.enabled:
             logger.info(
-                "oauth_tracer_hook_initialized",
+                "http_tracer_hook_initialized",
                 json_logs=self.config.json_logs_enabled,
                 raw_http=self.config.raw_http_enabled,
                 log_dir=self.config.log_dir,
             )
 
     async def __call__(self, context: HookContext) -> None:
-        """Process OAuth events and log them.
+        """Process HTTP events and log them.
 
         Args:
             context: Hook context with event data
@@ -66,121 +64,116 @@ class OAuthTracerHook(Hook):
 
         event = context.event
         try:
-            if event == HookEvent.OAUTH_TOKEN_REQUEST:
-                await self._log_oauth_request(context)
-            elif event == HookEvent.OAUTH_TOKEN_RESPONSE:
-                await self._log_oauth_response(context)
-            elif event == HookEvent.OAUTH_REFRESH_REQUEST:
-                await self._log_oauth_request(context, is_refresh=True)
-            elif event == HookEvent.OAUTH_REFRESH_RESPONSE:
-                await self._log_oauth_response(context, is_refresh=True)
-            elif event == HookEvent.OAUTH_ERROR:
-                await self._log_oauth_error(context)
+            if event == HookEvent.HTTP_REQUEST:
+                await self._log_http_request(context)
+            elif event == HookEvent.HTTP_RESPONSE:
+                await self._log_http_response(context)
+            elif event == HookEvent.HTTP_ERROR:
+                await self._log_http_error(context)
         except Exception as e:
             logger.error(
-                "oauth_tracer_hook_error",
+                "http_tracer_hook_error",
                 hook_event=event.value if hasattr(event, "value") else str(event),
                 error=str(e),
                 exc_info=e,
             )
 
-    async def _log_oauth_request(
-        self, context: HookContext, is_refresh: bool = False
-    ) -> None:
-        """Log an OAuth request.
+    async def _log_http_request(self, context: HookContext) -> None:
+        """Log an HTTP request.
 
         Args:
             context: Hook context with request data
-            is_refresh: Whether this is a token refresh request
         """
-        provider = context.data.get("provider", "unknown")
-        endpoint = context.data.get("endpoint", "")
-        method = context.data.get("method", "POST")
+        method = context.data.get("method", "UNKNOWN")
+        url = context.data.get("url", "")
         headers = context.data.get("headers", {})
-        body = context.data.get("body", {})
+        body = context.data.get("body")
         is_json = context.data.get("is_json", False)
 
         # Generate a request ID for correlation
-        import uuid
-
         request_id = str(uuid.uuid4())
 
         # Store request ID in context for response correlation
         context.data["request_id"] = request_id
 
-        operation = "refresh" if is_refresh else "token_exchange"
         logger.debug(
-            f"oauth_{operation}_request",
+            "http_request",
             request_id=request_id,
-            provider=provider,
-            endpoint=endpoint,
+            method=method,
+            url=url,
         )
 
         # Log with JSON formatter
         if self.json_formatter:
             # Convert body to bytes for JSON formatter
-            if is_json:
-                body_bytes = json.dumps(body).encode() if body else b""
-            else:
-                body_bytes = self._encode_form_data(body).encode() if body else b""
+            body_bytes = b""
+            if body:
+                if is_json:
+                    body_bytes = json.dumps(body).encode() if isinstance(body, dict) else str(body).encode()
+                elif isinstance(body, bytes):
+                    body_bytes = body
+                elif isinstance(body, str):
+                    body_bytes = body.encode()
+                else:
+                    body_bytes = str(body).encode()
 
             await self.json_formatter.log_request(
                 request_id=request_id,
                 method=method,
-                url=endpoint,
+                url=url,
                 headers=headers,
                 body=body_bytes,
-                request_type="oauth",
+                request_type="http",
             )
 
         # Log with raw HTTP formatter
         if self.raw_formatter:
             # Build raw HTTP request
             raw_request = self._build_raw_http_request(
-                method, endpoint, headers, body, is_json
+                method, url, headers, body, is_json
             )
             await self.raw_formatter.log_client_request(
                 request_id=request_id,
                 raw_data=raw_request,
             )
 
-    async def _log_oauth_response(
-        self, context: HookContext, is_refresh: bool = False
-    ) -> None:
-        """Log an OAuth response.
+    async def _log_http_response(self, context: HookContext) -> None:
+        """Log an HTTP response.
 
         Args:
             context: Hook context with response data
-            is_refresh: Whether this is a token refresh response
         """
-        import uuid
-
-        provider = context.data.get("provider", "unknown")
-        endpoint = context.data.get("endpoint", "")
-        status_code = context.data.get("status_code", 0)
-        headers = context.data.get("headers", {})
-        body = context.data.get("body", {})
         request_id = context.data.get("request_id", str(uuid.uuid4()))
+        status_code = context.data.get("status_code", 0)
+        headers = context.data.get("response_headers", {})
+        body = context.data.get("response_body")
 
-        operation = "refresh" if is_refresh else "token_exchange"
         logger.debug(
-            f"oauth_{operation}_response",
+            "http_response",
             request_id=request_id,
-            provider=provider,
             status_code=status_code,
         )
 
         # Log with JSON formatter
         if self.json_formatter:
             # Convert body to bytes for JSON formatter
-            body_bytes = json.dumps(body).encode() if body else b""
+            body_bytes = b""
+            if body:
+                if isinstance(body, dict):
+                    body_bytes = json.dumps(body).encode()
+                elif isinstance(body, bytes):
+                    body_bytes = body
+                elif isinstance(body, str):
+                    body_bytes = body.encode()
+                else:
+                    body_bytes = str(body).encode()
 
             await self.json_formatter.log_response(
                 request_id=request_id,
                 status=status_code,
                 headers=headers,
                 body=body_bytes,
-                response_type="oauth",
+                response_type="http",
             )
 
         # Log with raw HTTP formatter
@@ -192,27 +185,21 @@ class OAuthTracerHook(Hook):
                 raw_data=raw_response,
             )
 
-    async def _log_oauth_error(self, context: HookContext) -> None:
-        """Log an OAuth error.
+    async def _log_http_error(self, context: HookContext) -> None:
+        """Log an HTTP error.
 
         Args:
             context: Hook context with error data
         """
-        import uuid
-
-        provider = context.data.get("provider", "unknown")
-        endpoint = context.data.get("endpoint", "")
-        error_type = context.data.get("error_type", "unknown")
-        status_code = context.data.get("status_code", 0)
-        error_detail = context.data.get("error_detail", "")
-        response_body = context.data.get("response_body", "")
         request_id = context.data.get("request_id", str(uuid.uuid4()))
+        error_type = context.data.get("error_type", "unknown")
+        error_detail = context.data.get("error_detail", "")
+        status_code = context.data.get("status_code", 0)
+        response_body = context.data.get("response_body", "")
 
         logger.error(
-            "oauth_error",
+            "http_error",
             request_id=request_id,
-            provider=provider,
-            endpoint=endpoint,
             error_type=error_type,
             status_code=status_code,
             error_detail=error_detail,
@@ -223,7 +210,6 @@ class OAuthTracerHook(Hook):
             await self.json_formatter.log_error(
                 request_id=request_id,
                 error=Exception(f"{error_type}: {error_detail}"),
-                provider=provider,
             )
 
         if self.raw_formatter and status_code > 0:
@@ -234,25 +220,12 @@ class OAuthTracerHook(Hook):
                 raw_data=raw_response.encode(),
             )
 
-    def _encode_form_data(self, data: dict[str, Any]) -> str:
-        """Encode form data for logging.
-
-        Args:
-            data: Form data dictionary
-
-        Returns:
-            URL-encoded form data string
-        """
-        from urllib.parse import urlencode
-
-        return urlencode(data)
-
     def _build_raw_http_request(
         self,
         method: str,
         url: str,
         headers: dict[str, str],
-        body: dict[str, Any],
+        body: Any,
         is_json: bool,
     ) -> bytes:
         """Build raw HTTP request for logging.
@@ -271,30 +244,37 @@ class OAuthTracerHook(Hook):
         from urllib.parse import urlparse
 
         parsed = urlparse(url)
-        path = parsed.path + ("?" + parsed.query if parsed.query else "")
+        path = parsed.path or "/"
+        if parsed.query:
+            path += f"?{parsed.query}"
 
         # Build request line
         lines = [f"{method} {path} HTTP/1.1"]
 
         # Add Host header
-        lines.append(f"Host: {parsed.netloc}")
+        if parsed.netloc:
+            lines.append(f"Host: {parsed.netloc}")
 
         # Add other headers
         for key, value in headers.items():
             lines.append(f"{key}: {value}")
 
         # Add body
+        body_str = ""
         if body:
-            if is_json:
+            if is_json and isinstance(body, dict):
                 body_str = json.dumps(body)
-                lines.append(f"Content-Length: {len(body_str)}")
-                lines.append("")
-                lines.append(body_str)
+            elif isinstance(body, bytes):
+                try:
+                    body_str = body.decode()
+                except:
+                    body_str = str(body)
             else:
-                body_str = self._encode_form_data(body)
-                lines.append(f"Content-Length: {len(body_str)}")
-                lines.append("")
-                lines.append(body_str)
+                body_str = str(body)
+            
+            lines.append(f"Content-Length: {len(body_str)}")
+            lines.append("")
+            lines.append(body_str)
         else:
             lines.append("")
 
@@ -304,7 +284,7 @@ class OAuthTracerHook(Hook):
         self,
         status_code: int,
         headers: dict[str, str],
-        body: dict[str, Any] | None,
+        body: Any,
     ) -> bytes:
         """Build raw HTTP response for logging.
 
@@ -325,7 +305,16 @@ class OAuthTracerHook(Hook):
 
         # Add body
         if body:
-            body_str = json.dumps(body, indent=2)
+            if isinstance(body, dict):
+                body_str = json.dumps(body, indent=2)
+            elif isinstance(body, bytes):
+                try:
+                    body_str = body.decode()
+                except:
+                    body_str = str(body)
+            else:
+                body_str = str(body)
+            
             lines.append(f"Content-Length: {len(body_str)}")
             lines.append("")
             lines.append(body_str)

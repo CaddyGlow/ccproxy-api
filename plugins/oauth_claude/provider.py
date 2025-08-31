@@ -2,7 +2,11 @@
 
 import hashlib
 from base64 import urlsafe_b64encode
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+
+if TYPE_CHECKING:
+    from ccproxy.services.cli_detection import CLIDetectionService
 from urllib.parse import urlencode
 
 import httpx
@@ -27,6 +31,7 @@ class ClaudeOAuthProvider:
         storage: ClaudeOAuthStorage | None = None,
         http_client: httpx.AsyncClient | None = None,
         hook_manager: Any | None = None,
+        detection_service: "CLIDetectionService | None" = None,
     ):
         """Initialize Claude OAuth provider.
 
@@ -35,10 +40,13 @@ class ClaudeOAuthProvider:
             storage: Token storage
             http_client: Optional HTTP client (for request tracing support)
             hook_manager: Optional hook manager for emitting events
+            detection_service: Optional CLI detection service for headers
         """
         self.config = config or ClaudeOAuthConfig()
         self.storage = storage or ClaudeOAuthStorage()
         self.hook_manager = hook_manager
+        self.detection_service = detection_service
+        self.http_client = http_client
 
         # Build redirect URI from callback port if not set
         if self.config.redirect_uri is None:
@@ -47,7 +55,11 @@ class ClaudeOAuthProvider:
             )
 
         self.client = ClaudeOAuthClient(
-            self.config, self.storage, http_client, hook_manager=hook_manager
+            self.config,
+            self.storage,
+            http_client,
+            hook_manager=hook_manager,
+            detection_service=detection_service,
         )
 
     @property
@@ -343,12 +355,29 @@ class ClaudeOAuthProvider:
             if custom_path:
                 # Load from custom path
                 storage = GenericJsonStorage(Path(custom_path), ClaudeCredentials)
-                manager = ClaudeApiTokenManager(storage=storage)
+                manager = await ClaudeApiTokenManager.create(
+                    storage=storage, http_client=self.http_client
+                )
             else:
                 # Load from default storage
-                manager = ClaudeApiTokenManager()
+                manager = await ClaudeApiTokenManager.create(
+                    http_client=self.http_client
+                )
 
-            return await manager.load_credentials()
+            credentials = await manager.load_credentials()
+            
+            # Dump full profile information to logger
+            if credentials:
+                profile = await manager.get_profile()
+                if profile:
+                    # Dump all profile data
+                    logger.debug(
+                        "claude_profile_full_dump",
+                        profile_data=profile.model_dump() if hasattr(profile, 'model_dump') else str(profile),
+                        category="auth",
+                    )
+            
+            return credentials
         except Exception as e:
             logger.error(
                 "Failed to load Claude credentials",

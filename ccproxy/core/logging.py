@@ -593,3 +593,75 @@ def get_plugin_logger(name: str | None = None) -> TraceBoundLogger:
             logger = logger.bind(plugin_name=plugin_name)
 
     return logger
+
+
+
+def _parse_arg_value(argv: list[str], flag: str) -> str | None:
+    """Parse a simple CLI flag value from argv.
+
+    Supports "--flag value" and "--flag=value" forms. Returns None if not present.
+    """
+    if not argv:
+        return None
+    try:
+        for i, token in enumerate(argv):
+            if token == flag and i + 1 < len(argv):
+                return argv[i + 1]
+            if token.startswith(flag + "="):
+                return token.split("=", 1)[1]
+    except Exception:
+        # Be forgiving in bootstrap parsing
+        return None
+    return None
+
+
+def bootstrap_cli_logging(argv: list[str] | None = None) -> None:
+    """Best-effort early logging setup from env and CLI args.
+
+    - Parses `--log-level` and `--log-file` from argv (if provided).
+    - Honors env overrides `LOGGING__LEVEL`, `LOGGING__FILE`.
+    - Enables JSON logs if explicitly requested via `LOGGING__FORMAT=json` or `CCPROXY_JSON_LOGS=true`.
+    - No-op if structlog is already configured, letting later setup prevail.
+
+    This is intentionally lightweight and is followed by a full `setup_logging`
+    call after settings are loaded (e.g., in the serve command), so runtime
+    changes from config are still applied.
+    """
+    try:
+        if structlog.is_configured():
+            return
+
+        if argv is None:
+            argv = sys.argv[1:]
+
+        # Env-based defaults
+        env_level = os.getenv("LOGGING__LEVEL")
+        env_file = os.getenv("LOGGING__FILE")
+        env_format = os.getenv("LOGGING__FORMAT")
+        legacy_json_env = os.getenv("CCPROXY_JSON_LOGS")
+
+        # CLI overrides
+        arg_level = _parse_arg_value(argv, "--log-level")
+        arg_file = _parse_arg_value(argv, "--log-file")
+
+        # Decide whether to bootstrap at all: only if any override present
+        any_override = any([env_level, env_file, env_format, legacy_json_env, arg_level, arg_file])
+        if not any_override:
+            return
+
+        # Resolve effective values (CLI > env)
+        level = (arg_level or env_level or "INFO").upper()
+        log_file = arg_file or env_file
+
+        # JSON if explicitly requested via env
+        json_logs = False
+        if env_format:
+            json_logs = env_format.lower() == "json"
+        if legacy_json_env and legacy_json_env.lower() in {"1", "true", "yes", "on"}:
+            json_logs = True
+
+        # Apply early setup. Safe to run again later with final settings.
+        setup_logging(json_logs=json_logs, log_level_name=level, log_file=log_file)
+    except Exception:
+        # Never break CLI due to bootstrap; final setup will run later.
+        return

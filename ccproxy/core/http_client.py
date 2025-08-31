@@ -13,6 +13,7 @@ import httpx
 import structlog
 
 from ccproxy.config.settings import Settings
+from ccproxy.core.http_client_hooks import HookableHTTPClient
 
 
 logger = structlog.get_logger(__name__)
@@ -38,6 +39,7 @@ class HTTPClientFactory:
         max_connections: int = 1000,  # High limit for concurrent streams
         http2: bool = True,  # Enable multiplexing (requires httpx[http2])
         verify: bool | str = True,
+        hook_manager: Any | None = None,
         **kwargs: Any,
     ) -> httpx.AsyncClient:
         """Create an optimized HTTP client with recommended configuration.
@@ -50,6 +52,7 @@ class HTTPClientFactory:
             max_connections: Max total concurrent connections
             http2: Enable HTTP/2 multiplexing
             verify: SSL verification (True/False or path to CA bundle)
+            hook_manager: Optional HookManager for request/response interception
             **kwargs: Additional httpx.AsyncClient arguments
 
         Returns:
@@ -133,13 +136,18 @@ class HTTPClientFactory:
             max_connections=max_connections,
             http2=http2,
             has_proxy=proxy is not None,
+            has_hooks=hook_manager is not None,
             compression_enabled=settings.http.compression_enabled
             if settings and hasattr(settings, "http")
             else True,
             accept_encoding=compression_status,
         )
 
-        return httpx.AsyncClient(**client_config)
+        # Create client with or without hook support
+        if hook_manager:
+            return HookableHTTPClient(hook_manager=hook_manager, **client_config)
+        else:
+            return httpx.AsyncClient(**client_config)
 
     @staticmethod
     def create_shared_client(settings: Settings | None = None) -> httpx.AsyncClient:
