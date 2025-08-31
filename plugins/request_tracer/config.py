@@ -28,10 +28,11 @@ class RequestTracerConfig(BaseModel):
     raw_http_enabled: bool = Field(
         default=True, description="Enable raw HTTP protocol logging"
     )
-    
+
     # OAuth tracing
     trace_oauth: bool = Field(
-        default=True, description="Enable OAuth request/response tracing for CLI operations"
+        default=True,
+        description="Enable OAuth request/response tracing for CLI operations",
     )
 
     # Directory configuration
@@ -107,7 +108,7 @@ class RequestTracerConfig(BaseModel):
 
     def get_raw_log_dir(self) -> str:
         """Get directory for raw HTTP logs."""
-        return self.raw_log_dir or f"{self.log_dir}/raw"
+        return self.raw_log_dir or self.log_dir
 
     def should_trace_path(self, path: str) -> bool:
         """Check if a path should be traced based on include/exclude rules."""

@@ -4,7 +4,7 @@ fdcat() {
   fd -t f "$@" -x sh -c 'printf "\n\033[1;34m=== %s ===\033[0m\n" "$1" && cat "$1"' _ {}
 }
 PATH_LOG="/tmp/ccproxy"
-PATH_REQ="${PATH_LOG}/tracer/raw/"
+PATH_REQ="${PATH_LOG}/tracer/"
 
 # Parse arguments
 N=-1 # Default to last request
@@ -36,6 +36,8 @@ if [[ -z "$LAST_UUID" ]]; then
 fi
 
 printf "\n\033[1;34m=== Log ===\033[0m\n"
-grep "${LAST_UUID}" "${PATH_LOG}/ccproxy.log" | jq .
-printf "\n\033[1;34m=== Requests ===\033[0m\n"
+rg -I -t log "${LAST_UUID}" ${PATH_LOG} | jq .
+printf "\n\033[1;34m=== Raw ===\033[0m\n"
 bat --paging never "${PATH_REQ}"*"${LAST_UUID}"*.http
+printf "\n\033[1;34m=== Requests ===\033[0m\n"
+bat --paging never "${PATH_REQ}"*"${LAST_UUID}"*.json

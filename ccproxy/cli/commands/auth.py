@@ -143,23 +143,34 @@ async def _lazy_register_oauth_provider(provider: str) -> Any | None:
     try:
         if settings.plugins.get("request_tracer", {}).get("enabled", False):
             from plugins.request_tracer.config import RequestTracerConfig
-            from plugins.request_tracer.hooks.oauth import OAuthTracerHook
+            from plugins.request_tracer.hooks.http import HTTPTracerHook
 
             hook_registry = HookRegistry()
             hook_manager = HookManager(hook_registry)
             tracer_config = RequestTracerConfig(
                 **settings.plugins.get("request_tracer", {})
             )
-            # Register OAuth tracer hook for OAuth-specific tracing
-            oauth_hook = OAuthTracerHook(tracer_config)
-            hook_registry.register(oauth_hook)
-            logger.debug("oauth_tracer_hook_registered", category="auth")
+            # Register HTTP tracer hook for generic HTTP interception
+            http_hook = HTTPTracerHook(tracer_config)
+            hook_registry.register(http_hook)
+            logger.debug("http_tracer_hook_registered", category="auth")
     except Exception as e:
         # Tracing is best-effort; continue without it
         logger.debug("hook_registration_failed", error=str(e), category="auth", exc_info=e)
         pass
 
-    context_data: dict[str, Any] = {"detection_service": detection_service}
+    # Create HTTP client with hook support if enabled
+    from ccproxy.core.http_client import HTTPClientFactory
+    
+    http_client = HTTPClientFactory.create_client(
+        settings=settings,
+        hook_manager=hook_manager,  # Will use HookableHTTPClient if hook_manager is provided
+    )
+    
+    context_data: dict[str, Any] = {
+        "detection_service": detection_service,
+        "http_client": http_client,
+    }
     if hook_manager:
         context_data["hook_manager"] = hook_manager
     context = PluginContext(context_data)

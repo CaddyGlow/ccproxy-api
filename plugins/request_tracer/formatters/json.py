@@ -3,9 +3,12 @@
 import json
 import logging
 from pathlib import Path
+import os
 from typing import Any
 
 import structlog
+import uuid
+from structlog.contextvars import get_merged_contextvars
 
 
 logger = structlog.get_logger(__name__)
@@ -45,6 +48,45 @@ class JSONFormatter:
         if self.json_logs_enabled:
             self.request_log_dir = Path(config.get_json_log_dir())
             self.request_log_dir.mkdir(parents=True, exist_ok=True)
+
+    def _current_cmd_id(self) -> str | None:
+        """Return current cmd_id from structlog contextvars or env."""
+        try:
+            ctx = get_merged_contextvars() or {}
+            cmd_id = ctx.get("cmd_id")
+        except Exception:
+            cmd_id = None
+
+        if not cmd_id:
+            cmd_id = os.getenv("CCPROXY_CMD_ID")
+
+        return str(cmd_id) if cmd_id else None
+
+    def _compose_file_id(self, request_id: str | None) -> str:
+        """Build filename ID using cmd_id and request_id per rules.
+
+        - If both cmd_id and request_id exist: "{cmd_id}_{request_id}"
+        - If only request_id exists: request_id
+        - If only cmd_id exists: cmd_id
+        - If neither exists: generate a UUID4
+        """
+        try:
+            ctx = get_merged_contextvars() or {}
+            cmd_id = ctx.get("cmd_id")
+        except Exception:
+            cmd_id = None
+
+        # Fallback to environment variable if contextvars not available
+        if not cmd_id:
+            cmd_id = os.getenv("CCPROXY_CMD_ID")
+
+        if cmd_id and request_id:
+            return f"{cmd_id}_{request_id}"
+        if request_id:
+            return request_id
+        if cmd_id:
+            return str(cmd_id)
+        return str(uuid.uuid4())
 
     @staticmethod
     def redact_headers(headers: dict[str, str]) -> dict[str, str]:
@@ -121,7 +163,8 @@ class JSONFormatter:
             file_suffix = (
                 f"{request_type}_request" if request_type != "provider" else "request"
             )
-            request_file = self.request_log_dir / f"{request_id}_{file_suffix}.json"
+            base_id = self._compose_file_id(request_id)
+            request_file = self.request_log_dir / f"{base_id}_{file_suffix}.json"
 
             # Try to parse body as JSON first, then string, then base64
             body_content = None
@@ -152,6 +195,11 @@ class JSONFormatter:
                 "body": body_content,
                 "type": request_type,
             }
+
+            # Add cmd_id for CLI correlation if present
+            cmd_id = self._current_cmd_id()
+            if cmd_id:
+                request_data["cmd_id"] = cmd_id
 
             # Add context data if available
             if context and hasattr(context, "to_dict"):
@@ -229,7 +277,8 @@ class JSONFormatter:
                 body_size=len(body) if body else 0,
                 body_preview=body[:100] if body else None,
             )
-            response_file = self.request_log_dir / f"{request_id}_{file_suffix}.json"
+            base_id = self._compose_file_id(request_id)
+            response_file = self.request_log_dir / f"{base_id}_{file_suffix}.json"
 
             # Try to parse body as JSON first, then string, then base64
             body_content: str | dict[str, Any] = ""
@@ -259,6 +308,11 @@ class JSONFormatter:
                 "body": body_content,
                 "type": response_type,
             }
+
+            # Add cmd_id for CLI correlation if present
+            cmd_id = self._current_cmd_id()
+            if cmd_id:
+                response_data["cmd_id"] = cmd_id
 
             # Add context data if available (including cost/metrics)
             if context and hasattr(context, "to_dict"):

@@ -10,7 +10,7 @@ from ccproxy._version import __version__
 from ccproxy.cli.helpers import (
     get_rich_toolkit,
 )
-from ccproxy.core.logging import bootstrap_cli_logging
+from ccproxy.core.logging import bootstrap_cli_logging, set_command_context
 
 # from plugins.permissions.handlers.cli import app as permission_handler_app
 from .commands.auth import app as auth_app
@@ -100,6 +100,8 @@ app.command(name="serve")(api)
 
 def main() -> None:
     """Entry point for the CLI application."""
+    # Bind a command-wide correlation ID so all logs have `cmd_id`
+    set_command_context()
     # Early logging bootstrap from env/argv; safe to reconfigure later
     bootstrap_cli_logging()
     app()

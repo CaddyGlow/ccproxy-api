@@ -5,6 +5,9 @@ import sys
 from collections.abc import MutableMapping
 from pathlib import Path
 from typing import Any, Protocol, TextIO
+import uuid
+import os
+from structlog.contextvars import bind_contextvars
 
 import structlog
 from rich.console import Console
@@ -665,3 +668,31 @@ def bootstrap_cli_logging(argv: list[str] | None = None) -> None:
     except Exception:
         # Never break CLI due to bootstrap; final setup will run later.
         return
+
+
+def set_command_context(cmd_id: str | None = None) -> str:
+    """Bind a command-wide correlation ID to structlog context.
+
+    Uses structlog.contextvars so all logs (including from plugins) will carry
+    `cmd_id` once logging is configured with `merge_contextvars`.
+
+    Args:
+        cmd_id: Optional explicit command ID. If None, a UUID4 is generated.
+
+    Returns:
+        The command ID that was bound.
+    """
+    try:
+        if not cmd_id:
+            cmd_id = str(uuid.uuid4())
+        # Bind only cmd_id to avoid colliding with per-request request_id fields
+        bind_contextvars(cmd_id=cmd_id)
+        # Also expose via env for non-structlog paths and cross-context reads
+        try:
+            os.environ["CCPROXY_CMD_ID"] = cmd_id
+        except Exception:
+            pass
+        return cmd_id
+    except Exception:
+        # Be defensive: never break CLI startup due to context binding
+        return cmd_id or ""

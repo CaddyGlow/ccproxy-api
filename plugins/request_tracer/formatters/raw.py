@@ -2,10 +2,13 @@
 
 from collections.abc import Sequence
 from pathlib import Path
+import os
+import uuid
 
 import aiofiles
 
 from ccproxy.core.logging import get_plugin_logger
+from structlog.contextvars import get_merged_contextvars
 
 from ..config import RequestTracerConfig
 
@@ -49,6 +52,32 @@ class RawHTTPFormatter:
         # Track which files we've already logged to (to only log once)
         self._logged_files: set[str] = set()
 
+    def _compose_file_id(self, request_id: str | None) -> str:
+        """Build filename ID using cmd_id and request_id per rules.
+
+        - If both cmd_id and request_id exist: "{cmd_id}_{request_id}"
+        - If only request_id exists: request_id
+        - If only cmd_id exists: cmd_id
+        - If neither exists: generate a UUID4
+        """
+        try:
+            ctx = get_merged_contextvars() or {}
+            cmd_id = ctx.get("cmd_id")
+        except Exception:
+            cmd_id = None
+
+        # Fallback to environment variable if contextvars not available
+        if not cmd_id:
+            cmd_id = os.getenv("CCPROXY_CMD_ID")
+
+        if cmd_id and request_id:
+            return f"{cmd_id}_{request_id}"
+        if request_id:
+            return request_id
+        if cmd_id:
+            return str(cmd_id)
+        return str(uuid.uuid4())
+
     def should_log(self) -> bool:
         """Check if raw logging is enabled."""
         return bool(self.enabled)
@@ -62,8 +91,9 @@ class RawHTTPFormatter:
         if len(raw_data) > self.max_body_size:
             raw_data = raw_data[: self.max_body_size] + b"\n[TRUNCATED]"
 
-        file_path = self.log_dir / f"{request_id}_client_request.http"
-        file_key = f"{request_id}_client_request"
+        base_id = self._compose_file_id(request_id)
+        file_path = self.log_dir / f"{base_id}_client_request.http"
+        file_key = f"{base_id}_client_request"
 
         # Only log on first write to this file
         if file_key not in self._logged_files:
@@ -88,8 +118,9 @@ class RawHTTPFormatter:
         if len(raw_data) > self.max_body_size:
             raw_data = raw_data[: self.max_body_size] + b"\n[TRUNCATED]"
 
-        file_path = self.log_dir / f"{request_id}_client_response.http"
-        file_key = f"{request_id}_client_response"
+        base_id = self._compose_file_id(request_id)
+        file_path = self.log_dir / f"{base_id}_client_response.http"
+        file_key = f"{base_id}_client_response"
 
         # Only log on first write to this file
         if file_key not in self._logged_files:
@@ -114,8 +145,9 @@ class RawHTTPFormatter:
         if len(raw_data) > self.max_body_size:
             raw_data = raw_data[: self.max_body_size] + b"\n[TRUNCATED]"
 
-        file_path = self.log_dir / f"{request_id}_provider_request.http"
-        file_key = f"{request_id}_provider_request"
+        base_id = self._compose_file_id(request_id)
+        file_path = self.log_dir / f"{base_id}_provider_request.http"
+        file_key = f"{base_id}_provider_request"
 
         # Only log on first write to this file
         if file_key not in self._logged_files:
@@ -140,8 +172,9 @@ class RawHTTPFormatter:
         if len(raw_data) > self.max_body_size:
             raw_data = raw_data[: self.max_body_size] + b"\n[TRUNCATED]"
 
-        file_path = self.log_dir / f"{request_id}_provider_response.http"
-        file_key = f"{request_id}_provider_response"
+        base_id = self._compose_file_id(request_id)
+        file_path = self.log_dir / f"{base_id}_provider_response.http"
+        file_key = f"{base_id}_provider_response"
 
         # Only log on first write to this file
         if file_key not in self._logged_files:
