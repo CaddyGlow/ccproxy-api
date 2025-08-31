@@ -9,8 +9,8 @@ from ccproxy.auth.exceptions import (
     CredentialsInvalidError,
     CredentialsStorageError,
 )
-from ccproxy.auth.models import ClaudeCredentials
 from ccproxy.auth.storage.base import TokenStorage
+from .models import ClaudeCredentials
 
 
 logger = get_logger(__name__)

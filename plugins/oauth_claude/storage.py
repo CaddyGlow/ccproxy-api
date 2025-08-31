@@ -3,9 +3,9 @@
 import json
 from pathlib import Path
 
-from ccproxy.auth.models import ClaudeCredentials
 from ccproxy.auth.storage.base import TokenStorage
 from ccproxy.core.logging import get_plugin_logger
+from plugins.claude_api.auth.models import ClaudeCredentials
 
 
 logger = get_plugin_logger()

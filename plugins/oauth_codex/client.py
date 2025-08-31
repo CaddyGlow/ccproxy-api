@@ -6,10 +6,10 @@ from typing import Any
 import jwt
 
 from ccproxy.auth.exceptions import OAuthError
-from ccproxy.auth.models import OpenAICredentials
 from ccproxy.auth.oauth.base import BaseOAuthClient
 from ccproxy.auth.storage.base import TokenStorage
 from ccproxy.core.logging import get_plugin_logger
+from plugins.codex.auth.models import OpenAICredentials
 from plugins.oauth_codex.config import CodexOAuthConfig
 
 

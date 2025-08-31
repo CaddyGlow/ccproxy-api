@@ -245,7 +245,7 @@ class CodexRuntime(ProviderPluginRuntime):
             # Pass both pricing_service (if available now) and plugin_registry (for lazy loading)
             metrics_hook = CodexStreamingMetricsHook(
                 pricing_service=pricing_service,
-                plugin_registry=self.context.get("plugin_registry")
+                plugin_registry=self.context.get("plugin_registry"),
             )
             hook_registry.register(metrics_hook)
 

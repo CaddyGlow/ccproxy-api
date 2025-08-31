@@ -3,10 +3,115 @@
 from datetime import UTC, datetime
 from typing import Any, Literal
 
-from pydantic import computed_field
+from pydantic import BaseModel, Field, SecretStr, computed_field, field_validator
 
-from ccproxy.auth.models import ClaudeCredentials
 from ccproxy.auth.models.base import BaseProfileInfo, BaseTokenInfo
+
+
+class ClaudeOAuthToken(BaseModel):
+    """OAuth token information from Claude credentials."""
+
+    access_token: SecretStr = Field(..., alias="accessToken")
+    refresh_token: SecretStr = Field(..., alias="refreshToken")
+    expires_at: int | None = Field(None, alias="expiresAt")
+    scopes: list[str] = Field(default_factory=list)
+    subscription_type: str | None = Field(None, alias="subscriptionType")
+    token_type: str = Field(default="Bearer", alias="tokenType")
+
+    @field_validator("access_token", "refresh_token", mode="before")
+    @classmethod
+    def validate_tokens(cls, v: str | SecretStr | None) -> SecretStr | None:
+        """Convert string values to SecretStr."""
+        if v is None:
+            return None
+        if isinstance(v, str):
+            return SecretStr(v)
+        return v
+
+    def __repr__(self) -> str:
+        """Safe string representation that masks sensitive tokens."""
+        access_token_str = self.access_token.get_secret_value()
+        refresh_token_str = self.refresh_token.get_secret_value()
+
+        access_preview = (
+            f"{access_token_str[:8]}...{access_token_str[-8:]}"
+            if len(access_token_str) > 16
+            else "***"
+        )
+        refresh_preview = (
+            f"{refresh_token_str[:8]}...{refresh_token_str[-8:]}"
+            if len(refresh_token_str) > 16
+            else "***"
+        )
+
+        expires_at = (
+            datetime.fromtimestamp(self.expires_at / 1000, tz=UTC).isoformat()
+            if self.expires_at is not None
+            else "None"
+        )
+        return (
+            f"OAuthToken(access_token='{access_preview}', "
+            f"refresh_token='{refresh_preview}', "
+            f"expires_at={expires_at}, "
+            f"scopes={self.scopes}, "
+            f"subscription_type='{self.subscription_type}', "
+            f"token_type='{self.token_type}')"
+        )
+
+    @property
+    def is_expired(self) -> bool:
+        """Check if the token is expired."""
+        if self.expires_at is None:
+            # If no expiration info, assume not expired for backward compatibility
+            return False
+        now = datetime.now(UTC).timestamp() * 1000  # Convert to milliseconds
+        return now >= self.expires_at
+
+    @property
+    def expires_at_datetime(self) -> datetime:
+        """Get expiration as datetime object."""
+        if self.expires_at is None:
+            # Return a far future date if no expiration info
+            return datetime.fromtimestamp(2147483647, tz=UTC)  # Year 2038
+        return datetime.fromtimestamp(self.expires_at / 1000, tz=UTC)
+
+
+class ClaudeCredentials(BaseModel):
+    """Claude credentials from the credentials file."""
+
+    claude_ai_oauth: ClaudeOAuthToken = Field(..., alias="claudeAiOauth")
+
+    def __repr__(self) -> str:
+        """Safe string representation that masks sensitive tokens."""
+        return f"ClaudeCredentials(claude_ai_oauth={repr(self.claude_ai_oauth)})"
+
+    def is_expired(self) -> bool:
+        """Check if the credentials are expired.
+
+        Returns:
+            True if expired, False otherwise
+        """
+        return self.claude_ai_oauth.is_expired
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for storage.
+
+        Returns:
+            Dictionary representation
+        """
+        return self.model_dump(mode="json", exclude_none=True)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "ClaudeCredentials":
+        """Create from dictionary.
+
+        Args:
+            data: Dictionary containing credential data
+
+        Returns:
+            ClaudeCredentials instance
+        """
+        return cls.model_validate(data)
 
 
 class ClaudeTokenWrapper(BaseTokenInfo):

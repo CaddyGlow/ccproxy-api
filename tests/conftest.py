@@ -1018,7 +1018,7 @@ def client_with_mock_codex(
     with patch(
         "plugins.codex.auth.manager.CodexTokenManager.load_credentials"
     ) as mock_load:
-        from ccproxy.auth.models import OpenAICredentials
+        from plugins.codex.auth.models import OpenAICredentials
 
         mock_load.return_value = OpenAICredentials(**mock_openai_credentials)
 
@@ -1043,7 +1043,7 @@ def client_with_mock_codex_streaming(
     with patch(
         "plugins.codex.auth.manager.CodexTokenManager.load_credentials"
     ) as mock_load:
-        from ccproxy.auth.models import OpenAICredentials
+        from plugins.codex.auth.models import OpenAICredentials
 
         mock_load.return_value = OpenAICredentials(**mock_openai_credentials)
 

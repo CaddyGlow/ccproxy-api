@@ -34,8 +34,8 @@ from ccproxy.auth.exceptions import (
     OAuthTokenRefreshError,
 )
 from ccproxy.auth.manager import AuthManager
-from ccproxy.auth.models import (
-    OAuthToken,
+from plugins.claude_api.auth.models import (
+    ClaudeOAuthToken,
 )
 
 
@@ -534,9 +534,9 @@ class TestTokenRefreshFlow:
     """Test OAuth token refresh functionality."""
 
     @pytest.fixture
-    def mock_oauth_token(self) -> OAuthToken:
+    def mock_oauth_token(self) -> ClaudeOAuthToken:
         """Create mock OAuth token."""
-        return OAuthToken(
+        return ClaudeOAuthToken(
             accessToken=SecretStr("sk-test-token-123"),
             refreshToken=SecretStr("refresh-token-456"),
             expiresAt=None,
@@ -544,7 +544,9 @@ class TestTokenRefreshFlow:
             subscriptionType=None,
         )
 
-    async def test_token_refresh_success(self, mock_oauth_token: OAuthToken) -> None:
+    async def test_token_refresh_success(
+        self, mock_oauth_token: ClaudeOAuthToken
+    ) -> None:
         """Test successful token refresh."""
         # This is a unit test for the OAuthToken model structure
         # Actual token refresh would be tested via the CredentialsManager or OAuthClient
@@ -777,7 +779,7 @@ class TestOpenAIAuthentication:
         """Test OpenAI credentials creation."""
         from datetime import UTC, datetime
 
-        from ccproxy.auth.models import OpenAICredentials
+        from plugins.codex.auth.models import OpenAICredentials
 
         expires_at = datetime.fromtimestamp(1234567890, UTC)
 
@@ -798,7 +800,7 @@ class TestOpenAIAuthentication:
         """Test OpenAI token manager save functionality."""
         from datetime import UTC, datetime
 
-        from ccproxy.auth.models import OpenAICredentials
+        from plugins.codex.auth.models import OpenAICredentials
         from plugins.codex.auth.storage import CodexTokenStorage as OpenAITokenStorage
 
         mock_save.return_value = True
@@ -821,7 +823,7 @@ class TestOpenAIAuthentication:
         """Test OpenAI token manager load functionality."""
         from datetime import UTC, datetime
 
-        from ccproxy.auth.models import OpenAICredentials
+        from plugins.codex.auth.models import OpenAICredentials
         from plugins.codex.auth.storage import CodexTokenStorage as OpenAITokenStorage
 
         expected_credentials = OpenAICredentials(
@@ -876,7 +878,7 @@ class TestOpenAIAuthentication:
         import time
         from datetime import UTC, datetime
 
-        from ccproxy.auth.models import OpenAICredentials
+        from plugins.codex.auth.models import OpenAICredentials
         from plugins.codex.auth.storage import CodexTokenStorage as OpenAITokenStorage
 
         storage = OpenAITokenStorage(storage_path=tmp_path / "test_auth.json")

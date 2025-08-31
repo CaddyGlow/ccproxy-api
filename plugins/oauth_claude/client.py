@@ -6,10 +6,10 @@ from typing import Any
 from pydantic import SecretStr
 
 from ccproxy.auth.exceptions import OAuthError
-from ccproxy.auth.models import ClaudeCredentials, OAuthToken
 from ccproxy.auth.oauth.base import BaseOAuthClient
 from ccproxy.auth.storage.base import TokenStorage
 from ccproxy.core.logging import get_plugin_logger
+from plugins.claude_api.auth.models import ClaudeCredentials, ClaudeOAuthToken
 from plugins.oauth_claude.config import ClaudeOAuthConfig
 
 
@@ -105,7 +105,7 @@ class ClaudeOAuthClient(BaseOAuthClient[ClaudeCredentials]):
                 )
 
             # Create OAuth token
-            oauth_token = OAuthToken(
+            oauth_token = ClaudeOAuthToken(
                 accessToken=SecretStr(data["access_token"]),
                 refreshToken=SecretStr(data.get("refresh_token", "")),
                 expiresAt=expires_at,

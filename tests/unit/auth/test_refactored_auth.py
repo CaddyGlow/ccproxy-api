@@ -6,11 +6,19 @@ from unittest.mock import MagicMock, patch
 import pytest
 from pydantic import SecretStr
 
-from ccproxy.auth.models import ClaudeCredentials, OAuthToken, OpenAICredentials
 from ccproxy.auth.models.base import BaseProfileInfo, BaseTokenInfo
 from ccproxy.auth.storage.generic import GenericJsonStorage
-from plugins.claude_api.auth.models import ClaudeProfileInfo, ClaudeTokenWrapper
-from plugins.codex.auth.models import OpenAIProfileInfo, OpenAITokenWrapper
+from plugins.claude_api.auth.models import (
+    ClaudeCredentials,
+    ClaudeOAuthToken,
+    ClaudeProfileInfo,
+    ClaudeTokenWrapper,
+)
+from plugins.codex.auth.models import (
+    OpenAICredentials,
+    OpenAIProfileInfo,
+    OpenAITokenWrapper,
+)
 
 
 class TestBaseModels:
@@ -63,7 +71,7 @@ class TestClaudeModels:
     def test_claude_token_wrapper(self):
         """Test ClaudeTokenWrapper functionality."""
         # Create test credentials
-        oauth = OAuthToken(
+        oauth = ClaudeOAuthToken(
             accessToken=SecretStr("test_access"),
             refreshToken=SecretStr("test_refresh"),
             expiresAt=int(datetime.now(UTC).timestamp() * 1000) + 3600000,  # 1 hour
@@ -84,7 +92,7 @@ class TestClaudeModels:
 
     def test_claude_token_wrapper_expired(self):
         """Test ClaudeTokenWrapper with expired token."""
-        oauth = OAuthToken(
+        oauth = ClaudeOAuthToken(
             accessToken=SecretStr("test_access"),
             refreshToken=SecretStr("test_refresh"),
             expiresAt=int(datetime.now(UTC).timestamp() * 1000) - 3600000,  # 1 hour ago
@@ -187,7 +195,7 @@ class TestGenericStorage:
         storage = GenericJsonStorage(storage_path, ClaudeCredentials)
 
         # Create test credentials
-        oauth = OAuthToken(
+        oauth = ClaudeOAuthToken(
             accessToken=SecretStr("test_token"),
             refreshToken=SecretStr("refresh_token"),
             expiresAt=1234567890000,
@@ -270,7 +278,7 @@ class TestTokenManagers:
         manager = ClaudeApiTokenManager(storage=storage)
 
         # Create and save credentials
-        oauth = OAuthToken(
+        oauth = ClaudeOAuthToken(
             accessToken=SecretStr("test_token"),
             refreshToken=SecretStr("refresh_token"),
             expiresAt=int(datetime.now(UTC).timestamp() * 1000) + 3600000,

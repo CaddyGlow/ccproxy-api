@@ -10,19 +10,18 @@ from datetime import UTC, datetime, timedelta
 from typing import Any, Generic, TypeVar
 
 import httpx
-from pydantic import BaseModel
-
 from ccproxy.auth.exceptions import (
     OAuthError,
     OAuthTokenRefreshError,
 )
+from ccproxy.auth.models.credentials import BaseCredentials
 from ccproxy.auth.storage.base import TokenStorage
 from ccproxy.core.logging import get_logger
 
 
 logger = get_logger(__name__)
 
-CredentialsT = TypeVar("CredentialsT", bound=BaseModel)
+CredentialsT = TypeVar("CredentialsT", bound=BaseCredentials)
 
 
 class BaseOAuthClient(ABC, Generic[CredentialsT]):

@@ -198,7 +198,7 @@ class CodexAdapter(BaseHTTPAdapter):
             needs_conversion: Whether format conversion is needed
             target_url: Target API URL
         """
-        logger.info(
+        logger.debug(
             "plugin_request",
             plugin="codex",
             endpoint=endpoint,
@@ -212,10 +212,7 @@ class CodexAdapter(BaseHTTPAdapter):
         """Complete initialization - no longer needed with explicit dependencies."""
         # HTTP handler is already initialized by BaseHTTPAdapter
         # Transformers are already set from constructor
-        # All dependencies are now explicitly injected - nothing to do here
         pass
-
-    # _get_pricing_service is inherited from BaseHTTPAdapter
 
     async def handle_request(
         self, request: Request, endpoint: str, method: str, **kwargs: Any
@@ -262,16 +259,16 @@ class CodexAdapter(BaseHTTPAdapter):
         if not pricing_service:
             return
 
+        # Import pricing exceptions
+        from plugins.pricing.exceptions import (
+            ModelPricingNotFoundError,
+            PricingDataNotLoadedError,
+            PricingServiceDisabledError,
+        )
+
         try:
             model = metadata.get("model", "gpt-3.5-turbo")
             cache_read_tokens = metadata.get("cache_read_tokens", 0)
-
-            # Import pricing exceptions
-            from plugins.pricing.exceptions import (
-                ModelPricingNotFoundError,
-                PricingDataNotLoadedError,
-                PricingServiceDisabledError,
-            )
 
             cost_decimal = await pricing_service.calculate_cost(
                 model_name=model,
@@ -371,88 +368,6 @@ class CodexAdapter(BaseHTTPAdapter):
 
         return result
 
-    # The _extract_usage_from_response method is no longer needed with BaseHTTPAdapter
-
-    async def _wrap_streaming_response(
-        self, response: StreamingResponse, request_context: "RequestContext"
-    ) -> StreamingResponse:
-        """Wrap streaming response to accumulate chunks and extract headers.
-
-        Args:
-            response: The streaming response to wrap
-            request_context: The request context to update
-
-        Returns:
-            Wrapped streaming response
-        """
-        from collections.abc import AsyncIterator
-
-        # Get the original iterator
-        original_iterator = response.body_iterator
-
-        # Create accumulator for chunks
-        chunks: list[bytes] = []
-        headers_extracted = False
-
-        # Note: Metrics extraction is now handled by CodexStreamingMetricsHook
-
-        async def wrapped_iterator() -> AsyncIterator[bytes]:
-            """Wrap the stream iterator to accumulate chunks."""
-            nonlocal headers_extracted
-
-            async for chunk in original_iterator:
-                # Extract headers on first chunk (after streaming has started)
-                if not headers_extracted:
-                    headers_extracted = True
-                    if "response_headers" in request_context.metadata:
-                        response_headers = request_context.metadata["response_headers"]
-
-                        # Extract relevant headers for logging
-                        headers_for_log = {}
-                        for k, v in response_headers.items():
-                            k_lower = k.lower()
-                            # Include OpenAI headers and request IDs
-                            if k_lower.startswith("openai-"):
-                                # Put OpenAI headers directly in metadata for access_logger
-                                request_context.metadata[k_lower] = v
-                                headers_for_log[k] = v
-                            elif "request" in k_lower and "id" in k_lower:
-                                headers_for_log[k] = v
-
-                        # Also store the headers dictionary for display
-                        request_context.metadata["headers"] = headers_for_log
-
-                        logger.debug(
-                            "codex_headers_extracted",
-                            headers_count=len(headers_for_log),
-                            headers=headers_for_log,
-                            category="http",
-                        )
-
-                if isinstance(chunk, str | memoryview):
-                    chunk = chunk.encode() if isinstance(chunk, str) else bytes(chunk)
-                chunks.append(chunk)
-
-                # Note: Chunk processing for metrics is handled by hooks
-
-                yield chunk
-
-            # Mark that stream processing is complete
-            request_context.metadata.update(
-                {
-                    "stream_accumulated": True,
-                    "stream_chunks_count": len(chunks),
-                }
-            )
-
-        # Create new streaming response with wrapped iterator
-        return StreamingResponse(
-            wrapped_iterator(),
-            status_code=response.status_code,
-            headers=dict(response.headers) if hasattr(response, "headers") else {},
-            media_type=response.media_type,
-        )
-
     async def cleanup(self) -> None:
         """Cleanup resources when shutting down."""
         try:
@@ -471,3 +386,22 @@ class CodexAdapter(BaseHTTPAdapter):
                 error=str(e),
                 exc_info=e,
             )
+
+    async def _wrap_streaming_response(
+        self, response: StreamingResponse, request_context: "RequestContext"
+    ) -> StreamingResponse:
+        """Wrap streaming response to accumulate chunks and extract headers.
+
+        For Codex/OpenAI, we pass through the streaming response as-is since
+        metrics extraction is handled by hooks.
+
+        Args:
+            response: The streaming response to wrap
+            request_context: The request context to update
+
+        Returns:
+            The original streaming response (pass-through)
+        """
+        # For Codex/OpenAI, metrics extraction is handled by hooks
+        # so we can just pass through the response
+        return response

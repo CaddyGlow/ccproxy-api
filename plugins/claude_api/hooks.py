@@ -19,9 +19,11 @@ class ClaudeAPIStreamingMetricsHook(Hook):
     events = [HookEvent.PROVIDER_STREAM_CHUNK, HookEvent.PROVIDER_STREAM_END]
     priority = 700  # HookLayer.OBSERVATION - Metrics collection layer
 
-    def __init__(self, pricing_service: Any = None, plugin_registry: Any = None) -> None:
+    def __init__(
+        self, pricing_service: Any = None, plugin_registry: Any = None
+    ) -> None:
         """Initialize with optional pricing service for cost calculation.
-        
+
         Args:
             pricing_service: Direct pricing service instance (if available at init)
             plugin_registry: Plugin registry to get pricing service lazily
@@ -35,11 +37,14 @@ class ClaudeAPIStreamingMetricsHook(Hook):
         """Get pricing service, trying lazy loading if not already available."""
         if self.pricing_service:
             return self.pricing_service
-        
+
         if self.plugin_registry:
             try:
                 from plugins.pricing.service import PricingService
-                self.pricing_service = self.plugin_registry.get_service("pricing", PricingService)
+
+                self.pricing_service = self.plugin_registry.get_service(
+                    "pricing", PricingService
+                )
                 if self.pricing_service:
                     logger.debug(
                         "pricing_service_obtained_lazily",
@@ -51,7 +56,7 @@ class ClaudeAPIStreamingMetricsHook(Hook):
                     plugin="claude_api",
                     error=str(e),
                 )
-        
+
         return self.pricing_service
 
     async def __call__(self, context: HookContext) -> None:

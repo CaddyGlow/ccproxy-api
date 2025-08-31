@@ -36,7 +36,7 @@ class WorkerStatus(str, Enum):
 
 
 class StreamWorker:
-    """Worker that consumes messages from Claude SDK and distributes via queue."""
+    """Worker that consumes messa`es from Claude SDK and distributes via queue."""
 
     def __init__(
         self,

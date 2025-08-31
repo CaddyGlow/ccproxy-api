@@ -5,16 +5,15 @@ from pathlib import Path
 from typing import Any
 
 from ccproxy.auth.managers.base import BaseTokenManager
-from ccproxy.auth.models import (
+from ccproxy.auth.models.base import (
     AccountInfo,
-    OpenAICredentials,
     UserProfile,
 )
 from ccproxy.auth.oauth.registry import get_oauth_registry
 from ccproxy.auth.storage.base import TokenStorage
 from ccproxy.core.logging import get_plugin_logger
 
-from .models import OpenAIProfileInfo, OpenAITokenWrapper
+from .models import OpenAICredentials, OpenAIProfileInfo, OpenAITokenWrapper
 
 
 logger = get_plugin_logger()

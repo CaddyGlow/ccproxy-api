@@ -14,9 +14,6 @@ from ccproxy.auth.exceptions import (
     OAuthError,
     OAuthTokenRefreshError,
 )
-from ccproxy.auth.models import (
-    ClaudeCredentials,
-)
 from ccproxy.auth.oauth.registry import get_oauth_registry
 
 
@@ -404,12 +401,22 @@ async def _exchange_code_for_tokens(
 
             # Save credentials using plugin's token manager if custom paths specified
             if custom_paths:
-                from ccproxy.auth.storage.generic import GenericJsonStorage
-                from plugins.claude_api.auth.manager import ClaudeApiTokenManager
+                # Dynamic import to avoid coupling to specific plugin
+                if provider == "claude-api":
+                    from ccproxy.auth.storage.generic import GenericJsonStorage
+                    from plugins.claude_api.auth.manager import ClaudeApiTokenManager
+                    from plugins.claude_api.auth.models import ClaudeCredentials
 
-                # Use the first custom path for storage
-                storage = GenericJsonStorage(custom_paths[0], ClaudeCredentials)
-                manager = ClaudeApiTokenManager(storage=storage)
+                    # Use the first custom path for storage
+                    storage = GenericJsonStorage(custom_paths[0], ClaudeCredentials)
+                    manager = ClaudeApiTokenManager(storage=storage)
+                else:
+                    logger.warning(
+                        "Custom paths not supported for provider",
+                        provider=provider,
+                        operation="exchange_code_for_tokens",
+                    )
+                    return False
                 if await manager.save_credentials(credentials):
                     logger.info(
                         "Successfully saved OAuth credentials to custom path",

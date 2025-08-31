@@ -5,12 +5,11 @@ from pathlib import Path
 from typing import Any
 
 from ccproxy.auth.managers.base import BaseTokenManager
-from ccproxy.auth.models import ClaudeCredentials
 from ccproxy.auth.oauth.registry import get_oauth_registry
 from ccproxy.auth.storage.generic import GenericJsonStorage
 from ccproxy.core.logging import get_plugin_logger
 
-from .models import ClaudeProfileInfo, ClaudeTokenWrapper
+from .models import ClaudeCredentials, ClaudeProfileInfo, ClaudeTokenWrapper
 
 
 logger = get_plugin_logger()

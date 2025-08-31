@@ -34,7 +34,6 @@ class ClaudeAPIRuntime(ProviderPluginRuntime):
         # Call parent initialization first
         await super()._on_initialize()
 
-
         if not self.context:
             raise RuntimeError("Context not set")
 
@@ -182,7 +181,7 @@ class ClaudeAPIRuntime(ProviderPluginRuntime):
                 has_hook_registry="hook_registry" in (self.context or {}),
                 has_plugin_registry="plugin_registry" in (self.context or {}),
             )
-            
+
             # Get hook registry from context
             hook_registry = self.context.get("hook_registry")
             if not hook_registry:
@@ -212,7 +211,9 @@ class ClaudeAPIRuntime(ProviderPluginRuntime):
                     logger.debug(
                         "pricing_service_obtained",
                         plugin="claude_api",
-                        service_type=type(pricing_service).__name__ if pricing_service else None,
+                        service_type=type(pricing_service).__name__
+                        if pricing_service
+                        else None,
                         is_none=pricing_service is None,
                     )
                 except Exception as e:
@@ -235,7 +236,7 @@ class ClaudeAPIRuntime(ProviderPluginRuntime):
             # Pass both pricing_service (if available now) and plugin_registry (for lazy loading)
             metrics_hook = ClaudeAPIStreamingMetricsHook(
                 pricing_service=pricing_service,
-                plugin_registry=self.context.get("plugin_registry")
+                plugin_registry=self.context.get("plugin_registry"),
             )
             hook_registry.register(metrics_hook)
 
@@ -245,7 +246,9 @@ class ClaudeAPIRuntime(ProviderPluginRuntime):
                 hook_name=metrics_hook.name,
                 priority=metrics_hook.priority,
                 has_pricing=pricing_service is not None,
-                pricing_service_type=type(pricing_service).__name__ if pricing_service else "None",
+                pricing_service_type=type(pricing_service).__name__
+                if pricing_service
+                else "None",
             )
 
         except Exception as e:

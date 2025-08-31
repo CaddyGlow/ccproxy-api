@@ -4,7 +4,8 @@ from typing import Any
 
 from pydantic import SecretStr
 
-from ccproxy.auth.models import ClaudeCredentials, UserProfile
+from ccproxy.auth.models.base import UserProfile
+from plugins.claude_api.auth.models import ClaudeCredentials, ClaudeOAuthToken
 
 
 class NoOpAuthManager:
@@ -21,9 +22,8 @@ class NoOpAuthManager:
     async def get_credentials(self) -> ClaudeCredentials:
         """Return dummy credentials since SDK handles auth internally."""
         # Create minimal credentials object with OAuthToken
-        from ccproxy.auth.models import OAuthToken
 
-        oauth_token = OAuthToken(
+        oauth_token = ClaudeOAuthToken(
             accessToken=SecretStr("sdk-managed"),
             refreshToken=SecretStr("sdk-managed"),
             expiresAt=None,

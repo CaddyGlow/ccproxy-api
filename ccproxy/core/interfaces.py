@@ -8,7 +8,6 @@ from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator
 from typing import Any, Protocol, TypeVar, runtime_checkable
 
-from ccproxy.auth.models import ClaudeCredentials
 from ccproxy.core.types import TransformContext
 
 
@@ -104,10 +103,14 @@ class TransformerProtocol(Protocol[T, R]):
 
 
 class TokenStorage(ABC):
-    """Abstract interface for token storage backends."""
+    """Abstract interface for token storage backends.
+
+    Note: This is kept for backward compatibility but the generic
+    version in ccproxy.auth.storage.base should be used instead.
+    """
 
     @abstractmethod
-    async def load(self) -> ClaudeCredentials | None:
+    async def load(self) -> Any:
         """Load credentials from storage.
 
         Returns:
@@ -116,7 +119,7 @@ class TokenStorage(ABC):
         pass
 
     @abstractmethod
-    async def save(self, credentials: ClaudeCredentials) -> bool:
+    async def save(self, credentials: Any) -> bool:
         """Save credentials to storage.
 
         Args:

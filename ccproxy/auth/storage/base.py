@@ -7,15 +7,14 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any, Generic, TypeVar
 
-from pydantic import BaseModel
-
 from ccproxy.auth.exceptions import CredentialsInvalidError, CredentialsStorageError
+from ccproxy.auth.models.credentials import BaseCredentials
 from ccproxy.core.logging import get_logger
 
 
 logger = get_logger(__name__)
 
-CredentialsT = TypeVar("CredentialsT", bound=BaseModel)
+CredentialsT = TypeVar("CredentialsT", bound=BaseCredentials)
 
 
 class TokenStorage(ABC, Generic[CredentialsT]):

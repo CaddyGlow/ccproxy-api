@@ -36,9 +36,9 @@ class MockAuthManager(AuthManager):
             from ccproxy.auth.exceptions import AuthenticationError
 
             raise AuthenticationError("Mock auth failure")
-        from ccproxy.auth.models import ClaudeCredentials, OAuthToken
+        from plugins.claude_api.auth.models import ClaudeCredentials, ClaudeOAuthToken
 
-        oauth_token = OAuthToken(
+        oauth_token = ClaudeOAuthToken(
             accessToken=SecretStr("test-token"),
             refreshToken=SecretStr("test-refresh"),
             expiresAt=None,

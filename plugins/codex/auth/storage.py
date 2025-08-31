@@ -4,9 +4,9 @@ import json
 from datetime import UTC, datetime
 from pathlib import Path
 
-from ccproxy.auth.models import OpenAICredentials
 from ccproxy.auth.storage.base import TokenStorage
 from ccproxy.core.logging import get_plugin_logger
+from plugins.codex.auth.models import OpenAICredentials
 
 
 logger = get_plugin_logger()

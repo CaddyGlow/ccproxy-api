@@ -4,12 +4,13 @@ import json
 from abc import ABC, abstractmethod
 from typing import Any, Generic, TypeVar
 
-from pydantic import BaseModel, ValidationError
+from pydantic import ValidationError
 
 from ccproxy.auth.exceptions import (
     CredentialsInvalidError,
     CredentialsStorageError,
 )
+from ccproxy.auth.models.credentials import BaseCredentials
 from ccproxy.auth.storage.base import TokenStorage
 from ccproxy.core.logging import get_logger
 from ccproxy.utils.caching import AuthStatusCache, async_ttl_cache
@@ -18,7 +19,7 @@ from ccproxy.utils.caching import AuthStatusCache, async_ttl_cache
 logger = get_logger(__name__)
 
 # Type variable for credentials
-CredentialsT = TypeVar("CredentialsT", bound=BaseModel)
+CredentialsT = TypeVar("CredentialsT", bound=BaseCredentials)
 
 
 class BaseTokenManager(ABC, Generic[CredentialsT]):

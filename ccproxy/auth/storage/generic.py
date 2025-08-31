@@ -6,13 +6,14 @@ from typing import Any, TypeVar
 
 from pydantic import BaseModel, SecretStr, TypeAdapter
 
+from ccproxy.auth.models.credentials import BaseCredentials
 from ccproxy.auth.storage.base import BaseJsonStorage
 from ccproxy.core.logging import get_logger
 
 
 logger = get_logger(__name__)
 
-T = TypeVar("T", bound=BaseModel)
+T = TypeVar("T", bound=BaseCredentials)
 
 
 class GenericJsonStorage(BaseJsonStorage[T]):

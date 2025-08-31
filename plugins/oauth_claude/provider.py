@@ -5,9 +5,9 @@ from base64 import urlsafe_b64encode
 from typing import Any
 from urllib.parse import urlencode
 
-from ccproxy.auth.models import ClaudeCredentials
 from ccproxy.auth.oauth.registry import OAuthProviderInfo
 from ccproxy.core.logging import get_plugin_logger
+from plugins.claude_api.auth.models import ClaudeCredentials
 from plugins.oauth_claude.client import ClaudeOAuthClient
 from plugins.oauth_claude.config import ClaudeOAuthConfig
 from plugins.oauth_claude.storage import ClaudeOAuthStorage

@@ -5,9 +5,9 @@ from base64 import urlsafe_b64encode
 from typing import Any
 from urllib.parse import urlencode
 
-from ccproxy.auth.models import OpenAICredentials
 from ccproxy.auth.oauth.registry import OAuthProviderInfo
 from ccproxy.core.logging import get_plugin_logger
+from plugins.codex.auth.models import OpenAICredentials
 from plugins.oauth_codex.client import CodexOAuthClient
 from plugins.oauth_codex.config import CodexOAuthConfig
 from plugins.oauth_codex.storage import CodexOAuthStorage

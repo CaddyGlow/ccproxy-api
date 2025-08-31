@@ -2,7 +2,8 @@
 
 from typing import Any, Protocol, runtime_checkable
 
-from ccproxy.auth.models import ClaudeCredentials, UserProfile
+from ccproxy.auth.models.base import UserProfile
+from ccproxy.auth.models.credentials import BaseCredentials
 
 
 @runtime_checkable
@@ -27,7 +28,7 @@ class AuthManager(Protocol):
         """
         ...
 
-    async def get_credentials(self) -> ClaudeCredentials:
+    async def get_credentials(self) -> BaseCredentials:
         """Get valid credentials.
 
         Note: For non-Claude providers, this may return minimal/dummy credentials
