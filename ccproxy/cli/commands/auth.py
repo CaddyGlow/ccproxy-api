@@ -72,83 +72,125 @@ def _ensure_logging_configured() -> None:
         _apply_auth_logger_level()
 
 
-async def initialize_plugins_for_oauth() -> None:
-    """Initialize plugins to register their OAuth providers."""
+def _expected_plugin_class_name(provider: str) -> str:
+    """Return the expected plugin class name from provider input for messaging.
+
+    Example: 'claude_api' -> 'OauthClaudeApiPlugin', 'codex' -> 'OauthCodexPlugin'.
+    """
+    import re
+
+    base = re.sub(r"[^a-zA-Z0-9]+", "_", provider.strip()).strip("_")
+    parts = [p for p in base.split("_") if p]
+    camel = "".join(s[:1].upper() + s[1:] for s in parts)
+    return f"Oauth{camel}Plugin"
+
+
+def _provider_module_path(provider: str) -> tuple[str | None, str]:
+    """Map provider name to plugin module path and canonical provider key.
+
+    Only explicit providers are supported; aliases are not.
+    Returns (module_path or None, canonical_provider_key).
+    """
+    key = provider.strip().lower()
+    # No aliasing (e.g., 'openai' will NOT map to 'codex')
+    mapping: dict[str, str] = {
+        "codex": "plugins.oauth_codex.plugin",
+        "claude-api": "plugins.oauth_claude.plugin",
+        # tolerate underscore variant for convenience
+        "claude_api": "plugins.oauth_claude.plugin",
+    }
+    return mapping.get(key), key
+
+
+async def _lazy_register_oauth_provider(provider: str) -> Any | None:
+    """Lazily import and register just the requested provider's plugin.
+
+    Imports only the plugin module matching the provider, builds context, and
+    registers the provider in the OAuth registry. Returns the provider instance
+    or None if not found/import failed.
+    """
+    import importlib
     from ccproxy.auth.oauth.registry import get_oauth_registry
     from ccproxy.config.settings import get_settings
     from ccproxy.plugins import PluginContext
-    from ccproxy.plugins.discovery import discover_and_load_plugins
     from ccproxy.plugins.factory import AuthProviderPluginFactory
     from ccproxy.services.cli_detection import CLIDetectionService
 
-    settings = get_settings()
-    plugins = discover_and_load_plugins(settings)
+    module_path, key = _provider_module_path(provider)
+    if not module_path:
+        return None
 
-    # Create detection service for OAuth providers
+    try:
+        module = importlib.import_module(module_path)
+    except Exception as e:
+        logger.debug(
+            "oauth_plugin_import_failed", provider=provider, module=module_path, error=str(e), exc_info=e
+        )
+        return None
+
+    factory = getattr(module, "factory", None)
+    if not isinstance(factory, AuthProviderPluginFactory):
+        logger.debug(
+            "oauth_plugin_factory_missing_or_invalid", provider=provider, module=module_path
+        )
+        return None
+
+    # Prepare minimal context for the auth provider
+    settings = get_settings()
     detection_service = CLIDetectionService(settings)
 
-    # Create hook manager for HTTP tracing if enabled
     hook_manager = None
-    if settings.plugins.get("request_tracer", {}).get("enabled", False):
-        from plugins.request_tracer.config import RequestTracerConfig
-        from plugins.request_tracer.hooks.http import HTTPTracerHook
+    try:
+        if settings.plugins.get("request_tracer", {}).get("enabled", False):
+            from plugins.request_tracer.config import RequestTracerConfig
+            from plugins.request_tracer.hooks.oauth import OAuthTracerHook
 
-        hook_registry = HookRegistry()
-        hook_manager = HookManager(hook_registry)
+            hook_registry = HookRegistry()
+            hook_manager = HookManager(hook_registry)
+            tracer_config = RequestTracerConfig(
+                **settings.plugins.get("request_tracer", {})
+            )
+            # Register OAuth tracer hook for OAuth-specific tracing
+            oauth_hook = OAuthTracerHook(tracer_config)
+            hook_registry.register(oauth_hook)
+            logger.debug("oauth_tracer_hook_registered", category="auth")
+    except Exception as e:
+        # Tracing is best-effort; continue without it
+        logger.debug("hook_registration_failed", error=str(e), category="auth", exc_info=e)
+        pass
 
-        # Create and register HTTP tracer hook for generic interception
-        tracer_config = RequestTracerConfig(
-            **settings.plugins.get("request_tracer", {})
-        )
-        http_hook = HTTPTracerHook(tracer_config)
-        hook_registry.register(http_hook)
-        logger.debug("http_tracer_hook_registered", category="auth")
+    context_data: dict[str, Any] = {"detection_service": detection_service}
+    if hook_manager:
+        context_data["hook_manager"] = hook_manager
+    context = PluginContext(context_data)
 
-    # Register OAuth providers from auth provider plugins
+    try:
+        oauth_provider = factory.create_auth_provider(context)
+    except Exception as e:
+        logger.debug("oauth_provider_create_failed", provider=provider, error=str(e), exc_info=e)
+        return None
+
     registry = get_oauth_registry()
-    for plugin_name, factory in plugins.items():
-        # Check if this is an auth provider plugin
-        if isinstance(factory, AuthProviderPluginFactory):
-            try:
-                # Create plugin context with hook manager and detection service
-                context_data = {}
-                if hook_manager:
-                    context_data["hook_manager"] = hook_manager
-                context_data["detection_service"] = detection_service
+    try:
+        # Avoid double registration if already present
+        if not registry.has_provider(oauth_provider.provider_name):
+            registry.register_provider(oauth_provider)
+    except Exception:
+        # Even if registration fails, return the instance if it matches
+        pass
 
-                context = PluginContext(context_data) if context_data else None
-                provider = factory.create_auth_provider(context)
-                registry.register_provider(provider)
-                logger.debug(
-                    f"Registered OAuth provider from plugin: {plugin_name}",
-                    category="auth",
-                    has_hooks=bool(hook_manager),
-                )
-            except Exception as e:
-                logger.warning(
-                    f"Failed to register OAuth provider from {plugin_name}: {e}"
-                )
+    return oauth_provider
 
 
 async def discover_oauth_providers() -> dict[str, tuple[str, str]]:
-    """Discover available OAuth-enabled providers.
+    """Return known OAuth providers without importing all plugins.
 
-    Returns:
-        Dictionary mapping provider names to (auth_type, description) tuples
+    Keeps this lightweight: lists supported provider keys and generic descriptions.
     """
-    from ccproxy.auth.oauth.registry import get_oauth_registry
-
-    # Initialize plugins first to register providers
-    await initialize_plugins_for_oauth()
-
-    registry = get_oauth_registry()
-    providers = registry.list_providers()
-
-    result = {}
-    for name, info in providers.items():
-        result[name] = ("oauth", info.description)
-
-    return result
+    return {
+        "codex": ("oauth", "OpenAI Codex OAuth"),
+        "claude-api": ("oauth", "Claude API OAuth"),
+    }
 
 
 def get_oauth_provider_choices() -> list[str]:
@@ -158,21 +200,9 @@ def get_oauth_provider_choices() -> list[str]:
 
 
 async def get_plugin_for_provider(provider: str) -> Any:
-    """Get the plugin instance for the specified provider.
-
-    Args:
-        provider: Provider name (e.g., 'claude_api', 'codex')
-
-    Returns:
-        Plugin instance for the provider
-
-    Raises:
-        ValueError: If provider not found or doesn't support OAuth
-    """
-    # TODO: Integrate with v2 plugin system
-    # For now, this is a stub that will be replaced when v2 integration is complete
+    """Deprecated: use OAuth providers directly. Retained for compatibility."""
     raise ValueError(
-        f"OAuth provider '{provider}' integration pending v2 plugin system update"
+        "Direct plugin access is no longer supported; use OAuth providers"
     )
 
 
@@ -188,32 +218,14 @@ async def get_oauth_client_for_provider(provider: str) -> Any:
     Raises:
         ValueError: If provider not found or doesn't support OAuth
     """
-    plugin = await get_plugin_for_provider(provider)
-
-    # Initialize plugin with minimal CoreServices for CLI context
-    import httpx
-    import structlog
-
-    from ccproxy.core.services import CoreServices
-
-    settings = get_settings()
-
-    # Create minimal services for CLI usage
-    async with httpx.AsyncClient() as client:
-        services = CoreServices(
-            settings=settings,
-            http_client=client,
-            logger=structlog.get_logger(),
-        )
-
-        # Initialize the plugin
-        await plugin.initialize(services)
-
-        # Now get the OAuth client
-        oauth_client = await plugin.get_oauth_client()
-        if not oauth_client:
-            raise ValueError(f"Provider '{provider}' does not implement OAuth client")
-        return oauth_client
+    # Load provider lazily and return its client
+    oauth_provider = await get_oauth_provider_for_name(provider)
+    if not oauth_provider:
+        raise ValueError(f"Provider '{provider}' not found")
+    oauth_client = getattr(oauth_provider, "client", None)
+    if not oauth_client:
+        raise ValueError(f"Provider '{provider}' does not implement OAuth client")
+    return oauth_client
 
 
 async def check_provider_credentials(provider: str) -> dict[str, Any]:
@@ -226,11 +238,9 @@ async def check_provider_credentials(provider: str) -> dict[str, Any]:
         Dictionary with credential status information
     """
     try:
-        # Get plugin for provider and use it to check credentials
-        plugin = await get_plugin_for_provider(provider)
-        oauth_client = await plugin.get_oauth_client()
-
-        if not oauth_client:
+        # Lazily load provider and inspect storage
+        oauth_provider = await get_oauth_provider_for_name(provider)
+        if not oauth_provider:
             return {
                 "has_credentials": False,
                 "expired": True,
@@ -238,18 +248,15 @@ async def check_provider_credentials(provider: str) -> dict[str, Any]:
                 "credentials": None,
             }
 
-        # Try to get profile info to test if credentials are valid
-        # This will use the plugin's internal credential checking logic
-        profile_info = await plugin.get_profile_info()
-
-        # Basic credential status based on whether we can get profile info
-        has_credentials = profile_info is not None
+        # Try to load credentials via provider storage
+        creds = await oauth_provider.load_credentials()
+        has_credentials = creds is not None
 
         return {
             "has_credentials": has_credentials,
             "expired": not has_credentials,
-            "path": None,  # Plugin-specific, would need to be added to protocol if needed
-            "credentials": None,  # Plugin-specific, would need to be added to protocol if needed
+            "path": None,  # Provider-specific; not exposed in protocol
+            "credentials": None,  # Redacted
         }
 
     except AttributeError as e:
@@ -336,9 +343,7 @@ def list_providers() -> None:
 def login_command(
     provider: Annotated[
         str,
-        typer.Argument(
-            help="Provider to authenticate with (claude-api, codex, openai)"
-        ),
+        typer.Argument(help="Provider to authenticate with (claude-api, codex)"),
     ],
     no_browser: Annotated[
         bool,
@@ -356,16 +361,13 @@ def login_command(
     Examples:
         ccproxy auth login claude-api     # Claude API OAuth login
         ccproxy auth login codex          # Codex/OpenAI OAuth login
-        ccproxy auth login openai         # Alias for codex
         ccproxy auth login claude-api --manual  # Manual code entry
     """
     _ensure_logging_configured()
     toolkit = get_rich_toolkit()
 
-    # Normalize provider names
-    provider = provider.lower()
-    if provider == "openai":
-        provider = "codex"  # OpenAI is an alias for codex
+    # Normalize provider name (no aliasing)
+    provider = provider.strip().lower()
 
     # Handle OAuth providers (claude-api, codex)
     toolkit.print(
@@ -375,32 +377,37 @@ def login_command(
     toolkit.print_line()
 
     try:
-        # Validate provider exists
-        providers = asyncio.run(discover_oauth_providers())
-        if provider not in providers:
+        # Lazily load provider plugin and register in registry
+        oauth_provider = asyncio.run(get_oauth_provider_for_name(provider))
+        if not oauth_provider:
+            providers = asyncio.run(discover_oauth_providers())
             available = ", ".join(providers.keys()) if providers else "none"
-            toolkit.print(
-                f"Provider '{provider}' not found. Available OAuth providers: {available}",
-                tag="error",
+            expected = _expected_plugin_class_name(provider)
+            # Heuristic suggestion for delimiter differences
+            suggestion = None
+            if provider.replace("_", "-") in providers:
+                suggestion = provider.replace("_", "-")
+            elif provider.replace("-", "_") in providers:
+                suggestion = provider.replace("-", "_")
+            msg = (
+                f"Provider '{provider}' not found. Available: {available}. "
+                f"Expected plugin class '{expected}'."
             )
+            if suggestion:
+                msg += f" Did you mean '{suggestion}'?"
+            toolkit.print(msg, tag="error")
             raise typer.Exit(1)
 
         # Use the new OAuth integration handler
-        from ccproxy.auth.oauth.registry import get_oauth_registry
         from ccproxy.cli.oauth_integration import CLIOAuthHandler
-
-        # Get provider to extract port from its config
-        registry = get_oauth_registry()
-        oauth_provider = registry.get_provider(provider)
 
         # Get port from provider config if available
         port = 9999  # Default port
-        if oauth_provider:
-            provider_config = oauth_provider.get_config()
-            if hasattr(provider_config, "callback_port"):
-                port = provider_config.callback_port
-            elif provider == "codex":
-                port = 1455  # Keep different port for codex to avoid conflicts
+        provider_config = oauth_provider.get_config()
+        if hasattr(provider_config, "callback_port"):
+            port = provider_config.callback_port
+        elif provider == "codex":
+            port = 1455  # Keep different port for codex to avoid conflicts
 
         handler = CLIOAuthHandler(port=port)
 
@@ -474,7 +481,7 @@ def login_command(
 def status_command(
     provider: Annotated[
         str,
-        typer.Argument(help="Provider to check status (claude-api, codex, openai)"),
+        typer.Argument(help="Provider to check status (claude-api, codex)"),
     ],
     detailed: Annotated[
         bool,
@@ -493,20 +500,9 @@ def status_command(
     _ensure_logging_configured()
     toolkit = get_rich_toolkit()
 
-    # Store original provider name for display
-    display_provider = provider.lower()
-
-    # Normalize provider names for internal use
-    provider = provider.lower()
-    if provider == "openai":
-        provider = "codex"
-
-    # Use proper display names
-    display_name = {
-        "openai": "OpenAI",
-        "codex": "Codex",
-        "claude-api": "Claude-Api",
-    }.get(display_provider, display_provider.replace("_", "-").title())
+    # Normalize provider (no aliasing) and derive display name
+    provider = provider.strip().lower()
+    display_name = provider.replace("_", "-").title()
 
     toolkit.print(
         f"[bold cyan]{display_name} Authentication Status[/bold cyan]",
@@ -517,6 +513,15 @@ def status_command(
     try:
         # Get the OAuth provider for this provider name
         oauth_provider = asyncio.run(get_oauth_provider_for_name(provider))
+        if not oauth_provider:
+            providers = asyncio.run(discover_oauth_providers())
+            available = ", ".join(providers.keys()) if providers else "none"
+            expected = _expected_plugin_class_name(provider)
+            toolkit.print(
+                f"Provider '{provider}' not found. Available: {available}. Expected plugin class '{expected}'.",
+                tag="error",
+            )
+            raise typer.Exit(1)
 
         profile_info = None
         credentials = None
@@ -678,32 +683,36 @@ def status_command(
 @app.command(name="logout")
 def logout_command(
     provider: Annotated[
-        str, typer.Argument(help="Provider to logout from (codex, openai)")
+        str, typer.Argument(help="Provider to logout from (claude-api, codex)")
     ],
 ) -> None:
     """Logout and remove stored credentials for specified provider.
 
     Examples:
         ccproxy auth logout codex
-        ccproxy auth logout openai
+        ccproxy auth logout claude-api
     """
     _suppress_debug_logging()
     toolkit = get_rich_toolkit()
 
-    # Normalize provider names
-    provider = provider.lower()
-    if provider == "openai":
-        provider = "codex"
+    # Normalize provider (no aliasing)
+    provider = provider.strip().lower()
 
     toolkit.print(f"[bold cyan]{provider.title()} Logout[/bold cyan]", centered=True)
     toolkit.print_line()
 
     try:
-        # Get the OAuth provider for this provider name
+        # Get the OAuth provider for this provider name (lazy load)
         oauth_provider = asyncio.run(get_oauth_provider_for_name(provider))
 
         if not oauth_provider:
-            toolkit.print(f"Provider '{provider}' not found", tag="error")
+            providers = asyncio.run(discover_oauth_providers())
+            available = ", ".join(providers.keys()) if providers else "none"
+            expected = _expected_plugin_class_name(provider)
+            toolkit.print(
+                f"Provider '{provider}' not found. Available: {available}. Expected plugin class '{expected}'.",
+                tag="error",
+            )
             raise typer.Exit(1)
 
         # Check if credentials exist
@@ -771,70 +780,17 @@ async def get_oauth_provider_for_name(provider: str) -> Any:
         OAuth provider instance or None if not found
     """
     from ccproxy.auth.oauth.registry import get_oauth_registry
-    from ccproxy.config.settings import get_settings
-    from ccproxy.plugins import PluginContext
-    from ccproxy.plugins.discovery import discover_and_load_plugins
-    from ccproxy.plugins.factory import AuthProviderPluginFactory
-    from ccproxy.services.cli_detection import CLIDetectionService
 
-    # First ensure plugins are loaded to register providers
-    settings = get_settings()
-    plugins = discover_and_load_plugins(settings)
-
-    # Create detection service for OAuth providers
-    detection_service = CLIDetectionService(settings)
-
-    # Create hook manager for HTTP tracing if enabled
-    hook_manager = None
-    if settings.plugins.get("request_tracer", {}).get("enabled", False):
-        from plugins.request_tracer.config import RequestTracerConfig
-        from plugins.request_tracer.hooks.http import HTTPTracerHook
-
-        hook_registry = HookRegistry()
-        hook_manager = HookManager(hook_registry)
-
-        # Create and register HTTP tracer hook for generic interception
-        tracer_config = RequestTracerConfig(
-            **settings.plugins.get("request_tracer", {})
-        )
-        http_hook = HTTPTracerHook(tracer_config)
-        hook_registry.register(http_hook)
-
-    # Get the registry
     registry = get_oauth_registry()
 
-    # Check if the requested provider is already registered
-    existing_provider = registry.get_provider(provider)
-    if existing_provider:
-        # Provider already registered, just return it
-        return existing_provider
+    # Already registered?
+    existing = registry.get_provider(provider)
+    if existing:
+        return existing
 
-    # Provider not found, need to register all providers
-    for _plugin_name, factory in plugins.items():
-        if isinstance(factory, AuthProviderPluginFactory):
-            # Check if this factory's provider is already registered before creating
-            # This is a bit tricky since we don't know the provider name until we create it
-            # But we can skip if we already have enough providers registered
-            try:
-                # Create plugin context with hook manager and detection service
-                context_data = {}
-                if hook_manager:
-                    context_data["hook_manager"] = hook_manager
-                context_data["detection_service"] = detection_service
+    # Lazily import and register only this provider
+    provider_instance = await _lazy_register_oauth_provider(provider)
+    if provider_instance:
+        return provider_instance
 
-                context = PluginContext(context_data) if context_data else None
-                oauth_provider = factory.create_auth_provider(context)
-
-                # Only register if not already registered
-                if not registry.has_provider(oauth_provider.provider_name):
-                    registry.register_provider(oauth_provider)
-
-                # If this was the provider we were looking for, we can stop
-                if oauth_provider.provider_name == provider:
-                    return oauth_provider
-
-            except Exception:
-                pass  # Ignore failures
-
-    # Return the provider if it was registered
-    return registry.get_provider(provider)
+    return None

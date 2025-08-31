@@ -28,6 +28,11 @@ class RequestTracerConfig(BaseModel):
     raw_http_enabled: bool = Field(
         default=True, description="Enable raw HTTP protocol logging"
     )
+    
+    # OAuth tracing
+    trace_oauth: bool = Field(
+        default=True, description="Enable OAuth request/response tracing for CLI operations"
+    )
 
     # Directory configuration
     log_dir: str = Field(
