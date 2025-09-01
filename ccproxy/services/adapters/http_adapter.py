@@ -30,9 +30,8 @@ if TYPE_CHECKING:
 
     from ccproxy.auth.manager import AuthManager
     from ccproxy.core.request_context import RequestContext
-    from ccproxy.core.transformers import BaseTransformer
     from ccproxy.plugins.declaration import PluginContext
-    from ccproxy.services.cli_detection import CLIDetectionService
+    from ccproxy.services.handler_config import PluginTransformerProtocol
 
 
 logger = get_plugin_logger()
@@ -54,13 +53,13 @@ class BaseHTTPAdapter(BaseAdapter):
         # Required dependencies
         http_client: "httpx.AsyncClient",
         auth_manager: "AuthManager",
-        detection_service: "CLIDetectionService",
+        detection_service: Any,
         # Optional dependencies with defaults
         request_tracer: "IRequestTracer | None" = None,
         metrics: "IMetricsCollector | None" = None,
         streaming_handler: "IStreamingHandler | None" = None,
-        request_transformer: "BaseTransformer | None" = None,
-        response_transformer: "BaseTransformer | None" = None,
+        request_transformer: "PluginTransformerProtocol | None" = None,
+        response_transformer: "PluginTransformerProtocol | None" = None,
         hook_manager: "HookManager | None" = None,
         # Context for plugin-specific services
         context: "PluginContext | None" = None,
@@ -334,6 +333,20 @@ class BaseHTTPAdapter(BaseAdapter):
                 request_context=request_context,
             )
 
+            # Invalidate credential cache on unauthorized responses to force reload next time
+            try:
+                if (
+                    not is_streaming
+                    and hasattr(response, "status_code")
+                    and getattr(response, "status_code", 0) == 401
+                ):
+                    manager: Any = getattr(self, "_auth_manager", None)
+                    if manager is not None and hasattr(manager, "clear_cache"):
+                        await manager.clear_cache()
+            except Exception:
+                # Never fail request flow due to cache invalidation issues
+                pass
+
             # Emit PROVIDER_RESPONSE_RECEIVED hook after receiving response
             if hook_manager:
                 try:
@@ -510,10 +523,10 @@ class BaseHTTPAdapter(BaseAdapter):
             # Clear references
             self._request_transformer = None
             self._response_transformer = None
-            self.http_client = None  # Clear HTTP client reference
-            self.request_tracer = None
-            self.metrics = None
-            self.streaming_handler = None
+            # Keep http_client reference managed by container; set observability to null implementations
+            self.request_tracer = NullRequestTracer()
+            self.metrics = NullMetricsCollector()
+            self.streaming_handler = NullStreamingHandler()
 
             logger.debug("http_adapter_cleanup_completed")
 

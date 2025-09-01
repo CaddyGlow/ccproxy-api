@@ -90,6 +90,7 @@ class UsageData(TypedDict, total=False):
     cache_read_input_tokens: int | None
     cache_creation_input_tokens: int | None
     event_type: StreamEventType | None
+    model: str | None
 
 
 class StreamingTokenMetrics(TypedDict, total=False):

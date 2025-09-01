@@ -41,6 +41,21 @@ class BaseTokenManager(ABC, Generic[CredentialsT]):
         self.storage = storage
         self._auth_cache = AuthStatusCache(ttl=60.0)  # 1 minute TTL for auth status
         self._profile_cache: Any = None  # For subclasses that cache profiles
+        # In-memory credentials cache to reduce file checks
+        self._credentials_cache: CredentialsT | None = None
+        self._credentials_loaded_at: float | None = None
+        # Default recheck interval (seconds). Can be tuned if needed.
+        # TTL for rechecking credentials from storage (config-driven)
+        from ccproxy.config.settings import get_settings
+
+        try:
+            settings = get_settings()
+            ttl = getattr(
+                getattr(settings, "auth", None), "credentials_ttl_seconds", 30.0
+            )
+            self._credentials_ttl = float(ttl) if float(ttl) >= 0 else 30.0
+        except Exception:
+            self._credentials_ttl = 30.0
 
     # ==================== Core Operations ====================
 
@@ -51,7 +66,34 @@ class BaseTokenManager(ABC, Generic[CredentialsT]):
             Credentials if found and valid, None otherwise
         """
         try:
-            return await self.storage.load()
+            # Serve from cache when fresh and not expired
+            if self._credentials_cache is not None and self._credentials_loaded_at:
+                from time import time as _now
+
+                age = _now() - self._credentials_loaded_at
+                if age < self._credentials_ttl and not self.is_expired(
+                    self._credentials_cache
+                ):
+                    logger.debug(
+                        "credentials_cache_hit",
+                        age_seconds=round(age, 2),
+                        ttl_seconds=self._credentials_ttl,
+                    )
+                    return self._credentials_cache
+
+            # Otherwise, reload from storage (also triggers on expired or stale cache)
+            creds = await self.storage.load()
+            # Update cache regardless of result (None clears cache)
+            self._credentials_cache = creds
+            from time import time as _now
+
+            self._credentials_loaded_at = _now()
+            logger.debug(
+                "credentials_cache_refreshed",
+                has_credentials=bool(creds),
+                ttl_seconds=self._credentials_ttl,
+            )
+            return creds
         except (OSError, PermissionError) as e:
             logger.error("storage_access_failed", error=str(e), exc_info=e)
             return None
@@ -78,7 +120,14 @@ class BaseTokenManager(ABC, Generic[CredentialsT]):
             True if saved successfully, False otherwise
         """
         try:
-            return await self.storage.save(credentials)
+            ok = await self.storage.save(credentials)
+            if ok:
+                # Update cache immediately
+                self._credentials_cache = credentials
+                from time import time as _now
+
+                self._credentials_loaded_at = _now()
+            return ok
         except (OSError, PermissionError) as e:
             logger.error("storage_access_failed", error=str(e), exc_info=e)
             return False
@@ -102,8 +151,10 @@ class BaseTokenManager(ABC, Generic[CredentialsT]):
             True if cleared successfully, False otherwise
         """
         try:
-            # Clear the cache
+            # Clear the caches
             self._auth_cache.clear()
+            self._credentials_cache = None
+            self._credentials_loaded_at = None
 
             # Delete from storage
             return await self.storage.delete()
@@ -356,6 +407,10 @@ class BaseTokenManager(ABC, Generic[CredentialsT]):
         # Clear profile cache if exists
         if hasattr(self, "_profile_cache"):
             self._profile_cache = None
+
+        # Clear credentials cache so next access rechecks storage
+        self._credentials_cache = None
+        self._credentials_loaded_at = None
 
     # ==================== Common Utility Methods ====================
 

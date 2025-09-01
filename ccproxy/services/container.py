@@ -24,7 +24,6 @@ from ccproxy.services.interfaces import (
 )
 from ccproxy.services.mocking import MockResponseHandler
 from ccproxy.services.streaming import StreamingHandler
-from ccproxy.services.tracing import RequestTracer
 from ccproxy.utils.binary_resolver import BinaryResolver
 
 
@@ -60,7 +59,7 @@ class ServiceContainer:
         self._services: dict[str, object] = {}
         self._http_client: httpx.AsyncClient | None = None
         self._pool_manager: HTTPPoolManager | None = None
-        self._request_tracer: RequestTracer | None = None  # Set by plugin
+        self._request_tracer: IRequestTracer | None = None  # Set by plugin
         self._proxy_client: BaseProxyClient | None = None  # Managed proxy client
 
         logger.debug(
@@ -92,7 +91,7 @@ class ServiceContainer:
             logger.debug("using_null_request_tracer", category="lifecycle")
         return self._request_tracer
 
-    def set_request_tracer(self, tracer: RequestTracer) -> None:
+    def set_request_tracer(self, tracer: IRequestTracer) -> None:
         """Set the request tracer (called by plugin).
 
         Args:

@@ -112,7 +112,7 @@ class RequestTracerImpl(RequestTracer, StreamingTracer):
             return
 
         if self.json_formatter:
-            await self.json_formatter.log_stream_start(request_id, headers)
+            await self.json_formatter.log_stream_start(request_id)
 
     async def trace_stream_chunk(
         self,
@@ -139,7 +139,7 @@ class RequestTracerImpl(RequestTracer, StreamingTracer):
 
         if self.json_formatter:
             await self.json_formatter.log_stream_complete(
-                request_id, total_chunks, total_bytes
+                request_id, None, total_chunks, total_bytes
             )
 
     # Raw HTTP logging methods (used by middleware/transport)

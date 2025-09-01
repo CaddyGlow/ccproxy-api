@@ -11,7 +11,7 @@ from ccproxy.auth.oauth.base import BaseOAuthClient
 from ccproxy.auth.storage.base import TokenStorage
 from ccproxy.core.logging import get_plugin_logger
 from plugins.oauth_codex.config import CodexOAuthConfig
-from plugins.oauth_codex.models import OpenAICredentials
+from plugins.oauth_codex.models import OpenAICredentials, OpenAITokens
 
 
 logger = get_plugin_logger()
@@ -107,14 +107,15 @@ class CodexOAuthClient(BaseOAuthClient[OpenAICredentials]):
 
             # Build credentials in the current nested schema; legacy inputs are also accepted
             # by the model's validator if needed.
+            tokens = OpenAITokens(
+                id_token=id_token,
+                access_token=access_token,
+                refresh_token=refresh_token or "",
+                account_id="",
+            )
             credentials = OpenAICredentials(
-                tokens={
-                    "access_token": access_token,
-                    "refresh_token": refresh_token or "",
-                    "id_token": id_token,
-                    # Account ID may be absent; try to decode from token claims if possible
-                    "account_id": "",
-                },
+                OPENAI_API_KEY=None,
+                tokens=tokens,
                 last_refresh=datetime.now(UTC).replace(microsecond=0).isoformat(),
                 active=True,
             )

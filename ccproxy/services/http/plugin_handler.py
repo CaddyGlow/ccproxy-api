@@ -12,7 +12,7 @@ from ccproxy.services.cache import ResponseCache
 from ccproxy.services.handler_config import HandlerConfig
 from ccproxy.services.http.base import BaseHTTPHandler
 from ccproxy.services.http.processor import RequestProcessor
-from ccproxy.services.tracing import RequestTracer
+from ccproxy.services.interfaces import IRequestTracer
 from ccproxy.streaming.deferred_streaming import DeferredStreaming
 
 
@@ -31,7 +31,7 @@ class PluginHTTPHandler(BaseHTTPHandler):
         http_client: httpx.AsyncClient | None = None,
         logger: structlog.BoundLogger | None = None,
         response_cache: ResponseCache | None = None,
-        request_tracer: RequestTracer | None = None,
+        request_tracer: IRequestTracer | None = None,
     ) -> None:
         """Initialize the HTTP handler.
 
@@ -45,7 +45,7 @@ class PluginHTTPHandler(BaseHTTPHandler):
         self._http_client = http_client
         self._processor = RequestProcessor(logger=self.logger)
         self._response_cache = response_cache
-        self._request_tracer = request_tracer
+        self._request_tracer: IRequestTracer | None = request_tracer
 
     async def handle_request(
         self,

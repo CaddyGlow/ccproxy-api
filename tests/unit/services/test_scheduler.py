@@ -57,8 +57,8 @@ class TestSchedulerCore:
         registry = get_task_registry()
         registry.clear()  # Clear any existing registrations
 
-        # Register mock task for testing
-        registry.register("pushgateway", MockScheduledTask)
+        # Register mock task for testing (neutral name, not tied to core plugins)
+        registry.register("custom_task", MockScheduledTask)
         # registry.register("stats_printing", StatsPrintingTask)  # removed
 
         scheduler = Scheduler(
@@ -89,13 +89,13 @@ class TestSchedulerCore:
         await scheduler.start()
 
         await scheduler.add_task(
-            task_name="test_pushgateway",
-            task_type="pushgateway",
+            task_name="test_custom",
+            task_type="custom_task",
             interval_seconds=60.0,
             enabled=True,
         )
         assert scheduler.task_count == 1
-        assert "test_pushgateway" in scheduler.list_tasks()
+        assert "test_custom" in scheduler.list_tasks()
 
         await scheduler.stop()
 
@@ -126,7 +126,7 @@ class TestSchedulerCore:
         # Add task first
         await scheduler.add_task(
             task_name="test_task",
-            task_type="pushgateway",
+            task_type="custom_task",
             interval_seconds=60.0,
             enabled=True,
         )
@@ -161,7 +161,7 @@ class TestSchedulerCore:
 
         await scheduler.add_task(
             task_name="info_test",
-            task_type="stats_printing",
+            task_type="custom_task",
             interval_seconds=30.0,
             enabled=True,
         )
@@ -183,7 +183,7 @@ class TestSchedulerCore:
 
         await scheduler.add_task(
             task_name="status_test",
-            task_type="pushgateway",
+            task_type="custom_task",
             interval_seconds=60.0,
             enabled=True,
         )
@@ -397,7 +397,7 @@ class TestSchedulerManagerIntegration:
         registry.clear()  # Clear any existing registrations
 
         # Register default tasks
-        registry.register("pushgateway", MockScheduledTask)
+        registry.register("custom_task", MockScheduledTask)
         # registry.register("stats_printing", StatsPrintingTask)  # removed
 
         yield
@@ -532,7 +532,7 @@ class TestSchedulerErrorScenarios:
         registry.clear()  # Clear any existing registrations
 
         # Register default tasks
-        registry.register("pushgateway", MockScheduledTask)
+        registry.register("custom_task", MockScheduledTask)
         # registry.register("stats_printing", StatsPrintingTask)  # removed
 
         yield
@@ -573,7 +573,7 @@ class TestSchedulerErrorScenarios:
             )
 
             # Let task run and recover
-            await asyncio.sleep(0.3)
+            await asyncio.sleep(0.22)
 
             task = scheduler.get_task("failure_test")
             assert task is not None
@@ -594,7 +594,7 @@ class TestSchedulerErrorScenarios:
         # Add first task
         await scheduler.add_task(
             task_name="task1",
-            task_type="pushgateway",
+            task_type="custom_task",
             interval_seconds=60.0,
             enabled=True,
         )
@@ -602,7 +602,7 @@ class TestSchedulerErrorScenarios:
         # Add second task (should still work, limit is for execution not registration)
         await scheduler.add_task(
             task_name="task2",
-            task_type="pushgateway",
+            task_type="custom_task",
             interval_seconds=60.0,
             enabled=True,
         )
@@ -625,7 +625,7 @@ class TestSchedulerErrorScenarios:
         # Define a slow task to exercise shutdown timeout
         class SlowTask(BaseScheduledTask):
             async def run(self) -> bool:  # type: ignore[override]
-                await asyncio.sleep(0.2)
+                await asyncio.sleep(0.1)
                 return True
 
         from ccproxy.scheduler.registry import get_task_registry
@@ -641,7 +641,7 @@ class TestSchedulerErrorScenarios:
             )
 
             # Let task start running
-            await asyncio.sleep(0.1)
+            await asyncio.sleep(0.05)
 
             # Shutdown should complete within timeout
             start_time = asyncio.get_event_loop().time()

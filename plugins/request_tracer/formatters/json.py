@@ -51,7 +51,7 @@ class JSONFormatter:
     def _current_cmd_id(self) -> str | None:
         """Return current cmd_id from structlog contextvars or env."""
         try:
-            ctx = get_merged_contextvars() or {}
+            ctx = get_merged_contextvars(logger) or {}
             cmd_id = ctx.get("cmd_id")
         except Exception:
             cmd_id = None
@@ -67,7 +67,7 @@ class JSONFormatter:
         - If neither exists: generate a UUID4
         """
         try:
-            ctx = get_merged_contextvars() or {}
+            ctx = get_merged_contextvars(logger) or {}
             cmd_id = ctx.get("cmd_id")
         except Exception:
             cmd_id = None
@@ -378,7 +378,7 @@ class JSONFormatter:
         if not self.verbose_api:
             return
 
-        error_data = {
+        error_data: dict[str, Any] = {
             "request_id": request_id,
             "error": str(error) if error else "unknown",
             "category": "error",
@@ -436,7 +436,7 @@ class JSONFormatter:
         if not self.verbose_api:
             return
 
-        log_data = {
+        log_data: dict[str, Any] = {
             "request_id": request_id,
             "category": "streaming",
         }
@@ -457,7 +457,7 @@ class JSONFormatter:
         if not self.verbose_api:
             return
 
-        log_data = {
+        log_data: dict[str, Any] = {
             "request_id": request_id,
             "category": "streaming",
         }

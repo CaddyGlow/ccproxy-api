@@ -1,7 +1,7 @@
 """Claude API adapter implementation."""
 
 import json
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from fastapi import HTTPException, Request
 from httpx import AsyncClient
@@ -13,12 +13,12 @@ if TYPE_CHECKING:
     from ccproxy.core.request_context import RequestContext
     from ccproxy.hooks import HookManager
     from ccproxy.plugins.declaration import PluginContext
-    from ccproxy.services.cli_detection import CLIDetectionService
     from ccproxy.services.interfaces import (
         IMetricsCollector,
         IRequestTracer,
         IStreamingHandler,
     )
+    from plugins.claude_api.detection_service import ClaudeAPIDetectionService
 
 from ccproxy.config.constants import (
     CLAUDE_API_BASE_URL,
@@ -48,7 +48,7 @@ class ClaudeAPIAdapter(BaseHTTPAdapter):
         # Required dependencies
         http_client: AsyncClient,
         auth_manager: "AuthManager",
-        detection_service: "CLIDetectionService",
+        detection_service: "ClaudeAPIDetectionService",
         # Optional dependencies
         request_tracer: "IRequestTracer | None" = None,
         metrics: "IMetricsCollector | None" = None,
@@ -113,7 +113,7 @@ class ClaudeAPIAdapter(BaseHTTPAdapter):
             request_transformer=request_transformer,
             response_transformer=response_transformer,
             hook_manager=hook_manager,
-            context=context,
+            context=cast("PluginContext | None", context),
         )
 
         # Initialize OpenAI adapter for format conversion

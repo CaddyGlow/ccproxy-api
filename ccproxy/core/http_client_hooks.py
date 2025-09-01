@@ -1,6 +1,5 @@
 """HTTP client with hook support for request/response interception."""
 
-import json
 from typing import Any
 
 import httpx
@@ -43,6 +42,7 @@ class HookableHTTPClient(httpx.AsyncClient):
         files: RequestFiles | None = None,
         params: QueryParamTypes | None = None,
         headers: HeaderTypes | None = None,
+        json: Any | None = None,
         **kwargs: Any,
     ) -> httpx.Response:
         """Make an HTTP request with hook emissions.
@@ -53,7 +53,7 @@ class HookableHTTPClient(httpx.AsyncClient):
             - HTTP_ERROR on errors
         """
         # Build request context for hooks
-        request_context = {
+        request_context: dict[str, Any] = {
             "method": method,
             "url": str(url),
             "headers": dict(headers) if headers else {},

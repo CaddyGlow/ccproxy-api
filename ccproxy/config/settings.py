@@ -13,6 +13,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from ccproxy.config.discovery import find_toml_config_file
 from ccproxy.core.logging import get_logger
 
+from .auth import AuthSettings
 from .binary import BinarySettings
 from .cors import CORSSettings
 from .docker_settings import DockerSettings
@@ -90,6 +91,12 @@ class Settings(BaseSettings):
         description="HTTP client configuration settings",
     )
 
+    # Authentication/cache settings
+    auth: AuthSettings = Field(
+        default_factory=_default_auth_settings,
+        description="Authentication manager settings (e.g., credentials caching)",
+    )
+
     # Reverse proxy settings removed; provider plugins own routing/translation
 
     # Binary resolution settings
@@ -141,6 +148,65 @@ class Settings(BaseSettings):
         """
         # Use serialization mode that properly handles SecretStr
         return self.model_dump(mode="json")
+
+    @classmethod
+    def _validate_deprecated_keys(cls, config_data: dict[str, Any]) -> None:
+        """Fail fast if deprecated legacy config keys are present.
+
+        Checks both loaded config data and environment variables for known-deprecated
+        keys from the pre-plugin observability/scheduler era and raises with a
+        clear migration hint.
+        """
+        deprecated_hits: list[tuple[str, str]] = []
+
+        # 1) Check TOML config contents
+        scheduler_cfg = config_data.get("scheduler") or {}
+        if isinstance(scheduler_cfg, dict):
+            key_map = {
+                "pushgateway_enabled": "plugins.metrics.pushgateway_enabled",
+                "pushgateway_url": "plugins.metrics.pushgateway_url",
+                "pushgateway_job": "plugins.metrics.pushgateway_job",
+                "pushgateway_interval_seconds": "plugins.metrics.pushgateway_push_interval",
+            }
+            for old_key, new_key in key_map.items():
+                if old_key in scheduler_cfg:
+                    deprecated_hits.append((f"scheduler.{old_key}", new_key))
+
+        # Any top-level legacy observability block
+        if "observability" in config_data:
+            deprecated_hits.append(
+                ("observability.*", "plugins.* (metrics/analytics/dashboard)")
+            )
+
+        # 2) Check environment variables
+        for env_key in os.environ:
+            upper = env_key.upper()
+            if upper.startswith("SCHEDULER__PUSHGATEWAY_"):
+                # Map specific names when possible
+                env_map = {
+                    "SCHEDULER__PUSHGATEWAY_ENABLED": "plugins.metrics.pushgateway_enabled",
+                    "SCHEDULER__PUSHGATEWAY_URL": "plugins.metrics.pushgateway_url",
+                    "SCHEDULER__PUSHGATEWAY_JOB": "plugins.metrics.pushgateway_job",
+                    "SCHEDULER__PUSHGATEWAY_INTERVAL_SECONDS": "plugins.metrics.pushgateway_push_interval",
+                }
+                target = env_map.get(upper, "plugins.metrics.*")
+                deprecated_hits.append((env_key, target))
+            if upper.startswith("OBSERVABILITY__"):
+                deprecated_hits.append(
+                    (env_key, "plugins.* (metrics/analytics/dashboard)")
+                )
+
+        if deprecated_hits:
+            lines = [
+                "Deprecated configuration detected. The following keys are no longer supported:",
+            ]
+            for old, new in deprecated_hits:
+                lines.append(f"- {old} → {new}")
+            lines.append(
+                "Please configure corresponding plugin settings under [plugins.*]. "
+                "See docs: plugins/metrics/README.md and README Plugin Config Quickstart."
+            )
+            raise ValueError("\n".join(lines))
 
     @classmethod
     def load_toml_config(cls, toml_path: Path) -> dict[str, Any]:
@@ -242,6 +308,9 @@ class Settings(BaseSettings):
                     category="config",
                 )
                 config_manager.mark_config_logged()
+
+        # Validate deprecated keys before constructing settings
+        cls._validate_deprecated_keys(config_data)
 
         # Create Settings instance from environment (env > defaults)
         settings = cls()
@@ -417,6 +486,9 @@ class ConfigurationManager:
                         else:
                             config_data[key] = value
 
+                # Validate deprecated keys before constructing settings
+                Settings._validate_deprecated_keys(config_data)
+
                 self._settings = Settings(**config_data)
                 self._config_path = config_path
 
@@ -515,3 +587,8 @@ def get_settings(config_path: Path | str | None = None) -> Settings:
         # If settings can't be loaded (e.g., missing API key),
         # this will be handled by the caller
         raise ValueError(f"Configuration error: {e}") from e
+
+    # Helper to satisfy mypy about zero-arg default_factory
+    @staticmethod
+    def _default_auth_settings() -> AuthSettings:
+        return AuthSettings()

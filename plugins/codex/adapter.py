@@ -3,7 +3,7 @@
 import contextlib
 import json
 import uuid
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from fastapi import Request
 from httpx import AsyncClient
@@ -25,12 +25,12 @@ if TYPE_CHECKING:
     from ccproxy.core.request_context import RequestContext
     from ccproxy.hooks import HookManager
     from ccproxy.plugins.declaration import PluginContext
-    from ccproxy.services.cli_detection import CLIDetectionService
     from ccproxy.services.interfaces import (
         IMetricsCollector,
         IRequestTracer,
         IStreamingHandler,
     )
+    from plugins.codex.detection_service import CodexDetectionService
 
 from .format_adapter import CodexFormatAdapter
 from .transformers import CodexRequestTransformer, CodexResponseTransformer
@@ -51,7 +51,7 @@ class CodexAdapter(BaseHTTPAdapter):
         # Required dependencies
         http_client: AsyncClient,
         auth_manager: AuthManager,
-        detection_service: "CLIDetectionService",
+        detection_service: "CodexDetectionService",
         # Optional dependencies
         request_tracer: "IRequestTracer | None" = None,
         metrics: "IMetricsCollector | None" = None,
@@ -100,7 +100,7 @@ class CodexAdapter(BaseHTTPAdapter):
             request_transformer=request_transformer,
             response_transformer=response_transformer,
             hook_manager=hook_manager,
-            context=context,
+            context=cast("PluginContext | None", context),
         )
 
         # Initialize components
@@ -375,8 +375,7 @@ class CodexAdapter(BaseHTTPAdapter):
             await super().cleanup()
 
             # Codex-specific cleanup
-            # Clear references to prevent memory leaks
-            self.format_adapter = None
+            # No additional references to clear
 
             logger.debug("codex_adapter_cleanup_completed")
 

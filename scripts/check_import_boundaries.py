@@ -33,10 +33,7 @@ def iter_py_files(root: pathlib.Path) -> Iterable[pathlib.Path]:
 
 def is_allowed(path: pathlib.Path) -> bool:
     # Allow plugin framework code
-    if any((path.resolve()).is_relative_to(allow) for allow in ALLOW_UNDER):
-        return True
-    # Disallow everything else under ccproxy/* importing plugins.*
-    return False
+    return any((path.resolve()).is_relative_to(allow) for allow in ALLOW_UNDER)
 
 
 def main() -> int:

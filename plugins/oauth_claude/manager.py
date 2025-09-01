@@ -198,7 +198,7 @@ class ClaudeApiTokenManager(BaseTokenManager[ClaudeCredentials]):
 
     # ==================== Targeted overrides ====================
 
-    async def load_credentials(self) -> ClaudeCredentials | None:  # type: ignore[override]
+    async def load_credentials(self) -> ClaudeCredentials | None:
         """Load credentials and backfill subscription_type from profile if missing.
 
         Avoids network calls; uses cached profile or local ~/.claude/.account.json
@@ -262,7 +262,7 @@ class ClaudeApiTokenManager(BaseTokenManager[ClaudeCredentials]):
         wrapper = ClaudeTokenWrapper(credentials=credentials)
         return wrapper.expires_at_datetime
 
-    async def get_profile_quick(self) -> ClaudeProfileInfo | None:  # type: ignore[override]
+    async def get_profile_quick(self) -> ClaudeProfileInfo | None:
         """Return cached profile info only, avoiding I/O or network.
 
         Profile cache is typically preloaded from local storage by

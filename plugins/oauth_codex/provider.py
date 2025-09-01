@@ -354,7 +354,9 @@ class CodexOAuthProvider(ProfileLoggingMixin):
             StandardProfileFields with clean, UI-friendly data
         """
         # Initialize with basic credential info
-        profile_data = {
+        from typing import Any
+
+        profile_data: dict[str, Any] = {
             "account_id": credentials.account_id,
             "provider_type": "codex",
             "active": credentials.active,
@@ -365,7 +367,7 @@ class CodexOAuthProvider(ProfileLoggingMixin):
         }
 
         # Store raw credential data for debugging
-        raw_data = {
+        raw_data: dict[str, Any] = {
             "last_refresh": credentials.last_refresh,
             "expires_at": str(credentials.expires_at),
         }

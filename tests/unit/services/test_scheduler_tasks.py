@@ -70,8 +70,8 @@ class TestBaseScheduledTask:
         # Verify setup was called during start
         assert task.setup_called  # type: ignore[unreachable]
 
-        # Let it run a few times
-        await asyncio.sleep(0.25)
+        # Let it run briefly
+        await asyncio.sleep(0.15)
         assert task.run_count > 0
 
         # Stop the task

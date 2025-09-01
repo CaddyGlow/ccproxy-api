@@ -68,13 +68,9 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
         # Generate datetime for consistent logging across all layers
         log_timestamp = datetime.now(UTC)
 
-        # Get DuckDB storage from app state if available
-        storage = getattr(request.app.state, "duckdb_storage", None)
-
         # Use the proper request context manager to ensure __aexit__ is called
         async with request_context(
             request_id=request_id,
-            storage=storage,
             log_timestamp=log_timestamp,
             method=request.method,
             path=str(request.url.path),
@@ -86,10 +82,6 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
             # Store context in request state for access by services
             request.state.request_id = request_id
             request.state.context = ctx
-
-            # Add DuckDB storage to context if available
-            if hasattr(request.state, "duckdb_storage"):
-                ctx.storage = request.state.duckdb_storage
 
             # Process the request
             response = await call_next(request)

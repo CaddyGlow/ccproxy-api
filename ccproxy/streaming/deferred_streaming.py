@@ -65,7 +65,7 @@ class DeferredStreaming(StreamingResponse):
         self.hook_manager = hook_manager
 
         # Create an async generator for the streaming content
-        async def generate_content():
+        async def generate_content() -> AsyncGenerator[bytes, None]:
             # This will be replaced when __call__ is invoked
             yield b""
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import time
+from collections.abc import AsyncGenerator
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -105,7 +106,7 @@ async def stream_logs(
     status_code_min: int | None = Query(None, description="Min status code"),
     status_code_max: int | None = Query(None, description="Max status code"),
 ) -> StreamingResponse:
-    async def event_generator():
+    async def event_generator() -> AsyncGenerator[str, None]:
         from ccproxy.core.request_context import get_request_event_stream
 
         try:

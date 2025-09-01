@@ -29,7 +29,6 @@ class NoOpAuthManager:
             expiresAt=None,
             scopes=[],
             subscriptionType="sdk",
-            tokenType="Bearer",
         )
         return ClaudeCredentials(claudeAiOauth=oauth_token)
 

@@ -43,7 +43,7 @@ async def log_request_access(
         **additional_metadata: Any additional fields to include
     """
     # Prepare basic log data (always included)
-    log_data = {
+    log_data: dict[str, Any] = {
         "request_id": request_id,
         "method": method,
         "path": path,
@@ -168,7 +168,7 @@ def log_request_start(
         query: Query parameters
         **additional_metadata: Any additional fields to include
     """
-    log_data = {
+    log_data: dict[str, Any] = {
         "request_id": request_id,
         "method": method,
         "path": path,
@@ -210,7 +210,7 @@ async def log_provider_access(
         error_message: Error message if applicable
         **additional_metadata: Any additional fields to include
     """
-    log_data = {
+    log_data: dict[str, Any] = {
         "request_id": request_id,
         "provider": provider,
         "method": method,

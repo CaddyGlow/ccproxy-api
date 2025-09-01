@@ -85,4 +85,4 @@ jobs:
       - name: Install deps
         run: uv sync --all-extras --dev
       - name: Run unit tests (no network)
-        run: uv run pytest -q tests/unit -m "not real_api"
+        run: uv run pytest tests/unit -m "not real_api" --durations=10 -q

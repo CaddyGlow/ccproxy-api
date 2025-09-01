@@ -1,6 +1,6 @@
 """Core services container for shared services passed to plugins."""
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import structlog
 from httpx import AsyncClient
@@ -88,7 +88,7 @@ class CoreServices:
                     # Validate and return config using plugin's schema
                     try:
                         validated_config = config_class(**raw_config)
-                        return validated_config.model_dump()
+                        return cast(dict[str, Any], validated_config.model_dump())
                     except (ValueError, TypeError) as e:
                         self.logger.error(
                             "config_validation_error",

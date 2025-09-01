@@ -211,9 +211,15 @@ class MetricsRuntime(SystemPluginRuntime):
                     "metrics_endpoint_enabled": self.config.metrics_endpoint_enabled,
                     "pushgateway_enabled": self.config.pushgateway_enabled,
                     "pushgateway_url": self.config.pushgateway_url,
-                    "collector_enabled": self.hook.get_collector().is_enabled()
-                    if self.hook
-                    else False,
+                    "collector_enabled": (
+                        (
+                            self.hook.get_collector().is_enabled()
+                            if self.hook.get_collector()
+                            else False
+                        )
+                        if self.hook
+                        else False
+                    ),
                 }
             )
 

@@ -296,7 +296,7 @@ class SessionPool:
             session_id=session_id,
             old_handle_id=old_handle_id,
             idle_seconds=session_client.active_stream_handle.idle_seconds,
-            message=f"No first chunk received within {self.config.stream_first_chunk_timeout} seconds, terminating session client",
+            detail=f"No first chunk received within {self.config.stream_first_chunk_timeout} seconds, terminating session client",
         )
 
         # Remove the entire session - connection is likely broken
@@ -316,7 +316,7 @@ class SessionPool:
             idle_seconds=session_client.active_stream_handle.idle_seconds,
             has_first_chunk=session_client.active_stream_handle.has_first_chunk,
             is_completed=session_client.active_stream_handle.is_completed,
-            message=f"Stream idle for {self.config.stream_ongoing_timeout}+ seconds, interrupting stream but keeping session",
+            note=f"Stream idle for {self.config.stream_ongoing_timeout}+ seconds, interrupting stream but keeping session",
         )
 
         try:
@@ -327,14 +327,14 @@ class SessionPool:
                     "session_pool_interrupted_ongoing_timeout",
                     session_id=session_id,
                     old_handle_id=old_handle_id,
-                    message="Successfully interrupted ongoing timeout stream",
+                    note="Successfully interrupted ongoing timeout stream",
                 )
             else:
                 logger.debug(
                     "session_pool_interrupt_ongoing_not_needed",
                     session_id=session_id,
                     old_handle_id=old_handle_id,
-                    message="Ongoing timeout stream was already completed",
+                    note="Ongoing timeout stream was already completed",
                 )
         except asyncio.CancelledError as e:
             logger.warning(
@@ -343,7 +343,7 @@ class SessionPool:
                 old_handle_id=old_handle_id,
                 error=str(e),
                 exc_info=e,
-                message="Interrupt cancelled during ongoing timeout stream cleanup",
+                note="Interrupt cancelled during ongoing timeout stream cleanup",
             )
         except TimeoutError as e:
             logger.warning(
@@ -352,7 +352,7 @@ class SessionPool:
                 old_handle_id=old_handle_id,
                 error=str(e),
                 exc_info=e,
-                message="Interrupt timed out during ongoing timeout stream cleanup",
+                note="Interrupt timed out during ongoing timeout stream cleanup",
             )
         except Exception as e:
             logger.warning(

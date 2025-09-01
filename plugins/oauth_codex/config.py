@@ -48,6 +48,16 @@ class CodexOAuthConfig(BaseModel):
         },
         description="Additional headers for OAuth requests",
     )
+    # Optional audience parameter for auth requests (OpenAI specific)
+    audience: str = Field(
+        default="https://api.openai.com/v1",
+        description="OAuth audience parameter for OpenAI",
+    )
+    # Convenience user agent string (mirrors headers[\"User-Agent\"]) for typed access
+    user_agent: str = Field(
+        default="Codex-Code/1.0.43",
+        description="User-Agent header value for OAuth requests",
+    )
     request_timeout: int = Field(
         default=30,
         description="Timeout in seconds for OAuth requests",

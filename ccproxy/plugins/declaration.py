@@ -17,16 +17,25 @@ from pydantic import BaseModel
 
 
 if TYPE_CHECKING:
+    from fastapi import FastAPI
     from starlette.middleware.base import BaseHTTPMiddleware
 
+    from ccproxy.auth.oauth.registry import OAuthRegistry
     from ccproxy.config.settings import Settings
     from ccproxy.hooks.base import Hook
+    from ccproxy.hooks.manager import HookManager
+    from ccproxy.hooks.registry import HookRegistry
     from ccproxy.plugins.factory import PluginRegistry
     from ccproxy.plugins.protocol import OAuthClientProtocol
     from ccproxy.scheduler.core import Scheduler
     from ccproxy.scheduler.tasks import BaseScheduledTask
     from ccproxy.services.adapters.base import BaseAdapter
     from ccproxy.services.cli_detection import CLIDetectionService
+    from ccproxy.services.interfaces import (
+        IMetricsCollector,
+        IRequestTracer,
+        IStreamingHandler,
+    )
 else:
     # Runtime import - mypy doesn't have stubs for fastapi.middleware
     from starlette.middleware.base import BaseHTTPMiddleware
@@ -186,10 +195,27 @@ class PluginContext(TypedDict, total=False):
     cli_detection_service: "CLIDetectionService"  # Shared CLI detection service
     plugin_registry: "PluginRegistry"  # Plugin registry for inter-plugin access (single source for all plugin/service access)
 
+    # Core app and hook system
+    app: "FastAPI"  # FastAPI application instance
+    hook_registry: "HookRegistry"
+    hook_manager: "HookManager"
+
+    # Observability and streaming
+    request_tracer: "IRequestTracer | None"
+    streaming_handler: "IStreamingHandler | None"
+    metrics: "IMetricsCollector | None"
+
     # Provider-specific
     adapter: "BaseAdapter"  # BaseAdapter instance
     detection_service: Any  # Detection service instance (provider-specific)
     credentials_manager: Any  # Credentials manager (plugin-specific)
+    oauth_registry: "OAuthRegistry"  # OAuth registry available in app state
+    auth_provider: Any  # OAuth provider instance (auth provider plugins)
+    token_manager: Any  # Token manager instance for auth providers
+    storage: Any  # Storage instance for auth providers
+
+    # Testing/utilities
+    proxy_service: Any  # Proxy service (tests/mocks)
 
 
 class PluginRuntimeProtocol(Protocol):

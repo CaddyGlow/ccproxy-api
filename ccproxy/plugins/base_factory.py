@@ -4,7 +4,7 @@ This module provides a BaseProviderPluginFactory that implements common patterns
 shared across all provider plugin factories, reducing code duplication by 60-70%.
 """
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from fastapi import APIRouter
 
@@ -134,7 +134,7 @@ class BaseProviderPluginFactory(ProviderPluginFactory):
 
     def create_runtime(self) -> ProviderPluginRuntime:
         """Create runtime instance using the configured runtime class."""
-        return self.runtime_class(self.manifest)
+        return cast(ProviderPluginRuntime, self.runtime_class(self.manifest))
 
     def create_adapter(self, context: PluginContext) -> BaseAdapter:
         """Create adapter instance with explicit dependencies.
@@ -172,15 +172,18 @@ class BaseProviderPluginFactory(ProviderPluginFactory):
                 )
 
             # Create HTTP adapter with explicit dependencies
-            return self.adapter_class(
-                http_client=http_client,
-                auth_manager=auth_manager,
-                detection_service=detection_service,
-                request_tracer=request_tracer or NullRequestTracer(),
-                metrics=metrics or NullMetricsCollector(),
-                streaming_handler=streaming_handler or NullStreamingHandler(),
-                hook_manager=hook_manager,
-                context=context,
+            return cast(
+                BaseAdapter,
+                self.adapter_class(
+                    http_client=http_client,
+                    auth_manager=auth_manager,
+                    detection_service=detection_service,
+                    request_tracer=request_tracer or NullRequestTracer(),
+                    metrics=metrics or NullMetricsCollector(),
+                    streaming_handler=streaming_handler or NullStreamingHandler(),
+                    hook_manager=hook_manager,
+                    context=context,
+                ),
             )
         else:
             # Non-HTTP adapters (like ClaudeSDK) have different dependencies
@@ -227,7 +230,7 @@ class BaseProviderPluginFactory(ProviderPluginFactory):
                     config = self.manifest.config_class()
                     adapter_kwargs["config"] = config
 
-            return self.adapter_class(**adapter_kwargs)
+            return cast(BaseAdapter, self.adapter_class(**adapter_kwargs))
 
     def create_detection_service(self, context: PluginContext) -> Any:
         """Create detection service instance if class is configured.

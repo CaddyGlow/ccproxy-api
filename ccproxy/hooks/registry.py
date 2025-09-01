@@ -1,9 +1,10 @@
 """Central registry for all hooks"""
 
 from collections import defaultdict
+from typing import Any
 
 import structlog
-from sortedcontainers import SortedList
+from sortedcontainers import SortedList  # type: ignore[import-untyped]
 
 from .base import Hook
 from .events import HookEvent
@@ -15,7 +16,7 @@ class HookRegistry:
     def __init__(self) -> None:
         # Use SortedList for automatic priority ordering
         # Key function sorts by (priority, registration_order)
-        self._hooks: dict[HookEvent, SortedList[Hook]] = defaultdict(
+        self._hooks: dict[HookEvent, Any] = defaultdict(
             lambda: SortedList(
                 key=lambda h: (
                     getattr(h, "priority", 500),
@@ -105,7 +106,7 @@ class HookRegistry:
         """Get all hooks for an event in priority order"""
         return list(self._hooks.get(event, []))
 
-    def get_hooks_summary(self) -> dict[str, list[dict[str, any]]]:
+    def get_hooks_summary(self) -> dict[str, list[dict[str, Any]]]:
         """Get summary of all registered hooks organized by event.
 
         Returns:

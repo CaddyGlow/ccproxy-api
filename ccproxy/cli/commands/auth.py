@@ -85,7 +85,9 @@ def _expected_plugin_class_name(provider: str) -> str:
     return f"Oauth{camel}Plugin"
 
 
-def _render_profile_table(profile: dict[str, Any], title: str = "Account Information") -> None:
+def _render_profile_table(
+    profile: dict[str, Any], title: str = "Account Information"
+) -> None:
     """Render a clean, two-column table of profile data using Rich.
 
     Only non-empty fields are displayed. Datetimes are stringified.
@@ -149,7 +151,11 @@ def _render_profile_features(profile: dict[str, Any]) -> None:
         table.add_column("Value")
         for k, v in features.items():
             name = k.replace("_", " ").title()
-            val = "Yes" if isinstance(v, bool) and v else ("No" if isinstance(v, bool) else str(v))
+            val = (
+                "Yes"
+                if isinstance(v, bool) and v
+                else ("No" if isinstance(v, bool) else str(v))
+            )
             if val and val != "No":  # show enabled/meaningful features only
                 table.add_row(name, val)
         if len(table.rows) > 0:
@@ -284,9 +290,7 @@ def get_oauth_provider_choices() -> list[str]:
     return list(providers.keys())
 
 
-async def get_plugin_for_provider(provider: str) -> Any:
-    """Deprecated: use OAuth providers directly. Retained for compatibility."""
-    raise ValueError("Direct plugin access is no longer supported; use OAuth providers")
+# Removed legacy direct plugin access helper; use OAuth providers via registry
 
 
 async def get_oauth_client_for_provider(provider: str, registry: OAuthRegistry) -> Any:
@@ -675,8 +679,10 @@ def status_command(
                             oauth_provider, "_extract_standard_profile"
                         ):
                             with contextlib.suppress(Exception):
-                                standard_profile = oauth_provider._extract_standard_profile(
-                                    credentials
+                                standard_profile = (
+                                    oauth_provider._extract_standard_profile(
+                                        credentials
+                                    )
                                 )
                         if standard_profile is not None:
                             try:
@@ -684,7 +690,10 @@ def status_command(
                                     exclude={"_raw_profile_data"}
                                 )
                             except Exception:
-                                profile_info = {"provider": provider, "authenticated": True}
+                                profile_info = {
+                                    "provider": provider,
+                                    "authenticated": True,
+                                }
                         else:
                             profile_info = {"provider": provider, "authenticated": True}
                     else:
@@ -695,17 +704,40 @@ def status_command(
                         ):
                             with contextlib.suppress(Exception):
                                 quick = asyncio.run(manager.get_unified_profile_quick())
-                        if (not quick or quick == {}) and detailed and manager is not None:
+                        if (
+                            (not quick or quick == {})
+                            and detailed
+                            and manager is not None
+                        ):
                             with contextlib.suppress(Exception):
                                 quick = asyncio.run(manager.get_unified_profile())
                         if quick and isinstance(quick, dict) and quick != {}:
                             profile_info = quick
                             try:
-                                prov = (profile_info.get("provider_type") or profile_info.get("provider") or "").lower()
-                                extras = profile_info.get("extras") if isinstance(profile_info.get("extras"), dict) else None
-                                if prov in {"claude-api", "claude_api", "claude"} and extras:
-                                    account = extras.get("account", {}) if isinstance(extras.get("account"), dict) else {}
-                                    org = extras.get("organization", {}) if isinstance(extras.get("organization"), dict) else {}
+                                prov = (
+                                    profile_info.get("provider_type")
+                                    or profile_info.get("provider")
+                                    or ""
+                                ).lower()
+                                extras = (
+                                    profile_info.get("extras")
+                                    if isinstance(profile_info.get("extras"), dict)
+                                    else None
+                                )
+                                if (
+                                    prov in {"claude-api", "claude_api", "claude"}
+                                    and extras
+                                ):
+                                    account = (
+                                        extras.get("account", {})
+                                        if isinstance(extras.get("account"), dict)
+                                        else {}
+                                    )
+                                    org = (
+                                        extras.get("organization", {})
+                                        if isinstance(extras.get("organization"), dict)
+                                        else {}
+                                    )
                                     if account.get("has_claude_max") is True:
                                         profile_info["subscription_type"] = "max"
                                         profile_info["subscription_status"] = "active"
@@ -714,13 +746,24 @@ def status_command(
                                         profile_info["subscription_status"] = "active"
                                     features = {}
                                     if isinstance(account.get("has_claude_max"), bool):
-                                        features["claude_max"] = account.get("has_claude_max")
+                                        features["claude_max"] = account.get(
+                                            "has_claude_max"
+                                        )
                                     if isinstance(account.get("has_claude_pro"), bool):
-                                        features["claude_pro"] = account.get("has_claude_pro")
+                                        features["claude_pro"] = account.get(
+                                            "has_claude_pro"
+                                        )
                                     if features:
-                                        profile_info["features"] = {**features, **(profile_info.get("features") or {})}
-                                    if org.get("name") and not profile_info.get("organization_name"):
-                                        profile_info["organization_name"] = org.get("name")
+                                        profile_info["features"] = {
+                                            **features,
+                                            **(profile_info.get("features") or {}),
+                                        }
+                                    if org.get("name") and not profile_info.get(
+                                        "organization_name"
+                                    ):
+                                        profile_info["organization_name"] = org.get(
+                                            "name"
+                                        )
                                     if not profile_info.get("organization_role"):
                                         profile_info["organization_role"] = "member"
                             except Exception:
@@ -739,9 +782,15 @@ def status_command(
                                         exclude={"_raw_profile_data"}
                                     )
                                 except Exception:
-                                    profile_info = {"provider": provider, "authenticated": True}
+                                    profile_info = {
+                                        "provider": provider,
+                                        "authenticated": True,
+                                    }
                             else:
-                                profile_info = {"provider": provider, "authenticated": True}
+                                profile_info = {
+                                    "provider": provider,
+                                    "authenticated": True,
+                                }
 
                     # Ensure provider present for display consistency
                     if profile_info is not None and "provider" not in profile_info:
@@ -749,32 +798,53 @@ def status_command(
 
                     # Debug logging when important fields are missing (helps diagnose Codex issues)
                     try:
-                        prov_dbg = (profile_info.get("provider_type") or profile_info.get("provider") or "").lower()
+                        prov_dbg = (
+                            profile_info.get("provider_type")
+                            or profile_info.get("provider")
+                            or ""
+                        ).lower()
                         missing = []
-                        for f in ("subscription_type", "organization_name", "display_name"):
+                        for f in (
+                            "subscription_type",
+                            "organization_name",
+                            "display_name",
+                        ):
                             if not profile_info.get(f):
                                 missing.append(f)
                         if missing:
                             reasons: list[str] = []
                             # Inspect quick extras for clues
-                            qextra = quick.get("extras") if isinstance(quick, dict) else None
+                            qextra = (
+                                quick.get("extras") if isinstance(quick, dict) else None
+                            )
                             if prov_dbg in {"codex", "openai"}:
                                 # OpenAI claims location
                                 auth_claims = None
                                 if isinstance(qextra, dict):
-                                    auth_claims = qextra.get("https://api.openai.com/auth")
+                                    auth_claims = qextra.get(
+                                        "https://api.openai.com/auth"
+                                    )
                                 if not auth_claims:
                                     reasons.append("missing_openai_auth_claims")
                                 else:
                                     if "chatgpt_plan_type" not in auth_claims:
                                         reasons.append("plan_type_not_in_claims")
-                                    orgs = auth_claims.get("organizations") if isinstance(auth_claims, dict) else None
+                                    orgs = (
+                                        auth_claims.get("organizations")
+                                        if isinstance(auth_claims, dict)
+                                        else None
+                                    )
                                     if not orgs:
                                         reasons.append("no_organizations_in_claims")
-                                if hasattr(credentials, "id_token") and not getattr(credentials, "id_token"):
+                                if (
+                                    hasattr(credentials, "id_token")
+                                    and not credentials.id_token
+                                ):
                                     reasons.append("no_id_token_available")
                             elif prov_dbg in {"claude", "claude-api", "claude_api"}:
-                                if not (isinstance(qextra, dict) and qextra.get("account")):
+                                if not (
+                                    isinstance(qextra, dict) and qextra.get("account")
+                                ):
                                     reasons.append("missing_claude_account_extras")
                             if reasons:
                                 logger.debug(
@@ -795,9 +865,15 @@ def status_command(
             # Normalize fields for rendering
             if "provider_type" not in profile_info and "provider" in profile_info:
                 try:
-                    profile_info["provider_type"] = str(profile_info["provider"]).replace("_", "-")
+                    profile_info["provider_type"] = str(
+                        profile_info["provider"]
+                    ).replace("_", "-")
                 except Exception:
-                    profile_info["provider_type"] = str(profile_info["provider"]) if profile_info.get("provider") else None
+                    profile_info["provider_type"] = (
+                        str(profile_info["provider"])
+                        if profile_info.get("provider")
+                        else None
+                    )
 
             # Render a clean standardized view instead of dumping a dict
             _render_profile_table(profile_info, title="Account Information")

@@ -89,7 +89,10 @@ class ClaudeOAuthClient(BaseOAuthClient[ClaudeCredentials]):
         # Use injected detection service if available
         if self.detection_service:
             try:
-                detected_headers = self.detection_service.get_cached_headers()
+                get_headers = getattr(
+                    self.detection_service, "get_cached_headers", None
+                )
+                detected_headers = get_headers() if callable(get_headers) else None
                 if detected_headers and "user-agent" in detected_headers:
                     headers["User-Agent"] = detected_headers["user-agent"]
             except Exception:

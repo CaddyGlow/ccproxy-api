@@ -1,7 +1,7 @@
 """Hooks middleware for request lifecycle management."""
 
 import time
-from typing import Any
+from typing import Any, cast
 
 from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -55,7 +55,7 @@ class HooksMiddleware(BaseHTTPMiddleware):
 
         # Skip hook emission if no hook manager available
         if not hook_manager:
-            return await call_next(request)
+            return cast(Response, await call_next(request))
 
         # Extract request_id from ASGI scope extensions
         request_id = getattr(request.state, "request_id", None)
@@ -71,8 +71,14 @@ class HooksMiddleware(BaseHTTPMiddleware):
         request_context = RequestContext.get_current()
         if not request_context:
             # Create minimal context if none exists
-            request_context = RequestContext(request_id=request_id)
+            start_time_perf = time.perf_counter()
+            request_context = RequestContext(
+                request_id=request_id,
+                start_time=start_time_perf,
+                logger=logger,
+            )
 
+        # Wall-clock time for human-readable timestamps
         start_time = time.time()
 
         # Create hook context for the request
@@ -96,7 +102,7 @@ class HooksMiddleware(BaseHTTPMiddleware):
             await hook_manager.emit_with_context(hook_context)
 
             # Process the request
-            response = await call_next(request)
+            response = cast(Response, await call_next(request))
 
             # Update hook context with response information
             end_time = time.time()
@@ -153,10 +159,11 @@ class HooksMiddleware(BaseHTTPMiddleware):
                 }
 
                 # Include RequestContext metadata if available
-                request_metadata = {}
+                request_metadata: dict[str, Any] = {}
                 if request_context:
                     request_metadata = getattr(request_context, "metadata", {})
 
+                response_stream = cast(StreamingResponse, response)
                 wrapped_response = StreamingResponseWithHooks(
                     content=response.body_iterator,
                     hook_manager=hook_manager,
@@ -164,9 +171,9 @@ class HooksMiddleware(BaseHTTPMiddleware):
                     request_data=request_data,
                     request_metadata=request_metadata,
                     start_time=start_time,
-                    status_code=response.status_code,
-                    headers=dict(response.headers),
-                    media_type=response.media_type,
+                    status_code=response_stream.status_code,
+                    headers=dict(response_stream.headers),
+                    media_type=response_stream.media_type,
                 )
 
                 return wrapped_response

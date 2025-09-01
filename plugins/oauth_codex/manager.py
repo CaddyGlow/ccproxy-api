@@ -79,7 +79,8 @@ class CodexTokenManager(BaseTokenManager[OpenAICredentials]):
 
             # Preserve account_id if not in new credentials
             if not new_credentials.account_id and credentials.account_id:
-                new_credentials.account_id = credentials.account_id
+                # Preserve via nested tokens structure
+                new_credentials.tokens.account_id = credentials.account_id
 
             # Save updated credentials
             if await self.save_credentials(new_credentials):
@@ -119,7 +120,7 @@ class CodexTokenManager(BaseTokenManager[OpenAICredentials]):
 
     # ==================== OpenAI-Specific Methods ====================
 
-    async def get_profile_quick(self) -> OpenAIProfileInfo | None:  # type: ignore[override]
+    async def get_profile_quick(self) -> OpenAIProfileInfo | None:
         """Lightweight profile from cached data or JWT claims.
 
         Avoids any remote calls. Uses cache if populated, otherwise derives

@@ -5,8 +5,9 @@ to provide OAuth authentication capabilities.
 """
 
 from abc import abstractmethod
+from collections.abc import Awaitable, Callable
 from datetime import datetime
-from typing import Any, Protocol
+from typing import Any, Protocol, cast
 
 from pydantic import BaseModel
 
@@ -128,7 +129,7 @@ class ProfileLoggingMixin:
                 # Best-effort local load (provider-specific, may use storage)
                 load_fn = self.load_credentials
                 if callable(load_fn):
-                    creds = await load_fn()  # type: ignore[misc]
+                    creds = await cast(Callable[[], Awaitable[Any]], load_fn)()
 
             if not creds:
                 return None

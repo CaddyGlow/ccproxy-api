@@ -63,15 +63,7 @@ class CodexTokenStorage(BaseJsonStorage[OpenAICredentials]):
             Stored credentials or None
         """
         try:
-            # Log the file path being checked for debugging
-            logger.debug(
-                "codex_auth_file_check",
-                storage_path=str(self.file_path),
-                file_exists=await self.exists(),
-                category="auth",
-            )
-
-            # Use parent class's read method
+            # Use parent class's read method (avoid redundant exists() checks)
             data = await self._read_json()
             if not data:
                 logger.debug(

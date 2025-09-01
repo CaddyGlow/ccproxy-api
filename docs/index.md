@@ -185,6 +185,14 @@ enabled = true
 # Analytics (logs API)
 [plugins.analytics]
 enabled = true
+
+# Metrics (Prometheus endpoints and optional Pushgateway)
+[plugins.metrics]
+enabled = true
+# pushgateway_enabled = true
+# pushgateway_url = "http://localhost:9091"
+# pushgateway_job = "ccproxy"
+# pushgateway_push_interval = 60
 ```
 
 Environment variable equivalents (nested with `__`):
@@ -203,6 +211,9 @@ export PLUGINS__REQUEST_TRACER__LOG_DIR=/tmp/ccproxy/traces
 
 export PLUGINS__DUCKDB_STORAGE__ENABLED=true
 export PLUGINS__ANALYTICS__ENABLED=true
+export PLUGINS__METRICS__ENABLED=true
+# export PLUGINS__METRICS__PUSHGATEWAY_ENABLED=true
+# export PLUGINS__METRICS__PUSHGATEWAY_URL=http://localhost:9091
 ```
 
 See more details in Configuration and individual plugin pages:

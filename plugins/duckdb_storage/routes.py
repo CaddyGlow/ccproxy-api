@@ -8,7 +8,7 @@ from fastapi import APIRouter, HTTPException, Request
 router = APIRouter()
 
 
-def _get_storage(request: Request):
+def _get_storage(request: Request) -> Any:
     storage = getattr(request.app.state, "log_storage", None)
     if not storage:
         # Backward-compat alias
@@ -30,7 +30,9 @@ async def status(request: Request) -> dict[str, Any]:
     if not storage:
         raise HTTPException(status_code=503, detail="Storage not initialized")
 
-    health = await storage.health_check()
+    from typing import cast as _cast
+
+    health = _cast(dict[str, Any], await storage.health_check())
 
     # Include basic plugin/service context when available
     plugin_info: dict[str, Any] = {

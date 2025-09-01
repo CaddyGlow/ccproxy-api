@@ -81,7 +81,7 @@ class BaseOAuthClient(ABC, Generic[CredentialsT]):
         if self._owns_http_client and self.http_client:
             await self.http_client.aclose()
 
-    def __del__(self):
+    def __del__(self) -> None:
         """Cleanup on deletion."""
         if (
             self._owns_http_client
@@ -219,7 +219,9 @@ class BaseOAuthClient(ABC, Generic[CredentialsT]):
                 expires_in=token_response.get("expires_in"),
             )
 
-            return token_response  # type: ignore[no-any-return]
+            from typing import cast
+
+            return cast(dict[str, Any], token_response)
 
         except httpx.HTTPStatusError as e:
             error_detail = self._extract_error_detail(e.response)

@@ -19,7 +19,7 @@ Scope: Remove redundancy/dead code from the migration to a plugin-based architec
 - [x] Phase 2: Dead Code & Redundancy Detection
 - [x] Phase 3: Boundaries & Interfaces
 - [ ] Phase 4: Redundant Code Removal (in progress)
-- [ ] Phase 5: API/CLI/Config Surface
+- [ ] Phase 5: API/CLI/Config Surface (in progress)
 - [ ] Phase 6: Tests Refactor
 - [ ] Phase 7: Docs & Communication
 - [ ] Phase 8: CI, Linting, Types
@@ -97,8 +97,8 @@ Actionable checklist:
 - [ ] Audit API routers for any legacy shims
   - Expected public routes: health, plugins, and plugin-mounted routes only
 - [ ] CLI: remove hidden/legacy commands if any remain; ensure `plugins` command sources loader
-- [ ] Config docs: add a small “Plugin Config Quickstart” to README linking to `docs/user-guide/pool-configuration.md`
-- [ ] Provide migration error messages for deprecated config keys (fail-fast with help text)
+- [x] Config docs: ensure README/docs index include a small “Plugin Config Quickstart”
+- [x] Provide migration error messages for deprecated config keys (fail-fast with help text)
 
 ## Phase 6: Tests Refactor
 
@@ -245,3 +245,81 @@ Goal: Deliver changes safely in small, reviewable chunks.
 - Phase 5: Add README Plugin Config Quickstart and migration messages for deprecated keys
 - Phase 6: Exclude `tests_new/*` in CI, add integration tests for discovery/metrics/analytics; raise coverage gate modestly
 - Phase 8: Wire `check-boundaries`, ruff/mypy to CI with failing gates
+
+## Phase 4: File-Level Targets
+
+Goal: Eliminate lingering references to legacy metrics and adapter selection; prefer plugin ownership everywhere.
+
+- [x] `ccproxy/scheduler/manager.py`: remove `hasattr(..., "pushgateway_enabled")` logging block and any references to `pushgateway_*` fields; the metrics plugin registers its own task and config
+- [x] `ccproxy/scheduler/manager.py`: keep version check logic; ensure no conditional selection between core/plugin tasks remains
+- [ ] `ccproxy/config/scheduler.py`: already removed pushgateway fields; verify no stray comments imply core control; add a one-line docstring note “metrics plugin owns push” if helpful
+- [x] `docs/examples.md`: update sample logs showing `registered_tasks=['pushgateway', ...]` to reflect plugin-owned task names or omit internals from examples
+- [x] `tests/unit/services/test_scheduler.py`: ensure mock task names and expectations don’t imply core pushgateway; if needed, rename test types from `pushgateway` → `plugin_pushgateway` or a neutral placeholder
+- [ ] `tests/unit/services/test_scheduler_tasks.py`: confirm references are comments only; delete obsolete test scaffolding if redundant
+- [x] `ccproxy/api/middleware/request_id.py`: remove reliance on `app.state.duckdb_storage` alias; context is plugin-owned
+- [x] `README.md` and `config.example.toml`: verify plugin-first messaging; ensure no mentions of legacy observability keys
+- [ ] `docs/examples.md` and any guides: remove/replace Pushgateway mentions that assume core ownership; link to metrics plugin page
+
+Notes:
+- Prefer complete removal of legacy aliases over retaining `hasattr` guards. If an alias remains for back-compat, gate it behind a plugin config flag (default off) and set a deprecation window.
+
+## Config Key Migration Map
+
+Goal: Provide explicit mappings from legacy keys to plugin keys with fail-fast errors and guidance.
+
+- Legacy (removed) → Plugin (current)
+  - `SCHEDULER__PUSHGATEWAY_ENABLED` → `plugins.metrics.pushgateway_enabled`
+  - `SCHEDULER__PUSHGATEWAY_URL` → `plugins.metrics.pushgateway_url`
+  - `SCHEDULER__PUSHGATEWAY_JOB` → `plugins.metrics.pushgateway_job`
+  - `SCHEDULER__PUSHGATEWAY_INTERVAL_SECONDS` → `plugins.metrics.pushgateway_push_interval`
+  - `observability.duckdb_path` (if ever present) → `plugins.duckdb_storage.database_path`
+  - `observability.*` misc → see metrics/analytics/dashboard plugin docs
+
+Actions:
+- [ ] Validation: when deprecated keys are present, raise a configuration error that prints the exact new key path and a short example
+- [ ] Docs: add “Deprecated keys” table to the migration guide with before/after snippets
+- [ ] README: short “Plugin Config Quickstart” that shows enabling plugins and configuring metrics/analytics
+
+## CI Additions (Phase 8 specifics)
+
+- [ ] Pre-commit: add a target for `scripts/check_import_boundaries.py`; fail fast locally
+- [ ] CI: run `make check-boundaries typecheck lint test`; mark as required checks
+- [ ] Ruff: add rule or custom plugin to forbid `ccproxy` importing from `plugins.<name>.*` non-interface modules
+- [ ] Mypy: ensure bundled plugins are in the check set; update baselines if needed
+
+## Phase 11: Packaging & Extras (Optional)
+
+Goal: Prepare for splitting bundled plugins without breaking current monorepo wheels.
+
+- [ ] Verify `project.optional-dependencies` maps to plugin groups (metrics/storage/ui) and stays in sync with plugin `pyproject.toml` files
+- [ ] Root deps: confirm only core-required deps remain; plugin-only deps are duplicated in extras for future split
+- [ ] Document install recipes for minimal core vs. full bundle (e.g., `pip install ccproxy-api[plugins-storage,plugins-metrics]`)
+- [ ] If/when splitting: move plugin deps to their packages and drop from root
+
+## PR Breakdown (Concrete)
+
+- PR A: Scheduler cleanup
+  - Remove pushgateway `hasattr` checks from `ccproxy/scheduler/manager.py`
+  - Update `docs/examples.md` log snippets; adjust scheduler tests nomenclature
+  - Changelog: “Scheduler no longer references pushgateway; metrics plugin owns push task”
+- PR B: Middleware/context alignment
+  - Tidy `ccproxy/api/middleware/request_id.py` to not depend on app.state alias; note back-compat in docstring or link to analytics plugin
+  - Add a short section in analytics docs on request context expectations
+- PR C: Config migration guardrails
+  - Add validation that errors on legacy keys with guidance text
+  - README quickstart for plugin config; migration guide table
+- PR D: CI hardening
+  - Wire `check-boundaries` into CI; ensure ruff/mypy include plugins; update Makefile targets if needed
+
+## Validation Checklist
+
+- [ ] Grep for `pushgateway_` and confirm only metrics plugin owns it (code + docs + tests)
+- [ ] Run coverage and ensure no dead branches remain for legacy flags/shims
+- [ ] Manually validate plugin discovery error paths via tests; ensure clean error messages
+- [ ] Smoke test: start app with metrics/analytics enabled; verify endpoints and scheduler tasks without legacy config present
+
+## Decision Log (2025-09-02)
+
+- Scoped Phase 4 file targets after repo scan (scheduler manager, examples, tests, middleware alias)
+- Added explicit config migration map and CI/packaging follow-ups
+- Chosen PR sequence to minimize risk and keep reviews small

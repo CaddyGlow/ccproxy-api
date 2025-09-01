@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import time
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -115,7 +115,7 @@ class SimpleDuckDBStorage:
             logger.warning("query_column_check_error", error=str(e), exc_info=e)
             # Continue without failing - SQLModel handles schema management
 
-    async def store_request(self, data: dict[str, Any]) -> bool:
+    async def store_request(self, data: Mapping[str, Any]) -> bool:
         """Store a single request log entry asynchronously via queue.
 
         Args:
@@ -129,7 +129,7 @@ class SimpleDuckDBStorage:
 
         try:
             # Add to queue for background processing
-            await self._write_queue.put(data)
+            await self._write_queue.put(dict(data))
             return True
         except asyncio.QueueFull as e:
             logger.error(
@@ -287,7 +287,9 @@ class SimpleDuckDBStorage:
                 )
             with Session(self._engine) as session:
                 try:
-                    session.exec(insert(table).values(values))
+                    from typing import cast as _cast
+
+                    _ = _cast(Any, session).exec(insert(table).values(values))
                     session.commit()
                 except (OperationalError, IntegrityError, SQLAlchemyError) as e:
                     # Fallback for older schemas without the 'provider' column
@@ -301,7 +303,7 @@ class SimpleDuckDBStorage:
                             k: v for k, v in values.items() if k != "provider"
                         }
                         session.rollback()
-                        session.exec(insert(table).values(safe_values))
+                        _ = _cast(Any, session).exec(insert(table).values(safe_values))
                         session.commit()
                     else:
                         raise
@@ -402,7 +404,9 @@ class SimpleDuckDBStorage:
                     "access_logs table not registered; ensure analytics plugin is enabled"
                 )
             with Session(self._engine) as session:
-                session.exec(insert(table), rows)
+                from typing import cast as _cast
+
+                _ = _cast(Any, session).exec(insert(table), rows)
                 session.commit()
 
             logger.info(
@@ -553,8 +557,10 @@ class SimpleDuckDBStorage:
             table = SQLModel.metadata.tables.get("access_logs")
             if table is None:
                 return 0
-                statement = sa_select(func.count()).select_from(table)
-                return session.exec(statement).first() or 0
+            statement = sa_select(func.count()).select_from(table)
+            from typing import cast as _cast
+
+            return _cast(Any, session).exec(statement).first() or 0
 
     async def reset_data(self) -> bool:
         """Reset all data in the storage (useful for testing/debugging).
@@ -587,7 +593,9 @@ class SimpleDuckDBStorage:
             if table is None:
                 return True
             with Session(self._engine) as session:
-                session.exec(delete(table))
+                from typing import cast as _cast
+
+                _ = _cast(Any, session).exec(delete(table))
                 session.commit()
 
             logger.info("simple_duckdb_reset_success")

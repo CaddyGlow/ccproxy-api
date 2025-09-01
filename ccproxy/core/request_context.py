@@ -167,6 +167,17 @@ class RequestContext:
         return data
 
 
+async def get_request_event_stream() -> AsyncGenerator[dict[str, Any], None]:
+    """Async generator for request events used by analytics streaming.
+
+    This is a lightweight stub for type-checking and optional runtime use.
+    Integrations can replace or wrap this to provide actual event streams.
+    """
+    # Empty async generator
+    for _ in ():
+        yield {}
+
+
 @asynccontextmanager
 async def request_context(
     request_id: str | None = None,

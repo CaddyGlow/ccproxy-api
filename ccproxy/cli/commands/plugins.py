@@ -43,18 +43,10 @@ def settings() -> None:
 
 
 @app.command()
-def dependencies(
-    auto_install: bool = typer.Option(
-        False, "--auto-install", help="Automatically install missing dependencies"
-    ),
-    detailed: bool = typer.Option(
-        False, "--detailed", help="Show detailed dependency information"
-    ),
-) -> None:
-    """Check and manage plugin dependencies."""
+def dependencies() -> None:
+    """Display how plugin dependencies are managed."""
 
     console = Console()
-    # Dependency report is deprecated
     console.print(
-        "[yellow]Plugin dependency management is now handled at the package level via pyproject.toml[/yellow]"
+        "Plugin dependencies are managed at the package level (pyproject.toml/extras)."
     )

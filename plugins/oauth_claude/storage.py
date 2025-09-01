@@ -147,10 +147,14 @@ class ClaudeProfileStorage:
             return None
 
         def read_file() -> dict[str, Any]:
-            with self.file_path.open("r") as f:
-                return json.load(f)
+            from typing import cast
 
-        return await asyncio.to_thread(read_file)
+            with self.file_path.open("r") as f:
+                return cast(dict[str, Any], json.load(f))
+
+        from typing import cast
+
+        return cast(dict[str, Any], await asyncio.to_thread(read_file))
 
     async def save_profile(self, profile_data: dict[str, Any]) -> bool:
         """Save Claude profile data.

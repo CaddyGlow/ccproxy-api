@@ -52,14 +52,14 @@ class MetricsHook(Hook):
             registry = None
             try:
                 from prometheus_client import (
-                    CollectorRegistry as CollectorRegistry,  # type: ignore
+                    CollectorRegistry as CollectorRegistry,
                 )
 
                 registry = CollectorRegistry()
             except Exception:
                 registry = None
 
-            self.collector = PrometheusMetrics(
+            self.collector: PrometheusMetrics | None = PrometheusMetrics(
                 namespace=self.config.namespace,
                 histogram_buckets=self.config.histogram_buckets,
                 registry=registry,
@@ -67,7 +67,7 @@ class MetricsHook(Hook):
         else:
             self.collector = None
 
-        self.pushgateway = (
+        self.pushgateway: PushgatewayClient | None = (
             PushgatewayClient(self.config)
             if self.config.pushgateway_enabled and self.config.enabled
             else None
@@ -120,7 +120,7 @@ class MetricsHook(Hook):
 
     async def _handle_request_start(self, context: HookContext) -> None:
         """Handle REQUEST_STARTED event."""
-        if not self.config.collect_request_metrics:
+        if not self.config.collect_request_metrics or not self.collector:
             return
 
         request_id = context.data.get("request_id", "unknown")
@@ -139,7 +139,7 @@ class MetricsHook(Hook):
 
     async def _handle_request_complete(self, context: HookContext) -> None:
         """Handle REQUEST_COMPLETED event."""
-        if not self.config.collect_request_metrics:
+        if not self.config.collect_request_metrics or not self.collector:
             return
 
         request_id = context.data.get("request_id", "unknown")
@@ -232,7 +232,7 @@ class MetricsHook(Hook):
 
     async def _handle_request_failed(self, context: HookContext) -> None:
         """Handle REQUEST_FAILED event."""
-        if not self.config.collect_error_metrics:
+        if not self.config.collect_error_metrics or not self.collector:
             return
 
         request_id = context.data.get("request_id", "unknown")
@@ -302,7 +302,7 @@ class MetricsHook(Hook):
 
     async def _handle_provider_error(self, context: HookContext) -> None:
         """Handle PROVIDER_ERROR event."""
-        if not self.config.collect_error_metrics:
+        if not self.config.collect_error_metrics or not self.collector:
             return
 
         provider = context.provider or "unknown"
@@ -344,7 +344,7 @@ class MetricsHook(Hook):
 
     async def _handle_stream_end(self, context: HookContext) -> None:
         """Handle PROVIDER_STREAM_END event."""
-        if not self.config.collect_token_metrics:
+        if not self.config.collect_token_metrics or not self.collector:
             return
 
         request_id = context.data.get("request_id", "unknown")

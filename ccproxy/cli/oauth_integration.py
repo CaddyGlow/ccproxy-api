@@ -69,9 +69,8 @@ class CLIOAuthHandler:
             )
 
         # Update port and redirect_uri from provider config if available
-        provider_config = provider.get_config()
-        # Prefer explicit resolver on config if present
-        if hasattr(provider_config, "get_redirect_uri"):
+        provider_config = getattr(provider, "get_config", lambda: None)()
+        if provider_config is not None and hasattr(provider_config, "get_redirect_uri"):
             import urllib.parse
 
             ru = provider_config.get_redirect_uri()
@@ -79,7 +78,7 @@ class CLIOAuthHandler:
             parsed = urllib.parse.urlparse(ru)
             if parsed.hostname in ["localhost", "127.0.0.1"] and parsed.port:
                 self.port = parsed.port
-        else:
+        elif provider_config is not None:
             # Fallback to callback_port + default path
             if hasattr(provider_config, "callback_port"):
                 self.port = provider_config.callback_port
@@ -313,9 +312,14 @@ class CLIOAuthHandler:
 
             # Get the result from the completed task
             for task in done:
-                if task.exception():
-                    raise task.exception()
-                return task.result()
+                ex = task.exception()
+                if ex is not None:
+                    if isinstance(ex, BaseException):
+                        raise ex
+                    raise RuntimeError(str(ex))
+                from typing import cast as _cast
+
+                return _cast(str, task.result())
 
         finally:
             # Clean up server
@@ -380,7 +384,7 @@ class CLIOAuthHandler:
         console.print("[dim]Press Ctrl+C to cancel at any time[/dim]")
 
         # Use asyncio-compatible input
-        from aioconsole import ainput
+        from aioconsole import ainput  # type: ignore[import-untyped]
 
         # Wait for user to press Enter to start manual entry
         await ainput("")
@@ -390,7 +394,7 @@ class CLIOAuthHandler:
                 code = await ainput(
                     "\nEnter the authorization code (or 'cancel' to abort): "
                 )
-                code = code.strip()
+                code = str(code).strip()
 
                 if code.lower() == "cancel":
                     raise ValueError("OAuth flow cancelled by user")
@@ -481,9 +485,9 @@ class CLIOAuthHandler:
             )
 
         # Update port and redirect_uri from provider config if available
-        provider_config = provider.get_config()
+        provider_config = getattr(provider, "get_config", lambda: None)()
         # Prefer explicit resolver on config if present
-        if hasattr(provider_config, "get_redirect_uri"):
+        if provider_config is not None and hasattr(provider_config, "get_redirect_uri"):
             import urllib.parse
 
             ru = provider_config.get_redirect_uri()
@@ -491,7 +495,7 @@ class CLIOAuthHandler:
             parsed = urllib.parse.urlparse(ru)
             if parsed.hostname in ["localhost", "127.0.0.1"] and parsed.port:
                 self.port = parsed.port
-        else:
+        elif provider_config is not None:
             if hasattr(provider_config, "callback_port"):
                 self.port = provider_config.callback_port
                 self.redirect_uri = f"http://localhost:{self.port}/callback"

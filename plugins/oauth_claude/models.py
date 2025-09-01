@@ -112,7 +112,7 @@ class ClaudeCredentials(BaseModel):
         """
         return self.claude_ai_oauth.is_expired
 
-    def model_dump(self, **kwargs) -> dict[str, Any]:
+    def model_dump(self, **kwargs: Any) -> dict[str, Any]:
         """Override model_dump to use by_alias=True by default."""
         kwargs.setdefault("by_alias", True)
         return super().model_dump(**kwargs)

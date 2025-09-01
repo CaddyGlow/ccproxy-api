@@ -16,7 +16,7 @@ from ccproxy.auth.oauth.registry import OAuthProviderInfo
 from ccproxy.core.logging import get_plugin_logger
 from plugins.oauth_claude.client import ClaudeOAuthClient
 from plugins.oauth_claude.config import ClaudeOAuthConfig
-from plugins.oauth_claude.models import ClaudeCredentials
+from plugins.oauth_claude.models import ClaudeCredentials, ClaudeProfileInfo
 from plugins.oauth_claude.storage import ClaudeOAuthStorage
 
 
@@ -48,7 +48,9 @@ class ClaudeOAuthProvider(ProfileLoggingMixin):
         self.hook_manager = hook_manager
         self.detection_service = detection_service
         self.http_client = http_client
-        self._cached_profile = None  # Cache enhanced profile data for UI display
+        self._cached_profile: ClaudeProfileInfo | None = (
+            None  # Cache enhanced profile data for UI display
+        )
 
         self.client = ClaudeOAuthClient(
             self.config,
@@ -242,7 +244,6 @@ class ClaudeOAuthProvider(ProfileLoggingMixin):
                 return {
                     "subscription_type": credentials.claude_ai_oauth.subscription_type,
                     "scopes": credentials.claude_ai_oauth.scopes,
-                    "token_type": credentials.claude_ai_oauth.token_type,
                 }
         return None
 
@@ -367,7 +368,9 @@ class ClaudeOAuthProvider(ProfileLoggingMixin):
             return self._create_enhanced_profile(credentials, self._cached_profile)
 
         # Fallback to basic credential info
-        profile_data = {
+        from typing import Any
+
+        profile_data: dict[str, Any] = {
             "account_id": getattr(credentials, "account_id", "unknown"),
             "provider_type": "claude-api",
             "active": getattr(credentials, "active", True),
@@ -397,7 +400,7 @@ class ClaudeOAuthProvider(ProfileLoggingMixin):
             StandardProfileFields with full Claude profile information
         """
         # Create basic profile data without recursion
-        basic_profile_data = {
+        basic_profile_data: dict[str, Any] = {
             "account_id": getattr(credentials, "account_id", "unknown"),
             "provider_type": "claude-api",
             "active": getattr(credentials, "active", True),
@@ -462,13 +465,16 @@ class ClaudeOAuthProvider(ProfileLoggingMixin):
                     }
                 )
 
-        # Store full profile data in raw data
-        raw_data = standard_profile._raw_profile_data.copy()
+        # Store full profile data in raw data (start from basic profile data)
+        from typing import cast
+
+        base_raw = cast(dict[str, Any], basic_profile_data.get("_raw_profile_data", {}))
+        raw_data = dict(base_raw)
         raw_data["full_profile"] = profile_dict
         updates["_raw_profile_data"] = raw_data
 
-        # Create new profile with updates
-        profile_data = standard_profile.model_dump()
+        # Create new profile with updates starting from basic profile data
+        profile_data = dict(basic_profile_data)
         profile_data.update(updates)
 
         return StandardProfileFields(**profile_data)

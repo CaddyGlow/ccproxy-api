@@ -14,9 +14,9 @@ import structlog
 from ccproxy.adapters.openai.adapter import OpenAIAdapter
 from ccproxy.core.http_client import HTTPClientFactory
 from ccproxy.services.config import ProxyConfiguration
+from ccproxy.services.interfaces import IRequestTracer
 from ccproxy.services.mocking import MockResponseHandler
 from ccproxy.services.streaming import StreamingHandler
-from ccproxy.services.tracing import RequestTracer
 from ccproxy.testing import RealisticMockResponseGenerator
 
 
@@ -60,7 +60,7 @@ class ConcreteServiceFactory:
         self,
         settings: Settings,
         metrics: Any | None = None,  # Metrics now handled by metrics plugin
-        request_tracer: RequestTracer | None = None,
+        request_tracer: IRequestTracer | None = None,
         hook_manager: Any | None = None,  # Hook manager for event emission
     ) -> StreamingHandler:
         """Create streaming handler instance.

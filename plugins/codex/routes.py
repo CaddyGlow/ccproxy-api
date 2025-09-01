@@ -53,12 +53,15 @@ async def codex_responses(
     session_id = header_session_id or str(uuid.uuid4())
 
     # Call adapter directly - hooks are now handled by HooksMiddleware
-    return await adapter.handle_request(
+    result = await adapter.handle_request(
         request=request,
         endpoint="/responses",
         method=request.method,
         session_id=session_id,
     )
+    from typing import cast as _cast
+
+    return _cast(StreamingResponse | Response | DeferredStreaming, result)
 
 
 @router.post("/{session_id}/responses", response_model=None)
@@ -73,12 +76,15 @@ async def codex_responses_with_session(
     Delegates to the adapter which will handle the request properly.
     """
     # Call adapter directly - hooks are now handled by HooksMiddleware
-    return await adapter.handle_request(
+    result = await adapter.handle_request(
         request=request,
         endpoint="/{session_id}/responses",
         method=request.method,
         session_id=session_id,
     )
+    from typing import cast as _cast
+
+    return _cast(StreamingResponse | Response | DeferredStreaming, result)
 
 
 @router.post("/chat/completions", response_model=None)
@@ -98,12 +104,15 @@ async def codex_chat_completions(
     session_id = header_session_id or str(uuid.uuid4())
 
     # Call adapter directly - hooks are now handled by HooksMiddleware
-    return await adapter.handle_request(
+    result = await adapter.handle_request(
         request=request,
         endpoint="/chat/completions",
         method=request.method,
         session_id=session_id,
     )
+    from typing import cast as _cast
+
+    return _cast(StreamingResponse | Response | DeferredStreaming, result)
 
 
 @router.post("/{session_id}/chat/completions", response_model=None)
@@ -118,12 +127,15 @@ async def codex_chat_completions_with_session(
     This endpoint handles OpenAI format requests with a specific session_id.
     """
     # Call adapter directly - hooks are now handled by HooksMiddleware
-    return await adapter.handle_request(
+    result = await adapter.handle_request(
         request=request,
         endpoint="/{session_id}/chat/completions",
         method=request.method,
         session_id=session_id,
     )
+    from typing import cast as _cast
+
+    return _cast(StreamingResponse | Response | DeferredStreaming, result)
 
 
 @router.post("/v1/chat/completions", response_model=None)

@@ -171,6 +171,13 @@ class ClaudeAPIRuntime(ProviderPluginRuntime):
     async def _register_streaming_metrics_hook(self) -> None:
         """Register the streaming metrics extraction hook."""
         try:
+            if not self.context:
+                logger.warning(
+                    "streaming_metrics_hook_not_registered",
+                    reason="no_context",
+                    plugin="claude_api",
+                )
+                return
             # Debug: Log context details
             logger.debug(
                 "streaming_metrics_hook_context_check",

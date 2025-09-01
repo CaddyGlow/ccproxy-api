@@ -5,6 +5,7 @@ from collections.abc import Sequence
 from pathlib import Path
 
 import aiofiles
+import structlog
 from structlog.contextvars import get_merged_contextvars
 
 from ccproxy.core.logging import get_plugin_logger
@@ -60,7 +61,8 @@ class RawHTTPFormatter:
         - If neither exists: generate a UUID4
         """
         try:
-            ctx = get_merged_contextvars() or {}
+            # structlog's typing expects a BindableLogger; use a fresh one
+            ctx = get_merged_contextvars(structlog.get_logger()) or {}
             cmd_id = ctx.get("cmd_id")
         except Exception:
             cmd_id = None

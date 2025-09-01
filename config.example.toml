@@ -76,6 +76,14 @@ enabled = true
 enabled = true
 # route_prefix = "/logs"
 
+# Metrics plugin (serves /metrics; optional Pushgateway)
+[plugins.metrics]
+enabled = true
+# pushgateway_enabled = false
+# pushgateway_url = "http://localhost:9091"
+# pushgateway_job = "ccproxy"
+# pushgateway_push_interval = 60
+
 # Dashboard plugin (serves /dashboard and mounts /dashboard/assets)
 [plugins.dashboard]
 enabled = true

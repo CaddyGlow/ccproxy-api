@@ -62,4 +62,3 @@ Purpose: Identify dead/redundant code and config left from the plugin migration,
   - `plugins-storage` → duckdb, duckdb-engine, sqlmodel
   - `plugins-metrics` → prometheus-client
   - `plugins-ui` → textual
-

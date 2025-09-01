@@ -86,7 +86,7 @@ fix-hard:
 	uv run ruff check . --fix --unsafe-fixes || true
 	uv run uv run ruff check . --select F401 --fix --unsafe-fixes || true # Used variable import
 	uv run uv run ruff check . --select I --fix --unsafe-fixes || true  # Import order
-	uv run ruff format . || true 
+	uv run ruff format . || true
 
 
 fix: format lint-fix

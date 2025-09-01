@@ -211,6 +211,13 @@ class CodexRuntime(ProviderPluginRuntime):
     async def _register_streaming_metrics_hook(self) -> None:
         """Register the streaming metrics extraction hook."""
         try:
+            if not self.context:
+                logger.warning(
+                    "streaming_metrics_hook_not_registered",
+                    reason="no_context",
+                    plugin="codex",
+                )
+                return
             # Get hook registry from context
             hook_registry = self.context.get("hook_registry")
             if not hook_registry:

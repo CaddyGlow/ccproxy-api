@@ -34,6 +34,14 @@ enabled = true
 
 [plugins.analytics]
 enabled = true
+
+# Metrics plugin
+[plugins.metrics]
+enabled = true
+# pushgateway_enabled = true
+# pushgateway_url = "http://localhost:9091"
+# pushgateway_job = "ccproxy"
+# pushgateway_push_interval = 60
 ```
 
 Environment variables (nested with `__`):
@@ -52,6 +60,9 @@ export PLUGINS__REQUEST_TRACER__LOG_DIR=/tmp/ccproxy/traces
 
 export PLUGINS__DUCKDB_STORAGE__ENABLED=true
 export PLUGINS__ANALYTICS__ENABLED=true
+export PLUGINS__METRICS__ENABLED=true
+# export PLUGINS__METRICS__PUSHGATEWAY_ENABLED=true
+# export PLUGINS__METRICS__PUSHGATEWAY_URL=http://localhost:9091
 ```
 
 Running
@@ -63,4 +74,3 @@ ccproxy serve  # default on localhost:8000
 License
 
 See `LICENSE`.
-

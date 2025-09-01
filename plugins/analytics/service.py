@@ -4,7 +4,7 @@ import time
 from datetime import datetime as dt
 from typing import Any
 
-from sqlmodel import Session, col, desc, func, select
+from sqlmodel import Session, col, func, select
 
 from plugins.analytics.models import AccessLog
 
@@ -51,9 +51,13 @@ class AnalyticsService:
                     statement = statement.where(AccessLog.timestamp < cursor_dt)
 
             if order.lower() == "asc":
-                statement = statement.order_by(AccessLog.timestamp).limit(limit)
+                statement = statement.order_by(col(AccessLog.timestamp).asc()).limit(
+                    limit
+                )
             else:
-                statement = statement.order_by(desc(AccessLog.timestamp)).limit(limit)
+                statement = statement.order_by(col(AccessLog.timestamp).desc()).limit(
+                    limit
+                )
             results = session.exec(statement).all()
             payload = [log.dict() for log in results]
 
