@@ -53,7 +53,7 @@ class HTTPPoolManager:
         """Get or create an HTTP client for the specified base URL.
 
         Args:
-            base_url: Optional base URL for the client. If None, returns shared client
+            base_url: Optional base URL for the client. If None, returns the default client
             timeout: Optional custom timeout for this client
             headers: Optional default headers for this client
             **kwargs: Additional configuration for the client
@@ -113,34 +113,35 @@ class HTTPPoolManager:
             return client
 
     async def get_shared_client(self) -> httpx.AsyncClient:
-        """Get the shared general-purpose HTTP client.
+        """Get the default general-purpose HTTP client.
 
-        This client is used for requests without a specific base URL.
+        This client is used for requests without a specific base URL and is managed
+        by this pool manager for reuse during the app lifetime.
 
         Returns:
-            The shared httpx.AsyncClient instance
+            The default httpx.AsyncClient instance
         """
         async with self._lock:
             if self._shared_client is None:
-                logger.info("creating_shared_client")
+                logger.info("default_client_created")
                 self._shared_client = HTTPClientFactory.create_client(
                     settings=self.settings,
-                    http2=True,  # Enable HTTP/2 for shared client
+                    http2=True,  # Enable HTTP/2 for default client
                 )
             return self._shared_client
 
     def get_shared_client_sync(self) -> httpx.AsyncClient:
-        """Get or create the shared client synchronously.
+        """Get or create the default client synchronously.
 
         This is used during initialization when we're not in an async context.
         Note: This doesn't use locking, so it should only be called during
         single-threaded initialization.
 
         Returns:
-            The shared httpx.AsyncClient instance
+            The default httpx.AsyncClient instance
         """
         if self._shared_client is None:
-            logger.debug("creating_shared_client_sync")
+            logger.debug("default_client_created_sync")
             self._shared_client = HTTPClientFactory.create_client(
                 settings=self.settings,
                 http2=False,  # Disable HTTP/2 to ensure logging transport works
@@ -212,14 +213,14 @@ class HTTPPoolManager:
 
             self._pools.clear()
 
-            # Close the shared client
+            # Close the default client
             if self._shared_client:
                 try:
                     await self._shared_client.aclose()
-                    logger.debug("shared_client_closed")
+                    logger.debug("default_client_closed")
                 except Exception as e:
                     logger.error(
-                        "shared_client_close_error",
+                        "default_client_close_error",
                         error=str(e),
                         exc_info=e,
                     )
@@ -236,7 +237,7 @@ class HTTPPoolManager:
         return {
             "total_pools": len(self._pools),
             "pool_keys": list(self._pools.keys()),
-            "has_shared_client": self._shared_client is not None,
+            "has_default_client": self._shared_client is not None,
         }
 
 

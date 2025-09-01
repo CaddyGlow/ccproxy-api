@@ -74,7 +74,7 @@ async def setup_task_manager_shutdown(app: FastAPI) -> None:
     logger.debug("task_manager_shutdown_completed", category="lifecycle")
 
 
-# Legacy shared HTTP client shutdown removed; HTTP client is managed by ServiceContainer
+# Legacy HTTP client singleton shutdown removed; HTTP client is managed by ServiceContainer
 
 
 async def setup_service_container_shutdown(app: FastAPI) -> None:

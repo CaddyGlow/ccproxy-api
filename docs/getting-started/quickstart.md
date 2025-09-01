@@ -201,6 +201,8 @@ curl http://localhost:8000/health
 curl http://localhost:8000/metrics
 ```
 
+Note: `/metrics` is provided by the metrics plugin. It is enabled by default when plugins are enabled.
+
 ### Enable Debug Logging
 ```bash
 # Verbose API request/response logging

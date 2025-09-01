@@ -97,6 +97,6 @@ class ConcreteServiceFactory:
         Returns:
             Configured HTTP client instance
         """
-        client = HTTPClientFactory.create_shared_client(settings)
-        logger.debug("created_shared_http_client", category="lifecycle")
+        client = HTTPClientFactory.create_client(settings=settings)
+        logger.debug("http_client_created", category="lifecycle")
         return client

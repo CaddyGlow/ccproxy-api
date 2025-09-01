@@ -1,7 +1,7 @@
-"""Centralized HTTP client management for CCProxy.
+"""Centralized HTTP client configuration for CCProxy.
 
-This module provides a single, shared HTTP client instance with optimized configuration
-for the application's needs, addressing Issue #9 from the code review.
+This module provides an HTTP client factory with optimized configuration
+for proxy use cases. Lifecycle is managed by the ServiceContainer.
 """
 
 import os
@@ -26,7 +26,7 @@ class HTTPClientFactory:
     - Consistent timeout/retry configuration
     - Unified connection limits
     - HTTP/2 multiplexing for non-streaming endpoints
-    - Centralized observability
+    - Centralized observability hooks (via HookableHTTPClient)
     """
 
     @staticmethod
@@ -151,16 +151,10 @@ class HTTPClientFactory:
 
     @staticmethod
     def create_shared_client(settings: Settings | None = None) -> httpx.AsyncClient:
-        """Create the main shared HTTP client for the application.
+        """Create an optimized HTTP client.
 
-        This is the primary client that should be used across the application
-        for most HTTP operations. It's optimized for the proxy use case.
-
-        Args:
-            settings: Optional settings object for configuration
-
-        Returns:
-            Configured shared httpx.AsyncClient instance
+        Prefer managing lifecycle via ServiceContainer + HTTPPoolManager.
+        Kept for compatibility with existing factory call sites.
         """
         return HTTPClientFactory.create_client(settings=settings)
 
@@ -283,41 +277,4 @@ def _get_ssl_context() -> str | bool:
         return True
 
 
-# Singleton instance management
-_shared_client: httpx.AsyncClient | None = None
-
-
-async def get_shared_http_client(settings: Settings | None = None) -> httpx.AsyncClient:
-    """Get the shared HTTP client instance.
-
-    This function provides access to the singleton HTTP client that should be
-    used across the application. The client is created on first access and
-    reused thereafter.
-
-    Args:
-        settings: Optional settings object for configuration
-
-    Returns:
-        The shared httpx.AsyncClient instance
-    """
-    global _shared_client
-
-    if _shared_client is None:
-        _shared_client = HTTPClientFactory.create_shared_client(settings)
-        logger.debug("shared_http_client_created")
-
-    return _shared_client
-
-
-async def close_shared_http_client() -> None:
-    """Close the shared HTTP client and reset the singleton.
-
-    This should be called during application shutdown to properly clean up
-    resources.
-    """
-    global _shared_client
-
-    if _shared_client is not None:
-        await _shared_client.aclose()
-        _shared_client = None
-        logger.debug("shared_http_client_closed")
+# Legacy singleton helpers removed. Use ServiceContainer + HTTPPoolManager.

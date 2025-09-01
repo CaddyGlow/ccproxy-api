@@ -195,14 +195,14 @@ class ServiceContainer:
         return self._services[service_key]  # type: ignore
 
     def get_http_client(self) -> httpx.AsyncClient:
-        """Get shared HTTP client instance.
+        """Get container-managed HTTP client instance.
 
         This provides the centralized HTTP client with optimized configuration
         for the proxy use case. Only one HTTP client per container to ensure
         proper resource management.
 
         Returns:
-            Shared httpx.AsyncClient instance
+            httpx.AsyncClient instance managed by this container
         """
         if not self._http_client:
             # Use pool manager for centralized management
@@ -312,7 +312,8 @@ class ServiceContainer:
                     )
             self._proxy_client = None
 
-        # Close pool manager (which closes all HTTP clients including the shared client)
+        # Close pool manager (which closes all HTTP clients including the
+        # container-managed default client)
         if self._pool_manager:
             await self._pool_manager.close_all()
             self._pool_manager = None

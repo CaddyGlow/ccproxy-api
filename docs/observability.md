@@ -4,7 +4,7 @@
 
 ## Features
 
--   **Prometheus Metrics:** Exposes a `/metrics` endpoint for real-time operational monitoring.
+-   **Prometheus Metrics:** Exposes a `/metrics` endpoint for real-time operational monitoring (provided by the metrics plugin).
 -   **Access Logs:** Captures detailed logs for every request, including token counts, costs, and timing.
 -   **Log Storage:** Persists access logs to a local DuckDB database for historical querying and analysis.
 -   **Query API:** Provides endpoints to query and analyze stored access logs.
@@ -13,11 +13,13 @@
 
 ## Configuration
 
+Note: The `/metrics` endpoint is owned by the metrics plugin. When plugins are enabled (default), enable/disable the endpoint via the plugin's configuration. The core flag `OBSERVABILITY__METRICS_ENDPOINT_ENABLED` only applies if plugins are disabled.
+
 Observability features are configured under the `observability` section in your configuration file or through environment variables with the `OBSERVABILITY__` prefix.
 
 | Setting                     | Environment Variable                | Default                               | Description                                                                                             |
 | --------------------------- | ----------------------------------- | ------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| `metrics_endpoint_enabled`  | `OBSERVABILITY__METRICS_ENDPOINT_ENABLED` | `False`                               | Enable the `/metrics` endpoint for Prometheus scraping.                                                 |
+| `metrics_endpoint_enabled`  | `OBSERVABILITY__METRICS_ENDPOINT_ENABLED` | `False`                               | Enable the `/metrics` endpoint (core-only; when plugins are enabled, use the metrics plugin setting).  |
 | `logs_endpoints_enabled`    | `OBSERVABILITY__LOGS_ENDPOINTS_ENABLED`   | `False`                               | Enable the `/logs/*` endpoints for querying and analytics.                                              |
 | `dashboard_enabled`         | `OBSERVABILITY__DASHBOARD_ENABLED`        | `False`                               | Enable the `/dashboard` endpoint.                                                                       |
 | `logs_collection_enabled`   | `OBSERVABILITY__LOGS_COLLECTION_ENABLED`  | `False`                               | Enable storing access logs to the backend.                                                              |
@@ -38,7 +40,7 @@ OBSERVABILITY__LOGS_COLLECTION_ENABLED=true
 
 ## Prometheus Metrics
 
-When enabled, the `/metrics` endpoint exposes a wide range of metrics in Prometheus format.
+When enabled, the metrics plugin exposes `/metrics` in Prometheus format.
 
 ### Key Metrics
 

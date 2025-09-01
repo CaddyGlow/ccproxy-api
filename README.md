@@ -158,7 +158,7 @@ The server will start on `http://127.0.0.1:8000` by default.
 
 #### System Endpoints
 - `GET /health` - Health check
-- `GET /metrics` - Prometheus metrics
+- `GET /metrics` - Prometheus metrics (provided by the metrics plugin)
 - `GET /permissions/stream` - MCP permission events
 
 ### Client Configuration

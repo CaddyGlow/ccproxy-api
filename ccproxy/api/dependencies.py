@@ -49,7 +49,7 @@ def get_cached_settings(request: Request) -> Settings:
 
 
 async def get_http_client(request: Request) -> httpx.AsyncClient:
-    """Get shared HTTP client from the service container.
+    """Get container-managed HTTP client from the service container.
 
     Falls back to creating a container if missing on app state (logs warning).
 
@@ -86,13 +86,13 @@ class _NullObservabilityMetrics:
 def get_observability_metrics() -> Any:
     """Get observability metrics instance.
 
-    Note: Metrics are now handled by the metrics plugin.
-    This returns None for backward compatibility.
+    Metrics are handled by the metrics plugin. This returns a safe stub
+    so core routes that reference metrics can guard behavior without errors.
 
     Returns:
         None (metrics handled by plugin)
     """
-    logger.debug("get_observability_metrics_deprecated", category="lifecycle")
+    logger.debug("metrics_stub_returned", category="lifecycle")
     return _NullObservabilityMetrics()
 
 

@@ -36,7 +36,7 @@ class PluginHTTPHandler(BaseHTTPHandler):
         """Initialize the HTTP handler.
 
         Args:
-            http_client: Shared HTTP client instance
+            http_client: Container-managed HTTP client instance
             logger: Optional structured logger instance
             response_cache: Optional response cache for performance optimization
             request_tracer: Optional request tracer for verbose logging
@@ -82,7 +82,7 @@ class PluginHTTPHandler(BaseHTTPHandler):
                 body=body,
                 handler_config=handler_config,
                 request_context=request_context or {},
-                client=self._http_client,  # use shared client so logging transport applies
+                client=self._http_client,  # use container-managed client so logging transport applies
             )
             return response
 
@@ -261,7 +261,7 @@ class PluginHTTPHandler(BaseHTTPHandler):
                 body=body,
             )
 
-        # Use shared HTTP client
+        # Use provided HTTP client (managed by the container/pool)
         response = await self._http_client.request(
             method=method,
             url=url,
@@ -285,12 +285,11 @@ class PluginHTTPHandler(BaseHTTPHandler):
     async def cleanup(self) -> None:
         """Cleanup HTTP handler resources.
 
-        Note: This handler uses shared HTTP clients that are managed
-        by the ServiceContainer. We don't close them here to avoid conflicts.
-        Only clears references to prevent memory leaks.
+        Note: The HTTP client lifecycle is managed by the ServiceContainer
+        and its pool manager. We only clear references here to prevent leaks.
         """
         try:
-            # Clear references but don't close shared client
+            # Clear references but don't close container-managed client
             self._http_client = None
             self.logger.debug("plugin_http_handler_cleanup_completed")
 
