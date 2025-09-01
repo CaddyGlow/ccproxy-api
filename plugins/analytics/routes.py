@@ -7,6 +7,7 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 
 from ccproxy.api.dependencies import DuckDBStorageDep
+from ccproxy.auth.conditional import ConditionalAuthDep
 
 
 router = APIRouter()
@@ -15,6 +16,7 @@ router = APIRouter()
 @router.get("/query")
 async def query_logs(
     storage: DuckDBStorageDep,
+    auth: ConditionalAuthDep,
     limit: int = Query(1000, ge=1, le=10000, description="Maximum number of results"),
     start_time: float | None = Query(None, description="Start timestamp filter"),
     end_time: float | None = Query(None, description="End timestamp filter"),
@@ -52,6 +54,7 @@ async def query_logs(
 @router.get("/analytics")
 async def get_logs_analytics(
     storage: DuckDBStorageDep,
+    auth: ConditionalAuthDep,
     start_time: float | None = Query(None, description="Start timestamp (Unix time)"),
     end_time: float | None = Query(None, description="End timestamp (Unix time)"),
     model: str | None = Query(None, description="Filter by model name"),
@@ -94,6 +97,7 @@ async def get_logs_analytics(
 @router.get("/stream")
 async def stream_logs(
     request: Request,
+    auth: ConditionalAuthDep,
     model: str | None = Query(None, description="Filter by model name"),
     service_type: str | None = Query(None, description="Filter by service type"),
     min_duration_ms: float | None = Query(None, description="Min duration (ms)"),
@@ -128,7 +132,10 @@ async def stream_logs(
 
 
 @router.post("/reset")
-async def reset_logs(storage: DuckDBStorageDep) -> dict[str, Any]:
+async def reset_logs(
+    storage: DuckDBStorageDep,
+    auth: ConditionalAuthDep,
+) -> dict[str, Any]:
     if not storage:
         raise HTTPException(status_code=503, detail="Storage backend not available")
     if not hasattr(storage, "reset_data"):

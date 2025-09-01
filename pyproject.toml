@@ -7,11 +7,9 @@ readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
   "aiofiles>=24.1.0",
-  "aiosqlite>=0.21.0",
   "jsonschema>=4.23.0",
   "fastapi[standard]>=0.115.14",
   "httpx[http2]>=0.28.1",
-  "keyring>=25.6.0",
   "prometheus-client>=0.22.1",
   "pydantic>=2.8.0",
   "pydantic-settings>=2.4.0",
@@ -26,7 +24,6 @@ dependencies = [
   "duckdb-engine>=0.17.0",
   "textual>=3.7.1",
   "packaging>=25.0",
-  "h2>=4.2.0",
   "aiohttp>=3.12.15",
   "sortedcontainers>=2.4.0",
   "aioconsole>=0.8.1",
@@ -128,6 +125,22 @@ docs = [
   "mkdocs-redirects>=1.2.0",
 ]
 schema = ["pydantic>=2.8.0", "check-jsonschema>=0.33.2"]
+
+[project.optional-dependencies]
+# Plugin-focused extras to enable splitting plugin deps from core at install time.
+# Kept in root dependencies for now because plugins are bundled with the wheel.
+# These extras provide an escape hatch for future distribution changes.
+plugins-storage = [
+  "duckdb>=1.1.0",
+  "duckdb-engine>=0.17.0",
+  "sqlmodel>=0.0.24",
+]
+plugins-metrics = [
+  "prometheus-client>=0.22.1",
+]
+plugins-ui = [
+  "textual>=3.7.1",
+]
 
 [tool.coverage.run]
 source = ["ccproxy", "tests"]

@@ -116,8 +116,19 @@ Note: Many tests fail currently due to known migration gaps (scheduler/observabi
 
 ## Dependency Ownership (initial scan)
 
-- Root `pyproject` includes `duckdb`, `duckdb-engine`, and `sqlmodel` even though usage is concentrated in plugins (`duckdb_storage`, `analytics`). Action: consider moving to plugin dependencies in a later phase; keep import types stable in core.
-- `openai`, `anthropic`, `claude-code-sdk` are dev-only (test) deps; not required at runtime in core.
+Summary of root runtime dependencies and where they are used:
+
+- Core-only or Core+Plugins: `fastapi`, `httpx[http2]`, `pydantic`, `pydantic-settings`, `typer`, `uvicorn`, `structlog`, `rich`, `rich-toolkit`, `typing-extensions`, `packaging`, `aiohttp`, `sortedcontainers`, `aiofiles`, `jsonschema`.
+- Plugin-only: `prometheus-client` (metrics plugin), `sqlmodel` (analytics, duckdb_storage), `duckdb`, `duckdb-engine` (duckdb_storage), `textual` (permissions terminal handler).
+- Unused in repo: `aiosqlite` (no imports found), `keyring` (mentioned in docs but not imported), `h2` (provided transitively by `httpx[http2]` if needed; no direct imports).
+
+Notes and recommendations:
+
+- `duckdb` / `duckdb-engine` / `sqlmodel` / `prometheus-client` / `textual`: keep for now since plugins ship inside the main wheel; mark as plugin-only and consider moving to plugin-specific distributions or optional extras in a future split.
+- `keyring`: remove from core runtime deps and keep only under the optional `security` group (already declared) unless we add real usage.
+- `aiosqlite`: remove from root runtime deps (no usage found).
+- `h2`: remove explicit pin from root runtime deps; `httpx[http2]` will pull it transitively when needed.
+
 
 
 ## Open Questions / To Validate

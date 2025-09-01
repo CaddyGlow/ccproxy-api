@@ -30,7 +30,7 @@ Scope: Remove redundancy/dead code from the migration to a plugin-based architec
 Goal: Establish a clear baseline and identify legacy vs plugin-owned code.
 
 - [x] Code map: catalog `ccproxy/*`, `plugins/*`, and `pyproject` entry points
-- [ ] Dependency map: list deps used only by legacy code; mark for removal
+- [x] Dependency map: list deps used only by legacy code; mark for removal
 - [x] Config map: collect config keys/env vars; note keys superseded by plugins
 - [x] Tests map: identify tests bound to legacy code; map to plugin ownership
 - [x] Baseline quality: run checks and capture coverage snapshot
@@ -40,11 +40,11 @@ Goal: Establish a clear baseline and identify legacy vs plugin-owned code.
 
 Goal: Find code paths and settings made obsolete by the plugin migration.
 
-- [ ] Static usage scan: ripgrep for imports/references of suspected legacy modules
-- [ ] Coverage audit: locate files/branches with zero hits
-- [ ] API/CLI scan: endpoints/commands that still have legacy shims
-- [ ] Config scan: detect unused settings via Settings model and references
-- [ ] Deliverable: Candidate checklist with remove/replace/deprecate decisions
+- [x] Static usage scan: ripgrep for imports/references of suspected legacy modules
+- [x] Coverage audit: locate files/branches with zero hits
+- [x] API/CLI scan: endpoints/commands that still have legacy shims
+- [x] Config scan: detect unused settings via Settings model and references
+- [x] Deliverable: Candidate checklist with remove/replace/deprecate decisions (`docs/cleanup/phase2-checklist.md`)
 
 ## Phase 3: Boundaries & Interfaces
 

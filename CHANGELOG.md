@@ -619,3 +619,16 @@ This is the initial public release of the CCProxy API.
 - **Modern Tooling**: Uses `uv` for package management and `devenv` for a reproducible development environment.
 - **Extensive Test Suite**: Includes unit, integration, and benchmark tests to ensure reliability.
 - **Rich Logging**: Structured and colorized logging for improved readability during development and debugging.
+## [Unreleased]
+
+### Removed
+
+- Dead code: removed `ccproxy/utils/models_provider.py` (unreferenced; model listing is provided by plugins).
+- Pruned root runtime dependencies no longer used directly by core:
+  - `aiosqlite` (unused in repo)
+  - `keyring` (kept only under optional `security` dependency group)
+  - `h2` (no direct imports; `httpx[http2]` brings HTTP/2 support transitively)
+
+### Notes
+
+- Plugin-owned dependencies remain in root for now (plugins are bundled): `duckdb`, `duckdb-engine`, `sqlmodel`, `prometheus-client`, `textual`. These may move to plugin-specific distributions or optional extras in a future split.

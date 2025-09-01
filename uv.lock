@@ -140,18 +140,6 @@ wheels = [
 ]
 
 [[package]]
-name = "aiosqlite"
-version = "0.21.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "typing-extensions" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/13/7d/8bca2bf9a247c2c5dfeec1d7a5f40db6518f88d314b8bca9da29670d2671/aiosqlite-0.21.0.tar.gz", hash = "sha256:131bb8056daa3bc875608c631c678cda73922a2d4ba8aec373b19f18c17e7aa3", size = 13454, upload-time = "2025-02-03T07:30:16.235Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/f5/10/6c25ed6de94c49f88a91fa5018cb4c0f3625f31d5be9f771ebe5cc7cd506/aiosqlite-0.21.0-py3-none-any.whl", hash = "sha256:2549cf4057f95f53dcba16f2b64e8e2791d7e1adedb13197dd8ed77bb226d7d0", size = 15792, upload-time = "2025-02-03T07:30:13.6Z" },
-]
-
-[[package]]
 name = "annotated-types"
 version = "0.7.0"
 source = { registry = "https://pypi.org/simple" }
@@ -286,14 +274,11 @@ dependencies = [
     { name = "aioconsole" },
     { name = "aiofiles" },
     { name = "aiohttp" },
-    { name = "aiosqlite" },
     { name = "duckdb" },
     { name = "duckdb-engine" },
     { name = "fastapi", extra = ["standard"] },
-    { name = "h2" },
     { name = "httpx", extra = ["http2"] },
     { name = "jsonschema" },
-    { name = "keyring" },
     { name = "packaging" },
     { name = "prometheus-client" },
     { name = "pydantic" },
@@ -307,6 +292,19 @@ dependencies = [
     { name = "typer" },
     { name = "typing-extensions" },
     { name = "uvicorn" },
+]
+
+[package.optional-dependencies]
+plugins-metrics = [
+    { name = "prometheus-client" },
+]
+plugins-storage = [
+    { name = "duckdb" },
+    { name = "duckdb-engine" },
+    { name = "sqlmodel" },
+]
+plugins-ui = [
+    { name = "textual" },
 ]
 
 [package.dev-dependencies]
@@ -360,28 +358,31 @@ requires-dist = [
     { name = "aioconsole", specifier = ">=0.8.1" },
     { name = "aiofiles", specifier = ">=24.1.0" },
     { name = "aiohttp", specifier = ">=3.12.15" },
-    { name = "aiosqlite", specifier = ">=0.21.0" },
     { name = "duckdb", specifier = ">=1.1.0" },
+    { name = "duckdb", marker = "extra == 'plugins-storage'", specifier = ">=1.1.0" },
     { name = "duckdb-engine", specifier = ">=0.17.0" },
+    { name = "duckdb-engine", marker = "extra == 'plugins-storage'", specifier = ">=0.17.0" },
     { name = "fastapi", extras = ["standard"], specifier = ">=0.115.14" },
-    { name = "h2", specifier = ">=4.2.0" },
     { name = "httpx", extras = ["http2"], specifier = ">=0.28.1" },
     { name = "jsonschema", specifier = ">=4.23.0" },
-    { name = "keyring", specifier = ">=25.6.0" },
     { name = "packaging", specifier = ">=25.0" },
     { name = "prometheus-client", specifier = ">=0.22.1" },
+    { name = "prometheus-client", marker = "extra == 'plugins-metrics'", specifier = ">=0.22.1" },
     { name = "pydantic", specifier = ">=2.8.0" },
     { name = "pydantic-settings", specifier = ">=2.4.0" },
     { name = "rich", specifier = ">=13.0.0" },
     { name = "rich-toolkit", specifier = ">=0.14.8" },
     { name = "sortedcontainers", specifier = ">=2.4.0" },
     { name = "sqlmodel", specifier = ">=0.0.24" },
+    { name = "sqlmodel", marker = "extra == 'plugins-storage'", specifier = ">=0.0.24" },
     { name = "structlog", specifier = ">=25.4.0" },
     { name = "textual", specifier = ">=3.7.1" },
+    { name = "textual", marker = "extra == 'plugins-ui'", specifier = ">=3.7.1" },
     { name = "typer", specifier = ">=0.16.0" },
     { name = "typing-extensions", specifier = ">=4.0.0" },
     { name = "uvicorn", specifier = ">=0.34.0" },
 ]
+provides-extras = ["plugins-metrics", "plugins-storage", "plugins-ui"]
 
 [package.metadata.requires-dev]
 dev = [
