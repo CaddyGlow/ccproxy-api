@@ -101,7 +101,7 @@ class TestMetricsAPIEndpoints:
 
         try:
             with patch(
-                "ccproxy.api.routes.metrics.Session", return_value=mock_session_context
+                "plugins.analytics.service.Session", return_value=mock_session_context
             ):
                 # Mock the exec method to return mock results
                 mock_result = MagicMock()
@@ -174,7 +174,7 @@ class TestMetricsAPIEndpoints:
 
         try:
             with patch(
-                "ccproxy.api.routes.metrics.Session", return_value=mock_session_context
+                "plugins.analytics.service.Session", return_value=mock_session_context
             ):
                 # Mock the exec method to return empty results
                 mock_result = MagicMock()
@@ -217,7 +217,7 @@ class TestMetricsAPIEndpoints:
 
         try:
             with patch(
-                "ccproxy.api.routes.metrics.Session", return_value=mock_session_context
+                "plugins.analytics.service.Session", return_value=mock_session_context
             ):
                 # Mock the exec method to return empty results
                 mock_result = MagicMock()

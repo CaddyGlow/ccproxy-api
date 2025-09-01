@@ -195,50 +195,75 @@ class PluginDiscovery:
 
             for ep in eps:
                 name = ep.name
+                # Skip duplicates within entry points themselves
+                if name in factories:
+                    logger.info(
+                        "entry_point_duplicate_ignored",
+                        name=name,
+                        category="plugin",
+                    )
+                    continue
                 try:
+                    # Primary load
                     obj = ep.load()
-                    factory: PluginFactory | None = None
+                except Exception as e:
+                    # Fallback: import module and get 'factory'
+                    try:
+                        import importlib
 
-                    # If the object already looks like a factory (duck typing)
-                    if hasattr(obj, "get_manifest") and hasattr(
-                        obj, "create_runtime"
-                    ):
-                        factory = obj  # type: ignore[assignment]
-                    # If it's callable, try to call to get a factory
-                    elif callable(obj):
-                        try:
-                            maybe = obj()
-                            if hasattr(maybe, "get_manifest") and hasattr(
-                                maybe, "create_runtime"
-                            ):
-                                factory = maybe  # type: ignore[assignment]
-                        except Exception:
-                            factory = None
-
-                    if not factory:
-                        logger.warning(
-                            "entry_point_not_factory",
+                        module_name = getattr(ep, "module", None)
+                        if not module_name:
+                            value = getattr(ep, "value", "")
+                            module_name = value.split(":")[0] if ":" in value else None
+                        if not module_name:
+                            raise e
+                        mod = importlib.import_module(module_name)
+                        if hasattr(mod, "factory"):
+                            obj = getattr(mod, "factory")
+                        else:
+                            raise e
+                    except Exception as e2:
+                        logger.error(
+                            "entry_point_load_failed",
                             name=name,
-                            obj_type=type(obj).__name__,
+                            error=str(e2),
+                            exc_info=e2,
                             category="plugin",
                         )
                         continue
 
-                    factories[name] = factory
-                    logger.debug(
-                        "entry_point_factory_loaded",
+                factory: PluginFactory | None = None
+
+                # If the object already looks like a factory (duck typing)
+                if hasattr(obj, "get_manifest") and hasattr(obj, "create_runtime"):
+                    factory = obj  # type: ignore[assignment]
+                # If it's callable, try to call to get a factory
+                elif callable(obj):
+                    try:
+                        maybe = obj()
+                        if hasattr(maybe, "get_manifest") and hasattr(
+                            maybe, "create_runtime"
+                        ):
+                            factory = maybe  # type: ignore[assignment]
+                    except Exception:
+                        factory = None
+
+                if not factory:
+                    logger.warning(
+                        "entry_point_not_factory",
                         name=name,
-                        version=factory.get_manifest().version,
+                        obj_type=type(obj).__name__,
                         category="plugin",
                     )
-                except Exception as e:
-                    logger.error(
-                        "entry_point_load_failed",
-                        name=name,
-                        error=str(e),
-                        exc_info=e,
-                        category="plugin",
-                    )
+                    continue
+
+                factories[name] = factory
+                logger.debug(
+                    "entry_point_factory_loaded",
+                    name=name,
+                    version=factory.get_manifest().version,
+                    category="plugin",
+                )
         except Exception as e:  # pragma: no cover
             logger.error(
                 "entry_points_enumeration_failed", error=str(e), exc_info=e

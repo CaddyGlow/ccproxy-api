@@ -178,7 +178,8 @@ def test_settings(isolated_environment: Path) -> Settings:
                 "enabled": True,
                 "database_path": str(isolated_environment / "test_metrics.duckdb"),
                 "register_app_state_alias": True,
-            }
+            },
+            "analytics": {"enabled": True},
         },
     )
 
@@ -214,7 +215,8 @@ def auth_settings(isolated_environment: Path) -> Settings:
                 "enabled": True,
                 "database_path": str(isolated_environment / "test_metrics.duckdb"),
                 "register_app_state_alias": True,
-            }
+            },
+            "analytics": {"enabled": True},
         },
     )
 
@@ -511,7 +513,8 @@ def app_factory(tmp_path: Path) -> Callable[[dict[str, Any]], FastAPI]:
                     "enabled": True,
                     "database_path": str(tmp_path / "test_metrics.duckdb"),
                     "register_app_state_alias": True,
-                }
+                },
+                "analytics": {"enabled": True},
             },
         )
         if auth_config.get("has_configured_token"):

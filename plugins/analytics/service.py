@@ -6,7 +6,7 @@ from typing import Any
 
 from sqlmodel import Session, col, desc, func, select
 
-from plugins.access_log.models import AccessLog
+from plugins.analytics.models import AccessLog
 
 
 class AnalyticsService:
@@ -169,7 +169,7 @@ class AnalyticsService:
                     "total_tokens_all": (svc_in or 0) + (svc_out or 0) + (svc_cr or 0) + (svc_cw or 0),
                 }
 
-            analytics = {
+            return {
                 "summary": {
                     "total_requests": total_requests or 0,
                     "total_successful_requests": total_successful_requests or 0,
@@ -210,20 +210,3 @@ class AnalyticsService:
                 "query_time": time.time(),
                 "backend": "sqlmodel",
             }
-
-            return analytics
-
-    def query_top_model(
-        self, start_time: dt, end_time: dt, limit: int = 1
-    ) -> list[dict[str, Any]]:
-        with Session(self._engine) as session:
-            statement = (
-                select(AccessLog.model, func.count().label("request_count"))
-                .where(AccessLog.timestamp >= start_time)
-                .where(AccessLog.timestamp <= end_time)
-                .group_by(AccessLog.model)
-                .order_by(desc(func.count()))
-                .limit(limit)
-            )
-            results = session.exec(statement).all()
-            return [{"model": r[0], "request_count": r[1]} for r in results]

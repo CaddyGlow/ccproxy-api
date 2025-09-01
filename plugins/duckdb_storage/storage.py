@@ -20,11 +20,13 @@ from sqlalchemy.exc import IntegrityError, OperationalError, SQLAlchemyError
 from sqlmodel import Session, SQLModel, create_engine, func, select
 
 from ccproxy.core.async_task_manager import create_managed_task
-from plugins.access_log.models import AccessLog, AccessLogPayload
 
 
 logger = structlog.get_logger(__name__)
 
+
+
+from typing import Any
 
 
 class SimpleDuckDBStorage:
@@ -39,7 +41,7 @@ class SimpleDuckDBStorage:
         self.database_path = Path(database_path)
         self._engine: Engine | None = None
         self._initialized: bool = False
-        self._write_queue: asyncio.Queue[AccessLogPayload] = asyncio.Queue()
+        self._write_queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
         self._background_worker_task: asyncio.Task[None] | None = None
         self._shutdown_event = asyncio.Event()
 
@@ -86,7 +88,8 @@ class SimpleDuckDBStorage:
             return
 
         try:
-            # Create tables using SQLModel metadata
+            # Create tables using SQLModel metadata.
+            # Note: AccessLog model must be imported by the access_log plugin prior to this call.
             SQLModel.metadata.create_all(self._engine)
             logger.debug("duckdb_schema_created")
 
@@ -116,7 +119,7 @@ class SimpleDuckDBStorage:
             logger.warning("query_column_check_error", error=str(e), exc_info=e)
             # Continue without failing - SQLModel handles schema management
 
-    async def store_request(self, data: AccessLogPayload) -> bool:
+    async def store_request(self, data: dict[str, Any]) -> bool:
         """Store a single request log entry asynchronously via queue.
 
         Args:
@@ -244,7 +247,7 @@ class SimpleDuckDBStorage:
 
         logger.debug("duckdb_background_worker_stopped")
 
-    def _store_request_sync(self, data: AccessLogPayload) -> bool:
+    def _store_request_sync(self, data: dict[str, Any]) -> bool:
         """Synchronous version of store_request for thread pool execution."""
         try:
             # Convert Unix timestamp to datetime if needed
@@ -254,34 +257,39 @@ class SimpleDuckDBStorage:
             else:
                 timestamp_dt = timestamp_value
 
-            # Create AccessLog object with type validation
-            access_log = AccessLog(
-                request_id=data.get("request_id", ""),
-                timestamp=timestamp_dt,
-                method=data.get("method", ""),
-                endpoint=data.get("endpoint", ""),
-                path=data.get("path", data.get("endpoint", "")),
-                query=data.get("query", ""),
-                client_ip=data.get("client_ip", ""),
-                user_agent=data.get("user_agent", ""),
-                service_type=data.get("service_type", ""),
-                model=data.get("model", ""),
-                streaming=data.get("streaming", False),
-                status_code=data.get("status_code", 200),
-                duration_ms=data.get("duration_ms", 0.0),
-                duration_seconds=data.get("duration_seconds", 0.0),
-                tokens_input=data.get("tokens_input", 0),
-                tokens_output=data.get("tokens_output", 0),
-                cache_read_tokens=data.get("cache_read_tokens", 0),
-                cache_write_tokens=data.get("cache_write_tokens", 0),
-                cost_usd=data.get("cost_usd", 0.0),
-                cost_sdk_usd=data.get("cost_sdk_usd", 0.0),
-            )
+            # Store using SQLAlchemy core insert via SQLModel metadata
+            values = {
+                "request_id": data.get("request_id", ""),
+                "timestamp": timestamp_dt,
+                "method": data.get("method", ""),
+                "endpoint": data.get("endpoint", ""),
+                "path": data.get("path", data.get("endpoint", "")),
+                "query": data.get("query", ""),
+                "client_ip": data.get("client_ip", ""),
+                "user_agent": data.get("user_agent", ""),
+                "service_type": data.get("service_type", ""),
+                "model": data.get("model", ""),
+                "streaming": data.get("streaming", False),
+                "status_code": data.get("status_code", 200),
+                "duration_ms": data.get("duration_ms", 0.0),
+                "duration_seconds": data.get("duration_seconds", 0.0),
+                "tokens_input": data.get("tokens_input", 0),
+                "tokens_output": data.get("tokens_output", 0),
+                "cache_read_tokens": data.get("cache_read_tokens", 0),
+                "cache_write_tokens": data.get("cache_write_tokens", 0),
+                "cost_usd": data.get("cost_usd", 0.0),
+                "cost_sdk_usd": data.get("cost_sdk_usd", 0.0),
+            }
 
-            # Store using SQLModel session
+            from sqlalchemy import insert
+
+            table = SQLModel.metadata.tables.get("access_logs")
+            if table is None:
+                raise RuntimeError(
+                    "access_logs table not registered; ensure analytics plugin is enabled"
+                )
             with Session(self._engine) as session:
-                # Add new log entry (no merge needed as each request is unique)
-                session.add(access_log)
+                session.exec(insert(table).values(values))
                 session.commit()
 
             logger.info(
@@ -325,7 +333,7 @@ class SimpleDuckDBStorage:
             )
             return False
 
-    async def store_batch(self, metrics: Sequence[AccessLogPayload]) -> bool:
+    async def store_batch(self, metrics: Sequence[dict[str, Any]]) -> bool:
         """Store a batch of request logs.
 
         Args:
@@ -338,40 +346,48 @@ class SimpleDuckDBStorage:
             return False
 
         try:
+            from sqlalchemy import insert
+
+            rows = []
+            for data in metrics:
+                timestamp_value = data.get("timestamp", time.time())
+                timestamp_dt = (
+                    datetime.fromtimestamp(timestamp_value)
+                    if isinstance(timestamp_value, (int, float))
+                    else timestamp_value
+                )
+                rows.append(
+                    {
+                        "request_id": data.get("request_id", ""),
+                        "timestamp": timestamp_dt,
+                        "method": data.get("method", ""),
+                        "endpoint": data.get("endpoint", ""),
+                        "path": data.get("path", data.get("endpoint", "")),
+                        "query": data.get("query", ""),
+                        "client_ip": data.get("client_ip", ""),
+                        "user_agent": data.get("user_agent", ""),
+                        "service_type": data.get("service_type", ""),
+                        "model": data.get("model", ""),
+                        "streaming": data.get("streaming", False),
+                        "status_code": data.get("status_code", 200),
+                        "duration_ms": data.get("duration_ms", 0.0),
+                        "duration_seconds": data.get("duration_seconds", 0.0),
+                        "tokens_input": data.get("tokens_input", 0),
+                        "tokens_output": data.get("tokens_output", 0),
+                        "cache_read_tokens": data.get("cache_read_tokens", 0),
+                        "cache_write_tokens": data.get("cache_write_tokens", 0),
+                        "cost_usd": data.get("cost_usd", 0.0),
+                        "cost_sdk_usd": data.get("cost_sdk_usd", 0.0),
+                    }
+                )
+
+            table = SQLModel.metadata.tables.get("access_logs")
+            if table is None:
+                raise RuntimeError(
+                    "access_logs table not registered; ensure analytics plugin is enabled"
+                )
             with Session(self._engine) as session:
-                access_logs = []
-                for data in metrics:
-                    timestamp_value = data.get("timestamp", time.time())
-                    if isinstance(timestamp_value, int | float):
-                        timestamp_dt = datetime.fromtimestamp(timestamp_value)
-                    else:
-                        timestamp_dt = timestamp_value
-
-                    access_log = AccessLog(
-                        request_id=data.get("request_id", ""),
-                        timestamp=timestamp_dt,
-                        method=data.get("method", ""),
-                        endpoint=data.get("endpoint", ""),
-                        path=data.get("path", data.get("endpoint", "")),
-                        query=data.get("query", ""),
-                        client_ip=data.get("client_ip", ""),
-                        user_agent=data.get("user_agent", ""),
-                        service_type=data.get("service_type", ""),
-                        model=data.get("model", ""),
-                        streaming=data.get("streaming", False),
-                        status_code=data.get("status_code", 200),
-                        duration_ms=data.get("duration_ms", 0.0),
-                        duration_seconds=data.get("duration_seconds", 0.0),
-                        tokens_input=data.get("tokens_input", 0),
-                        tokens_output=data.get("tokens_output", 0),
-                        cache_read_tokens=data.get("cache_read_tokens", 0),
-                        cache_write_tokens=data.get("cache_write_tokens", 0),
-                        cost_usd=data.get("cost_usd", 0.0),
-                        cost_sdk_usd=data.get("cost_sdk_usd", 0.0),
-                    )
-                    access_logs.append(access_log)
-
-                session.add_all(access_logs)
+                session.exec(insert(table), rows)
                 session.commit()
 
             logger.info(
@@ -415,7 +431,7 @@ class SimpleDuckDBStorage:
             )
             return False
 
-    async def store(self, metric: AccessLogPayload) -> bool:
+    async def store(self, metric: dict[str, Any]) -> bool:
         """Store single metric.
 
         Args:
@@ -517,8 +533,13 @@ class SimpleDuckDBStorage:
     def _health_check_sync(self) -> int:
         """Synchronous version of health check for thread pool execution."""
         with Session(self._engine) as session:
-            statement = select(func.count()).select_from(AccessLog)
-            return session.exec(statement).first() or 0
+            from sqlalchemy import select as sa_select
+
+            table = SQLModel.metadata.tables.get("access_logs")
+            if table is None:
+                return 0
+                statement = sa_select(func.count()).select_from(table)
+                return session.exec(statement).first() or 0
 
     async def reset_data(self) -> bool:
         """Reset all data in the storage (useful for testing/debugging).
@@ -545,12 +566,13 @@ class SimpleDuckDBStorage:
         Uses safe SQLModel ORM operations instead of raw SQL to prevent injection.
         """
         try:
+            from sqlalchemy import delete
+
+            table = SQLModel.metadata.tables.get("access_logs")
+            if table is None:
+                return True
             with Session(self._engine) as session:
-                # Delete all records using SQLModel ORM - safe from SQL injection
-                statement = select(AccessLog)
-                access_logs = session.exec(statement).all()
-                for log in access_logs:
-                    session.delete(log)
+                session.exec(delete(table))
                 session.commit()
 
             logger.info("simple_duckdb_reset_success")

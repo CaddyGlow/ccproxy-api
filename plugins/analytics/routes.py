@@ -3,7 +3,7 @@ from __future__ import annotations
 import time
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 
 from ccproxy.api.dependencies import DuckDBStorageDep
@@ -23,23 +23,22 @@ async def query_logs(
 ) -> dict[str, Any]:
     if not storage:
         raise HTTPException(status_code=503, detail="Storage backend not available")
+    if not getattr(storage, "_engine", None):
+        raise HTTPException(status_code=503, detail="Storage engine not available")
 
-    if hasattr(storage, "_engine") and storage._engine:
-        try:
-            from .service import AnalyticsService
+    try:
+        from .service import AnalyticsService
 
-            svc = AnalyticsService(storage._engine)
-            return svc.query_logs(
-                limit=limit,
-                start_time=start_time,
-                end_time=end_time,
-                model=model,
-                service_type=service_type,
-            )
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Query failed: {str(e)}")
-
-    raise HTTPException(status_code=503, detail="Storage engine not available")
+        svc = AnalyticsService(storage._engine)
+        return svc.query_logs(
+            limit=limit,
+            start_time=start_time,
+            end_time=end_time,
+            model=model,
+            service_type=service_type,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Query failed: {str(e)}")
 
 
 @router.get("/analytics")
@@ -56,41 +55,35 @@ async def get_logs_analytics(
 ) -> dict[str, Any]:
     if not storage:
         raise HTTPException(status_code=503, detail="Storage backend not available")
+    if not getattr(storage, "_engine", None):
+        raise HTTPException(status_code=503, detail="Storage engine not available")
 
-    # Default window
-    if start_time is None and end_time is None and hours:
-        end_time = time.time()
-        start_time = end_time - (hours * 3600)
+    try:
+        from .service import AnalyticsService
 
-    if hasattr(storage, "_engine") and storage._engine:
-        try:
-            from .service import AnalyticsService
-
-            svc = AnalyticsService(storage._engine)
-            analytics = svc.get_analytics(
-                start_time=start_time,
-                end_time=end_time,
-                model=model,
-                service_type=service_type,
-                hours=hours,
-            )
-            analytics["query_params"] = {
-                "start_time": start_time,
-                "end_time": end_time,
-                "model": model,
-                "service_type": service_type,
-                "hours": hours,
-            }
-            return analytics
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Analytics query failed: {str(e)}")
-
-    raise HTTPException(status_code=503, detail="Storage engine not available")
+        svc = AnalyticsService(storage._engine)
+        analytics = svc.get_analytics(
+            start_time=start_time,
+            end_time=end_time,
+            model=model,
+            service_type=service_type,
+            hours=hours,
+        )
+        analytics["query_params"] = {
+            "start_time": start_time,
+            "end_time": end_time,
+            "model": model,
+            "service_type": service_type,
+            "hours": hours,
+        }
+        return analytics
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Analytics query failed: {str(e)}")
 
 
 @router.get("/stream")
 async def stream_logs(
-    request,
+    request: Request,
     model: str | None = Query(None, description="Filter by model name"),
     service_type: str | None = Query(None, description="Filter by service type"),
     min_duration_ms: float | None = Query(None, description="Min duration (ms)"),
@@ -122,3 +115,22 @@ async def stream_logs(
             yield f"event: error\ndata: {str(e)}\n\n"
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+
+@router.post("/reset")
+async def reset_logs(storage: DuckDBStorageDep) -> dict[str, Any]:
+    if not storage:
+        raise HTTPException(status_code=503, detail="Storage backend not available")
+    if not hasattr(storage, "reset_data"):
+        raise HTTPException(status_code=501, detail="Reset not supported by storage backend")
+
+    ok = await storage.reset_data()
+    if not ok:
+        raise HTTPException(status_code=500, detail="Failed to reset logs data")
+    return {
+        "status": "success",
+        "message": "All logs data has been reset",
+        "timestamp": time.time(),
+        "backend": "duckdb",
+    }
+

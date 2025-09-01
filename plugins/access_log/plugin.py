@@ -82,6 +82,25 @@ class AccessLogRuntime(SystemPluginRuntime):
                 fallback="No fallback - access logging disabled",
             )
 
+        # Try to wire analytics ingest service if available
+        try:
+            if self.context and self.hook:
+                registry = self.context.get("plugin_registry")
+                ingest_service = None
+                if registry:
+                    from plugins.analytics.ingest import AnalyticsIngestService
+                    ingest_service = registry.get_service(
+                        "analytics_ingest", AnalyticsIngestService
+                    )
+                if not ingest_service and self.context.get("app"):
+                    # Not registered in registry; skip silently
+                    pass
+                if ingest_service:
+                    self.hook.ingest_service = ingest_service
+                    logger.info("access_log_ingest_service_connected")
+        except Exception as e:
+            logger.debug("access_log_ingest_service_connect_failed", error=str(e))
+
     async def _on_shutdown(self) -> None:
         """Cleanup on shutdown."""
         # Unregister hook from registry
@@ -135,6 +154,7 @@ class AccessLogFactory(SystemPluginFactory):
             description="Simple access logging with Common, Combined, and Structured formats",
             is_provider=False,
             config_class=AccessLogConfig,
+            dependencies=["analytics"],
         )
         super().__init__(manifest)
 

@@ -58,3 +58,12 @@ max_sessions = 1000
 
 [plugins.permissions]
 enabled = false
+
+# DuckDB storage and analytics plugins
+[plugins.duckdb_storage]
+enabled = true
+database_path = "/tmp/ccproxy/metrics.duckdb"
+register_app_state_alias = true
+
+[plugins.analytics]
+enabled = true

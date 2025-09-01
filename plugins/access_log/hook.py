@@ -71,6 +71,8 @@ class AccessLogHook(Hook):
         # Store streaming metrics until REQUEST_COMPLETED fires
         self._streaming_metrics: dict[str, dict[str, Any]] = {}
 
+        self.ingest_service: Any | None = None
+
         logger.info(
             "access_log_hook_initialized",
             enabled=self.config.enabled,
@@ -262,6 +264,9 @@ class AccessLogHook(Hook):
         # Also log to structured logger
         await self._log_to_structured_logger(log_data, "client")
 
+        # Ingest into analytics if available
+        await self._maybe_ingest(log_data)
+
     async def _handle_request_failed(self, context: HookContext) -> None:
         """Handle REQUEST_FAILED event."""
         if not self.config.client_enabled:
@@ -303,6 +308,9 @@ class AccessLogHook(Hook):
 
         # Also log to structured logger
         await self._log_to_structured_logger(log_data, "client", error=error_message)
+
+        # Ingest into analytics if available
+        await self._maybe_ingest(log_data)
 
     async def _handle_provider_request(self, context: HookContext) -> None:
         """Handle PROVIDER_REQUEST_SENT event."""
@@ -551,6 +559,29 @@ class AccessLogHook(Hook):
             cost_usd=cost_usd,
         )
 
+        # Attempt client-oriented ingestion too (when streaming completes)
+        # Build a client-like record if we have it
+        client_log_data = {
+            "timestamp": log_data.get("timestamp", time.time()),
+            "request_id": request_id,
+            "method": method,
+            "path": context.data.get("path", ""),
+            "query": context.data.get("query", ""),
+            "client_ip": context.data.get("client_ip", ""),
+            "user_agent": context.data.get("user_agent", ""),
+            "status_code": 200,
+            "duration_ms": duration_ms,
+            "tokens_input": tokens_input,
+            "tokens_output": tokens_output,
+            "cache_read_tokens": cache_read_tokens,
+            "cache_write_tokens": cache_write_tokens,
+            "cost_usd": cost_usd,
+            "model": model,
+            "streaming": True,
+            "service_type": "access_log",
+        }
+        await self._maybe_ingest(client_log_data)
+
     def _extract_path(self, url: str) -> str:
         """Extract path from URL.
 
@@ -576,6 +607,14 @@ class AccessLogHook(Hook):
             True if the path should be excluded, False otherwise
         """
         return any(path.startswith(excluded) for excluded in self.config.exclude_paths)
+
+    async def _maybe_ingest(self, log_data: dict[str, Any]) -> None:
+        """Ingest log data into analytics storage if service is available."""
+        try:
+            if self.ingest_service and hasattr(self.ingest_service, "ingest"):
+                await self.ingest_service.ingest(log_data)
+        except Exception as e:  # pragma: no cover - non-fatal
+            logger.debug("access_log_ingest_failed", error=str(e))
 
     async def _log_to_structured_logger(
         self,

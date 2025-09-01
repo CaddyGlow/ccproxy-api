@@ -26,7 +26,7 @@ pytest.skip(
 # Original import (commented out for reference):
 # from ccproxy.observability.access_logger import log_request_access
 from ccproxy.core.request_context import RequestContext
-from plugins.access_log.models import AccessLog
+from plugins.analytics.models import AccessLog
 from plugins.duckdb_storage.storage import SimpleDuckDBStorage
 
 
