@@ -207,7 +207,7 @@ class SimpleDuckDBStorage:
                 # Wait for either a queue item or shutdown with timeout
                 try:
                     data = await asyncio.wait_for(self._write_queue.get(), timeout=1.0)
-                except TimeoutError:
+                except asyncio.TimeoutError:
                     continue  # Check shutdown event and continue
 
                 # Process the queued write operation synchronously

@@ -8,10 +8,10 @@ import httpx
 from fastapi import Depends, Request
 
 from ccproxy.config.settings import Settings, get_settings
-from ccproxy.core.http_client import get_shared_http_client
 from ccproxy.core.logging import get_logger
 from ccproxy.hooks import HookManager
 from ccproxy.storage.duckdb_simple import SimpleDuckDBStorage
+from ccproxy.services.container import ServiceContainer
 
 
 if TYPE_CHECKING:
@@ -48,22 +48,39 @@ def get_cached_settings(request: Request) -> Settings:
     return settings
 
 
-async def get_http_client(
-    settings: Annotated[Settings, Depends(get_cached_settings)],
-) -> httpx.AsyncClient:
-    """Get shared HTTP client instance.
+async def get_http_client(request: Request) -> httpx.AsyncClient:
+    """Get shared HTTP client from the service container.
 
-    Args:
-        settings: Application settings dependency
+    Falls back to creating a container if missing on app state (logs warning).
 
     Returns:
-        Shared HTTP client instance
+        Shared httpx.AsyncClient managed by ServiceContainer
     """
-    logger.debug("getting_shared_http_client_instance", category="lifecycle")
-    return await get_shared_http_client(settings)
+    logger.debug("getting_http_client_from_container", category="lifecycle")
+    container: ServiceContainer | None = getattr(request.app.state, "service_container", None)
+    if container is None:
+        # Fallback: create and attach a container to avoid runtime failures
+        settings = getattr(request.app.state, "settings", None) or get_settings()
+        logger.warning("service_container_missing_on_app_state_created", category="lifecycle")
+        container = ServiceContainer(settings)
+        request.app.state.service_container = container
+    return container.get_http_client()
 
 
 # ProxyService removed - use ServiceContainer directly for dependency injection
+
+
+class _NullObservabilityMetrics:
+    """Null metrics stub for backward compatibility.
+
+    Provides `is_enabled()` and `registry` attributes used by routes.
+    """
+
+    registry: Any | None = None
+
+    def is_enabled(self) -> bool:  # noqa: D401
+        """Return False to indicate metrics are disabled without plugin."""
+        return False
 
 
 def get_observability_metrics() -> Any:
@@ -76,7 +93,7 @@ def get_observability_metrics() -> Any:
         None (metrics handled by plugin)
     """
     logger.debug("get_observability_metrics_deprecated", category="lifecycle")
-    return None
+    return _NullObservabilityMetrics()
 
 
 async def get_log_storage(request: Request) -> SimpleDuckDBStorage | None:

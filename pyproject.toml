@@ -50,6 +50,7 @@ version-file = "ccproxy/_version.py"
 packages = ["ccproxy", "plugins"]
 include = [
   "ccproxy/data/*.json",
+  "ccproxy/static/dashboard/**",
   "plugins/**/*.py",
   "plugins/**/*.json",
   "plugins/**/*.toml",
@@ -59,6 +60,7 @@ include = [
 include = [
   "ccproxy/**/*.py",
   "ccproxy/**/*.json",
+  "ccproxy/static/dashboard/**",
   "plugins/**/*.py",
   "plugins/**/*.json",
   "plugins/**/*.toml",

@@ -13,16 +13,11 @@ from ccproxy import __version__
 from ccproxy.api.middleware.cors import setup_cors_middleware
 from ccproxy.api.middleware.errors import setup_error_handlers
 from ccproxy.api.routes.health import router as health_router
-from ccproxy.api.routes.metrics import (
-    dashboard_router,
-    logs_router,
-    prometheus_router,
-)
+from ccproxy.api.routes.metrics import dashboard_router, logs_router
 from ccproxy.api.routes.plugins import router as plugins_router
 from ccproxy.auth.oauth.routes import router as oauth_router
 from ccproxy.config.settings import Settings, get_settings
 from ccproxy.core.async_task_manager import start_task_manager, stop_task_manager
-from ccproxy.core.http_client import close_shared_http_client
 from ccproxy.core.logging import TraceBoundLogger, get_logger, setup_logging
 from ccproxy.hooks import HookManager, HookRegistry
 from ccproxy.hooks.events import HookEvent
@@ -79,10 +74,7 @@ async def setup_task_manager_shutdown(app: FastAPI) -> None:
     logger.debug("task_manager_shutdown_completed", category="lifecycle")
 
 
-async def setup_http_client_shutdown(app: FastAPI) -> None:
-    """Close the shared HTTP client."""
-    await close_shared_http_client()
-    logger.debug("shared_http_client_shutdown_completed", category="lifecycle")
+# Legacy shared HTTP client shutdown removed; HTTP client is managed by ServiceContainer
 
 
 async def setup_service_container_shutdown(app: FastAPI) -> None:
@@ -306,12 +298,7 @@ LIFECYCLE_COMPONENTS: list[LifecycleComponent] = [
     },
 ]
 
-SHUTDOWN_ONLY_COMPONENTS: list[ShutdownComponent] = [
-    {
-        "name": "Shared HTTP Client",
-        "shutdown": setup_http_client_shutdown,
-    },
-]
+SHUTDOWN_ONLY_COMPONENTS: list[ShutdownComponent] = []
 
 
 @asynccontextmanager
@@ -587,9 +574,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # Include core routers
     app.include_router(health_router, tags=["health"])
 
-    # Include observability routers with granular controls
-    if settings.observability.metrics_endpoint_enabled:
-        app.include_router(prometheus_router, tags=["metrics"])
+    # Metrics endpoint is provided by the metrics plugin when enabled.
+    # Core no longer mounts /metrics directly to avoid duplication.
+    if settings.observability.metrics_endpoint_enabled and not settings.enable_plugins:
+        logger.info(
+            "metrics_endpoint_plugin_disabled",
+            message="Enable plugins and the metrics plugin to serve /metrics",
+            category="config",
+        )
 
     if settings.observability.logs_endpoints_enabled:
         app.include_router(logs_router, prefix="/logs", tags=["logs"])
