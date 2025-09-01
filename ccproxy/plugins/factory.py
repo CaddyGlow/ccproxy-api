@@ -124,6 +124,10 @@ class BasePluginFactory(PluginFactory):
         if hasattr(core_services, "plugin_registry"):
             context["plugin_registry"] = core_services.plugin_registry
 
+        # Add OAuth registry for auth providers if available (avoid globals)
+        if hasattr(core_services, "oauth_registry") and core_services.oauth_registry is not None:
+            context["oauth_registry"] = core_services.oauth_registry
+
         # Add hook registry and manager if available
         if hasattr(core_services, "hook_registry"):
             context["hook_registry"] = core_services.hook_registry

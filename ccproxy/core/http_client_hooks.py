@@ -41,7 +41,6 @@ class HookableHTTPClient(httpx.AsyncClient):
         content: RequestContent | None = None,
         data: RequestData | None = None,
         files: RequestFiles | None = None,
-        json: Any | None = None,
         params: QueryParamTypes | None = None,
         headers: HeaderTypes | None = None,
         **kwargs: Any,

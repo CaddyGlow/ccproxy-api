@@ -11,7 +11,7 @@ from fastapi import APIRouter, HTTPException, Query, Request, Response
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from pydantic import BaseModel
 
-from ccproxy.auth.oauth.registry import OAuthProviderInfo, get_oauth_registry
+from ccproxy.auth.oauth.registry import OAuthProviderInfo
 from ccproxy.auth.oauth.session import get_oauth_session_manager
 from ccproxy.auth.oauth.templates import OAuthTemplates
 
@@ -45,13 +45,16 @@ class OAuthErrorResponse(BaseModel):
 
 
 @oauth_router.get("/providers", response_model=OAuthProvidersResponse)
-async def list_oauth_providers() -> OAuthProvidersResponse:
+async def list_oauth_providers(request: Request) -> OAuthProvidersResponse:
     """List all available OAuth providers.
 
     Returns:
         Dictionary of available OAuth providers with their information
     """
-    registry = get_oauth_registry()
+    # Get registry from app state (app-scoped)
+    registry = getattr(request.app.state, "oauth_registry", None)
+    if registry is None:
+        raise HTTPException(status_code=503, detail="OAuth registry not initialized")
     providers = registry.list_providers()
 
     logger.info("oauth_providers_listed", count=len(providers), category="auth")
@@ -61,6 +64,7 @@ async def list_oauth_providers() -> OAuthProvidersResponse:
 
 @oauth_router.get("/{provider}/login")
 async def initiate_oauth_login(
+    request: Request,
     provider: str,
     redirect_uri: str | None = Query(
         None, description="Optional redirect URI override"
@@ -82,7 +86,9 @@ async def initiate_oauth_login(
     Raises:
         HTTPException: If provider not found or error generating auth URL
     """
-    registry = get_oauth_registry()
+    registry = getattr(request.app.state, "oauth_registry", None)
+    if registry is None:
+        raise HTTPException(status_code=503, detail="OAuth registry not initialized")
     oauth_provider = registry.get_provider(provider)
 
     if not oauth_provider:
@@ -238,7 +244,9 @@ async def handle_oauth_callback(
         )
 
     # Get provider instance
-    registry = get_oauth_registry()
+    registry = getattr(request.app.state, "oauth_registry", None)
+    if registry is None:
+        raise HTTPException(status_code=503, detail="OAuth registry not initialized")
     oauth_provider = registry.get_provider(provider)
 
     if not oauth_provider:
@@ -289,6 +297,7 @@ async def handle_oauth_callback(
 
 @oauth_router.post("/{provider}/refresh")
 async def refresh_oauth_token(
+    request: Request,
     provider: str,
     refresh_token: str,
 ) -> JSONResponse:
@@ -304,7 +313,9 @@ async def refresh_oauth_token(
     Raises:
         HTTPException: If provider not found or refresh fails
     """
-    registry = get_oauth_registry()
+    registry = getattr(request.app.state, "oauth_registry", None)
+    if registry is None:
+        raise HTTPException(status_code=503, detail="OAuth registry not initialized")
     oauth_provider = registry.get_provider(provider)
 
     if not oauth_provider:
@@ -337,6 +348,7 @@ async def refresh_oauth_token(
 
 @oauth_router.post("/{provider}/revoke")
 async def revoke_oauth_token(
+    request: Request,
     provider: str,
     token: str,
 ) -> Response:
@@ -352,7 +364,9 @@ async def revoke_oauth_token(
     Raises:
         HTTPException: If provider not found or revocation fails
     """
-    registry = get_oauth_registry()
+    registry = getattr(request.app.state, "oauth_registry", None)
+    if registry is None:
+        raise HTTPException(status_code=503, detail="OAuth registry not initialized")
     oauth_provider = registry.get_provider(provider)
 
     if not oauth_provider:

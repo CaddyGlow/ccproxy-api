@@ -300,29 +300,8 @@ class OAuthRegistry:
         logger.info("oauth_registry_cleared", category="auth")
 
 
-# Global registry instance
-_registry: OAuthRegistry | None = None
-
-
-def get_oauth_registry() -> OAuthRegistry:
-    """Get the global OAuth registry instance.
-
-    Returns:
-        Global OAuth registry
-    """
-    global _registry
-    if _registry is None:
-        _registry = OAuthRegistry()
-    return _registry
-
-
-def reset_oauth_registry() -> None:
-    """Reset the global OAuth registry.
-
-    This clears the existing registry and creates a new one.
-    Mainly useful for testing.
-    """
-    global _registry
-    if _registry:
-        _registry.clear()
-    _registry = OAuthRegistry()
+__all__ = [
+    "OAuthRegistry",
+    "OAuthProviderInfo",
+    "OAuthProviderProtocol",
+]

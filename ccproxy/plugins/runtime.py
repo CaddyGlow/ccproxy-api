@@ -237,21 +237,27 @@ class AuthProviderPluginRuntime(BasePluginRuntime):
         self.token_manager = self.context.get("token_manager")
         self.storage = self.context.get("storage")
 
-        # Register OAuth provider with global registry if present
+        # Register OAuth provider with app-scoped registry if present
         if self.auth_provider:
             await self._register_auth_provider()
 
     async def _register_auth_provider(self) -> None:
-        """Register OAuth provider with the global registry."""
+        """Register OAuth provider with the app-scoped registry."""
         if not self.auth_provider:
             return
 
         try:
-            # Import here to avoid circular dependency
-            from ccproxy.auth.oauth.registry import get_oauth_registry
-
-            # Register with global registry
-            registry = get_oauth_registry()
+            # Register with app-scoped registry from context
+            registry = None
+            if self.context and "oauth_registry" in self.context:
+                registry = self.context["oauth_registry"]
+            if registry is None:
+                logger.warning(
+                    "oauth_registry_missing_in_context",
+                    plugin=self.name,
+                    category="plugin",
+                )
+                return
             registry.register_provider(self.auth_provider)
 
             logger.debug(
@@ -295,16 +301,22 @@ class AuthProviderPluginRuntime(BasePluginRuntime):
             await self._unregister_auth_provider()
 
     async def _unregister_auth_provider(self) -> None:
-        """Unregister OAuth provider from the global registry."""
+        """Unregister OAuth provider from the app-scoped registry."""
         if not self.auth_provider:
             return
 
         try:
-            # Import here to avoid circular dependency
-            from ccproxy.auth.oauth.registry import get_oauth_registry
-
-            # Unregister from global registry
-            registry = get_oauth_registry()
+            # Unregister from app-scoped registry available in context
+            registry = None
+            if self.context and "oauth_registry" in self.context:
+                registry = self.context["oauth_registry"]
+            if registry is None:
+                logger.warning(
+                    "oauth_registry_missing_in_context_on_shutdown",
+                    plugin=self.name,
+                    category="plugin",
+                )
+                return
             registry.unregister_provider(self.auth_provider.provider_name)
 
             logger.debug(
@@ -332,10 +344,14 @@ class AuthProviderPluginRuntime(BasePluginRuntime):
         if self.auth_provider:
             # Check if provider is registered
             try:
-                from ccproxy.auth.oauth.registry import get_oauth_registry
-
-                registry = get_oauth_registry()
-                is_registered = registry.has_provider(self.auth_provider.provider_name)
+                registry = None
+                if self.context and "oauth_registry" in self.context:
+                    registry = self.context["oauth_registry"]
+                is_registered = (
+                    registry.has_provider(self.auth_provider.provider_name)
+                    if registry is not None
+                    else False
+                )
                 details.update(
                     {
                         "oauth_provider_registered": is_registered,
@@ -394,19 +410,27 @@ class ProviderPluginRuntime(BasePluginRuntime):
             await self._register_oauth_provider()
 
     async def _register_oauth_provider(self) -> None:
-        """Register OAuth provider with the global registry."""
+        """Register OAuth provider with the app-scoped registry."""
         if not self.manifest.oauth_provider_factory:
             return
 
         try:
-            # Import here to avoid circular dependency
-            from ccproxy.auth.oauth.registry import get_oauth_registry
-
             # Create OAuth provider instance
             oauth_provider = self.manifest.oauth_provider_factory()
 
-            # Register with global registry
-            registry = get_oauth_registry()
+            # Use oauth_registry from context (injected via core services)
+            registry = None
+            if self.context and "oauth_registry" in self.context:
+                registry = self.context["oauth_registry"]
+
+            if registry is None:
+                logger.warning(
+                    "oauth_registry_missing_in_context",
+                    plugin=self.name,
+                    category="plugin",
+                )
+                return
+
             registry.register_provider(oauth_provider)
 
             logger.trace(
@@ -425,21 +449,28 @@ class ProviderPluginRuntime(BasePluginRuntime):
             )
 
     async def _unregister_oauth_provider(self) -> None:
-        """Unregister OAuth provider from the global registry."""
+        """Unregister OAuth provider from the app-scoped registry."""
         if not self.manifest.oauth_provider_factory:
             return
 
         try:
-            # Import here to avoid circular dependency
-            from ccproxy.auth.oauth.registry import get_oauth_registry
-
-            # Get provider name - we need to create a temporary instance
-            # to get the name, or store it during registration
+            # Determine provider name
             oauth_provider = self.manifest.oauth_provider_factory()
             provider_name = oauth_provider.provider_name
 
-            # Unregister from global registry
-            registry = get_oauth_registry()
+            # Use oauth_registry from context (injected via core services)
+            registry = None
+            if self.context and "oauth_registry" in self.context:
+                registry = self.context["oauth_registry"]
+
+            if registry is None:
+                logger.warning(
+                    "oauth_registry_missing_in_context_on_shutdown",
+                    plugin=self.name,
+                    category="plugin",
+                )
+                return
+
             registry.unregister_provider(provider_name)
 
             logger.trace(

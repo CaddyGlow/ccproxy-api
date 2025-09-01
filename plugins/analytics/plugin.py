@@ -68,16 +68,20 @@ class AnalyticsRuntime(SystemPluginRuntime):
                 registry = self.context.get("plugin_registry")
                 storage = None
                 if registry:
-                    from plugins.duckdb_storage.storage import SimpleDuckDBStorage
-
-                    storage = registry.get_service("log_storage", SimpleDuckDBStorage)
+                    # Get storage service without importing DuckDB-specific classes
+                    storage = registry.get_service("log_storage")
                 if not storage and self.context.get("app"):
                     storage = getattr(self.context["app"].state, "log_storage", None)
 
                 if storage:
+                    engine = getattr(storage, "_engine", None)
+                else:
+                    engine = None
+
+                if engine is not None:
                     from .ingest import AnalyticsIngestService
 
-                    ingest_service = AnalyticsIngestService(storage)
+                    ingest_service = AnalyticsIngestService(engine)
                     if registry:
                         registry.register_service(
                             "analytics_ingest", ingest_service, self.manifest.name
@@ -86,7 +90,7 @@ class AnalyticsRuntime(SystemPluginRuntime):
                 else:
                     logger.warning(
                         "analytics_ingest_registration_skipped",
-                        reason="no_storage_service",
+                        reason="no_engine_available",
                     )
         except Exception as e:  # pragma: no cover - defensive
             logger.warning("analytics_ingest_registration_failed", error=str(e))

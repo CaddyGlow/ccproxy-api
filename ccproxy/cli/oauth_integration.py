@@ -7,7 +7,7 @@ from typing import Any
 
 from rich.console import Console
 
-from ccproxy.auth.oauth.registry import get_oauth_registry
+from ccproxy.auth.oauth.registry import OAuthRegistry
 from ccproxy.auth.oauth.session import OAuthSessionManager
 from ccproxy.core.logging import get_logger
 
@@ -19,7 +19,7 @@ console = Console()
 class CLIOAuthHandler:
     """Handles OAuth flows for CLI commands."""
 
-    def __init__(self, port: int = 9999):
+    def __init__(self, port: int = 9999, registry: OAuthRegistry | None = None):
         """Initialize OAuth handler.
 
         Args:
@@ -28,6 +28,7 @@ class CLIOAuthHandler:
         self.port = port
         self.redirect_uri = f"http://localhost:{port}/callback"
         self.session_manager = OAuthSessionManager()
+        self.registry = registry or OAuthRegistry()
 
     async def list_providers(self) -> dict[str, Any]:
         """List all available OAuth providers.
@@ -35,8 +36,7 @@ class CLIOAuthHandler:
         Returns:
             Dictionary of provider info
         """
-        registry = get_oauth_registry()
-        return registry.list_providers()
+        return self.registry.list_providers()
 
     async def login(
         self,
@@ -59,11 +59,10 @@ class CLIOAuthHandler:
             TimeoutError: If OAuth flow times out
         """
         # Get provider from registry
-        registry = get_oauth_registry()
-        provider = registry.get_provider(provider_name)
+        provider = self.registry.get_provider(provider_name)
 
         if not provider:
-            available = list(registry.list_providers().keys())
+            available = list(self.registry.list_providers().keys())
             raise ValueError(
                 f"OAuth provider '{provider_name}' not found. "
                 f"Available providers: {', '.join(available)}"
@@ -417,8 +416,7 @@ class CLIOAuthHandler:
         Raises:
             ValueError: If provider not found or doesn't support refresh
         """
-        registry = get_oauth_registry()
-        provider = registry.get_provider(provider_name)
+        provider = self.registry.get_provider(provider_name)
 
         if not provider:
             raise ValueError(f"OAuth provider '{provider_name}' not found")
@@ -440,8 +438,7 @@ class CLIOAuthHandler:
         Raises:
             ValueError: If provider not found
         """
-        registry = get_oauth_registry()
-        provider = registry.get_provider(provider_name)
+        provider = self.registry.get_provider(provider_name)
 
         if not provider:
             raise ValueError(f"OAuth provider '{provider_name}' not found")
@@ -460,12 +457,11 @@ class CLIOAuthHandler:
         Raises:
             ValueError: If provider not found
         """
-        # Get provider from registry
-        registry = get_oauth_registry()
-        provider = registry.get_provider(provider_name)
+        # Get provider from handler's registry
+        provider = self.registry.get_provider(provider_name)
 
         if not provider:
-            available = list(registry.list_providers().keys())
+            available = list(self.registry.list_providers().keys())
             raise ValueError(
                 f"OAuth provider '{provider_name}' not found. "
                 f"Available providers: {', '.join(available)}"
@@ -592,8 +588,7 @@ class CLIOAuthHandler:
         Raises:
             ValueError: If provider not found
         """
-        registry = get_oauth_registry()
-        provider = registry.get_provider(provider_name)
+        provider = self.registry.get_provider(provider_name)
 
         if not provider:
             raise ValueError(f"OAuth provider '{provider_name}' not found")

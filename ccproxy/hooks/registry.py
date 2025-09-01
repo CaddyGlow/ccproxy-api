@@ -47,28 +47,20 @@ class HookRegistry:
             event_name = event.value if hasattr(event, "value") else str(event)
             events_registered.append(event_name)
             # Log individual registrations at DEBUG level
-            self._logger.debug(
-                "hook_registered",
-                name=hook.name,
-                hook_event=event_name,
-                priority=priority,
-            )
+            # self._logger.debug(
+            #     "hook_registered",
+            #     name=hook.name,
+            #     hook_event=event_name,
+            #     priority=priority,
+            # )
 
         # Log summary at INFO level only if multiple events
-        if len(events_registered) > 1:
+        if len(events_registered) > 0:
             self._logger.info(
-                "hook_registered_batch",
+                "hook_registered_summary",
                 name=hook.name,
                 events=events_registered,
                 event_count=len(events_registered),
-                priority=priority,
-            )
-        elif events_registered:
-            # Single event - log at DEBUG level to reduce verbosity
-            self._logger.debug(
-                "hook_registered_single",
-                name=hook.name,
-                hook_event=events_registered[0],
                 priority=priority,
             )
 

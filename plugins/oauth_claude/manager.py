@@ -8,7 +8,6 @@ if TYPE_CHECKING:
     import httpx
 
 from ccproxy.auth.managers.base import BaseTokenManager
-from ccproxy.auth.oauth.registry import get_oauth_registry
 from ccproxy.auth.storage.base import TokenStorage
 from ccproxy.core.logging import get_plugin_logger
 
@@ -151,13 +150,7 @@ class ClaudeApiTokenManager(BaseTokenManager[ClaudeCredentials]):
         Returns:
             Updated credentials or None if refresh failed
         """
-        # Get OAuth provider from registry
-        registry = get_oauth_registry()
-        oauth_provider = registry.get_provider("claude-api")
-        if not oauth_provider:
-            logger.error("claude_oauth_provider_not_found", category="auth")
-            return None
-
+        # Load current credentials and extract refresh token
         credentials = await self.load_credentials()
         if not credentials:
             logger.error("no_credentials_to_refresh", category="auth")
@@ -170,9 +163,11 @@ class ClaudeApiTokenManager(BaseTokenManager[ClaudeCredentials]):
             return None
 
         try:
-            # Use OAuth provider to refresh
-            new_credentials: ClaudeCredentials = (
-                await oauth_provider.refresh_access_token(refresh_token)
+            # Refresh directly using a local OAuth client/provider (no global registry)
+            from plugins.oauth_claude.provider import ClaudeOAuthProvider
+            provider = ClaudeOAuthProvider(http_client=self.http_client)
+            new_credentials: ClaudeCredentials = await provider.refresh_access_token(
+                refresh_token
             )
 
             # Save updated credentials
@@ -365,19 +360,22 @@ class ClaudeApiTokenManager(BaseTokenManager[ClaudeCredentials]):
 
             config = ClaudeOAuthConfig()
 
-            # Get OAuth provider from registry for detection service
-            registry = get_oauth_registry()
-            oauth_provider = registry.get_provider("claude-api")
-
             headers = {
                 "Authorization": f"Bearer {access_token}",
                 "Content-Type": "application/json",
             }
+            # Optionally add detection headers if client supports it
+            try:
+                # Avoid import cycles by dynamic import
+                from plugins.oauth_claude.provider import ClaudeOAuthProvider
 
-            # Add detection service headers if available
-            if oauth_provider and hasattr(oauth_provider, "client"):
-                custom_headers = oauth_provider.client.get_custom_headers()
-                headers.update(custom_headers)
+                temp_provider = ClaudeOAuthProvider(http_client=self.http_client)
+                if hasattr(temp_provider, "client") and hasattr(
+                    temp_provider.client, "get_custom_headers"
+                ):
+                    headers.update(temp_provider.client.get_custom_headers())
+            except Exception:
+                pass
 
             # Use the injected HTTP client
             response = await self.http_client.get(

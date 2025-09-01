@@ -14,6 +14,7 @@ from ccproxy.api.middleware.cors import setup_cors_middleware
 from ccproxy.api.middleware.errors import setup_error_handlers
 from ccproxy.api.routes.health import router as health_router
 from ccproxy.api.routes.plugins import router as plugins_router
+from ccproxy.auth.oauth.registry import OAuthRegistry
 from ccproxy.auth.oauth.routes import router as oauth_router
 from ccproxy.config.settings import Settings, get_settings
 from ccproxy.core.async_task_manager import start_task_manager, stop_task_manager
@@ -134,6 +135,7 @@ async def initialize_plugins_startup(app: FastAPI, settings: Settings) -> None:
             self.cli_detection_service = container.get_cli_detection_service()
             self.scheduler = getattr(app.state, "scheduler", None)
             self.plugin_registry = app.state.plugin_registry
+            self.oauth_registry = getattr(app.state, "oauth_registry", None)
             self._container = container
             # Add hook registry and manager if available
             self.hook_registry = getattr(app.state, "hook_registry", None)
@@ -446,6 +448,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         version=__version__,
         lifespan=lifespan,
     )
+
+    # Create core-scoped OAuth registry (avoid module-level globals)
+    app.state.oauth_registry = OAuthRegistry()
 
     # PHASE 1: Plugin Discovery and Registration (before app starts)
     plugin_registry = PluginRegistry()

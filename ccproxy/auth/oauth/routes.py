@@ -14,7 +14,7 @@ from ccproxy.auth.exceptions import (
     OAuthError,
     OAuthTokenRefreshError,
 )
-from ccproxy.auth.oauth.registry import get_oauth_registry
+from ccproxy.auth.oauth.registry import OAuthRegistry
 
 
 logger = get_logger(__name__)
@@ -187,9 +187,10 @@ async def oauth_callback(
         code_verifier = flow["code_verifier"]
         custom_paths = flow["custom_paths"]
 
-        # Exchange authorization code for tokens
+        # Exchange authorization code for tokens using app-scoped registry
+        registry: OAuthRegistry | None = getattr(request.app.state, "oauth_registry", None)
         success = await _exchange_code_for_tokens(
-            code, code_verifier, state, custom_paths
+            code, code_verifier, state, custom_paths, registry
         )
 
         # Update flow result
@@ -383,11 +384,14 @@ async def _exchange_code_for_tokens(
     code_verifier: str,
     state: str,
     custom_paths: list[Path] | None = None,
+    registry: OAuthRegistry | None = None,
 ) -> bool:
     """Exchange authorization code for access tokens."""
     try:
-        # Get OAuth provider from registry
-        registry = get_oauth_registry()
+        # Get OAuth provider from provided registry
+        if registry is None:
+            logger.error("oauth_registry_not_available", operation="exchange_code_for_tokens")
+            return False
         oauth_provider = registry.get_provider("claude-api")
         if not oauth_provider:
             logger.error("claude_oauth_provider_not_found", category="auth")

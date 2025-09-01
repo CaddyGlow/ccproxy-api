@@ -9,7 +9,6 @@ from ccproxy.auth.models.base import (
     AccountInfo,
     UserProfile,
 )
-from ccproxy.auth.oauth.registry import get_oauth_registry
 from ccproxy.auth.storage.base import TokenStorage
 from ccproxy.core.logging import get_plugin_logger
 
@@ -64,13 +63,7 @@ class CodexTokenManager(BaseTokenManager[OpenAICredentials]):
         Returns:
             Updated credentials or None if refresh failed
         """
-        # Get OAuth provider from registry
-        registry = get_oauth_registry()
-        oauth_provider = registry.get_provider("codex")
-        if not oauth_provider:
-            logger.error("codex_oauth_provider_not_found", category="auth")
-            return None
-
+        # Load current credentials
         credentials = await self.load_credentials()
         if not credentials:
             logger.error("no_credentials_to_refresh", category="auth")
@@ -81,9 +74,11 @@ class CodexTokenManager(BaseTokenManager[OpenAICredentials]):
             return None
 
         try:
-            # Use OAuth provider to refresh
-            new_credentials: OpenAICredentials = (
-                await oauth_provider.refresh_access_token(credentials.refresh_token)
+            # Refresh directly using a local OAuth client/provider (no global registry)
+            from plugins.oauth_codex.provider import CodexOAuthProvider
+            provider = CodexOAuthProvider()
+            new_credentials: OpenAICredentials = await provider.refresh_access_token(
+                credentials.refresh_token
             )
 
             # Preserve account_id if not in new credentials
