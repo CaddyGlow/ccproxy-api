@@ -534,12 +534,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         for name, factory in plugin_registry.factories.items():
             manifest = factory.get_manifest()
             for route_spec in manifest.routes:
+                # Normalize default tag to kebab-case (underscores -> hyphens)
+                default_tag = name.replace("_", "-")
                 app.include_router(
                     route_spec.router,
                     prefix=route_spec.prefix,
-                    tags=list(route_spec.tags)
-                    if route_spec.tags
-                    else [f"plugin-{name}"],
+                    tags=list(route_spec.tags) if route_spec.tags else [default_tag],
                     dependencies=route_spec.dependencies,
                 )
                 logger.debug(

@@ -84,11 +84,13 @@ class BaseProviderPluginFactory(ProviderPluginFactory):
         # Build routes from router if provided
         routes = []
         if self.router is not None:
+            # Normalize tag naming: use kebab-case (underscores -> hyphens)
+            normalized_tag = self.plugin_name.replace("_", "-")
             routes.append(
                 RouteSpec(
                     router=self.router,
                     prefix=self.route_prefix,
-                    tags=[f"plugin-{self.plugin_name}"],
+                    tags=[normalized_tag],
                 )
             )
 
