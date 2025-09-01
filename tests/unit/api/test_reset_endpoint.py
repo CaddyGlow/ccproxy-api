@@ -14,11 +14,11 @@ from typing import Any
 import pytest
 from sqlmodel import Session, select
 
-from ccproxy.storage.duckdb_simple import (
+from plugins.access_log.models import AccessLog
+from plugins.duckdb_storage.storage import (
     AccessLogPayload,
     SimpleDuckDBStorage,
 )
-from ccproxy.storage.models import AccessLog
 from tests.factories import FastAPIClientFactory
 
 

@@ -19,8 +19,6 @@ from ccproxy.config.settings import Settings
 from ccproxy.scheduler.errors import SchedulerError
 from ccproxy.utils.startup_helpers import (
     check_claude_cli_startup,
-    initialize_log_storage_shutdown,
-    initialize_log_storage_startup,
     setup_scheduler_shutdown,
     setup_scheduler_startup,
     setup_session_manager_shutdown,
@@ -137,131 +135,7 @@ class TestCheckClaudeCLIStartup:
             mock_logger.error.assert_not_called()
 
 
-class TestLogStorageLifecycle:
-    """Test log storage initialization and shutdown."""
-
-    @pytest.fixture
-    def mock_app(self) -> FastAPI:
-        """Create a mock FastAPI app."""
-        app = FastAPI()
-        app.state = Mock()
-        return app
-
-    @pytest.fixture
-    def mock_settings(self) -> Mock:
-        """Create mock settings."""
-        settings = Mock(spec=Settings)
-        # Configure nested attributes properly
-        settings.observability = Mock()
-        settings.observability.needs_storage_backend = True
-        settings.observability.log_storage_backend = "duckdb"
-        settings.observability.duckdb_path = "/tmp/test.db"
-        settings.observability.logs_collection_enabled = True
-        return settings
-
-    async def test_log_storage_startup_success(
-        self, mock_app: FastAPI, mock_settings: Mock
-    ) -> None:
-        """Test successful log storage initialization."""
-        with patch("ccproxy.utils.startup_helpers.SimpleDuckDBStorage") as MockStorage:
-            mock_storage = AsyncMock()
-            MockStorage.return_value = mock_storage
-
-            with patch("ccproxy.utils.startup_helpers.logger") as mock_logger:
-                await initialize_log_storage_startup(mock_app, mock_settings)
-
-                # Verify storage was created and initialized
-                MockStorage.assert_called_once_with(database_path="/tmp/test.db")
-                mock_storage.initialize.assert_called_once()
-
-                # Verify storage was stored in app state
-                assert mock_app.state.log_storage == mock_storage
-
-                # Verify debug log was called
-                mock_logger.debug.assert_called_once()
-                call_args = mock_logger.debug.call_args[1]
-                assert "log_storage_initialized" in mock_logger.debug.call_args[0]
-                assert call_args["backend"] == "duckdb"
-
-    async def test_log_storage_startup_not_needed(
-        self, mock_app: FastAPI, mock_settings: Mock
-    ) -> None:
-        """Test when log storage is not needed."""
-        mock_settings.observability.needs_storage_backend = False
-
-        with patch("ccproxy.utils.startup_helpers.logger") as mock_logger:
-            await initialize_log_storage_startup(mock_app, mock_settings)
-
-            # Verify no logs were called (function returns early)
-            mock_logger.debug.assert_not_called()
-            mock_logger.error.assert_not_called()
-
-    async def test_log_storage_startup_error(
-        self, mock_app: FastAPI, mock_settings: Mock
-    ) -> None:
-        """Test error handling during log storage initialization."""
-        with patch("ccproxy.utils.startup_helpers.SimpleDuckDBStorage") as MockStorage:
-            mock_storage = AsyncMock()
-            mock_storage.initialize.side_effect = Exception("Storage init failed")
-            MockStorage.return_value = mock_storage
-
-            with patch("ccproxy.utils.startup_helpers.logger") as mock_logger:
-                await initialize_log_storage_startup(mock_app, mock_settings)
-
-                # Verify error was logged
-                mock_logger.error.assert_called_once()
-                call_args = mock_logger.error.call_args[1]
-                assert (
-                    "log_storage_initialization_unexpected_error"
-                    in mock_logger.error.call_args[0]
-                )
-                assert call_args["error"] == "Storage init failed"
-                assert call_args["exc_info"] is not None
-
-    async def test_log_storage_shutdown_success(self, mock_app: FastAPI) -> None:
-        """Test successful log storage shutdown."""
-        mock_storage = AsyncMock()
-        mock_app.state.log_storage = mock_storage
-
-        with patch("ccproxy.utils.startup_helpers.logger") as mock_logger:
-            await initialize_log_storage_shutdown(mock_app)
-
-            # Verify storage was closed
-            mock_storage.close.assert_called_once()
-
-            # Verify debug log was called
-            mock_logger.debug.assert_called_once_with("log_storage_closed")
-
-    async def test_log_storage_shutdown_no_storage(self, mock_app: FastAPI) -> None:
-        """Test shutdown when no log storage exists."""
-        # Ensure no log_storage attribute exists
-        if hasattr(mock_app.state, "log_storage"):
-            delattr(mock_app.state, "log_storage")
-
-        with patch("ccproxy.utils.startup_helpers.logger") as mock_logger:
-            await initialize_log_storage_shutdown(mock_app)
-
-            # Verify no logs were called
-            mock_logger.debug.assert_not_called()
-            mock_logger.error.assert_not_called()
-
-    async def test_log_storage_shutdown_error(self, mock_app: FastAPI) -> None:
-        """Test error handling during log storage shutdown."""
-        mock_storage = AsyncMock()
-        mock_storage.close.side_effect = Exception("Close failed")
-        mock_app.state.log_storage = mock_storage
-
-        with patch("ccproxy.utils.startup_helpers.logger") as mock_logger:
-            await initialize_log_storage_shutdown(mock_app)
-
-            # Verify error was logged
-            mock_logger.error.assert_called_once()
-            call_args = mock_logger.error.call_args[1]
-            assert (
-                "log_storage_close_unexpected_error" in mock_logger.error.call_args[0]
-            )
-            assert call_args["error"] == "Close failed"
-            assert call_args["exc_info"] is not None
+# Removed old log storage lifecycle tests (migrated to duckdb_storage plugin)
 
 
 class TestSchedulerLifecycle:

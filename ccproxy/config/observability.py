@@ -28,26 +28,12 @@ class ObservabilitySettings(BaseModel):
         description="Enable metrics dashboard endpoint (/dashboard)",
     )
 
-    # Data Collection & Storage
+    # Data Collection
     logs_collection_enabled: bool = Field(
         default=False,
         description="Enable collection of request/response logs to storage backend",
     )
-
-    log_storage_backend: Literal["duckdb", "none"] = Field(
-        default="duckdb",
-        description="Storage backend for logs ('duckdb' or 'none')",
-    )
-
-    # Storage Configuration
-    duckdb_path: str = Field(
-        default_factory=lambda: str(
-            Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local" / "share"))
-            / "ccproxy"
-            / "metrics.duckdb"
-        ),
-        description="Path to DuckDB database file",
-    )
+    # Storage configuration moved to duckdb_storage plugin
 
     # Pushgateway configuration removed - functionality moved to metrics plugin
     # The metrics plugin now manages its own pushgateway settings
@@ -68,19 +54,7 @@ class ObservabilitySettings(BaseModel):
                 "Dashboard needs logs API to function."
             )
 
-        # Logs endpoints require storage to query from
-        if self.logs_endpoints_enabled and self.log_storage_backend == "none":
-            raise ValueError(
-                "Cannot enable 'logs_endpoints_enabled' when 'log_storage_backend' is 'none'. "
-                "Logs endpoints need storage backend to query data."
-            )
-
-        # Log collection requires storage to write to
-        if self.logs_collection_enabled and self.log_storage_backend == "none":
-            raise ValueError(
-                "Cannot enable 'logs_collection_enabled' when 'log_storage_backend' is 'none'. "
-                "Collection needs storage backend to persist data."
-            )
+        # Storage dependency checks are handled by the storage plugin.
 
         return self
 
@@ -118,8 +92,11 @@ class ObservabilitySettings(BaseModel):
 
     @property
     def duckdb_enabled(self) -> bool:
-        """Backward compatibility: True if DuckDB storage backend is selected."""
-        return self.log_storage_backend == "duckdb"
+        """Backward compatibility: retained for callers; always True when endpoints/collection need storage.
+
+        Actual backend selection is now handled by the duckdb_storage plugin.
+        """
+        return self.needs_storage_backend
 
     @property
     def enabled(self) -> bool:

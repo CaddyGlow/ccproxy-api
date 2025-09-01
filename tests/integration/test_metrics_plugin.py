@@ -43,3 +43,26 @@ async def test_metrics_route_absent_when_plugins_disabled() -> None:
         resp = await client.get("/metrics")
         # With plugins disabled, core does not mount /metrics
         assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_metrics_health_when_plugin_enabled() -> None:
+    settings = Settings(
+        enable_plugins=True,
+        plugins={
+            "metrics": {
+                "enabled": True,
+                "metrics_endpoint_enabled": True,
+            }
+        },
+    )
+
+    app = create_app(settings)
+    await initialize_plugins_startup(app, settings)
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.get("/metrics/health")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data.get("status") in {"healthy", "disabled"}

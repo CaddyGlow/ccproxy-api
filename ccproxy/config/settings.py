@@ -262,8 +262,8 @@ class Settings(BaseSettings):
         if config_path is None:
             config_path = find_toml_config_file()
 
-        # Load config if found
-        config_data = {}
+        # Load config if found (TOML = lowest precedence after defaults)
+        config_data: dict[str, Any] = {}
         if config_path and config_path.exists():
             config_data = cls.load_config_file(config_path)
             # Log loaded config only if not already logged by config manager
@@ -276,16 +276,11 @@ class Settings(BaseSettings):
                 )
                 config_manager.mark_config_logged()
 
-        # Merge config with kwargs (kwargs take precedence)
-        merged_config = {**config_data, **kwargs}
-
-        # Create Settings instance WITHOUT passing the merged config directly
-        # This allows Pydantic to load environment variables first, then apply defaults
-        # We'll update the instance with the config file data after creation
+        # Create Settings instance from environment (env > defaults)
         settings = cls()
 
-        # Now update with config file data, but only for fields not already set by env vars
-        for key, value in merged_config.items():
+        # Apply TOML config next for fields not overridden by environment
+        for key, value in config_data.items():
             # Check if the value was already set by environment variable
             # by comparing with a fresh instance that has env vars applied
             if hasattr(settings, key):
@@ -339,6 +334,24 @@ class Settings(BaseSettings):
                     env_key = key.upper()
                     if os.getenv(env_key) is None:
                         setattr(settings, key, value)
+
+        # Finally, apply explicit overrides passed in (CLI) with highest precedence
+        def _apply_overrides(target: Any, overrides: dict[str, Any]) -> None:
+            for k, v in overrides.items():
+                if isinstance(v, dict) and hasattr(target, k) and isinstance(
+                    getattr(target, k), BaseModel | dict
+                ):
+                    # Recurse into nested model/dict
+                    sub = getattr(target, k)
+                    if isinstance(sub, BaseModel):
+                        _apply_overrides(sub, v)
+                    elif isinstance(sub, dict):
+                        sub.update(v)
+                else:
+                    setattr(target, k, v)
+
+        if kwargs:
+            _apply_overrides(settings, kwargs)
 
         return settings
 

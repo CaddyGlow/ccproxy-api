@@ -18,6 +18,10 @@ CCProxy is designed around a modular plugin system where each AI provider is imp
 - **Configuration** (`ccproxy/config/`) - Settings and validation
 - **Models** (`ccproxy/models/`) - Pydantic data models
 
+Authoring plugins? See:
+- docs/PLUGIN_AUTHORING.md – how to write, configure, and publish a plugin
+- docs/PLUGIN_SYSTEM_DOCUMENTATION.md – deep dive into the runtime and lifecycle
+
 ### Plugin Architecture
 
 Each provider plugin follows a consistent delegation pattern:

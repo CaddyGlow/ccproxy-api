@@ -28,6 +28,22 @@ class PluginListResponse(BaseModel):
     total: int
 
 
+class PluginStatusEntry(BaseModel):
+    name: str
+    version: str | None = None
+    type: str  # "provider" or "system"
+    provides: list[str] = []
+    requires: list[str] = []
+    optional_requires: list[str] = []
+    initialized: bool
+
+
+class PluginStatusResponse(BaseModel):
+    initialization_order: list[str]
+    services: dict[str, str]  # service_name -> provider plugin
+    plugins: list[PluginStatusEntry]
+
+
 class PluginHealthResponse(BaseModel):
     """Response model for plugin health check."""
 
@@ -70,11 +86,15 @@ async def list_plugins(
         for name in registry.list_plugins():
             factory = registry.get_factory(name)
             if factory:
+                from ccproxy.plugins.factory import factory_type_name
+
                 manifest = factory.get_manifest()
+                plugin_type = factory_type_name(factory)
+
                 plugins.append(
                     PluginInfo(
                         name=name,
-                        type="plugin",
+                        type=plugin_type,
                         status="active",
                         version=manifest.version,
                     )
@@ -251,6 +271,58 @@ async def discover_plugins(
     # V2 plugins are discovered during app creation and cannot be re-discovered at runtime
     # Return the current list of plugins
     return await list_plugins(request, auth)
+
+
+@router.get("/status", response_model=PluginStatusResponse)
+async def plugins_status(
+    request: Request, auth: ConditionalAuthDep = None
+) -> PluginStatusResponse:
+    """Get plugin system status, including manifests and init order.
+
+    Returns:
+        Initialization order, registered services, and per-plugin manifest summary
+    """
+    if not hasattr(request.app.state, "plugin_registry"):
+        raise HTTPException(status_code=503, detail="Plugin registry not initialized")
+
+    from ccproxy.plugins.factory import PluginRegistry
+
+    registry: PluginRegistry = request.app.state.plugin_registry
+
+    # Get manifests and runtime status
+    entries: list[PluginStatusEntry] = []
+    for name in registry.list_plugins():
+        factory = registry.get_factory(name)
+        if not factory:
+            continue
+        manifest = factory.get_manifest()
+        runtime = registry.get_runtime(name)
+
+        # Determine plugin type via factory helper
+        from ccproxy.plugins.factory import factory_type_name
+        plugin_type = factory_type_name(factory)
+
+        entries.append(
+            PluginStatusEntry(
+                name=name,
+                version=manifest.version,
+                type=plugin_type,
+                provides=list(manifest.provides),
+                requires=list(manifest.requires),
+                optional_requires=list(manifest.optional_requires),
+                initialized=runtime is not None and getattr(runtime, "initialized", False),
+            )
+        )
+
+    # Extract init order and services map
+    init_order = list(getattr(registry, "initialization_order", []) or [])
+    services_map = dict(getattr(registry, "_service_providers", {}) or {})
+
+    return PluginStatusResponse(
+        initialization_order=init_order,
+        services=services_map,
+        plugins=entries,
+    )
 
 
 @router.delete("/{plugin_name}")

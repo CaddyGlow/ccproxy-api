@@ -11,7 +11,7 @@ from ccproxy.config.settings import Settings, get_settings
 from ccproxy.core.logging import get_logger
 from ccproxy.hooks import HookManager
 from ccproxy.services.container import ServiceContainer
-from ccproxy.storage.duckdb_simple import SimpleDuckDBStorage
+from plugins.duckdb_storage.storage import SimpleDuckDBStorage
 
 
 if TYPE_CHECKING:

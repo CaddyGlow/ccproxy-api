@@ -15,8 +15,12 @@ from fastapi import FastAPI
 from ccproxy.scheduler.errors import SchedulerError
 from ccproxy.scheduler.manager import start_scheduler, stop_scheduler
 
+
 # Note: get_claude_cli_info is imported locally to avoid circular imports
-from ccproxy.storage.duckdb_simple import SimpleDuckDBStorage
+"""Startup utility functions for application lifecycle management.
+
+Note: DuckDB storage initialization has moved to the duckdb_storage plugin.
+"""
 
 
 # Note: get_permission_service is imported locally to avoid circular imports
@@ -90,60 +94,9 @@ async def check_claude_cli_startup(app: FastAPI, settings: Settings) -> None:
     pass
 
 
-async def initialize_log_storage_startup(app: FastAPI, settings: Settings) -> None:
-    """Initialize log storage if needed and backend is DuckDB.
+# DuckDB storage startup/shutdown removed; handled by plugin
 
-    Args:
-        app: FastAPI application instance
-        settings: Application settings
-    """
-    if (
-        settings.observability.needs_storage_backend
-        and settings.observability.log_storage_backend == "duckdb"
-    ):
-        try:
-            storage = SimpleDuckDBStorage(
-                database_path=settings.observability.duckdb_path
-            )
-            await storage.initialize()
-            app.state.log_storage = storage
-            logger.debug(
-                "log_storage_initialized",
-                backend="duckdb",
-                path=str(settings.observability.duckdb_path),
-                collection_enabled=settings.observability.logs_collection_enabled,
-            )
-        except (ImportError, ModuleNotFoundError) as e:
-            logger.error(
-                "log_storage_initialization_import_error", error=str(e), exc_info=e
-            )
-            # Continue without log storage (graceful degradation)
-        except (OSError, FileNotFoundError, PermissionError) as e:
-            logger.error(
-                "log_storage_initialization_file_error", error=str(e), exc_info=e
-            )
-            # Continue without log storage (graceful degradation)
-        except Exception as e:
-            logger.error(
-                "log_storage_initialization_unexpected_error", error=str(e), exc_info=e
-            )
-            # Continue without log storage (graceful degradation)
-
-
-async def initialize_log_storage_shutdown(app: FastAPI) -> None:
-    """Close log storage if initialized.
-
-    Args:
-        app: FastAPI application instance
-    """
-    if hasattr(app.state, "log_storage") and app.state.log_storage:
-        try:
-            await app.state.log_storage.close()
-            logger.debug("log_storage_closed")
-        except (OSError, FileNotFoundError, PermissionError) as e:
-            logger.error("log_storage_close_file_error", error=str(e), exc_info=e)
-        except Exception as e:
-            logger.error("log_storage_close_unexpected_error", error=str(e), exc_info=e)
+# Removed deprecated DuckDB storage startup/shutdown helpers.
 
 
 async def setup_scheduler_startup(app: FastAPI, settings: Settings) -> None:

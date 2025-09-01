@@ -13,7 +13,6 @@ from ccproxy import __version__
 from ccproxy.api.middleware.cors import setup_cors_middleware
 from ccproxy.api.middleware.errors import setup_error_handlers
 from ccproxy.api.routes.health import router as health_router
-from ccproxy.api.routes.metrics import dashboard_router, logs_router
 from ccproxy.api.routes.plugins import router as plugins_router
 from ccproxy.auth.oauth.routes import router as oauth_router
 from ccproxy.config.settings import Settings, get_settings
@@ -34,8 +33,6 @@ from ccproxy.services.factories import ConcreteServiceFactory
 from ccproxy.utils.startup_helpers import (
     check_claude_cli_startup,
     check_version_updates_startup,
-    initialize_log_storage_shutdown,
-    initialize_log_storage_startup,
     initialize_service_container_startup,
     setup_scheduler_shutdown,
     setup_scheduler_startup,
@@ -278,11 +275,7 @@ LIFECYCLE_COMPONENTS: list[LifecycleComponent] = [
         "startup": setup_scheduler_startup,
         "shutdown": setup_scheduler_shutdown,
     },
-    {
-        "name": "Log Storage",
-        "startup": initialize_log_storage_startup,
-        "shutdown": initialize_log_storage_shutdown,
-    },
+    # Log storage is initialized by the duckdb_storage plugin.
     {
         "name": "Service Container",
         "startup": initialize_service_container_startup,
@@ -576,19 +569,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(health_router, tags=["health"])
 
     # Metrics endpoint is provided by the metrics plugin when enabled.
-    # Core no longer mounts /metrics directly to avoid duplication.
-    if settings.observability.metrics_endpoint_enabled and not settings.enable_plugins:
-        logger.info(
-            "metrics_endpoint_plugin_disabled",
-            message="Enable plugins and the metrics plugin to serve /metrics",
-            category="config",
-        )
 
-    if settings.observability.logs_endpoints_enabled:
-        app.include_router(logs_router, prefix="/logs", tags=["logs"])
-
-    if settings.observability.dashboard_enabled:
-        app.include_router(dashboard_router, tags=["dashboard"])
+    # Logs and dashboard routes are provided by plugins: analytics and dashboard.
 
     app.include_router(oauth_router, prefix="/oauth", tags=["oauth"])
 
@@ -596,26 +578,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     if settings.enable_plugins:
         app.include_router(plugins_router, prefix="/api", tags=["plugins"])
 
-    # Mount static files for dashboard SPA
-    from pathlib import Path
-
-    # Get the path to the dashboard static files
-    current_file = Path(__file__)
-    project_root = current_file.parent.parent.parent
-    dashboard_static_path = project_root / "ccproxy" / "static" / "dashboard"
-
-    # Mount dashboard static files if they exist
-    if dashboard_static_path.exists() and settings.observability.dashboard_enabled:
-        app.mount(
-            "/dashboard/assets",
-            StaticFiles(directory=str(dashboard_static_path)),
-            name="dashboard-static",
-        )
-        logger.debug(
-            "dashboard_static_files_mounted",
-            path=str(dashboard_static_path),
-            category="config",
-        )
+    # Dashboard static mounting is handled by the dashboard plugin.
 
     return app
 

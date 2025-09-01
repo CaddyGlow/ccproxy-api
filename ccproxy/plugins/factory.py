@@ -306,6 +306,23 @@ class AuthProviderPluginFactory(BasePluginFactory):
         return None
 
 
+def factory_type_name(factory: PluginFactory) -> str:
+    """Return a stable type name for a plugin factory.
+
+    Returns one of: "auth_provider", "provider", "system", or "plugin" (fallback).
+    """
+    try:
+        if isinstance(factory, AuthProviderPluginFactory):
+            return "auth_provider"
+        if isinstance(factory, ProviderPluginFactory):
+            return "provider"
+        if isinstance(factory, SystemPluginFactory):
+            return "system"
+    except Exception:
+        pass
+    return "plugin"
+
+
 class PluginRegistry:
     """Registry for managing plugin factories and runtime instances."""
 

@@ -11,6 +11,15 @@ from typing import Any
 
 import structlog
 
+
+try:
+    # Python 3.10+
+    from importlib.metadata import EntryPoint, entry_points
+except Exception:  # pragma: no cover
+    # Fallback for very old environments
+    entry_points = None  # type: ignore
+    EntryPoint = Any  # type: ignore
+
 from .factory import PluginFactory
 
 
@@ -148,7 +157,7 @@ class PluginDiscovery:
         Returns:
             Dictionary mapping plugin names to their factories
         """
-        factories = {}
+        factories: dict[str, PluginFactory] = {}
 
         for name in self.discovered_plugins:
             factory = self.load_plugin_factory(name)
@@ -162,6 +171,78 @@ class PluginDiscovery:
             category="plugin",
         )
 
+        return factories
+
+    def load_entry_point_factories(self) -> dict[str, PluginFactory]:
+        """Load plugin factories from installed entry points.
+
+        Returns:
+            Dictionary mapping plugin names to their factories
+        """
+        factories: dict[str, PluginFactory] = {}
+        if entry_points is None:
+            logger.debug("entry_points_not_available", category="plugin")
+            return factories
+
+        try:
+            groups = entry_points()
+            eps = []
+            # importlib.metadata API differences across Python versions
+            if hasattr(groups, "select"):
+                eps = list(groups.select(group="ccproxy.plugins"))  # type: ignore[attr-defined]
+            else:  # pragma: no cover
+                eps = list(groups.get("ccproxy.plugins", []))
+
+            for ep in eps:
+                name = ep.name
+                try:
+                    obj = ep.load()
+                    factory: PluginFactory | None = None
+
+                    # If the object already looks like a factory (duck typing)
+                    if hasattr(obj, "get_manifest") and hasattr(
+                        obj, "create_runtime"
+                    ):
+                        factory = obj  # type: ignore[assignment]
+                    # If it's callable, try to call to get a factory
+                    elif callable(obj):
+                        try:
+                            maybe = obj()
+                            if hasattr(maybe, "get_manifest") and hasattr(
+                                maybe, "create_runtime"
+                            ):
+                                factory = maybe  # type: ignore[assignment]
+                        except Exception:
+                            factory = None
+
+                    if not factory:
+                        logger.warning(
+                            "entry_point_not_factory",
+                            name=name,
+                            obj_type=type(obj).__name__,
+                            category="plugin",
+                        )
+                        continue
+
+                    factories[name] = factory
+                    logger.debug(
+                        "entry_point_factory_loaded",
+                        name=name,
+                        version=factory.get_manifest().version,
+                        category="plugin",
+                    )
+                except Exception as e:
+                    logger.error(
+                        "entry_point_load_failed",
+                        name=name,
+                        error=str(e),
+                        exc_info=e,
+                        category="plugin",
+                    )
+        except Exception as e:  # pragma: no cover
+            logger.error(
+                "entry_points_enumeration_failed", error=str(e), exc_info=e
+            )
         return factories
 
 
@@ -240,8 +321,21 @@ def discover_and_load_plugins(settings: Any) -> dict[str, PluginFactory]:
     discovery = PluginDiscovery(plugins_dir)
     discovery.discover_plugins()
 
-    # Load all factories
+    # Load factories from local filesystem
     all_factories = discovery.load_all_factories()
+
+    # Load factories from installed entry points and merge
+    ep_factories = discovery.load_entry_point_factories()
+    for name, factory in ep_factories.items():
+        if name in all_factories:
+            logger.info(
+                "entry_point_factory_ignored",
+                name=name,
+                reason="filesystem_plugin_with_same_name",
+                category="plugin",
+            )
+            continue
+        all_factories[name] = factory
 
     # Filter based on settings
     filter_config = PluginFilter(

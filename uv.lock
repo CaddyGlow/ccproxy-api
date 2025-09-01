@@ -4,10 +4,13 @@ requires-python = ">=3.11"
 
 [manifest]
 members = [
+    "ccproxy-analytics",
     "ccproxy-api",
     "ccproxy-claude-api",
     "ccproxy-claude-sdk",
     "ccproxy-codex",
+    "ccproxy-dashboard",
+    "ccproxy-duckdb-storage",
     "ccproxy-metrics",
     "ccproxy-permissions",
     "ccproxy-plugin-access-log",
@@ -262,6 +265,21 @@ wheels = [
 ]
 
 [[package]]
+name = "ccproxy-analytics"
+version = "1.0.0"
+source = { editable = "plugins/analytics" }
+dependencies = [
+    { name = "sqlmodel" },
+    { name = "structlog" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "sqlmodel", specifier = ">=0.0.14" },
+    { name = "structlog", specifier = ">=24.1.0" },
+]
+
+[[package]]
 name = "ccproxy-api"
 source = { editable = "." }
 dependencies = [
@@ -445,6 +463,28 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [{ name = "openai", specifier = ">=1.93.0" }]
+
+[[package]]
+name = "ccproxy-dashboard"
+version = "1.0.0"
+source = { editable = "plugins/dashboard" }
+
+[[package]]
+name = "ccproxy-duckdb-storage"
+version = "1.0.0"
+source = { editable = "plugins/duckdb_storage" }
+dependencies = [
+    { name = "sqlalchemy" },
+    { name = "sqlmodel" },
+    { name = "structlog" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "sqlalchemy", specifier = ">=2.0.0" },
+    { name = "sqlmodel", specifier = ">=0.0.14" },
+    { name = "structlog", specifier = ">=24.1.0" },
+]
 
 [[package]]
 name = "ccproxy-metrics"

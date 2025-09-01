@@ -1,0 +1,21 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "ccproxy-analytics"
+version = "1.0.0"
+description = "Logs query, analytics, and streaming plugin for CCProxy"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "sqlmodel>=0.0.14",
+  "structlog>=24.1.0",
+]
+
+[project.entry-points."ccproxy.plugins"]
+analytics = "plugins.analytics.plugin:factory"
+
+[tool.hatch.build.targets.wheel]
+packages = ["."]
+

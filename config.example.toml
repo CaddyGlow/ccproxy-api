@@ -66,6 +66,22 @@ scopes = ["openid", "profile", "email", "offline_access"]
 # base_url = "https://api.example.com"
 # api_key = "your-api-key"
 
+# DuckDB storage plugin configuration (replaces observability.duckdb_path/backends)
+[plugins.duckdb_storage]
+enabled = true
+# database_path = "/var/lib/ccproxy/metrics.duckdb"  # Optional override
+register_app_state_alias = true  # Also set app.state.duckdb_storage for legacy deps
+
+# Analytics (logs API) plugin
+[plugins.analytics]
+enabled = true
+# route_prefix = "/logs"
+
+# Dashboard plugin (serves /dashboard and mounts /dashboard/assets)
+[plugins.dashboard]
+enabled = true
+mount_static = true
+
 # Observability settings
 [observability]
 metrics_enabled = true

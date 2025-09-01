@@ -82,6 +82,9 @@ claude_sdk = "plugins.claude_sdk.plugin:Plugin"
 codex = "plugins.codex.plugin:Plugin"
 permissions = "plugins.permissions.plugin:Plugin"
 request_tracer = "plugins.request_tracer.plugin:factory"
+duckdb_storage = "plugins.duckdb_storage.plugin:factory"
+analytics = "plugins.analytics.plugin:factory"
+dashboard = "plugins.dashboard.plugin:factory"
 
 [dependency-groups]
 dev = [
@@ -394,6 +397,9 @@ members = [
   "plugins/request_tracer",
   "plugins/access_log",
   "plugins/pricing",
+  "plugins/duckdb_storage",
+  "plugins/analytics",
+  "plugins/dashboard",
 ]
 
 [tool.pyright]
@@ -431,6 +437,9 @@ extraPaths = [
   "plugins/codex",
   "plugins/permissions",
   "plugins/request_tracer",
+  "plugins/duckdb_storage",
+  "plugins/analytics",
+  "plugins/dashboard",
 ]
 
 # Type checking settings

@@ -47,15 +47,24 @@ class MetricsHook(Hook):
         """
         self.config = config or MetricsConfig()
 
-        # Initialize collectors based on config
-        self.collector = (
-            PrometheusMetrics(
+        # Initialize collectors based on config using an isolated registry to
+        # avoid global REGISTRY collisions in multi-app/test environments.
+        if self.config.enabled:
+            registry = None
+            try:
+                from prometheus_client import CollectorRegistry as _CR  # type: ignore
+
+                registry = _CR()
+            except Exception:
+                registry = None
+
+            self.collector = PrometheusMetrics(
                 namespace=self.config.namespace,
                 histogram_buckets=self.config.histogram_buckets,
+                registry=registry,
             )
-            if self.config.enabled
-            else None
-        )
+        else:
+            self.collector = None
 
         self.pushgateway = (
             PushgatewayClient(self.config)

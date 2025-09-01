@@ -1,0 +1,2 @@
+"""DuckDB storage plugin package."""
+

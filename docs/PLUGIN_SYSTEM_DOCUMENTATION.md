@@ -10,6 +10,7 @@
 7. [Integration Guide](#integration-guide)
 8. [Creating Plugins](#creating-plugins)
 9. [Configuration](#configuration)
+10. [Authoring Guide](#authoring-guide)
 
 ## Plugin System Overview
 
@@ -17,6 +18,8 @@ CCProxy uses a modern plugin system (v2) that provides a flexible, declarative a
 
 - **Provider Plugins**: Proxy requests to external AI providers (Claude API, Claude SDK, Codex)
 - **System Plugins**: Add functionality like logging, monitoring, and permissions
+
+For a practical, end-to-end walkthrough on creating your own plugin (types, structure, config, routes, hooks, and publishing), see the Plugin Authoring Guide: `docs/PLUGIN_AUTHORING.md`.
 
 ### Key Features
 
@@ -920,3 +923,7 @@ class CodexOAuthProvider:
             "expired": credentials.is_expired() if credentials else False,
         }
 ```
+
+## Authoring Guide
+
+For step-by-step instructions on building plugins, including configuration precedence, entry point publishing, service registration, and test patterns, refer to `docs/PLUGIN_AUTHORING.md`.

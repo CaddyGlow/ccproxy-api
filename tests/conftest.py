@@ -172,9 +172,14 @@ def test_settings(isolated_environment: Path) -> Settings:
             logs_endpoints_enabled=True,
             logs_collection_enabled=True,
             dashboard_enabled=True,
-            log_storage_backend="duckdb",
-            duckdb_path=str(isolated_environment / "test_metrics.duckdb"),
         ),
+        plugins={
+            "duckdb_storage": {
+                "enabled": True,
+                "database_path": str(isolated_environment / "test_metrics.duckdb"),
+                "register_app_state_alias": True,
+            }
+        },
     )
 
 
@@ -203,9 +208,14 @@ def auth_settings(isolated_environment: Path) -> Settings:
             logs_endpoints_enabled=True,
             logs_collection_enabled=True,
             dashboard_enabled=True,
-            log_storage_backend="duckdb",
-            duckdb_path=str(isolated_environment / "test_metrics.duckdb"),
         ),
+        plugins={
+            "duckdb_storage": {
+                "enabled": True,
+                "database_path": str(isolated_environment / "test_metrics.duckdb"),
+                "register_app_state_alias": True,
+            }
+        },
     )
 
 
@@ -495,9 +505,14 @@ def app_factory(tmp_path: Path) -> Callable[[dict[str, Any]], FastAPI]:
                 logs_endpoints_enabled=True,
                 logs_collection_enabled=True,
                 dashboard_enabled=True,
-                log_storage_backend="duckdb",
-                duckdb_path=str(tmp_path / "test_metrics.duckdb"),
             ),
+            plugins={
+                "duckdb_storage": {
+                    "enabled": True,
+                    "database_path": str(tmp_path / "test_metrics.duckdb"),
+                    "register_app_state_alias": True,
+                }
+            },
         )
         if auth_config.get("has_configured_token"):
             settings.security.auth_token = auth_config["server_token"]

@@ -1,11 +1,13 @@
-"""
-SQLModel schema definitions for observability storage.
+"""Access log schema and payload definitions for observability logging.
 
-This module provides the centralized schema definitions for access logs and metrics
-using SQLModel to ensure type safety and eliminate column name repetition.
+This plugin-local module owns the SQLModel table schema and the associated
+payload TypedDict used by the DuckDB storage and analytics layers.
 """
+
+from __future__ import annotations
 
 from datetime import datetime
+from typing import TypedDict
 
 from sqlmodel import Field, SQLModel
 
@@ -68,3 +70,50 @@ class AccessLog(SQLModel, table=True):
         from_attributes = True
         # Use enum values
         use_enum_values = True
+
+
+class AccessLogPayload(TypedDict, total=False):
+    """TypedDict for access log data payloads."""
+
+    # Core request identification
+    request_id: str
+    timestamp: int | float | datetime
+
+    # Request details
+    method: str
+    endpoint: str
+    path: str
+    query: str
+    client_ip: str
+    user_agent: str
+
+    # Service and model info
+    service_type: str
+    model: str
+    streaming: bool
+
+    # Response details
+    status_code: int
+    duration_ms: float
+    duration_seconds: float
+
+    # Token and cost tracking
+    tokens_input: int
+    tokens_output: int
+    cache_read_tokens: int
+    cache_write_tokens: int
+    cost_usd: float
+    cost_sdk_usd: float
+    num_turns: int
+
+    # Session context metadata
+    session_type: str
+    session_status: str
+    session_age_seconds: float
+    session_message_count: int
+    session_client_id: str
+    session_pool_enabled: bool
+    session_idle_seconds: float
+    session_error_count: int
+    session_is_new: bool
+
