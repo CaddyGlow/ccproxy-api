@@ -93,8 +93,8 @@ class CodexRequestTransformer:
                 transformed.update(detected_headers)
                 has_detected_headers = True
 
-        if not access_token:
-            raise RuntimeError("access_token parameter is required")
+        # If an explicit access_token is provided, inject it; otherwise, trust
+        # headers prepared upstream (adapter/credential manager) without failing here.
 
         # TODO: Disabled injection of content-type and accept headers for now
         # it's normally set by the client
@@ -103,8 +103,9 @@ class CodexRequestTransformer:
         # if "accept" not in [k.lower() for k in transformed]:
         #     transformed["Accept"] = "application/json"
 
-        # Inject access token in Authentication header
-        transformed["Authorization"] = f"Bearer {access_token}"
+        # Inject access token in Authentication header only when provided
+        if access_token:
+            transformed["Authorization"] = f"Bearer {access_token}"
 
         # Debug logging - what headers are we returning?
         logger.trace(

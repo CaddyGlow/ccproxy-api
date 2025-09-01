@@ -33,7 +33,7 @@ logger = get_plugin_logger()
 class ClaudeSDKAdapter(BaseAdapter):
     """Claude SDK adapter implementation using delegation pattern.
 
-    This adapter delegates to ProxyService for request handling,
+    This adapter integrates with the application request lifecycle,
     following the same pattern as claude_api and codex plugins.
     """
 
@@ -203,14 +203,17 @@ class ClaudeSDKAdapter(BaseAdapter):
                 ),
             )
 
-        # Get RequestContext - it must exist when called via ProxyService
+        # Get RequestContext - it must exist during the app request lifecycle
         from ccproxy.core.request_context import RequestContext
 
         request_context: RequestContext | None = RequestContext.get_current()
         if not request_context:
             raise HTTPException(
                 status_code=500,
-                detail="RequestContext not available - plugin must be called via ProxyService",
+                detail=(
+                    "RequestContext not available - plugin must be invoked within the "
+                    "application request lifecycle"
+                ),
             )
 
         # Update context with claude_sdk specific metadata

@@ -126,9 +126,8 @@ class ClaudeAPIResponseTransformer:
         return status_code, transformed_headers, transformed_body
 
     async def adapt_response(self, response_json: dict[str, Any]) -> dict[str, Any]:
-        """Adapt response for compatibility with ProxyService.
+        """Adapt response for compatibility with the provider handler interface.
 
-        This method provides the interface expected by ProxyService.
         For Claude API, we pass through responses unchanged.
 
         Args:

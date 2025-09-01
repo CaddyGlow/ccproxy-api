@@ -83,7 +83,7 @@ class CodexFormatAdapter(APIAdapter):
         Uses the same pattern as OpenAI adapter's streaming processor.
 
         Args:
-            stream: Individual Response API events (already parsed by ProxyService)
+            stream: Individual Response API events (already parsed by provider handler)
 
         Yields:
             OpenAI Chat Completions streaming chunks

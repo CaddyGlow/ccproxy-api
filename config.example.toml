@@ -39,26 +39,26 @@ enable_plugins = true
 plugin_dir = "plugins"
 
 # Plugin configurations
-# Each plugin can have its own configuration section under [plugins.PLUGIN_NAME]
-[plugins.raw_http_logger]
-enabled = true
-# Codex plugin configuration
-[plugins.codex]
-name = "codex"
-base_url = "https://chatgpt.com/backend-api/codex"
-supports_streaming = true
-requires_auth = true
-auth_type = "oauth"
-models = ["gpt-5"]
-verbose_logging = false
-callback_port = 1455
-redirect_uri = "http://localhost:1455/auth/callback"
+"""
+Each plugin can have its own configuration section under [plugins.PLUGIN_NAME].
+Below are examples for common bundled plugins; uncomment and adjust as needed.
+"""
 
-# OAuth settings for Codex
-[plugins.codex.oauth]
-base_url = "https://auth.openai.com"
-client_id = "app_EMoamEEZ73f0CkXaXp7hrann"
-scopes = ["openid", "profile", "email", "offline_access"]
+# Access log plugin (structured/common/combined)
+[plugins.access_log]
+enabled = true
+client_enabled = true
+client_format = "structured"
+client_log_file = "/tmp/ccproxy/access.log"
+provider_enabled = false
+
+# Request tracer plugin (structured JSON + optional raw HTTP)
+[plugins.request_tracer]
+enabled = true
+verbose_api = true
+json_logs_enabled = true
+raw_http_enabled = true
+log_dir = "/tmp/ccproxy/traces"
 
 # Example: Additional plugin configuration
 # [plugins.another_plugin]
@@ -70,7 +70,7 @@ scopes = ["openid", "profile", "email", "offline_access"]
 [plugins.duckdb_storage]
 enabled = true
 # database_path = "/var/lib/ccproxy/metrics.duckdb"  # Optional override
-register_app_state_alias = true  # Also set app.state.duckdb_storage for legacy deps
+# register_app_state_alias = false  # Back-compat alias (disabled by default)
 
 # Analytics (logs API) plugin
 [plugins.analytics]
@@ -88,7 +88,7 @@ metrics_enabled = true
 metrics_endpoint_enabled = true
 logs_endpoints_enabled = false
 dashboard_enabled = false
-# pushgateway_url = "http://localhost:9091"  # Optional: Prometheus pushgateway
+# Metrics push is provided by the metrics plugin when enabled (see plugin docs)
 
 # Docker settings (for running Claude in containers)
 [docker]

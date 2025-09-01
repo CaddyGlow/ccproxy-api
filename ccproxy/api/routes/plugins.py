@@ -61,7 +61,6 @@ class PluginReloadResponse(BaseModel):
     plugin: str | None = None
 
 
-# Note: get_proxy_service dependency removed as v2 plugins don't use ProxyService for plugin management
 # Plugin registry is accessed directly from app state
 
 

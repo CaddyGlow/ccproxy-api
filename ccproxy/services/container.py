@@ -273,7 +273,7 @@ class ServiceContainer:
         """Get all services an adapter might need.
 
         This method provides individual services for explicit dependency injection
-        in adapters, replacing the ProxyService service locator pattern.
+        in adapters.
 
         Args:
             metrics: Optional metrics service

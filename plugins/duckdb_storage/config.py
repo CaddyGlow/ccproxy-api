@@ -21,6 +21,6 @@ class DuckDBStorageConfig(BaseModel):
         default=None, description="Optional override for DuckDB database path"
     )
     register_app_state_alias: bool = Field(
-        default=True,
+        default=False,
         description="Also set app.state.duckdb_storage for backward compatibility",
     )

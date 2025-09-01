@@ -14,7 +14,7 @@ CCProxy is designed around a modular plugin system where each AI provider is imp
   - `permissions` - Permission management for MCP integration
   - `pricing` - Token pricing and cost calculation
   - `raw_http_logger` - HTTP request/response logging
-- **Core Services** (`ccproxy/services/`) - ProxyService for request delegation, provider context management
+- **Core Services** (`ccproxy/services/`) - Service container, adapters, and handler configuration
 - **Configuration** (`ccproxy/config/`) - Settings and validation
 - **Models** (`ccproxy/models/`) - Pydantic data models
 
@@ -26,7 +26,7 @@ Authoring plugins? See:
 
 Each provider plugin follows a consistent delegation pattern:
 
-- **Adapter** - Main plugin interface that delegates to the ProxyService
+- **Adapter** - Main plugin interface that uses explicit dependencies (HTTP client, auth manager, transformers) and the request lifecycle
 - **Transformers** - Handle request/response header and body transformation
 - **Detection Services** - Provider-specific capability detection
 - **Format Adapters** - Protocol conversion (e.g., OpenAI ↔ Anthropic formats)

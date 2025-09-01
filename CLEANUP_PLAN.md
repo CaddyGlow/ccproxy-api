@@ -67,6 +67,7 @@ Goal: Remove duplicated core implementations; keep interfaces + orchestration on
 - [x] Drop dependencies used only by removed code (update `pyproject`) — removed `aiosqlite`, runtime `keyring`, and explicit `h2`
 - [ ] Trim obsolete config keys and add migration-friendly validation errors
 - [x] Remove dead modules — deleted `ccproxy/utils/models_provider.py`
+- [x] Remove core compatibility stubs — removed metrics/log storage stubs from `ccproxy/api/dependencies.py`; analytics now depends on plugin storage directly
 
 ## Phase 5: API, CLI, and Config Surface
 

@@ -196,9 +196,7 @@ class FastAPIAppFactory:
 
         # Override Claude service if mock provided
         # NOTE: Plugin-based architecture no longer uses get_claude_service dependency.
-        # ProxyService is initialized at startup and stored in app.state.
-        # Mock should be handled at the ProxyService level if needed.
-        # (App state modifications should be done after app creation, not in dependency overrides)
+        # Mock should be attached to app.state after app creation if needed.
 
         # Override plugin adapter dependencies for tests
         if claude_service_mock is not None:

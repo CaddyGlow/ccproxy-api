@@ -141,14 +141,17 @@ class BaseHTTPAdapter(BaseAdapter):
         # Validate prerequisites
         self._validate_prerequisites()
 
-        # Get RequestContext - it must exist when called via ProxyService
+        # Get RequestContext - it must exist during the app request lifecycle
         from ccproxy.core.request_context import RequestContext
 
         request_context: RequestContext | None = RequestContext.get_current()
         if not request_context:
             raise HTTPException(
                 status_code=500,
-                detail="RequestContext not available - plugin must be called via ProxyService",
+                detail=(
+                    "RequestContext not available - plugin must be invoked within the "
+                    "application request lifecycle"
+                ),
             )
 
         # Get request body and auth
@@ -157,8 +160,10 @@ class BaseHTTPAdapter(BaseAdapter):
         # Get access token directly from auth manager
         access_token = await self._auth_manager.get_access_token()
 
-        # Build auth headers with Bearer token
-        auth_headers = {"Authorization": f"Bearer {access_token}"}
+        # Build auth headers with Bearer token only if available
+        auth_headers: dict[str, str] = {}
+        if access_token:
+            auth_headers["Authorization"] = f"Bearer {access_token}"
 
         # Determine endpoint handling (provider-specific)
         target_url, needs_conversion = await self._resolve_endpoint(endpoint)

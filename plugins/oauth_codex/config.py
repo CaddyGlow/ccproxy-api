@@ -1,50 +1,70 @@
-"""OAuth configuration for Codex OAuth plugin."""
+"""OpenAI Codex-specific configuration settings."""
 
 from pydantic import BaseModel, Field
 
 
 class CodexOAuthConfig(BaseModel):
-    """Configuration for Codex/OpenAI OAuth provider."""
+    """OAuth-specific configuration for OpenAI Codex."""
 
+    # Core OAuth endpoints and identifiers (aligns with Claude config structure)
+    base_url: str = Field(
+        default="https://auth.openai.com",
+        description="Base URL for OAuth API endpoints",
+    )
+    token_url: str = Field(
+        default="https://auth.openai.com/oauth/token",
+        description="OAuth token endpoint URL",
+    )
+    authorize_url: str = Field(
+        default="https://auth.openai.com/authorize",
+        description="OAuth authorization endpoint URL",
+    )
+    profile_url: str = Field(
+        default="https://api.openai.com/oauth/profile",
+        description="OAuth profile endpoint URL",
+    )
     client_id: str = Field(
-        default="openai_client_production",
-        description="OAuth client ID for OpenAI",
+        default="app_EMoamEEZ73f0CkXaXp7hrann",
+        description="OpenAI OAuth client ID",
     )
     redirect_uri: str | None = Field(
         default=None,
         description="OAuth redirect URI (auto-generated from callback_port if not set)",
     )
-    base_url: str = Field(
-        default="https://auth.openai.com",
-        description="Base URL for OpenAI OAuth",
-    )
-    authorize_url: str = Field(
-        default="https://auth.openai.com/authorize",
-        description="Authorization endpoint URL",
-    )
-    token_url: str = Field(
-        default="https://auth.openai.com/oauth/token",
-        description="Token exchange endpoint URL",
-    )
     scopes: list[str] = Field(
-        default_factory=lambda: ["openid", "profile", "email", "offline_access"],
+        default_factory=lambda: [
+            "openid",
+            "profile",
+            "email",
+            "offline_access",
+        ],
         description="OAuth scopes to request",
     )
-    audience: str = Field(
-        default="https://api.openai.com",
-        description="OAuth audience parameter",
+
+    # Additional request configuration (mirrors Claude config shape)
+    headers: dict[str, str] = Field(
+        default_factory=lambda: {
+            "User-Agent": "Codex-Code/1.0.43",  # Match default user agent in config
+        },
+        description="Additional headers for OAuth requests",
     )
-    user_agent: str = Field(
-        default="ccproxy-codex-oauth/1.0",
-        description="User agent for OAuth requests",
+    request_timeout: int = Field(
+        default=30,
+        description="Timeout in seconds for OAuth requests",
     )
-    use_pkce: bool = Field(
-        default=True,
-        description="Whether to use PKCE flow (OpenAI requires it)",
+    callback_timeout: int = Field(
+        default=300,
+        description="Timeout in seconds for OAuth callback",
+        ge=60,
+        le=600,
     )
     callback_port: int = Field(
         default=1455,
         description="Port for OAuth callback server",
         ge=1024,
         le=65535,
+    )
+    use_pkce: bool = Field(
+        default=True,
+        description="Whether to use PKCE flow (OpenAI requires it)",
     )

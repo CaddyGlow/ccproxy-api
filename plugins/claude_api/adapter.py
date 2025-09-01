@@ -56,8 +56,6 @@ class ClaudeAPIAdapter(BaseHTTPAdapter):
         hook_manager: "HookManager | None" = None,
         # Plugin-specific context
         context: "PluginContext | dict[str, Any] | None" = None,
-        # Legacy proxy_service for backward compatibility (to be removed)
-        proxy_service: Any | None = None,
     ) -> None:
         """Initialize the Claude API adapter with explicit dependencies.
 
@@ -70,7 +68,6 @@ class ClaudeAPIAdapter(BaseHTTPAdapter):
             streaming_handler: Optional streaming handler
             hook_manager: Optional hook manager for event emission
             context: Optional plugin context containing plugin_registry and other services
-            proxy_service: Legacy ProxyService for backward compatibility
         """
         # Get injection mode from config if available
         injection_mode = "minimal"  # default
@@ -93,7 +90,7 @@ class ClaudeAPIAdapter(BaseHTTPAdapter):
 
         # Get CORS settings if available
         cors_settings = None
-        # Try from context first, then from legacy proxy_service
+        # Try from context if available
         if context:
             config = (
                 context.get("config")
@@ -102,8 +99,6 @@ class ClaudeAPIAdapter(BaseHTTPAdapter):
             )
             if config:
                 cors_settings = getattr(config, "cors", None)
-        elif proxy_service and hasattr(proxy_service, "config"):
-            cors_settings = getattr(proxy_service.config, "cors", None)
 
         response_transformer = ClaudeAPIResponseTransformer(cors_settings)
 

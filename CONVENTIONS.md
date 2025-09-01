@@ -26,7 +26,7 @@ Our primary goal is to build a robust, maintainable, scalable, and secure CCProx
 
 * **Packages/Directories:** `snake_case` (e.g., `api`, `claude_sdk`, `auth`)
 * **Modules:** `snake_case` (e.g., `manager.py`, `client.py`)
-* **Classes:** `CamelCase` (e.g., `ProxyService`, `OpenAIAdapter`)
+* **Classes:** `CamelCase` (e.g., `OpenAIAdapter`, `ServiceContainer`)
   * **Abstract Base Classes:** Suffix with `ABC` or `Protocol`
   * **Pydantic Models:** `CamelCase` (e.g., `MessageCreateParams`)
 * **Functions/Methods/Variables:** `snake_case` (e.g., `handle_request`, `get_access_token`)
@@ -72,14 +72,25 @@ plugins/
 ```
 
 ### Delegation Pattern
-Adapters must delegate to ProxyService:
+Adapters integrate via explicit dependencies (HTTP client, auth manager, transformers) and the application request lifecycle:
 
 ```python
 class ProviderAdapter(BaseAdapter):
     async def handle_request(self, request, endpoint, method):
-        context = self._build_provider_context()
-        return await self.proxy_service.handle_provider_request(
-            request, endpoint, method, context
+        # resolve endpoint/handler config, then execute with injected services
+        target_url, needs_conversion = await self._resolve_endpoint(endpoint)
+        cfg = await self._create_handler_config(needs_conversion)
+        return await self._execute_request(
+            method=method,
+            target_url=target_url,
+            body=await request.body(),
+            auth_headers={},
+            access_token=None,
+            request_headers=dict(request.headers),
+            handler_config=cfg,
+            endpoint=endpoint,
+            needs_conversion=needs_conversion,
+            request_context=RequestContext.get_current(),
         )
 ```
 

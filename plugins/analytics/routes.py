@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 import time
-from typing import Any
+from typing import Annotated, Any
 
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 
-from ccproxy.api.dependencies import DuckDBStorageDep
 from ccproxy.auth.conditional import ConditionalAuthDep
+from plugins.duckdb_storage.storage import SimpleDuckDBStorage
 
 
 router = APIRouter()
@@ -152,3 +152,14 @@ async def reset_logs(
         "timestamp": time.time(),
         "backend": "duckdb",
     }
+async def get_duckdb_storage(request: Request) -> SimpleDuckDBStorage | None:
+    """Get DuckDB storage service from app state.
+
+    The duckdb_storage plugin registers the storage as app.state.log_storage.
+    """
+    return getattr(request.app.state, "log_storage", None)
+
+
+DuckDBStorageDep = Annotated[
+    SimpleDuckDBStorage | None, Depends(get_duckdb_storage)
+]

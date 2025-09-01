@@ -109,8 +109,8 @@ Note: Many tests fail currently due to known migration gaps (scheduler/observabi
 
 - `ccproxy/utils/models_provider.py`: Unreferenced and 0% covered. Action: remove or fold into relevant plugin route that lists models.
 - `ccproxy/adapters/openai/*`: Core OpenAI adapter is still referenced by plugins (`claude_api`, `claude_sdk`, `codex`) and tests; not dead. Action: keep as shared format adapter for now; consider moving to a shared package if desired later.
-- `ccproxy/api/dependencies.py` stubs: `get_observability_metrics`, `get_duckdb_storage` compatibility alias. Action: relocate behind plugins or remove once routes no longer depend on stubs.
-- `ccproxy/api/middleware/hooks.py` migration comment: Audit for any ProxyService-era coupling; remove mentions if no longer applicable.
+- Core compatibility stubs removed: metrics/log storage stubs were deleted from `ccproxy/api/dependencies.py`. Plugins expose their own deps; analytics now imports storage from `plugins/duckdb_storage`.
+- `ccproxy/api/middleware/hooks.py` updated to remove ProxyService-era references; centralized hook emission remains.
 - Root-level dependency ownership: ensure provider-specific deps (e.g., `openai`, `anthropic`, `pyjwt`) are not required at root unless used by core.
 - `tests_new/*`: Targets removed interfaces (e.g., `ProxyService`, `IPluginProvider` from old modules). Action: either update to current interfaces or remove.
 

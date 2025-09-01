@@ -24,8 +24,8 @@ class HooksMiddleware(BaseHTTPMiddleware):
     - REQUEST_COMPLETED on successful response
     - REQUEST_FAILED on error
 
-    It maintains RequestContext compatibility and works alongside existing
-    ProxyService hook emission during gradual migration.
+    It maintains RequestContext compatibility and provides centralized
+    hook emission for both regular and streaming responses.
     """
 
     def __init__(self, app: Any, hook_manager: HookManager | None = None) -> None:

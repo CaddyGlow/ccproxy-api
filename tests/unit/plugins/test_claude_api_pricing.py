@@ -39,7 +39,6 @@ def adapter_with_pricing(plugin_registry_with_pricing):
     }
 
     adapter = ClaudeAPIAdapter(
-        proxy_service=None,
         auth_manager=Mock(),
         detection_service=Mock(),
         http_client=AsyncClient(),
@@ -70,7 +69,6 @@ class TestClaudeAPIPricingIntegration:
     def test_get_pricing_service_without_registry(self):
         """Test that adapter returns None when no plugin registry is available."""
         adapter = ClaudeAPIAdapter(
-            proxy_service=None,
             auth_manager=Mock(),
             detection_service=Mock(),
             http_client=AsyncClient(),
@@ -86,7 +84,6 @@ class TestClaudeAPIPricingIntegration:
 
         context = {"plugin_registry": registry}
         adapter = ClaudeAPIAdapter(
-            proxy_service=None,
             auth_manager=Mock(),
             detection_service=Mock(),
             http_client=AsyncClient(),
@@ -148,7 +145,6 @@ class TestClaudeAPIPricingIntegration:
 
         # Create adapter without pricing service
         adapter = ClaudeAPIAdapter(
-            proxy_service=None,
             auth_manager=Mock(),
             detection_service=Mock(),
             http_client=AsyncClient(),

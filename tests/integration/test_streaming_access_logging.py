@@ -84,7 +84,6 @@ class TestStreamingAccessLogging:  # type: ignore[unreachable]
         app.dependency_overrides[original_get_settings] = lambda: test_settings
         app.dependency_overrides[get_cached_settings] = lambda request: test_settings
         # Note: Plugin-based architecture no longer uses get_cached_claude_service
-        # ProxyService is initialized at startup and stored in app.state
 
         client = TestClient(app)
 
@@ -204,7 +203,6 @@ class TestStreamingAccessLogging:  # type: ignore[unreachable]
         app.dependency_overrides[original_get_settings] = lambda: test_settings
         app.dependency_overrides[get_cached_settings] = lambda request: test_settings
         # Note: Plugin-based architecture no longer uses get_cached_claude_service
-        # ProxyService is initialized at startup and stored in app.state
 
         client = TestClient(app)
 
@@ -288,7 +286,6 @@ class TestStreamingAccessLogging:  # type: ignore[unreachable]
         app.dependency_overrides[original_get_settings] = lambda: test_settings
         app.dependency_overrides[get_cached_settings] = lambda request: test_settings
         # Note: Plugin-based architecture no longer uses get_cached_claude_service
-        # ProxyService is initialized at startup and stored in app.state
 
         client = TestClient(app)
 

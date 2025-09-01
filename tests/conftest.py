@@ -270,7 +270,6 @@ def app_with_claude_sdk_environment(
     )
 
     # NOTE: Plugin-based architecture no longer uses get_cached_claude_service
-    # ProxyService is initialized at startup and stored in app.state
     # Store mock in app state for compatibility if needed by tests
     app.state.claude_service_mock = mock_internal_claude_sdk_service
 
