@@ -262,6 +262,17 @@ class ClaudeApiTokenManager(BaseTokenManager[ClaudeCredentials]):
         wrapper = ClaudeTokenWrapper(credentials=credentials)
         return wrapper.expires_at_datetime
 
+    async def get_profile_quick(self) -> ClaudeProfileInfo | None:  # type: ignore[override]
+        """Return cached profile info only, avoiding I/O or network.
+
+        Profile cache is typically preloaded from local storage by
+        the async factory create() via preload_profile_cache().
+
+        Returns:
+            Cached ClaudeProfileInfo or None
+        """
+        return self._profile_cache
+
     async def get_access_token(self) -> str | None:
         """Get valid access token, automatically refreshing if expired.
 

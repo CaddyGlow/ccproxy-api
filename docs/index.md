@@ -155,6 +155,61 @@ CCProxy can be configured through:
 2. Environment variables (use `__` for nesting, e.g., `LOGGING__LEVEL=debug`)
 3. TOML configuration files (`.ccproxy.toml`, `ccproxy.toml`)
 
+### Plugin Config Quickstart
+
+Enable plugins and configure them under the `plugins.*` namespace in TOML or env vars.
+
+TOML example:
+
+```toml
+enable_plugins = true
+
+# Access log plugin
+[plugins.access_log]
+enabled = true
+client_enabled = true
+client_format = "structured"
+client_log_file = "/tmp/ccproxy/access.log"
+
+# Request tracer plugin
+[plugins.request_tracer]
+enabled = true
+json_logs_enabled = true
+raw_http_enabled = true
+log_dir = "/tmp/ccproxy/traces"
+
+# DuckDB storage (used by analytics)
+[plugins.duckdb_storage]
+enabled = true
+
+# Analytics (logs API)
+[plugins.analytics]
+enabled = true
+```
+
+Environment variable equivalents (nested with `__`):
+
+```bash
+export ENABLE_PLUGINS=true
+export PLUGINS__ACCESS_LOG__ENABLED=true
+export PLUGINS__ACCESS_LOG__CLIENT_ENABLED=true
+export PLUGINS__ACCESS_LOG__CLIENT_FORMAT=structured
+export PLUGINS__ACCESS_LOG__CLIENT_LOG_FILE=/tmp/ccproxy/access.log
+
+export PLUGINS__REQUEST_TRACER__ENABLED=true
+export PLUGINS__REQUEST_TRACER__JSON_LOGS_ENABLED=true
+export PLUGINS__REQUEST_TRACER__RAW_HTTP_ENABLED=true
+export PLUGINS__REQUEST_TRACER__LOG_DIR=/tmp/ccproxy/traces
+
+export PLUGINS__DUCKDB_STORAGE__ENABLED=true
+export PLUGINS__ANALYTICS__ENABLED=true
+```
+
+See more details in Configuration and individual plugin pages:
+- `docs/getting-started/configuration.md`
+- `config.example.toml`
+- Plugin READMEs under `plugins/*/README.md`
+
 ## Next Steps
 
 - [Installation Guide](getting-started/installation.md) - Detailed setup instructions

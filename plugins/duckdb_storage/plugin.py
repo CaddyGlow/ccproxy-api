@@ -50,19 +50,8 @@ class DuckDBStorageRuntime(SystemPluginRuntime):
 
         # Determine if storage should be enabled: respect plugin flag and any
         # app-wide observability needs (logs endpoints/collection) if present.
-        settings = self.context.get("settings")
-        needs_storage = False
-        try:
-            if settings and hasattr(settings, "observability"):
-                obs = settings.observability
-                needs_storage = bool(
-                    getattr(obs, "logs_endpoints_enabled", False)
-                    or getattr(obs, "logs_collection_enabled", False)
-                )
-        except Exception:  # be permissive
-            needs_storage = False
-
-        enabled = bool(cfg.enabled or needs_storage)
+        # Enable only if plugin config enables it
+        enabled = bool(cfg.enabled)
         if not enabled:
             logger.info("duckdb_plugin_disabled")
             return

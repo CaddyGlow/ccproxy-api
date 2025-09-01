@@ -157,5 +157,5 @@ factory = MyProviderFactory()
 
 See also:
 - `docs/PLUGIN_SYSTEM_DOCUMENTATION.md` for more on the plugin runtime model
-- `docs/observability.md` for metrics/logging guidance
+- Metrics/logging plugins (e.g., `plugins/metrics`, `plugins/analytics`) for observability patterns
 - `GET /api/plugins/status` for runtime inspection

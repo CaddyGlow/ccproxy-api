@@ -1,7 +1,6 @@
 """Configuration module for Claude Proxy API Server."""
 
 from .docker_settings import DockerSettings
-from .reverse_proxy import ReverseProxySettings
 from .settings import Settings, get_settings
 from .validators import (
     ConfigValidationError,
@@ -19,7 +18,6 @@ from .validators import (
 __all__ = [
     "Settings",
     "get_settings",
-    "ReverseProxySettings",
     "DockerSettings",
     "ConfigValidationError",
     "validate_config_dict",

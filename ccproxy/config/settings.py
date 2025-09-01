@@ -18,8 +18,6 @@ from .cors import CORSSettings
 from .docker_settings import DockerSettings
 from .http import HTTPSettings
 from .logging import LoggingSettings
-from .observability import ObservabilitySettings
-from .reverse_proxy import ReverseProxySettings
 from .scheduler import SchedulerSettings
 from .security import SecuritySettings
 from .server import ServerSettings
@@ -40,15 +38,7 @@ class ConfigurationError(Exception):
     pass
 
 
-class HooksSettings(BaseModel):
-    """Hook system configuration."""
-
-    enabled: bool = True
-    metrics_enabled: bool = True
-    logging_enabled: bool = True
-    analytics_enabled: bool = False
-    analytics_batch_size: int = 100
-    enable_chunk_events: bool = False  # For streaming chunk events
+# HookSettings removed; hooks are always enabled in-core and plugins manage specifics
 
 
 # PoolSettings class removed - connection pooling functionality has been removed
@@ -100,11 +90,7 @@ class Settings(BaseSettings):
         description="HTTP client configuration settings",
     )
 
-    # Proxy and authentication
-    reverse_proxy: ReverseProxySettings = Field(
-        default_factory=ReverseProxySettings,
-        description="Reverse proxy configuration settings",
-    )
+    # Reverse proxy settings removed; provider plugins own routing/translation
 
     # Binary resolution settings
     binary: BinarySettings = Field(
@@ -118,22 +104,12 @@ class Settings(BaseSettings):
         description="Docker configuration for running Claude commands in containers",
     )
 
-    # Observability settings
-    observability: ObservabilitySettings = Field(
-        default_factory=ObservabilitySettings,
-        description="Observability configuration settings",
-    )
+    # Observability settings have been removed; plugins own these concerns now
 
     # Scheduler settings
     scheduler: SchedulerSettings = Field(
         default_factory=SchedulerSettings,
         description="Task scheduler configuration settings",
-    )
-
-    # Plugin settings
-    plugin_dir: str = Field(
-        default="plugins",
-        description="Directory to load plugins from",
     )
 
     enable_plugins: bool = Field(
@@ -147,11 +123,7 @@ class Settings(BaseSettings):
         description="Plugin-specific configurations keyed by plugin name",
     )
 
-    # Hook system settings
-    hooks: HooksSettings = Field(
-        default_factory=HooksSettings,
-        description="Hook system configuration settings",
-    )
+    # Hook system settings removed; hooks are initialized by default
 
     # Redundant validators removed - Pydantic handles these automatically with default_factory
 
@@ -159,11 +131,6 @@ class Settings(BaseSettings):
     def server_url(self) -> str:
         """Get the complete server URL."""
         return f"http://{self.server.host}:{self.server.port}"
-
-    @property
-    def is_development(self) -> bool:
-        """Check if running in development mode."""
-        return self.server.reload or self.logging.level == "DEBUG"
 
     def model_dump_safe(self) -> dict[str, Any]:
         """

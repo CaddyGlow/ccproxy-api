@@ -99,21 +99,6 @@ test: check
 	$(UV_RUN) pytest tests/ -v --cov=ccproxy --cov-report=term-missing
 
 # New test suite targets
-test-new:
-	@echo "Running new test suite..."
-	$(UV_RUN) pytest tests_new/ -v --tb=short
-
-test-new-api:
-	@echo "Running API endpoint tests..."
-	$(UV_RUN) pytest tests_new/api -v --tb=short
-
-test-new-integration:
-	@echo "Running integration tests..."
-	$(UV_RUN) pytest tests_new/integration -v --tb=short
-
-test-new-coverage:
-	@echo "Running new test suite with coverage..."
-	$(UV_RUN) pytest tests_new/ --cov=ccproxy --cov-report=term-missing --cov-report=html
 
 # Run fast unit tests only (exclude tests marked with 'real_api')
 test-unit: check

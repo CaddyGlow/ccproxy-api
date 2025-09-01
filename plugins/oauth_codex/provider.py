@@ -7,6 +7,7 @@ from urllib.parse import urlencode
 
 import httpx
 
+from ccproxy.auth.oauth.protocol import ProfileLoggingMixin, StandardProfileFields
 from ccproxy.auth.oauth.registry import OAuthProviderInfo
 from ccproxy.core.logging import get_plugin_logger
 from plugins.oauth_codex.client import CodexOAuthClient
@@ -18,7 +19,7 @@ from plugins.oauth_codex.storage import CodexTokenStorage
 logger = get_plugin_logger()
 
 
-class CodexOAuthProvider:
+class CodexOAuthProvider(ProfileLoggingMixin):
     """Codex/OpenAI OAuth provider implementation for registry."""
 
     def __init__(
@@ -265,39 +266,6 @@ class CodexOAuthProvider:
         """
         return self.config
 
-    def get_credential_summary(self, credentials: OpenAICredentials) -> dict[str, Any]:
-        """Get a summary of credentials for display.
-
-        Args:
-            credentials: OpenAI credentials
-
-        Returns:
-            Dictionary with display-friendly credential summary
-        """
-        summary = {
-            "provider": self.provider_display_name,
-            "authenticated": bool(credentials),
-        }
-
-        if credentials:
-            summary.update(
-                {
-                    "account_id": credentials.account_id,
-                    "active": credentials.active,
-                    "has_refresh_token": bool(credentials.refresh_token),
-                    "has_id_token": bool(credentials.id_token),
-                    "expired": credentials.is_expired()
-                    if hasattr(credentials, "is_expired")
-                    else False,
-                }
-            )
-
-            # Add expiration info if available
-            if hasattr(credentials, "expires_at"):
-                summary["expires_at"] = str(credentials.expires_at)
-
-        return summary
-
     async def save_credentials(
         self, credentials: Any, custom_path: Any | None = None
     ) -> bool:
@@ -359,7 +327,12 @@ class CodexOAuthProvider:
                 # Load from default storage
                 manager = await CodexTokenManager.create()
 
-            return await manager.load_credentials()
+            credentials = await manager.load_credentials()
+
+            # Use standardized profile logging
+            self._log_credentials_loaded("codex", credentials)
+
+            return credentials
         except Exception as e:
             logger.error(
                 "Failed to load OpenAI credentials",
@@ -368,6 +341,136 @@ class CodexOAuthProvider:
                 has_custom_path=bool(custom_path),
             )
             return None
+
+    def _extract_standard_profile(
+        self, credentials: OpenAICredentials
+    ) -> StandardProfileFields:
+        """Extract standardized profile fields from OpenAI credentials for UI display.
+
+        Args:
+            credentials: OpenAI credentials with JWT tokens
+
+        Returns:
+            StandardProfileFields with clean, UI-friendly data
+        """
+        # Initialize with basic credential info
+        profile_data = {
+            "account_id": credentials.account_id,
+            "provider_type": "codex",
+            "active": credentials.active,
+            "expired": credentials.is_expired(),
+            "has_refresh_token": bool(credentials.refresh_token),
+            "has_id_token": bool(credentials.id_token),
+            "token_expires_at": credentials.expires_at,
+        }
+
+        # Store raw credential data for debugging
+        raw_data = {
+            "last_refresh": credentials.last_refresh,
+            "expires_at": str(credentials.expires_at),
+        }
+
+        # Extract information from ID token
+        if credentials.id_token:
+            try:
+                import jwt
+
+                id_claims = jwt.decode(
+                    credentials.id_token, options={"verify_signature": False}
+                )
+
+                # Extract UI-friendly profile info
+                profile_data.update(
+                    {
+                        "email": id_claims.get("email"),
+                        "email_verified": id_claims.get("email_verified"),
+                        "display_name": id_claims.get("name")
+                        or id_claims.get("given_name"),
+                    }
+                )
+
+                # Extract subscription information
+                auth_claims = id_claims.get("https://api.openai.com/auth", {})
+                if isinstance(auth_claims, dict):
+                    plan_type = auth_claims.get(
+                        "chatgpt_plan_type"
+                    )  # 'plus', 'pro', etc.
+                    profile_data.update(
+                        {
+                            "subscription_type": plan_type,
+                            "subscription_status": "active" if plan_type else None,
+                        }
+                    )
+
+                    # Parse subscription dates
+                    if auth_claims.get("chatgpt_subscription_active_until"):
+                        try:
+                            from datetime import datetime
+
+                            expires_str = auth_claims[
+                                "chatgpt_subscription_active_until"
+                            ]
+                            profile_data["subscription_expires_at"] = (
+                                datetime.fromisoformat(
+                                    expires_str.replace("+00:00", "")
+                                )
+                            )
+                        except Exception:
+                            pass
+
+                    # Extract organization info
+                    orgs = auth_claims.get("organizations", [])
+                    if orgs:
+                        primary_org = orgs[0] if isinstance(orgs, list) else {}
+                        if isinstance(primary_org, dict):
+                            profile_data.update(
+                                {
+                                    "organization_name": primary_org.get("title"),
+                                    "organization_role": primary_org.get("role"),
+                                }
+                            )
+
+                # Store full claims for debugging
+                raw_data["id_token_claims"] = id_claims
+
+            except Exception as e:
+                logger.debug(
+                    "Failed to decode ID token for profile extraction", error=str(e)
+                )
+                raw_data["id_token_decode_error"] = str(e)
+
+        # Extract access token information
+        if credentials.access_token:
+            try:
+                import jwt
+
+                access_claims = jwt.decode(
+                    credentials.access_token, options={"verify_signature": False}
+                )
+
+                # Store access token info in raw data
+                raw_data["access_token_claims"] = {
+                    "scopes": access_claims.get("scp", []),
+                    "client_id": access_claims.get("client_id"),
+                    "audience": access_claims.get("aud"),
+                }
+
+            except Exception as e:
+                logger.debug(
+                    "Failed to decode access token for profile extraction", error=str(e)
+                )
+                raw_data["access_token_decode_error"] = str(e)
+
+        # Add provider-specific features
+        if profile_data.get("subscription_type"):
+            profile_data["features"] = {
+                "chatgpt_plus": profile_data["subscription_type"] == "plus",
+                "has_subscription": True,
+            }
+
+        profile_data["_raw_profile_data"] = raw_data
+
+        return StandardProfileFields(**profile_data)
 
     async def cleanup(self) -> None:
         """Cleanup resources."""

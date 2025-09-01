@@ -30,7 +30,7 @@ Purpose: Establish a clear baseline after the plugin migration, locate legacy or
 - `ccproxy/core/`: async utilities, http/http_client, logging, errors, system, transformers, interfaces, types, constants.
 - `ccproxy/auth/`: auth protocols, managers, OAuth router/routes, storage backends, models.
 - `ccproxy/cli/`: CLI entry (`main.py`), commands (serve, auth, config, plugins), docker helpers.
-- `ccproxy/config/`: `Settings` and nested models (server, logging, security, cors, http, reverse_proxy, docker, observability, scheduler, binary, discovery, validators, constants).
+- `ccproxy/config/`: `Settings` and nested models (server, logging, security, cors, http, docker, scheduler, binary, discovery, validators, constants). reverse_proxy, observability, plugin_dir, and hooks removed.
 - `ccproxy/streaming/`: streaming interfaces and helpers.
 - `ccproxy/utils/`: helpers (model mapping, binary resolver, version checker, caching, id generator, startup helpers, cost_calculator, CORS, models_provider).
 
@@ -69,7 +69,7 @@ Initial removal candidates (dependency angle):
 
 Top-level `Settings` keys (env prefix uses `__` nesting):
 
-- `server`, `logging`, `security`, `cors`, `http`, `reverse_proxy`, `binary`, `docker`, `observability`, `scheduler`, `plugin_dir`, `enable_plugins`, `plugins` (dict per plugin), `hooks`.
+- `server`, `logging`, `security`, `cors`, `http`, `binary`, `docker`, `scheduler`, `enable_plugins`, `plugins` (dict per plugin). reverse_proxy, observability, plugin_dir, and hooks removed; plugins own those concerns.
 
 Behavioral notes:
 

@@ -14,11 +14,6 @@ from plugins.oauth_claude.models import (
     ClaudeProfileInfo,
     ClaudeTokenWrapper,
 )
-from plugins.oauth_codex.models import (
-    OpenAICredentials,
-    OpenAIProfileInfo,
-    OpenAITokenWrapper,
-)
 
 
 class TestBaseModels:
@@ -129,6 +124,7 @@ class TestClaudeModels:
 
 class TestOpenAIModels:
     """Deprecated tests removed; OpenAI model has a new schema."""
+
     pass
 
 

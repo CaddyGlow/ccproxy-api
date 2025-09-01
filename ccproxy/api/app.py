@@ -114,15 +114,12 @@ async def initialize_plugins_startup(app: FastAPI, settings: Settings) -> None:
     service_container = app.state.service_container
 
     # Create hook system early if enabled so plugins can register hooks
-    hook_registry = None
-    hook_manager = None
-    if settings.hooks.enabled:
-        hook_registry = HookRegistry()
-        hook_manager = HookManager(hook_registry)
-        # Store in app state so plugins can access during initialization
-        app.state.hook_registry = hook_registry
-        app.state.hook_manager = hook_manager
-        logger.debug("hook_system_created_early_for_plugins", category="lifecycle")
+    hook_registry = HookRegistry()
+    hook_manager = HookManager(hook_registry)
+    # Store in app state so plugins can access during initialization
+    app.state.hook_registry = hook_registry
+    app.state.hook_manager = hook_manager
+    logger.debug("hook_system_created_early_for_plugins", category="lifecycle")
 
     # Create a core services adapter for the plugin system
     # The plugin system expects certain attributes that we need to provide
@@ -190,9 +187,7 @@ async def shutdown_plugins(app: FastAPI) -> None:
 
 async def initialize_hooks_startup(app: FastAPI, settings: Settings) -> None:
     """Initialize hook system with plugins."""
-    if not settings.hooks.enabled:
-        logger.info("hook_system_disabled", category="lifecycle")
-        return
+    # Hook system is always enabled; initialize if not already present
 
     # Check if hook system was already created during plugin init
     if hasattr(app.state, "hook_registry") and hasattr(app.state, "hook_manager"):

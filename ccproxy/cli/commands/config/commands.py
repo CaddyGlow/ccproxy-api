@@ -123,8 +123,7 @@ def _group_config_rows(
             group_name = "CORS Configuration"
         elif setting.startswith("claude"):
             group_name = "Claude CLI Configuration"
-        elif setting.startswith("reverse_proxy"):
-            group_name = "Reverse Proxy Configuration"
+        # reverse_proxy removed from Settings; skip grouping
         elif setting.startswith("auth"):
             group_name = "Authentication Configuration"
         elif setting.startswith("docker"):

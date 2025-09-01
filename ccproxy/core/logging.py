@@ -81,7 +81,6 @@ class TraceBoundLoggerImpl(BoundLogger):
 
 suppress_debug = [
     "ccproxy.scheduler",
-    "ccproxy.observability.context",
 ]
 
 

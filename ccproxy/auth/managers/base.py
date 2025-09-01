@@ -264,6 +264,19 @@ class BaseTokenManager(ABC, Generic[CredentialsT]):
         """
         return None
 
+    async def get_profile_quick(self) -> Any:
+        """Get profile information without performing I/O or network when possible.
+
+        Default behavior returns any cached profile stored on the manager.
+        Provider implementations may override to derive lightweight profiles
+        directly from credentials (e.g., JWT claims) without remote calls.
+
+        Returns:
+            Provider-specific profile model or None if unavailable
+        """
+        # Return cached profile if a subclass maintains one
+        return getattr(self, "_profile_cache", None)
+
     async def get_unified_profile(self) -> dict[str, Any]:
         """Get profile in a unified format across all providers.
 
@@ -294,6 +307,40 @@ class BaseTokenManager(ABC, Generic[CredentialsT]):
                     "display_name": account.full_name,
                     "provider": "unknown",
                     "extras": account.extras if hasattr(account, "extras") else {},
+                }
+            return {}
+
+    async def get_unified_profile_quick(self) -> dict[str, Any]:
+        """Get a lightweight unified profile across providers.
+
+        Uses cached or locally derivable data only. Implementations can
+        override get_profile_quick() to provide provider-specific logic.
+
+        Returns:
+            Dictionary with standardized fields or empty dict if unavailable
+        """
+        profile = await self.get_profile_quick()
+        if not profile:
+            return {}
+
+        # Handle both old UserProfile and new BaseProfileInfo
+        if hasattr(profile, "provider_type"):
+            return {
+                "account_id": getattr(profile, "account_id", ""),
+                "email": getattr(profile, "email", ""),
+                "display_name": getattr(profile, "display_name", None),
+                "provider": getattr(profile, "provider_type", "unknown"),
+                "extras": getattr(profile, "extras", {}) or {},
+            }
+        else:
+            account = getattr(profile, "account", None)
+            if account:
+                return {
+                    "account_id": getattr(account, "uuid", ""),
+                    "email": getattr(account, "email", ""),
+                    "display_name": getattr(account, "full_name", None),
+                    "provider": "unknown",
+                    "extras": getattr(account, "extras", {}) or {},
                 }
             return {}
 

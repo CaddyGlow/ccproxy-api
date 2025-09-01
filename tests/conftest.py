@@ -31,7 +31,6 @@ from ccproxy.core.request_context import RequestContext
 if TYPE_CHECKING:
     from tests.factories import FastAPIAppFactory, FastAPIClientFactory
 from ccproxy.auth.manager import AuthManager
-from ccproxy.config.observability import ObservabilitySettings
 from ccproxy.config.security import SecuritySettings
 from ccproxy.config.server import ServerSettings
 from ccproxy.config.settings import Settings
@@ -166,13 +165,6 @@ def test_settings(isolated_environment: Path) -> Settings:
     return Settings(
         server=ServerSettings(log_level="WARNING"),
         security=SecuritySettings(auth_token=None),  # No auth by default
-        observability=ObservabilitySettings(
-            # Enable all observability endpoints for testing
-            metrics_endpoint_enabled=True,
-            logs_endpoints_enabled=True,
-            logs_collection_enabled=True,
-            dashboard_enabled=True,
-        ),
         plugins={
             "duckdb_storage": {
                 "enabled": True,
@@ -198,13 +190,6 @@ def auth_settings(isolated_environment: Path) -> Settings:
         security=SecuritySettings(
             auth_token=SecretStr("test-auth-token-12345")
         ),  # Auth enabled
-        observability=ObservabilitySettings(
-            # Enable all observability endpoints for testing
-            metrics_endpoint_enabled=True,
-            logs_endpoints_enabled=True,
-            logs_collection_enabled=True,
-            dashboard_enabled=True,
-        ),
         plugins={
             "duckdb_storage": {
                 "enabled": True,
@@ -487,13 +472,6 @@ def app_factory(tmp_path: Path) -> Callable[[dict[str, Any]], FastAPI]:
         settings = Settings(
             server=ServerSettings(log_level="WARNING"),
             security=SecuritySettings(auth_token=None),
-            observability=ObservabilitySettings(
-                # Enable all observability endpoints for testing
-                metrics_endpoint_enabled=True,
-                logs_endpoints_enabled=True,
-                logs_collection_enabled=True,
-                dashboard_enabled=True,
-            ),
             plugins={
                 "duckdb_storage": {
                     "enabled": True,
@@ -984,7 +962,8 @@ def client(app: FastAPI) -> TestClient:
 @pytest.fixture
 def mock_openai_credentials(isolated_environment: Path) -> dict[str, Any]:
     """Mock OpenAI credentials in current nested schema."""
-    from datetime import UTC, datetime, timedelta
+    from datetime import UTC, datetime
+
     now = datetime.now(UTC)
     # Create a faux JWT exp in the near future; we don't need real JWT here
     # since most tests don't decode it, but structure should be valid for model

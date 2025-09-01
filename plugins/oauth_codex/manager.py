@@ -4,10 +4,6 @@ from datetime import datetime
 from typing import Any
 
 from ccproxy.auth.managers.base import BaseTokenManager
-from ccproxy.auth.models.base import (
-    AccountInfo,
-    UserProfile,
-)
 from ccproxy.auth.storage.base import TokenStorage
 from ccproxy.core.logging import get_plugin_logger
 
@@ -122,6 +118,22 @@ class CodexTokenManager(BaseTokenManager[OpenAICredentials]):
         return credentials.expires_at
 
     # ==================== OpenAI-Specific Methods ====================
+
+    async def get_profile_quick(self) -> OpenAIProfileInfo | None:  # type: ignore[override]
+        """Lightweight profile from cached data or JWT claims.
+
+        Avoids any remote calls. Uses cache if populated, otherwise derives
+        directly from stored credentials' JWT claims.
+        """
+        if self._profile_cache:
+            return self._profile_cache
+
+        credentials = await self.load_credentials()
+        if not credentials or self.is_expired(credentials):
+            return None
+
+        self._profile_cache = OpenAIProfileInfo.from_token(credentials)
+        return self._profile_cache
 
     async def get_profile(self) -> OpenAIProfileInfo | None:
         """Get user profile from JWT token.
@@ -238,26 +250,3 @@ class CodexTokenManager(BaseTokenManager[OpenAICredentials]):
 
         # Return the token regardless of expiration status
         return credentials.access_token
-
-    async def get_legacy_profile(self) -> UserProfile | None:
-        """Get user profile in legacy format for backward compatibility.
-
-        This converts OpenAI credentials to a UserProfile for
-        compatibility with the common auth interface.
-        """
-        credentials = await self.load_credentials()
-        if not credentials:
-            return None
-
-        # Create minimal account info with what we have
-        account = AccountInfo(
-            uuid=credentials.account_id,
-            email="",  # OpenAI doesn't expose email in tokens
-            full_name=None,
-            display_name=None,
-        )
-
-        return UserProfile(
-            organization=None,  # OpenAI doesn't provide org info in tokens
-            account=account,
-        )

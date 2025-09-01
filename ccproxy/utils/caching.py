@@ -19,9 +19,10 @@ logger: TraceBoundLogger = get_logger(__name__)
 def _trace(message: str, **kwargs: Any) -> None:
     """Trace-level logger helper with debug fallback."""
     if hasattr(logger, "trace"):
-        getattr(logger, "trace")(message, **kwargs)
+        logger.trace(message, **kwargs)
     else:
         logger.debug(message, **kwargs)
+
 
 F = TypeVar("F", bound=Callable[..., Any])
 

@@ -362,9 +362,9 @@ class PluginRegistry:
             )
         self._services[service_name] = service_instance
         self._service_providers[service_name] = provider_plugin
-        logger.debug(
-            "service_registered", service=service_name, provider=provider_plugin
-        )
+        # logger.debug(
+        #     "service_registered", service=service_name, provider=provider_plugin
+        # )
 
     def get_service(
         self, service_name: str, service_type: type[T] | None = None
@@ -424,13 +424,13 @@ class PluginRegistry:
             raise ValueError(f"Plugin {manifest.name} already registered")
 
         self.factories[manifest.name] = factory
-        logger.debug(
-            "plugin_factory_registered",
-            plugin=manifest.name,
-            version=manifest.version,
-            is_provider=manifest.is_provider,
-            category="plugin",
-        )
+        # logger.debug(
+        #     "plugin_factory_registered",
+        #     plugin=manifest.name,
+        #     version=manifest.version,
+        #     is_provider=manifest.is_provider,
+        #     category="plugin",
+        # )
 
     def get_factory(self, name: str) -> PluginFactory | None:
         """Get a plugin factory by name.

@@ -11,6 +11,7 @@ from urllib.parse import urlencode
 
 import httpx
 
+from ccproxy.auth.oauth.protocol import ProfileLoggingMixin, StandardProfileFields
 from ccproxy.auth.oauth.registry import OAuthProviderInfo
 from ccproxy.core.logging import get_plugin_logger
 from plugins.oauth_claude.client import ClaudeOAuthClient
@@ -22,7 +23,7 @@ from plugins.oauth_claude.storage import ClaudeOAuthStorage
 logger = get_plugin_logger()
 
 
-class ClaudeOAuthProvider:
+class ClaudeOAuthProvider(ProfileLoggingMixin):
     """Claude OAuth provider implementation for registry."""
 
     def __init__(
@@ -47,6 +48,7 @@ class ClaudeOAuthProvider:
         self.hook_manager = hook_manager
         self.detection_service = detection_service
         self.http_client = http_client
+        self._cached_profile = None  # Cache enhanced profile data for UI display
 
         self.client = ClaudeOAuthClient(
             self.config,
@@ -260,39 +262,6 @@ class ClaudeOAuthProvider:
         """
         return self.config
 
-    def get_credential_summary(self, credentials: ClaudeCredentials) -> dict[str, Any]:
-        """Get a summary of credentials for display.
-
-        Args:
-            credentials: Claude credentials
-
-        Returns:
-            Dictionary with display-friendly credential summary
-        """
-        summary = {
-            "provider": self.provider_display_name,
-            "authenticated": bool(credentials and credentials.claude_ai_oauth),
-        }
-
-        if credentials and credentials.claude_ai_oauth:
-            oauth = credentials.claude_ai_oauth
-            summary.update(
-                {
-                    "subscription_type": oauth.subscription_type,
-                    "scopes": oauth.scopes,
-                    "has_refresh_token": bool(oauth.refresh_token),
-                    "expired": oauth.is_expired
-                    if hasattr(oauth, "is_expired")
-                    else False,
-                }
-            )
-
-            # Add expiration info if available
-            if hasattr(oauth, "expires_at_datetime"):
-                summary["expires_at"] = oauth.expires_at_datetime.isoformat()
-
-        return summary
-
     async def save_credentials(
         self, credentials: Any, custom_path: Any | None = None
     ) -> bool:
@@ -360,18 +329,17 @@ class ClaudeOAuthProvider:
 
             credentials = await manager.load_credentials()
 
-            # Dump full profile information to logger
+            # Use standardized profile logging with rich Claude profile data
             if credentials:
                 profile = await manager.get_profile()
                 if profile:
-                    # Dump all profile data
-                    logger.debug(
-                        "claude_profile_full_dump",
-                        profile_data=profile.model_dump()
-                        if hasattr(profile, "model_dump")
-                        else str(profile),
-                        category="auth",
+                    # Cache profile for UI display
+                    self._cached_profile = profile
+                    # Create enhanced standardized profile with rich Claude data
+                    standard_profile = self._create_enhanced_profile(
+                        credentials, profile
                     )
+                    self._log_profile_dump("claude", standard_profile)
 
             return credentials
         except Exception as e:
@@ -382,6 +350,128 @@ class ClaudeOAuthProvider:
                 has_custom_path=bool(custom_path),
             )
             return None
+
+    def _extract_standard_profile(
+        self, credentials: ClaudeCredentials
+    ) -> StandardProfileFields:
+        """Extract standardized profile fields from Claude credentials for UI display.
+
+        Args:
+            credentials: Claude credentials with profile information
+
+        Returns:
+            StandardProfileFields with clean, UI-friendly data
+        """
+        # Use cached enhanced profile data if available
+        if self._cached_profile:
+            return self._create_enhanced_profile(credentials, self._cached_profile)
+
+        # Fallback to basic credential info
+        profile_data = {
+            "account_id": getattr(credentials, "account_id", "unknown"),
+            "provider_type": "claude-api",
+            "active": getattr(credentials, "active", True),
+            "expired": False,  # Claude handles expiration internally
+            "has_refresh_token": bool(getattr(credentials, "refresh_token", None)),
+        }
+
+        # Store raw credential data for debugging
+        raw_data = {}
+        if hasattr(credentials, "model_dump"):
+            raw_data["credentials"] = credentials.model_dump()
+
+        profile_data["_raw_profile_data"] = raw_data
+
+        return StandardProfileFields(**profile_data)
+
+    def _create_enhanced_profile(
+        self, credentials: ClaudeCredentials, profile: Any
+    ) -> StandardProfileFields:
+        """Create enhanced standardized profile with rich Claude profile data.
+
+        Args:
+            credentials: Claude credentials
+            profile: Rich profile data from manager
+
+        Returns:
+            StandardProfileFields with full Claude profile information
+        """
+        # Create basic profile data without recursion
+        basic_profile_data = {
+            "account_id": getattr(credentials, "account_id", "unknown"),
+            "provider_type": "claude-api",
+            "active": getattr(credentials, "active", True),
+            "expired": False,  # Claude handles expiration internally
+            "has_refresh_token": bool(getattr(credentials, "refresh_token", None)),
+            "_raw_profile_data": {},
+        }
+
+        # Extract profile data
+        profile_dict = (
+            profile.model_dump()
+            if hasattr(profile, "model_dump")
+            else {"profile": str(profile)}
+        )
+
+        # Map Claude profile fields to standard fields
+        updates = {}
+
+        if profile_dict.get("account_id"):
+            updates["account_id"] = profile_dict["account_id"]
+
+        if profile_dict.get("email"):
+            updates["email"] = profile_dict["email"]
+
+        if profile_dict.get("display_name"):
+            updates["display_name"] = profile_dict["display_name"]
+
+        # Extract subscription information from extras
+        extras = profile_dict.get("extras", {})
+        if isinstance(extras, dict):
+            account = extras.get("account", {})
+            if isinstance(account, dict):
+                # Map Claude subscription types
+                if account.get("has_claude_max"):
+                    updates.update(
+                        {
+                            "subscription_type": "max",
+                            "subscription_status": "active",
+                        }
+                    )
+                elif account.get("has_claude_pro"):
+                    updates.update(
+                        {
+                            "subscription_type": "pro",
+                            "subscription_status": "active",
+                        }
+                    )
+
+                # Features
+                updates["features"] = {
+                    "claude_max": account.get("has_claude_max", False),
+                    "claude_pro": account.get("has_claude_pro", False),
+                }
+
+            # Organization info
+            org = extras.get("organization", {})
+            if isinstance(org, dict):
+                updates.update(
+                    {
+                        "organization_name": org.get("name"),
+                        "organization_role": "member",  # Claude doesn't provide role details
+                    }
+                )
+
+        # Store full profile data in raw data
+        raw_data = standard_profile._raw_profile_data.copy()
+        raw_data["full_profile"] = profile_dict
+        updates["_raw_profile_data"] = raw_data
+
+        # Create new profile with updates
+        profile_data = standard_profile.model_dump()
+        profile_data.update(updates)
+
+        return StandardProfileFields(**profile_data)
 
     async def cleanup(self) -> None:
         """Cleanup resources."""

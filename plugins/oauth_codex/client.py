@@ -122,7 +122,9 @@ class CodexOAuthClient(BaseOAuthClient[OpenAICredentials]):
             # Try to extract account_id from JWT claims (id_token preferred)
             try:
                 token_to_decode = id_token or access_token
-                decoded = jwt.decode(token_to_decode, options={"verify_signature": False})
+                decoded = jwt.decode(
+                    token_to_decode, options={"verify_signature": False}
+                )
                 account_id = (
                     decoded.get("sub")
                     or decoded.get("account_id")

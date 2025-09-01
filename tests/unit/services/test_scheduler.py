@@ -1,8 +1,9 @@
 """Integration tests for the scheduler system."""
 
 import asyncio
+import contextlib
 from collections.abc import AsyncGenerator, Generator
-from unittest.mock import MagicMock, patch
+from typing import Any
 
 import pytest
 from fastapi import FastAPI
@@ -299,34 +300,30 @@ class TestScheduledTasks:
 
     @pytest.mark.asyncio
     async def test_task_error_handling(self) -> None:
-        """Test task error handling and backoff calculation."""
-        with patch("ccproxy.observability.metrics.get_metrics") as mock_get_metrics:
-            mock_metrics = MagicMock()
-            mock_metrics.is_pushgateway_enabled.return_value = True
-            mock_metrics.push_to_gateway.side_effect = Exception("Test error")
-            mock_get_metrics.return_value = mock_metrics
+        """Test task failure path and backoff calculation without observability."""
 
-            task = MockScheduledTask(
-                name="error_test",
-                interval_seconds=10.0,
-                enabled=True,
-            )
+        class FailingTask(BaseScheduledTask):
+            async def run(self) -> bool:  # type: ignore[override]
+                return False
 
-            await task.setup()
+        task = FailingTask(
+            name="error_test",
+            interval_seconds=10.0,
+            enabled=True,
+        )
 
-            # Test failed run
-            result = await task.run()
-            assert result is False
+        await task.setup()
 
-            # Consecutive failures only track in the run loop, not direct run() calls
-            # So we test the backoff calculation directly
-            task._consecutive_failures = 1  # Simulate failure state
+        # Test failed run
+        result = await task.run()
+        assert result is False
 
-            # Test backoff calculation after failure
-            delay = task.calculate_next_delay()
-            assert delay >= 10.0  # Should use exponential backoff
+        # Simulate failure state and verify backoff
+        task._consecutive_failures = 1
+        delay = task.calculate_next_delay()
+        assert delay >= 10.0  # Should use exponential backoff
 
-            await task.cleanup()
+        await task.cleanup()
 
 
 class TestSchedulerConfiguration:
@@ -453,20 +450,14 @@ class TestSchedulerManagerIntegration:
             False  # Disable version check for this test
         )
 
-        with (
-            patch("ccproxy.observability.metrics.get_metrics"),
-            patch("ccproxy.config.settings.get_settings"),
-            patch("ccproxy.observability.stats_printer.get_stats_collector"),
-            patch("ccproxy.pricing.updater.PricingUpdater"),
-        ):
-            scheduler = await start_scheduler(settings)
-            assert scheduler is not None
-            assert scheduler.is_running
+        scheduler = await start_scheduler(settings)
+        assert scheduler is not None
+        assert scheduler.is_running
 
-            # Scheduler should be running with configured tasks
-            assert scheduler.is_running
+        # Scheduler should be running with configured tasks
+        assert scheduler.is_running
 
-            await stop_scheduler(scheduler)
+        await stop_scheduler(scheduler)
 
 
 class TestSchedulerFastAPIIntegration:
@@ -491,19 +482,7 @@ class TestSchedulerFastAPIIntegration:
         self, app_with_scheduler: FastAPI
     ) -> None:
         """Test that app lifecycle properly manages scheduler."""
-        with (
-            patch("ccproxy.observability.metrics.get_metrics"),
-            patch("ccproxy.config.settings.get_settings") as mock_get_settings,
-            patch("ccproxy.observability.stats_printer.get_stats_collector"),
-            patch("ccproxy.pricing.updater.PricingUpdater"),
-            TestClient(app_with_scheduler) as client,
-        ):
-            # Mock settings to return our test configuration
-            settings = Settings()
-            settings.scheduler.enabled = True
-            settings.scheduler.pricing_update_enabled = True
-            mock_get_settings.return_value = settings
-
+        with TestClient(app_with_scheduler) as client:
             # App should start successfully with scheduler
             response = client.get("/health")
             assert response.status_code == 200
@@ -514,7 +493,6 @@ class TestSchedulerFastAPIIntegration:
 
     def test_scheduler_disabled_app_still_works(self) -> None:
         """Test that app works when scheduler is disabled."""
-        from unittest.mock import patch
 
         from ccproxy.api.app import create_app
 
@@ -522,22 +500,11 @@ class TestSchedulerFastAPIIntegration:
         settings.scheduler.enabled = False
 
         # Mock any potential blocking operations during app creation
-        with (
-            patch("ccproxy.observability.metrics.get_metrics") as mock_metrics,
-            patch("ccproxy.config.settings.get_settings") as mock_get_settings,
-            patch(
-                "ccproxy.observability.stats_printer.get_stats_collector"
-            ) as mock_stats,
-            patch("ccproxy.pricing.updater.PricingUpdater") as mock_pricing,
-        ):
-            # Mock settings to return our test configuration
-            mock_get_settings.return_value = settings
+        app = create_app(settings)
 
-            app = create_app(settings)
-
-            with TestClient(app) as client:
-                response = client.get("/health")
-                assert response.status_code == 200
+        with TestClient(app) as client:
+            response = client.get("/health")
+            assert response.status_code == 200
 
 
 class TestSchedulerErrorScenarios:
@@ -581,29 +548,38 @@ class TestSchedulerErrorScenarios:
         scheduler = Scheduler(max_concurrent_tasks=2)
         await scheduler.start()
 
-        with patch("ccproxy.observability.metrics.get_metrics") as mock_get_metrics:
-            # Mock metrics to fail initially, then succeed
-            mock_metrics = MagicMock()
-            mock_metrics.is_pushgateway_enabled.return_value = True
-            mock_metrics.push_to_gateway.side_effect = [
-                Exception("Network error"),  # First call fails
-                True,  # Second call succeeds
-            ]
-            mock_get_metrics.return_value = mock_metrics
+        # Define a flaky task that fails once then succeeds
+        class FlakyTask(BaseScheduledTask):
+            def __init__(self, **kwargs: Any) -> None:  # type: ignore[override]
+                super().__init__(**kwargs)
+                self._attempt = 0
 
+            async def run(self) -> bool:  # type: ignore[override]
+                self._attempt += 1
+                return self._attempt > 1
+
+        # Register flaky task type temporarily
+        from ccproxy.scheduler.registry import get_task_registry
+
+        registry = get_task_registry()
+        registry.register("flaky", FlakyTask)
+
+        try:
             await scheduler.add_task(
                 task_name="failure_test",
-                task_type="pushgateway",
+                task_type="flaky",
                 interval_seconds=0.1,
                 enabled=True,
             )
 
-            # Let task run and fail once
-            await asyncio.sleep(0.2)
+            # Let task run and recover
+            await asyncio.sleep(0.3)
 
             task = scheduler.get_task("failure_test")
             assert task is not None
-            # Task should have recorded the failure but still be running
+            assert task.is_running
+        finally:
+            registry.unregister("flaky")
 
         await scheduler.stop()
 
@@ -618,7 +594,7 @@ class TestSchedulerErrorScenarios:
         # Add first task
         await scheduler.add_task(
             task_name="task1",
-            task_type="stats_printing",
+            task_type="pushgateway",
             interval_seconds=60.0,
             enabled=True,
         )
@@ -626,7 +602,7 @@ class TestSchedulerErrorScenarios:
         # Add second task (should still work, limit is for execution not registration)
         await scheduler.add_task(
             task_name="task2",
-            task_type="stats_printing",
+            task_type="pushgateway",
             interval_seconds=60.0,
             enabled=True,
         )
@@ -646,10 +622,20 @@ class TestSchedulerErrorScenarios:
         )
         await scheduler.start()
 
-        with patch("ccproxy.observability.metrics.get_metrics"):
+        # Define a slow task to exercise shutdown timeout
+        class SlowTask(BaseScheduledTask):
+            async def run(self) -> bool:  # type: ignore[override]
+                await asyncio.sleep(0.2)
+                return True
+
+        from ccproxy.scheduler.registry import get_task_registry
+
+        registry = get_task_registry()
+        registry.register("slow", SlowTask)
+        try:
             await scheduler.add_task(
                 task_name="long_running_task",
-                task_type="pushgateway",
+                task_type="slow",
                 interval_seconds=0.05,  # Very frequent execution
                 enabled=True,
             )
@@ -664,6 +650,10 @@ class TestSchedulerErrorScenarios:
 
             # Should shutdown within timeout + small buffer
             assert (end_time - start_time) < 0.5
+        finally:
+            # Ensure registry cleanup in case of early exit
+            with contextlib.suppress(Exception):
+                registry.unregister("slow")
 
 
 if __name__ == "__main__":

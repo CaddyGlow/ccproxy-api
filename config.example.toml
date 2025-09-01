@@ -36,7 +36,6 @@ default_retry_delay = 60.0
 
 # Plugin system settings
 enable_plugins = true
-plugin_dir = "plugins"
 
 # Plugin configurations
 """
@@ -82,13 +81,8 @@ enabled = true
 enabled = true
 mount_static = true
 
-# Observability settings
-[observability]
-metrics_enabled = true
-metrics_endpoint_enabled = true
-logs_endpoints_enabled = false
-dashboard_enabled = false
-# Metrics push is provided by the metrics plugin when enabled (see plugin docs)
+## Observability
+# Provided by plugins (metrics, analytics, dashboard). Configure them under [plugins.*]
 
 # Docker settings (for running Claude in containers)
 [docker]

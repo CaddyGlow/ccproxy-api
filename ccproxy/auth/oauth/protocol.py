@@ -4,9 +4,164 @@ This module defines the protocols and interfaces that plugins must implement
 to provide OAuth authentication capabilities.
 """
 
+from abc import abstractmethod
+from datetime import datetime
 from typing import Any, Protocol
 
 from pydantic import BaseModel
+
+from ccproxy.core.logging import get_logger
+
+
+logger = get_logger(__name__)
+
+
+class StandardProfileFields(BaseModel):
+    """Standardized profile fields for consistent UI display across OAuth providers."""
+
+    # Core Identity
+    account_id: str
+    provider_type: str  # 'claude', 'codex', etc.
+    email: str | None = None
+    display_name: str | None = None
+
+    # Account Status
+    authenticated: bool = True
+    active: bool = True
+    expired: bool = False
+
+    # Subscription/Plan Information
+    subscription_type: str | None = None  # 'plus', 'pro', 'max', 'free'
+    subscription_status: str | None = None  # 'active', 'expired', 'cancelled'
+    subscription_expires_at: datetime | None = None
+
+    # Token Information
+    has_refresh_token: bool = False
+    has_id_token: bool = False
+    token_expires_at: datetime | None = None
+
+    # Organization/Team
+    organization_name: str | None = None
+    organization_role: str | None = None  # 'owner', 'admin', 'member'
+
+    # Verification Status
+    email_verified: bool | None = None
+
+    # Additional Features (provider-specific)
+    features: dict[
+        str, Any
+    ] = {}  # For provider-specific features like 'has_claude_max'
+
+    # Raw data (for debugging, not UI display)
+    _raw_profile_data: dict[str, Any] = {}
+
+    class Config:
+        """Pydantic configuration."""
+
+        # Exclude raw data from normal serialization
+        fields = {"_raw_profile_data": {"exclude": True}}
+
+
+class ProfileLoggingMixin:
+    """Mixin to provide standardized profile dump logging for OAuth providers."""
+
+    def _log_profile_dump(
+        self, provider_name: str, profile: StandardProfileFields, category: str = "auth"
+    ) -> None:
+        """Log standardized profile data in UI-friendly format.
+
+        Args:
+            provider_name: Name of the OAuth provider (e.g., 'claude', 'codex')
+            profile: Standardized profile fields for UI display
+            category: Log category (defaults to 'auth')
+        """
+        # Log clean UI-friendly profile data
+        profile_data = profile.model_dump(exclude={"_raw_profile_data"})
+        logger.debug(
+            f"{provider_name}_profile_full_dump",
+            profile_data=profile_data,
+            category=category,
+        )
+
+        # Optionally log raw data separately for debugging (only if needed)
+        if profile._raw_profile_data:
+            logger.debug(
+                f"{provider_name}_profile_raw_data",
+                raw_data=profile._raw_profile_data,
+                category="auth_debug",
+            )
+
+    @abstractmethod
+    def _extract_standard_profile(self, credentials: Any) -> StandardProfileFields:
+        """Extract standardized profile fields from provider-specific credentials.
+
+        This method should be implemented by each OAuth provider to map their
+        credential format to the standardized profile fields for UI display.
+
+        Args:
+            credentials: Provider-specific credentials object
+
+        Returns:
+            StandardProfileFields with clean, UI-friendly data
+        """
+        pass
+
+    async def get_standard_profile(
+        self, credentials: Any | None = None
+    ) -> StandardProfileFields | None:
+        """Return standardized profile fields for UI display.
+
+        If credentials are not provided, attempts to load them via a
+        provider's `load_credentials()` method when available. This method
+        intentionally avoids network calls and relies on locally available
+        information or cached profile data inside provider implementations.
+
+        Args:
+            credentials: Optional provider-specific credentials
+
+        Returns:
+            StandardProfileFields or None if unavailable
+        """
+        try:
+            creds = credentials
+            if creds is None and hasattr(self, "load_credentials"):
+                # Best-effort local load (provider-specific, may use storage)
+                load_fn = self.load_credentials
+                if callable(load_fn):
+                    creds = await load_fn()  # type: ignore[misc]
+
+            if not creds:
+                return None
+
+            return self._extract_standard_profile(creds)
+        except Exception as e:
+            logger.debug(
+                "standard_profile_generation_failed",
+                provider=getattr(self, "provider_name", type(self).__name__),
+                error=str(e),
+            )
+            return None
+
+    def _log_credentials_loaded(
+        self, provider_name: str, credentials: Any, category: str = "auth"
+    ) -> None:
+        """Log credentials loaded with standardized profile data.
+
+        Args:
+            provider_name: Name of the OAuth provider
+            credentials: Loaded credentials object
+            category: Log category
+        """
+        if credentials:
+            try:
+                profile = self._extract_standard_profile(credentials)
+                self._log_profile_dump(provider_name, profile, category)
+            except Exception as e:
+                logger.debug(
+                    f"{provider_name}_profile_extraction_failed",
+                    error=str(e),
+                    category=category,
+                )
 
 
 class OAuthConfig(BaseModel):

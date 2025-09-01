@@ -11,11 +11,7 @@ class DuckDBStorageConfig(BaseModel):
 
     enabled: bool = Field(
         default=True,
-        description="Enable DuckDB storage plugin (mirrors observability needs)",
-    )
-    use_observability_settings: bool = Field(
-        default=True,
-        description="Use Settings.observability.* to control enablement and path",
+        description="Enable DuckDB storage plugin",
     )
     database_path: str | None = Field(
         default=None, description="Optional override for DuckDB database path"

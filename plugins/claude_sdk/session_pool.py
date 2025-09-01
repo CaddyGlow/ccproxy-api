@@ -30,9 +30,10 @@ def _trace(message: str, **kwargs: Any) -> None:
     fall back to debug to avoid AttributeError on logger.trace.
     """
     if hasattr(logger, "trace"):
-        getattr(logger, "trace")(message, **kwargs)
+        logger.trace(message, **kwargs)
     else:
         logger.debug(message, **kwargs)
+
 
 class SessionPool:
     """Manages persistent Claude SDK connections by session."""

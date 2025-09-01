@@ -582,7 +582,9 @@ def api(
             docker_mode=docker,
             docker_image=settings.docker.docker_image if docker else None,
             auth_enabled=bool(settings.security.auth_token),
-            duckdb_enabled=settings.observability.duckdb_enabled,
+            duckdb_enabled=bool(
+                (settings.plugins.get("duckdb_storage") or {}).get("enabled", False)
+            ),
         )
 
         if docker:

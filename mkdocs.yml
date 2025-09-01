@@ -63,7 +63,6 @@ nav:
     - API Usage: user-guide/api-usage.md
     - MCP Integration: user-guide/mcp-integration.md
     - Authentication: user-guide/authentication.md
-    - Observability: observability.md
   - Development:
     - Debugging Guide: development/debugging-with-proxy.md
   - Deployment:

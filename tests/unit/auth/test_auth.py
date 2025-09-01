@@ -774,4 +774,5 @@ class TestAsyncAuthenticationPatterns:
 @pytest.mark.auth
 class TestOpenAIAuthentication:
     """Deprecated legacy OpenAI tests removed (schema updated)."""
+
     pass

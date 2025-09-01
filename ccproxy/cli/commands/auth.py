@@ -85,6 +85,77 @@ def _expected_plugin_class_name(provider: str) -> str:
     return f"Oauth{camel}Plugin"
 
 
+def _render_profile_table(profile: dict[str, Any], title: str = "Account Information") -> None:
+    """Render a clean, two-column table of profile data using Rich.
+
+    Only non-empty fields are displayed. Datetimes are stringified.
+    """
+    table = Table(show_header=False, box=box.SIMPLE, title=title)
+    table.add_column("Field", style="bold")
+    table.add_column("Value")
+
+    def _val(v: Any) -> str:
+        if v is None:
+            return ""
+        if hasattr(v, "isoformat"):
+            try:
+                return str(v)
+            except Exception:
+                return str(v)
+        if isinstance(v, bool):
+            return "Yes" if v else "No"
+        if isinstance(v, list):
+            return ", ".join(str(x) for x in v)
+        s = str(v)
+        return s
+
+    def _row(label: str, key: str) -> None:
+        if key in profile and profile[key] not in (None, "", []):
+            table.add_row(label, _val(profile[key]))
+
+    # Identity
+    _row("Provider", "provider_type")
+    _row("Account ID", "account_id")
+    _row("Email", "email")
+    _row("Display Name", "display_name")
+
+    # Subscription
+    _row("Subscription", "subscription_type")
+    _row("Subscription Status", "subscription_status")
+    _row("Subscription Expires", "subscription_expires_at")
+
+    # Organization
+    _row("Organization", "organization_name")
+    _row("Organization Role", "organization_role")
+
+    # Tokens
+    _row("Has Refresh Token", "has_refresh_token")
+    _row("Has ID Token", "has_id_token")
+    _row("Token Expires", "token_expires_at")
+
+    # Verification
+    _row("Email Verified", "email_verified")
+
+    if len(table.rows) > 0:
+        console.print(table)
+
+
+def _render_profile_features(profile: dict[str, Any]) -> None:
+    """Render provider-specific features if present."""
+    features = profile.get("features")
+    if isinstance(features, dict) and features:
+        table = Table(show_header=False, box=box.SIMPLE, title="Features")
+        table.add_column("Feature", style="bold")
+        table.add_column("Value")
+        for k, v in features.items():
+            name = k.replace("_", " ").title()
+            val = "Yes" if isinstance(v, bool) and v else ("No" if isinstance(v, bool) else str(v))
+            if val and val != "No":  # show enabled/meaningful features only
+                table.add_row(name, val)
+        if len(table.rows) > 0:
+            console.print(table)
+
+
 def _provider_plugin_name(provider: str) -> str | None:
     """Map CLI provider name to plugin manifest name.
 
@@ -550,42 +621,170 @@ def status_command(
         credentials = None
 
         if oauth_provider:
-            # Try to load credentials using the provider's storage
+            # Prefer lightweight, unified profile via token managers
             try:
-                credentials = asyncio.run(oauth_provider.load_credentials())
+                storage = None
+                if hasattr(oauth_provider, "get_storage"):
+                    with contextlib.suppress(Exception):
+                        storage = oauth_provider.get_storage()
 
+                manager = None
+                if provider in ("claude-api", "claude_api"):
+                    try:
+                        from plugins.oauth_claude.manager import ClaudeApiTokenManager
+
+                        if storage is not None:
+                            manager = asyncio.run(
+                                ClaudeApiTokenManager.create(storage=storage)
+                            )
+                        else:
+                            manager = asyncio.run(ClaudeApiTokenManager.create())
+                    except Exception as e:
+                        logger.debug("claude_manager_init_failed", error=str(e))
+                elif provider == "codex":
+                    try:
+                        from plugins.oauth_codex.manager import CodexTokenManager
+
+                        if storage is not None:
+                            manager = asyncio.run(
+                                CodexTokenManager.create(storage=storage)
+                            )
+                        else:
+                            manager = asyncio.run(CodexTokenManager.create())
+                    except Exception as e:
+                        logger.debug("codex_manager_init_failed", error=str(e))
+
+                # Load credentials via manager if available, else via provider
+                if manager is not None:
+                    credentials = asyncio.run(manager.load_credentials())
+                else:
+                    # Fallback to provider loader (may be heavier)
+                    credentials = asyncio.run(oauth_provider.load_credentials())
+
+                # Build profile info minimizing file checks
                 if credentials:
-                    # Get credential summary from the provider
-                    if hasattr(oauth_provider, "get_credential_summary"):
-                        summary = oauth_provider.get_credential_summary(credentials)
-
-                        # Build profile info from summary
-                        profile_info = {}
-
-                        # Map common fields
-                        if "email" in summary:
-                            profile_info["email"] = summary["email"]
-                        if "account_id" in summary:
-                            profile_info["account_id"] = summary["account_id"]
-                        if "subscription_type" in summary:
-                            profile_info["subscription_type"] = summary[
-                                "subscription_type"
-                            ]
-                        if "expires_at" in summary:
-                            profile_info["expires_at"] = summary["expires_at"]
-                        if "scopes" in summary:
-                            profile_info["scopes"] = summary["scopes"]
-
-                        # Add any other fields from summary
-                        for key, value in summary.items():
-                            if key not in profile_info:
-                                profile_info[key] = value
+                    if provider == "codex":
+                        # Codex/OpenAI: derive standardized profile directly from JWT claims
+                        standard_profile = None
+                        if hasattr(oauth_provider, "get_standard_profile"):
+                            with contextlib.suppress(Exception):
+                                standard_profile = asyncio.run(
+                                    oauth_provider.get_standard_profile(credentials)
+                                )
+                        if not standard_profile and hasattr(
+                            oauth_provider, "_extract_standard_profile"
+                        ):
+                            with contextlib.suppress(Exception):
+                                standard_profile = oauth_provider._extract_standard_profile(
+                                    credentials
+                                )
+                        if standard_profile is not None:
+                            try:
+                                profile_info = standard_profile.model_dump(
+                                    exclude={"_raw_profile_data"}
+                                )
+                            except Exception:
+                                profile_info = {"provider": provider, "authenticated": True}
+                        else:
+                            profile_info = {"provider": provider, "authenticated": True}
                     else:
-                        # Fallback to basic info if no summary method
-                        profile_info = {
-                            "provider": provider,
-                            "authenticated": True,
-                        }
+                        # Claude: use quick cache (no extra disk), then enrich from extras
+                        quick = None
+                        if manager is not None and hasattr(
+                            manager, "get_unified_profile_quick"
+                        ):
+                            with contextlib.suppress(Exception):
+                                quick = asyncio.run(manager.get_unified_profile_quick())
+                        if (not quick or quick == {}) and detailed and manager is not None:
+                            with contextlib.suppress(Exception):
+                                quick = asyncio.run(manager.get_unified_profile())
+                        if quick and isinstance(quick, dict) and quick != {}:
+                            profile_info = quick
+                            try:
+                                prov = (profile_info.get("provider_type") or profile_info.get("provider") or "").lower()
+                                extras = profile_info.get("extras") if isinstance(profile_info.get("extras"), dict) else None
+                                if prov in {"claude-api", "claude_api", "claude"} and extras:
+                                    account = extras.get("account", {}) if isinstance(extras.get("account"), dict) else {}
+                                    org = extras.get("organization", {}) if isinstance(extras.get("organization"), dict) else {}
+                                    if account.get("has_claude_max") is True:
+                                        profile_info["subscription_type"] = "max"
+                                        profile_info["subscription_status"] = "active"
+                                    elif account.get("has_claude_pro") is True:
+                                        profile_info["subscription_type"] = "pro"
+                                        profile_info["subscription_status"] = "active"
+                                    features = {}
+                                    if isinstance(account.get("has_claude_max"), bool):
+                                        features["claude_max"] = account.get("has_claude_max")
+                                    if isinstance(account.get("has_claude_pro"), bool):
+                                        features["claude_pro"] = account.get("has_claude_pro")
+                                    if features:
+                                        profile_info["features"] = {**features, **(profile_info.get("features") or {})}
+                                    if org.get("name") and not profile_info.get("organization_name"):
+                                        profile_info["organization_name"] = org.get("name")
+                                    if not profile_info.get("organization_role"):
+                                        profile_info["organization_role"] = "member"
+                            except Exception:
+                                pass
+                        else:
+                            # Fallback to provider standardized profile
+                            standard_profile = None
+                            if hasattr(oauth_provider, "get_standard_profile"):
+                                with contextlib.suppress(Exception):
+                                    standard_profile = asyncio.run(
+                                        oauth_provider.get_standard_profile(credentials)
+                                    )
+                            if standard_profile is not None:
+                                try:
+                                    profile_info = standard_profile.model_dump(
+                                        exclude={"_raw_profile_data"}
+                                    )
+                                except Exception:
+                                    profile_info = {"provider": provider, "authenticated": True}
+                            else:
+                                profile_info = {"provider": provider, "authenticated": True}
+
+                    # Ensure provider present for display consistency
+                    if profile_info is not None and "provider" not in profile_info:
+                        profile_info["provider"] = provider
+
+                    # Debug logging when important fields are missing (helps diagnose Codex issues)
+                    try:
+                        prov_dbg = (profile_info.get("provider_type") or profile_info.get("provider") or "").lower()
+                        missing = []
+                        for f in ("subscription_type", "organization_name", "display_name"):
+                            if not profile_info.get(f):
+                                missing.append(f)
+                        if missing:
+                            reasons: list[str] = []
+                            # Inspect quick extras for clues
+                            qextra = quick.get("extras") if isinstance(quick, dict) else None
+                            if prov_dbg in {"codex", "openai"}:
+                                # OpenAI claims location
+                                auth_claims = None
+                                if isinstance(qextra, dict):
+                                    auth_claims = qextra.get("https://api.openai.com/auth")
+                                if not auth_claims:
+                                    reasons.append("missing_openai_auth_claims")
+                                else:
+                                    if "chatgpt_plan_type" not in auth_claims:
+                                        reasons.append("plan_type_not_in_claims")
+                                    orgs = auth_claims.get("organizations") if isinstance(auth_claims, dict) else None
+                                    if not orgs:
+                                        reasons.append("no_organizations_in_claims")
+                                if hasattr(credentials, "id_token") and not getattr(credentials, "id_token"):
+                                    reasons.append("no_id_token_available")
+                            elif prov_dbg in {"claude", "claude-api", "claude_api"}:
+                                if not (isinstance(qextra, dict) and qextra.get("account")):
+                                    reasons.append("missing_claude_account_extras")
+                            if reasons:
+                                logger.debug(
+                                    "profile_fields_missing",
+                                    provider=prov_dbg,
+                                    missing_fields=missing,
+                                    reasons=reasons,
+                                )
+                    except Exception:
+                        pass
 
             except Exception as e:
                 logger.debug(f"{provider}_status_error", error=str(e), exc_info=e)
@@ -593,79 +792,16 @@ def status_command(
         if profile_info:
             console.print("[green]✓[/green] Authenticated with valid credentials")
 
-            # Display profile information generically
-            console.print("\n[bold]Account Information[/bold]")
+            # Normalize fields for rendering
+            if "provider_type" not in profile_info and "provider" in profile_info:
+                try:
+                    profile_info["provider_type"] = str(profile_info["provider"]).replace("_", "-")
+                except Exception:
+                    profile_info["provider_type"] = str(profile_info["provider"]) if profile_info.get("provider") else None
 
-            # Define field display names
-            field_display_names = {
-                "email": "Email",
-                "organization_name": "Organization",
-                "organization_type": "Organization Type",
-                "subscription_type": "Subscription",
-                "plan_type": "Plan",
-                "user_id": "User ID",
-                "account_id": "Account ID",
-                "full_name": "Full Name",
-                "display_name": "Display Name",
-                "has_claude_pro": "Claude Pro",
-                "has_claude_max": "Claude Max",
-                "rate_limit_tier": "Rate Limit Tier",
-                "billing_type": "Billing Type",
-                "expires_at": "Expires At",
-                "scopes": "Scopes",
-                "email_verified": "Email Verified",
-                "subscription_start": "Subscription Start",
-                "subscription_until": "Subscription Until",
-                "organization_role": "Organization Role",
-                "organization_id": "Organization ID",
-            }
-
-            # Display fields in a sensible order
-            priority_fields = [
-                "email",
-                "organization_name",
-                "subscription_type",
-                "plan_type",
-                "expires_at",
-            ]
-
-            # Show priority fields first
-            for field in priority_fields:
-                if field in profile_info:
-                    display_name = field_display_names.get(
-                        field, field.replace("_", " ").title()
-                    )
-                    value = profile_info[field]
-
-                    # Format special values
-                    if field == "scopes" and isinstance(value, list):
-                        value = ", ".join(value)
-                    elif field == "user_id" and len(str(value)) > 20:
-                        value = f"{str(value)[:12]}..."
-                    elif isinstance(value, bool):
-                        value = "Yes" if value else "No"
-
-                    console.print(f"  {display_name}: {value}")
-
-            # Show remaining fields
-            for field, value in profile_info.items():
-                if field not in priority_fields and field not in [
-                    "provider",
-                    "authenticated",
-                ]:
-                    display_name = field_display_names.get(
-                        field, field.replace("_", " ").title()
-                    )
-
-                    # Format special values
-                    if field == "scopes" and isinstance(value, list):
-                        value = ", ".join(value)
-                    elif field == "user_id" and len(str(value)) > 20:
-                        value = f"{str(value)[:12]}..."
-                    elif isinstance(value, bool):
-                        value = "Yes" if value else "No"
-
-                    console.print(f"  {display_name}: {value}")
+            # Render a clean standardized view instead of dumping a dict
+            _render_profile_table(profile_info, title="Account Information")
+            _render_profile_features(profile_info)
 
             # For detailed mode, try to show token preview if available
             if detailed and credentials:
