@@ -31,6 +31,7 @@ class OpenAICredentials(BaseModel):
     tokens: OpenAITokens = Field(..., description="OAuth token information")
     last_refresh: str = Field(..., description="Last refresh timestamp as ISO string")
     active: bool = Field(default=True, description="Whether credentials are active")
+    # No legacy compatibility shims; callers must provide nested `tokens` structure
 
     @property
     def access_token(self) -> str:

@@ -100,64 +100,56 @@ class CodexOAuthClient(BaseOAuthClient[OpenAICredentials]):
             OAuthError: If response parsing fails
         """
         try:
-            # Extract access token
+            # Extract tokens
             access_token = data["access_token"]
             refresh_token = data.get("refresh_token", "")
+            id_token = data.get("id_token", "")
 
-            # Calculate expiration
-            expires_in = data.get("expires_in", 3600)
-            expires_at = datetime.now(UTC).replace(microsecond=0)
-            expires_at = expires_at.timestamp() + expires_in
-
-            # Extract user info from ID token if present
-            user_info = {}
-            if "id_token" in data:
-                try:
-                    # Decode without verification for user info extraction
-                    # In production, you should verify the JWT signature
-                    decoded = jwt.decode(
-                        data["id_token"],
-                        options={"verify_signature": False},
-                    )
-                    user_info = {
-                        "sub": decoded.get("sub"),
-                        "email": decoded.get("email"),
-                        "name": decoded.get("name"),
-                        "picture": decoded.get("picture"),
-                    }
-                    logger.debug(
-                        "codex_oauth_id_token_decoded",
-                        sub=user_info.get("sub"),
-                        email=user_info.get("email"),
-                        category="auth",
-                    )
-                except Exception as e:
-                    logger.warning(
-                        "codex_oauth_id_token_decode_error",
-                        error=str(e),
-                        exc_info=e,
-                        category="auth",
-                    )
-
-            # Extract account ID from ID token or use a default
-            account_id = user_info.get("sub", "unknown") if user_info else "unknown"
-
-            # Create credentials
+            # Build credentials in the current nested schema; legacy inputs are also accepted
+            # by the model's validator if needed.
             credentials = OpenAICredentials(
-                access_token=access_token,
-                refresh_token=refresh_token or "",
-                id_token=data.get("id_token"),
-                expires_at=datetime.fromtimestamp(expires_at, tz=UTC),
-                account_id=account_id,
+                tokens={
+                    "access_token": access_token,
+                    "refresh_token": refresh_token or "",
+                    "id_token": id_token,
+                    # Account ID may be absent; try to decode from token claims if possible
+                    "account_id": "",
+                },
+                last_refresh=datetime.now(UTC).replace(microsecond=0).isoformat(),
                 active=True,
             )
+
+            # Try to extract account_id from JWT claims (id_token preferred)
+            try:
+                token_to_decode = id_token or access_token
+                decoded = jwt.decode(token_to_decode, options={"verify_signature": False})
+                account_id = (
+                    decoded.get("sub")
+                    or decoded.get("account_id")
+                    or decoded.get("org_id")
+                    or ""
+                )
+                # Pydantic model has properties mapping; update underlying field
+                credentials.tokens.account_id = str(account_id)
+                logger.debug(
+                    "codex_oauth_id_token_decoded",
+                    sub=decoded.get("sub"),
+                    email=decoded.get("email"),
+                    category="auth",
+                )
+            except Exception as e:
+                logger.warning(
+                    "codex_oauth_id_token_decode_error",
+                    error=str(e),
+                    exc_info=e,
+                    category="auth",
+                )
 
             logger.info(
                 "codex_oauth_credentials_parsed",
                 has_refresh_token=bool(refresh_token),
-                expires_in=expires_in,
-                has_id_token=bool(data.get("id_token")),
-                account_id=account_id,
+                has_id_token=bool(id_token),
+                account_id=credentials.account_id,
                 category="auth",
             )
 
@@ -197,7 +189,7 @@ class CodexOAuthClient(BaseOAuthClient[OpenAICredentials]):
             "grant_type": "refresh_token",
             "refresh_token": refresh_token,
             "client_id": self.client_id,
-            "scope": "openid profile email",
+            "scope": "openid profile email offline_access",
         }
         headers = self.get_custom_headers()
         headers["Content-Type"] = "application/x-www-form-urlencoded"

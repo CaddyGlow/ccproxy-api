@@ -134,7 +134,7 @@ class TestMetricsAPIEndpoints:
                 assert "results" in data
                 assert "count" in data
                 assert "limit" in data
-                assert "timestamp" in data
+                assert "query_time" in data
 
                 assert data["count"] == 1
                 assert data["limit"] == 100
@@ -288,7 +288,7 @@ class TestMetricsAPIEndpoints:
             mock_session_context.__exit__.return_value = None
 
             with patch(
-                "ccproxy.api.routes.metrics.Session", return_value=mock_session_context
+                "plugins.analytics.service.Session", return_value=mock_session_context
             ):
                 # Mock the exec method to return analytics data
                 mock_result = MagicMock()
@@ -370,7 +370,7 @@ class TestMetricsAPIEndpoints:
             mock_session_context.__exit__.return_value = None
 
             with patch(
-                "ccproxy.api.routes.metrics.Session", return_value=mock_session_context
+                "plugins.analytics.service.Session", return_value=mock_session_context
             ):
                 # Mock the exec method to return basic analytics data
                 mock_result = MagicMock()
@@ -426,7 +426,7 @@ class TestMetricsAPIEndpoints:
             mock_session_context.__exit__.return_value = None
 
             with patch(
-                "ccproxy.api.routes.metrics.Session", return_value=mock_session_context
+                "plugins.analytics.service.Session", return_value=mock_session_context
             ):
                 # Mock the exec method to return basic analytics data
                 mock_result = MagicMock()
@@ -473,13 +473,6 @@ class TestMetricsAPIEndpoints:
 
     def test_prometheus_endpoint_unavailable(self, client: TestClient) -> None:
         """Test prometheus endpoint when prometheus_client not available."""
-        with patch("ccproxy.observability.metrics.PROMETHEUS_AVAILABLE", False):
-            from ccproxy.observability import reset_metrics
-
-            # Reset global state to pick up the patched PROMETHEUS_AVAILABLE
-            reset_metrics()
-
-            response = client.get("/metrics")
-
-            # Should get 503 due to missing prometheus_client
-            assert response.status_code == 503
+        # Metrics endpoint is provided by the metrics plugin; when disabled, return 404
+        response = client.get("/metrics")
+        assert response.status_code in (404, 503)

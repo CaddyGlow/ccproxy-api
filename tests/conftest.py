@@ -983,18 +983,22 @@ def client(app: FastAPI) -> TestClient:
 
 @pytest.fixture
 def mock_openai_credentials(isolated_environment: Path) -> dict[str, Any]:
-    """Mock OpenAI credentials for testing."""
-    import time
-    from datetime import UTC, datetime
-
-    # Set expiration to 1 hour from now (future)
-    future_timestamp = int(time.time()) + 3600
-
+    """Mock OpenAI credentials in current nested schema."""
+    from datetime import UTC, datetime, timedelta
+    now = datetime.now(UTC)
+    # Create a faux JWT exp in the near future; we don't need real JWT here
+    # since most tests don't decode it, but structure should be valid for model
+    fake_access_token = "header.payload.signature"  # minimal-ish placeholder
     return {
-        "access_token": "test-openai-access-token-12345",
-        "refresh_token": "test-openai-refresh-token-67890",
-        "expires_at": datetime.fromtimestamp(future_timestamp, UTC),
-        "account_id": "test-account-id",
+        "OPENAI_API_KEY": None,
+        "tokens": {
+            "id_token": "id.header.payload",
+            "access_token": fake_access_token,
+            "refresh_token": "test-openai-refresh-token-67890",
+            "account_id": "test-account-id",
+        },
+        "last_refresh": now.isoformat(),
+        "active": True,
     }
 
 

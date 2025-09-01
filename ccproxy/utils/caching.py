@@ -15,6 +15,14 @@ from ccproxy.core.logging import TraceBoundLogger, get_logger
 
 logger: TraceBoundLogger = get_logger(__name__)
 
+
+def _trace(message: str, **kwargs: Any) -> None:
+    """Trace-level logger helper with debug fallback."""
+    if hasattr(logger, "trace"):
+        getattr(logger, "trace")(message, **kwargs)
+    else:
+        logger.debug(message, **kwargs)
+
 F = TypeVar("F", bound=Callable[..., Any])
 
 
@@ -138,7 +146,7 @@ def ttl_cache(maxsize: int = 128, ttl: float = 300.0) -> Callable[[F], F]:
             # Try to get from cache first
             cached_result = cache.get(key)
             if cached_result is not None:
-                logger.trace(
+                _trace(
                     "cache_hit",
                     function=func.__name__,
                     key_hash=hash(key) if isinstance(key, tuple) else key,
@@ -149,7 +157,7 @@ def ttl_cache(maxsize: int = 128, ttl: float = 300.0) -> Callable[[F], F]:
             result = func(*args, **kwargs)
             cache.set(key, result)
 
-            logger.trace(
+            _trace(
                 "cache_miss_and_set",
                 function=func.__name__,
                 key_hash=hash(key) if isinstance(key, tuple) else key,
@@ -188,7 +196,7 @@ def async_ttl_cache(
             # Try to get from cache first
             cached_result = cache.get(key)
             if cached_result is not None:
-                logger.trace(
+                _trace(
                     "async_cache_hit",
                     function=func.__name__,
                     key_hash=hash(key) if isinstance(key, tuple) else key,
@@ -199,7 +207,7 @@ def async_ttl_cache(
             result = await func(*args, **kwargs)
             cache.set(key, result)
 
-            logger.trace(
+            _trace(
                 "async_cache_miss_and_set",
                 function=func.__name__,
                 key_hash=hash(key) if isinstance(key, tuple) else key,
