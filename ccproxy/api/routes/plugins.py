@@ -300,6 +300,7 @@ async def plugins_status(
 
         # Determine plugin type via factory helper
         from ccproxy.plugins.factory import factory_type_name
+
         plugin_type = factory_type_name(factory)
 
         entries.append(
@@ -310,7 +311,8 @@ async def plugins_status(
                 provides=list(manifest.provides),
                 requires=list(manifest.requires),
                 optional_requires=list(manifest.optional_requires),
-                initialized=runtime is not None and getattr(runtime, "initialized", False),
+                initialized=runtime is not None
+                and getattr(runtime, "initialized", False),
             )
         )
 

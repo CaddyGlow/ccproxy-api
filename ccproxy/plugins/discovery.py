@@ -173,7 +173,9 @@ class PluginDiscovery:
 
         return factories
 
-    def load_entry_point_factories(self) -> dict[str, PluginFactory]:
+    def load_entry_point_factories(
+        self, skip_names: set[str] | None = None
+    ) -> dict[str, PluginFactory]:
         """Load plugin factories from installed entry points.
 
         Returns:
@@ -193,15 +195,28 @@ class PluginDiscovery:
             else:  # pragma: no cover
                 eps = list(groups.get("ccproxy.plugins", []))
 
+            skip_logged: set[str] = set()
             for ep in eps:
                 name = ep.name
+                # Skip entry points that collide with existing filesystem plugins
+                if skip_names and name in skip_names:
+                    if name not in skip_logged:
+                        logger.debug(
+                            "entry_point_skipped_preexisting_filesystem",
+                            name=name,
+                            category="plugin",
+                        )
+                        skip_logged.add(name)
+                    continue
                 # Skip duplicates within entry points themselves
                 if name in factories:
-                    logger.info(
-                        "entry_point_duplicate_ignored",
-                        name=name,
-                        category="plugin",
-                    )
+                    if name not in skip_logged:
+                        logger.debug(
+                            "entry_point_duplicate_ignored",
+                            name=name,
+                            category="plugin",
+                        )
+                        skip_logged.add(name)
                     continue
                 try:
                     # Primary load
@@ -219,7 +234,7 @@ class PluginDiscovery:
                             raise e
                         mod = importlib.import_module(module_name)
                         if hasattr(mod, "factory"):
-                            obj = getattr(mod, "factory")
+                            obj = mod.factory
                         else:
                             raise e
                     except Exception as e2:
@@ -265,9 +280,7 @@ class PluginDiscovery:
                     category="plugin",
                 )
         except Exception as e:  # pragma: no cover
-            logger.error(
-                "entry_points_enumeration_failed", error=str(e), exc_info=e
-            )
+            logger.error("entry_points_enumeration_failed", error=str(e), exc_info=e)
         return factories
 
 
@@ -349,11 +362,14 @@ def discover_and_load_plugins(settings: Any) -> dict[str, PluginFactory]:
     # Load factories from local filesystem
     all_factories = discovery.load_all_factories()
 
-    # Load factories from installed entry points and merge
-    ep_factories = discovery.load_entry_point_factories()
+    # Load factories from installed entry points and merge, skipping names already
+    # discovered in the filesystem to avoid duplicate load/logs
+    ep_factories = discovery.load_entry_point_factories(
+        skip_names=set(all_factories.keys())
+    )
     for name, factory in ep_factories.items():
         if name in all_factories:
-            logger.info(
+            logger.debug(
                 "entry_point_factory_ignored",
                 name=name,
                 reason="filesystem_plugin_with_same_name",

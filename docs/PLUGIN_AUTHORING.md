@@ -159,4 +159,3 @@ See also:
 - `docs/PLUGIN_SYSTEM_DOCUMENTATION.md` for more on the plugin runtime model
 - `docs/observability.md` for metrics/logging guidance
 - `GET /api/plugins/status` for runtime inspection
-

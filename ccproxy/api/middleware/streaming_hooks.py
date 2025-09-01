@@ -35,6 +35,7 @@ class StreamingResponseWithHooks(StreamingResponse):
         request_data: dict[str, Any],
         start_time: float,
         status_code: int = 200,
+        request_metadata: dict[str, Any] | None = None,
         **kwargs: Any,
     ) -> None:
         """Initialize streaming response with hook emission.
@@ -46,11 +47,13 @@ class StreamingResponseWithHooks(StreamingResponse):
             request_data: Original request data for context
             start_time: Request start timestamp
             status_code: HTTP status code for the response
+            request_metadata: Metadata from RequestContext (includes tokens, cost, etc.)
             **kwargs: Additional arguments passed to StreamingResponse
         """
         self.hook_manager = hook_manager
         self.request_id = request_id
         self.request_data = request_data
+        self.request_metadata = request_metadata or {}
         self.start_time = start_time
 
         # Wrap the content generator to add hook emission
@@ -122,11 +125,15 @@ class StreamingResponseWithHooks(StreamingResponse):
                     else:
                         event = HookEvent.REQUEST_COMPLETED
 
+                    # Merge request metadata (tokens, cost, etc.) into hook metadata
+                    hook_metadata = {"request_id": self.request_id}
+                    hook_metadata.update(self.request_metadata)
+
                     hook_context = HookContext(
                         event=event,
                         timestamp=datetime.fromtimestamp(end_time),
                         data=completion_data,
-                        metadata={"request_id": self.request_id},
+                        metadata=hook_metadata,
                     )
 
                     await self.hook_manager.emit_with_context(hook_context)

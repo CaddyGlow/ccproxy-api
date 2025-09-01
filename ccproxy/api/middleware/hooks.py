@@ -152,11 +152,17 @@ class HooksMiddleware(BaseHTTPMiddleware):
                     "headers": dict(request.headers),
                 }
 
+                # Include RequestContext metadata if available
+                request_metadata = {}
+                if request_context:
+                    request_metadata = getattr(request_context, "metadata", {})
+
                 wrapped_response = StreamingResponseWithHooks(
                     content=response.body_iterator,
                     hook_manager=hook_manager,
                     request_id=request_id,
                     request_data=request_data,
+                    request_metadata=request_metadata,
                     start_time=start_time,
                     status_code=response.status_code,
                     headers=dict(response.headers),

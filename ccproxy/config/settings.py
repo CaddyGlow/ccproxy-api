@@ -338,8 +338,10 @@ class Settings(BaseSettings):
         # Finally, apply explicit overrides passed in (CLI) with highest precedence
         def _apply_overrides(target: Any, overrides: dict[str, Any]) -> None:
             for k, v in overrides.items():
-                if isinstance(v, dict) and hasattr(target, k) and isinstance(
-                    getattr(target, k), BaseModel | dict
+                if (
+                    isinstance(v, dict)
+                    and hasattr(target, k)
+                    and isinstance(getattr(target, k), BaseModel | dict)
                 ):
                     # Recurse into nested model/dict
                     sub = getattr(target, k)

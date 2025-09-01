@@ -123,14 +123,20 @@ async def _lazy_register_oauth_provider(provider: str) -> Any | None:
         module = importlib.import_module(module_path)
     except Exception as e:
         logger.debug(
-            "oauth_plugin_import_failed", provider=provider, module=module_path, error=str(e), exc_info=e
+            "oauth_plugin_import_failed",
+            provider=provider,
+            module=module_path,
+            error=str(e),
+            exc_info=e,
         )
         return None
 
     factory = getattr(module, "factory", None)
     if not isinstance(factory, AuthProviderPluginFactory):
         logger.debug(
-            "oauth_plugin_factory_missing_or_invalid", provider=provider, module=module_path
+            "oauth_plugin_factory_missing_or_invalid",
+            provider=provider,
+            module=module_path,
         )
         return None
 
@@ -155,7 +161,9 @@ async def _lazy_register_oauth_provider(provider: str) -> Any | None:
             logger.debug("http_tracer_hook_registered", category="auth")
     except Exception as e:
         # Tracing is best-effort; continue without it
-        logger.debug("hook_registration_failed", error=str(e), category="auth", exc_info=e)
+        logger.debug(
+            "hook_registration_failed", error=str(e), category="auth", exc_info=e
+        )
         pass
 
     # Create HTTP client with hook support if enabled
@@ -177,7 +185,9 @@ async def _lazy_register_oauth_provider(provider: str) -> Any | None:
     try:
         oauth_provider = factory.create_auth_provider(context)
     except Exception as e:
-        logger.debug("oauth_provider_create_failed", provider=provider, error=str(e), exc_info=e)
+        logger.debug(
+            "oauth_provider_create_failed", provider=provider, error=str(e), exc_info=e
+        )
         return None
 
     registry = get_oauth_registry()
@@ -211,9 +221,7 @@ def get_oauth_provider_choices() -> list[str]:
 
 async def get_plugin_for_provider(provider: str) -> Any:
     """Deprecated: use OAuth providers directly. Retained for compatibility."""
-    raise ValueError(
-        "Direct plugin access is no longer supported; use OAuth providers"
-    )
+    raise ValueError("Direct plugin access is no longer supported; use OAuth providers")
 
 
 async def get_oauth_client_for_provider(provider: str) -> Any:

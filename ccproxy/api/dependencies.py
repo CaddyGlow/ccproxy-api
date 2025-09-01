@@ -57,11 +57,15 @@ async def get_http_client(request: Request) -> httpx.AsyncClient:
         Shared httpx.AsyncClient managed by ServiceContainer
     """
     logger.debug("getting_http_client_from_container", category="lifecycle")
-    container: ServiceContainer | None = getattr(request.app.state, "service_container", None)
+    container: ServiceContainer | None = getattr(
+        request.app.state, "service_container", None
+    )
     if container is None:
         # Fallback: create and attach a container to avoid runtime failures
         settings = getattr(request.app.state, "settings", None) or get_settings()
-        logger.warning("service_container_missing_on_app_state_created", category="lifecycle")
+        logger.warning(
+            "service_container_missing_on_app_state_created", category="lifecycle"
+        )
         container = ServiceContainer(settings)
         request.app.state.service_container = container
     return container.get_http_client()
