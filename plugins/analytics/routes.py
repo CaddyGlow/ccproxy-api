@@ -152,6 +152,8 @@ async def reset_logs(
         "timestamp": time.time(),
         "backend": "duckdb",
     }
+
+
 async def get_duckdb_storage(request: Request) -> SimpleDuckDBStorage | None:
     """Get DuckDB storage service from app state.
 
@@ -160,6 +162,4 @@ async def get_duckdb_storage(request: Request) -> SimpleDuckDBStorage | None:
     return getattr(request.app.state, "log_storage", None)
 
 
-DuckDBStorageDep = Annotated[
-    SimpleDuckDBStorage | None, Depends(get_duckdb_storage)
-]
+DuckDBStorageDep = Annotated[SimpleDuckDBStorage | None, Depends(get_duckdb_storage)]

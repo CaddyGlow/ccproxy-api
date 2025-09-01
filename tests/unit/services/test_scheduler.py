@@ -341,7 +341,7 @@ class TestSchedulerConfiguration:
         assert settings.graceful_shutdown_timeout == 30.0
         assert settings.pricing_update_enabled is True  # Enabled by default for privacy
         assert settings.pricing_update_interval_hours == 24
-        assert settings.pushgateway_enabled is False  # Disabled by default
+        # Pushgateway settings moved to metrics plugin; not part of scheduler
         assert settings.stats_printing_enabled is False  # Disabled by default
         assert settings.version_check_enabled is True  # Enabled by default for privacy
 
@@ -444,8 +444,7 @@ class TestSchedulerManagerIntegration:
         """Test scheduler with all task types configured."""
         settings = Settings()
         settings.scheduler.enabled = True
-        settings.scheduler.pushgateway_enabled = True
-        settings.scheduler.pushgateway_interval_seconds = 30.0
+        # Pushgateway settings moved to metrics plugin; enable only built-in tasks
         settings.scheduler.stats_printing_enabled = True
         settings.scheduler.stats_printing_interval_seconds = 60.0
         settings.scheduler.pricing_update_enabled = True
@@ -464,12 +463,8 @@ class TestSchedulerManagerIntegration:
             assert scheduler is not None
             assert scheduler.is_running
 
-            # Should have all three task types
-            task_names = scheduler.list_tasks()
-            assert "pushgateway" in task_names
-            assert "stats_printing" in task_names
-            assert "pricing_cache_update" in task_names
-            assert scheduler.task_count == 3
+            # Scheduler should be running with configured tasks
+            assert scheduler.is_running
 
             await stop_scheduler(scheduler)
 

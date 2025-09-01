@@ -40,12 +40,6 @@ class CodexOAuthProvider:
         self.storage = storage or CodexTokenStorage()
         self.hook_manager = hook_manager
 
-        # Build redirect URI from callback port if not set
-        if self.config.redirect_uri is None:
-            self.config.redirect_uri = (
-                f"http://localhost:{self.config.callback_port}/callback"
-            )
-
         self.client = CodexOAuthClient(
             self.config, self.storage, http_client, hook_manager=hook_manager
         )
@@ -89,7 +83,7 @@ class CodexOAuthProvider:
         """
         params = {
             "client_id": self.config.client_id,
-            "redirect_uri": self.config.redirect_uri,
+            "redirect_uri": self.config.get_redirect_uri(),
             "response_type": "code",
             "scope": " ".join(self.config.scopes),
             "state": state,

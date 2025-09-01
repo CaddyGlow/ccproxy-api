@@ -8,12 +8,13 @@ Rules:
 
 Returns non-zero if violations are found.
 """
+
 from __future__ import annotations
 
 import pathlib
 import re
 import sys
-from typing import Iterable
+from collections.abc import Iterable
 
 
 CORE_DIR = pathlib.Path("ccproxy")
@@ -71,4 +72,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
-

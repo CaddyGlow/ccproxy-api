@@ -23,6 +23,17 @@ if TYPE_CHECKING:
 logger = get_plugin_logger()
 
 
+def _trace(message: str, **kwargs: Any) -> None:
+    """Trace-level logger helper with debug fallback.
+
+    Some environments/tests may not configure a TRACE level; in that case
+    fall back to debug to avoid AttributeError on logger.trace.
+    """
+    if hasattr(logger, "trace"):
+        getattr(logger, "trace")(message, **kwargs)
+    else:
+        logger.debug(message, **kwargs)
+
 class SessionPool:
     """Manages persistent Claude SDK connections by session."""
 
@@ -297,7 +308,7 @@ class SessionPool:
         """Handle ongoing stream timeout - interrupt stream but keep session (requires lock)."""
         old_handle_id = session_client.active_stream_handle.handle_id
 
-        logger.trace(
+        _trace(
             "session_pool_interrupting_ongoing_timeout",
             session_id=session_id,
             old_handle_id=old_handle_id,
@@ -311,7 +322,7 @@ class SessionPool:
             # Interrupt the old stream handle
             interrupted = await session_client.active_stream_handle.interrupt()
             if interrupted:
-                logger.trace(
+                _trace(
                     "session_pool_interrupted_ongoing_timeout",
                     session_id=session_id,
                     old_handle_id=old_handle_id,

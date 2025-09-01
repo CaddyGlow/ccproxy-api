@@ -22,7 +22,7 @@ class CodexTokenStorage(BaseJsonStorage[OpenAICredentials]):
         """
         if storage_path is None:
             # Default to standard OpenAI credentials location
-            storage_path = Path.home() / ".ccproxy" / "auth.json"
+            storage_path = Path.home() / ".codex" / "auth.json"
 
         super().__init__(storage_path)
         self.provider_name = "codex"
@@ -63,9 +63,22 @@ class CodexTokenStorage(BaseJsonStorage[OpenAICredentials]):
             Stored credentials or None
         """
         try:
+            # Log the file path being checked for debugging
+            logger.debug(
+                "codex_auth_file_check",
+                storage_path=str(self.file_path),
+                file_exists=await self.exists(),
+                category="auth",
+            )
+
             # Use parent class's read method
             data = await self._read_json()
             if not data:
+                logger.debug(
+                    "codex_auth_file_empty",
+                    storage_path=str(self.file_path),
+                    category="auth",
+                )
                 return None
 
             credentials = OpenAICredentials.model_validate(data)

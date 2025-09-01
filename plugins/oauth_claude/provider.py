@@ -48,12 +48,6 @@ class ClaudeOAuthProvider:
         self.detection_service = detection_service
         self.http_client = http_client
 
-        # Build redirect URI from callback port if not set
-        if self.config.redirect_uri is None:
-            self.config.redirect_uri = (
-                f"http://localhost:{self.config.callback_port}/callback"
-            )
-
         self.client = ClaudeOAuthClient(
             self.config,
             self.storage,
@@ -99,8 +93,8 @@ class ClaudeOAuthProvider:
         Returns:
             Authorization URL to redirect user to
         """
-        # Use the configured redirect_uri (already built in __init__ if it was None)
-        redirect_uri = self.config.redirect_uri
+        # Use effective redirect URI from config
+        redirect_uri = self.config.get_redirect_uri()
 
         params = {
             "code": "true",  # Required by Claude OAuth

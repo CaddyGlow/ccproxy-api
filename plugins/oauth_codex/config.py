@@ -64,6 +64,16 @@ class CodexOAuthConfig(BaseModel):
         ge=1024,
         le=65535,
     )
+
+    def get_redirect_uri(self) -> str:
+        """Return redirect URI, auto-generated from callback_port when unset.
+
+        Uses the standard plugin callback path: `/callback`.
+        """
+        if self.redirect_uri:
+            return self.redirect_uri
+        return f"http://localhost:{self.callback_port}/callback"
+
     use_pkce: bool = Field(
         default=True,
         description="Whether to use PKCE flow (OpenAI requires it)",

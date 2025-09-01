@@ -234,14 +234,19 @@ class TestHookRegistry:
         assert hooks == []
 
     def test_register_logging(self, hook_registry):
-        """Test that hook registration is logged."""
+        """Test that hook registration summary is logged with structured data."""
         with patch.object(hook_registry._logger, "info") as mock_info:
             hook = AsyncTestHook(name="test_hook", events=[HookEvent.REQUEST_STARTED])
             hook_registry.register(hook)
 
-            mock_info.assert_called_once_with(
-                "Registered test_hook for HookEvent.REQUEST_STARTED"
-            )
+            mock_info.assert_called_once()
+            args, kwargs = mock_info.call_args
+            # event name
+            assert args[0] == "hook_registered_summary"
+            # structured fields
+            assert kwargs["name"] == "test_hook"
+            assert kwargs["events"] == [HookEvent.REQUEST_STARTED.value]
+            assert kwargs["event_count"] == 1
 
 
 # HookManager tests
@@ -350,10 +355,12 @@ class TestHookManager:
 
             # Error should be logged
             mock_error.assert_called_once()
-            error_call = mock_error.call_args[0]
-            assert (
-                "Hook failing_hook failed for HookEvent.REQUEST_FAILED" in error_call[0]
-            )
+            args, kwargs = mock_error.call_args
+            # event name
+            assert args[0] == "hook_execution_failed"
+            # structured fields
+            assert kwargs["hook"] == "failing_hook"
+            assert kwargs["hook_event"] == HookEvent.REQUEST_FAILED.value
 
     @pytest.mark.asyncio
     async def test_hook_context_creation(self, hook_manager, hook_registry):

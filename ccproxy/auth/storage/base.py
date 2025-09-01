@@ -273,9 +273,18 @@ class BaseJsonStorage(TokenStorage[CredentialsT], Generic[CredentialsT]):
             True if file exists, False otherwise
         """
         # Run file system check in thread pool for consistency
-        return await asyncio.to_thread(
+        file_exists = await asyncio.to_thread(
             lambda: self.file_path.exists() and self.file_path.is_file()
         )
+
+        logger.debug(
+            "auth_file_existence_check",
+            file_path=str(self.file_path),
+            exists=file_exists,
+            category="auth",
+        )
+
+        return file_exists
 
     async def delete(self) -> bool:
         """Delete credentials file.

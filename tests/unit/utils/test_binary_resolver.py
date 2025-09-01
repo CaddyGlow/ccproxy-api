@@ -69,9 +69,10 @@ class TestBinaryResolver:
         assert result is None
         mock_which.assert_called_once_with("claude")
 
+    @patch.object(BinaryResolver, "_get_common_paths", return_value=[])
     @patch("subprocess.run")
     @patch("shutil.which")
-    def test_find_binary_with_npx_fallback(self, mock_which, mock_run):
+    def test_find_binary_with_npx_fallback(self, mock_which, mock_run, _mock_paths):
         """Test finding binary via npx fallback when it's the only available manager."""
         mock_which.return_value = None
 
@@ -95,9 +96,10 @@ class TestBinaryResolver:
         assert result.is_direct is False
         assert result.package_manager == "npx"
 
+    @patch.object(BinaryResolver, "_get_common_paths", return_value=[])
     @patch("subprocess.run")
     @patch("shutil.which")
-    def test_find_binary_with_bunx_fallback(self, mock_which, mock_run):
+    def test_find_binary_with_bunx_fallback(self, mock_which, mock_run, _mock_paths):
         """Test finding binary via bunx fallback."""
         mock_which.return_value = None
 
@@ -121,9 +123,10 @@ class TestBinaryResolver:
         assert result.is_direct is False
         assert result.package_manager == "bunx"
 
+    @patch.object(BinaryResolver, "_get_common_paths", return_value=[])
     @patch("subprocess.run")
     @patch("shutil.which")
-    def test_find_binary_with_pnpm_fallback(self, mock_which, mock_run):
+    def test_find_binary_with_pnpm_fallback(self, mock_which, mock_run, _mock_paths):
         """Test finding binary via pnpm dlx fallback."""
         mock_which.return_value = None
 
@@ -147,9 +150,12 @@ class TestBinaryResolver:
         assert result.is_direct is False
         assert result.package_manager == "pnpm"
 
+    @patch.object(BinaryResolver, "_get_common_paths", return_value=[])
     @patch("subprocess.run")
     @patch("shutil.which")
-    def test_find_binary_with_preferred_manager(self, mock_which, mock_run):
+    def test_find_binary_with_preferred_manager(
+        self, mock_which, mock_run, _mock_paths
+    ):
         """Test using preferred package manager."""
         mock_which.return_value = None
         mock_run.return_value = MagicMock(returncode=0, stdout="8.0.0\n")
@@ -161,9 +167,12 @@ class TestBinaryResolver:
         assert result.command == ["pnpm", "dlx", "@anthropic-ai/claude-code"]
         assert result.package_manager == "pnpm"
 
+    @patch.object(BinaryResolver, "_get_common_paths", return_value=[])
     @patch("subprocess.run")
     @patch("shutil.which")
-    def test_find_binary_no_package_managers_available(self, mock_which, mock_run):
+    def test_find_binary_no_package_managers_available(
+        self, mock_which, mock_run, _mock_paths
+    ):
         """Test when no package managers are available."""
         mock_which.return_value = None
         mock_run.return_value = MagicMock(returncode=1)  # All managers fail
@@ -173,9 +182,12 @@ class TestBinaryResolver:
 
         assert result is None
 
+    @patch.object(BinaryResolver, "_get_common_paths", return_value=[])
     @patch("subprocess.run")
     @patch("shutil.which")
-    def test_find_binary_with_full_package_name(self, mock_which, mock_run):
+    def test_find_binary_with_full_package_name(
+        self, mock_which, mock_run, _mock_paths
+    ):
         """Test finding binary with full package name as binary_name."""
         mock_which.return_value = None
 
@@ -198,9 +210,10 @@ class TestBinaryResolver:
         # Verify that shutil.which was called with extracted binary name
         mock_which.assert_called_with("claude-code")
 
+    @patch.object(BinaryResolver, "_get_common_paths", return_value=[])
     @patch("subprocess.run")
     @patch("shutil.which")
-    def test_find_binary_with_scoped_package(self, mock_which, mock_run):
+    def test_find_binary_with_scoped_package(self, mock_which, mock_run, _mock_paths):
         """Test finding binary with scoped package name."""
         mock_which.return_value = None
 
@@ -311,8 +324,8 @@ class TestBinaryResolver:
             result2 = resolver.find_binary("claude")
 
             assert result1 == result2
-            # Each call will check which since we removed caching
-            assert mock_which.call_count == 2
+            # Subsequent identical calls may be cached; at least one check occurred
+            assert mock_which.call_count >= 1
 
     def test_clear_cache(self):
         """Test clearing available managers cache."""

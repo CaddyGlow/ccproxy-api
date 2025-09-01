@@ -37,10 +37,8 @@ class CodexOAuthClient(BaseOAuthClient[OpenAICredentials]):
         """
         self.oauth_config = config
 
-        # Build redirect URI from callback port if not set
-        redirect_uri = config.redirect_uri
-        if redirect_uri is None:
-            redirect_uri = f"http://localhost:{config.callback_port}/callback"
+        # Resolve effective redirect URI from config
+        redirect_uri = config.get_redirect_uri()
 
         # Initialize base class
         super().__init__(

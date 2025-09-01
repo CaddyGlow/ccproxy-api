@@ -109,7 +109,6 @@ async def _lazy_register_oauth_provider(
     or None if not found/import failed.
     """
     from ccproxy.config.settings import get_settings
-    from ccproxy.plugins import PluginContext
     from ccproxy.plugins.factory import AuthProviderPluginFactory
     from ccproxy.services.cli_detection import CLIDetectionService
 

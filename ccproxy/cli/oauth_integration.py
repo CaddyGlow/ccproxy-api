@@ -70,20 +70,33 @@ class CLIOAuthHandler:
 
         # Update port and redirect_uri from provider config if available
         provider_config = provider.get_config()
-        if hasattr(provider_config, "callback_port"):
-            self.port = provider_config.callback_port
-            self.redirect_uri = f"http://localhost:{self.port}/callback"
-
-        # If provider has a specific redirect_uri configured, use it for validation
-        # But we still need to use our local callback server
-        if hasattr(provider_config, "redirect_uri") and provider_config.redirect_uri:
-            # Extract port from provider's redirect_uri if it's a localhost URL
+        # Prefer explicit resolver on config if present
+        if hasattr(provider_config, "get_redirect_uri"):
             import urllib.parse
 
-            parsed = urllib.parse.urlparse(provider_config.redirect_uri)
+            ru = provider_config.get_redirect_uri()
+            self.redirect_uri = ru
+            parsed = urllib.parse.urlparse(ru)
             if parsed.hostname in ["localhost", "127.0.0.1"] and parsed.port:
                 self.port = parsed.port
+        else:
+            # Fallback to callback_port + default path
+            if hasattr(provider_config, "callback_port"):
+                self.port = provider_config.callback_port
                 self.redirect_uri = f"http://localhost:{self.port}/callback"
+            # If provider has a specific redirect_uri configured, use it for validation
+            # But we still need to use our local callback server
+            if (
+                hasattr(provider_config, "redirect_uri")
+                and provider_config.redirect_uri
+            ):
+                # Extract port from provider's redirect_uri if it's a localhost URL
+                import urllib.parse
+
+                parsed = urllib.parse.urlparse(provider_config.redirect_uri)
+                if parsed.hostname in ["localhost", "127.0.0.1"] and parsed.port:
+                    self.port = parsed.port
+                    self.redirect_uri = f"http://localhost:{self.port}/callback"
 
         # Generate PKCE parameters if provider supports it
         code_verifier = None
@@ -469,19 +482,31 @@ class CLIOAuthHandler:
 
         # Update port and redirect_uri from provider config if available
         provider_config = provider.get_config()
-        if hasattr(provider_config, "callback_port"):
-            self.port = provider_config.callback_port
-            self.redirect_uri = f"http://localhost:{self.port}/callback"
-
-        # If provider has a specific redirect_uri configured, use it
-        if hasattr(provider_config, "redirect_uri") and provider_config.redirect_uri:
-            # Extract port from provider's redirect_uri if it's a localhost URL
+        # Prefer explicit resolver on config if present
+        if hasattr(provider_config, "get_redirect_uri"):
             import urllib.parse
 
-            parsed = urllib.parse.urlparse(provider_config.redirect_uri)
+            ru = provider_config.get_redirect_uri()
+            self.redirect_uri = ru
+            parsed = urllib.parse.urlparse(ru)
             if parsed.hostname in ["localhost", "127.0.0.1"] and parsed.port:
                 self.port = parsed.port
+        else:
+            if hasattr(provider_config, "callback_port"):
+                self.port = provider_config.callback_port
                 self.redirect_uri = f"http://localhost:{self.port}/callback"
+            # If provider has a specific redirect_uri configured, use it
+            if (
+                hasattr(provider_config, "redirect_uri")
+                and provider_config.redirect_uri
+            ):
+                # Extract port from provider's redirect_uri if it's a localhost URL
+                import urllib.parse
+
+                parsed = urllib.parse.urlparse(provider_config.redirect_uri)
+                if parsed.hostname in ["localhost", "127.0.0.1"] and parsed.port:
+                    self.port = parsed.port
+                    self.redirect_uri = f"http://localhost:{self.port}/callback"
 
         # Generate PKCE parameters if provider supports it
         code_verifier = None

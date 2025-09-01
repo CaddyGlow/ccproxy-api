@@ -68,3 +68,12 @@ class ClaudeOAuthConfig(BaseModel):
         default=True,
         description="Whether to use PKCE flow (required for Claude OAuth)",
     )
+
+    def get_redirect_uri(self) -> str:
+        """Return redirect URI, auto-generated from callback_port when unset.
+
+        Uses the standard plugin callback path: `/callback`.
+        """
+        if self.redirect_uri:
+            return self.redirect_uri
+        return f"http://localhost:{self.callback_port}/callback"
