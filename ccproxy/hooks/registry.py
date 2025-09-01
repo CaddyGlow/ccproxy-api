@@ -73,18 +73,18 @@ class HookRegistry:
                 event_name = event.value if hasattr(event, "value") else str(event)
                 events_unregistered.append(event_name)
                 # Log individual unregistrations at DEBUG level
-                self._logger.debug(
-                    "hook_unregistered",
-                    name=hook.name,
-                    hook_event=event_name,
-                )
+                # self._logger.debug(
+                #     "hook_unregistered",
+                #     name=hook.name,
+                #     hook_event=event_name,
+                # )
             except ValueError:
                 pass  # Hook not in list, ignore
 
         # Log summary at INFO level only if multiple events
         if len(events_unregistered) > 1:
             self._logger.info(
-                "hook_unregistered_batch",
+                "hook_unregistered_summary",
                 name=hook.name,
                 events=events_unregistered,
                 event_count=len(events_unregistered),

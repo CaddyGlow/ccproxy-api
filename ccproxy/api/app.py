@@ -25,9 +25,9 @@ from ccproxy.hooks.events import HookEvent
 from ccproxy.plugins import (
     MiddlewareManager,
     PluginRegistry,
-    discover_and_load_plugins,
     setup_default_middleware,
 )
+from ccproxy.plugins.loader import load_plugin_system
 from ccproxy.services.container import ServiceContainer
 from ccproxy.services.factories import ConcreteServiceFactory
 from ccproxy.utils.startup_helpers import (
@@ -456,23 +456,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     middleware_manager = MiddlewareManager()
 
     if settings.enable_plugins:
-        # Discover and load plugin factories
-        plugin_factories = discover_and_load_plugins(settings)
-
-        # Register all plugin factories
-        for factory in plugin_factories.values():
-            plugin_registry.register_factory(factory)
+        # Centralized loader: build registry and middleware manager
+        plugin_registry, middleware_manager = load_plugin_system(settings)
 
         # Log registration summary
         provider_count = sum(
-            1 for f in plugin_factories.values() if f.get_manifest().is_provider
+            1
+            for f in plugin_registry.factories.values()
+            if f.get_manifest().is_provider
         )
         logger.info(
             "plugins_registered",
-            total=len(plugin_factories),
+            total=len(plugin_registry.factories),
             providers=provider_count,
-            system_plugins=len(plugin_factories) - provider_count,
-            names=list(plugin_factories.keys()),
+            system_plugins=len(plugin_registry.factories) - provider_count,
+            names=list(plugin_registry.factories.keys()),
             category="plugin",
         )
 

@@ -15,10 +15,10 @@ Scope: Remove redundancy/dead code from the migration to a plugin-based architec
 ## Progress Snapshot
 
 - [x] Draft plan document and baseline approach
-- [ ] Phase 1: Inventory & Baseline
-- [ ] Phase 2: Dead Code & Redundancy Detection
+- [x] Phase 1: Inventory & Baseline
+- [x] Phase 2: Dead Code & Redundancy Detection
 - [ ] Phase 3: Boundaries & Interfaces
-- [ ] Phase 4: Redundant Code Removal
+- [ ] Phase 4: Redundant Code Removal (in progress)
 - [ ] Phase 5: API/CLI/Config Surface
 - [ ] Phase 6: Tests Refactor
 - [ ] Phase 7: Docs & Communication
@@ -54,7 +54,8 @@ Goal: Make plugin contracts explicit and enforceable; centralize loading.
 - [ ] Ensure discovery via entry points only; remove ad-hoc registries/shims
 - [ ] Import hygiene: prevent core → plugin concrete imports
 - [ ] Centralize plugin loading; remove scattered loaders/feature flags
-- [ ] Deliverable: `ccproxy/plugins/loader.py` and interface modules finalized
+- [x] Deliverable: `ccproxy/plugins/loader.py` and interface modules finalized
+- [x] Add import boundary check script (`scripts/check_import_boundaries.py`) and Makefile target `check-boundaries`
 
 ## Phase 4: Redundant Code Removal
 
@@ -63,8 +64,9 @@ Goal: Remove duplicated core implementations; keep interfaces + orchestration on
 - [ ] Delete core code duplicated by plugins (adapters/services)
 - [ ] Remove transitional shims that conditionally prefer plugins
 - [ ] Remove feature flags toggling legacy vs plugin paths
-- [ ] Drop dependencies used only by removed code (update `pyproject`)
+- [x] Drop dependencies used only by removed code (update `pyproject`) — removed `aiosqlite`, runtime `keyring`, and explicit `h2`
 - [ ] Trim obsolete config keys and add migration-friendly validation errors
+- [x] Remove dead modules — deleted `ccproxy/utils/models_provider.py`
 
 ## Phase 5: API, CLI, and Config Surface
 
@@ -130,9 +132,12 @@ Goal: Deliver changes safely in small, reviewable chunks.
 ## Decision Log
 
 - 2025-09-01: Created cleanup plan and progress tracker
+- 2025-09-01: Completed Phase 1 inventory and Phase 2 checklist
+- 2025-09-01: Removed dead module `ccproxy/utils/models_provider.py`
+- 2025-09-01: Pruned root deps (`aiosqlite`, runtime `keyring`, explicit `h2`) and added plugin extras groups
 
 ## Next Actions
 
-- Kick off Phase 1 inventory and produce `docs/cleanup/inventory.md`
-- Run `make check` and `make test-coverage` to capture baseline
-- Propose interface `Protocol`s and central loader skeleton for review
+- Phase 4: Evaluate and remove compatibility stubs once unused by routes (e.g., metrics/DuckDB deps in `api/dependencies.py`)
+- Phase 6: Update tests expecting legacy scheduler pushgateway/auth settings; exclude/port `tests_new/*`
+- Phase 3: Draft plugin `Protocol` interfaces and central loader validation guards

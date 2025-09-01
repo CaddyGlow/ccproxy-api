@@ -132,12 +132,12 @@ class PluginDiscovery:
                 )
                 return None
 
-            logger.debug(
-                "plugin_factory_loaded",
-                name=name,
-                version=factory.get_manifest().version,
-                category="plugin",
-            )
+            # logger.debug(
+            #     "plugin_factory_loaded",
+            #     name=name,
+            #     version=factory.get_manifest().version,
+            #     category="plugin",
+            # )
 
             return factory
 
@@ -273,12 +273,12 @@ class PluginDiscovery:
                     continue
 
                 factories[name] = factory
-                logger.debug(
-                    "entry_point_factory_loaded",
-                    name=name,
-                    version=factory.get_manifest().version,
-                    category="plugin",
-                )
+                # logger.debug(
+                #     "entry_point_factory_loaded",
+                #     name=name,
+                #     version=factory.get_manifest().version,
+                #     category="plugin",
+                # )
         except Exception as e:  # pragma: no cover
             logger.error("entry_points_enumeration_failed", error=str(e), exc_info=e)
         return factories
@@ -390,6 +390,7 @@ def discover_and_load_plugins(settings: Any) -> dict[str, PluginFactory]:
         "plugins_ready",
         discovered=len(all_factories),
         enabled=len(filtered_factories),
+        names=list(filtered_factories.keys()),
         category="plugin",
     )
 

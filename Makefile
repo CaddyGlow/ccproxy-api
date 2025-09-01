@@ -193,6 +193,10 @@ format-check:
 # Combined checks (individual targets for granular control)
 check: lint typecheck format-check
 
+# Optional: verify import boundaries (core must not import plugins.*)
+check-boundaries:
+	uv run python3 scripts/check_import_boundaries.py
+
 # Pre-commit hooks (comprehensive checks + auto-fixes)
 pre-commit:
 	uv run pre-commit run --all-files
