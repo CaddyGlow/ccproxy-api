@@ -1,8 +1,6 @@
 """Claude OAuth client implementation."""
 
-import json
 from datetime import UTC, datetime
-from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 

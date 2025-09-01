@@ -17,7 +17,7 @@ from typing import Any
 import structlog
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import IntegrityError, OperationalError, SQLAlchemyError
-from sqlmodel import Session, SQLModel, create_engine, func, select
+from sqlmodel import Session, SQLModel, create_engine, func
 
 from ccproxy.core.async_task_manager import create_managed_task
 

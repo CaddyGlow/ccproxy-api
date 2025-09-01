@@ -4,7 +4,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, TypeVar
 
-from pydantic import BaseModel, SecretStr, TypeAdapter
+from pydantic import SecretStr, TypeAdapter
 
 from ccproxy.auth.models.credentials import BaseCredentials
 from ccproxy.auth.storage.base import BaseJsonStorage

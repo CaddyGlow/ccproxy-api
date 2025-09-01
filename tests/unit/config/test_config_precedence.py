@@ -1,5 +1,3 @@
-import os
-
 import pytest
 
 from ccproxy.config.settings import Settings

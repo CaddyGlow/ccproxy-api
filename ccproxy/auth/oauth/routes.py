@@ -188,7 +188,9 @@ async def oauth_callback(
         custom_paths = flow["custom_paths"]
 
         # Exchange authorization code for tokens using app-scoped registry
-        registry: OAuthRegistry | None = getattr(request.app.state, "oauth_registry", None)
+        registry: OAuthRegistry | None = getattr(
+            request.app.state, "oauth_registry", None
+        )
         success = await _exchange_code_for_tokens(
             code, code_verifier, state, custom_paths, registry
         )
@@ -390,7 +392,9 @@ async def _exchange_code_for_tokens(
     try:
         # Get OAuth provider from provided registry
         if registry is None:
-            logger.error("oauth_registry_not_available", operation="exchange_code_for_tokens")
+            logger.error(
+                "oauth_registry_not_available", operation="exchange_code_for_tokens"
+            )
             return False
         oauth_provider = registry.get_provider("claude-api")
         if not oauth_provider:

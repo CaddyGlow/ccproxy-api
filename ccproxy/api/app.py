@@ -6,7 +6,6 @@ from typing import Any
 
 import structlog
 from fastapi import FastAPI
-from fastapi.staticfiles import StaticFiles
 from typing_extensions import TypedDict
 
 from ccproxy import __version__

@@ -1,7 +1,6 @@
 """Hook-based metrics collection implementation."""
 
 import time
-from typing import Any
 
 import structlog
 
@@ -52,9 +51,11 @@ class MetricsHook(Hook):
         if self.config.enabled:
             registry = None
             try:
-                from prometheus_client import CollectorRegistry as _CR  # type: ignore
+                from prometheus_client import (
+                    CollectorRegistry as CollectorRegistry,  # type: ignore
+                )
 
-                registry = _CR()
+                registry = CollectorRegistry()
             except Exception:
                 registry = None
 
@@ -213,14 +214,13 @@ class MetricsHook(Hook):
                     )
 
         # Handle cost metrics if present
-        if self.config.collect_cost_metrics:
-            if cost := context.data.get("cost_usd"):
-                self.collector.record_cost(
-                    cost_usd=cost,
-                    model=model,
-                    cost_type="total",
-                    service_type=service_type,
-                )
+        if self.config.collect_cost_metrics and (cost := context.data.get("cost_usd")):
+            self.collector.record_cost(
+                cost_usd=cost,
+                model=model,
+                cost_type="total",
+                service_type=service_type,
+            )
 
         logger.debug(
             "metrics_request_completed",

@@ -165,6 +165,7 @@ class ClaudeApiTokenManager(BaseTokenManager[ClaudeCredentials]):
         try:
             # Refresh directly using a local OAuth client/provider (no global registry)
             from plugins.oauth_claude.provider import ClaudeOAuthProvider
+
             provider = ClaudeOAuthProvider(http_client=self.http_client)
             new_credentials: ClaudeCredentials = await provider.refresh_access_token(
                 refresh_token

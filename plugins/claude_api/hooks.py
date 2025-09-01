@@ -5,7 +5,6 @@ from typing import Any
 
 from ccproxy.core.logging import get_plugin_logger
 from ccproxy.hooks import Hook, HookContext, HookEvent
-from ccproxy.hooks.layers import HookLayer
 from plugins.claude_api.streaming_metrics import extract_usage_from_streaming_chunk
 
 

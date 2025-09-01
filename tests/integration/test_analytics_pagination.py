@@ -61,7 +61,9 @@ def client(app: FastAPI) -> TestClient:
 class TestAnalyticsQueryCursor:
     @pytest.mark.integration
     @pytest.mark.asyncio
-    async def test_query_with_cursor_pagination(self, storage: SimpleDuckDBStorage, client: TestClient) -> None:
+    async def test_query_with_cursor_pagination(
+        self, storage: SimpleDuckDBStorage, client: TestClient
+    ) -> None:
         """Stores 3 logs and paginates with a timestamp cursor."""
         base = time.time()
         logs = []
@@ -75,7 +77,7 @@ class TestAnalyticsQueryCursor:
                     "endpoint": "/v1/messages",
                     "path": "/v1/messages",
                     "query": "",
-                    "client_ip": f"127.0.0.{i+1}",
+                    "client_ip": f"127.0.0.{i + 1}",
                     "user_agent": "pytest-agent/1.0",
                     "service_type": "access_log",
                     "provider": "anthropic",
@@ -115,7 +117,9 @@ class TestAnalyticsQueryCursor:
 
         # Second page using returned cursor
         cursor = d1["next_cursor"]
-        r2 = client.get("/logs/query", params={"limit": 2, "order": "desc", "cursor": cursor})
+        r2 = client.get(
+            "/logs/query", params={"limit": 2, "order": "desc", "cursor": cursor}
+        )
         assert r2.status_code == 200
         d2 = r2.json()
         assert d2["count"] == 1
@@ -127,4 +131,3 @@ class TestAnalyticsQueryCursor:
         assert last["provider"] == "anthropic"
         assert last["client_ip"].startswith("127.0.0.")
         assert last["user_agent"] == "pytest-agent/1.0"
-

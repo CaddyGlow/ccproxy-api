@@ -217,13 +217,13 @@ class BaseProviderPluginFactory(ProviderPluginFactory):
                 elif (
                     param.default is inspect.Parameter.empty
                     and param_name not in adapter_kwargs
+                    and param_name == "config"
+                    and config is None
+                    and self.manifest.config_class
                 ):
-                    # Required parameter missing - check if we can provide it
-                    if param_name == "config" and config is None:
-                        # Try to get config from manifest
-                        if self.manifest.config_class:
-                            config = self.manifest.config_class()
-                            adapter_kwargs["config"] = config
+                    # Try to get config from manifest
+                    config = self.manifest.config_class()
+                    adapter_kwargs["config"] = config
 
             return self.adapter_class(**adapter_kwargs)
 

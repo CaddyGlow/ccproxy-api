@@ -198,11 +198,6 @@ def auth_settings(isolated_environment: Path) -> Settings:
         security=SecuritySettings(
             auth_token=SecretStr("test-auth-token-12345")
         ),  # Auth enabled
-        auth=AuthSettings(
-            storage=CredentialStorageSettings(
-                storage_paths=[isolated_environment / ".claude/"]
-            )
-        ),
         observability=ObservabilitySettings(
             # Enable all observability endpoints for testing
             metrics_endpoint_enabled=True,
@@ -429,11 +424,6 @@ def auth_settings_factory() -> Callable[[dict[str, Any]], Settings]:
         settings = Settings(
             server=ServerSettings(log_level="WARNING"),
             security=SecuritySettings(auth_token=None),
-            auth=AuthSettings(
-                storage=CredentialStorageSettings(
-                    storage_paths=[Path("/tmp/test/.claude/")]
-                )
-            ),
         )
 
         if auth_config.get("has_configured_token"):
@@ -498,9 +488,6 @@ def app_factory(tmp_path: Path) -> Callable[[dict[str, Any]], FastAPI]:
         settings = Settings(
             server=ServerSettings(log_level="WARNING"),
             security=SecuritySettings(auth_token=None),
-            auth=AuthSettings(
-                storage=CredentialStorageSettings(storage_paths=[tmp_path / ".claude/"])
-            ),
             observability=ObservabilitySettings(
                 # Enable all observability endpoints for testing
                 metrics_endpoint_enabled=True,

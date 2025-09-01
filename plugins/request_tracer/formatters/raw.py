@@ -1,6 +1,5 @@
 """Raw HTTP formatter for protocol-level logging."""
 
-import os
 import uuid
 from collections.abc import Sequence
 from pathlib import Path

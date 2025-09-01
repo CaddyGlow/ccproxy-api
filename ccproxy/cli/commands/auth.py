@@ -12,12 +12,12 @@ from rich import box
 from rich.console import Console
 from rich.table import Table
 
+from ccproxy.auth.oauth.registry import OAuthRegistry
 from ccproxy.cli.helpers import get_rich_toolkit
 from ccproxy.config.settings import get_settings
 from ccproxy.core.logging import bootstrap_cli_logging, get_logger, setup_logging
 from ccproxy.hooks.manager import HookManager
 from ccproxy.hooks.registry import HookRegistry
-from ccproxy.auth.oauth.registry import OAuthRegistry
 
 
 app = typer.Typer(name="auth", help="Authentication and credential management")

@@ -52,19 +52,17 @@ def extract_final_response(sse_content: str) -> dict[str, Any] | None:
     for line in lines:
         event_type, data = parse_sse_line(line)
 
-        if event_type == "data" and data:
+        if event_type == "data" and data and isinstance(data, dict):
             # Check for response.completed event
-            if isinstance(data, dict):
-                if data.get("type") == "response.completed":
-                    # Found the completed response
-                    if "response" in data:
-                        final_response = data["response"]
-                    else:
-                        final_response = data
-                elif data.get("type") == "response.in_progress":
-                    # Update with in-progress data, but keep looking
-                    if "response" in data:
-                        final_response = data["response"]
+            if data.get("type") == "response.completed":
+                # Found the completed response
+                if "response" in data:
+                    final_response = data["response"]
+                else:
+                    final_response = data
+            elif data.get("type") == "response.in_progress" and "response" in data:
+                # Update with in-progress data, but keep looking
+                final_response = data["response"]
 
     return final_response
 

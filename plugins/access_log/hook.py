@@ -133,14 +133,13 @@ class AccessLogHook(Hook):
 
         # Try to get client_ip from various sources
         client_ip = context.data.get("client_ip", "-")
-        if client_ip == "-" and context.request:
+        if client_ip == "-" and context.request and hasattr(context.request, "client"):
             # Try to get from request object
-            if hasattr(context.request, "client"):
-                client_ip = (
-                    getattr(context.request.client, "host", "-")
-                    if context.request.client
-                    else "-"
-                )
+            client_ip = (
+                getattr(context.request.client, "host", "-")
+                if context.request.client
+                else "-"
+            )
 
         # Try to get user_agent from headers
         user_agent = context.data.get("user_agent", "-")

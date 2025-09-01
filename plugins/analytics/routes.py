@@ -46,7 +46,7 @@ async def query_logs(
             order=order,
         )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Query failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Query failed: {str(e)}") from e
 
 
 @router.get("/analytics")
@@ -86,7 +86,9 @@ async def get_logs_analytics(
         }
         return analytics
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Analytics query failed: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Analytics query failed: {str(e)}"
+        ) from e
 
 
 @router.get("/stream")

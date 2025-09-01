@@ -1,7 +1,6 @@
 """OpenAI/Codex token manager implementation for the Codex plugin."""
 
 from datetime import datetime
-from pathlib import Path
 from typing import Any
 
 from ccproxy.auth.managers.base import BaseTokenManager
@@ -76,6 +75,7 @@ class CodexTokenManager(BaseTokenManager[OpenAICredentials]):
         try:
             # Refresh directly using a local OAuth client/provider (no global registry)
             from plugins.oauth_codex.provider import CodexOAuthProvider
+
             provider = CodexOAuthProvider()
             new_credentials: OpenAICredentials = await provider.refresh_access_token(
                 credentials.refresh_token

@@ -100,7 +100,6 @@ class AnalyticsRuntime(SystemPluginRuntime):
 
 class AnalyticsFactory(SystemPluginFactory):
     def __init__(self) -> None:
-        from . import models as _models  # ensure SQLModel model registration
         from .routes import router as analytics_router
 
         manifest = PluginManifest(

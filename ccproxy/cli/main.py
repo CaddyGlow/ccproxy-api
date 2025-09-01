@@ -117,6 +117,8 @@ def main() -> None:
 
 if __name__ == "__main__":
     sys.exit(app())
+
+
 def _mask_env_value(key: str, value: str) -> str:
     """Mask sensitive values based on common substrings in the key."""
     lowered = key.lower()

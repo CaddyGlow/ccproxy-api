@@ -1,7 +1,7 @@
 """Handler configuration for unified request handling."""
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 
 from ccproxy.adapters.base import APIAdapter
 

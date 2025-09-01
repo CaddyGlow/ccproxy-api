@@ -271,7 +271,7 @@ class HTTPTracerHook(Hook):
             elif isinstance(body, bytes):
                 try:
                     body_str = body.decode()
-                except:
+                except (UnicodeDecodeError, AttributeError):
                     body_str = str(body)
             else:
                 body_str = str(body)
@@ -314,7 +314,7 @@ class HTTPTracerHook(Hook):
             elif isinstance(body, bytes):
                 try:
                     body_str = body.decode()
-                except:
+                except (UnicodeDecodeError, AttributeError):
                     body_str = str(body)
             else:
                 body_str = str(body)

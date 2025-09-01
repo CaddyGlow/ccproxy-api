@@ -42,15 +42,15 @@ async def get_metrics_dashboard() -> HTMLResponse:
     except (OSError, PermissionError) as e:
         raise HTTPException(
             status_code=500, detail=f"Dashboard file access error: {str(e)}"
-        )
+        ) from e
     except UnicodeDecodeError as e:
         raise HTTPException(
             status_code=500, detail=f"Dashboard file encoding error: {str(e)}"
-        )
+        ) from e
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Failed to serve dashboard: {str(e)}"
-        )
+        ) from e
 
 
 @router.get("/dashboard/favicon.svg")
