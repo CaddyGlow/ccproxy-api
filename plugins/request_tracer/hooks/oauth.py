@@ -37,7 +37,7 @@ class OAuthTracerHook(Hook):
             config: Request tracer configuration
         """
         self.config = config or RequestTracerConfig()
-        self.enabled = self.config.enabled and getattr(self.config, 'trace_oauth', True)
+        self.enabled = self.config.enabled and getattr(self.config, "trace_oauth", True)
 
         # Initialize formatters if enabled
         self.json_formatter = (

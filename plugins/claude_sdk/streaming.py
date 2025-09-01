@@ -11,6 +11,7 @@ from ccproxy.core.request_context import RequestContext
 from . import models as sdk_models
 from .config import SDKMessageMode
 from .converter import MessageConverter
+from .hooks import ClaudeSDKStreamingHook
 
 
 logger = get_plugin_logger()
@@ -23,15 +24,18 @@ class ClaudeStreamProcessor:
         self,
         message_converter: MessageConverter,
         metrics: Any | None = None,  # Metrics now handled by metrics plugin
+        streaming_hook: ClaudeSDKStreamingHook | None = None,
     ) -> None:
         """Initialize the stream processor.
 
         Args:
             message_converter: Converter for message formats.
-            metrics: Prometheus metrics instance.
+            metrics: Optional metrics handler.
+            streaming_hook: Hook for emitting streaming events.
         """
         self.message_converter = message_converter
         self.metrics = metrics
+        self.streaming_hook = streaming_hook
 
     async def process_stream(
         self,
@@ -286,6 +290,32 @@ class ClaudeStreamProcessor:
                             session_id=message.session_id,
                             num_turns=message.num_turns,
                         )
+
+                # Emit PROVIDER_STREAM_END hook with usage metrics
+                if self.streaming_hook and message.usage:
+                    usage_metrics = {
+                        "tokens_input": message.usage_model.input_tokens,
+                        "tokens_output": message.usage_model.output_tokens,
+                        "cache_read_tokens": message.usage_model.cache_read_input_tokens,
+                        "cache_write_tokens": message.usage_model.cache_creation_input_tokens,
+                        "cost_usd": message.total_cost_usd,
+                        "model": getattr(
+                            message, "model", "claude-3-5-sonnet-20241022"
+                        ),
+                    }
+
+                    # Emit the hook asynchronously
+                    import asyncio
+
+                    asyncio.create_task(
+                        self.streaming_hook.emit_stream_end(
+                            request_id=request_id,
+                            usage_metrics=usage_metrics,
+                            provider="claude_sdk",
+                            url="claude-sdk://direct",
+                            method="POST",
+                        )
+                    )
 
                 end_chunks = self.message_converter.create_streaming_end_chunks(
                     stop_reason=message.stop_reason

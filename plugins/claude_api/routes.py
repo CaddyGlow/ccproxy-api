@@ -17,7 +17,7 @@ if TYPE_CHECKING:
 # Create plugin-specific adapter dependency
 ClaudeAPIAdapterDep = Annotated[Any, Depends(get_plugin_adapter("claude_api"))]
 
-router = APIRouter(tags=["plugin-claude-api"])
+router = APIRouter()
 
 
 def claude_api_path_transformer(path: str) -> str:

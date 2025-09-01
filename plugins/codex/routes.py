@@ -17,7 +17,7 @@ if TYPE_CHECKING:
 # Create plugin-specific adapter dependency
 CodexAdapterDep = Annotated[Any, Depends(get_plugin_adapter("codex"))]
 
-router = APIRouter(tags=["plugin-codex"])
+router = APIRouter()
 
 
 def codex_path_transformer(path: str) -> str:

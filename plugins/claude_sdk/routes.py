@@ -14,7 +14,7 @@ from ccproxy.streaming.deferred_streaming import DeferredStreaming
 ClaudeSDKAdapterDep = Annotated[Any, Depends(get_plugin_adapter("claude_sdk"))]
 
 # Create router for Claude SDK endpoints
-router = APIRouter(tags=["plugin-claude_sdk"])
+router = APIRouter()
 
 
 @router.post("/v1/messages", response_model=None)

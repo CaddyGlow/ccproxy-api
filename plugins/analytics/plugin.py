@@ -69,6 +69,7 @@ class AnalyticsRuntime(SystemPluginRuntime):
                 storage = None
                 if registry:
                     from plugins.duckdb_storage.storage import SimpleDuckDBStorage
+
                     storage = registry.get_service("log_storage", SimpleDuckDBStorage)
                 if not storage and self.context.get("app"):
                     storage = getattr(self.context["app"].state, "log_storage", None)

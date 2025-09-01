@@ -22,12 +22,15 @@ class AnalyticsService:
         end_time: float | None = None,
         model: str | None = None,
         service_type: str | None = None,
+        cursor: float | None = None,
+        order: str = "desc",
     ) -> dict[str, Any]:
         with Session(self._engine) as session:
             statement = select(AccessLog)
 
             start_dt = dt.fromtimestamp(start_time) if start_time else None
             end_dt = dt.fromtimestamp(end_time) if end_time else None
+            cursor_dt = dt.fromtimestamp(cursor) if cursor else None
 
             if start_dt:
                 statement = statement.where(AccessLog.timestamp >= start_dt)
@@ -38,12 +41,36 @@ class AnalyticsService:
             if service_type:
                 statement = statement.where(AccessLog.service_type == service_type)
 
-            statement = statement.order_by(desc(AccessLog.timestamp)).limit(limit)
+            # Cursor-based pagination using timestamp
+            # For descending order (newest first): use timestamp < cursor
+            # For ascending order (oldest first): use timestamp > cursor
+            if cursor_dt:
+                if order.lower() == "asc":
+                    statement = statement.where(AccessLog.timestamp > cursor_dt)
+                else:
+                    statement = statement.where(AccessLog.timestamp < cursor_dt)
+
+            if order.lower() == "asc":
+                statement = statement.order_by(AccessLog.timestamp).limit(limit)
+            else:
+                statement = statement.order_by(desc(AccessLog.timestamp)).limit(limit)
             results = session.exec(statement).all()
+            payload = [log.dict() for log in results]
+
+            # Compute next cursor from last item in current page
+            next_cursor = None
+            if results:
+                last = results[-1]
+                next_cursor = last.timestamp.timestamp()
+
             return {
-                "results": [log.dict() for log in results],
+                "results": payload,
                 "limit": limit,
                 "count": len(results),
+                "order": order.lower(),
+                "cursor": cursor,
+                "next_cursor": next_cursor,
+                "has_more": len(results) == limit,
                 "query_time": time.time(),
                 "backend": "sqlmodel",
             }
@@ -90,7 +117,9 @@ class AnalyticsService:
             total_successful_requests = session.exec(
                 select(func.count())
                 .select_from(AccessLog)
-                .where(*filters, AccessLog.status_code >= 200, AccessLog.status_code < 400)
+                .where(
+                    *filters, AccessLog.status_code >= 200, AccessLog.status_code < 400
+                )
             ).first()
             total_error_requests = session.exec(
                 select(func.count())
@@ -98,22 +127,34 @@ class AnalyticsService:
                 .where(*filters, AccessLog.status_code >= 400)
             ).first()
             avg_duration = session.exec(
-                select(func.avg(AccessLog.duration_ms)).select_from(AccessLog).where(*filters)
+                select(func.avg(AccessLog.duration_ms))
+                .select_from(AccessLog)
+                .where(*filters)
             ).first()
             total_cost = session.exec(
-                select(func.sum(AccessLog.cost_usd)).select_from(AccessLog).where(*filters)
+                select(func.sum(AccessLog.cost_usd))
+                .select_from(AccessLog)
+                .where(*filters)
             ).first()
             total_tokens_input = session.exec(
-                select(func.sum(AccessLog.tokens_input)).select_from(AccessLog).where(*filters)
+                select(func.sum(AccessLog.tokens_input))
+                .select_from(AccessLog)
+                .where(*filters)
             ).first()
             total_tokens_output = session.exec(
-                select(func.sum(AccessLog.tokens_output)).select_from(AccessLog).where(*filters)
+                select(func.sum(AccessLog.tokens_output))
+                .select_from(AccessLog)
+                .where(*filters)
             ).first()
             total_cache_read_tokens = session.exec(
-                select(func.sum(AccessLog.cache_read_tokens)).select_from(AccessLog).where(*filters)
+                select(func.sum(AccessLog.cache_read_tokens))
+                .select_from(AccessLog)
+                .where(*filters)
             ).first()
             total_cache_write_tokens = session.exec(
-                select(func.sum(AccessLog.cache_write_tokens)).select_from(AccessLog).where(*filters)
+                select(func.sum(AccessLog.cache_write_tokens))
+                .select_from(AccessLog)
+                .where(*filters)
             ).first()
 
             services = session.exec(
@@ -126,47 +167,70 @@ class AnalyticsService:
                     select(func.count()).select_from(AccessLog).where(*svc_filters)
                 ).first()
                 svc_success = session.exec(
-                    select(func.count()).select_from(AccessLog).where(
-                        *svc_filters, AccessLog.status_code >= 200, AccessLog.status_code < 400
+                    select(func.count())
+                    .select_from(AccessLog)
+                    .where(
+                        *svc_filters,
+                        AccessLog.status_code >= 200,
+                        AccessLog.status_code < 400,
                     )
                 ).first()
                 svc_error = session.exec(
-                    select(func.count()).select_from(AccessLog).where(
-                        *svc_filters, AccessLog.status_code >= 400
-                    )
+                    select(func.count())
+                    .select_from(AccessLog)
+                    .where(*svc_filters, AccessLog.status_code >= 400)
                 ).first()
                 svc_avg = session.exec(
-                    select(func.avg(AccessLog.duration_ms)).select_from(AccessLog).where(*svc_filters)
+                    select(func.avg(AccessLog.duration_ms))
+                    .select_from(AccessLog)
+                    .where(*svc_filters)
                 ).first()
                 svc_cost = session.exec(
-                    select(func.sum(AccessLog.cost_usd)).select_from(AccessLog).where(*svc_filters)
+                    select(func.sum(AccessLog.cost_usd))
+                    .select_from(AccessLog)
+                    .where(*svc_filters)
                 ).first()
                 svc_in = session.exec(
-                    select(func.sum(AccessLog.tokens_input)).select_from(AccessLog).where(*svc_filters)
+                    select(func.sum(AccessLog.tokens_input))
+                    .select_from(AccessLog)
+                    .where(*svc_filters)
                 ).first()
                 svc_out = session.exec(
-                    select(func.sum(AccessLog.tokens_output)).select_from(AccessLog).where(*svc_filters)
+                    select(func.sum(AccessLog.tokens_output))
+                    .select_from(AccessLog)
+                    .where(*svc_filters)
                 ).first()
                 svc_cr = session.exec(
-                    select(func.sum(AccessLog.cache_read_tokens)).select_from(AccessLog).where(*svc_filters)
+                    select(func.sum(AccessLog.cache_read_tokens))
+                    .select_from(AccessLog)
+                    .where(*svc_filters)
                 ).first()
                 svc_cw = session.exec(
-                    select(func.sum(AccessLog.cache_write_tokens)).select_from(AccessLog).where(*svc_filters)
+                    select(func.sum(AccessLog.cache_write_tokens))
+                    .select_from(AccessLog)
+                    .where(*svc_filters)
                 ).first()
 
                 breakdown[str(svc)] = {
                     "request_count": svc_count or 0,
                     "successful_requests": svc_success or 0,
                     "error_requests": svc_error or 0,
-                    "success_rate": (svc_success or 0) / (svc_count or 1) * 100 if svc_count else 0,
-                    "error_rate": (svc_error or 0) / (svc_count or 1) * 100 if svc_count else 0,
+                    "success_rate": (svc_success or 0) / (svc_count or 1) * 100
+                    if svc_count
+                    else 0,
+                    "error_rate": (svc_error or 0) / (svc_count or 1) * 100
+                    if svc_count
+                    else 0,
                     "avg_duration_ms": svc_avg or 0,
                     "total_cost_usd": svc_cost or 0,
                     "total_tokens_input": svc_in or 0,
                     "total_tokens_output": svc_out or 0,
                     "total_cache_read_tokens": svc_cr or 0,
                     "total_cache_write_tokens": svc_cw or 0,
-                    "total_tokens_all": (svc_in or 0) + (svc_out or 0) + (svc_cr or 0) + (svc_cw or 0),
+                    "total_tokens_all": (svc_in or 0)
+                    + (svc_out or 0)
+                    + (svc_cr or 0)
+                    + (svc_cw or 0),
                 }
 
             return {
@@ -199,10 +263,14 @@ class AnalyticsService:
                     "total_requests": total_requests or 0,
                     "successful_requests": total_successful_requests or 0,
                     "error_requests": total_error_requests or 0,
-                    "success_rate": (total_successful_requests or 0) / (total_requests or 1) * 100
+                    "success_rate": (total_successful_requests or 0)
+                    / (total_requests or 1)
+                    * 100
                     if total_requests
                     else 0,
-                    "error_rate": (total_error_requests or 0) / (total_requests or 1) * 100
+                    "error_rate": (total_error_requests or 0)
+                    / (total_requests or 1)
+                    * 100
                     if total_requests
                     else 0,
                 },

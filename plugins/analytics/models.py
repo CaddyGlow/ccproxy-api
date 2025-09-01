@@ -27,6 +27,7 @@ class AccessLog(SQLModel, table=True):
 
     # Service and model info
     service_type: str
+    provider: str = Field(default="")
     model: str
     streaming: bool = Field(default=False)
 
@@ -72,6 +73,7 @@ class AccessLogPayload(TypedDict, total=False):
     client_ip: str
     user_agent: str
     service_type: str
+    provider: str
     model: str
     streaming: bool
     status_code: int
@@ -93,4 +95,3 @@ class AccessLogPayload(TypedDict, total=False):
     session_idle_seconds: float
     session_error_count: int
     session_is_new: bool
-

@@ -205,14 +205,25 @@ class AccessLogHook(Hook):
         )
 
         if is_streaming:
-            # For streaming responses, just mark that we got the completion
-            # The actual logging will happen in PROVIDER_STREAM_END
-            if request_id in self.client_requests:
-                self.client_requests[request_id]["completion_time"] = time.time()
-                self.client_requests[request_id]["status_code"] = context.data.get(
-                    "response_status", 200
+            # Check if we have metrics in metadata (non-streaming response wrapped as streaming)
+            has_metrics = False
+            if context.metadata:
+                # Check if we have token metrics available
+                has_metrics = any(
+                    context.metadata.get(field) is not None
+                    for field in ["tokens_input", "tokens_output", "cost_usd"]
                 )
-            return
+
+            if not has_metrics:
+                # True streaming response - wait for PROVIDER_STREAM_END
+                # Just mark that we got the completion
+                if request_id in self.client_requests:
+                    self.client_requests[request_id]["completion_time"] = time.time()
+                    self.client_requests[request_id]["status_code"] = context.data.get(
+                        "response_status", 200
+                    )
+                return
+            # If we have metrics, continue to log immediately (non-streaming wrapped as streaming)
 
         # For non-streaming responses, log immediately
         # Get and remove request data
@@ -502,6 +513,9 @@ class AccessLogHook(Hook):
             # Log to structured logger
             await self._log_to_structured_logger(client_log_data, "client")
 
+            # Ingest into analytics with full client details (includes IP/UA)
+            await self._maybe_ingest(client_log_data)
+
         # Extract complete metrics from usage_metrics (handle both naming conventions)
         tokens_input = usage_metrics.get(
             "input_tokens", usage_metrics.get("tokens_input", 0)
@@ -559,28 +573,8 @@ class AccessLogHook(Hook):
             cost_usd=cost_usd,
         )
 
-        # Attempt client-oriented ingestion too (when streaming completes)
-        # Build a client-like record if we have it
-        client_log_data = {
-            "timestamp": log_data.get("timestamp", time.time()),
-            "request_id": request_id,
-            "method": method,
-            "path": context.data.get("path", ""),
-            "query": context.data.get("query", ""),
-            "client_ip": context.data.get("client_ip", ""),
-            "user_agent": context.data.get("user_agent", ""),
-            "status_code": 200,
-            "duration_ms": duration_ms,
-            "tokens_input": tokens_input,
-            "tokens_output": tokens_output,
-            "cache_read_tokens": cache_read_tokens,
-            "cache_write_tokens": cache_write_tokens,
-            "cost_usd": cost_usd,
-            "model": model,
-            "streaming": True,
-            "service_type": "access_log",
-        }
-        await self._maybe_ingest(client_log_data)
+        # If client request details were not available earlier, we skip ingestion here
+        # to avoid emitting incomplete records with missing IP/User-Agent.
 
     def _extract_path(self, url: str) -> str:
         """Extract path from URL.

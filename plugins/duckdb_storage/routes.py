@@ -5,7 +5,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Request
 
 
-router = APIRouter(tags=["plugin-duckdb_storage"])
+router = APIRouter()
 
 
 def _get_storage(request: Request):
@@ -49,4 +49,3 @@ async def status(request: Request) -> dict[str, Any]:
         "health": health,
         **plugin_info,
     }
-

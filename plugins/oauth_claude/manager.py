@@ -397,7 +397,9 @@ class ClaudeApiTokenManager(BaseTokenManager[ClaudeCredentials]):
             self._profile_cache = profile
 
             # Sync subscription type to credentials in a single write if changed
-            await self._sync_subscription_type_with_profile(profile, credentials=credentials)
+            await self._sync_subscription_type_with_profile(
+                profile, credentials=credentials
+            )
 
             logger.info(
                 "claude_profile_fetched_from_api",

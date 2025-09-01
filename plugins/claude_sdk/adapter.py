@@ -43,6 +43,7 @@ class ClaudeSDKAdapter(BaseAdapter):
         # Optional dependencies
         session_manager: SessionManager | None = None,
         metrics: "IMetricsCollector | None" = None,
+        hook_manager: Any | None = None,
     ) -> None:
         """Initialize the Claude SDK adapter with explicit dependencies.
 
@@ -50,11 +51,13 @@ class ClaudeSDKAdapter(BaseAdapter):
             config: SDK configuration settings
             session_manager: Optional session manager for session handling
             metrics: Optional metrics collector
+            hook_manager: Optional hook manager for emitting events
         """
         import uuid
 
         self.config = config
         self.metrics = metrics
+        self.hook_manager = hook_manager
 
         # Generate or set default session ID
         self._runtime_default_session_id = None
@@ -94,7 +97,9 @@ class ClaudeSDKAdapter(BaseAdapter):
 
         self.session_manager = session_manager
         self.handler: ClaudeSDKHandler | None = ClaudeSDKHandler(
-            config=config, session_manager=session_manager
+            config=config,
+            session_manager=session_manager,
+            hook_manager=hook_manager,
         )
         self.format_adapter = ClaudeSDKFormatAdapter()
         self.request_transformer = ClaudeSDKRequestTransformer()

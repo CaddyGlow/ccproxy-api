@@ -25,10 +25,6 @@ from ccproxy.core.async_task_manager import create_managed_task
 logger = structlog.get_logger(__name__)
 
 
-
-from typing import Any
-
-
 class SimpleDuckDBStorage:
     """Simple DuckDB storage with queue-based writes to prevent deadlocks."""
 
@@ -268,6 +264,7 @@ class SimpleDuckDBStorage:
                 "client_ip": data.get("client_ip", ""),
                 "user_agent": data.get("user_agent", ""),
                 "service_type": data.get("service_type", ""),
+                "provider": data.get("provider", ""),
                 "model": data.get("model", ""),
                 "streaming": data.get("streaming", False),
                 "status_code": data.get("status_code", 200),
@@ -289,8 +286,25 @@ class SimpleDuckDBStorage:
                     "access_logs table not registered; ensure analytics plugin is enabled"
                 )
             with Session(self._engine) as session:
-                session.exec(insert(table).values(values))
-                session.commit()
+                try:
+                    session.exec(insert(table).values(values))
+                    session.commit()
+                except (OperationalError, IntegrityError, SQLAlchemyError) as e:
+                    # Fallback for older schemas without the 'provider' column
+                    msg = str(e)
+                    if "provider" in values and (
+                        "provider" in msg.lower()
+                        or "no column" in msg.lower()
+                        or "unknown" in msg.lower()
+                    ):
+                        safe_values = {
+                            k: v for k, v in values.items() if k != "provider"
+                        }
+                        session.rollback()
+                        session.exec(insert(table).values(safe_values))
+                        session.commit()
+                    else:
+                        raise
 
             logger.info(
                 "simple_duckdb_store_success",
@@ -353,7 +367,7 @@ class SimpleDuckDBStorage:
                 timestamp_value = data.get("timestamp", time.time())
                 timestamp_dt = (
                     datetime.fromtimestamp(timestamp_value)
-                    if isinstance(timestamp_value, (int, float))
+                    if isinstance(timestamp_value, int | float)
                     else timestamp_value
                 )
                 rows.append(
@@ -367,6 +381,7 @@ class SimpleDuckDBStorage:
                         "client_ip": data.get("client_ip", ""),
                         "user_agent": data.get("user_agent", ""),
                         "service_type": data.get("service_type", ""),
+                        "provider": data.get("provider", ""),
                         "model": data.get("model", ""),
                         "streaming": data.get("streaming", False),
                         "status_code": data.get("status_code", 200),

@@ -109,7 +109,11 @@ class HTTPTracerHook(Hook):
             body_bytes = b""
             if body:
                 if is_json:
-                    body_bytes = json.dumps(body).encode() if isinstance(body, dict) else str(body).encode()
+                    body_bytes = (
+                        json.dumps(body).encode()
+                        if isinstance(body, dict)
+                        else str(body).encode()
+                    )
                 elif isinstance(body, bytes):
                     body_bytes = body
                 elif isinstance(body, str):

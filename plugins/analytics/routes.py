@@ -9,7 +9,7 @@ from fastapi.responses import StreamingResponse
 from ccproxy.api.dependencies import DuckDBStorageDep
 
 
-router = APIRouter(tags=["plugin-analytics"])
+router = APIRouter()
 
 
 @router.get("/query")
@@ -20,6 +20,12 @@ async def query_logs(
     end_time: float | None = Query(None, description="End timestamp filter"),
     model: str | None = Query(None, description="Model filter"),
     service_type: str | None = Query(None, description="Service type filter"),
+    cursor: float | None = Query(
+        None, description="Timestamp cursor for pagination (Unix time)"
+    ),
+    order: str = Query(
+        "desc", pattern="^(?i)(asc|desc)$", description="Sort order: asc or desc"
+    ),
 ) -> dict[str, Any]:
     if not storage:
         raise HTTPException(status_code=503, detail="Storage backend not available")
@@ -36,6 +42,8 @@ async def query_logs(
             end_time=end_time,
             model=model,
             service_type=service_type,
+            cursor=cursor,
+            order=order,
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Query failed: {str(e)}")
@@ -122,7 +130,9 @@ async def reset_logs(storage: DuckDBStorageDep) -> dict[str, Any]:
     if not storage:
         raise HTTPException(status_code=503, detail="Storage backend not available")
     if not hasattr(storage, "reset_data"):
-        raise HTTPException(status_code=501, detail="Reset not supported by storage backend")
+        raise HTTPException(
+            status_code=501, detail="Reset not supported by storage backend"
+        )
 
     ok = await storage.reset_data()
     if not ok:
@@ -133,4 +143,3 @@ async def reset_logs(storage: DuckDBStorageDep) -> dict[str, Any]:
         "timestamp": time.time(),
         "backend": "duckdb",
     }
-

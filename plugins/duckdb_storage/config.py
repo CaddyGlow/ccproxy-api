@@ -24,4 +24,3 @@ class DuckDBStorageConfig(BaseModel):
         default=True,
         description="Also set app.state.duckdb_storage for backward compatibility",
     )
-

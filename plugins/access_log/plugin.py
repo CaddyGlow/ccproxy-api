@@ -89,6 +89,7 @@ class AccessLogRuntime(SystemPluginRuntime):
                 ingest_service = None
                 if registry:
                     from plugins.analytics.ingest import AnalyticsIngestService
+
                     ingest_service = registry.get_service(
                         "analytics_ingest", AnalyticsIngestService
                     )

@@ -6,7 +6,7 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse, HTMLResponse
 
 
-router = APIRouter(tags=["plugin-dashboard"])
+router = APIRouter()
 
 
 @router.get("/dashboard")
@@ -40,11 +40,17 @@ async def get_metrics_dashboard() -> HTMLResponse:
             },
         )
     except (OSError, PermissionError) as e:
-        raise HTTPException(status_code=500, detail=f"Dashboard file access error: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Dashboard file access error: {str(e)}"
+        )
     except UnicodeDecodeError as e:
-        raise HTTPException(status_code=500, detail=f"Dashboard file encoding error: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Dashboard file encoding error: {str(e)}"
+        )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to serve dashboard: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to serve dashboard: {str(e)}"
+        )
 
 
 @router.get("/dashboard/favicon.svg")
@@ -59,4 +65,3 @@ async def get_dashboard_favicon() -> FileResponse:
         media_type="image/svg+xml",
         headers={"Cache-Control": "public, max-age=3600"},
     )
-

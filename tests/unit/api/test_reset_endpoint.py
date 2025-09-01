@@ -14,9 +14,8 @@ from typing import Any
 import pytest
 from sqlmodel import Session, select
 
-from plugins.analytics.models import AccessLog
+from plugins.analytics.models import AccessLog, AccessLogPayload
 from plugins.duckdb_storage.storage import SimpleDuckDBStorage
-from plugins.analytics.models import AccessLogPayload
 from tests.factories import FastAPIClientFactory
 
 

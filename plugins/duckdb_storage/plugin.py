@@ -104,7 +104,9 @@ class DuckDBStorageRuntime(SystemPluginRuntime):
             "type": "system",
             "initialized": self.initialized,
             "enabled": bool(self.storage),
-            "has_service": self.context.get("plugin_registry").has_service("log_storage")
+            "has_service": self.context.get("plugin_registry").has_service(
+                "log_storage"
+            )
             if self.context and self.context.get("plugin_registry")
             else False,
         }
@@ -121,9 +123,7 @@ class DuckDBStorageFactory(SystemPluginFactory):
             is_provider=False,
             provides=["log_storage"],
             config_class=DuckDBStorageConfig,
-            routes=[
-                RouteSpec(router=duckdb_router, prefix="/duckdb", tags=["duckdb"])
-            ],
+            routes=[RouteSpec(router=duckdb_router, prefix="/duckdb", tags=["duckdb"])],
         )
         super().__init__(manifest)
 

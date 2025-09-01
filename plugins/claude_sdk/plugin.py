@@ -164,9 +164,22 @@ class ClaudeSDKFactory(BaseProviderPluginFactory):
         # Get optional dependencies
         metrics = context.get("metrics")
 
+        # Try to get hook_manager from context (provided by core services)
+        hook_manager = context.get("hook_manager")
+        if not hook_manager:
+            # Try to get from app state as fallback
+            app = context.get("app")
+            if app and hasattr(app, "state") and hasattr(app.state, "hook_manager"):
+                hook_manager = app.state.hook_manager
+
+        if hook_manager:
+            logger.debug("claude_sdk_hook_manager_found", source="context_or_app")
+
         # Create adapter with config and optional dependencies
         # Note: ClaudeSDKAdapter doesn't need http_client as it uses SDK
-        adapter = ClaudeSDKAdapter(config=config, metrics=metrics)
+        adapter = ClaudeSDKAdapter(
+            config=config, metrics=metrics, hook_manager=hook_manager
+        )
 
         return adapter
 

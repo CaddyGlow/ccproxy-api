@@ -128,7 +128,7 @@ async def check_permission(
 
 # Create a router for the plugin system
 
-mcp_router = APIRouter(tags=["mcp"])
+mcp_router = APIRouter()
 
 
 @mcp_router.post(

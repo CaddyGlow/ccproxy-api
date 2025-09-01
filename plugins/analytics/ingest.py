@@ -38,6 +38,8 @@ class AnalyticsIngestService:
             "client_ip": log_data.get("client_ip", ""),
             "user_agent": log_data.get("user_agent", ""),
             "service_type": log_data.get("service_type", "access_log"),
+            # Provider dimension if available (e.g., "anthropic", "openai")
+            "provider": log_data.get("provider", ""),
             "model": log_data.get("model", ""),
             "streaming": bool(log_data.get("streaming", False)),
             "status_code": int(log_data.get("status_code", 200)),
@@ -55,4 +57,3 @@ class AnalyticsIngestService:
             return await self._storage.store_request(payload)
         except Exception:
             return False
-

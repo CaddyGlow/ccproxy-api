@@ -67,4 +67,3 @@ class DashboardFactory(SystemPluginFactory):
 
 
 factory = DashboardFactory()
-

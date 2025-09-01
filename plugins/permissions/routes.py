@@ -23,7 +23,7 @@ from .service import get_permission_service
 logger = get_plugin_logger()
 
 
-router = APIRouter(tags=["permissions"])
+router = APIRouter()
 
 
 class PermissionResponse(BaseModel):

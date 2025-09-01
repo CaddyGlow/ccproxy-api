@@ -14,9 +14,8 @@ from unittest.mock import patch
 import pytest
 from sqlmodel import Session, select
 
-from plugins.analytics.models import AccessLog
+from plugins.analytics.models import AccessLog, AccessLogPayload
 from plugins.duckdb_storage.storage import SimpleDuckDBStorage
-from plugins.analytics.models import AccessLogPayload
 
 
 @pytest.fixture

@@ -373,7 +373,9 @@ class ClaudeOAuthProvider:
                     # Dump all profile data
                     logger.debug(
                         "claude_profile_full_dump",
-                        profile_data=profile.model_dump() if hasattr(profile, 'model_dump') else str(profile),
+                        profile_data=profile.model_dump()
+                        if hasattr(profile, "model_dump")
+                        else str(profile),
                         category="auth",
                     )
 

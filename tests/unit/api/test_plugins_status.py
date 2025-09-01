@@ -39,4 +39,3 @@ async def test_plugins_status_types() -> None:
         for candidate in ("claude_api", "codex"):
             if candidate in names_to_types:
                 assert names_to_types[candidate] in {"provider", "auth_provider"}
-

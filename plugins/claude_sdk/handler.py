@@ -26,6 +26,7 @@ from . import models as sdk_models
 from .client import ClaudeSDKClient
 from .config import ClaudeSDKSettings, SDKMessageMode
 from .converter import MessageConverter
+from .hooks import ClaudeSDKStreamingHook
 from .models import MessageResponse, SDKMessage, create_sdk_message
 from .streaming import ClaudeStreamProcessor
 
@@ -61,6 +62,7 @@ class ClaudeSDKHandler:
         auth_manager: AuthManager | None = None,
         metrics: Any | None = None,  # Metrics now handled by metrics plugin
         session_manager: SessionManager | None = None,
+        hook_manager: Any | None = None,  # HookManager for emitting events
     ) -> None:
         """Initialize Claude SDK handler."""
         self.config = config
@@ -69,11 +71,19 @@ class ClaudeSDKHandler:
         )
         self.auth_manager = auth_manager
         self.metrics = metrics
+        self.hook_manager = hook_manager
         self.message_converter = MessageConverter()
         self.options_handler = OptionsHandler(config=config)
+
+        # Create streaming hook if hook_manager is available
+        streaming_hook = None
+        if hook_manager:
+            streaming_hook = ClaudeSDKStreamingHook(hook_manager=hook_manager)
+
         self.stream_processor = ClaudeStreamProcessor(
             message_converter=self.message_converter,
             metrics=self.metrics,
+            streaming_hook=streaming_hook,
         )
 
     def _convert_messages_to_sdk_message(
