@@ -2,12 +2,12 @@
 
 import json
 import logging
-from pathlib import Path
 import os
+import uuid
+from pathlib import Path
 from typing import Any
 
 import structlog
-import uuid
 from structlog.contextvars import get_merged_contextvars
 
 

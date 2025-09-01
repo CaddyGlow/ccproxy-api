@@ -365,7 +365,7 @@ class ClaudeOAuthProvider:
                 )
 
             credentials = await manager.load_credentials()
-            
+
             # Dump full profile information to logger
             if credentials:
                 profile = await manager.get_profile()
@@ -376,7 +376,7 @@ class ClaudeOAuthProvider:
                         profile_data=profile.model_dump() if hasattr(profile, 'model_dump') else str(profile),
                         category="auth",
                     )
-            
+
             return credentials
         except Exception as e:
             logger.error(

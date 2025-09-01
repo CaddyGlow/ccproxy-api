@@ -4,7 +4,13 @@ import json
 from typing import Any
 
 import httpx
-from httpx._types import HeaderTypes, QueryParamTypes, RequestContent, RequestData, RequestFiles
+from httpx._types import (
+    HeaderTypes,
+    QueryParamTypes,
+    RequestContent,
+    RequestData,
+    RequestFiles,
+)
 
 from ccproxy.core.logging import get_logger
 from ccproxy.hooks.events import HookEvent
@@ -18,7 +24,7 @@ class HookableHTTPClient(httpx.AsyncClient):
 
     def __init__(self, *args: Any, hook_manager: Any | None = None, **kwargs: Any):
         """Initialize HTTP client with optional hook support.
-        
+
         Args:
             *args: Arguments for httpx.AsyncClient
             hook_manager: Optional HookManager instance for emitting hooks
@@ -26,7 +32,7 @@ class HookableHTTPClient(httpx.AsyncClient):
         """
         super().__init__(*args, **kwargs)
         self.hook_manager = hook_manager
-        
+
     async def request(
         self,
         method: str,
@@ -41,7 +47,7 @@ class HookableHTTPClient(httpx.AsyncClient):
         **kwargs: Any,
     ) -> httpx.Response:
         """Make an HTTP request with hook emissions.
-        
+
         Emits:
             - HTTP_REQUEST before sending
             - HTTP_RESPONSE after receiving response
@@ -53,7 +59,7 @@ class HookableHTTPClient(httpx.AsyncClient):
             "url": str(url),
             "headers": dict(headers) if headers else {},
         }
-        
+
         # Add body information
         if json is not None:
             request_context["body"] = json
@@ -64,7 +70,7 @@ class HookableHTTPClient(httpx.AsyncClient):
         elif content is not None:
             request_context["body"] = content
             request_context["is_json"] = False
-            
+
         # Emit pre-request hook
         if self.hook_manager:
             try:
@@ -79,7 +85,7 @@ class HookableHTTPClient(httpx.AsyncClient):
                     method=method,
                     url=str(url),
                 )
-        
+
         try:
             # Make the actual request
             response = await super().request(
@@ -93,7 +99,7 @@ class HookableHTTPClient(httpx.AsyncClient):
                 headers=headers,
                 **kwargs,
             )
-            
+
             # Emit post-response hook
             if self.hook_manager:
                 response_context = {
@@ -101,7 +107,7 @@ class HookableHTTPClient(httpx.AsyncClient):
                     "status_code": response.status_code,
                     "response_headers": dict(response.headers),
                 }
-                
+
                 # Try to include response body if it's JSON
                 try:
                     if "application/json" in response.headers.get("content-type", ""):
@@ -109,7 +115,7 @@ class HookableHTTPClient(httpx.AsyncClient):
                 except Exception:
                     # Can't parse body, that's OK
                     pass
-                
+
                 try:
                     await self.hook_manager.emit(
                         HookEvent.HTTP_RESPONSE,
@@ -121,9 +127,9 @@ class HookableHTTPClient(httpx.AsyncClient):
                         error=str(e),
                         status_code=response.status_code,
                     )
-            
+
             return response
-            
+
         except Exception as error:
             # Emit error hook
             if self.hook_manager:
@@ -132,12 +138,12 @@ class HookableHTTPClient(httpx.AsyncClient):
                     "error_type": type(error).__name__,
                     "error_detail": str(error),
                 }
-                
+
                 # Add response info if it's an HTTPStatusError
                 if isinstance(error, httpx.HTTPStatusError):
                     error_context["status_code"] = error.response.status_code
                     error_context["response_body"] = error.response.text
-                
+
                 try:
                     await self.hook_manager.emit(
                         HookEvent.HTTP_ERROR,
@@ -149,6 +155,6 @@ class HookableHTTPClient(httpx.AsyncClient):
                         error=str(e),
                         original_error=str(error),
                     )
-            
+
             # Re-raise the original error
             raise

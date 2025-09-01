@@ -172,6 +172,8 @@ async def initialize_plugins_startup(app: FastAPI, settings: Settings) -> None:
     # Initialize all plugins with their runtime context
     await plugin_registry.initialize_all(core_services)
 
+    # No plugin-specific routing logic in core. Plugins register their own routes.
+
     logger.info(
         "plugins_initialization_completed",
         total_plugins=len(plugin_registry.list_plugins()),
@@ -434,7 +436,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         settings = get_settings()
 
     # Configure logging based on settings BEFORE any module uses logger
-    import structlog
 
     if not structlog.is_configured():
         # Only setup logging if structlog is not configured at all

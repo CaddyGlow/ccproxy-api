@@ -64,8 +64,8 @@ class BaseOAuthClient(ABC, Generic[CredentialsT]):
         else:
             # Create client with hook support if hook_manager is provided
             self.http_client = HTTPClientFactory.create_client(
-                timeout_connect=10.0, 
-                timeout_read=30.0, 
+                timeout_connect=10.0,
+                timeout_read=30.0,
                 http2=True,
                 hook_manager=hook_manager,  # Pass hook manager to client
             )

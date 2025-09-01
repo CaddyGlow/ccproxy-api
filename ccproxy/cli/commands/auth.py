@@ -1,20 +1,20 @@
 """Authentication and credential management commands."""
 
 import asyncio
-import os
 import contextlib
+import logging
+import os
 from typing import Annotated, Any
 
+import structlog
 import typer
 from rich import box
 from rich.console import Console
 from rich.table import Table
-import logging
-import structlog
-from ccproxy.core.logging import bootstrap_cli_logging, get_logger, setup_logging
 
 from ccproxy.cli.helpers import get_rich_toolkit
 from ccproxy.config.settings import get_settings
+from ccproxy.core.logging import bootstrap_cli_logging, get_logger, setup_logging
 from ccproxy.hooks.manager import HookManager
 from ccproxy.hooks.registry import HookRegistry
 
@@ -53,10 +53,8 @@ def _ensure_logging_configured() -> None:
         return
 
     # First try early bootstrap from env/argv without touching settings
-    try:
+    with contextlib.suppress(Exception):
         bootstrap_cli_logging()
-    except Exception:
-        pass
 
     if structlog.is_configured():
         return
@@ -110,6 +108,7 @@ async def _lazy_register_oauth_provider(provider: str) -> Any | None:
     or None if not found/import failed.
     """
     import importlib
+
     from ccproxy.auth.oauth.registry import get_oauth_registry
     from ccproxy.config.settings import get_settings
     from ccproxy.plugins import PluginContext
@@ -161,12 +160,12 @@ async def _lazy_register_oauth_provider(provider: str) -> Any | None:
 
     # Create HTTP client with hook support if enabled
     from ccproxy.core.http_client import HTTPClientFactory
-    
+
     http_client = HTTPClientFactory.create_client(
         settings=settings,
         hook_manager=hook_manager,  # Will use HookableHTTPClient if hook_manager is provided
     )
-    
+
     context_data: dict[str, Any] = {
         "detection_service": detection_service,
         "http_client": http_client,

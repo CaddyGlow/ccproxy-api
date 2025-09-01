@@ -1,8 +1,8 @@
 """Generic HTTP request tracer hook."""
 
 import json
-from typing import Any
 import uuid
+from typing import Any
 
 import structlog
 
@@ -271,7 +271,7 @@ class HTTPTracerHook(Hook):
                     body_str = str(body)
             else:
                 body_str = str(body)
-            
+
             lines.append(f"Content-Length: {len(body_str)}")
             lines.append("")
             lines.append(body_str)
@@ -314,7 +314,7 @@ class HTTPTracerHook(Hook):
                     body_str = str(body)
             else:
                 body_str = str(body)
-            
+
             lines.append(f"Content-Length: {len(body_str)}")
             lines.append("")
             lines.append(body_str)

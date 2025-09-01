@@ -1,14 +1,14 @@
 """Raw HTTP formatter for protocol-level logging."""
 
-from collections.abc import Sequence
-from pathlib import Path
 import os
 import uuid
+from collections.abc import Sequence
+from pathlib import Path
 
 import aiofiles
+from structlog.contextvars import get_merged_contextvars
 
 from ccproxy.core.logging import get_plugin_logger
-from structlog.contextvars import get_merged_contextvars
 
 from ..config import RequestTracerConfig
 

@@ -33,7 +33,7 @@ class HookEvent(str, Enum):
     HTTP_REQUEST = "http.request"
     HTTP_RESPONSE = "http.response"
     HTTP_ERROR = "http.error"
-    
+
     # OAuth Operations
     OAUTH_TOKEN_REQUEST = "oauth.token.request"
     OAUTH_TOKEN_RESPONSE = "oauth.token.response"

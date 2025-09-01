@@ -184,8 +184,8 @@ class ClaudeTokenWrapper(BaseTokenInfo):
         """
         # Lazy, best-effort read of local profile data; keep this non-fatal.
         try:
-            from pathlib import Path
             import json
+            from pathlib import Path
 
             profile_path = Path.home() / ".claude" / ".account.json"
             if profile_path.exists():

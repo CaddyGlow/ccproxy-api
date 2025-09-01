@@ -10,8 +10,8 @@ from fastapi import Depends, Request
 from ccproxy.config.settings import Settings, get_settings
 from ccproxy.core.logging import get_logger
 from ccproxy.hooks import HookManager
-from ccproxy.storage.duckdb_simple import SimpleDuckDBStorage
 from ccproxy.services.container import ServiceContainer
+from ccproxy.storage.duckdb_simple import SimpleDuckDBStorage
 
 
 if TYPE_CHECKING:

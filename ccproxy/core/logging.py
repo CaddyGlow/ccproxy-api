@@ -2,16 +2,15 @@ import logging
 import os
 import shutil
 import sys
+import uuid
 from collections.abc import MutableMapping
 from pathlib import Path
 from typing import Any, Protocol, TextIO
-import uuid
-import os
-from structlog.contextvars import bind_contextvars
 
 import structlog
 from rich.console import Console
 from rich.traceback import Traceback
+from structlog.contextvars import bind_contextvars
 from structlog.stdlib import BoundLogger
 from structlog.typing import ExcInfo, Processor
 
