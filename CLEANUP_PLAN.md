@@ -178,7 +178,7 @@ Goal: Ensure each bundled plugin is free of legacy coupling and follows the stan
   - [ ] Tests: transform correctness + SSE chunking
 - DuckDB Storage (`plugins/duckdb_storage`)
   - [x] Remove any app-state alias unless explicitly enabled (alias gated by `register_app_state_alias`)
-  - [ ] Migrations: idempotent schema setup and vacuum policy
+  - [x] Migrations: idempotent schema setup (initialize twice) and optional optimize-on-shutdown flag (default off)
   - [ ] Tests: persistence across restarts; concurrent writers
 - Analytics (`plugins/analytics`)
   - [x] Depend on storage plugin via interface; no inline engines (uses `app.state.log_storage`)

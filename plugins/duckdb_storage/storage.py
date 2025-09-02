@@ -78,6 +78,21 @@ class SimpleDuckDBStorage:
             logger.error("simple_duckdb_init_error", error=str(e), exc_info=e)
             raise
 
+    def optimize(self) -> None:
+        """Run PRAGMA optimize on the database engine if available.
+
+        This is a lightweight maintenance step to improve performance and
+        reclaim space in DuckDB. Safe to call on file-backed databases.
+        """
+        if not self._engine:
+            return
+        try:
+            with self._engine.connect() as conn:  # type: ignore[attr-defined]
+                conn.exec_driver_sql("PRAGMA optimize")
+                logger.debug("duckdb_optimize_completed")
+        except Exception as e:  # pragma: no cover - non-critical maintenance
+            logger.warning("duckdb_optimize_failed", error=str(e), exc_info=e)
+
     def _create_schema_sync(self) -> None:
         """Create database schema using SQLModel (synchronous)."""
         if not self._engine:

@@ -20,3 +20,7 @@ class DuckDBStorageConfig(BaseModel):
         default=False,
         description="Also set app.state.duckdb_storage for backward compatibility",
     )
+    optimize_on_shutdown: bool = Field(
+        default=False,
+        description="Run PRAGMA optimize on shutdown (file-backed DB only)",
+    )

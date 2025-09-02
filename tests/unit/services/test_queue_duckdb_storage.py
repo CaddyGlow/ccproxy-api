@@ -85,6 +85,18 @@ class TestQueueBasedDuckDBStorage:
 
         await memory_storage.close()
 
+    async def test_schema_creation_is_idempotent(
+        self, memory_storage: SimpleDuckDBStorage
+    ) -> None:
+        """Calling initialize() twice should not raise or duplicate schema."""
+        # First init
+        await memory_storage.initialize()
+        # Second init should be a no-op and not raise
+        await memory_storage.initialize()
+        assert memory_storage._initialized is True
+        assert memory_storage._background_worker_task is not None
+        await memory_storage.close()
+
     async def test_store_request_queues_data(
         self,
         initialized_storage: SimpleDuckDBStorage,

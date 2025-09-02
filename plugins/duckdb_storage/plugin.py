@@ -82,6 +82,12 @@ class DuckDBStorageRuntime(SystemPluginRuntime):
 
     async def _on_shutdown(self) -> None:
         if self.storage:
+            # Optional optimize on shutdown
+            if self.config and self.config.optimize_on_shutdown:
+                try:
+                    self.storage.optimize()
+                except Exception as e:  # pragma: no cover - best-effort
+                    logger.warning("duckdb_optimize_on_shutdown_failed", error=str(e))
             try:
                 await self.storage.close()
             except Exception as e:
