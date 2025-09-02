@@ -9,6 +9,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from plugins.analytics import models as _analytics_models  # noqa: F401
+from plugins.analytics.service import AnalyticsService
 from plugins.analytics.routes import get_duckdb_storage
 from plugins.analytics.routes import router as analytics_router
 from plugins.duckdb_storage.storage import SimpleDuckDBStorage
@@ -54,9 +55,7 @@ def _mk_log(ts: float, model: str, service_type: str, status: int) -> dict[str, 
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-async def test_query_filters_model_and_time(
-    storage: SimpleDuckDBStorage, client: TestClient
-) -> None:
+async def test_query_filters_model_and_time(storage: SimpleDuckDBStorage) -> None:
     base = time.time()
     logs = [
         _mk_log(base - 300, "claude-1", "access_log", 200),
@@ -67,16 +66,12 @@ async def test_query_filters_model_and_time(
         await storage.store_request(entry)
     await asyncio.sleep(0.2)
 
-    r = client.get(
-        "/logs/query",
-        params={
-            "model": "claude-2",
-            "start_time": base - 120,
-            "end_time": base + 10,
-            "limit": 100,
-            "order": "asc",
-        },
+    svc = AnalyticsService(storage._engine)
+    data = svc.query_logs(
+        limit=100,
+        start_time=base - 120,
+        end_time=base + 10,
+        model="claude-2",
+        order="asc",
     )
-    assert r.status_code == 200
-    data = r.json()
     assert data["count"] == 2

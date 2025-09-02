@@ -336,6 +336,9 @@ docs = [
     { name = "mkdocs-swagger-ui-tag" },
     { name = "mkdocstrings", extra = ["python"] },
 ]
+plugins = [
+    { name = "ccproxy-metrics" },
+]
 schema = [
     { name = "check-jsonschema" },
     { name = "pydantic" },
@@ -410,6 +413,7 @@ docs = [
     { name = "mkdocs-swagger-ui-tag", specifier = ">=0.6.0" },
     { name = "mkdocstrings", extras = ["python"], specifier = ">=0.24.0" },
 ]
+plugins = [{ name = "ccproxy-metrics", editable = "plugins/metrics" }]
 schema = [
     { name = "check-jsonschema", specifier = ">=0.33.2" },
     { name = "pydantic", specifier = ">=2.8.0" },

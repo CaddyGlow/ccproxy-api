@@ -47,7 +47,6 @@ version-file = "ccproxy/_version.py"
 packages = ["ccproxy", "plugins"]
 include = [
   "ccproxy/data/*.json",
-  "ccproxy/static/dashboard/**",
   "plugins/**/*.py",
   "plugins/**/*.json",
   "plugins/**/*.toml",
@@ -72,17 +71,17 @@ ccproxy = "ccproxy.cli:main"
 ccproxy-api = "ccproxy.cli:main"
 ccproxy-perm = "ccproxy.cli.commands.permission:main"
 
-[project.entry-points."ccproxy.plugins"]
-access_log = "plugins.access_log.plugin:factory"
-claude_api = "plugins.claude_api.plugin:factory"
-claude_sdk = "plugins.claude_sdk.plugin:factory"
-codex = "plugins.codex.plugin:factory"
-permissions = "plugins.permissions.plugin:factory"
-request_tracer = "plugins.request_tracer.plugin:factory"
-duckdb_storage = "plugins.duckdb_storage.plugin:factory"
-analytics = "plugins.analytics.plugin:factory"
-dashboard = "plugins.dashboard.plugin:factory"
-
+# [project.entry-points."ccproxy.plugins"]
+# access_log = "plugins.access_log.plugin:factory"
+# claude_api = "plugins.claude_api.plugin:factory"
+# claude_sdk = "plugins.claude_sdk.plugin:factory"
+# codex = "plugins.codex.plugin:factory"
+# permissions = "plugins.permissions.plugin:factory"
+# request_tracer = "plugins.request_tracer.plugin:factory"
+# duckdb_storage = "plugins.duckdb_storage.plugin:factory"
+# analytics = "plugins.analytics.plugin:factory"
+# dashboard = "plugins.dashboard.plugin:factory"
+#
 [dependency-groups]
 dev = [
   "mypy>=1.16.1",
@@ -121,23 +120,18 @@ docs = [
   "mkdocs-minify-plugin>=0.7.0",
   "mkdocs-redirects>=1.2.0",
 ]
+plugins = [
+    "ccproxy-metrics",
+]
 schema = ["pydantic>=2.8.0", "check-jsonschema>=0.33.2"]
 
 [project.optional-dependencies]
 # Plugin-focused extras to enable splitting plugin deps from core at install time.
 # Kept in root dependencies for now because plugins are bundled with the wheel.
 # These extras provide an escape hatch for future distribution changes.
-plugins-storage = [
-  "duckdb>=1.1.0",
-  "duckdb-engine>=0.17.0",
-  "sqlmodel>=0.0.24",
-]
-plugins-metrics = [
-  "prometheus-client>=0.22.1",
-]
-plugins-ui = [
-  "textual>=3.7.1",
-]
+plugins-storage = ["duckdb>=1.1.0", "duckdb-engine>=0.17.0", "sqlmodel>=0.0.24"]
+plugins-metrics = ["prometheus-client>=0.22.1"]
+plugins-ui = ["textual>=3.7.1"]
 
 [tool.coverage.run]
 source = ["ccproxy", "tests"]
@@ -240,7 +234,6 @@ force-single-line = false
 lines-after-imports = 2
 
 
-
 [tool.mypy]
 python_version = "3.11"
 show_column_numbers = true
@@ -276,11 +269,7 @@ module = "tests.*"
 ignore_errors = true
 
 [[tool.mypy.overrides]]
-module = [
-  "tomli",
-  "sse_starlette.sse",
-  "fastapi_mcp",
-]
+module = ["tomli", "sse_starlette.sse", "fastapi_mcp"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
@@ -464,6 +453,9 @@ members = [
   "plugins/analytics",
   "plugins/dashboard",
 ]
+
+[tool.uv.sources]
+ccproxy-metrics = { workspace = true }
 
 [tool.pyright]
 pythonVersion = "3.11"

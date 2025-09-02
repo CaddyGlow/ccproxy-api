@@ -322,6 +322,34 @@ class TestQueueBasedDuckDBStorage:
         finally:
             await storage.close()
 
+    async def test_persistence_across_restarts(
+        self, temp_db_path: Path, sample_access_log: AccessLogPayload
+    ) -> None:
+        """Data written before shutdown persists after restart (file DB)."""
+        # First run: initialize and store
+        storage1 = SimpleDuckDBStorage(temp_db_path)
+        await storage1.initialize()
+        try:
+            ok = await storage1.store_request(sample_access_log)
+            assert ok is True
+            await asyncio.sleep(0.1)
+        finally:
+            await storage1.close()
+
+        # Second run: re-open and verify data exists
+        storage2 = SimpleDuckDBStorage(temp_db_path)
+        await storage2.initialize()
+        try:
+            with Session(storage2._engine) as session:
+                result = session.exec(
+                    select(AccessLog).where(
+                        AccessLog.request_id == sample_access_log["request_id"]
+                    )
+                ).first()
+                assert result is not None
+        finally:
+            await storage2.close()
+
     async def test_health_check_with_queue_storage(
         self,
         initialized_storage: SimpleDuckDBStorage,

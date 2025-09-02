@@ -42,10 +42,10 @@ Use `GET /api/plugins/status` to see each plugin’s `type` as `auth_provider`, 
 ## Discovery
 
 Plugins are discovered from two sources and merged:
-- Local `plugins/` directory: any subfolder with a `plugin.py` exporting `factory` (a `PluginFactory`) is loaded.
+- Local `plugins/` directory: any subfolder with a `plugin.py` exporting `factory` (a `PluginFactory`) is loaded (filesystem discovery).
 - Installed entry points: Python packages that declare an entry under `ccproxy.plugins` providing a `PluginFactory` or a callable returning one.
 
-Local filesystem plugins take precedence over entry points on name conflicts.
+Local filesystem plugins take precedence over entry points on name conflicts. To disable filesystem discovery and load plugins only from entry points, set `plugins_disable_local_discovery = true` in your `.ccproxy.toml` or export `PLUGINS_DISABLE_LOCAL_DISCOVERY=true`.
 
 ### Declaring Entry Points (pyproject.toml)
 
