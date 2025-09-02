@@ -96,7 +96,9 @@ Actionable checklist:
 
 - [ ] Audit API routers for any legacy shims
   - Expected public routes: health, plugins, and plugin-mounted routes only
+  - [x] Remove core OAuth/SDK checks from health routes; plugins own provider health
 - [ ] CLI: remove hidden/legacy commands if any remain; ensure `plugins` command sources loader
+  - [x] `plugins` CLI now uses centralized `load_plugin_system()`
 - [x] Config docs: ensure README/docs index include a small “Plugin Config Quickstart”
 - [x] Provide migration error messages for deprecated config keys (fail-fast with help text)
 

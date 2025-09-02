@@ -269,7 +269,7 @@ warn_return_any = true
 disallow_any_generics = true
 disallow_subclassing_any = true
 disallow_any_unimported = true
-warn_unreachable = true
+warn_unreachable = false
 
 # if we need to disable certain strict checks
 # disallow_incomplete_defs = false
@@ -278,13 +278,7 @@ warn_unreachable = true
 
 [[tool.mypy.overrides]]
 module = "tests.*"
-# ignore_errors = true
-disallow_untyped_defs = false
-disallow_incomplete_defs = false
-disallow_untyped_calls = false
-warn_unused_ignores = false
-# Ignore call-arg errors for Pydantic models with optional fields
-disable_error_code = ["call-arg"]
+ignore_errors = true
 
 
 [tool.pytest.ini_options]

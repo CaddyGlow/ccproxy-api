@@ -148,7 +148,7 @@ async def plugin_health(
                 details_value = health_result.get("details")
             else:
                 # Access attributes for non-dict responses
-                status_value = getattr(health_result, "status", "unknown")  # type: ignore[unreachable]
+                status_value = getattr(health_result, "status", "unknown")
                 output_value = getattr(health_result, "output", None)
                 version_value = getattr(health_result, "version", None)
                 details_value = getattr(health_result, "details", None)

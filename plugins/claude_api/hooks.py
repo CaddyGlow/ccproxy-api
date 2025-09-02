@@ -30,7 +30,7 @@ class ClaudeAPIStreamingMetricsHook(Hook):
         self.pricing_service = pricing_service
         self.plugin_registry = plugin_registry
         # Store metrics per request_id
-        self._metrics_cache: dict[str, dict] = {}
+        self._metrics_cache: dict[str, dict[str, Any]] = {}
 
     def _get_pricing_service(self) -> Any:
         """Get pricing service, trying lazy loading if not already available."""
@@ -126,7 +126,7 @@ class ClaudeAPIStreamingMetricsHook(Hook):
                 request_id=request_id,
             )
 
-    def _extract_and_accumulate(self, event_data: dict, request_id: str) -> None:
+    def _extract_and_accumulate(self, event_data: dict[str, Any], request_id: str) -> None:
         """Extract metrics from parsed event data and accumulate."""
         usage_data = extract_usage_from_streaming_chunk(event_data)
 

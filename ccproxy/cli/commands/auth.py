@@ -468,107 +468,12 @@ def login_command(
     )
     toolkit.print_line()
 
-    try:
-        # Create a local registry for this CLI session
-        registry = OAuthRegistry()
-        # Lazily load provider plugin and register in registry
-        oauth_provider = asyncio.run(get_oauth_provider_for_name(provider, registry))
-        if not oauth_provider:
-            providers = asyncio.run(discover_oauth_providers())
-            available = ", ".join(providers.keys()) if providers else "none"
-            expected = _expected_plugin_class_name(provider)
-            # Heuristic suggestion for delimiter differences
-            suggestion = None
-            if provider.replace("_", "-") in providers:
-                suggestion = provider.replace("_", "-")
-            elif provider.replace("-", "_") in providers:
-                suggestion = provider.replace("-", "_")
-            msg = (
-                f"Provider '{provider}' not found. Available: {available}. "
-                f"Expected plugin class '{expected}'."
-            )
-            if suggestion:
-                msg += f" Did you mean '{suggestion}'?"
-            toolkit.print(msg, tag="error")
-            raise typer.Exit(1)
-
-        # Use the new OAuth integration handler
-        from ccproxy.cli.oauth_integration import CLIOAuthHandler
-
-        # Get port from provider config if available
-        port = 9999  # Default port
-        provider_config = oauth_provider.get_config()
-        if hasattr(provider_config, "callback_port"):
-            port = provider_config.callback_port
-        elif provider == "codex":
-            port = 1455  # Keep different port for codex to avoid conflicts
-
-        handler = CLIOAuthHandler(port=port, registry=registry)
-
-        try:
-            # If manual flag is set, use a different approach
-            if manual:
-                asyncio.run(_lazy_register_oauth_provider(provider, registry))
-                credentials = asyncio.run(handler.login_manual(provider))
-            else:
-                # Ensure provider is registered in the same registry used by handler
-                asyncio.run(_lazy_register_oauth_provider(provider, registry))
-                credentials = asyncio.run(
-                    handler.login(provider, open_browser=not no_browser)
-                )
-
-            toolkit.print(f"Successfully logged in to {provider}!", tag="success")
-
-            # Show credential summary using provider's method
-            console.print(f"\n[dim]Authentication successful for {provider}[/dim]")
-
-            oauth_provider = handler.registry.get_provider(provider)
-
-            if oauth_provider and hasattr(oauth_provider, "get_credential_summary"):
-                try:
-                    summary = oauth_provider.get_credential_summary(credentials)
-
-                    # Display summary info
-                    if summary.get("subscription_type"):
-                        console.print(f"  Subscription: {summary['subscription_type']}")
-                    if summary.get("account_id"):
-                        console.print(f"  Account ID: {summary['account_id']}")
-                    if summary.get("scopes"):
-                        console.print(f"  Scopes: {', '.join(summary['scopes'])}")
-                    if summary.get("expires_at"):
-                        console.print(f"  Token expires: {summary['expires_at']}")
-
-                    # Show storage location
-                    storage = oauth_provider.get_storage()
-                    if storage and hasattr(storage, "get_location"):
-                        console.print(f"  Stored at: {storage.get_location()}")
-                except Exception as e:
-                    logger.debug(f"Could not get credential summary: {e}")
-
-        except TimeoutError as e:
-            toolkit.print(f"OAuth login timed out: {e}", tag="error")
-            raise typer.Exit(1) from e
-        except ValueError as e:
-            toolkit.print(f"OAuth configuration error: {e}", tag="error")
-            raise typer.Exit(1) from e
-
-    except ValueError as e:
-        toolkit.print(f"Configuration error during {provider} login: {e}", tag="error")
-        raise typer.Exit(1) from e
-    except KeyboardInterrupt:
-        console.print("\n[yellow]Login cancelled by user.[/yellow]")
-        raise typer.Exit(1) from None
-    except OSError as e:
-        toolkit.print(f"OAuth server error during {provider} login: {e}", tag="error")
-        raise typer.Exit(1) from e
-    except ImportError as e:
-        toolkit.print(
-            f"Failed to import required modules for {provider}: {e}", tag="error"
-        )
-        raise typer.Exit(1) from e
-    except Exception as e:
-        toolkit.print(f"Error during {provider} login: {e}", tag="error")
-        raise typer.Exit(1) from e
+    # CLI OAuth was removed. Provide a clear message and non-zero exit.
+    toolkit.print(
+        "CLI OAuth flow has been removed. Use provider-specific tooling or API tokens.",
+        tag="error",
+    )
+    raise typer.Exit(1)
 
 
 @app.command(name="status")
@@ -632,7 +537,8 @@ def status_command(
                     with contextlib.suppress(Exception):
                         storage = oauth_provider.get_storage()
 
-                manager = None
+                from typing import Any as _Any
+                manager: _Any | None = None
                 if provider in ("claude-api", "claude_api"):
                     try:
                         from plugins.oauth_claude.manager import ClaudeApiTokenManager

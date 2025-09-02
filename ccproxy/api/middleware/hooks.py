@@ -164,8 +164,18 @@ class HooksMiddleware(BaseHTTPMiddleware):
                     request_metadata = getattr(request_context, "metadata", {})
 
                 response_stream = cast(StreamingResponse, response)
+                # Coerce body iterator to AsyncGenerator[bytes]
+                async def _coerce_bytes() -> Any:
+                    async for chunk in response_stream.body_iterator:
+                        if isinstance(chunk, bytes):
+                            yield chunk
+                        elif isinstance(chunk, memoryview):
+                            yield bytes(chunk)
+                        else:
+                            yield str(chunk).encode("utf-8", errors="replace")
+
                 wrapped_response = StreamingResponseWithHooks(
-                    content=response.body_iterator,
+                    content=_coerce_bytes(),
                     hook_manager=hook_manager,
                     request_id=request_id,
                     request_data=request_data,

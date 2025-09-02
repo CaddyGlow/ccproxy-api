@@ -524,28 +524,26 @@ class TestStatusEndpoints:
         assert "version" in data
         assert data["output"] == "Application process is running"
 
-        # Test readiness probe - may return 200 or 503 depending on Claude SDK
+        # Test readiness probe - core readiness only
         response = client.get("/health/ready")
-        assert response.status_code in [200, 503]
+        assert response.status_code == 200
         assert "application/health+json" in response.headers["content-type"]
 
         data = response.json()
-        assert data["status"] in ["pass", "fail"]
+        assert data["status"] == "pass"
         assert "version" in data
-        assert "checks" in data
-        assert "claude_sdk" in data["checks"]
+        # Core readiness no longer reports plugin/provider checks
 
-        # Test detailed health check - comprehensive status
+        # Test detailed health check - core status + optional environment details
         response = client.get("/health")
-        assert response.status_code in [200, 503]
+        assert response.status_code == 200
         assert "application/health+json" in response.headers["content-type"]
 
         data = response.json()
-        assert data["status"] in ["pass", "warn", "fail"]
+        assert data["status"] == "pass"
         assert "version" in data
         assert "serviceId" in data
         assert "description" in data
         assert "time" in data
         assert "checks" in data
-        assert "claude_sdk" in data["checks"]
-        assert "proxy_service" in data["checks"]
+        assert "service_container" in data["checks"]

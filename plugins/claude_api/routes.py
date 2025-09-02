@@ -49,11 +49,13 @@ async def create_anthropic_message(
     directly to the Claude API without format conversion.
     """
     # Call adapter directly - hooks are now handled by HooksMiddleware
-    return await adapter.handle_request(
+    from typing import cast as _cast
+    result = await adapter.handle_request(
         request=request,
         endpoint="/v1/messages",
         method=request.method,
     )
+    return _cast(Response | StreamingResponse | DeferredStreaming, result)
 
 
 @router.post("/v1/chat/completions", response_model=None)
@@ -68,11 +70,13 @@ async def create_openai_chat_completion(
     to/from Anthropic format transparently.
     """
     # Call adapter directly - hooks are now handled by HooksMiddleware
-    return await adapter.handle_request(
+    from typing import cast as _cast
+    result = await adapter.handle_request(
         request=request,
         endpoint="/v1/chat/completions",
         method=request.method,
     )
+    return _cast(Response | StreamingResponse | DeferredStreaming, result)
 
 
 @router.get("/v1/models", response_model=None)

@@ -77,21 +77,7 @@ _codex_cli_cache: tuple[float, tuple[str, dict[str, Any]]] | None = None
 _cache_ttl_seconds = 300  # Cache for 5 minutes
 
 
-async def _check_oauth2_credentials() -> tuple[str, dict[str, Any]]:
-    """Check OAuth2 credentials health status.
-
-    This function is deprecated as authentication is now handled by individual plugins.
-    Returns a pass status for backward compatibility.
-
-    Returns:
-        Tuple of (status, details) where status is 'pass'
-        Details indicate auth is plugin-managed
-    """
-    # Authentication is now handled by individual plugins
-    return "pass", {
-        "auth_status": "plugin_managed",
-        "message": "Authentication handled by plugins",
-    }
+# Authentication health is managed by provider plugins; no core OAuth checks
 
 
 @functools.lru_cache(maxsize=1)
@@ -453,26 +439,7 @@ async def get_codex_cli_info() -> CodexCliInfo:
     )
 
 
-async def _check_claude_sdk() -> tuple[str, dict[str, Any]]:
-    """Check Claude SDK installation and version.
-
-    Note: Claude SDK is now only available as a plugin and not part of core.
-    This check always returns 'warn' status to indicate SDK should be accessed
-    via the plugin system.
-
-    Returns:
-        Tuple of (status, details) where status is 'pass'/'fail'/'warn'
-        Details include SDK version and availability
-    """
-    # Claude SDK has been moved to plugin system and is not available in core
-    return "warn", {
-        "installation_status": "plugin_only",
-        "sdk_status": "moved_to_plugin",
-        "error": "Claude SDK is now available via the claude_sdk plugin only",
-        "version": None,
-        "import_successful": False,
-        "plugin_name": "claude_sdk",
-    }
+# SDK health is provided by plugins; no core SDK checks
 
 
 @router.get("/health/live")
@@ -514,94 +481,11 @@ async def readiness_probe(response: Response) -> dict[str, Any]:
 
     logger.debug("readiness_probe_request")
 
-    # Check OAuth credentials, CLI, and SDK separately
-    oauth_status, oauth_details = await _check_oauth2_credentials()
-    cli_status, cli_details = await check_claude_code()
-    codex_cli_status, codex_cli_details = await check_codex_cli()
-    sdk_status, sdk_details = await _check_claude_sdk()
-
-    # Service is ready if no check returns "fail"
-    # "warn" statuses (missing credentials/CLI/SDK) don't prevent readiness
-    if (
-        oauth_status == "fail"
-        or cli_status == "fail"
-        or codex_cli_status == "fail"
-        or sdk_status == "fail"
-    ):
-        response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
-        failed_components = []
-
-        if oauth_status == "fail":
-            failed_components.append("oauth2_credentials")
-        if cli_status == "fail":
-            failed_components.append("claude_cli")
-        if codex_cli_status == "fail":
-            failed_components.append("codex_cli")
-        if sdk_status == "fail":
-            failed_components.append("claude_sdk")
-
-        return {
-            "status": "fail",
-            "version": __version__,
-            "output": f"Critical dependency error: {', '.join(failed_components)}",
-            "checks": {
-                "oauth2_credentials": [
-                    {
-                        "status": oauth_status,
-                        "output": oauth_details.get("error", "OAuth credentials error"),
-                    }
-                ],
-                "claude_cli": [
-                    {
-                        "status": cli_status,
-                        "output": cli_details.get("error", "Claude CLI error"),
-                    }
-                ],
-                "codex_cli": [
-                    {
-                        "status": codex_cli_status,
-                        "output": codex_cli_details.get("error", "Codex CLI error"),
-                    }
-                ],
-                "claude_sdk": [
-                    {
-                        "status": sdk_status,
-                        "output": sdk_details.get("error", "Claude SDK error"),
-                    }
-                ],
-            },
-        }
-
+    # Core readiness only checks application availability; plugins provide their own health
     return {
         "status": "pass",
         "version": __version__,
         "output": "Service is ready to accept traffic",
-        "checks": {
-            "oauth2_credentials": [
-                {
-                    "status": oauth_status,
-                    "output": f"OAuth credentials: {oauth_details.get('auth_status', 'unknown')}",
-                }
-            ],
-            "claude_cli": [
-                {
-                    "status": cli_status,
-                    "output": f"Claude CLI: {cli_details.get('cli_status', 'unknown')}",
-                }
-            ],
-            "codex_cli": [
-                {
-                    "status": codex_cli_status,
-                    "output": f"Codex CLI: {codex_cli_details.get('cli_status', 'unknown')}",
-                }
-            ],
-            "claude_sdk": [
-                {
-                    "status": sdk_status,
-                    "output": f"Claude SDK: {sdk_details.get('sdk_status', 'unknown')}",
-                }
-            ],
-        },
     }
 
 
@@ -621,30 +505,13 @@ async def detailed_health_check(response: Response) -> dict[str, Any]:
 
     logger.debug("detailed_health_check_request")
 
-    # Perform all health checks
-    oauth_status, oauth_details = await _check_oauth2_credentials()
-    cli_status, cli_details = await check_claude_code()
+    # Perform optional environment checks (non-critical)
+    claude_cli_status, claude_cli_details = await check_claude_code()
     codex_cli_status, codex_cli_details = await check_codex_cli()
-    sdk_status, sdk_details = await _check_claude_sdk()
 
-    # Determine overall status - prioritize failures, then warnings
+    # Overall core status does not depend on optional CLIs
     overall_status = "pass"
-    if (
-        oauth_status == "fail"
-        or cli_status == "fail"
-        or codex_cli_status == "fail"
-        or sdk_status == "fail"
-    ):
-        overall_status = "fail"
-        response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
-    elif (
-        oauth_status == "warn"
-        or cli_status == "warn"
-        or codex_cli_status == "warn"
-        or sdk_status == "warn"
-    ):
-        overall_status = "warn"
-        response.status_code = status.HTTP_200_OK
+    response.status_code = status.HTTP_200_OK
 
     current_time = datetime.now(UTC).isoformat()
 
@@ -655,24 +522,14 @@ async def detailed_health_check(response: Response) -> dict[str, Any]:
         "description": "CCProxy API Server",
         "time": current_time,
         "checks": {
-            "oauth2_credentials": [
-                {
-                    "componentId": "oauth2-credentials",
-                    "componentType": "authentication",
-                    "status": oauth_status,
-                    "time": current_time,
-                    "output": f"OAuth2 credentials: {oauth_details.get('auth_status', 'unknown')}",
-                    **oauth_details,
-                }
-            ],
             "claude_cli": [
                 {
                     "componentId": "claude-cli",
                     "componentType": "external_dependency",
-                    "status": cli_status,
+                    "status": claude_cli_status,
                     "time": current_time,
-                    "output": f"Claude CLI: {cli_details.get('cli_status', 'unknown')}",
-                    **cli_details,
+                    "output": f"Claude CLI: {claude_cli_details.get('cli_status', 'unknown')}",
+                    **claude_cli_details,
                 }
             ],
             "codex_cli": [
@@ -683,16 +540,6 @@ async def detailed_health_check(response: Response) -> dict[str, Any]:
                     "time": current_time,
                     "output": f"Codex CLI: {codex_cli_details.get('cli_status', 'unknown')}",
                     **codex_cli_details,
-                }
-            ],
-            "claude_sdk": [
-                {
-                    "componentId": "claude-sdk",
-                    "componentType": "python_package",
-                    "status": sdk_status,
-                    "time": current_time,
-                    "output": f"Claude SDK: {sdk_details.get('sdk_status', 'unknown')}",
-                    **sdk_details,
                 }
             ],
             "service_container": [

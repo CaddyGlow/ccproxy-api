@@ -205,21 +205,18 @@ class MetricsRuntime(SystemPluginRuntime):
         }
 
         if self.config and self.config.enabled:
+            collector_enabled = False
+            if self.hook:
+                col = self.hook.get_collector()
+                collector_enabled = bool(col.is_enabled()) if col else False
+
             details.update(
                 {
                     "namespace": self.config.namespace,
                     "metrics_endpoint_enabled": self.config.metrics_endpoint_enabled,
                     "pushgateway_enabled": self.config.pushgateway_enabled,
                     "pushgateway_url": self.config.pushgateway_url,
-                    "collector_enabled": (
-                        (
-                            self.hook.get_collector().is_enabled()
-                            if self.hook.get_collector()
-                            else False
-                        )
-                        if self.hook
-                        else False
-                    ),
+                    "collector_enabled": collector_enabled,
                 }
             )
 

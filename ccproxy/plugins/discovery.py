@@ -191,7 +191,7 @@ class PluginDiscovery:
             eps = []
             # importlib.metadata API differences across Python versions
             if hasattr(groups, "select"):
-                eps = list(groups.select(group="ccproxy.plugins"))  # type: ignore[attr-defined]
+                eps = list(groups.select(group="ccproxy.plugins"))
             else:  # pragma: no cover
                 eps = list(groups.get("ccproxy.plugins", []))
 
@@ -251,7 +251,8 @@ class PluginDiscovery:
 
                 # If the object already looks like a factory (duck typing)
                 if hasattr(obj, "get_manifest") and hasattr(obj, "create_runtime"):
-                    factory = obj  # type: ignore[assignment]
+                    from typing import cast as _cast
+                    factory = _cast(PluginFactory, obj)
                 # If it's callable, try to call to get a factory
                 elif callable(obj):
                     try:
@@ -259,7 +260,8 @@ class PluginDiscovery:
                         if hasattr(maybe, "get_manifest") and hasattr(
                             maybe, "create_runtime"
                         ):
-                            factory = maybe  # type: ignore[assignment]
+                            from typing import cast as _cast
+                            factory = _cast(PluginFactory, maybe)
                     except Exception:
                         factory = None
 

@@ -5,7 +5,7 @@ from rich.console import Console
 from rich.table import Table
 
 from ccproxy.config.settings import get_settings
-from ccproxy.plugins import discover_and_load_plugins
+from ccproxy.plugins.loader import load_plugin_system
 
 
 app = typer.Typer(name="plugins", help="Manage and inspect plugins.")
@@ -16,15 +16,14 @@ def settings() -> None:
     """List all available plugin settings."""
     console = Console()
 
-    # Get settings and discover plugins
+    # Get settings and load plugin system via centralized loader
     settings_obj = get_settings()
-    factories = discover_and_load_plugins(settings_obj)
-
-    if not factories:
+    registry, _ = load_plugin_system(settings_obj)
+    if not registry.factories:
         console.print("No plugins found.")
         return
 
-    for _name, factory in factories.items():
+    for _name, factory in registry.factories.items():
         manifest = factory.get_manifest()
         table = Table(
             title=f"Plugin: [bold]{manifest.name}[/bold] v{manifest.version}",

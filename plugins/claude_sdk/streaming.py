@@ -309,7 +309,7 @@ class ClaudeStreamProcessor:
 
                     asyncio.create_task(
                         self.streaming_hook.emit_stream_end(
-                            request_id=request_id,
+                            request_id=str(request_id or ""),
                             usage_metrics=usage_metrics,
                             provider="claude_sdk",
                             url="claude-sdk://direct",
@@ -330,7 +330,7 @@ class ClaudeStreamProcessor:
                 yield end_chunks[1][1]  # message_stop
                 break  # End of stream
             else:
-                logger.warning(  # type: ignore[unreachable]
+                logger.warning(
                     "sdk_unknown_message_type",
                     message_type=type(message).__name__,
                     message_content=str(message)[:200],

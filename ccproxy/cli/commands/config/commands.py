@@ -564,7 +564,7 @@ def _generate_default_config_from_model(
     # Create a default instance to get all default values
     default_settings = settings_class()
 
-    config_data = {}
+    config_data: dict[str, Any] = {}
 
     # Iterate through all fields and extract their default values
     for field_name, _field_info in settings_class.model_fields.items():
@@ -585,7 +585,7 @@ def _generate_default_config_from_model(
 
 def _generate_nested_config_from_model(model: BaseModel) -> dict[str, Any]:
     """Generate configuration for nested models."""
-    config_data = {}
+    config_data: dict[str, Any] = {}
 
     for field_name, _field_info in model.model_fields.items():
         field_value = getattr(model, field_name)

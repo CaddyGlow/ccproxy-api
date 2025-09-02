@@ -14,6 +14,10 @@ from ccproxy.config.discovery import find_toml_config_file
 from ccproxy.core.logging import get_logger
 
 from .auth import AuthSettings
+
+
+def _auth_default() -> AuthSettings:
+    return AuthSettings()  # type: ignore[call-arg]
 from .binary import BinarySettings
 from .cors import CORSSettings
 from .docker_settings import DockerSettings
@@ -93,7 +97,7 @@ class Settings(BaseSettings):
 
     # Authentication/cache settings
     auth: AuthSettings = Field(
-        default_factory=_default_auth_settings,
+        default_factory=_auth_default,
         description="Authentication manager settings (e.g., credentials caching)",
     )
 
@@ -198,13 +202,13 @@ class Settings(BaseSettings):
 
         if deprecated_hits:
             lines = [
-                "Deprecated configuration detected. The following keys are no longer supported:",
+                "Removed configuration keys detected. The following are no longer supported:",
             ]
             for old, new in deprecated_hits:
                 lines.append(f"- {old} → {new}")
             lines.append(
-                "Please configure corresponding plugin settings under [plugins.*]. "
-                "See docs: plugins/metrics/README.md and README Plugin Config Quickstart."
+                "Configure corresponding plugin settings under [plugins.*]. "
+                "See: plugins/metrics/README.md and the Plugin Config Quickstart."
             )
             raise ValueError("\n".join(lines))
 
@@ -588,7 +592,4 @@ def get_settings(config_path: Path | str | None = None) -> Settings:
         # this will be handled by the caller
         raise ValueError(f"Configuration error: {e}") from e
 
-    # Helper to satisfy mypy about zero-arg default_factory
-    @staticmethod
-    def _default_auth_settings() -> AuthSettings:
-        return AuthSettings()
+    # end

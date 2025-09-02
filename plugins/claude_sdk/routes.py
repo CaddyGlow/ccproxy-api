@@ -35,11 +35,13 @@ async def claude_sdk_messages(
     """
 
     # Call adapter directly - hooks are now handled by HooksMiddleware
-    return await adapter.handle_request(
+    from typing import cast as _cast
+    result = await adapter.handle_request(
         request=request,
         endpoint="/v1/messages",
         method=request.method,
     )
+    return _cast(Response | StreamingResponse | DeferredStreaming, result)
 
 
 @router.post("/v1/chat/completions", response_model=None)
@@ -60,11 +62,13 @@ async def claude_sdk_chat_completions(
     """
 
     # Call adapter directly - hooks are now handled by HooksMiddleware
-    return await adapter.handle_request(
+    from typing import cast as _cast
+    result = await adapter.handle_request(
         request=request,
         endpoint="/v1/chat/completions",
         method=request.method,
     )
+    return _cast(Response | StreamingResponse | DeferredStreaming, result)
 
 
 @router.post("/{session_id}/v1/messages", response_model=None)
@@ -89,11 +93,13 @@ async def claude_sdk_messages_with_session(
     request.state.session_id = session_id
 
     # Call adapter directly - hooks are now handled by HooksMiddleware
-    return await adapter.handle_request(
+    from typing import cast as _cast
+    result = await adapter.handle_request(
         request=request,
         endpoint=f"/{session_id}/v1/messages",
         method=request.method,
     )
+    return _cast(Response | StreamingResponse | DeferredStreaming, result)
 
 
 @router.post("/{session_id}/v1/chat/completions", response_model=None)
@@ -118,8 +124,10 @@ async def claude_sdk_chat_completions_with_session(
     request.state.session_id = session_id
 
     # Call adapter directly - hooks are now handled by HooksMiddleware
-    return await adapter.handle_request(
+    from typing import cast as _cast
+    result = await adapter.handle_request(
         request=request,
         endpoint=f"/{session_id}/v1/chat/completions",
         method=request.method,
     )
+    return _cast(Response | StreamingResponse | DeferredStreaming, result)

@@ -89,15 +89,19 @@ class DuckDBStorageRuntime(SystemPluginRuntime):
             self.storage = None
 
     async def _get_health_details(self) -> dict[str, Any]:
+        has_service = False
+        if self.context:
+            reg = self.context.get("plugin_registry")
+            if reg is not None:
+                try:
+                    has_service = reg.has_service("log_storage")
+                except Exception:
+                    has_service = False
         return {
             "type": "system",
             "initialized": self.initialized,
             "enabled": bool(self.storage),
-            "has_service": self.context.get("plugin_registry").has_service(
-                "log_storage"
-            )
-            if self.context and self.context.get("plugin_registry")
-            else False,
+            "has_service": has_service,
         }
 
 
