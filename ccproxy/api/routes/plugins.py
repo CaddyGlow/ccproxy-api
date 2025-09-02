@@ -53,12 +53,14 @@ class PluginHealthResponse(BaseModel):
     details: dict[str, Any] | None = None
 
 
-class PluginReloadResponse(BaseModel):
-    """Response model for plugin reload."""
+"""
+Only core plugin management endpoints are exposed:
+- GET /plugins: list loaded plugins
+- GET /plugins/{plugin_name}/health: check plugin health if provided by runtime
+- GET /plugins/status: summarize manifests and initialization state
 
-    status: str  # "success", "error"
-    message: str
-    plugin: str | None = None
+Dynamic reload/discover/unregister are not supported in v2 and have been removed.
+"""
 
 
 # Plugin registry is accessed directly from app state
@@ -214,62 +216,7 @@ async def plugin_health(
         )
 
 
-@router.post("/{plugin_name}/reload", response_model=PluginReloadResponse)
-async def reload_plugin(
-    plugin_name: str,
-    request: Request,
-    auth: ConditionalAuthDep = None,
-) -> PluginReloadResponse:
-    """Reload a specific plugin.
-
-    Args:
-        plugin_name: Name of the plugin to reload
-
-    Returns:
-        Reload status
-
-    Raises:
-        HTTPException: If plugin not found or reload fails
-    """
-    # Access v2 plugin registry from app state
-    if not hasattr(request.app.state, "plugin_registry"):
-        raise HTTPException(status_code=503, detail="Plugin registry not initialized")
-
-    from ccproxy.plugins.factory import PluginRegistry
-
-    registry: PluginRegistry = request.app.state.plugin_registry
-
-    # Check if plugin exists
-    if plugin_name not in registry.list_plugins():
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Plugin '{plugin_name}' not found",
-        )
-
-    # V2 plugins are discovered at startup and cannot be reloaded at runtime
-    # They are loaded from the filesystem during app creation
-    raise HTTPException(
-        status_code=status.HTTP_501_NOT_IMPLEMENTED,
-        detail="Plugin reloading is not supported in v2 plugin system. Restart the server to reload plugins.",
-    )
-
-
-@router.post("/discover", response_model=PluginListResponse)
-async def discover_plugins(
-    request: Request,
-    auth: ConditionalAuthDep = None,
-) -> PluginListResponse:
-    """Re-discover plugins from the plugin directory.
-
-    Note: In v2 plugin system, plugins are discovered at app startup.
-    This endpoint returns the current list without re-discovery.
-
-    Returns:
-        Current list of all plugins
-    """
-    # V2 plugins are discovered during app creation and cannot be re-discovered at runtime
-    # Return the current list of plugins
-    return await list_plugins(request, auth)
+# Reload and re-discover endpoints removed; v2 loads plugins at startup only
 
 
 @router.get("/status", response_model=PluginStatusResponse)
@@ -327,57 +274,9 @@ async def plugins_status(
 
 
 @router.delete("/{plugin_name}")
-async def unregister_plugin(
-    plugin_name: str,
-    request: Request,
-    auth: ConditionalAuthDep = None,
-) -> dict[str, str]:
-    """Unregister a plugin.
-
-    Args:
-        plugin_name: Name of the plugin to unregister
-
-    Returns:
-        Status message
-
-    Raises:
-        HTTPException: If plugin not found
-    """
-    # Access v2 plugin registry from app state
-    if not hasattr(request.app.state, "plugin_registry"):
-        raise HTTPException(status_code=503, detail="Plugin registry not initialized")
-
-    from ccproxy.plugins.factory import PluginRegistry
-
-    registry: PluginRegistry = request.app.state.plugin_registry
-
-    # Check if plugin exists
-    if plugin_name not in registry.list_plugins():
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Plugin '{plugin_name}' not found",
-        )
-
-    # Try to shutdown the plugin runtime
-    runtime = registry.get_runtime(plugin_name)
-    if runtime:
-        try:
-            await runtime.shutdown()
-            # Remove runtime from registry's internal dict
-            if plugin_name in registry.runtimes:
-                del registry.runtimes[plugin_name]
-            return {
-                "status": "success",
-                "message": f"Plugin '{plugin_name}' unregistered successfully",
-            }
-        except Exception as e:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Failed to unregister plugin '{plugin_name}': {str(e)}",
-            ) from e
-
-    # Should not reach here if plugin exists
+async def unregister_plugin() -> dict[str, str]:
+    """Plugin unregistration is not supported in v2; endpoint removed."""
     raise HTTPException(
-        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        detail=f"Failed to unregister plugin '{plugin_name}'",
+        status_code=status.HTTP_501_NOT_IMPLEMENTED,
+        detail="Plugin unregistration is not supported; restart with desired config.",
     )

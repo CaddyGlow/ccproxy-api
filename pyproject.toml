@@ -280,6 +280,19 @@ warn_unreachable = false
 module = "tests.*"
 ignore_errors = true
 
+[[tool.mypy.overrides]]
+module = [
+  "tests.integration.test_metrics_plugin",
+  "tests.unit.api.test_metrics_api",
+  "tests.unit.test_hook_ordering",
+  "tests.unit.api.test_plugins_status",
+  "tests.unit.api.test_reset_endpoint",
+  "tests.unit.plugins.test_codex_transformers",
+  "tests.unit.api.test_api",
+  "tests.unit.services.test_queue_duckdb_storage",
+]
+ignore_errors = false
+
 
 [tool.pytest.ini_options]
 minversion = "6.0"

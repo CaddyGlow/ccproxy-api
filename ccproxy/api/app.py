@@ -583,7 +583,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 def get_app() -> FastAPI:
     """Get the FastAPI app instance.
 
-    This is a convenience function for backwards compatibility.
+    Convenience alias for create_app() using default settings.
     """
     from ccproxy.config.settings import get_settings
 

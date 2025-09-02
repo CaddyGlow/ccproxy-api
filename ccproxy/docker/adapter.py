@@ -90,7 +90,6 @@ class DockerAdapter:
         except FileNotFoundError:
             logger.warning("docker_executable_not_found")
             return False
-
         except (OSError, PermissionError) as e:
             logger.warning(
                 "docker_availability_check_permission_error", error=str(e), exc_info=e
@@ -116,6 +115,90 @@ class DockerAdapter:
                 exc_info=e,
             )
             return False
+
+    # Helper to normalize input lists
+    @staticmethod
+    def _kv_list_to_env(items: list[str] | None) -> DockerEnv:
+        from ccproxy.config.docker_settings import validate_environment_variable
+
+        env: DockerEnv = {}
+        if not items:
+            return env
+        for item in items:
+            try:
+                k, v = validate_environment_variable(item)
+                env[k] = v
+            except Exception:
+                if "=" in item:
+                    k, v = item.split("=", 1)
+                    env[k] = v
+        return env
+
+    @staticmethod
+    def _parse_volumes(vols: list[str] | None) -> list[DockerVolume]:
+        res: list[DockerVolume] = []
+        if not vols:
+            return res
+        for v in vols:
+            parts = v.split(":")
+            if len(parts) >= 2:
+                res.append((parts[0], parts[1]))
+        return res
+
+    def build_docker_run_args(
+        self,
+        settings: object,
+        *,
+        command: list[str] | None = None,
+        docker_image: str | None = None,
+        docker_env: list[str] | None = None,
+        docker_volume: list[str] | None = None,
+        docker_arg: list[str] | None = None,
+        docker_home: str | None = None,
+        docker_workspace: str | None = None,
+        user_mapping_enabled: bool | None = None,
+        user_uid: int | None = None,
+        user_gid: int | None = None,
+    ) -> tuple[str, list[DockerVolume], DockerEnv, list[str] | None, DockerUserContext | None, list[str]]:
+        docker_settings = getattr(settings, "docker", None)
+        image = docker_image or getattr(docker_settings, "docker_image", "") or ""
+
+        env: DockerEnv = {}
+        env.update(getattr(docker_settings, "docker_environment", {}) or {})
+        env.update(self._kv_list_to_env(docker_env))
+
+        volumes: list[DockerVolume] = []
+        volumes.extend(self._parse_volumes(getattr(docker_settings, "docker_volumes", []) or []))
+        volumes.extend(self._parse_volumes(docker_volume))
+        if docker_home:
+            volumes.append((docker_home, "/data/home"))
+        if docker_workspace:
+            volumes.append((docker_workspace, "/data/workspace"))
+
+        uc: DockerUserContext | None = None
+        mapping_enabled = (
+            user_mapping_enabled
+            if user_mapping_enabled is not None
+            else bool(getattr(docker_settings, "user_mapping_enabled", True))
+        )
+        if mapping_enabled and os.name == "posix":
+            try:
+                uid = user_uid if user_uid is not None else getattr(docker_settings, "user_uid", None)
+                gid = user_gid if user_gid is not None else getattr(docker_settings, "user_gid", None)
+                if uid is None:
+                    uid = os.getuid()
+                if gid is None:
+                    gid = os.getgid()
+                username = os.getenv("USER") or os.getenv("USERNAME") or "user"
+                uc = DockerUserContext.create_manual(uid=uid, gid=gid, username=username)
+                env.update(uc.get_environment_variables())
+                volumes.extend(uc.get_volumes())
+            except Exception:
+                uc = None
+
+        extra_args: list[str] = list(docker_arg or getattr(docker_settings, "docker_additional_args", []) or [])
+
+        return image, volumes, env, command, uc, extra_args
 
     async def _run_with_sudo_fallback(
         self, docker_cmd: list[str], middleware: OutputMiddleware[T]

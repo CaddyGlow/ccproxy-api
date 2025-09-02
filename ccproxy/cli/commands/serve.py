@@ -171,8 +171,7 @@ def _run_docker_server(
         _show_api_usage_info(toolkit, settings)
 
     # Execute using the new Docker adapter
-    from typing import Any as _Any, cast as _cast
-    adapter = _cast(_Any, create_docker_adapter())
+    adapter = create_docker_adapter()
     image, volumes, environment, command, user_context, _ = (
         adapter.build_docker_run_args(
             settings,
@@ -754,8 +753,7 @@ def claude(
 
         if docker:
             # Prepare Docker execution using new adapter
-            from typing import Any as _Any, cast as _cast
-            adapter = _cast(_Any, create_docker_adapter())
+            adapter = create_docker_adapter()
             toolkit.print_title(f"image {settings.docker.docker_image}", tag="docker")
             image, volumes, environment, command, user_context, _ = (
                 adapter.build_docker_run_args(
@@ -769,8 +767,7 @@ def claude(
                     user_mapping_enabled=user_mapping_enabled,
                     user_uid=user_uid,
                     user_gid=user_gid,
-                    command=["claude"],
-                    cmd_args=args,
+                    command=["claude"] + (args or []),
                 )
             )
 

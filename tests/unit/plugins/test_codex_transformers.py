@@ -13,18 +13,18 @@ from plugins.codex.transformers.response import CodexResponseTransformer
 class TestCodexRequestTransformer:
     """Test cases for CodexRequestTransformer."""
 
-    def test_init_without_detection_service(self):
+    def test_init_without_detection_service(self) -> None:
         """Test initialization without detection service."""
         transformer = CodexRequestTransformer()
         assert transformer.detection_service is None
 
-    def test_init_with_detection_service(self):
+    def test_init_with_detection_service(self) -> None:
         """Test initialization with detection service."""
         mock_service = MagicMock()
         transformer = CodexRequestTransformer(mock_service)
         assert transformer.detection_service is mock_service
 
-    def test_transform_headers_basic(self):
+    def test_transform_headers_basic(self) -> None:
         """Test basic header transformation."""
         transformer = CodexRequestTransformer()
         headers = {
@@ -41,7 +41,7 @@ class TestCodexRequestTransformer:
         assert result["custom-header"] == "value"
         assert result["originator"] == "codex_cli_rs"
 
-    def test_transform_headers_with_detection_service(self):
+    def test_transform_headers_with_detection_service(self) -> None:
         """Test header transformation with detection service."""
         mock_service = MagicMock()
         mock_cached_data = MagicMock()
@@ -61,7 +61,7 @@ class TestCodexRequestTransformer:
         assert result["custom-codex"] == "detected"
         assert result["session_id"] == "test-session"  # Should not be overridden
 
-    def test_transform_body_with_instructions(self):
+    def test_transform_body_with_instructions(self) -> None:
         """Test body transformation when instructions already exist."""
         transformer = CodexRequestTransformer()
         body_data = {"instructions": "existing instructions", "model": "gpt-5"}
@@ -73,7 +73,7 @@ class TestCodexRequestTransformer:
 
         assert result_data["instructions"] == "existing instructions"
 
-    def test_transform_body_without_instructions(self):
+    def test_transform_body_without_instructions(self) -> None:
         """Test body transformation when instructions are missing."""
         transformer = CodexRequestTransformer()
         body_data = {"model": "gpt-5"}
@@ -86,7 +86,7 @@ class TestCodexRequestTransformer:
         assert "instructions" in result_data
         assert "Codex CLI" in result_data["instructions"]
 
-    def test_transform_body_invalid_json(self):
+    def test_transform_body_invalid_json(self) -> None:
         """Test body transformation with invalid JSON."""
         transformer = CodexRequestTransformer()
         invalid_body = b"invalid json"
@@ -95,7 +95,7 @@ class TestCodexRequestTransformer:
 
         assert result == invalid_body  # Should return original
 
-    def test_transform_body_empty(self):
+    def test_transform_body_empty(self) -> None:
         """Test body transformation with empty body."""
         transformer = CodexRequestTransformer()
 
@@ -105,7 +105,7 @@ class TestCodexRequestTransformer:
         result = transformer.transform_body(b"")
         assert result == b""
 
-    def test_get_instructions_with_detection_service(self):
+    def test_get_instructions_with_detection_service(self) -> None:
         """Test getting instructions from detection service."""
         mock_service = MagicMock()
         mock_cached_data = MagicMock()
@@ -119,7 +119,7 @@ class TestCodexRequestTransformer:
 
         assert instructions == "detected instructions"
 
-    def test_get_instructions_fallback(self):
+    def test_get_instructions_fallback(self) -> None:
         """Test fallback instructions when detection service fails."""
         transformer = CodexRequestTransformer()
         instructions = transformer._get_instructions()
@@ -132,13 +132,13 @@ class TestCodexRequestTransformer:
 class TestCodexResponseTransformer:
     """Test cases for CodexResponseTransformer."""
 
-    def test_init(self):
+    def test_init(self) -> None:
         """Test initialization."""
         transformer = CodexResponseTransformer()
         # Just ensure it initializes without error
         assert transformer is not None
 
-    def test_transform_headers_basic_no_cors_settings(self):
+    def test_transform_headers_basic_no_cors_settings(self) -> None:
         """Test basic header transformation without CORS settings (secure fallback)."""
         transformer = CodexResponseTransformer()
         headers = {
@@ -155,7 +155,7 @@ class TestCodexResponseTransformer:
         # Without CORS settings and no Origin header, no CORS headers should be added
         assert "Access-Control-Allow-Origin" not in result
 
-    def test_transform_headers_localhost_origin_fallback(self):
+    def test_transform_headers_localhost_origin_fallback(self) -> None:
         """Test header transformation with localhost origin uses secure fallback."""
         transformer = CodexResponseTransformer()
         headers = {"content-type": "application/json"}
@@ -174,7 +174,7 @@ class TestCodexResponseTransformer:
             "GET, POST, PUT, DELETE, OPTIONS" in result["Access-Control-Allow-Methods"]
         )
 
-    def test_transform_headers_non_localhost_origin_fallback(self):
+    def test_transform_headers_non_localhost_origin_fallback(self) -> None:
         """Test header transformation with non-localhost origin uses secure fallback (blocks)."""
         transformer = CodexResponseTransformer()
         headers = {"content-type": "application/json"}
@@ -186,7 +186,7 @@ class TestCodexResponseTransformer:
         # Secure fallback blocks non-localhost origins
         assert "Access-Control-Allow-Origin" not in result
 
-    def test_transform_headers_with_cors_settings(self):
+    def test_transform_headers_with_cors_settings(self) -> None:
         """Test header transformation with proper CORS settings."""
         cors_settings = CORSSettings(
             origins=["https://app.example.com", "https://test.example.com"],
@@ -205,7 +205,7 @@ class TestCodexResponseTransformer:
         assert result["Access-Control-Allow-Methods"] == "GET, POST"
         assert result["Access-Control-Allow-Headers"] == "Content-Type, Authorization"
 
-    def test_transform_headers_with_cors_settings_blocked_origin(self):
+    def test_transform_headers_with_cors_settings_blocked_origin(self) -> None:
         """Test header transformation with CORS settings blocks unauthorized origin."""
         cors_settings = CORSSettings(
             origins=["https://app.example.com"], methods=["GET", "POST"]
@@ -220,7 +220,7 @@ class TestCodexResponseTransformer:
         # Origin not in allowed list, so no CORS headers
         assert "Access-Control-Allow-Origin" not in result
 
-    def test_transform_headers_excludes_problematic(self):
+    def test_transform_headers_excludes_problematic(self) -> None:
         """Test that problematic headers are excluded."""
         transformer = CodexResponseTransformer()
         headers = {
@@ -245,7 +245,7 @@ class TestCodexResponseTransformer:
         # CORS headers should be added
         assert "Access-Control-Allow-Origin" in result
 
-    def test_transform_body_passthrough(self):
+    def test_transform_body_passthrough(self) -> None:
         """Test that body transformation is passthrough."""
         transformer = CodexResponseTransformer()
 
@@ -260,7 +260,7 @@ class TestCodexResponseTransformer:
 
 
 @pytest.mark.asyncio
-async def test_transformers_integration():
+async def test_transformers_integration() -> None:
     """Test request and response transformers work together."""
     request_transformer = CodexRequestTransformer()
     response_transformer = CodexResponseTransformer()

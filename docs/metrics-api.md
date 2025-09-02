@@ -1,6 +1,6 @@
 # Metrics API Documentation
 
-This document describes metrics endpoints. Note: the metrics plugin provides `/metrics` and `/metrics/health`. Other endpoints shown here reflect the legacy core routes and may be disabled or moved behind feature flags (e.g., logs/dashboards).
+This document describes metrics endpoints provided by the metrics plugin. The metrics surface is plugin-owned and mounted when the plugin is enabled.
 
 ## Overview
 

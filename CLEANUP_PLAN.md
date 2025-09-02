@@ -88,7 +88,7 @@ Detailed removal targets (check off as completed):
 Goal: Expose a single plugin-driven surface; remove legacy-only routes/commands.
 
 - [x] Ensure API routes delegate via plugin adapters only
-- [ ] Remove legacy endpoints and CLI subcommands
+- [x] Remove legacy endpoints and CLI subcommands
 - [x] Namespace plugin settings (e.g., `plugins.<name>.*`) with defaults/examples
 - [x] Update `config.example.toml` (plugin-first examples); review `.env.example` later
 
@@ -99,6 +99,7 @@ Actionable checklist:
   - [x] Remove core OAuth/SDK checks from health routes; plugins own provider health
 - [ ] CLI: remove hidden/legacy commands if any remain; ensure `plugins` command sources loader
   - [x] `plugins` CLI now uses centralized `load_plugin_system()`
+  - [x] Removed plugin reload/discover/unregister endpoints from core API; v2 loads at startup only
 - [x] Config docs: ensure README/docs index include a small “Plugin Config Quickstart”
 - [x] Provide migration error messages for deprecated config keys (fail-fast with help text)
 

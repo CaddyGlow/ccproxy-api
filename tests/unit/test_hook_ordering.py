@@ -71,11 +71,11 @@ class TestHookOrdering:
     """Test hook priority and ordering functionality."""
 
     @pytest.mark.asyncio
-    async def test_hooks_execute_in_priority_order(self):
+    async def test_hooks_execute_in_priority_order(self) -> None:
         """Test that hooks execute in priority order."""
         registry = HookRegistry()
         manager = HookManager(registry)
-        execution_log = []
+        execution_log: list[str] = []
 
         # Register hooks in random order with different priorities
         hook_high = TestHook("high_priority", 100, execution_log)
@@ -94,11 +94,11 @@ class TestHookOrdering:
         assert execution_log == ["high_priority", "medium_priority", "low_priority"]
 
     @pytest.mark.asyncio
-    async def test_hooks_with_same_priority_maintain_registration_order(self):
+    async def test_hooks_with_same_priority_maintain_registration_order(self) -> None:
         """Test that hooks with same priority execute in registration order."""
         registry = HookRegistry()
         manager = HookManager(registry)
-        execution_log = []
+        execution_log: list[str] = []
 
         # Create hooks with same priority
         hook1 = TestHook("hook1", 500, execution_log)
@@ -117,11 +117,11 @@ class TestHookOrdering:
         assert execution_log == ["hook1", "hook2", "hook3"]
 
     @pytest.mark.asyncio
-    async def test_hook_layers_ordering(self):
+    async def test_hook_layers_ordering(self) -> None:
         """Test that standard hook layers work correctly."""
         registry = HookRegistry()
         manager = HookManager(registry)
-        execution_log = []
+        execution_log: list[str] = []
 
         # Create hooks for different layers
         critical_hook = TestHook("critical", HookLayer.CRITICAL, execution_log)
@@ -153,7 +153,7 @@ class TestHookOrdering:
         ]
 
     @pytest.mark.asyncio
-    async def test_data_modification_in_order(self):
+    async def test_data_modification_in_order(self) -> None:
         """Test that hooks can modify data and later hooks see changes."""
         registry = HookRegistry()
         manager = HookManager(registry)
@@ -192,7 +192,7 @@ class TestHookOrdering:
         }
 
     @pytest.mark.asyncio
-    async def test_hook_registry_summary(self):
+    async def test_hook_registry_summary(self) -> None:
         """Test that registry provides correct summary of hooks."""
         registry = HookRegistry()
 
@@ -222,7 +222,7 @@ class TestHookOrdering:
         assert hooks[2]["priority"] == 700
 
     @pytest.mark.asyncio
-    async def test_backward_compatibility_default_priority(self):
+    async def test_backward_compatibility_default_priority(self) -> None:
         """Test that hooks without explicit priority get default 500."""
 
         class LegacyHook(Hook):
@@ -267,7 +267,7 @@ class TestHookOrdering:
         assert "low_modified_by" in context.metadata  # Last (priority 900)
 
     @pytest.mark.asyncio
-    async def test_hook_failure_doesnt_stop_others(self):
+    async def test_hook_failure_doesnt_stop_others(self) -> None:
         """Test that one hook failing doesn't prevent others from executing."""
 
         class FailingHook(Hook):
@@ -282,7 +282,7 @@ class TestHookOrdering:
 
         registry = HookRegistry()
         manager = HookManager(registry)
-        execution_log = []
+        execution_log: list[str] = []
 
         # Register hooks
         hook1 = TestHook("before_fail", 400, execution_log)

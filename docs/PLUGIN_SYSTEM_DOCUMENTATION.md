@@ -204,7 +204,7 @@ class TaskSpec:
 ## Plugin Lifecycle
 
 ### 1. Discovery Phase (App Creation)
-- Plugins discovered from `plugins/` directory
+- Plugins loaded via `load_plugin_system(settings)` (bundled + entry points)
 - Plugin factories loaded and validated
 - Dependencies resolved
 
@@ -291,35 +291,12 @@ GET /api/plugins/{plugin_name}/health
 }
 ```
 
-#### Reload Plugin
+#### Status
 ```http
-POST /api/plugins/{plugin_name}/reload
+GET /api/plugins/status
 ```
 
-**Note:** In v2 plugin system, plugins are loaded at startup and cannot be reloaded at runtime. This endpoint returns HTTP 501 Not Implemented.
-
-#### Discover Plugins
-```http
-POST /api/plugins/discover
-```
-
-**Note:** Returns the current list of plugins. Dynamic discovery at runtime is not supported in v2.
-
-#### Unregister Plugin
-```http
-DELETE /api/plugins/{plugin_name}
-```
-
-**Parameters:**
-- `plugin_name` (path): Name of the plugin to unregister
-
-**Response:**
-```json
-{
-  "status": "success",
-  "message": "Plugin 'raw_http_logger' unregistered successfully"
-}
-```
+Returns manifests and initialization state for all loaded plugins.
 
 ## Integration Guide
 
@@ -334,17 +311,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     middleware_manager = MiddlewareManager()
 
     if settings.enable_plugins:
-        # Discover and load plugin factories
-        plugin_factories = discover_and_load_plugins(settings)
-
-        # Register all plugin factories
-        for factory in plugin_factories.values():
-            plugin_registry.register_factory(factory)
+        # Load plugin system via centralized loader
+        plugin_registry, middleware_manager = load_plugin_system(settings)
 
         # Create context for manifest population
         manifest_services = ManifestPopulationServices(settings)
 
-        # Populate manifests
+        # Populate manifests (context already created in loader in real code)
         for name, factory in plugin_registry.factories.items():
             factory.create_context(manifest_services)
 
@@ -786,7 +759,7 @@ class OAuthRegistry:
         """List all registered providers."""
 
     def unregister_provider(self, provider_name: str) -> None:
-        """Unregister a provider."""
+        """Unregister a provider (not supported at runtime in v2)."""
 ```
 
 ### CLI Integration

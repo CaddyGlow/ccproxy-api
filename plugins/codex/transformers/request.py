@@ -31,6 +31,7 @@ class CodexRequestTransformer:
     def transform_headers(
         self,
         headers: dict[str, str],
+        session_id: str | None = None,
         access_token: str | None = None,
         **kwargs: Any,
     ) -> dict[str, str]:
@@ -51,6 +52,7 @@ class CodexRequestTransformer:
         # Debug logging
         logger.trace(
             "transform_headers",
+            has_session_id=session_id is not None,
             has_access_token=access_token is not None,
             access_token_length=len(access_token) if access_token else 0,
             header_count=len(headers),
@@ -102,6 +104,10 @@ class CodexRequestTransformer:
         #     transformed["Content-Type"] = "application/json"
         # if "accept" not in [k.lower() for k in transformed]:
         #     transformed["Accept"] = "application/json"
+
+        # Inject session id if provided
+        if session_id:
+            transformed["session_id"] = session_id
 
         # Inject access token in Authentication header only when provided
         if access_token:

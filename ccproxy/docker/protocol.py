@@ -167,6 +167,27 @@ class DockerAdapterProtocol(Protocol):
         """
         ...
 
+    def build_docker_run_args(
+        self,
+        settings: object,
+        *,
+        command: list[str] | None = None,
+        docker_image: str | None = None,
+        docker_env: list[str] | None = None,
+        docker_volume: list[str] | None = None,
+        docker_arg: list[str] | None = None,
+        docker_home: str | None = None,
+        docker_workspace: str | None = None,
+        user_mapping_enabled: bool | None = None,
+        user_uid: int | None = None,
+        user_gid: int | None = None,
+    ) -> tuple[str, list[DockerVolume], DockerEnv, list[str] | None, DockerUserContext | None, list[str]]:
+        """Build effective docker run arguments from settings and CLI.
+
+        Returns a tuple of (image, volumes, environment, command, user_context, extra_args).
+        """
+        ...
+
     def pull_image(
         self,
         image_name: str,
