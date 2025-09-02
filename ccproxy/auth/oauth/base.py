@@ -64,7 +64,8 @@ class BaseOAuthClient(ABC, Generic[CredentialsT]):
             logger.debug(
                 "oauth_client_using_provided_http_client",
                 http_client_id=id(http_client),
-                has_hooks=hasattr(http_client, 'hook_manager') and http_client.hook_manager is not None,
+                has_hooks=hasattr(http_client, "hook_manager")
+                and http_client.hook_manager is not None,
                 hook_manager_id=id(hook_manager) if hook_manager else None,
             )
         else:
@@ -79,7 +80,8 @@ class BaseOAuthClient(ABC, Generic[CredentialsT]):
             logger.debug(
                 "oauth_client_created_new_http_client",
                 http_client_id=id(self.http_client),
-                has_hooks=hasattr(self.http_client, 'hook_manager') and self.http_client.hook_manager is not None,
+                has_hooks=hasattr(self.http_client, "hook_manager")
+                and self.http_client.hook_manager is not None,
                 hook_manager_id=id(hook_manager) if hook_manager else None,
             )
 

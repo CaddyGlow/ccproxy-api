@@ -114,7 +114,7 @@ def load_cli_plugins(
 
     # Create filtered registry
     registry = PluginRegistry()
-    for name, factory in cli_factories.items():
+    for _name, factory in cli_factories.items():
         registry.register_factory(factory)
 
     logger.debug(

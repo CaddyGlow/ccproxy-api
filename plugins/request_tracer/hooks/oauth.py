@@ -122,7 +122,7 @@ class OAuthTracerHook(Hook):
             log_body = body
             if not is_json and body:
                 log_body = self._encode_form_data(body)
-            
+
             await self.json_formatter.log_request(
                 request_id=request_id,
                 method=method,

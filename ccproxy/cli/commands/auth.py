@@ -494,15 +494,19 @@ def status_command(
 
                         # Get the HTTP client with hooks from the OAuth provider
                         http_client = None
-                        if oauth_provider and hasattr(oauth_provider, 'http_client'):
+                        if oauth_provider and hasattr(oauth_provider, "http_client"):
                             http_client = oauth_provider.http_client
-                        
+
                         if storage is not None:
                             manager = asyncio.run(
-                                ClaudeApiTokenManager.create(storage=storage, http_client=http_client)
+                                ClaudeApiTokenManager.create(
+                                    storage=storage, http_client=http_client
+                                )
                             )
                         else:
-                            manager = asyncio.run(ClaudeApiTokenManager.create(http_client=http_client))
+                            manager = asyncio.run(
+                                ClaudeApiTokenManager.create(http_client=http_client)
+                            )
                     except Exception as e:
                         logger.debug("claude_manager_init_failed", error=str(e))
                 elif provider == "codex":
@@ -511,17 +515,21 @@ def status_command(
                             CodexTokenManager,
                         )
 
-                        # Get the HTTP client with hooks from the OAuth provider  
+                        # Get the HTTP client with hooks from the OAuth provider
                         http_client = None
-                        if oauth_provider and hasattr(oauth_provider, 'http_client'):
+                        if oauth_provider and hasattr(oauth_provider, "http_client"):
                             http_client = oauth_provider.http_client
 
                         if storage is not None:
                             manager = asyncio.run(
-                                CodexTokenManager.create(storage=storage, http_client=http_client)
+                                CodexTokenManager.create(
+                                    storage=storage, http_client=http_client
+                                )
                             )
                         else:
-                            manager = asyncio.run(CodexTokenManager.create(http_client=http_client))
+                            manager = asyncio.run(
+                                CodexTokenManager.create(http_client=http_client)
+                            )
                     except Exception as e:
                         logger.debug("codex_manager_init_failed", error=str(e))
 

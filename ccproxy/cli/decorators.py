@@ -1,16 +1,15 @@
 """CLI command decorators for plugin dependency management."""
 
-import functools
-from typing import Any, Callable
+from collections.abc import Callable
 
 
 def needs_auth_provider() -> Callable[[Callable], Callable]:
     """Decorator to mark CLI commands that need an auth provider.
-    
+
     This decorator marks the command as requiring the auth provider specified
     in the command arguments. The actual plugin loading is handled by the
     command implementation using load_cli_plugins().
-    
+
     Usage:
         @app.command()
         @needs_auth_provider()
@@ -18,56 +17,60 @@ def needs_auth_provider() -> Callable[[Callable], Callable]:
             # Command implementation
             pass
     """
+
     def decorator(func: Callable) -> Callable:
         # Add metadata to the function
         func._needs_auth_provider = True  # type: ignore
         return func
+
     return decorator
 
 
 def allows_plugins(plugin_names: list[str]) -> Callable[[Callable], Callable]:
     """Decorator to specify additional plugins a CLI command can use.
-    
+
     This decorator specifies additional CLI-safe plugins that the command
     wants to use beyond the default set. These plugins must still be marked
     as cli_safe = True to be loaded.
-    
+
     Args:
         plugin_names: List of plugin names to allow (e.g., ["request_tracer", "metrics"])
-    
+
     Usage:
-        @app.command() 
+        @app.command()
         @allows_plugins(["request_tracer", "metrics"])
         async def my_command():
             # Command implementation
             pass
     """
+
     def decorator(func: Callable) -> Callable:
         # Add metadata to the function
         func._allows_plugins = plugin_names  # type: ignore
         return func
+
     return decorator
 
 
 def get_command_auth_provider(func: Callable) -> bool:
     """Check if a command needs an auth provider.
-    
+
     Args:
         func: Function to check
-        
+
     Returns:
         True if the command is decorated with @needs_auth_provider()
     """
-    return getattr(func, '_needs_auth_provider', False)
+    return getattr(func, "_needs_auth_provider", False)
 
 
 def get_command_allowed_plugins(func: Callable) -> list[str]:
     """Get the allowed plugins for a command.
-    
+
     Args:
         func: Function to check
-        
+
     Returns:
         List of allowed plugin names (empty list if none specified)
     """
-    return getattr(func, '_allows_plugins', [])
+    return getattr(func, "_allows_plugins", [])

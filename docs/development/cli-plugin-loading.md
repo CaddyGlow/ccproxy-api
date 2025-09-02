@@ -84,4 +84,3 @@ This keeps behavior consistent with the API server’s plugin lifecycle while av
 - Expose CLI flags for toggling tracing verbosity or raw HTTP logging without editing plugin configuration.
 - Provide a shared utility (e.g., `core/plugins/cli_loader.py`) to centralize filtered registry creation for any CLI command that needs minimal plugin support.
 - Document plugin expectations for CLI compatibility (e.g., tolerate missing app state and task manager; no required background tasks during init).
-

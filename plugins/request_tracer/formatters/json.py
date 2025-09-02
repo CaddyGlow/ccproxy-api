@@ -161,7 +161,7 @@ class JSONFormatter:
             # Handle body content - could be bytes, dict/list (from JSON), or string
             body_content = None
             if body is not None:
-                if isinstance(body, (dict, list)):
+                if isinstance(body, dict | list):
                     # Already parsed JSON object from hook context
                     body_content = body
                 elif isinstance(body, bytes):
@@ -178,6 +178,7 @@ class JSONFormatter:
                         except Exception:
                             # Last resort: encode as base64
                             import base64
+
                             body_content = {
                                 "_type": "base64",
                                 "data": base64.b64encode(body).decode("ascii"),
