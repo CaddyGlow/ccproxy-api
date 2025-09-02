@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from plugins.request_tracer.config import RequestTracerConfig
+from ccproxy.plugins.request_tracer.config import RequestTracerConfig
 
 
 def test_request_tracer_dirs_defaults_and_overrides() -> None:

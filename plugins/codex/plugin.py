@@ -251,7 +251,7 @@ class CodexRuntime(ProviderPluginRuntime):
             pricing_service = None
             if "plugin_registry" in self.context:
                 try:
-                    from plugins.pricing.service import PricingService
+                    from ccproxy.plugins.pricing.service import PricingService
 
                     plugin_registry = self.context["plugin_registry"]
                     pricing_service = plugin_registry.get_service(
@@ -353,7 +353,7 @@ class CodexFactory(BaseProviderPluginFactory):
         Note: OAuth functionality is now provided by the oauth_codex plugin.
         The token manager will look up OAuth providers from the registry as needed.
         """
-        from plugins.oauth_codex.manager import CodexTokenManager
+        from ccproxy.plugins.oauth_codex.manager import CodexTokenManager
 
         return CodexTokenManager()
 

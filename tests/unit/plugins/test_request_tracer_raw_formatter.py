@@ -4,8 +4,8 @@ from pathlib import Path
 
 import pytest
 
-from plugins.request_tracer.config import RequestTracerConfig
-from plugins.request_tracer.formatters.raw import RawHTTPFormatter
+from ccproxy.plugins.request_tracer.config import RequestTracerConfig
+from ccproxy.plugins.request_tracer.formatters.raw import RawHTTPFormatter
 
 
 @pytest.mark.asyncio

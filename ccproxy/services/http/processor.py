@@ -192,19 +192,21 @@ class RequestProcessor:
         if not handler_config.response_adapter:
             return body
 
-        # Check if this is SSE format (Codex always returns SSE)
+        # Check if this is SSE format; let plugin provide a parser via handler_config
         try:
             body_str = body.decode("utf-8", errors="ignore")
             if body_str.startswith("event:") or body_str.startswith("data:"):
-                # This is SSE format - parse it to extract the final response
+                # This is SSE format - delegate to plugin-provided parser
                 self.logger.debug("detected_sse_response", body_preview=body_str[:100])
+                final_response = None
+                if handler_config.sse_parser is not None:
+                    try:
+                        final_response = handler_config.sse_parser(body_str)
+                    except Exception as e:
+                        self.logger.warning(
+                            "sse_parser_error", error=str(e), category="response"
+                        )
 
-                # Import here to avoid circular dependency
-                from ccproxy.plugins.codex.utils.sse_parser import (
-                    extract_final_response,
-                )
-
-                final_response = extract_final_response(body_str)
                 if final_response:
                     # Apply adapter to the extracted JSON
                     adapted_data = await handler_config.response_adapter.adapt_response(
@@ -212,10 +214,7 @@ class RequestProcessor:
                     )
                     return json.dumps(adapted_data).encode()
                 else:
-                    # Couldn't extract response, return original
-                    self.logger.warning(
-                        "sse_extraction_failed", body_preview=body_str[:200]
-                    )
+                    # No parser provided or couldn't extract response; return original
                     return body
         except Exception as e:
             self.logger.warning("sse_detection_error", error=str(e))

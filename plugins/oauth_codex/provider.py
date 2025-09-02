@@ -345,6 +345,16 @@ class CodexOAuthProvider(ProfileLoggingMixin):
             )
             return None
 
+    async def create_token_manager(self, storage: Any | None = None) -> Any:
+        """Create and return the token manager instance.
+
+        Provided to allow core/CLI code to obtain a manager without
+        importing plugin classes directly.
+        """
+        from .manager import CodexTokenManager
+
+        return await CodexTokenManager.create(storage=storage)
+
     def _extract_standard_profile(
         self, credentials: OpenAICredentials
     ) -> StandardProfileFields:

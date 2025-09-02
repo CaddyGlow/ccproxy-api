@@ -216,7 +216,7 @@ class CodexStreamingMetricsCollector:
                                 if self.model:
                                     try:
                                         # Import pricing exceptions
-                                        from plugins.pricing.exceptions import (
+                                        from ccproxy.plugins.pricing.exceptions import (
                                             ModelPricingNotFoundError,
                                             PricingDataNotLoadedError,
                                             PricingServiceDisabledError,

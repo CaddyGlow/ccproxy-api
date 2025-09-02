@@ -3,7 +3,7 @@ import pytest
 
 def test_metrics_manifest_name_and_config():
     # Import from the filesystem-discovered plugin
-    from plugins.metrics.plugin import factory
+    from ccproxy.plugins.metrics.plugin import factory
 
     manifest = factory.get_manifest()
     assert manifest.name == "metrics"
@@ -13,7 +13,7 @@ def test_metrics_manifest_name_and_config():
 
 @pytest.mark.unit
 def test_factory_creates_runtime():
-    from plugins.metrics.plugin import factory
+    from ccproxy.plugins.metrics.plugin import factory
 
     runtime = factory.create_runtime()
     assert runtime is not None

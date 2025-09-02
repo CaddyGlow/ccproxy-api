@@ -11,12 +11,12 @@ import pytest
 import typer
 
 from ccproxy.config.settings import Settings
-from plugins.permissions.handlers.cli import (
+from ccproxy.plugins.permissions.handlers.cli import (
     SSEConfirmationHandler,
     connect,
 )
-from plugins.permissions.handlers.terminal import TerminalPermissionHandler
-from plugins.permissions.service import PermissionRequest
+from ccproxy.plugins.permissions.handlers.terminal import TerminalPermissionHandler
+from ccproxy.plugins.permissions.service import PermissionRequest
 
 
 @pytest.fixture

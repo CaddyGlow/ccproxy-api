@@ -8,10 +8,8 @@ import pytest
 from ccproxy.core.errors import (
     PermissionNotFoundError,
 )
-from plugins.permissions.models import (
-    PermissionStatus,
-)
-from plugins.permissions.service import (
+from ccproxy.plugins.permissions.models import PermissionStatus
+from ccproxy.plugins.permissions.service import (
     PermissionService,
     get_permission_service,
 )

@@ -26,9 +26,9 @@ from claude_code_sdk import (
 )
 
 from ccproxy.core.errors import ClaudeProxyError, ServiceUnavailableError
-from plugins.claude_sdk import models as sdk_models
-from plugins.claude_sdk.client import ClaudeSDKClient
-from plugins.claude_sdk.config import ClaudeSDKSettings
+from ccproxy.plugins.claude_sdk import models as sdk_models
+from ccproxy.plugins.claude_sdk.client import ClaudeSDKClient
+from ccproxy.plugins.claude_sdk.config import ClaudeSDKSettings
 
 
 class TestClaudeSDKClient:
@@ -45,7 +45,7 @@ class TestClaudeSDKClient:
 
     def test_init_with_session_manager(self) -> None:
         """Test client initialization with session manager."""
-        from plugins.claude_sdk.config import ClaudeSDKSettings
+        from ccproxy.plugins.claude_sdk.config import ClaudeSDKSettings
 
         config = ClaudeSDKSettings()
         mock_session_manager: Mock = Mock()  # Descriptive mock for session manager
@@ -121,7 +121,7 @@ class TestClaudeSDKClientStatelessQueries:
         ):
             messages: list[Any] = []
             # Create a proper SDKMessage for the test
-            from plugins.claude_sdk.models import create_sdk_message
+            from ccproxy.plugins.claude_sdk.models import create_sdk_message
 
             sdk_message = create_sdk_message(content="Hello")
 
@@ -153,7 +153,7 @@ class TestClaudeSDKClientStatelessQueries:
             pytest.raises(ServiceUnavailableError) as exc_info,
         ):
             # Create a proper SDKMessage for the test
-            from plugins.claude_sdk.models import create_sdk_message
+            from ccproxy.plugins.claude_sdk.models import create_sdk_message
 
             sdk_message = create_sdk_message(content="Hello")
 
@@ -180,7 +180,7 @@ class TestClaudeSDKClientStatelessQueries:
             pytest.raises(ServiceUnavailableError) as exc_info,
         ):
             # Create a proper SDKMessage for the test
-            from plugins.claude_sdk.models import create_sdk_message
+            from ccproxy.plugins.claude_sdk.models import create_sdk_message
 
             sdk_message = create_sdk_message(content="Hello")
 
@@ -207,7 +207,7 @@ class TestClaudeSDKClientStatelessQueries:
             pytest.raises(ClaudeProxyError) as exc_info,
         ):
             # Create a proper SDKMessage for the test
-            from plugins.claude_sdk.models import create_sdk_message
+            from ccproxy.plugins.claude_sdk.models import create_sdk_message
 
             sdk_message = create_sdk_message(content="Hello")
 
@@ -235,7 +235,7 @@ class TestClaudeSDKClientStatelessQueries:
             pytest.raises(ClaudeProxyError) as exc_info,
         ):
             # Create a proper SDKMessage for the test
-            from plugins.claude_sdk.models import create_sdk_message
+            from ccproxy.plugins.claude_sdk.models import create_sdk_message
 
             sdk_message = create_sdk_message(content="Hello")
 
@@ -263,7 +263,7 @@ class TestClaudeSDKClientStatelessQueries:
             pytest.raises(ClaudeProxyError) as exc_info,
         ):
             # Create a proper SDKMessage for the test
-            from plugins.claude_sdk.models import create_sdk_message
+            from ccproxy.plugins.claude_sdk.models import create_sdk_message
 
             sdk_message = create_sdk_message(content="Hello")
 
@@ -302,7 +302,7 @@ class TestClaudeSDKClientStatelessQueries:
         ):
             messages: list[Any] = []
             # Create a proper SDKMessage for the test
-            from plugins.claude_sdk.models import create_sdk_message
+            from ccproxy.plugins.claude_sdk.models import create_sdk_message
 
             sdk_message = create_sdk_message(content="Hello")
 
@@ -348,7 +348,7 @@ class TestClaudeSDKClientStatelessQueries:
         ):
             messages: list[Any] = []
             # Create a proper SDKMessage for the test
-            from plugins.claude_sdk.models import create_sdk_message
+            from ccproxy.plugins.claude_sdk.models import create_sdk_message
 
             sdk_message = create_sdk_message(content="Hello")
 
@@ -374,7 +374,7 @@ class TestClaudeSDKClientStatelessQueries:
         ):
             messages: list[Any] = []
             # Create a proper SDKMessage for the test
-            from plugins.claude_sdk.models import create_sdk_message
+            from ccproxy.plugins.claude_sdk.models import create_sdk_message
 
             sdk_message = create_sdk_message(content="Hello")
 

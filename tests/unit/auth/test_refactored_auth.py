@@ -8,7 +8,7 @@ from pydantic import SecretStr
 
 from ccproxy.auth.models.base import BaseProfileInfo, BaseTokenInfo
 from ccproxy.auth.storage.generic import GenericJsonStorage
-from plugins.oauth_claude.models import (
+from ccproxy.plugins.oauth_claude.models import (
     ClaudeCredentials,
     ClaudeOAuthToken,
     ClaudeProfileInfo,
@@ -189,7 +189,7 @@ class TestTokenManagers:
     @pytest.mark.asyncio
     async def test_claude_manager_with_generic_storage(self, tmp_path):
         """Test ClaudeApiTokenManager with GenericJsonStorage."""
-        from plugins.oauth_claude.manager import ClaudeApiTokenManager
+        from ccproxy.plugins.oauth_claude.manager import ClaudeApiTokenManager
 
         storage_path = tmp_path / "claude_test.json"
         storage = GenericJsonStorage(storage_path, ClaudeCredentials)

@@ -88,7 +88,7 @@ class AccessLogRuntime(SystemPluginRuntime):
                 registry = self.context.get("plugin_registry")
                 ingest_service = None
                 if registry:
-                    from plugins.analytics.ingest import AnalyticsIngestService
+                    from ccproxy.plugins.analytics.ingest import AnalyticsIngestService
 
                     ingest_service = registry.get_service(
                         "analytics_ingest", AnalyticsIngestService

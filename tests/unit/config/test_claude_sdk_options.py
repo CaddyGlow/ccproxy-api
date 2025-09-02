@@ -6,8 +6,8 @@ from claude_code_sdk import ClaudeCodeOptions
 
 from ccproxy.config.settings import Settings
 from ccproxy.core.async_utils import patched_typing
-from plugins.claude_sdk.config import ClaudeSDKSettings
-from plugins.claude_sdk.options import OptionsHandler
+from ccproxy.plugins.claude_sdk.config import ClaudeSDKSettings
+from ccproxy.plugins.claude_sdk.options import OptionsHandler
 
 
 with patched_typing():

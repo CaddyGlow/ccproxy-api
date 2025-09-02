@@ -478,65 +478,23 @@ def status_command(
 
         if oauth_provider:
             try:
-                storage = None
-                if hasattr(oauth_provider, "get_storage"):
-                    with contextlib.suppress(Exception):
-                        storage = oauth_provider.get_storage()
+                # Delegate to provider; providers may internally use their managers
+                credentials = asyncio.run(oauth_provider.load_credentials())
 
-                from typing import Any as _Any
-
-                manager: _Any | None = None
-                if provider in ("claude-api", "claude_api"):
-                    try:
-                        from ccproxy.plugins.oauth_claude.manager import (
-                            ClaudeApiTokenManager,
-                        )
-
-                        # Get the HTTP client with hooks from the OAuth provider
-                        http_client = None
-                        if oauth_provider and hasattr(oauth_provider, "http_client"):
-                            http_client = oauth_provider.http_client
-
-                        if storage is not None:
-                            manager = asyncio.run(
-                                ClaudeApiTokenManager.create(
-                                    storage=storage, http_client=http_client
-                                )
-                            )
+                # Optionally obtain a token manager via provider API (if exposed)
+                manager = None
+                try:
+                    if hasattr(oauth_provider, "create_token_manager"):
+                        manager = asyncio.run(oauth_provider.create_token_manager())
+                    elif hasattr(oauth_provider, "get_token_manager"):
+                        mgr = oauth_provider.get_token_manager()  # may be sync
+                        # If coroutine, run it; else use directly
+                        if hasattr(mgr, "__await__"):
+                            manager = asyncio.run(mgr)
                         else:
-                            manager = asyncio.run(
-                                ClaudeApiTokenManager.create(http_client=http_client)
-                            )
-                    except Exception as e:
-                        logger.debug("claude_manager_init_failed", error=str(e))
-                elif provider == "codex":
-                    try:
-                        from ccproxy.plugins.oauth_codex.manager import (
-                            CodexTokenManager,
-                        )
-
-                        # Get the HTTP client with hooks from the OAuth provider
-                        http_client = None
-                        if oauth_provider and hasattr(oauth_provider, "http_client"):
-                            http_client = oauth_provider.http_client
-
-                        if storage is not None:
-                            manager = asyncio.run(
-                                CodexTokenManager.create(
-                                    storage=storage, http_client=http_client
-                                )
-                            )
-                        else:
-                            manager = asyncio.run(
-                                CodexTokenManager.create(http_client=http_client)
-                            )
-                    except Exception as e:
-                        logger.debug("codex_manager_init_failed", error=str(e))
-
-                if manager is not None:
-                    credentials = asyncio.run(manager.load_credentials())
-                else:
-                    credentials = asyncio.run(oauth_provider.load_credentials())
+                            manager = mgr
+                except Exception as e:
+                    logger.debug("token_manager_unavailable", error=str(e))
 
                 if credentials:
                     if provider == "codex":
@@ -570,19 +528,17 @@ def status_command(
                             profile_info = {"provider": provider, "authenticated": True}
                     else:
                         quick = None
-                        if manager is not None and hasattr(
-                            manager,
-                            "get_unified_profile_quick",
+                        # Prefer provider-supplied quick profile methods if available
+                        if hasattr(oauth_provider, "get_unified_profile_quick"):
+                            with contextlib.suppress(Exception):
+                                quick = asyncio.run(
+                                    oauth_provider.get_unified_profile_quick()
+                                )
+                        if (not quick or quick == {}) and hasattr(
+                            oauth_provider, "get_unified_profile"
                         ):
                             with contextlib.suppress(Exception):
-                                quick = asyncio.run(manager.get_unified_profile_quick())
-                        # If the quick/local profile is missing, fall back to an online fetch.
-                        # Previously this only happened when --detailed was set; now we always
-                        # attempt the online fetch when local data isn't available to provide
-                        # richer status information by default.
-                        if (not quick or quick == {}) and manager is not None:
-                            with contextlib.suppress(Exception):
-                                quick = asyncio.run(manager.get_unified_profile())
+                                quick = asyncio.run(oauth_provider.get_unified_profile())
                         if quick and isinstance(quick, dict) and quick != {}:
                             profile_info = quick
                             try:

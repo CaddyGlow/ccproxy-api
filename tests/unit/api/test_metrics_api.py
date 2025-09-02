@@ -79,7 +79,7 @@ class TestMetricsAPIEndpoints:
         self, client: TestClient, mock_storage: AsyncMock
     ) -> None:
         """Test successful query execution with filters."""
-        from plugins.analytics.routes import get_duckdb_storage
+        from ccproxy.plugins.analytics.routes import get_duckdb_storage
 
         # Mock the storage engine and session
         mock_engine = MagicMock()
@@ -148,7 +148,7 @@ class TestMetricsAPIEndpoints:
         self, client: TestClient, mock_storage: AsyncMock
     ) -> None:
         """Test that query endpoint doesn't accept raw SQL (no SQL injection risk)."""
-        from plugins.analytics.routes import get_duckdb_storage
+        from ccproxy.plugins.analytics.routes import get_duckdb_storage
 
         # Mock the storage engine and session
         mock_engine = MagicMock()
@@ -196,7 +196,7 @@ class TestMetricsAPIEndpoints:
         self, client: TestClient, mock_storage: AsyncMock
     ) -> None:
         """Test valid filter parameters are accepted."""
-        from plugins.analytics.routes import get_duckdb_storage
+        from ccproxy.plugins.analytics.routes import get_duckdb_storage
 
         # Mock the storage engine and session
         mock_engine = MagicMock()
@@ -241,7 +241,7 @@ class TestMetricsAPIEndpoints:
 
     def test_query_endpoint_no_storage(self, client: TestClient) -> None:
         """Test query endpoint when storage is not available."""
-        from plugins.analytics.routes import get_duckdb_storage
+        from ccproxy.plugins.analytics.routes import get_duckdb_storage
 
         # Override the dependency to return None
         async def get_mock_storage(request: Request) -> None:
@@ -267,7 +267,7 @@ class TestMetricsAPIEndpoints:
         self, client: TestClient, mock_storage: AsyncMock
     ) -> None:
         """Test successful analytics generation."""
-        from plugins.analytics.routes import get_duckdb_storage
+        from ccproxy.plugins.analytics.routes import get_duckdb_storage
 
         # Mock the dependency to return the storage
         async def get_mock_storage(request: Request) -> AsyncMock:
@@ -349,7 +349,7 @@ class TestMetricsAPIEndpoints:
         self, client: TestClient, mock_storage: AsyncMock
     ) -> None:
         """Test analytics with time and model filters."""
-        from plugins.analytics.routes import get_duckdb_storage
+        from ccproxy.plugins.analytics.routes import get_duckdb_storage
 
         # Override the dependency to return the storage
         async def get_mock_storage(request: Request) -> AsyncMock:
@@ -405,7 +405,7 @@ class TestMetricsAPIEndpoints:
         self, client: TestClient, mock_storage: AsyncMock
     ) -> None:
         """Test analytics with default time range."""
-        from plugins.analytics.routes import get_duckdb_storage
+        from ccproxy.plugins.analytics.routes import get_duckdb_storage
 
         # Override the dependency to return the storage
         async def get_mock_storage(request: Request) -> AsyncMock:
@@ -452,7 +452,7 @@ class TestMetricsAPIEndpoints:
 
     def test_analytics_endpoint_no_storage(self, client: TestClient) -> None:
         """Test analytics endpoint when storage is not available."""
-        from plugins.analytics.routes import get_duckdb_storage
+        from ccproxy.plugins.analytics.routes import get_duckdb_storage
 
         # Override the dependency to return None
         async def get_mock_storage(request: Request) -> None:

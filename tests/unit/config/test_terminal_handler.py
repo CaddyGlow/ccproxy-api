@@ -6,8 +6,8 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
-from plugins.permissions.handlers.terminal import TerminalPermissionHandler
-from plugins.permissions.models import PermissionRequest
+from ccproxy.plugins.permissions.handlers.terminal import TerminalPermissionHandler
+from ccproxy.plugins.permissions.models import PermissionRequest
 
 
 @pytest.fixture

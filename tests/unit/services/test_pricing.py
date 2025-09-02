@@ -813,7 +813,7 @@ class TestPricingIntegration:
 
     def test_cost_calculator_integration(self, isolated_environment: Path) -> None:
         """Test integration with cost calculator utility."""
-        from ccproxy.utils.cost_calculator import calculate_token_cost
+        from ccproxy.plugins.pricing.utils import calculate_token_cost
 
         # PricingConfig will use XDG_CACHE_HOME which is already set by isolated_environment
         # The default cache_dir will be XDG_CACHE_HOME/ccproxy
@@ -854,8 +854,8 @@ class TestPricingIntegration:
     @pytest.mark.asyncio
     async def test_scheduler_task_integration(self, isolated_environment: Path) -> None:
         """Test integration with scheduler tasks."""
-        from plugins.pricing.service import PricingService
-        from plugins.pricing.tasks import PricingCacheUpdateTask
+        from ccproxy.plugins.pricing.service import PricingService
+        from ccproxy.plugins.pricing.tasks import PricingCacheUpdateTask
 
         settings = PricingConfig(cache_dir=isolated_environment / "cache")
         service = PricingService(settings)

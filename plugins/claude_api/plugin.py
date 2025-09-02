@@ -205,7 +205,7 @@ class ClaudeAPIRuntime(ProviderPluginRuntime):
             pricing_service = None
             if "plugin_registry" in self.context:
                 try:
-                    from plugins.pricing.service import PricingService
+                    from ccproxy.plugins.pricing.service import PricingService
 
                     plugin_registry = self.context["plugin_registry"]
                     logger.debug(
@@ -307,7 +307,7 @@ class ClaudeAPIFactory(BaseProviderPluginFactory):
         Returns:
             ClaudeApiTokenManager instance
         """
-        from plugins.oauth_claude.manager import ClaudeApiTokenManager
+        from ccproxy.plugins.oauth_claude.manager import ClaudeApiTokenManager
 
         return ClaudeApiTokenManager()
 

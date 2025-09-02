@@ -124,19 +124,19 @@ docs = [
   "mkdocs-redirects>=1.2.0",
 ]
 plugins = [
-    "ccproxy-analytics",
-    "ccproxy-claude-api",
-    "ccproxy-claude-sdk",
-    "ccproxy-codex",
-    "ccproxy-dashboard",
-    "ccproxy-duckdb-storage",
-    "ccproxy-metrics",
-    "ccproxy-oauth-claude",
-    "ccproxy-oauth-codex",
-    "ccproxy-permissions",
-    "ccproxy-plugin-access-log",
-    "ccproxy-pricing-plugin",
-    "ccproxy-request-tracer",
+  "ccproxy-analytics",
+  "ccproxy-claude-api",
+  "ccproxy-claude-sdk",
+  "ccproxy-codex",
+  "ccproxy-dashboard",
+  "ccproxy-duckdb-storage",
+  "ccproxy-metrics",
+  "ccproxy-oauth-claude",
+  "ccproxy-oauth-codex",
+  "ccproxy-permissions",
+  "ccproxy-plugin-access-log",
+  "ccproxy-pricing-plugin",
+  "ccproxy-request-tracer",
 ]
 schema = ["pydantic>=2.8.0", "check-jsonschema>=0.33.2"]
 
@@ -253,7 +253,17 @@ lines-after-imports = 2
 python_version = "3.11"
 show_column_numbers = true
 follow_imports = "normal"
-exclude = ["^[^/]+\\.py$", "docs/", "site/", "tests.deprecated/", "examples/"]
+exclude = [
+  "^[^/]+\\.py$",
+  "docs/",
+  "site/",
+  "tests.deprecated/",
+  "examples/",
+  "plugins/.*/tests/",
+]
+namespace_packages = true
+explicit_package_bases = true
+mypy_path = "plugins"
 
 # Enable all strict mode flags
 strict = true
@@ -338,6 +348,14 @@ module = [
 disallow_untyped_defs = false
 disallow_untyped_calls = false
 warn_unused_ignores = false
+
+[[tool.mypy.overrides]]
+module = ["ccproxy.plugins.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["plugins.*"]
+ignore_missing_imports = true
 
 
 [tool.pytest.ini_options]

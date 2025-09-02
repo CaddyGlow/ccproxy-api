@@ -8,11 +8,11 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from plugins.analytics import models as _analytics_models  # noqa: F401
-from plugins.analytics.routes import get_duckdb_storage
-from plugins.analytics.routes import router as analytics_router
-from plugins.analytics.service import AnalyticsService
-from plugins.duckdb_storage.storage import SimpleDuckDBStorage
+from ccproxy.plugins.analytics import models as _analytics_models  # noqa: F401
+from ccproxy.plugins.analytics.routes import get_duckdb_storage
+from ccproxy.plugins.analytics.routes import router as analytics_router
+from ccproxy.plugins.analytics.service import AnalyticsService
+from ccproxy.plugins.duckdb_storage.storage import SimpleDuckDBStorage
 
 
 @pytest.fixture(autouse=True)

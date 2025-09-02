@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 
-from plugins.access_log.formatter import AccessLogFormatter
+from ccproxy.plugins.access_log.formatter import AccessLogFormatter
 
 
 def sample_data() -> dict[str, object]:

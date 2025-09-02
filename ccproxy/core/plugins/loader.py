@@ -153,7 +153,12 @@ def _resolve_auth_provider_plugin_name(provider: str) -> str | None:
         "claude_api": "oauth_claude",
     }
 
-    return mapping.get(provider_key)
+    resolved = mapping.get(provider_key)
+    if resolved:
+        return resolved
+    # Fallback: build dynamically as oauth_<provider>
+    fallback = "oauth_" + provider_key.replace("-", "_")
+    return fallback
 
 
 __all__ = ["load_plugin_system", "load_cli_plugins"]

@@ -12,9 +12,9 @@ from fastapi.testclient import TestClient
 from ccproxy.config.settings import Settings
 from ccproxy.core.async_task_manager import start_task_manager, stop_task_manager
 from ccproxy.services.container import ServiceContainer
-from plugins.permissions.models import PermissionStatus
-from plugins.permissions.routes import router as confirmation_router
-from plugins.permissions.service import (
+from ccproxy.plugins.permissions.models import PermissionStatus
+from ccproxy.plugins.permissions.routes import router as confirmation_router
+from ccproxy.plugins.permissions.service import (
     PermissionService,
     get_permission_service,
 )
@@ -85,7 +85,7 @@ def test_client(app: FastAPI) -> TestClient:
 class TestConfirmationIntegration:
     """Integration tests for the confirmation system."""
 
-    @patch("plugins.permissions.routes.get_permission_service")
+    @patch("ccproxy.plugins.permissions.routes.get_permission_service")
     async def test_mcp_permission_flow(
         self,
         mock_get_service: Mock,

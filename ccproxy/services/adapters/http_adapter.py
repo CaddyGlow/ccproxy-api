@@ -106,18 +106,18 @@ class BaseHTTPAdapter(BaseAdapter):
         return self._hook_manager
 
     def _get_pricing_service(self) -> Any:
-        """Get pricing service from plugin registry if available."""
+        """Get pricing service from plugin registry if available.
+
+        Avoid importing plugin symbols in core; fetch by name only.
+        """
         try:
             if not self.context or "plugin_registry" not in self.context:
                 return None
 
             plugin_registry = self.context["plugin_registry"]
 
-            # Import locally to avoid circular dependency
-            from ccproxy.plugins.pricing.service import PricingService
-
-            # Get service from registry with type checking
-            return plugin_registry.get_service("pricing", PricingService)
+            # Do not import plugin types in core. Retrieve by name only.
+            return plugin_registry.get_service("pricing")
 
         except Exception as e:
             logger.debug("failed_to_get_pricing_service", error=str(e))

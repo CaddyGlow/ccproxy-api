@@ -5,9 +5,9 @@ import time
 
 import pytest
 
-from plugins.analytics import models as _analytics_models  # noqa: F401
-from plugins.analytics.service import AnalyticsService
-from plugins.duckdb_storage.storage import SimpleDuckDBStorage
+from ccproxy.plugins.analytics import models as _analytics_models  # noqa: F401
+from ccproxy.plugins.analytics.service import AnalyticsService
+from ccproxy.plugins.duckdb_storage.storage import SimpleDuckDBStorage
 
 
 def _mk(ts: float, rid: str) -> dict[str, object]:

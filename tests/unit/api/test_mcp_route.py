@@ -10,9 +10,9 @@ from ccproxy.models.responses import (
     PermissionToolAllowResponse,
     PermissionToolDenyResponse,
 )
-from plugins.permissions.mcp import PermissionCheckRequest, check_permission
-from plugins.permissions.models import PermissionStatus
-from plugins.permissions.service import PermissionService
+from ccproxy.plugins.permissions.mcp import PermissionCheckRequest, check_permission
+from ccproxy.plugins.permissions.models import PermissionStatus
+from ccproxy.plugins.permissions.service import PermissionService
 
 
 @pytest.fixture

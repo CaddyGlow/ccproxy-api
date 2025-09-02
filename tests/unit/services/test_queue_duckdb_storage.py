@@ -14,8 +14,8 @@ from unittest.mock import patch
 import pytest
 from sqlmodel import Session, select
 
-from plugins.analytics.models import AccessLog, AccessLogPayload
-from plugins.duckdb_storage.storage import SimpleDuckDBStorage
+from ccproxy.plugins.analytics.models import AccessLog, AccessLogPayload
+from ccproxy.plugins.duckdb_storage.storage import SimpleDuckDBStorage
 
 
 @pytest.fixture

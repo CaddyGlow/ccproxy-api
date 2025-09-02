@@ -34,7 +34,7 @@ from ccproxy.auth.exceptions import (
     OAuthTokenRefreshError,
 )
 from ccproxy.auth.manager import AuthManager
-from plugins.oauth_claude.models import (
+from ccproxy.plugins.oauth_claude.models import (
     ClaudeOAuthToken,
 )
 

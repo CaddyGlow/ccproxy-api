@@ -16,6 +16,17 @@ class PluginTransformerProtocol(Protocol):
         """Transform request headers."""
         ...
 
+@runtime_checkable
+class SSEParserProtocol(Protocol):
+    """Protocol for SSE parsers to extract a final JSON response.
+
+    Implementations should return a parsed dict for the final response, or
+    None if no final response could be determined.
+    """
+
+    def __call__(self, raw: str) -> dict[str, Any] | None:  # pragma: no cover - protocol
+        ...
+
     def transform_body(self, body: Any) -> Any:
         """Transform request body."""
         ...
@@ -43,3 +54,6 @@ class HandlerConfig:
 
     # Feature flag
     supports_streaming: bool = True
+
+    # Optional SSE parser provided by plugins that return SSE streams
+    sse_parser: SSEParserProtocol | None = None

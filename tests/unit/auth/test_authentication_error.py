@@ -1,6 +1,6 @@
 """Test authentication error handling."""
 
-from plugins.codex.transformers.request import CodexRequestTransformer
+from ccproxy.plugins.codex.transformers.request import CodexRequestTransformer
 
 
 class TestAuthenticationError:

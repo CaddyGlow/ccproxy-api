@@ -12,15 +12,15 @@ from fastapi.testclient import TestClient
 
 from ccproxy.config.settings import Settings
 from ccproxy.services.container import ServiceContainer
-from plugins.permissions.models import (
+from ccproxy.plugins.permissions.models import (
     PermissionRequest,
     PermissionStatus,
 )
-from plugins.permissions.routes import (
+from ccproxy.plugins.permissions.routes import (
     event_generator,
     router,
 )
-from plugins.permissions.service import (
+from ccproxy.plugins.permissions.service import (
     PermissionService,
     get_permission_service,
 )
@@ -79,7 +79,7 @@ def patch_confirmation_service(test_func: Callable[..., Any]) -> Callable[..., A
         self: Any, test_client: TestClient, mock_confirmation_service: Any
     ) -> Any:
         with patch(
-            "plugins.permissions.routes.get_permission_service"
+            "ccproxy.plugins.permissions.routes.get_permission_service"
         ) as mock_get_service:
             mock_get_service.return_value = mock_confirmation_service
             return test_func(self, test_client, mock_confirmation_service)
