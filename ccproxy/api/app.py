@@ -9,13 +9,13 @@ from fastapi import FastAPI
 from typing_extensions import TypedDict
 
 from ccproxy import __version__
+from ccproxy.api.bootstrap import create_service_container
 from ccproxy.api.middleware.cors import setup_cors_middleware
 from ccproxy.api.middleware.errors import setup_error_handlers
 from ccproxy.api.routes.health import router as health_router
 from ccproxy.api.routes.plugins import router as plugins_router
 from ccproxy.auth.oauth.registry import OAuthRegistry
 from ccproxy.auth.oauth.routes import router as oauth_router
-from ccproxy.api.bootstrap import create_service_container
 from ccproxy.config.settings import Settings
 from ccproxy.core.async_task_manager import start_task_manager, stop_task_manager
 from ccproxy.core.logging import TraceBoundLogger, get_logger, setup_logging
@@ -28,8 +28,6 @@ from ccproxy.core.plugins.loader import load_plugin_system
 from ccproxy.hooks import HookManager, HookRegistry
 from ccproxy.hooks.events import HookEvent
 from ccproxy.services.container import ServiceContainer
-from ccproxy.services.interfaces import IRequestTracer
-from ccproxy.services.tracing import NullRequestTracer
 from ccproxy.utils.startup_helpers import (
     check_claude_cli_startup,
     check_version_updates_startup,
@@ -94,14 +92,8 @@ async def initialize_plugins_startup(app: FastAPI, settings: Settings) -> None:
     app.state.hook_manager = hook_manager
     service_container.register_service(HookManager, instance=hook_manager)
 
-    # If a StreamingHandler was created before HookManager existed, attach it now
-    try:
-        streaming_handler = service_container.get_streaming_handler()
-        if getattr(streaming_handler, "hook_manager", None) is None:
-            streaming_handler.hook_manager = hook_manager  # type: ignore[attr-defined]
-    except Exception:
-        # If streaming handler is not yet created, it will pick up HookManager later
-        pass
+    # StreamingHandler now requires HookManager at construction via DI factory,
+    # so no post-hoc patching is needed here.
 
     class CoreServicesAdapter:
         def __init__(self, container: ServiceContainer):

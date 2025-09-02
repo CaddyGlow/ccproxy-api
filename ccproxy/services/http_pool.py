@@ -241,36 +241,5 @@ class HTTPPoolManager:
         }
 
 
-# Global instance for convenience
-_global_pool_manager: HTTPPoolManager | None = None
-
-
-def get_pool_manager(settings: Settings | None = None) -> HTTPPoolManager:
-    """Get the global HTTP pool manager instance.
-
-    Args:
-        settings: Optional settings for configuration
-
-    Returns:
-        The global HTTPPoolManager instance
-    """
-    global _global_pool_manager
-
-    if _global_pool_manager is None:
-        _global_pool_manager = HTTPPoolManager(settings)
-        logger.info("global_pool_manager_created")
-
-    return _global_pool_manager
-
-
-async def close_global_pool_manager() -> None:
-    """Close the global pool manager and clean up resources.
-
-    This should be called during application shutdown.
-    """
-    global _global_pool_manager
-
-    if _global_pool_manager is not None:
-        await _global_pool_manager.close_all()
-        _global_pool_manager = None
-        logger.info("global_pool_manager_closed")
+# Global helper functions were removed to avoid mixed patterns.
+# Use the DI container to access an `HTTPPoolManager` instance.

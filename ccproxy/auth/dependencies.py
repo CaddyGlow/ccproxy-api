@@ -5,6 +5,8 @@ from typing import TYPE_CHECKING, Annotated
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
+from ccproxy.api.dependencies import SettingsDep
+
 
 if TYPE_CHECKING:
     from ccproxy.config.settings import Settings
@@ -66,9 +68,6 @@ async def _get_auth_manager_with_settings(
         detail="Authentication required",
         headers={"WWW-Authenticate": "Bearer"},
     )
-
-
-from ccproxy.api.dependencies import SettingsDep
 
 
 async def get_auth_manager(

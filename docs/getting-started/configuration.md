@@ -760,7 +760,7 @@ CONFIG_FILE=/path/to/custom/config.json ccproxy run
 LOG_LEVEL=DEBUG ccproxy run
 
 # Validate configuration without starting server
-python -c "from ccproxy.config.settings import get_settings; print('Config valid')"
+python -c "from ccproxy.config.settings import Settings; Settings.from_config(); print('Config valid')"
 
 # Check Claude CLI path resolution
 ccproxy claude -- --version

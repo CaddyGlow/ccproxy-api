@@ -7,7 +7,7 @@ import json
 import os
 import socket
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from fastapi import FastAPI, Request, Response
 
@@ -24,6 +24,10 @@ from ccproxy.utils.caching import async_ttl_cache
 
 
 logger = get_plugin_logger()
+
+
+if TYPE_CHECKING:
+    from .models import ClaudeCliInfo
 
 
 class ClaudeAPIDetectionService:

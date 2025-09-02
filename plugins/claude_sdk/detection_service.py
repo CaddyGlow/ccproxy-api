@@ -1,6 +1,8 @@
 """Claude SDK CLI detection service using centralized detection."""
 
-from typing import NamedTuple
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, NamedTuple
 
 from ccproxy.config.settings import Settings
 from ccproxy.core.logging import get_plugin_logger
@@ -9,6 +11,10 @@ from ccproxy.utils.caching import async_ttl_cache
 
 
 logger = get_plugin_logger()
+
+
+if TYPE_CHECKING:
+    from .models import ClaudeCliInfo
 
 
 class ClaudeDetectionData(NamedTuple):
@@ -124,7 +130,7 @@ class ClaudeSDKDetectionService:
         """
         return self._is_available
 
-    def get_cli_health_info(self) -> "ClaudeCliInfo":
+    def get_cli_health_info(self) -> ClaudeCliInfo:
         """Return CLI health info model using current detection state.
 
         Returns:

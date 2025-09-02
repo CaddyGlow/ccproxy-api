@@ -4,8 +4,8 @@ This module provides a clean, testable dependency injection container that
 manages service lifecycles and dependencies without singleton anti-patterns.
 """
 
-from collections.abc import Callable
 import inspect
+from collections.abc import Callable
 from typing import Any, TypeVar
 
 import httpx
@@ -140,11 +140,11 @@ class ServiceContainer:
 
             try:
                 # Prefer aclose() if available (e.g., httpx.AsyncClient)
-                if hasattr(service, "aclose") and callable(getattr(service, "aclose")):
+                if hasattr(service, "aclose") and callable(service.aclose):
                     maybe_coro = service.aclose()
                     if inspect.isawaitable(maybe_coro):
                         await maybe_coro
-                elif hasattr(service, "close") and callable(getattr(service, "close")):
+                elif hasattr(service, "close") and callable(service.close):
                     maybe_coro = service.close()
                     if inspect.isawaitable(maybe_coro):
                         await maybe_coro

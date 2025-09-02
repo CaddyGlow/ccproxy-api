@@ -359,14 +359,19 @@ async def initialize_plugins_v2_startup(app: FastAPI, settings: Settings) -> Non
 
     plugin_registry: PluginRegistry = app.state.plugin_registry
 
-    # Create service container
-    service_container = ServiceContainer(settings)
+    # Get the service container created during app construction
+    service_container = app.state.service_container
 
     # Create core services adapter
     core_services = CoreServicesAdapter(service_container)
 
     # Initialize all plugins
     await plugin_registry.initialize_all(core_services)
+
+    # Note: The hook system (HookRegistry/HookManager) is created during app
+    # startup and registered into the DI container. Plugins should obtain the
+    # HookManager from the provided context or from the container rather than
+    # creating their own instances.
 
 async def shutdown_plugins_v2(app: FastAPI) -> None:
     """Shutdown v2 plugins."""

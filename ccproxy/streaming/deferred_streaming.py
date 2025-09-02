@@ -3,6 +3,7 @@
 This implementation solves the header timing issue and supports SSE processing.
 """
 
+import contextlib
 import json
 from collections.abc import AsyncGenerator, AsyncIterator
 from datetime import datetime
@@ -438,11 +439,8 @@ class DeferredStreaming(StreamingResponse):
 
         # After the streaming context closes, optionally close the client we own
         if self._close_client_on_finish:
-            try:
+            with contextlib.suppress(Exception):
                 await self.client.aclose()
-            except Exception:
-                # Best-effort close; ignore errors on shutdown path
-                pass
 
     async def _process_sse_events(
         self, response: httpx.Response, adapter: "APIAdapter"

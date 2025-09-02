@@ -89,6 +89,71 @@ All code must pass these checks before merging:
 | **Tests** | `make test` | Functionality | ❌ |
 | **Pre-commit** | `make pre-commit` | All checks combined | ✅ |
 
+## Architecture: DI & Services
+
+This project uses a container-first dependency injection (DI) pattern. Follow these rules when adding or refactoring code:
+
+- Use the service container exclusively
+  - Access services via `app.state.service_container` or FastAPI dependencies.
+  - Never create new global singletons or module-level caches for services.
+
+- Register services in the factory
+  - Add new services to `ccproxy/services/factories.py` using `container.register_service(...)`.
+  - Prefer constructor injection and small factory methods over service locators.
+
+- Hook system is required
+  - `HookManager` is created at startup and registered in the container.
+  - FastAPI dep `HookManagerDep` is required; do not make it optional.
+
+- No deprecated globals
+  - Do not use `ccproxy.services.http_pool.get_pool_manager()` or any global helpers.
+  - Always resolve `HTTPPoolManager` via `container.get_pool_manager()`.
+
+- Settings access
+  - Use `Settings.from_config(...)` in CLI/tools and tests. The legacy `get_settings()` helper was removed.
+
+### Adding a New Service
+
+1) Register in the factory:
+
+```python
+# ccproxy/services/factories.py
+self._container.register_service(MyService, factory=self.create_my_service)
+
+def create_my_service(self) -> MyService:
+    settings = self._container.get_service(Settings)
+    return MyService(settings)
+```
+
+2) Resolve via container in runtime code:
+
+```python
+container: ServiceContainer = request.app.state.service_container
+svc = container.get_service(MyService)
+```
+
+3) For FastAPI dependencies, use the shared helper:
+
+```python
+# ccproxy/api/dependencies.py
+MyServiceDep = Annotated[MyService, Depends(get_service(MyService))]
+```
+
+### Streaming and Hooks
+
+- `StreamingHandler` must be constructed with a `HookManager` (the factory enforces this).
+- Do not patch dependencies after construction; ensure ordering via DI.
+
+### Testing with the Container
+
+- Prefer constructing a `ServiceContainer(Settings.from_config(...))` in tests.
+- Override services by re-registering instances for the type under test:
+
+```python
+container.register_service(MyService, instance=FakeMyService())
+```
+
+This pattern keeps tests isolated and avoids cross-test state.
 ### Running Tests
 
 ```bash

@@ -3,7 +3,7 @@
 from enum import Enum
 
 from claude_code_sdk import ClaudeCodeOptions
-from pydantic import BaseModel, Field, model_validator, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from ccproxy.models.provider import ProviderConfig
 

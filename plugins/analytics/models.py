@@ -5,8 +5,8 @@ from __future__ import annotations
 from datetime import datetime
 from typing import TypedDict
 
-from sqlmodel import Field, SQLModel
 from pydantic import ConfigDict
+from sqlmodel import Field, SQLModel
 
 
 class AccessLog(SQLModel, table=True):

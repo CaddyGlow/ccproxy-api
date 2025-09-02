@@ -54,8 +54,12 @@ async def get_http_client(request: Request) -> httpx.AsyncClient:
     return get_service(httpx.AsyncClient)(request)
 
 
-def get_hook_manager(request: Request) -> HookManager | None:
-    """Get hook manager from app state."""
+def get_hook_manager(request: Request) -> HookManager:
+    """Get HookManager from the service container.
+
+    This dependency is required; if the hook system has not been initialized
+    the request will fail with 503 to reflect misconfigured startup order.
+    """
     return get_service(HookManager)(request)
 
 
@@ -101,4 +105,4 @@ def get_plugin_adapter(plugin_name: str) -> Any:
 
 SettingsDep = Annotated[Settings, Depends(get_cached_settings)]
 HTTPClientDep = Annotated[httpx.AsyncClient, Depends(get_http_client)]
-HookManagerDep = Annotated[HookManager | None, Depends(get_hook_manager)]
+HookManagerDep = Annotated[HookManager, Depends(get_hook_manager)]
