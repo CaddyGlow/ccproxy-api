@@ -36,12 +36,12 @@ max_body_size = 10485760                                   # 10MB
 [plugins.access_log]
 enabled = true
 client_enabled = true
-client_format = "combined"                                   # Options: combined, common, structured
+client_format = "combined"                             # Options: combined, common, structured
 client_log_file = "/tmp/ccproxy/combined_access.log"
 provider_enabled = false
 provider_format = "structured"
 provider_log_file = "/tmp/ccproxy/provider_access.log"
-exclude_paths = ["/health", "/metrics", "/readyz", "/livez"]
+exclude_paths = ["/health", "/metrics", "/logs"]
 buffer_size = 100
 flush_interval = 1.0
 

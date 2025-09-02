@@ -237,11 +237,11 @@ class TaskSpec:
 
 ### Plugin Management Endpoints
 
-All plugin management endpoints are prefixed with `/api/plugins`.
+All plugin management endpoints are prefixed with `/plugins`.
 
 #### List Plugins
 ```http
-GET /api/plugins
+GET /plugins
 ```
 
 **Response:**
@@ -267,7 +267,7 @@ GET /api/plugins
 
 #### Plugin Health Check
 ```http
-GET /api/plugins/{plugin_name}/health
+GET /plugins/{plugin_name}/health
 ```
 
 **Parameters:**
@@ -293,7 +293,7 @@ GET /api/plugins/{plugin_name}/health
 
 #### Status
 ```http
-GET /api/plugins/status
+GET /plugins/status
 ```
 
 Returns manifests and initialization state for all loaded plugins.

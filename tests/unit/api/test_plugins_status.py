@@ -22,7 +22,7 @@ async def test_plugins_status_types() -> None:
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
-        resp = await client.get("/api/plugins/status")
+        resp = await client.get("/plugins/status")
         assert resp.status_code == 200
         data = resp.json()
         assert "plugins" in data

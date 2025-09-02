@@ -13,7 +13,7 @@ This guide shows how to build CCProxy plugins that integrate cleanly with the co
 - System Plugin (factory: `SystemPluginFactory`)
   - Adds system-wide features like metrics, logging, tracing, permissions, pricing. No external provider proxy.
 
-Use `GET /api/plugins/status` to see each plugin’s `type` as `auth_provider`, `provider`, or `system`.
+Use `GET /plugins/status` to see each plugin’s `type` as `auth_provider`, `provider`, or `system`.
 
 ## Minimal Structure
 
@@ -84,7 +84,7 @@ other_plugin = "my_package.other:create_factory"
 ## Health & Status
 
 - Implement `health_check()` in runtime to return IETF-style health.
-- Check `/api/plugins/status` to inspect:
+- Check `/plugins/status` to inspect:
   - `initialization_order` (dependency order)
   - `services` map (service -> provider)
   - per-plugin summary (name, version, type, provides/requires, initialized)
@@ -158,4 +158,4 @@ factory = MyProviderFactory()
 See also:
 - `docs/PLUGIN_SYSTEM_DOCUMENTATION.md` for more on the plugin runtime model
 - Metrics/logging plugins (e.g., `plugins/metrics`, `plugins/analytics`) for observability patterns
-- `GET /api/plugins/status` for runtime inspection
+- `GET /plugins/status` for runtime inspection

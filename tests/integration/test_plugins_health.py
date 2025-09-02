@@ -10,7 +10,7 @@ pytestmark = [pytest.mark.integration, pytest.mark.api]
 
 @pytest.mark.asyncio
 async def test_metrics_plugin_health_endpoint() -> None:
-    """Metrics plugin exposes health via /api/plugins/metrics/health."""
+    """Metrics plugin exposes health via /plugins/metrics/health."""
     settings = Settings(
         enable_plugins=True,
         plugins={
@@ -26,7 +26,7 @@ async def test_metrics_plugin_health_endpoint() -> None:
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
-        resp = await client.get("/api/plugins/metrics/health")
+        resp = await client.get("/plugins/metrics/health")
         assert resp.status_code == 200
         data = resp.json()
         assert data["plugin"] == "metrics"
@@ -42,5 +42,5 @@ async def test_unknown_plugin_health_returns_404() -> None:
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
-        resp = await client.get("/api/plugins/does-not-exist/health")
+        resp = await client.get("/plugins/does-not-exist/health")
         assert resp.status_code == 404

@@ -573,7 +573,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     # Plugin management endpoints (conditional on plugin system)
     if settings.enable_plugins:
-        app.include_router(plugins_router, prefix="/api", tags=["plugins"])
+        # Mount under /plugins (no /api prefix)
+        app.include_router(plugins_router, tags=["plugins"])  # mounts at /plugins
 
     # Dashboard static mounting is handled by the dashboard plugin.
 
