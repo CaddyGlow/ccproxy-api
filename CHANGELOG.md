@@ -631,3 +631,23 @@ This is the initial public release of the CCProxy API.
 ### Notes
 
 - Plugin-owned dependencies remain in root for now (plugins are bundled): `duckdb`, `duckdb-engine`, `sqlmodel`, `prometheus-client`, `textual`. These may move to plugin-specific distributions or optional extras in a future split.
+## [0.2.0] - 2025-09-02
+
+### Changed
+
+- Core health endpoints simplified and plugin-agnostic; provider/OAuth/SDK checks moved to plugin health under `/api/plugins/{name}/health`.
+- Plugins CLI now uses centralized `load_plugin_system()`; discovery logic consolidated.
+- Documentation updated to reflect plugin-first architecture and loader flow.
+
+### Removed
+
+- Legacy plugin management endpoints: `POST /api/plugins/{name}/reload`, `POST /api/plugins/discover`, `DELETE /api/plugins/{name}` (v2 loads at startup; restart to apply changes).
+- Scheduler references to Pushgateway in core; metrics plugin fully owns push task registration.
+- Core middleware reliance on `app.state.duckdb_storage` alias; storage wiring is plugin-owned.
+
+### Added
+
+- Configuration validation that fails fast when deprecated keys are present, with guidance to the corresponding `plugins.*` keys.
+- Migration guide: `docs/migration/0.2-plugin-first.md`.
+
+This release completes the plugin-first migration and removes transitional shims.

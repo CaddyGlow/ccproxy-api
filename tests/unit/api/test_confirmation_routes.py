@@ -108,7 +108,7 @@ class TestConfirmationRoutes:
         )
 
         # Create an async function that returns the request
-        async def mock_get_request(confirmation_id: str):
+        async def mock_get_request(confirmation_id: str) -> PermissionRequest:
             return mock_request
 
         mock_confirmation_service.get_request.side_effect = mock_get_request

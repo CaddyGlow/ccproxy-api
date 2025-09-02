@@ -59,6 +59,8 @@ nav:
   - Plugin System:
     - Overview: PLUGIN_SYSTEM_DOCUMENTATION.md
     - OAuth Integration: OAUTH_PLUGIN_ARCHITECTURE.md
+  - Migration:
+    - 0.2 Plugin‑First: migration/0.2-plugin-first.md
   - User Guide:
     - API Usage: user-guide/api-usage.md
     - MCP Integration: user-guide/mcp-integration.md

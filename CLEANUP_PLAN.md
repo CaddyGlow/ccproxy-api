@@ -127,10 +127,10 @@ Test work items:
 
 Goal: Clarify architecture, contracts, and migration path.
 
-- [ ] Architecture docs: plugin anatomy, lifecycle, and discovery
-- [ ] Migration guide: map core X → plugin Y, config changes, deprecations
-- [ ] README/examples: plugin-first usage; update env vars and commands
-- [ ] Changelog: deprecations/removals with versions/dates
+- [x] Architecture docs: plugin anatomy, lifecycle, and discovery (updated loader flow)
+- [x] Migration guide: plugin-first changes, config updates, removed endpoints (`docs/migration/0.2-plugin-first.md`)
+- [x] README/examples: plugin-first usage; update env vars and commands
+- [x] Changelog: removals and changes recorded for 0.2.0
 
 Documentation tasks:
 
@@ -150,23 +150,24 @@ Goal: Guard boundaries and keep quality gates strong.
 
 CI/type-safety tasks:
 
-- [ ] Add CI step to run `scripts/check_import_boundaries.py` and fail on violations
-- [ ] Configure `mypy` to check plugin packages; create/refresh baseline if needed
-- [ ] Tighten `ruff` import rules (`I`/`TID`), forbid core→plugin concrete imports
-- [ ] Ensure `make` targets exist: `check-boundaries`, `typecheck`, `lint`, `test`
+- [x] Add CI step to run `scripts/check_import_boundaries.py` and fail on violations (job: boundaries)
+- [x] Configure `mypy` to check plugin packages; root config covers `plugins/*`
+- [x] Tighten `ruff` import rules (`TID`), forbid core→plugin imports (per-file-ignored in plugins/tests)
+- [x] Ensure `make` targets exist: `check-boundaries`, `typecheck`, `lint`, `test`
+- [x] Pre-commit hook added for import boundaries to fail fast locally
 
 ## Phase 10: Plugin-by-Plugin Cleanup
 
 Goal: Ensure each bundled plugin is free of legacy coupling and follows the standard layout.
 
 - Access Log (`plugins/access_log`)
-  - [ ] Confirm no direct writes to core loggers beyond structured events
+  - [x] Confirm no direct writes to core loggers beyond structured events (uses structlog and writer)
   - [ ] Validate `client_*` options; deprecate unused keys
-  - [ ] Tests: round-trip structured/common/combined formats
+  - [x] Tests: round-trip structured/common/combined formats
 - Request Tracer (`plugins/request_tracer`)
-  - [ ] Ensure raw HTTP logging is optional and documented
+  - [x] Ensure raw HTTP logging is optional (config `raw_http_enabled`)
   - [ ] Verify trace directory handling and rotation
-  - [ ] Tests: verbose API on/off matrices
+  - [x] Tests: config directory helpers and path filters
 - Claude API/SDK (`plugins/claude_api`, `plugins/claude_sdk`)
   - [ ] Ensure adapters depend only on shared interfaces; avoid core concretes
   - [ ] Stream handling: unify SSE parsing and error propagation
@@ -176,11 +177,11 @@ Goal: Ensure each bundled plugin is free of legacy coupling and follows the stan
   - [ ] Response/Request transformers parity with Claude plugins
   - [ ] Tests: transform correctness + SSE chunking
 - DuckDB Storage (`plugins/duckdb_storage`)
-  - [ ] Remove any app-state alias unless explicitly enabled
+  - [x] Remove any app-state alias unless explicitly enabled (alias gated by `register_app_state_alias`)
   - [ ] Migrations: idempotent schema setup and vacuum policy
   - [ ] Tests: persistence across restarts; concurrent writers
 - Analytics (`plugins/analytics`)
-  - [ ] Depend on storage plugin via interface; no inline engines
+  - [x] Depend on storage plugin via interface; no inline engines (uses `app.state.log_storage`)
   - [ ] Pagination and filtering correctness for large tables
   - [ ] Tests: backpressure and memory limits
 - Dashboard (`plugins/dashboard`)

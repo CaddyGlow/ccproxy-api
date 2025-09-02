@@ -1,4 +1,13 @@
 repos:
+  # Import boundary check: prevent core -> plugins.* imports
+  - repo: local
+    hooks:
+      - id: check-import-boundaries
+        name: check import boundaries (core must not import plugins)
+        entry: python3 scripts/check_import_boundaries.py
+        language: system
+        pass_filenames: false
+        files: ^ccproxy/
   # Ruff linting and formatting
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.12.8

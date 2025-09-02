@@ -5,7 +5,7 @@ import re
 from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
 from contextlib import asynccontextmanager, contextmanager
 from pathlib import Path
-from typing import Any, TypeVar
+from typing import Any, TypeVar, cast
 
 from structlog import get_logger
 
@@ -270,7 +270,7 @@ async def async_cache_result(
     if cache_key in _cache:
         cached_time, cached_result = _cache[cache_key]
         if current_time - cached_time < cache_duration:
-            return cached_result  # type: ignore[no-any-return]
+            return cast(T, cached_result)
 
     # Compute and cache the result
     result = await func(*args, **kwargs)
@@ -483,10 +483,14 @@ def validate_config_with_schema(
     import tempfile
 
     # Import tomllib for Python 3.11+ or fallback to tomli
+    # Avoid name redefinition warnings by selecting a loader function.
     try:
-        import tomllib
+        import tomllib as _tomllib
+
+        toml_load = _tomllib.load
     except ImportError:
-        import tomli as tomllib  # type: ignore[no-redef]
+        _tomli = __import__("tomli")
+        toml_load = _tomli.load
 
     config_path = Path()
 
@@ -499,7 +503,7 @@ def validate_config_with_schema(
     if suffix == ".toml":
         # Read and parse TOML - let TOML parse errors bubble up
         with config_path.open("rb") as f:
-            toml_data = tomllib.load(f)
+            toml_data = toml_load(f)
 
         # Get or generate schema
         if schema_path:

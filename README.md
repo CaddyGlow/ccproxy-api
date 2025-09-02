@@ -7,6 +7,7 @@ Quick Links
 - Getting started: `docs/getting-started/quickstart.md`
 - Configuration reference: `docs/getting-started/configuration.md`
 - Examples: `docs/examples.md`
+- Migration (0.2): `docs/migration/0.2-plugin-first.md`
 
 Plugin Config Quickstart
 

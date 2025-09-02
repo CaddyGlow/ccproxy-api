@@ -1183,7 +1183,7 @@ class TestHookSystemIntegration:
             # Mock logging to capture calls
             # with patch.object(logging_hook, "logger") as mock_logger:
             return  # Disabled until hook implementations are created
-            if False:  # type: ignore[unreachable]
+            if False:
                 # Simulate request lifecycle
                 mock_request = MagicMock()
                 mock_request.method = "POST"

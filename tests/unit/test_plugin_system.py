@@ -1,5 +1,6 @@
 """Unit tests for the plugin system."""
 
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -14,10 +15,12 @@ from ccproxy.services.adapters.base import BaseAdapter
 class MockAdapter(BaseAdapter):
     """Mock adapter for testing."""
 
-    async def handle_request(self, request, endpoint, method, **kwargs):
+    async def handle_request(
+        self, request: Any, endpoint: str, method: str, **kwargs: Any
+    ) -> Any:
         return MagicMock()
 
-    async def handle_streaming(self, request, endpoint, **kwargs):
+    async def handle_streaming(self, request: Any, endpoint: str, **kwargs: Any) -> Any:
         return MagicMock()
 
     async def cleanup(self) -> None:
@@ -44,7 +47,7 @@ class MockPlugin:
     def router_prefix(self) -> str:
         return "/test"
 
-    async def initialize(self, services) -> None:
+    async def initialize(self, services: Any) -> None:
         """Initialize plugin with shared services."""
         pass
 

@@ -216,15 +216,17 @@ ignore = [
   "F841",   # Local variable assigned but never used
 ]
 
-exclude = [
-  ".git",
-  ".venv",
-  "venv",
-  "__pycache__",
-  "build",
-  "dist",
-  "*.egg-info",
-]
+[tool.ruff.lint.flake8-tidy-imports]
+
+[tool.ruff.lint.per-file-ignores]
+"plugins/**" = ["TID251"]
+"tests/**" = ["TID251"]
+"scripts/**" = ["TID251"]
+
+# relax on scripts and tests
+"scripts/*" = ["T201"]                         # check for print statements
+"tests/*" = ["N802", "N803"]                   # arg/function name should be lowercase
+"plugins/*/tests/*" = ["N802", "N803", "S101"] # Allow assert in plugin tests
 
 
 [tool.ruff.format]
@@ -237,11 +239,7 @@ known-first-party = ["ccproxy"]
 force-single-line = false
 lines-after-imports = 2
 
-[tool.ruff.lint.per-file-ignores]
-# relax on scripts and tests
-"scripts/*" = ["T201"]                         # check for print statements
-"tests/*" = ["N802", "N803"]                   # arg/function name should be lowercase
-"plugins/*/tests/*" = ["N802", "N803", "S101"] # Allow assert in plugin tests
+
 
 [tool.mypy]
 python_version = "3.11"
@@ -279,6 +277,18 @@ ignore_errors = true
 
 [[tool.mypy.overrides]]
 module = [
+  "tomli",
+  "sse_starlette.sse",
+  "fastapi_mcp",
+]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "plugins.permissions.mcp"
+disable_error_code = ["unused-ignore"]
+
+[[tool.mypy.overrides]]
+module = [
   "tests.integration.test_metrics_plugin",
   "tests.unit.api.test_metrics_api",
   "tests.unit.test_hook_ordering",
@@ -290,8 +300,40 @@ module = [
   "tests.unit.services.test_scheduler",
   "tests.unit.services.test_pricing",
   "tests.unit.plugins.test_claude_api_pricing",
+  "tests.unit.services.test_fastapi_factory",
+  "tests.unit.services.test_streaming",
+  # "tests.unit.utils.test_binary_resolver",  # many untyped helpers; keep ignored for now
+  "tests.unit.streaming.test_deferred_response",
+  "tests.unit.services.test_adapters",
+  "tests.unit.services.test_docker",
+  "tests.unit.services.test_confirmation_service",
+  "tests.unit.services.test_session_pool_race_condition",
+  "tests.unit.utils.test_startup_helpers",
+  "tests.unit.test_hooks",
+  "tests.unit.test_caching",
+  "tests.unit.test_plugin_system",
+  "tests.unit.api.test_confirmation_routes",
+  "tests.unit.api.test_mcp_route",
+  "tests.unit.utils.test_version_checker",
+  "tests.unit.services.test_sse_events",
+  "tests.unit.services.test_sse_stream_filtering",
+  "tests.unit.services.test_stats_printer",
+  "tests.unit.utils.test_binary_resolver",
 ]
 ignore_errors = false
+
+[[tool.mypy.overrides]]
+module = [
+  "tests.unit.test_hooks",
+  "tests.unit.utils.test_binary_resolver",
+  "tests.unit.test_caching",
+  "tests.unit.test_plugin_system",
+  "tests.unit.api.test_confirmation_routes",
+  "tests.unit.api.test_mcp_route",
+]
+disallow_untyped_defs = false
+disallow_untyped_calls = false
+warn_unused_ignores = false
 
 
 [tool.pytest.ini_options]

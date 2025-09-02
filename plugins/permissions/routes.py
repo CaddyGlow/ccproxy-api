@@ -3,10 +3,14 @@
 import asyncio
 import json
 from collections.abc import AsyncGenerator
+from typing import TYPE_CHECKING, Any
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
-from sse_starlette.sse import EventSourceResponse
+
+
+if TYPE_CHECKING:
+    pass
 
 from ccproxy.api.dependencies import SettingsDep
 from ccproxy.auth.conditional import ConditionalAuthDep
@@ -109,7 +113,7 @@ async def stream_permissions(
     request: Request,
     settings: SettingsDep,
     auth: ConditionalAuthDep,
-) -> EventSourceResponse:
+) -> Any:
     """Stream permission requests via Server-Sent Events.
 
     This endpoint streams new permission requests as they are created,
@@ -118,6 +122,9 @@ async def stream_permissions(
     Returns:
         EventSourceResponse streaming permission events
     """
+    # Import at runtime to avoid type-checker import requirement
+    from sse_starlette.sse import EventSourceResponse
+
     return EventSourceResponse(
         event_generator(request),
         headers={
