@@ -538,6 +538,7 @@ def status_command(
                         storage = oauth_provider.get_storage()
 
                 from typing import Any as _Any
+
                 manager: _Any | None = None
                 if provider in ("claude-api", "claude_api"):
                     try:

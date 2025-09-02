@@ -181,7 +181,14 @@ class DockerAdapterProtocol(Protocol):
         user_mapping_enabled: bool | None = None,
         user_uid: int | None = None,
         user_gid: int | None = None,
-    ) -> tuple[str, list[DockerVolume], DockerEnv, list[str] | None, DockerUserContext | None, list[str]]:
+    ) -> tuple[
+        str,
+        list[DockerVolume],
+        DockerEnv,
+        list[str] | None,
+        DockerUserContext | None,
+        list[str],
+    ]:
         """Build effective docker run arguments from settings and CLI.
 
         Returns a tuple of (image, volumes, environment, command, user_context, extra_args).

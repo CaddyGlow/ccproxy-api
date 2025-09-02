@@ -1,5 +1,6 @@
 """Test pricing service integration with claude_api adapter."""
 
+from collections.abc import Generator
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
@@ -11,7 +12,7 @@ from plugins.pricing.service import PricingService
 
 
 @pytest.fixture
-def mock_pricing_service():
+def mock_pricing_service() -> AsyncMock:
     """Create a mock pricing service."""
     service = AsyncMock(spec=PricingService)
     service.calculate_cost = AsyncMock(return_value=0.0105)
@@ -19,7 +20,9 @@ def mock_pricing_service():
 
 
 @pytest.fixture
-def plugin_registry_with_pricing(mock_pricing_service):
+def plugin_registry_with_pricing(
+    mock_pricing_service: AsyncMock,
+) -> Generator[PluginRegistry, None, None]:
     """Create a plugin registry with pricing service."""
     registry = PluginRegistry()
 
@@ -29,7 +32,9 @@ def plugin_registry_with_pricing(mock_pricing_service):
 
 
 @pytest.fixture
-def adapter_with_pricing(plugin_registry_with_pricing):
+def adapter_with_pricing(
+    plugin_registry_with_pricing: PluginRegistry,
+) -> ClaudeAPIAdapter:
     """Create a ClaudeAPIAdapter with pricing service access."""
     context = {
         "plugin_registry": plugin_registry_with_pricing,
@@ -51,22 +56,24 @@ def adapter_with_pricing(plugin_registry_with_pricing):
 class TestClaudeAPIPricingIntegration:
     """Test pricing service integration in claude_api adapter."""
 
-    def test_adapter_stores_context(self, adapter_with_pricing):
+    def test_adapter_stores_context(
+        self, adapter_with_pricing: ClaudeAPIAdapter
+    ) -> None:
         """Test that adapter stores the context passed to it."""
         assert hasattr(adapter_with_pricing, "context")
         assert isinstance(adapter_with_pricing.context, dict)
         assert "plugin_registry" in adapter_with_pricing.context
 
     def test_get_pricing_service_with_registry(
-        self, adapter_with_pricing, mock_pricing_service
-    ):
+        self, adapter_with_pricing: ClaudeAPIAdapter, mock_pricing_service: AsyncMock
+    ) -> None:
         """Test that adapter can get pricing service through plugin registry."""
         service = adapter_with_pricing._get_pricing_service()
 
         assert service is not None
         assert service is mock_pricing_service
 
-    def test_get_pricing_service_without_registry(self):
+    def test_get_pricing_service_without_registry(self) -> None:
         """Test that adapter returns None when no plugin registry is available."""
         adapter = ClaudeAPIAdapter(
             auth_manager=Mock(),
@@ -78,7 +85,7 @@ class TestClaudeAPIPricingIntegration:
         service = adapter._get_pricing_service()
         assert service is None
 
-    def test_get_pricing_service_with_missing_runtime(self):
+    def test_get_pricing_service_with_missing_runtime(self) -> None:
         """Test graceful handling when pricing service is not available."""
         registry = PluginRegistry()
 
@@ -97,8 +104,8 @@ class TestClaudeAPIPricingIntegration:
 
     @pytest.mark.asyncio
     async def test_extract_usage_with_pricing(
-        self, adapter_with_pricing, mock_pricing_service
-    ):
+        self, adapter_with_pricing: ClaudeAPIAdapter, mock_pricing_service: AsyncMock
+    ) -> None:
         """Test that cost calculation uses pricing service when available."""
         import time
 
@@ -137,7 +144,7 @@ class TestClaudeAPIPricingIntegration:
         assert request_context.metadata["cost_usd"] == 0.0105
 
     @pytest.mark.asyncio
-    async def test_extract_usage_without_pricing(self):
+    async def test_extract_usage_without_pricing(self) -> None:
         """Test that usage extraction works without pricing service."""
         import time
 

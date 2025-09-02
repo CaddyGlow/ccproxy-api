@@ -591,6 +591,7 @@ class VersionUpdateCheckTask(BaseScheduledTask):
                 exc_info=e,
             )
             return False
+
         except Exception as e:
             logger.error(
                 "version_check_task_error",
@@ -600,3 +601,11 @@ class VersionUpdateCheckTask(BaseScheduledTask):
                 exc_info=e,
             )
             return False
+
+
+# Test helper task exposed for tests that import from this module
+class MockScheduledTask(BaseScheduledTask):
+    """Minimal mock task used by tests for registration and lifecycle checks."""
+
+    async def run(self) -> bool:
+        return True

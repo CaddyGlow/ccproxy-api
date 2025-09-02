@@ -30,7 +30,7 @@ from ccproxy.scheduler.tasks import (
 class MockScheduledTask(BaseScheduledTask):
     """Mock scheduled task for testing."""
 
-    def __init__(self, **kwargs):
+    def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
         self.run_count = 0
 
@@ -78,7 +78,7 @@ class TestSchedulerCore:
         await scheduler.start()
         assert scheduler.is_running
 
-        await scheduler.stop()  # type: ignore[unreachable]
+        await scheduler.stop()
         assert not scheduler.is_running
 
     @pytest.mark.asyncio
@@ -303,7 +303,7 @@ class TestScheduledTasks:
         """Test task failure path and backoff calculation without observability."""
 
         class FailingTask(BaseScheduledTask):
-            async def run(self) -> bool:  # type: ignore[override]
+            async def run(self) -> bool:
                 return False
 
         task = FailingTask(
@@ -550,11 +550,11 @@ class TestSchedulerErrorScenarios:
 
         # Define a flaky task that fails once then succeeds
         class FlakyTask(BaseScheduledTask):
-            def __init__(self, **kwargs: Any) -> None:  # type: ignore[override]
+            def __init__(self, **kwargs: Any) -> None:
                 super().__init__(**kwargs)
                 self._attempt = 0
 
-            async def run(self) -> bool:  # type: ignore[override]
+            async def run(self) -> bool:
                 self._attempt += 1
                 return self._attempt > 1
 
@@ -624,7 +624,7 @@ class TestSchedulerErrorScenarios:
 
         # Define a slow task to exercise shutdown timeout
         class SlowTask(BaseScheduledTask):
-            async def run(self) -> bool:  # type: ignore[override]
+            async def run(self) -> bool:
                 await asyncio.sleep(0.1)
                 return True
 

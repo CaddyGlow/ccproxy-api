@@ -120,12 +120,12 @@ Summary of root runtime dependencies and where they are used:
 
 - Core-only or Core+Plugins: `fastapi`, `httpx[http2]`, `pydantic`, `pydantic-settings`, `typer`, `uvicorn`, `structlog`, `rich`, `rich-toolkit`, `typing-extensions`, `packaging`, `aiohttp`, `sortedcontainers`, `aiofiles`, `jsonschema`.
 - Plugin-only: `prometheus-client` (metrics plugin), `sqlmodel` (analytics, duckdb_storage), `duckdb`, `duckdb-engine` (duckdb_storage), `textual` (permissions terminal handler).
-- Unused in repo: `aiosqlite` (no imports found), `keyring` (mentioned in docs but not imported), `h2` (provided transitively by `httpx[http2]` if needed; no direct imports).
+- Unused in repo: `aiosqlite` (no imports found), `h2` (provided transitively by `httpx[http2]` if needed; no direct imports).
 
 Notes and recommendations:
 
 - `duckdb` / `duckdb-engine` / `sqlmodel` / `prometheus-client` / `textual`: keep for now since plugins ship inside the main wheel; mark as plugin-only and consider moving to plugin-specific distributions or optional extras in a future split.
-- `keyring`: remove from core runtime deps and keep only under the optional `security` group (already declared) unless we add real usage.
+- Keyring-based storage was removed; credentials are stored in project-managed files.
 - `aiosqlite`: remove from root runtime deps (no usage found).
 - `h2`: remove explicit pin from root runtime deps; `httpx[http2]` will pull it transitively when needed.
 

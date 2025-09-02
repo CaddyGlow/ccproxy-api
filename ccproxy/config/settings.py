@@ -14,10 +14,6 @@ from ccproxy.config.discovery import find_toml_config_file
 from ccproxy.core.logging import get_logger
 
 from .auth import AuthSettings
-
-
-def _auth_default() -> AuthSettings:
-    return AuthSettings()  # type: ignore[call-arg]
 from .binary import BinarySettings
 from .cors import CORSSettings
 from .docker_settings import DockerSettings
@@ -26,6 +22,10 @@ from .logging import LoggingSettings
 from .scheduler import SchedulerSettings
 from .security import SecuritySettings
 from .server import ServerSettings
+
+
+def _auth_default() -> AuthSettings:
+    return AuthSettings()  # type: ignore[call-arg]
 
 
 __all__ = [

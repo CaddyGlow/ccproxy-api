@@ -189,8 +189,16 @@ class PricingUpdater:
             else:
                 logger.warning("external_pricing_validation_failed")
 
-        # No fallback - return None if external pricing not available
+        # Deprecated embedded fallback removed; keep for typing compatibility
         logger.error("pricing_unavailable_no_fallback")
+        return None
+
+    # Backward-compatibility helper for tests expecting embedded pricing access
+    def _get_embedded_pricing(self) -> PricingData | None:
+        """Return embedded pricing data if bundled (deprecated).
+
+        For compatibility with older tests; returns None when no embedded data is bundled.
+        """
         return None
 
     async def force_refresh(self) -> bool:

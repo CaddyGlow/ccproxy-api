@@ -8,7 +8,7 @@ Purpose: Identify dead/redundant code and config left from the plugin migration,
 
 - Dead module: `ccproxy/utils/models_provider.py` — 0% coverage, no references across repo.
 - Root deps likely plugin-only: `duckdb`, `duckdb-engine`, `sqlmodel`, `prometheus-client`, `textual` (kept for now as plugins are bundled).
-- Unused root deps: `aiosqlite`, `keyring` (docs-only), `h2` (no direct imports; http2 via `httpx[http2]`).
+- Unused root deps: `aiosqlite`, `h2` (no direct imports; http2 via `httpx[http2]`).
 - Low-coverage but used: `ccproxy/adapters/openai/response_adapter.py`, `ccproxy/adapters/openai/streaming.py`, `ccproxy/core/transformers.py`, `ccproxy/core/http_client_hooks.py`.
 - API/CLI duplication: none found beyond plugin-mounted routes; core exposes only health/plugins routes.
 - Config: `SchedulerSettings` no longer has Pushgateway fields (moved to metrics plugin). Tests referring to `pushgateway_*` expect legacy config. Plan test updates or plugin-aware feature flags.
@@ -18,7 +18,7 @@ Purpose: Identify dead/redundant code and config left from the plugin migration,
 
 - Coverage (coverage.xml): `utils/models_provider.py` → line-rate 0.0; `adapters/openai/response_adapter.py` ~0.13; `adapters/openai/streaming.py` ~0.146; `core/transformers.py` ~0.246; `core/http_client_hooks.py` ~0.176.
 - Static scans: No in-repo references to `utils/models_provider.py`. OpenAI adapter is referenced across plugins and tests.
-- Dependency scans: No imports of `aiosqlite`, `keyring`, or `h2` in core/plugins/tests.
+- Dependency scans: No imports of `aiosqlite` or `h2` in core/plugins/tests.
 
 ## Checklist (Decision / Item / Rationale)
 
@@ -38,9 +38,8 @@ Purpose: Identify dead/redundant code and config left from the plugin migration,
   - Action: Update tests to target metrics plugin; ensure Settings does not carry legacy fields; add migration note.
 
 - [ ] PYPROJECT PRUNE: Root runtime dependencies
-  - [ ] REMOVE: `aiosqlite` (unused)
-  - [ ] REMOVE: `keyring` from runtime; keep in optional `security` group only (already present)
-  - [ ] REMOVE: explicit `h2` (no direct import; `httpx[http2]` pulls transitively)
+- [ ] REMOVE: `aiosqlite` (unused)
+- [ ] REMOVE: explicit `h2` (no direct import; `httpx[http2]` pulls transitively)
   - [ ] NOTE: mark as plugin-only (keep for now): `duckdb`, `duckdb-engine`, `sqlmodel`, `prometheus-client`, `textual`
 
 - [ ] TEST SUITE HYGIENE: `tests_new/*`
@@ -51,7 +50,7 @@ Purpose: Identify dead/redundant code and config left from the plugin migration,
 
 - Scheduler pushgateway settings were removed; use Metrics plugin configuration instead.
 - Model listing endpoints are provided by provider plugins; `utils/models_provider.py` removed.
-- Root dependencies trimmed: `aiosqlite`, `keyring` (runtime), `h2`.
+- Root dependencies trimmed: `aiosqlite`, `h2`.
 
 ## Next Steps (Phase 3+4 tie-in)
 

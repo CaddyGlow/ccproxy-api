@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 from typing import Any
+from typing import cast as _cast
 
 from fastapi import APIRouter, HTTPException, Request
-from typing import cast as _cast
 
 
 router = APIRouter()

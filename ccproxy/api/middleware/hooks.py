@@ -164,6 +164,7 @@ class HooksMiddleware(BaseHTTPMiddleware):
                     request_metadata = getattr(request_context, "metadata", {})
 
                 response_stream = cast(StreamingResponse, response)
+
                 # Coerce body iterator to AsyncGenerator[bytes]
                 async def _coerce_bytes() -> Any:
                     async for chunk in response_stream.body_iterator:

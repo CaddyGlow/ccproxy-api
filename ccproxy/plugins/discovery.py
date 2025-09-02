@@ -252,6 +252,7 @@ class PluginDiscovery:
                 # If the object already looks like a factory (duck typing)
                 if hasattr(obj, "get_manifest") and hasattr(obj, "create_runtime"):
                     from typing import cast as _cast
+
                     factory = _cast(PluginFactory, obj)
                 # If it's callable, try to call to get a factory
                 elif callable(obj):
@@ -261,6 +262,7 @@ class PluginDiscovery:
                             maybe, "create_runtime"
                         ):
                             from typing import cast as _cast
+
                             factory = _cast(PluginFactory, maybe)
                     except Exception:
                         factory = None

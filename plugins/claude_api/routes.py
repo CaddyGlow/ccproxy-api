@@ -50,6 +50,7 @@ async def create_anthropic_message(
     """
     # Call adapter directly - hooks are now handled by HooksMiddleware
     from typing import cast as _cast
+
     result = await adapter.handle_request(
         request=request,
         endpoint="/v1/messages",
@@ -71,6 +72,7 @@ async def create_openai_chat_completion(
     """
     # Call adapter directly - hooks are now handled by HooksMiddleware
     from typing import cast as _cast
+
     result = await adapter.handle_request(
         request=request,
         endpoint="/v1/chat/completions",

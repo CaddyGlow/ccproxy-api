@@ -601,7 +601,7 @@ This is the initial public release of the CCProxy API.
 
 - **Unified `ccproxy` CLI**: A single, user-friendly command-line interface for managing the proxy.
 - **TOML Configuration**: Configure the server using a `config.toml` file with JSON Schema validation.
-- **Keyring Integration**: Securely stores and manages OAuth credentials in the system's native keyring.
+<!-- Keyring integration was planned but has been removed; credentials are stored via project-managed files. -->
 - **`generate-token` Command**: A CLI command to manually generate and manage API tokens.
 - **Systemd Integration**: Includes a setup script and service template for running the proxy as a systemd service in production environments.
 - **Docker Support**: A `Dockerfile` and `docker-compose.yml` for running the proxy in an isolated containerized environment.
@@ -609,7 +609,7 @@ This is the initial public release of the CCProxy API.
 #### Security
 
 - **Local-First Design**: All processing and authentication happens locally; no conversation data is stored or transmitted to third parties.
-- **Credential Security**: OAuth tokens are stored securely in the system keyring, not in plaintext files.
+<!-- Credential storage now uses project-managed files; system keyring is not used. -->
 - **Header Stripping**: Automatically removes client-side `Authorization` headers to prevent accidental key leakage.
 
 #### Developer Experience
@@ -626,7 +626,6 @@ This is the initial public release of the CCProxy API.
 - Dead code: removed `ccproxy/utils/models_provider.py` (unreferenced; model listing is provided by plugins).
 - Pruned root runtime dependencies no longer used directly by core:
   - `aiosqlite` (unused in repo)
-  - `keyring` (kept only under optional `security` dependency group)
   - `h2` (no direct imports; `httpx[http2]` brings HTTP/2 support transitively)
 
 ### Notes

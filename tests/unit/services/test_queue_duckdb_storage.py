@@ -80,7 +80,7 @@ class TestQueueBasedDuckDBStorage:
         await memory_storage.initialize()
 
         assert memory_storage._initialized
-        assert memory_storage._background_worker_task is not None  # type: ignore[unreachable]
+        assert memory_storage._background_worker_task is not None
         assert not memory_storage._background_worker_task.done()
 
         await memory_storage.close()
@@ -187,7 +187,9 @@ class TestQueueBasedDuckDBStorage:
         original_method = initialized_storage._store_request_sync
         call_count = 0
 
-        def mock_store_sync(data: AccessLogPayload) -> bool:
+        from typing import Any
+
+        def mock_store_sync(data: dict[str, Any]) -> bool:
             nonlocal call_count
             call_count += 1
             if call_count == 1:

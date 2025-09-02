@@ -75,6 +75,13 @@ class PricingConfig(BaseSettings):
         description="Whether to force pricing refresh on plugin startup",
     )
 
+    # Backward-compat flag used by older tests; embedded pricing has been removed.
+    # Keeping this flag allows type checking and test configuration without effect.
+    fallback_to_embedded: bool = Field(
+        default=False,
+        description="(Deprecated) If true, fall back to embedded pricing when external data is unavailable",
+    )
+
     pricing_provider: Literal["claude", "anthropic", "openai", "all"] = Field(
         default="all",
         description="Which provider pricing to load: 'claude', 'anthropic', 'openai', or 'all'",

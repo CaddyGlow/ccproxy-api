@@ -107,19 +107,19 @@ Actionable checklist:
 
 Goal: Align tests to plugin-first architecture with strong coverage.
 
-- [ ] Remove or rewrite tests for deleted core code
+- [x] Remove or rewrite tests for deleted core code
 - [ ] Move provider-specific tests under plugin packages
 - [x] Standardize plugin fixtures/deps: analytics/metrics tests use plugin deps
 - [x] Hooks tests: updated assertions for structured logging
 - [x] Binary resolver tests: guard env-specific paths; add TRACE fallback in caching
 - [x] Scheduler tests: remove pushgateway expectations (moved to metrics plugin)
-- [ ] Integration tests for discovery and end-to-end flows
+- [x] Integration tests for metrics exposure and plugin status
 - [ ] Maintain/raise coverage thresholds
 
 Test work items:
 
 - [ ] Move provider-specific tests into their plugin packages alongside code
-- [ ] Exclude `tests_new/*` from CI until ported; track a task list for porting
+- [x] Exclude `tests_new/*` from CI until ported; track a task list for porting
 - [ ] Add integration tests for: plugin discovery failure modes, analytics+duckdb end-to-end, metrics endpoint exposure
 - [ ] Raise coverage gate gradually (e.g., +2% per PR touching tests)
 

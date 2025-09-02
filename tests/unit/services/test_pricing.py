@@ -673,8 +673,8 @@ class TestPricingUpdater:
 
             assert result is True
             # Verify internal state was reset
-            assert updater._cached_pricing is None and updater._last_load_time <= 0.0  # type: ignore[unreachable]
-            mock_clear.assert_called_once()  # type: ignore[unreachable]
+            assert updater._cached_pricing is None and updater._last_load_time <= 0.0
+            mock_clear.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_get_pricing_info(self, updater: PricingUpdater) -> None:

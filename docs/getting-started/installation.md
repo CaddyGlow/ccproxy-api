@@ -65,8 +65,7 @@ ccproxy auth login
 This will open a browser window for Anthropic OAuth2 authentication.
 
 **Credential Storage:**
-- **Primary**: System keyring (secure, recommended)
-- **Fallback**: `~/.config/ccproxy/credentials.json`
+- `~/.config/ccproxy/credentials.json`
 
 ### Verify CCProxy Authentication
 
