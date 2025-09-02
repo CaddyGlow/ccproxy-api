@@ -361,15 +361,26 @@ def discover_and_load_plugins(settings: Any) -> dict[str, PluginFactory]:
 
     # Discover plugins
     discovery = PluginDiscovery(plugins_dir)
-    discovery.discover_plugins()
 
-    # Load factories from local filesystem
-    all_factories = discovery.load_all_factories()
+    # Determine whether to use local filesystem discovery
+    disable_local = bool(getattr(settings, "plugins_disable_local_discovery", False))
+    if disable_local:
+        logger.info(
+            "plugins_local_discovery_disabled",
+            category="plugin",
+            reason="settings.plugins_disable_local_discovery",
+        )
 
-    # Load factories from installed entry points and merge, skipping names already
-    # discovered in the filesystem to avoid duplicate load/logs
+    all_factories: dict[str, PluginFactory] = {}
+    if not disable_local:
+        discovery.discover_plugins()
+        # Load factories from local filesystem
+        all_factories = discovery.load_all_factories()
+
+    # Load factories from installed entry points and merge. If local discovery
+    # is disabled, do not skip any names.
     ep_factories = discovery.load_entry_point_factories(
-        skip_names=set(all_factories.keys())
+        skip_names=set(all_factories.keys()) if not disable_local else None
     )
     for name, factory in ep_factories.items():
         if name in all_factories:

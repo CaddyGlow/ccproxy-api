@@ -12,6 +12,8 @@ members = [
     "ccproxy-dashboard",
     "ccproxy-duckdb-storage",
     "ccproxy-metrics",
+    "ccproxy-oauth-claude",
+    "ccproxy-oauth-codex",
     "ccproxy-permissions",
     "ccproxy-plugin-access-log",
     "ccproxy-pricing-plugin",
@@ -337,7 +339,19 @@ docs = [
     { name = "mkdocstrings", extra = ["python"] },
 ]
 plugins = [
+    { name = "ccproxy-analytics" },
+    { name = "ccproxy-claude-api" },
+    { name = "ccproxy-claude-sdk" },
+    { name = "ccproxy-codex" },
+    { name = "ccproxy-dashboard" },
+    { name = "ccproxy-duckdb-storage" },
     { name = "ccproxy-metrics" },
+    { name = "ccproxy-oauth-claude" },
+    { name = "ccproxy-oauth-codex" },
+    { name = "ccproxy-permissions" },
+    { name = "ccproxy-plugin-access-log" },
+    { name = "ccproxy-pricing-plugin" },
+    { name = "ccproxy-request-tracer" },
 ]
 schema = [
     { name = "check-jsonschema" },
@@ -413,7 +427,21 @@ docs = [
     { name = "mkdocs-swagger-ui-tag", specifier = ">=0.6.0" },
     { name = "mkdocstrings", extras = ["python"], specifier = ">=0.24.0" },
 ]
-plugins = [{ name = "ccproxy-metrics", editable = "plugins/metrics" }]
+plugins = [
+    { name = "ccproxy-analytics", editable = "plugins/analytics" },
+    { name = "ccproxy-claude-api", editable = "plugins/claude_api" },
+    { name = "ccproxy-claude-sdk", editable = "plugins/claude_sdk" },
+    { name = "ccproxy-codex", editable = "plugins/codex" },
+    { name = "ccproxy-dashboard", editable = "plugins/dashboard" },
+    { name = "ccproxy-duckdb-storage", editable = "plugins/duckdb_storage" },
+    { name = "ccproxy-metrics", editable = "plugins/metrics" },
+    { name = "ccproxy-oauth-claude", editable = "plugins/oauth_claude" },
+    { name = "ccproxy-oauth-codex", editable = "plugins/oauth_codex" },
+    { name = "ccproxy-permissions", editable = "plugins/permissions" },
+    { name = "ccproxy-plugin-access-log", editable = "plugins/access_log" },
+    { name = "ccproxy-pricing-plugin", editable = "plugins/pricing" },
+    { name = "ccproxy-request-tracer", editable = "plugins/request_tracer" },
+]
 schema = [
     { name = "check-jsonschema", specifier = ">=0.33.2" },
     { name = "pydantic", specifier = ">=2.8.0" },
@@ -507,6 +535,16 @@ requires-dist = [
     { name = "structlog", specifier = ">=24.1.0" },
 ]
 provides-extras = ["dev"]
+
+[[package]]
+name = "ccproxy-oauth-claude"
+version = "1.0.0"
+source = { editable = "plugins/oauth_claude" }
+
+[[package]]
+name = "ccproxy-oauth-codex"
+version = "1.0.0"
+source = { editable = "plugins/oauth_codex" }
 
 [[package]]
 name = "ccproxy-permissions"

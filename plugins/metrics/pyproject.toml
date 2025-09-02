@@ -23,4 +23,4 @@ packages = ["."]
 
 
 [project.entry-points."ccproxy.plugins"]
-access_log = "plugins.metrics:factory"
+metrics = "plugins.metrics.plugin:factory"

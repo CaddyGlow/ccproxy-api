@@ -101,8 +101,6 @@ class Settings(BaseSettings):
         description="Authentication manager settings (e.g., credentials caching)",
     )
 
-    # Reverse proxy settings removed; provider plugins own routing/translation
-
     # Binary resolution settings
     binary: BinarySettings = Field(
         default_factory=BinarySettings,
@@ -115,8 +113,6 @@ class Settings(BaseSettings):
         description="Docker configuration for running Claude commands in containers",
     )
 
-    # Observability settings have been removed; plugins own these concerns now
-
     # Scheduler settings
     scheduler: SchedulerSettings = Field(
         default_factory=SchedulerSettings,
@@ -126,6 +122,15 @@ class Settings(BaseSettings):
     enable_plugins: bool = Field(
         default=True,
         description="Enable plugin system",
+    )
+
+    # Plugin discovery controls
+    plugins_disable_local_discovery: bool = Field(
+        default=True,
+        description=(
+            "If true, skip filesystem plugin discovery from the local 'plugins/' directory "
+            "and load plugins only from installed entry points."
+        ),
     )
 
     # Plugin configurations

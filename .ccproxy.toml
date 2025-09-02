@@ -1,3 +1,6 @@
+# Enable local plugin discovery so in-tree plugins are loaded from ./plugins
+plugins_disable_local_discovery = false
+
 # Logging configuration (centralized)
 [logging]
 level = "INFO"
@@ -6,6 +9,7 @@ file = "/tmp/ccproxy/ccproxy.log"
 verbose_api = false
 enable_plugin_logging = true
 plugin_log_base_dir = "/tmp/ccproxy"
+
 
 # Per-plugin logging overrides
 [logging.plugin_overrides]

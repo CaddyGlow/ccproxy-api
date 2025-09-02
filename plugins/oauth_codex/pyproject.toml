@@ -1,0 +1,17 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "ccproxy-oauth-codex"
+version = "1.0.0"
+description = "OAuth provider plugin for Codex authentication in CCProxy"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = []
+
+[tool.hatch.build.targets.wheel]
+packages = ["."]
+
+[project.entry-points."ccproxy.plugins"]
+oauth_claude = "plugins.oauth_codex.plugin:factory"

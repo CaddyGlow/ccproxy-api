@@ -121,7 +121,19 @@ docs = [
   "mkdocs-redirects>=1.2.0",
 ]
 plugins = [
+    "ccproxy-analytics",
+    "ccproxy-claude-api",
+    "ccproxy-claude-sdk",
+    "ccproxy-codex",
+    "ccproxy-dashboard",
+    "ccproxy-duckdb-storage",
     "ccproxy-metrics",
+    "ccproxy-oauth-claude",
+    "ccproxy-oauth-codex",
+    "ccproxy-permissions",
+    "ccproxy-plugin-access-log",
+    "ccproxy-pricing-plugin",
+    "ccproxy-request-tracer",
 ]
 schema = ["pydantic>=2.8.0", "check-jsonschema>=0.33.2"]
 
@@ -452,10 +464,24 @@ members = [
   "plugins/duckdb_storage",
   "plugins/analytics",
   "plugins/dashboard",
+  "plugins/oauth_claude",
+  "plugins/oauth_codex",
 ]
 
 [tool.uv.sources]
+ccproxy-plugin-access-log = { workspace = true }
+ccproxy-analytics = { workspace = true }
+ccproxy-claude-api = { workspace = true }
+ccproxy-claude-sdk = { workspace = true }
+ccproxy-codex = { workspace = true }
+ccproxy-dashboard = { workspace = true }
+ccproxy-duckdb-storage = { workspace = true }
 ccproxy-metrics = { workspace = true }
+ccproxy-oauth-claude = { workspace = true }
+ccproxy-oauth-codex = { workspace = true }
+ccproxy-permissions = { workspace = true }
+ccproxy-pricing-plugin = { workspace = true }
+ccproxy-request-tracer = { workspace = true }
 
 [tool.pyright]
 pythonVersion = "3.11"
