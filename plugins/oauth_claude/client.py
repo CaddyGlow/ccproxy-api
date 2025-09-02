@@ -14,8 +14,8 @@ from ccproxy.auth.exceptions import OAuthError
 from ccproxy.auth.oauth.base import BaseOAuthClient
 from ccproxy.auth.storage.base import TokenStorage
 from ccproxy.core.logging import get_plugin_logger
-from plugins.oauth_claude.config import ClaudeOAuthConfig
-from plugins.oauth_claude.models import (
+from .config import ClaudeOAuthConfig
+from .models import (
     ClaudeCredentials,
     ClaudeOAuthToken,
 )

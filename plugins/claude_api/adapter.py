@@ -12,13 +12,13 @@ if TYPE_CHECKING:
     from ccproxy.auth.manager import AuthManager
     from ccproxy.core.request_context import RequestContext
     from ccproxy.hooks import HookManager
-    from ccproxy.plugins.declaration import PluginContext
+    from ccproxy.core.plugins.declaration import PluginContext
     from ccproxy.services.interfaces import (
         IMetricsCollector,
         IRequestTracer,
         IStreamingHandler,
     )
-    from plugins.claude_api.detection_service import ClaudeAPIDetectionService
+    from .detection_service import ClaudeAPIDetectionService
 
 from ccproxy.config.constants import (
     CLAUDE_API_BASE_URL,
@@ -230,7 +230,7 @@ class ClaudeAPIAdapter(BaseHTTPAdapter):
             plugin_registry = self.context["plugin_registry"]
 
             # Import locally to avoid circular dependency
-            from plugins.pricing.service import PricingService
+            from ccproxy.plugins.pricing.service import PricingService
 
             # Get service from registry with type checking
             return plugin_registry.get_service("pricing", PricingService)
@@ -267,7 +267,7 @@ class ClaudeAPIAdapter(BaseHTTPAdapter):
             cache_write_tokens = metadata.get("cache_write_tokens", 0)
 
             # Import pricing exceptions
-            from plugins.pricing.exceptions import (
+            from ccproxy.plugins.pricing.exceptions import (
                 ModelPricingNotFoundError,
                 PricingDataNotLoadedError,
                 PricingServiceDisabledError,

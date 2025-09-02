@@ -2,7 +2,7 @@
 
 from typing import TYPE_CHECKING, Literal, cast
 
-from ccproxy.plugins.protocol import HealthCheckResult
+from ccproxy.core.plugins.protocol import HealthCheckResult
 
 
 if TYPE_CHECKING:

@@ -6,9 +6,9 @@ from unittest.mock import AsyncMock, Mock, patch
 import pytest
 from httpx import AsyncClient
 
-from ccproxy.plugins.factory import PluginRegistry
-from plugins.claude_api.adapter import ClaudeAPIAdapter
-from plugins.pricing.service import PricingService
+from ccproxy.core.plugins.factory import PluginRegistry
+from ccproxy.plugins.claude_api.adapter import ClaudeAPIAdapter
+from ccproxy.plugins.pricing.service import PricingService
 
 
 @pytest.fixture

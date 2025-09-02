@@ -5,7 +5,7 @@ from rich.console import Console
 from rich.table import Table
 
 from ccproxy.config.settings import get_settings
-from ccproxy.plugins.loader import load_plugin_system
+from ccproxy.core.plugins.loader import load_plugin_system
 
 
 app = typer.Typer(name="plugins", help="Manage and inspect plugins.")

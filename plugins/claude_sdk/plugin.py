@@ -3,18 +3,18 @@
 from typing import Any
 
 from ccproxy.core.logging import get_plugin_logger
-from ccproxy.plugins import (
+from ccproxy.core.plugins import (
     PluginContext,
     PluginManifest,
     ProviderPluginRuntime,
     TaskSpec,
 )
-from ccproxy.plugins.base_factory import BaseProviderPluginFactory
-from plugins.claude_sdk.adapter import ClaudeSDKAdapter
-from plugins.claude_sdk.config import ClaudeSDKSettings
-from plugins.claude_sdk.detection_service import ClaudeSDKDetectionService
-from plugins.claude_sdk.routes import router
-from plugins.claude_sdk.tasks import ClaudeSDKDetectionRefreshTask
+from ccproxy.core.plugins.base_factory import BaseProviderPluginFactory
+from .adapter import ClaudeSDKAdapter
+from .config import ClaudeSDKSettings
+from .detection_service import ClaudeSDKDetectionService
+from .routes import router
+from .tasks import ClaudeSDKDetectionRefreshTask
 
 
 logger = get_plugin_logger()

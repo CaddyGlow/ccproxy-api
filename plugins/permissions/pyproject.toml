@@ -13,7 +13,8 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project.entry-points."ccproxy.plugins"]
-permissions = "plugins.permissions.plugin:factory"
+permissions = "ccproxy.plugins.permissions.plugin:factory"
 
 [tool.hatch.build.targets.wheel]
-packages = ["plugins/permissions"]
+packages = ["."]
+

@@ -3,7 +3,7 @@
 from typing import Any, Literal
 
 from ccproxy.core.logging import get_plugin_logger
-from ccproxy.plugins.protocol import HealthCheckResult
+from ccproxy.core.plugins.protocol import HealthCheckResult
 
 from .config import CodexSettings
 from .detection_service import CodexDetectionService

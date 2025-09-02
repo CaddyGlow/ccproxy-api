@@ -15,7 +15,8 @@ dependencies = [
 ]
 
 [project.entry-points."ccproxy.plugins"]
-duckdb_storage = "plugins.duckdb_storage.plugin:factory"
+duckdb_storage = "ccproxy.plugins.duckdb_storage.plugin:factory"
 
 [tool.hatch.build.targets.wheel]
 packages = ["."]
+

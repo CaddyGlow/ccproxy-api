@@ -3,16 +3,16 @@
 from typing import Any
 
 from ccproxy.core.logging import get_plugin_logger
-from ccproxy.plugins import (
+from ccproxy.core.plugins import (
     PluginContext,
     PluginManifest,
     ProviderPluginRuntime,
 )
-from ccproxy.plugins.base_factory import BaseProviderPluginFactory
-from plugins.codex.adapter import CodexAdapter
-from plugins.codex.config import CodexSettings
-from plugins.codex.detection_service import CodexDetectionService
-from plugins.codex.routes import router as codex_router
+from ccproxy.core.plugins.base_factory import BaseProviderPluginFactory
+from .adapter import CodexAdapter
+from .config import CodexSettings
+from .detection_service import CodexDetectionService
+from .routes import router as codex_router
 
 
 logger = get_plugin_logger()
@@ -247,7 +247,7 @@ class CodexRuntime(ProviderPluginRuntime):
                     )
 
             # Create and register the hook
-            from plugins.codex.hooks import CodexStreamingMetricsHook
+            from .hooks import CodexStreamingMetricsHook
 
             # Pass both pricing_service (if available now) and plugin_registry (for lazy loading)
             metrics_hook = CodexStreamingMetricsHook(
@@ -288,6 +288,7 @@ class CodexFactory(BaseProviderPluginFactory):
     router = codex_router
     route_prefix = "/api/codex"
     dependencies = ["oauth_codex"]
+    optional_requires = ["pricing"]
 
     def create_adapter(self, context: PluginContext) -> CodexAdapter:
         """Create the Codex adapter with validation."""

@@ -3,19 +3,19 @@
 from typing import Any
 
 from ccproxy.core.logging import get_plugin_logger
-from ccproxy.plugins import (
+from ccproxy.core.plugins import (
     PluginContext,
     PluginManifest,
     ProviderPluginRuntime,
     TaskSpec,
 )
-from ccproxy.plugins.base_factory import BaseProviderPluginFactory
-from plugins.claude_api.adapter import ClaudeAPIAdapter
-from plugins.claude_api.config import ClaudeAPISettings
-from plugins.claude_api.detection_service import ClaudeAPIDetectionService
-from plugins.claude_api.health import claude_api_health_check
-from plugins.claude_api.routes import router as claude_api_router
-from plugins.claude_api.tasks import ClaudeAPIDetectionRefreshTask
+from ccproxy.core.plugins.base_factory import BaseProviderPluginFactory
+from .adapter import ClaudeAPIAdapter
+from .config import ClaudeAPISettings
+from .detection_service import ClaudeAPIDetectionService
+from .health import claude_api_health_check
+from .routes import router as claude_api_router
+from .tasks import ClaudeAPIDetectionRefreshTask
 
 
 logger = get_plugin_logger()
@@ -238,7 +238,7 @@ class ClaudeAPIRuntime(ProviderPluginRuntime):
                 )
 
             # Create and register the hook
-            from plugins.claude_api.hooks import ClaudeAPIStreamingMetricsHook
+            from .hooks import ClaudeAPIStreamingMetricsHook
 
             # Pass both pricing_service (if available now) and plugin_registry (for lazy loading)
             metrics_hook = ClaudeAPIStreamingMetricsHook(
@@ -279,6 +279,9 @@ class ClaudeAPIFactory(BaseProviderPluginFactory):
     config_class = ClaudeAPISettings
     router = claude_api_router
     route_prefix = "/api"
+    # OAuth provider is optional because the token manager can operate
+    # without a globally-registered auth provider. When present, it enables
+    # first-class OAuth flows in the UI.
     dependencies = ["oauth_claude"]
     optional_requires = ["pricing"]
     tasks = [
@@ -305,30 +308,20 @@ class ClaudeAPIFactory(BaseProviderPluginFactory):
 
         return ClaudeApiTokenManager()
 
-    def create_context(self, core_services: Any) -> PluginContext:
-        """Create context with additional components.
+    def create_detection_service(self, context: PluginContext) -> Any:
+        """Create detection service and inject it into task kwargs.
 
-        Args:
-            core_services: Core services container
-
-        Returns:
-            Plugin context with Claude API components
+        Ensures the scheduled detection-refresh task uses the same instance
+        that the runtime receives via context.
         """
-        # Get base context
-        context = super().create_context(core_services)
+        detection_service = super().create_detection_service(context)
 
-        # Add detection service to context for task creation
-        detection_service = self.create_detection_service(context)
-        context["detection_service"] = detection_service
-
-        # Update task spec with detection service
-        if self.manifest.tasks:
+        if self.manifest.tasks and detection_service is not None:
             for task_spec in self.manifest.tasks:
                 if task_spec.task_name == "claude_api_detection_refresh":
-                    # Add detection service to task kwargs
                     task_spec.kwargs["detection_service"] = detection_service
 
-        return context
+        return detection_service
 
 
 # Create factory instance for plugin discovery

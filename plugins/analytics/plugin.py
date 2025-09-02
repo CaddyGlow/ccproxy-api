@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from ccproxy.core.logging import get_plugin_logger
-from ccproxy.plugins import (
+from ccproxy.core.plugins import (
     PluginManifest,
     RouteSpec,
     SystemPluginFactory,

@@ -3,17 +3,17 @@
 from typing import Any
 
 from ccproxy.core.logging import get_plugin_logger
-from ccproxy.plugins import (
+from ccproxy.core.plugins import (
     PluginContext,
     PluginManifest,
     RouteSpec,
     SystemPluginFactory,
     SystemPluginRuntime,
 )
-from plugins.permissions.config import PermissionsConfig
-from plugins.permissions.mcp import mcp_router
-from plugins.permissions.routes import router
-from plugins.permissions.service import get_permission_service
+from .config import PermissionsConfig
+from .mcp import mcp_router
+from .routes import router
+from .service import get_permission_service
 
 
 logger = get_plugin_logger()

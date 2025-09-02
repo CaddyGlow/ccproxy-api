@@ -5,7 +5,7 @@ from typing import Any
 
 from ccproxy.core.logging import get_plugin_logger
 from ccproxy.hooks import Hook, HookContext, HookEvent
-from plugins.codex.streaming_metrics import extract_usage_from_codex_chunk
+from .streaming_metrics import extract_usage_from_codex_chunk
 
 
 logger = get_plugin_logger()
@@ -39,7 +39,7 @@ class CodexStreamingMetricsHook(Hook):
 
         if self.plugin_registry:
             try:
-                from plugins.pricing.service import PricingService
+                from ccproxy.plugins.pricing.service import PricingService
 
                 self.pricing_service = self.plugin_registry.get_service(
                     "pricing", PricingService
@@ -155,7 +155,7 @@ class CodexStreamingMetricsHook(Hook):
             and cache["tokens_output"] is not None
         ):
             try:
-                from plugins.pricing.exceptions import (
+                from ccproxy.plugins.pricing.exceptions import (
                     ModelPricingNotFoundError,
                     PricingDataNotLoadedError,
                     PricingServiceDisabledError,

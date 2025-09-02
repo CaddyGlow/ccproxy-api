@@ -12,9 +12,9 @@ from typing import Any
 
 import structlog
 
-from ccproxy.plugins.discovery import discover_and_load_plugins
-from ccproxy.plugins.factory import PluginFactory, PluginRegistry
-from ccproxy.plugins.middleware import MiddlewareManager
+from ccproxy.core.plugins.discovery import discover_and_load_plugins
+from ccproxy.core.plugins.factory import PluginFactory, PluginRegistry
+from ccproxy.core.plugins.middleware import MiddlewareManager
 
 
 logger = structlog.get_logger(__name__)

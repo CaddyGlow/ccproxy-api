@@ -164,7 +164,7 @@ class ClaudeApiTokenManager(BaseTokenManager[ClaudeCredentials]):
 
         try:
             # Refresh directly using a local OAuth client/provider (no global registry)
-            from plugins.oauth_claude.provider import ClaudeOAuthProvider
+            from .provider import ClaudeOAuthProvider
 
             provider = ClaudeOAuthProvider(http_client=self.http_client)
             new_credentials: ClaudeCredentials = await provider.refresh_access_token(
@@ -379,7 +379,7 @@ class ClaudeApiTokenManager(BaseTokenManager[ClaudeCredentials]):
             # Optionally add detection headers if client supports it
             try:
                 # Avoid import cycles by dynamic import
-                from plugins.oauth_claude.provider import ClaudeOAuthProvider
+                from .provider import ClaudeOAuthProvider
 
                 temp_provider = ClaudeOAuthProvider(http_client=self.http_client)
                 if hasattr(temp_provider, "client") and hasattr(

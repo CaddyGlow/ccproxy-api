@@ -6,6 +6,11 @@ from pydantic import BaseModel, Field
 class CodexOAuthConfig(BaseModel):
     """OAuth-specific configuration for OpenAI Codex."""
 
+    enabled: bool = Field(
+        default=True,
+        description="Enablded the plugin",
+    )
+
     # Core OAuth endpoints and identifiers (aligns with Claude config structure)
     base_url: str = Field(
         default="https://auth.openai.com",

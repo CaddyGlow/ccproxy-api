@@ -3,14 +3,14 @@
 from typing import Any
 
 from ccproxy.core.logging import get_plugin_logger
-from ccproxy.plugins import (
+from ccproxy.core.plugins import (
     AuthProviderPluginFactory,
     AuthProviderPluginRuntime,
     PluginContext,
     PluginManifest,
 )
-from plugins.oauth_claude.config import ClaudeOAuthConfig
-from plugins.oauth_claude.provider import ClaudeOAuthProvider
+from .config import ClaudeOAuthConfig
+from .provider import ClaudeOAuthProvider
 
 
 logger = get_plugin_logger()
@@ -88,10 +88,18 @@ class OAuthClaudeFactory(AuthProviderPluginFactory):
         Returns:
             ClaudeOAuthProvider instance
         """
-        config = ClaudeOAuthConfig()
+        # Prefer validated config from context when available
+        config = (
+            context.get("config")
+            if context and isinstance(context.get("config"), ClaudeOAuthConfig)
+            else ClaudeOAuthConfig()
+        )
         http_client = context.get("http_client") if context else None
         hook_manager = context.get("hook_manager") if context else None
-        detection_service = context.get("detection_service") if context else None
+        # CLIDetectionService is injected under 'cli_detection_service' in base context
+        detection_service = (
+            context.get("cli_detection_service") if context else None
+        )
         return ClaudeOAuthProvider(
             config,
             http_client=http_client,

@@ -11,7 +11,7 @@ from ccproxy.core.logging import get_logger
 
 
 if TYPE_CHECKING:
-    from plugins.pricing.service import PricingService
+    from ccproxy.plugins.pricing.service import PricingService
 
 
 logger = get_logger(__name__)

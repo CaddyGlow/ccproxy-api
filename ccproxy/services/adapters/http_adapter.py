@@ -30,7 +30,7 @@ if TYPE_CHECKING:
 
     from ccproxy.auth.manager import AuthManager
     from ccproxy.core.request_context import RequestContext
-    from ccproxy.plugins.declaration import PluginContext
+    from ccproxy.core.plugins.declaration import PluginContext
     from ccproxy.services.handler_config import PluginTransformerProtocol
 
 
@@ -114,7 +114,7 @@ class BaseHTTPAdapter(BaseAdapter):
             plugin_registry = self.context["plugin_registry"]
 
             # Import locally to avoid circular dependency
-            from plugins.pricing.service import PricingService
+            from ccproxy.plugins.pricing.service import PricingService
 
             # Get service from registry with type checking
             return plugin_registry.get_service("pricing", PricingService)

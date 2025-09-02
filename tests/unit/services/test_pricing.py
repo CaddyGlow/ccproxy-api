@@ -11,11 +11,11 @@ from unittest.mock import Mock, patch
 import httpx
 import pytest
 
-from plugins.pricing.cache import PricingCache
-from plugins.pricing.config import PricingConfig
-from plugins.pricing.loader import PricingLoader
-from plugins.pricing.models import PricingData
-from plugins.pricing.updater import PricingUpdater
+from ccproxy.plugins.pricing.cache import PricingCache
+from ccproxy.plugins.pricing.config import PricingConfig
+from ccproxy.plugins.pricing.loader import PricingLoader
+from ccproxy.plugins.pricing.models import PricingData
+from ccproxy.plugins.pricing.updater import PricingUpdater
 
 
 class TestPricingConfig:

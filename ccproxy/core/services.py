@@ -9,7 +9,7 @@ from ccproxy.config.settings import Settings
 
 
 if TYPE_CHECKING:
-    from ccproxy.plugins.factory import PluginRegistry
+    from ccproxy.core.plugins.factory import PluginRegistry
     from ccproxy.scheduler.core import Scheduler
 
 

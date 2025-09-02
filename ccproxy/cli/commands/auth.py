@@ -18,7 +18,7 @@ from ccproxy.config.settings import get_settings
 from ccproxy.core.logging import bootstrap_cli_logging, get_logger, setup_logging
 from ccproxy.hooks.manager import HookManager
 from ccproxy.hooks.registry import HookRegistry
-from ccproxy.plugins.loader import load_plugin_system
+from ccproxy.core.plugins.loader import load_plugin_system
 
 
 app = typer.Typer(name="auth", help="Authentication and credential management")
@@ -186,7 +186,7 @@ async def _lazy_register_oauth_provider(
     or None if not found/import failed.
     """
     from ccproxy.config.settings import get_settings
-    from ccproxy.plugins.factory import AuthProviderPluginFactory
+    from ccproxy.core.plugins.factory import AuthProviderPluginFactory
     from ccproxy.services.cli_detection import CLIDetectionService
 
     plugin_name = _provider_plugin_name(provider)
@@ -211,8 +211,8 @@ async def _lazy_register_oauth_provider(
     hook_manager = None
     try:
         if settings.plugins.get("request_tracer", {}).get("enabled", False):
-            from plugins.request_tracer.config import RequestTracerConfig
-            from plugins.request_tracer.hooks.http import HTTPTracerHook
+            from ccproxy.plugins.request_tracer.config import RequestTracerConfig
+            from ccproxy.plugins.request_tracer.hooks.http import HTTPTracerHook
 
             hook_registry = HookRegistry()
             hook_manager = HookManager(hook_registry)
@@ -271,7 +271,7 @@ async def discover_oauth_providers() -> dict[str, tuple[str, str]]:
         registry, _ = load_plugin_system(settings)
         for name, factory in registry.factories.items():
             # Only include auth provider plugin factories
-            from ccproxy.plugins.factory import AuthProviderPluginFactory
+            from ccproxy.core.plugins.factory import AuthProviderPluginFactory
 
             if isinstance(factory, AuthProviderPluginFactory):
                 # Map manifest name to CLI provider key
@@ -542,7 +542,7 @@ def status_command(
                 manager: _Any | None = None
                 if provider in ("claude-api", "claude_api"):
                     try:
-                        from plugins.oauth_claude.manager import ClaudeApiTokenManager
+                        from ccproxy.plugins.oauth_claude.manager import ClaudeApiTokenManager
 
                         if storage is not None:
                             manager = asyncio.run(
@@ -554,7 +554,7 @@ def status_command(
                         logger.debug("claude_manager_init_failed", error=str(e))
                 elif provider == "codex":
                     try:
-                        from plugins.oauth_codex.manager import CodexTokenManager
+                        from ccproxy.plugins.oauth_codex.manager import CodexTokenManager
 
                         if storage is not None:
                             manager = asyncio.run(

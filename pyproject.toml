@@ -73,15 +73,18 @@ ccproxy-perm = "ccproxy.cli.commands.permission:main"
 
 # [project.entry-points."ccproxy.plugins"]
 # access_log = "plugins.access_log.plugin:factory"
+# analytics = "plugins.analytics.plugin:factory"
+# dashboard = "plugins.dashboard.plugin:factory"
+# duckdb_storage = "plugins.duckdb_storage.plugin:factory"
+# metrics = "plugins.metrics.plugin:factory"
+# permissions = "plugins.permissions.plugin:factory"
+# pricing = "plugins.pricing.plugin:factory"
+# request_tracer = "plugins.request_tracer.plugin:factory"
 # claude_api = "plugins.claude_api.plugin:factory"
 # claude_sdk = "plugins.claude_sdk.plugin:factory"
 # codex = "plugins.codex.plugin:factory"
-# permissions = "plugins.permissions.plugin:factory"
-# request_tracer = "plugins.request_tracer.plugin:factory"
-# duckdb_storage = "plugins.duckdb_storage.plugin:factory"
-# analytics = "plugins.analytics.plugin:factory"
-# dashboard = "plugins.dashboard.plugin:factory"
-#
+# oauth_claude = "plugins.oauth_claude.plugin:factory"
+# oauth_codex = "plugins.oauth_codex.plugin:factory"
 [dependency-groups]
 dev = [
   "mypy>=1.16.1",

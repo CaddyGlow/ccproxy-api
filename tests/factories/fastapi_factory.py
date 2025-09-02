@@ -300,7 +300,7 @@ class FastAPIAppFactory:
             CodexAdapterDep = None
 
             try:
-                from plugins.claude_sdk.routes import (
+                from ccproxy.plugins.claude_sdk.routes import (
                     ClaudeSDKAdapterDep as _ClaudeSDKAdapterDep,
                 )
 
@@ -309,7 +309,7 @@ class FastAPIAppFactory:
                 pass
 
             try:
-                from plugins.claude_api.routes import (
+                from ccproxy.plugins.claude_api.routes import (
                     ClaudeAPIAdapterDep as _ClaudeAPIAdapterDep,
                 )
 
@@ -318,7 +318,7 @@ class FastAPIAppFactory:
                 pass
 
             try:
-                from plugins.codex.routes import CodexAdapterDep as _CodexAdapterDep
+                from ccproxy.plugins.codex.routes import CodexAdapterDep as _CodexAdapterDep
 
                 CodexAdapterDep = _CodexAdapterDep
             except ImportError:
@@ -388,7 +388,7 @@ class FastAPIAppFactory:
     ) -> None:
         """Register Claude SDK plugin routes."""
         try:
-            from plugins.claude_sdk.routes import router as claude_sdk_router
+            from ccproxy.plugins.claude_sdk.routes import router as claude_sdk_router
 
             # Register both /api and /sdk prefixes for Claude SDK
             app.include_router(
@@ -408,7 +408,7 @@ class FastAPIAppFactory:
     def _register_claude_api_routes(self, app: FastAPI) -> None:
         """Register Claude API plugin routes."""
         try:
-            from plugins.claude_api.routes import router as claude_api_router
+            from ccproxy.plugins.claude_api.routes import router as claude_api_router
 
             app.include_router(
                 claude_api_router,
@@ -422,7 +422,7 @@ class FastAPIAppFactory:
     def _register_codex_routes(self, app: FastAPI) -> None:
         """Register Codex plugin routes."""
         try:
-            from plugins.codex.routes import router as codex_router
+            from ccproxy.plugins.codex.routes import router as codex_router
 
             app.include_router(
                 codex_router,

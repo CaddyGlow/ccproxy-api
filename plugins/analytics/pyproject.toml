@@ -14,7 +14,8 @@ dependencies = [
 ]
 
 [project.entry-points."ccproxy.plugins"]
-analytics = "plugins.analytics.plugin:factory"
+analytics = "ccproxy.plugins.analytics.plugin:factory"
 
 [tool.hatch.build.targets.wheel]
 packages = ["."]
+

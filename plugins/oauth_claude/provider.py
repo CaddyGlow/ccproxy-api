@@ -14,10 +14,10 @@ import httpx
 from ccproxy.auth.oauth.protocol import ProfileLoggingMixin, StandardProfileFields
 from ccproxy.auth.oauth.registry import OAuthProviderInfo
 from ccproxy.core.logging import get_plugin_logger
-from plugins.oauth_claude.client import ClaudeOAuthClient
-from plugins.oauth_claude.config import ClaudeOAuthConfig
-from plugins.oauth_claude.models import ClaudeCredentials, ClaudeProfileInfo
-from plugins.oauth_claude.storage import ClaudeOAuthStorage
+from .client import ClaudeOAuthClient
+from .config import ClaudeOAuthConfig
+from .models import ClaudeCredentials, ClaudeProfileInfo
+from .storage import ClaudeOAuthStorage
 
 
 logger = get_plugin_logger()
@@ -278,8 +278,8 @@ class ClaudeOAuthProvider(ProfileLoggingMixin):
         from pathlib import Path
 
         from ccproxy.auth.storage.generic import GenericJsonStorage
-        from plugins.oauth_claude.manager import ClaudeApiTokenManager
-        from plugins.oauth_claude.models import ClaudeCredentials
+        from .manager import ClaudeApiTokenManager
+        from .models import ClaudeCredentials
 
         try:
             if custom_path:
@@ -312,8 +312,8 @@ class ClaudeOAuthProvider(ProfileLoggingMixin):
         from pathlib import Path
 
         from ccproxy.auth.storage.generic import GenericJsonStorage
-        from plugins.oauth_claude.manager import ClaudeApiTokenManager
-        from plugins.oauth_claude.models import ClaudeCredentials
+        from .manager import ClaudeApiTokenManager
+        from .models import ClaudeCredentials
 
         try:
             if custom_path:

@@ -18,9 +18,9 @@ from ccproxy.models.messages import TextContentBlock
 
 # from ccproxy.observability.metrics import  # Metrics moved to plugin PrometheusMetrics
 from ccproxy.utils.model_mapping import map_model_to_claude
-from plugins.claude_sdk.exceptions import StreamTimeoutError
-from plugins.claude_sdk.manager import SessionManager
-from plugins.claude_sdk.options import OptionsHandler
+from .exceptions import StreamTimeoutError
+from .manager import SessionManager
+from .options import OptionsHandler
 
 from . import models as sdk_models
 from .client import ClaudeSDKClient

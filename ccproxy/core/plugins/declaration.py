@@ -25,8 +25,8 @@ if TYPE_CHECKING:
     from ccproxy.hooks.base import Hook
     from ccproxy.hooks.manager import HookManager
     from ccproxy.hooks.registry import HookRegistry
-    from ccproxy.plugins.factory import PluginRegistry
-    from ccproxy.plugins.protocol import OAuthClientProtocol
+    from ccproxy.core.plugins.factory import PluginRegistry
+    from ccproxy.core.plugins.protocol import OAuthClientProtocol
     from ccproxy.scheduler.core import Scheduler
     from ccproxy.scheduler.tasks import BaseScheduledTask
     from ccproxy.services.adapters.base import BaseAdapter

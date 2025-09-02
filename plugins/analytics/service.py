@@ -6,7 +6,7 @@ from typing import Any
 
 from sqlmodel import Session, col, func, select
 
-from plugins.analytics.models import AccessLog
+from .models import AccessLog
 
 
 class AnalyticsService:

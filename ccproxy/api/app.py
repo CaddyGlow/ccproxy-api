@@ -22,12 +22,12 @@ from ccproxy.hooks import HookManager, HookRegistry
 from ccproxy.hooks.events import HookEvent
 
 # Plugin System imports
-from ccproxy.plugins import (
+from ccproxy.core.plugins import (
     MiddlewareManager,
     PluginRegistry,
     setup_default_middleware,
 )
-from ccproxy.plugins.loader import load_plugin_system
+from ccproxy.core.plugins.loader import load_plugin_system
 from ccproxy.services.container import ServiceContainer
 from ccproxy.services.factories import ConcreteServiceFactory
 from ccproxy.utils.startup_helpers import (

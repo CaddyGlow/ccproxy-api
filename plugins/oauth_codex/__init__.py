@@ -1,9 +1,9 @@
 """OAuth Codex plugin for standalone OpenAI Codex OAuth authentication."""
 
-from plugins.oauth_codex.client import CodexOAuthClient
-from plugins.oauth_codex.config import CodexOAuthConfig
-from plugins.oauth_codex.provider import CodexOAuthProvider
-from plugins.oauth_codex.storage import CodexTokenStorage
+from .client import CodexOAuthClient
+from .config import CodexOAuthConfig
+from .provider import CodexOAuthProvider
+from .storage import CodexTokenStorage
 
 
 __all__ = [

@@ -200,7 +200,7 @@ class RequestProcessor:
                 self.logger.debug("detected_sse_response", body_preview=body_str[:100])
 
                 # Import here to avoid circular dependency
-                from plugins.codex.utils.sse_parser import extract_final_response
+                from ccproxy.plugins.codex.utils.sse_parser import extract_final_response
 
                 final_response = extract_final_response(body_str)
                 if final_response:

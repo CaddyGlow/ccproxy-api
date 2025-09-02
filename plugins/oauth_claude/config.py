@@ -6,6 +6,11 @@ from pydantic import BaseModel, Field
 class ClaudeOAuthConfig(BaseModel):
     """OAuth-specific configuration for Claude."""
 
+    enabled: bool = Field(
+        default=True,
+        description="Enablded the plugin",
+    )
+
     base_url: str = Field(
         default="https://console.anthropic.com",
         description="Base URL for OAuth API endpoints",

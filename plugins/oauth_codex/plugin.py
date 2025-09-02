@@ -3,14 +3,14 @@
 from typing import Any
 
 from ccproxy.core.logging import get_plugin_logger
-from ccproxy.plugins import (
+from ccproxy.core.plugins import (
     AuthProviderPluginFactory,
     AuthProviderPluginRuntime,
     PluginContext,
     PluginManifest,
 )
-from plugins.oauth_codex.config import CodexOAuthConfig
-from plugins.oauth_codex.provider import CodexOAuthProvider
+from .config import CodexOAuthConfig
+from .provider import CodexOAuthProvider
 
 
 logger = get_plugin_logger()
@@ -88,7 +88,12 @@ class OAuthCodexFactory(AuthProviderPluginFactory):
         Returns:
             CodexOAuthProvider instance
         """
-        config = CodexOAuthConfig()
+        # Prefer validated config from context when available
+        config = (
+            context.get("config")
+            if context and isinstance(context.get("config"), CodexOAuthConfig)
+            else CodexOAuthConfig()
+        )
         http_client = context.get("http_client") if context else None
         hook_manager = context.get("hook_manager") if context else None
         return CodexOAuthProvider(

@@ -10,8 +10,8 @@ requires-python = ">=3.11"
 dependencies = []
 
 [project.entry-points."ccproxy.plugins"]
-access_log = "plugins.access_log.plugin:factory"
-
+access_log = "ccproxy.plugins.access_log.plugin:factory"
 
 [tool.hatch.build.targets.wheel]
 packages = ["."]
+

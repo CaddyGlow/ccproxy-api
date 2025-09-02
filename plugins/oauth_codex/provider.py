@@ -10,10 +10,10 @@ import httpx
 from ccproxy.auth.oauth.protocol import ProfileLoggingMixin, StandardProfileFields
 from ccproxy.auth.oauth.registry import OAuthProviderInfo
 from ccproxy.core.logging import get_plugin_logger
-from plugins.oauth_codex.client import CodexOAuthClient
-from plugins.oauth_codex.config import CodexOAuthConfig
-from plugins.oauth_codex.models import OpenAICredentials
-from plugins.oauth_codex.storage import CodexTokenStorage
+from .client import CodexOAuthClient
+from .config import CodexOAuthConfig
+from .models import OpenAICredentials
+from .storage import CodexTokenStorage
 
 
 logger = get_plugin_logger()
@@ -281,8 +281,8 @@ class CodexOAuthProvider(ProfileLoggingMixin):
         from pathlib import Path
 
         from ccproxy.auth.storage.generic import GenericJsonStorage
-        from plugins.oauth_codex.manager import CodexTokenManager
-        from plugins.oauth_codex.models import OpenAICredentials
+        from .manager import CodexTokenManager
+        from .models import OpenAICredentials
 
         try:
             if custom_path:
@@ -315,8 +315,8 @@ class CodexOAuthProvider(ProfileLoggingMixin):
         from pathlib import Path
 
         from ccproxy.auth.storage.generic import GenericJsonStorage
-        from plugins.oauth_codex.manager import CodexTokenManager
-        from plugins.oauth_codex.models import OpenAICredentials
+        from .manager import CodexTokenManager
+        from .models import OpenAICredentials
 
         try:
             if custom_path:

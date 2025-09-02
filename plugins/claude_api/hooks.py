@@ -5,7 +5,7 @@ from typing import Any
 
 from ccproxy.core.logging import get_plugin_logger
 from ccproxy.hooks import Hook, HookContext, HookEvent
-from plugins.claude_api.streaming_metrics import extract_usage_from_streaming_chunk
+from .streaming_metrics import extract_usage_from_streaming_chunk
 
 
 logger = get_plugin_logger()
@@ -39,7 +39,7 @@ class ClaudeAPIStreamingMetricsHook(Hook):
 
         if self.plugin_registry:
             try:
-                from plugins.pricing.service import PricingService
+                from ccproxy.plugins.pricing.service import PricingService
 
                 self.pricing_service = self.plugin_registry.get_service(
                     "pricing", PricingService
@@ -179,7 +179,7 @@ class ClaudeAPIStreamingMetricsHook(Hook):
             )
             if pricing_service and cache["model"]:
                 try:
-                    from plugins.pricing.exceptions import (
+                    from ccproxy.plugins.pricing.exceptions import (
                         ModelPricingNotFoundError,
                         PricingDataNotLoadedError,
                         PricingServiceDisabledError,

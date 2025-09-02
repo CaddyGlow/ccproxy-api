@@ -13,5 +13,6 @@ dependencies = []
 [tool.hatch.build.targets.wheel]
 packages = ["."]
 
+
 [project.entry-points."ccproxy.plugins"]
-oauth_claude = "plugins.oauth_codex.plugin:factory"
+oauth_codex = "ccproxy.plugins.oauth_codex.plugin:factory"

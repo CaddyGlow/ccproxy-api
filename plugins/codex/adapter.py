@@ -24,13 +24,13 @@ from ccproxy.services.handler_config import HandlerConfig
 if TYPE_CHECKING:
     from ccproxy.core.request_context import RequestContext
     from ccproxy.hooks import HookManager
-    from ccproxy.plugins.declaration import PluginContext
+    from ccproxy.core.plugins.declaration import PluginContext
     from ccproxy.services.interfaces import (
         IMetricsCollector,
         IRequestTracer,
         IStreamingHandler,
     )
-    from plugins.codex.detection_service import CodexDetectionService
+    from .detection_service import CodexDetectionService
 
 from .format_adapter import CodexFormatAdapter
 from .transformers import CodexRequestTransformer, CodexResponseTransformer
@@ -260,7 +260,7 @@ class CodexAdapter(BaseHTTPAdapter):
             return
 
         # Import pricing exceptions
-        from plugins.pricing.exceptions import (
+        from ccproxy.plugins.pricing.exceptions import (
             ModelPricingNotFoundError,
             PricingDataNotLoadedError,
             PricingServiceDisabledError,

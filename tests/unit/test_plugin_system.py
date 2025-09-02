@@ -7,8 +7,8 @@ import pytest
 from fastapi import APIRouter
 
 from ccproxy.models.provider import ProviderConfig
-from ccproxy.plugins.factory import PluginRegistry
-from ccproxy.plugins.protocol import HealthCheckResult
+from ccproxy.core.plugins.factory import PluginRegistry
+from ccproxy.core.plugins.protocol import HealthCheckResult
 from ccproxy.services.adapters.base import BaseAdapter
 
 

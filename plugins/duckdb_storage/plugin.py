@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Any
 
 from ccproxy.core.logging import get_plugin_logger
-from ccproxy.plugins import (
+from ccproxy.core.plugins import (
     PluginManifest,
     RouteSpec,
     SystemPluginFactory,

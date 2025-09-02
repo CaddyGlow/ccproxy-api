@@ -13,5 +13,8 @@ dependencies = [
   "httpx>=0.25.0",
 ]
 
+[project.entry-points."ccproxy.plugins"]
+pricing = "ccproxy.plugins.pricing.plugin:factory"
+
 [tool.hatch.build.targets.wheel]
 packages = ["."]

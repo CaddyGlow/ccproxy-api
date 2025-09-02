@@ -10,8 +10,8 @@ from ccproxy.auth.exceptions import OAuthError
 from ccproxy.auth.oauth.base import BaseOAuthClient
 from ccproxy.auth.storage.base import TokenStorage
 from ccproxy.core.logging import get_plugin_logger
-from plugins.oauth_codex.config import CodexOAuthConfig
-from plugins.oauth_codex.models import OpenAICredentials, OpenAITokens
+from .config import CodexOAuthConfig
+from .models import OpenAICredentials, OpenAITokens
 
 
 logger = get_plugin_logger()
