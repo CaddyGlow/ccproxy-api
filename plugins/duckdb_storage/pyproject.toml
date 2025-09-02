@@ -19,4 +19,3 @@ duckdb_storage = "ccproxy.plugins.duckdb_storage.plugin:factory"
 
 [tool.hatch.build.targets.wheel]
 packages = ["."]
-

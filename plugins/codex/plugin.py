@@ -294,6 +294,8 @@ class CodexRuntime(ProviderPluginRuntime):
 class CodexFactory(BaseProviderPluginFactory):
     """Factory for Codex provider plugin."""
 
+    cli_safe = False  # Heavy provider plugin - not safe for CLI
+
     # Plugin configuration via class attributes
     plugin_name = "codex"
     plugin_description = (

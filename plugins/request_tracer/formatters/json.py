@@ -158,26 +158,39 @@ class JSONFormatter:
             base_id = self._compose_file_id(request_id)
             request_file = self.request_log_dir / f"{base_id}_{file_suffix}.json"
 
-            # Try to parse body as JSON first, then string, then base64
+            # Handle body content - could be bytes, dict/list (from JSON), or string
             body_content = None
-            if body:
-                try:
-                    # First try to decode as UTF-8 string
-                    body_str = body.decode("utf-8")
-                    # Then try to parse as JSON
-                    body_content = json.loads(body_str)
-                except (json.JSONDecodeError, UnicodeDecodeError):
-                    # Not JSON, try plain string
+            if body is not None:
+                if isinstance(body, (dict, list)):
+                    # Already parsed JSON object from hook context
+                    body_content = body
+                elif isinstance(body, bytes):
+                    # Raw bytes - try to parse as JSON first, then string, then base64
                     try:
-                        body_content = body.decode("utf-8", errors="replace")
-                    except Exception:
-                        # Last resort: encode as base64
-                        import base64
-
-                        body_content = {
-                            "_type": "base64",
-                            "data": base64.b64encode(body).decode("ascii"),
-                        }
+                        # First try to decode as UTF-8 string
+                        body_str = body.decode("utf-8")
+                        # Then try to parse as JSON
+                        body_content = json.loads(body_str)
+                    except (json.JSONDecodeError, UnicodeDecodeError):
+                        # Not JSON, try plain string
+                        try:
+                            body_content = body.decode("utf-8", errors="replace")
+                        except Exception:
+                            # Last resort: encode as base64
+                            import base64
+                            body_content = {
+                                "_type": "base64",
+                                "data": base64.b64encode(body).decode("ascii"),
+                            }
+                elif isinstance(body, str):
+                    # String body - try to parse as JSON, otherwise keep as string
+                    try:
+                        body_content = json.loads(body)
+                    except json.JSONDecodeError:
+                        body_content = body
+                else:
+                    # Other type - convert to string
+                    body_content = str(body)
 
             request_data = {
                 "request_id": request_id,

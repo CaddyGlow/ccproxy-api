@@ -391,6 +391,15 @@ class ClaudeApiTokenManager(BaseTokenManager[ClaudeCredentials]):
             except Exception:
                 pass
 
+            # Debug logging for HTTP client usage
+            logger.debug(
+                "claude_manager_making_http_request",
+                url=config.profile_url,
+                http_client_id=id(self.http_client),
+                has_hooks=hasattr(self.http_client, 'hook_manager') and self.http_client.hook_manager is not None,
+                hook_manager_id=id(self.http_client.hook_manager) if hasattr(self.http_client, 'hook_manager') and self.http_client.hook_manager else None,
+            )
+            
             # Use the injected HTTP client
             response = await self.http_client.get(
                 config.profile_url,

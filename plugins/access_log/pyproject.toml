@@ -14,4 +14,3 @@ access_log = "ccproxy.plugins.access_log.plugin:factory"
 
 [tool.hatch.build.targets.wheel]
 packages = ["."]
-

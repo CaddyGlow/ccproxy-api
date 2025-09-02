@@ -105,28 +105,13 @@ class HTTPTracerHook(Hook):
 
         # Log with JSON formatter
         if self.json_formatter:
-            # Convert body to bytes for JSON formatter
-            body_bytes = b""
-            if body:
-                if is_json:
-                    body_bytes = (
-                        json.dumps(body).encode()
-                        if isinstance(body, dict)
-                        else str(body).encode()
-                    )
-                elif isinstance(body, bytes):
-                    body_bytes = body
-                elif isinstance(body, str):
-                    body_bytes = body.encode()
-                else:
-                    body_bytes = str(body).encode()
-
+            # Pass body directly - JSONFormatter now handles different data types
             await self.json_formatter.log_request(
                 request_id=request_id,
                 method=method,
                 url=url,
                 headers=headers,
-                body=body_bytes,
+                body=body,  # Pass original body data directly
                 request_type="http",
             )
 
@@ -160,23 +145,12 @@ class HTTPTracerHook(Hook):
 
         # Log with JSON formatter
         if self.json_formatter:
-            # Convert body to bytes for JSON formatter
-            body_bytes = b""
-            if body:
-                if isinstance(body, dict):
-                    body_bytes = json.dumps(body).encode()
-                elif isinstance(body, bytes):
-                    body_bytes = body
-                elif isinstance(body, str):
-                    body_bytes = body.encode()
-                else:
-                    body_bytes = str(body).encode()
-
+            # Pass body directly - JSONFormatter now handles different data types
             await self.json_formatter.log_response(
                 request_id=request_id,
                 status=status_code,
                 headers=headers,
-                body=body_bytes,
+                body=body,  # Pass original body data directly
                 response_type="http",
             )
 

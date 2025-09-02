@@ -31,6 +31,10 @@ class RequestTracerHook(Hook):
         HookEvent.PROVIDER_STREAM_START,
         HookEvent.PROVIDER_STREAM_CHUNK,
         HookEvent.PROVIDER_STREAM_END,
+        # HTTP client level events
+        HookEvent.HTTP_REQUEST,
+        HookEvent.HTTP_RESPONSE,
+        HookEvent.HTTP_ERROR,
     ]
     priority = 300  # HookLayer.ENRICHMENT - Capture/enrich request context early
 
@@ -63,6 +67,14 @@ class RequestTracerHook(Hook):
         Args:
             context: Hook context with event data
         """
+        # Debug logging for CLI hook calls
+        logger.debug(
+            "request_tracer_hook_called",
+            hook_event=context.event.value if context.event else "unknown",
+            enabled=self.config.enabled,
+            data_keys=list(context.data.keys()) if context.data else [],
+        )
+
         if not self.config.enabled:
             return
 
@@ -77,6 +89,10 @@ class RequestTracerHook(Hook):
             HookEvent.PROVIDER_STREAM_START: self._handle_stream_start,
             HookEvent.PROVIDER_STREAM_CHUNK: self._handle_stream_chunk,
             HookEvent.PROVIDER_STREAM_END: self._handle_stream_end,
+            # HTTP client level events
+            HookEvent.HTTP_REQUEST: self._handle_http_request,
+            HookEvent.HTTP_RESPONSE: self._handle_http_response,
+            HookEvent.HTTP_ERROR: self._handle_http_error,
         }
 
         handler = handlers.get(context.event)
@@ -102,6 +118,16 @@ class RequestTracerHook(Hook):
         url = context.data.get("url", "")
         headers = context.data.get("headers", {})
 
+        # Try to get request body from context data or request object
+        body = context.data.get("body")
+        if body is None and context.request:
+            # Try to get body from FastAPI request object
+            try:
+                body = await context.request.body()
+            except Exception:
+                # Body might not be available or already consumed
+                body = None
+
         # Check path filters
         path = self._extract_path(url)
         if self._should_exclude_path(path):
@@ -114,7 +140,7 @@ class RequestTracerHook(Hook):
                 method=method,
                 url=url,
                 headers=headers,
-                body=None,  # Body not available in hook context yet
+                body=body,  # Include request body if available
                 request_type="client",
             )
 
@@ -324,3 +350,151 @@ class RequestTracerHook(Hook):
             return any(path.startswith(p) for p in self.config.exclude_paths)
 
         return False
+
+    def _current_cmd_id(self) -> str | None:
+        """Return current cmd_id from structlog contextvars."""
+        try:
+            from structlog.contextvars import get_merged_contextvars
+
+            ctx = get_merged_contextvars(logger) or {}
+            cmd_id = ctx.get("cmd_id")
+        except Exception:
+            cmd_id = None
+
+        return str(cmd_id) if cmd_id else None
+
+    # ==================== HTTP Client Event Handlers ====================
+
+    async def _handle_http_request(self, context: HookContext) -> None:
+        """Handle HTTP_REQUEST event from HTTP client."""
+        if not self.config.log_client_request:
+            return
+
+        # Extract request data from context
+        method = context.data.get("method", "UNKNOWN")
+        url = context.data.get("url", "")
+        headers = context.data.get("headers", {})
+
+        # Check path filters
+        path = self._extract_path(url)
+        if self._should_exclude_path(path):
+            return
+
+        # Use cmd_id as request ID if available, otherwise generate UUID
+        cmd_id = self._current_cmd_id()
+        if cmd_id:
+            request_id = cmd_id
+        else:
+            import uuid
+
+            request_id = str(uuid.uuid4())
+
+        # Log via debug (avoid conflict with structured logging)
+        logger.debug(
+            f"http_request_started: {method} {url} [request_id={request_id}] [cmd_id={cmd_id}]"
+        )
+
+        if self.json_formatter:
+            # Apply header redaction if sensitive data should be redacted
+            filtered_headers = (
+                self.json_formatter.redact_headers(headers)
+                if self.config.redact_sensitive
+                else headers
+            )
+            await self.json_formatter.log_request(
+                request_id=request_id,
+                method=method,
+                url=url,
+                headers=filtered_headers,
+                body=context.data.get("body"),
+                request_type="http_client",
+            )
+
+    async def _handle_http_response(self, context: HookContext) -> None:
+        """Handle HTTP_RESPONSE event from HTTP client."""
+        if not self.config.log_client_response:
+            return
+
+        # Extract response data from context
+        method = context.data.get("method", "UNKNOWN")
+        url = context.data.get("url", "")
+        status_code = context.data.get("status_code", 0)
+        headers = context.data.get("response_headers", {})
+
+        # Check path filters
+        path = self._extract_path(url)
+        if self._should_exclude_path(path):
+            return
+
+        # Use cmd_id as request ID if available, otherwise use UUID
+        cmd_id = self._current_cmd_id()
+        if cmd_id:
+            request_id = cmd_id
+        else:
+            # Try to get request_id from context, fallback to UUID
+            import uuid
+
+            request_id = context.data.get("request_id", str(uuid.uuid4()))
+
+        logger.debug(
+            f"http_response_received: {method} {url} [{status_code}] [request_id={request_id}] [cmd_id={cmd_id}]"
+        )
+
+        if self.json_formatter:
+            # Apply header redaction if sensitive data should be redacted
+            filtered_headers = (
+                self.json_formatter.redact_headers(headers)
+                if self.config.redact_sensitive
+                else headers
+            )
+
+            # Convert response body to bytes if it's not already
+            response_body = context.data.get("response_body")
+            if response_body is None:
+                body_bytes = b""
+            elif isinstance(response_body, bytes):
+                body_bytes = response_body
+            elif isinstance(response_body, str):
+                body_bytes = response_body.encode("utf-8")
+            else:
+                # For dict/list responses (JSON), convert to JSON bytes
+                import json
+
+                body_bytes = json.dumps(response_body).encode("utf-8")
+
+            await self.json_formatter.log_response(
+                request_id=request_id,
+                status=status_code,
+                headers=filtered_headers,
+                body=body_bytes,
+                response_type="http_client",
+            )
+
+    async def _handle_http_error(self, context: HookContext) -> None:
+        """Handle HTTP_ERROR event from HTTP client."""
+        # Extract error data from context
+        method = context.data.get("method", "UNKNOWN")
+        url = context.data.get("url", "")
+        error = context.data.get("error", "Unknown error")
+
+        # Use cmd_id as request ID if available, otherwise use UUID
+        cmd_id = self._current_cmd_id()
+        if cmd_id:
+            request_id = cmd_id
+        else:
+            # Try to get request_id from context, fallback to UUID
+            import uuid
+
+            request_id = context.data.get("request_id", str(uuid.uuid4()))
+
+        logger.debug(
+            f"http_request_error: {method} {url} [error={str(error)}] [request_id={request_id}] [cmd_id={cmd_id}]"
+        )
+
+        if self.json_formatter:
+            await self.json_formatter.log_error(
+                request_id=request_id,
+                method=method,
+                url=url,
+                error=str(error),
+            )

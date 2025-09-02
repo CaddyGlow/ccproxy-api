@@ -15,4 +15,3 @@ claude_api = "ccproxy.plugins.claude_api.plugin:factory"
 
 [tool.hatch.build.targets.wheel]
 packages = ["."]
-

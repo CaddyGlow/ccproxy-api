@@ -271,6 +271,8 @@ class ClaudeAPIRuntime(ProviderPluginRuntime):
 class ClaudeAPIFactory(BaseProviderPluginFactory):
     """Factory for Claude API plugin."""
 
+    cli_safe = False  # Heavy provider plugin - not safe for CLI
+
     # Plugin configuration via class attributes
     plugin_name = "claude_api"
     plugin_description = "Claude API provider plugin with support for both native Anthropic format and OpenAI-compatible format"

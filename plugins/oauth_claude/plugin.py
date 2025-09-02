@@ -57,6 +57,8 @@ class OAuthClaudeRuntime(AuthProviderPluginRuntime):
 class OAuthClaudeFactory(AuthProviderPluginFactory):
     """Factory for OAuth Claude plugin."""
 
+    cli_safe = True  # Safe for CLI - provides auth only
+
     def __init__(self) -> None:
         """Initialize factory with manifest."""
         # Create manifest with static declarations

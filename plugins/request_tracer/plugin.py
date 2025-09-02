@@ -181,6 +181,8 @@ class RequestTracerRuntime(SystemPluginRuntime):
 class RequestTracerFactory(SystemPluginFactory):
     """Factory for request tracer plugin."""
 
+    cli_safe = True  # Safe for CLI - lightweight tracing only
+
     def __init__(self) -> None:
         """Initialize factory with manifest."""
         # Create manifest with static declarations

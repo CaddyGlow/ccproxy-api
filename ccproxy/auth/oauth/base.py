@@ -61,6 +61,12 @@ class BaseOAuthClient(ABC, Generic[CredentialsT]):
         if http_client:
             self.http_client = http_client
             self._owns_http_client = False  # Don't close provided client
+            logger.debug(
+                "oauth_client_using_provided_http_client",
+                http_client_id=id(http_client),
+                has_hooks=hasattr(http_client, 'hook_manager') and http_client.hook_manager is not None,
+                hook_manager_id=id(hook_manager) if hook_manager else None,
+            )
         else:
             # Create client with hook support if hook_manager is provided
             self.http_client = HTTPClientFactory.create_client(
@@ -70,6 +76,12 @@ class BaseOAuthClient(ABC, Generic[CredentialsT]):
                 hook_manager=hook_manager,  # Pass hook manager to client
             )
             self._owns_http_client = True  # We own it, close on cleanup
+            logger.debug(
+                "oauth_client_created_new_http_client",
+                http_client_id=id(self.http_client),
+                has_hooks=hasattr(self.http_client, 'hook_manager') and self.http_client.hook_manager is not None,
+                hook_manager_id=id(hook_manager) if hook_manager else None,
+            )
 
         self._callback_server: asyncio.Task[None] | None = None
         self._auth_complete = asyncio.Event()

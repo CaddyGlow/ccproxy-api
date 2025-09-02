@@ -18,4 +18,3 @@ analytics = "ccproxy.plugins.analytics.plugin:factory"
 
 [tool.hatch.build.targets.wheel]
 packages = ["."]
-

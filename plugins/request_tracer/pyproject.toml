@@ -14,4 +14,3 @@ request_tracer = "ccproxy.plugins.request_tracer.plugin:factory"
 
 [tool.hatch.build.targets.wheel]
 packages = ["."]
-

@@ -16,7 +16,7 @@ from ccproxy.auth.oauth.registry import OAuthRegistry
 from ccproxy.cli.helpers import get_rich_toolkit
 from ccproxy.config.settings import Settings
 from ccproxy.core.logging import bootstrap_cli_logging, get_logger, setup_logging
-from ccproxy.core.plugins.loader import load_plugin_system
+from ccproxy.core.plugins.loader import load_cli_plugins
 from ccproxy.hooks.manager import HookManager
 from ccproxy.hooks.registry import HookRegistry
 from ccproxy.services.container import ServiceContainer
@@ -161,72 +161,88 @@ async def _lazy_register_oauth_provider(
     registry: OAuthRegistry,
     container: ServiceContainer,
 ) -> Any | None:
-    """Lazily import and register just the requested provider's plugin."""
-    from ccproxy.core.plugins.factory import AuthProviderPluginFactory
+    """Initialize filtered CLI plugin system and ensure provider is registered.
 
-    plugin_name = _provider_plugin_name(provider)
-    if not plugin_name:
-        return None
-
+    This bootstraps the hook system and initializes only CLI-safe plugins plus
+    the specific auth provider needed. This avoids DuckDB locks, task manager
+    errors, and other side effects from heavy provider plugins.
+    """
     settings = container.get_service(Settings)
-    plugin_registry, _middleware_mgr = load_plugin_system(settings)
-    factory = plugin_registry.get_factory(plugin_name)
-    if not isinstance(factory, AuthProviderPluginFactory):
-        logger.debug(
-            "oauth_plugin_factory_missing_or_invalid",
-            provider=provider,
-            plugin=plugin_name,
-        )
+
+    # Respect global plugin enablement flag
+    if not getattr(settings, "enable_plugins", True):
         return None
 
-    detection_service = container.get_cli_detection_service()
+    # Load only CLI-safe plugins + the specific auth provider needed
+    plugin_registry = load_cli_plugins(settings, auth_provider=provider)
 
-    hook_manager = None
-    try:
-        if settings.plugins.get("request_tracer", {}).get("enabled", False):
-            from ccproxy.plugins.request_tracer.config import RequestTracerConfig
-            from ccproxy.plugins.request_tracer.hooks.http import HTTPTracerHook
+    # Create hook system for CLI HTTP flows
+    hook_registry = HookRegistry()
+    hook_manager = HookManager(hook_registry)
+    # Make HookManager available to any services resolved from the container
+    with contextlib.suppress(Exception):
+        container.register_service(HookManager, instance=hook_manager)
 
-            hook_registry = HookRegistry()
-            hook_manager = HookManager(hook_registry)
-            tracer_config = RequestTracerConfig(
-                **settings.plugins.get("request_tracer", {})
-            )
-            http_hook = HTTPTracerHook(tracer_config)
-            hook_registry.register(http_hook)
-    except Exception as e:
-        logger.debug(
-            "hook_registration_failed", error=str(e), category="auth", exc_info=e
-        )
-        pass
-
+    # Provide core services needed by plugins at runtime
     from ccproxy.core.http_client import HTTPClientFactory
 
-    http_client = HTTPClientFactory.create_client(
-        settings=settings,
-        hook_manager=hook_manager,
-    )
+    class CoreServicesAdapter:
+        def __init__(self) -> None:
+            self.settings = settings
+            # HTTP client uses hook manager so plugins can observe requests
+            self.http_client = HTTPClientFactory.create_client(
+                settings=settings, hook_manager=hook_manager
+            )
+            self.logger = get_logger()
+            self.cli_detection_service = container.get_cli_detection_service()
+            self.plugin_registry = plugin_registry
+            self.oauth_registry = registry
+            self.hook_registry = hook_registry
+            self.hook_manager = hook_manager
+            self.app = None  # Not applicable in CLI context
+            # Pass through current tracer/streaming handler if needed
+            self.request_tracer = container.get_request_tracer()
+            self.streaming_handler = container.get_streaming_handler()
 
-    context_data: dict[str, Any] = {
-        "detection_service": detection_service,
-        "http_client": http_client,
-    }
+        def get_plugin_config(self, plugin_name: str) -> Any:
+            if hasattr(settings, "plugins") and settings.plugins:
+                cfg = settings.plugins.get(plugin_name)
+                if cfg:
+                    return cfg.model_dump() if hasattr(cfg, "model_dump") else cfg
+            return {}
+
+    core_services = CoreServicesAdapter()
 
     try:
-        oauth_provider = factory.create_auth_provider(context_data)  # type: ignore[arg-type]
+        # Initialize all plugins; auth providers will register to oauth_registry
+        import asyncio as _asyncio
+
+        if _asyncio.get_event_loop().is_running():
+            # In practice, we're already in async context; just await directly
+            await plugin_registry.initialize_all(core_services)
+        else:  # pragma: no cover - defensive path
+            _asyncio.run(plugin_registry.initialize_all(core_services))
     except Exception as e:
         logger.debug(
-            "oauth_provider_create_failed", provider=provider, error=str(e), exc_info=e
+            "plugin_initialization_failed_cli",
+            error=str(e),
+            exc_info=e,
+            category="auth",
         )
-        return None
+
+    # Normalize provider key and return the registered provider instance
+    def _norm(p: str) -> str:
+        key = p.strip().lower().replace("_", "-")
+        if key in {"claude", "claude-api"}:
+            return "claude-api"
+        if key in {"codex", "openai", "openai-api"}:
+            return "codex"
+        return key
 
     try:
-        if not registry.has_provider(oauth_provider.provider_name):
-            registry.register_provider(oauth_provider)
+        return registry.get_provider(_norm(provider))
     except Exception:
-        pass
-
-    return oauth_provider
+        return None
 
 
 async def discover_oauth_providers(
@@ -236,6 +252,9 @@ async def discover_oauth_providers(
     providers: dict[str, tuple[str, str]] = {}
     try:
         settings = container.get_service(Settings)
+        # For discovery, we can load all plugins temporarily since we don't initialize them
+        from ccproxy.core.plugins.loader import load_plugin_system
+
         registry, _ = load_plugin_system(settings)
         for name, factory in registry.factories.items():
             from ccproxy.core.plugins.factory import AuthProviderPluginFactory
@@ -473,12 +492,17 @@ def status_command(
                             ClaudeApiTokenManager,
                         )
 
+                        # Get the HTTP client with hooks from the OAuth provider
+                        http_client = None
+                        if oauth_provider and hasattr(oauth_provider, 'http_client'):
+                            http_client = oauth_provider.http_client
+                        
                         if storage is not None:
                             manager = asyncio.run(
-                                ClaudeApiTokenManager.create(storage=storage)
+                                ClaudeApiTokenManager.create(storage=storage, http_client=http_client)
                             )
                         else:
-                            manager = asyncio.run(ClaudeApiTokenManager.create())
+                            manager = asyncio.run(ClaudeApiTokenManager.create(http_client=http_client))
                     except Exception as e:
                         logger.debug("claude_manager_init_failed", error=str(e))
                 elif provider == "codex":
@@ -487,12 +511,17 @@ def status_command(
                             CodexTokenManager,
                         )
 
+                        # Get the HTTP client with hooks from the OAuth provider  
+                        http_client = None
+                        if oauth_provider and hasattr(oauth_provider, 'http_client'):
+                            http_client = oauth_provider.http_client
+
                         if storage is not None:
                             manager = asyncio.run(
-                                CodexTokenManager.create(storage=storage)
+                                CodexTokenManager.create(storage=storage, http_client=http_client)
                             )
                         else:
-                            manager = asyncio.run(CodexTokenManager.create())
+                            manager = asyncio.run(CodexTokenManager.create(http_client=http_client))
                     except Exception as e:
                         logger.debug("codex_manager_init_failed", error=str(e))
 
@@ -539,11 +568,11 @@ def status_command(
                         ):
                             with contextlib.suppress(Exception):
                                 quick = asyncio.run(manager.get_unified_profile_quick())
-                        if (
-                            (not quick or quick == {})
-                            and detailed
-                            and manager is not None
-                        ):
+                        # If the quick/local profile is missing, fall back to an online fetch.
+                        # Previously this only happened when --detailed was set; now we always
+                        # attempt the online fetch when local data isn't available to provide
+                        # richer status information by default.
+                        if (not quick or quick == {}) and manager is not None:
                             with contextlib.suppress(Exception):
                                 quick = asyncio.run(manager.get_unified_profile())
                         if quick and isinstance(quick, dict) and quick != {}:

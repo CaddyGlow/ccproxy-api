@@ -15,4 +15,3 @@ codex = "ccproxy.plugins.codex.plugin:factory"
 
 [tool.hatch.build.targets.wheel]
 packages = ["."]
-

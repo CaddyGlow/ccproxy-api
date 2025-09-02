@@ -17,4 +17,3 @@ permissions = "ccproxy.plugins.permissions.plugin:factory"
 
 [tool.hatch.build.targets.wheel]
 packages = ["."]
-

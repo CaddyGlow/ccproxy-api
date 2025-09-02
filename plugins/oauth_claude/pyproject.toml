@@ -16,4 +16,3 @@ packages = ["."]
 
 [project.entry-points."ccproxy.plugins"]
 oauth_claude = "ccproxy.plugins.oauth_claude.plugin:factory"
-

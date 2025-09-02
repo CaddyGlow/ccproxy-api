@@ -117,18 +117,18 @@ class OAuthTracerHook(Hook):
 
         # Log with JSON formatter
         if self.json_formatter:
-            # Convert body to bytes for JSON formatter
-            if is_json:
-                body_bytes = json.dumps(body).encode() if body else b""
-            else:
-                body_bytes = self._encode_form_data(body).encode() if body else b""
-
+            # Pass body directly - JSONFormatter now handles different data types
+            # For form data, convert to string for better logging
+            log_body = body
+            if not is_json and body:
+                log_body = self._encode_form_data(body)
+            
             await self.json_formatter.log_request(
                 request_id=request_id,
                 method=method,
                 url=endpoint,
                 headers=headers,
-                body=body_bytes,
+                body=log_body,  # Pass original or form-encoded body directly
                 request_type="oauth",
             )
 
@@ -171,14 +171,12 @@ class OAuthTracerHook(Hook):
 
         # Log with JSON formatter
         if self.json_formatter:
-            # Convert body to bytes for JSON formatter
-            body_bytes = json.dumps(body).encode() if body else b""
-
+            # Pass body directly - JSONFormatter now handles different data types
             await self.json_formatter.log_response(
                 request_id=request_id,
                 status=status_code,
                 headers=headers,
-                body=body_bytes,
+                body=body,  # Pass original body data directly
                 response_type="oauth",
             )
 

@@ -51,6 +51,15 @@ class ClaudeOAuthClient(BaseOAuthClient[ClaudeCredentials]):
         # Resolve effective redirect URI from config
         redirect_uri = config.get_redirect_uri()
 
+        # Debug logging for CLI tracing
+        logger.debug(
+            "claude_oauth_client_init",
+            has_http_client=http_client is not None,
+            has_hook_manager=hook_manager is not None,
+            http_client_id=id(http_client) if http_client else None,
+            hook_manager_id=id(hook_manager) if hook_manager else None,
+        )
+
         # Initialize base class
         super().__init__(
             client_id=config.client_id,
