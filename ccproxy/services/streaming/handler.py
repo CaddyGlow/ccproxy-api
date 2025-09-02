@@ -75,9 +75,11 @@ class StreamingHandler:
         - Supports SSE processing through handler_config
         - Provides request tracing and metrics
         """
-        # Use provided client or create one
+        # Use provided client or create a short-lived one
+        owns_client = False
         if client is None:
             client = httpx.AsyncClient(**(client_config or {}))
+            owns_client = True
 
         # Log that we're creating a deferred response
         logger.debug(
@@ -98,4 +100,5 @@ class StreamingHandler:
             handler_config=handler_config,
             request_context=request_context,
             hook_manager=self.hook_manager,
+            close_client_on_finish=owns_client,
         )

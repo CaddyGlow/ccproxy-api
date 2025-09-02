@@ -44,6 +44,7 @@ class ClaudeAPIDetectionService:
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self._cached_data: ClaudeCacheData | None = None
         self._cli_service = cli_service or CLIDetectionService(settings)
+        self._cli_info: ClaudeCliInfo | None = None
 
     async def initialize_detection(self) -> ClaudeCacheData:
         """Initialize Claude detection at startup."""
@@ -88,6 +89,31 @@ class ClaudeAPIDetectionService:
     def get_cached_data(self) -> ClaudeCacheData | None:
         """Get currently cached detection data."""
         return self._cached_data
+
+    def get_cli_health_info(self) -> ClaudeCliInfo:
+        """Get lightweight CLI health info using centralized detection, cached locally.
+
+        Returns:
+            ClaudeCliInfo with availability, version, and binary path
+        """
+        from .models import ClaudeCliInfo, ClaudeCliStatus
+
+        if self._cli_info is not None:
+            return self._cli_info
+
+        info = self._cli_service.get_cli_info("claude")
+        status = (
+            ClaudeCliStatus.AVAILABLE
+            if info["is_available"]
+            else ClaudeCliStatus.NOT_INSTALLED
+        )
+        cli_info = ClaudeCliInfo(
+            status=status,
+            version=info.get("version"),
+            binary_path=info.get("path"),
+        )
+        self._cli_info = cli_info
+        return cli_info
 
     def get_version(self) -> str | None:
         """Get the detected Claude CLI version."""
@@ -293,4 +319,6 @@ class ClaudeAPIDetectionService:
         # Clear the async cache for _get_claude_version
         if hasattr(self._get_claude_version, "cache_clear"):
             self._get_claude_version.cache_clear()
+        # Clear CLI info cache
+        self._cli_info = None
         logger.debug("detection_cache_cleared", category="plugin")

@@ -58,92 +58,100 @@ async def claude_api_health_check(
                 version="1.0.0",
             )
 
-        # Get CLI status if detection service is available
-        cli_details = {}
-        cli_status_msg = None
-        if detection_service:
-            cli_version = detection_service.get_version()
-            cli_path = detection_service.get_cli_path()
+        # Standardized details
+        from ccproxy.core.plugins.health_models import (
+            AuthHealth,
+            CLIHealth,
+            ConfigHealth,
+            ProviderHealthDetails,
+        )
 
-            cli_details = {
-                "cli_available": cli_path is not None,
-                "cli_version": cli_version,
-                "cli_path": cli_path,
-            }
+        cli_info = (
+            detection_service.get_cli_health_info() if detection_service else None
+        )
+        cli_health = (
+            CLIHealth(
+                available=bool(
+                    cli_info
+                    and getattr(cli_info, "status", None)
+                    == getattr(cli_info.__class__, "__members__", {}).get("AVAILABLE")
+                ),
+                status=(cli_info.status.value if cli_info else "unknown"),
+                version=(cli_info.version if cli_info else None),
+                path=(cli_info.binary_path if cli_info else None),
+            )
+            if cli_info
+            else None
+        )
 
-            if cli_path:
-                cli_status_msg = (
-                    f"CLI v{cli_version}" if cli_version else "CLI available"
-                )
-            else:
-                cli_status_msg = "CLI not found"
-
-        # Get authentication status from credentials manager
-        auth_details: dict[str, Any] = {}
+        auth_raw: dict[str, Any] = {}
         if credentials_manager:
             try:
-                # Use the new helper method to get auth status
-                auth_details = await credentials_manager.get_auth_status()
+                auth_raw = await credentials_manager.get_auth_status()
             except Exception as e:
-                logger.debug(
-                    "Failed to check auth status", error=str(e), category="auth"
-                )
-                auth_details = {
-                    "auth_configured": False,
-                    "auth_error": str(e),
-                }
-        else:
-            auth_details = {
-                "auth_configured": False,
-                "auth_status": "Credentials manager not available",
-            }
+                logger.debug("auth_status_failed", error=str(e), category="auth")
+                auth_raw = {"authenticated": False, "reason": str(e)}
 
-        # Determine overall status and build output message
+        auth_health = (
+            AuthHealth(
+                configured=bool(credentials_manager),
+                token_available=auth_raw.get("authenticated"),
+                token_expired=(
+                    not auth_raw.get("authenticated")
+                    and auth_raw.get("reason") == "Token expired"
+                ),
+                account_id=auth_raw.get("account_id"),
+                expires_at=auth_raw.get("expires_at"),
+                error=(
+                    None if auth_raw.get("authenticated") else auth_raw.get("reason")
+                ),
+            )
+            if credentials_manager
+            else AuthHealth(configured=False)
+        )
+
+        config_health = ConfigHealth(
+            model_count=len(config.models) if config.models else 0,
+            supports_openai_format=config.support_openai_format,
+            extra=None,
+        )
+
+        # Compose output message
         status: Literal["pass", "warn", "fail"]
-        output_parts = []
-
-        if auth_details.get("token_available") and not auth_details.get(
-            "token_expired"
-        ):
+        output_parts: list[str] = []
+        if auth_health.token_available and not auth_health.token_expired:
             output_parts.append("Authenticated")
-            if auth_details.get("subscription_type"):
-                output_parts.append(
-                    f"Subscription: {auth_details['subscription_type']}"
-                )
-            if auth_details.get("has_claude_max"):
-                output_parts.append("Claude Max")
-            elif auth_details.get("has_claude_pro"):
-                output_parts.append("Claude Pro")
             status = "pass"
-        elif auth_details.get("token_expired"):
+        elif auth_health.token_expired:
             output_parts.append("Token expired")
             status = "warn"
-        elif auth_details.get("auth_configured"):
+        elif auth_health.configured:
             output_parts.append("Auth configured but token unavailable")
             status = "warn"
         else:
             output_parts.append("Authentication not configured")
             status = "warn"
 
-        # Add CLI status
-        if cli_status_msg:
-            output_parts.append(cli_status_msg)
+        if cli_health and cli_health.available:
+            output_parts.append(
+                f"CLI v{cli_health.version}" if cli_health.version else "CLI available"
+            )
+        else:
+            output_parts.append("CLI not found")
 
-        # Add model info
         if config.models:
             output_parts.append(f"{len(config.models)} models available")
 
         output = "Claude API: " + ", ".join(output_parts)
 
-        # Build details dict with non-sensitive information
-        details = {
-            "base_url": config.base_url,
-            "enabled": config.enabled,
-            "model_count": len(config.models) if config.models else 0,
-            "support_openai_format": config.support_openai_format,
-            **cli_details,  # Include CLI detection details
-            **auth_details,  # Include all auth details from helper
-        }
+        details_model = ProviderHealthDetails(
+            provider="claude_api",
+            enabled=config.enabled,
+            base_url=config.base_url,
+            cli=cli_health,
+            auth=auth_health,
+            config=config_health,
+        )
 
         return HealthCheckResult(
             status=status,
@@ -151,7 +159,7 @@ async def claude_api_health_check(
             componentType="provider_plugin",
             output=output,
             version="1.0.0",
-            details=details,
+            details=details_model.model_dump(),
         )
 
     except Exception as e:

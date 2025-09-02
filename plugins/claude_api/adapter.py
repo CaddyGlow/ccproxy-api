@@ -10,14 +10,15 @@ from starlette.responses import StreamingResponse
 
 if TYPE_CHECKING:
     from ccproxy.auth.manager import AuthManager
+    from ccproxy.core.plugins.declaration import PluginContext
     from ccproxy.core.request_context import RequestContext
     from ccproxy.hooks import HookManager
-    from ccproxy.core.plugins.declaration import PluginContext
     from ccproxy.services.interfaces import (
         IMetricsCollector,
         IRequestTracer,
         IStreamingHandler,
     )
+
     from .detection_service import ClaudeAPIDetectionService
 
 from ccproxy.config.constants import (

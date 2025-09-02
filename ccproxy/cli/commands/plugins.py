@@ -4,7 +4,7 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
-from ccproxy.config.settings import get_settings
+from ccproxy.config.settings import Settings
 from ccproxy.core.plugins.loader import load_plugin_system
 
 
@@ -16,8 +16,8 @@ def settings() -> None:
     """List all available plugin settings."""
     console = Console()
 
-    # Get settings and load plugin system via centralized loader
-    settings_obj = get_settings()
+    settings_obj = Settings.from_config()
+
     registry, _ = load_plugin_system(settings_obj)
     if not registry.factories:
         console.print("No plugins found.")
@@ -34,8 +34,6 @@ def settings() -> None:
         table.add_column("Type")
         table.add_column("Default")
 
-        # TODO: Add config class support to v2 plugins
-        # For now, skip config display
         console.print(f"Plugin: [bold]{manifest.name}[/bold] v{manifest.version}")
         console.print("  Configuration display not yet implemented for v2 plugins.")
         console.print()

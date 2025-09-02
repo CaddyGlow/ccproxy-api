@@ -3,7 +3,6 @@
 from typing import Any
 
 from ccproxy.core.logging import get_plugin_logger
-from ccproxy.hooks import HookRegistry
 from ccproxy.core.plugins import (
     MiddlewareLayer,
     MiddlewareSpec,
@@ -12,6 +11,7 @@ from ccproxy.core.plugins import (
     SystemPluginFactory,
     SystemPluginRuntime,
 )
+from ccproxy.hooks import HookRegistry
 
 from .config import RequestTracerConfig
 from .hook import RequestTracerHook
@@ -48,8 +48,13 @@ class RequestTracerRuntime(SystemPluginRuntime):
             logger.info("plugin_using_default_config")
         self.config = config
 
-        # Create tracer instance (for backward compatibility)
-        self.tracer_instance = RequestTracerImpl(self.config)
+        # Create or reuse tracer instance
+        # If factory created one (for middleware/raw HTTP), reuse it from context
+        existing_tracer = self.context.get("request_tracer")
+        if isinstance(existing_tracer, RequestTracerImpl):
+            self.tracer_instance = existing_tracer
+        else:
+            self.tracer_instance = RequestTracerImpl(self.config)
 
         if self.config.enabled:
             if self.use_hooks:
@@ -222,6 +227,9 @@ class RequestTracerFactory(SystemPluginFactory):
 
             # Create tracer instance for middleware
             self._tracer_instance = RequestTracerImpl(config)
+            # Make it available to runtime via context to avoid double initialization
+            # Override any placeholder/null tracer from core services
+            context["request_tracer"] = self._tracer_instance
 
             # Add middleware to manifest
             # This is safe because it happens during app creation phase

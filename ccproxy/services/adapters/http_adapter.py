@@ -29,8 +29,8 @@ if TYPE_CHECKING:
     import httpx
 
     from ccproxy.auth.manager import AuthManager
-    from ccproxy.core.request_context import RequestContext
     from ccproxy.core.plugins.declaration import PluginContext
+    from ccproxy.core.request_context import RequestContext
     from ccproxy.services.handler_config import PluginTransformerProtocol
 
 

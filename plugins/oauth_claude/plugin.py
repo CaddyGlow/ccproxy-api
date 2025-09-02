@@ -9,6 +9,7 @@ from ccproxy.core.plugins import (
     PluginContext,
     PluginManifest,
 )
+
 from .config import ClaudeOAuthConfig
 from .provider import ClaudeOAuthProvider
 
@@ -97,9 +98,7 @@ class OAuthClaudeFactory(AuthProviderPluginFactory):
         http_client = context.get("http_client") if context else None
         hook_manager = context.get("hook_manager") if context else None
         # CLIDetectionService is injected under 'cli_detection_service' in base context
-        detection_service = (
-            context.get("cli_detection_service") if context else None
-        )
+        detection_service = context.get("cli_detection_service") if context else None
         return ClaudeOAuthProvider(
             config,
             http_client=http_client,

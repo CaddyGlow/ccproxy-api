@@ -19,4 +19,3 @@ def test_factory_creates_runtime():
     assert runtime is not None
     # runtime is not initialized yet
     assert not runtime.initialized
-

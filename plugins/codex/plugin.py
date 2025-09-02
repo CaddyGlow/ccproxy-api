@@ -9,6 +9,7 @@ from ccproxy.core.plugins import (
     ProviderPluginRuntime,
 )
 from ccproxy.core.plugins.base_factory import BaseProviderPluginFactory
+
 from .adapter import CodexAdapter
 from .config import CodexSettings
 from .detection_service import CodexDetectionService
@@ -205,6 +206,23 @@ class CodexRuntime(ProviderPluginRuntime):
                 details["token_available"] = auth_status.get("token_available", False)
             except Exception as e:
                 details["auth_error"] = str(e)
+
+        # Include standardized provider health check details
+        try:
+            from .health import codex_health_check
+
+            if self.config and self.detection_service:
+                health_result = await codex_health_check(
+                    self.config, self.detection_service, self.auth_manager
+                )
+                details.update(
+                    {
+                        "health_check_status": health_result.status,
+                        "health_check_detail": health_result.details,
+                    }
+                )
+        except Exception as e:
+            details["health_check_error"] = str(e)
 
         return details
 

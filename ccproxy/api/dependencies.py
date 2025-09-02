@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Annotated, Any
+from typing import TYPE_CHECKING, Annotated, Any, TypeVar
 
 import httpx
 from fastapi import Depends, Request
 
-from ccproxy.config.settings import Settings, get_settings
+from ccproxy.config.settings import Settings
 from ccproxy.core.logging import get_logger
 from ccproxy.hooks import HookManager
 from ccproxy.services.container import ServiceContainer
@@ -16,101 +16,57 @@ from ccproxy.services.container import ServiceContainer
 if TYPE_CHECKING:
     pass
 
-
 logger = get_logger(__name__)
+
+T = TypeVar("T")
+
+
+def get_service(service_type: type[T]) -> T:
+    """Get a service from the container."""
+
+    def _get_service(request: Request) -> T:
+        """Get a service from the container."""
+        container: ServiceContainer | None = getattr(
+            request.app.state, "service_container", None
+        )
+        if container is None:
+            from fastapi import HTTPException
+
+            logger.error(
+                "service_container_missing_on_app_state",
+                category="lifecycle",
+            )
+            raise HTTPException(
+                status_code=503, detail="Service container not initialized"
+            )
+        return container.get_service(service_type)
+
+    return _get_service  # type: ignore[return-value]
 
 
 def get_cached_settings(request: Request) -> Settings:
-    """Get cached settings from app state.
-
-    This avoids recomputing settings on every request by using the
-    settings instance computed during application startup.
-
-    Args:
-        request: FastAPI request object
-
-    Returns:
-        Settings instance from app state
-
-    Raises:
-        RuntimeError: If settings are not available in app state
-    """
-    settings = getattr(request.app.state, "settings", None)
-    if settings is None:
-        # Fallback to get_settings() for safety, but this should not happen
-        # in normal operation after lifespan startup
-        logger.warning(
-            "Settings not found in app state, falling back to get_settings()",
-            category="lifecycle",
-        )
-        settings = get_settings()
-    return settings
+    """Get cached settings from app state."""
+    return get_service(Settings)(request)
 
 
 async def get_http_client(request: Request) -> httpx.AsyncClient:
-    """Get container-managed HTTP client from the service container.
-
-    Falls back to creating a container if missing on app state (logs warning).
-
-    Returns:
-        Shared httpx.AsyncClient managed by ServiceContainer
-    """
-    logger.debug("getting_http_client_from_container", category="lifecycle")
-    container: ServiceContainer | None = getattr(
-        request.app.state, "service_container", None
-    )
-    if container is None:
-        # Fallback: create and attach a container to avoid runtime failures
-        settings = getattr(request.app.state, "settings", None) or get_settings()
-        logger.warning(
-            "service_container_missing_on_app_state_created", category="lifecycle"
-        )
-        container = ServiceContainer(settings)
-        request.app.state.service_container = container
-    return container.get_http_client()
-
-
-# ProxyService removed - use ServiceContainer directly for dependency injection
+    """Get container-managed HTTP client from the service container."""
+    return get_service(httpx.AsyncClient)(request)
 
 
 def get_hook_manager(request: Request) -> HookManager | None:
-    """Get hook manager from app state.
-
-    Args:
-        request: FastAPI request object
-
-    Returns:
-        HookManager instance if available, None otherwise
-    """
-    return getattr(request.app.state, "hook_manager", None)
+    """Get hook manager from app state."""
+    return get_service(HookManager)(request)
 
 
-# V2 Plugin system dependencies
 def get_plugin_adapter(plugin_name: str) -> Any:
-    """Create a dependency function for a specific plugin's adapter.
-
-    Args:
-        plugin_name: Name of the plugin
-
-    Returns:
-        Dependency function that retrieves the plugin's adapter
-    """
+    """Create a dependency function for a specific plugin's adapter."""
     from fastapi import HTTPException
 
     from ccproxy.services.adapters.base import BaseAdapter
 
     def _get_adapter(request: Request) -> BaseAdapter:
-        """Get adapter for the specified plugin.
-
-        Args:
-            request: FastAPI request object
-
-        Returns:
-            Plugin adapter instance
-
-        Raises:
-            HTTPException: If plugin or adapter not available
-        """
+        """Get adapter for the specified plugin."""
         if not hasattr(request.app.state, "plugin_registry"):
             raise HTTPException(
                 status_code=503, detail="Plugin registry not initialized"
@@ -137,17 +93,12 @@ def get_plugin_adapter(plugin_name: str) -> Any:
                 status_code=503, detail=f"Plugin {plugin_name} adapter not available"
             )
 
-        # Cast is safe because we've verified runtime is ProviderPluginRuntime
         adapter: BaseAdapter = runtime.adapter
         return adapter
 
     return _get_adapter
 
 
-# Type aliases for service dependencies
 SettingsDep = Annotated[Settings, Depends(get_cached_settings)]
-# ProxyServiceDep removed - ProxyService no longer used
 HTTPClientDep = Annotated[httpx.AsyncClient, Depends(get_http_client)]
 HookManagerDep = Annotated[HookManager | None, Depends(get_hook_manager)]
-
-# Plugin-specific adapter dependencies are declared in each plugin's routes module

@@ -6,6 +6,7 @@ from datetime import datetime
 from typing import TypedDict
 
 from sqlmodel import Field, SQLModel
+from pydantic import ConfigDict
 
 
 class AccessLog(SQLModel, table=True):
@@ -56,9 +57,7 @@ class AccessLog(SQLModel, table=True):
     session_error_count: int = Field(default=0)
     session_is_new: bool = Field(default=True)
 
-    class Config:
-        from_attributes = True
-        use_enum_values = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class AccessLogPayload(TypedDict, total=False):

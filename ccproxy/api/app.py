@@ -15,25 +15,24 @@ from ccproxy.api.routes.health import router as health_router
 from ccproxy.api.routes.plugins import router as plugins_router
 from ccproxy.auth.oauth.registry import OAuthRegistry
 from ccproxy.auth.oauth.routes import router as oauth_router
-from ccproxy.config.settings import Settings, get_settings
+from ccproxy.api.bootstrap import create_service_container
+from ccproxy.config.settings import Settings
 from ccproxy.core.async_task_manager import start_task_manager, stop_task_manager
 from ccproxy.core.logging import TraceBoundLogger, get_logger, setup_logging
-from ccproxy.hooks import HookManager, HookRegistry
-from ccproxy.hooks.events import HookEvent
-
-# Plugin System imports
 from ccproxy.core.plugins import (
     MiddlewareManager,
     PluginRegistry,
     setup_default_middleware,
 )
 from ccproxy.core.plugins.loader import load_plugin_system
+from ccproxy.hooks import HookManager, HookRegistry
+from ccproxy.hooks.events import HookEvent
 from ccproxy.services.container import ServiceContainer
-from ccproxy.services.factories import ConcreteServiceFactory
+from ccproxy.services.interfaces import IRequestTracer
+from ccproxy.services.tracing import NullRequestTracer
 from ccproxy.utils.startup_helpers import (
     check_claude_cli_startup,
     check_version_updates_startup,
-    initialize_service_container_startup,
     setup_scheduler_shutdown,
     setup_scheduler_startup,
 )
@@ -42,7 +41,6 @@ from ccproxy.utils.startup_helpers import (
 logger: TraceBoundLogger = get_logger()
 
 
-# Type definitions for lifecycle components
 class LifecycleComponent(TypedDict):
     name: str
     startup: Callable[[FastAPI, Any], Awaitable[None]] | None
@@ -58,7 +56,6 @@ class ShutdownComponent(TypedDict):
     shutdown: Callable[[FastAPI], Awaitable[None]] | None
 
 
-# Define startup/shutdown functions first
 async def setup_task_manager_startup(app: FastAPI, settings: Settings) -> None:
     """Start the async task manager."""
     await start_task_manager()
@@ -71,26 +68,11 @@ async def setup_task_manager_shutdown(app: FastAPI) -> None:
     logger.debug("task_manager_shutdown_completed", category="lifecycle")
 
 
-# Legacy HTTP client singleton shutdown removed; HTTP client is managed by ServiceContainer
-
-
 async def setup_service_container_shutdown(app: FastAPI) -> None:
     """Close the service container and its resources."""
     if hasattr(app.state, "service_container"):
         service_container = app.state.service_container
-        if hasattr(service_container, "close"):
-            try:
-                await service_container.close()
-                logger.debug(
-                    "service_container_shutdown_completed", category="lifecycle"
-                )
-            except Exception as e:
-                logger.error(
-                    "service_container_shutdown_failed",
-                    error=str(e),
-                    exc_info=e,
-                    category="lifecycle",
-                )
+        await service_container.shutdown()
 
 
 async def initialize_plugins_startup(app: FastAPI, settings: Settings) -> None:
@@ -99,30 +81,28 @@ async def initialize_plugins_startup(app: FastAPI, settings: Settings) -> None:
         logger.info("plugin_system_disabled", category="lifecycle")
         return
 
-    # Get plugin registry from app state (set during app creation)
     if not hasattr(app.state, "plugin_registry"):
         logger.warning("plugin_registry_not_found", category="lifecycle")
         return
 
     plugin_registry: PluginRegistry = app.state.plugin_registry
+    service_container: ServiceContainer = app.state.service_container
 
-    # Create service container for plugin initialization
-    if not hasattr(app.state, "service_container"):
-        factory = ConcreteServiceFactory()
-        app.state.service_container = ServiceContainer(settings, factory)
-
-    service_container = app.state.service_container
-
-    # Create hook system early if enabled so plugins can register hooks
     hook_registry = HookRegistry()
     hook_manager = HookManager(hook_registry)
-    # Store in app state so plugins can access during initialization
     app.state.hook_registry = hook_registry
     app.state.hook_manager = hook_manager
-    logger.debug("hook_system_created_early_for_plugins", category="lifecycle")
+    service_container.register_service(HookManager, instance=hook_manager)
 
-    # Create a core services adapter for the plugin system
-    # The plugin system expects certain attributes that we need to provide
+    # If a StreamingHandler was created before HookManager existed, attach it now
+    try:
+        streaming_handler = service_container.get_streaming_handler()
+        if getattr(streaming_handler, "hook_manager", None) is None:
+            streaming_handler.hook_manager = hook_manager  # type: ignore[attr-defined]
+    except Exception:
+        # If streaming handler is not yet created, it will pick up HookManager later
+        pass
+
     class CoreServicesAdapter:
         def __init__(self, container: ServiceContainer):
             self.settings = container.settings
@@ -133,23 +113,14 @@ async def initialize_plugins_startup(app: FastAPI, settings: Settings) -> None:
             self.plugin_registry = app.state.plugin_registry
             self.oauth_registry = getattr(app.state, "oauth_registry", None)
             self._container = container
-            # Add hook registry and manager if available
             self.hook_registry = getattr(app.state, "hook_registry", None)
             self.hook_manager = getattr(app.state, "hook_manager", None)
-            # Also expose app for plugins that need app.state access
             self.app = app
-            # Add streaming handler and other services
             self.request_tracer = container.get_request_tracer()
-            # Pass hook_manager to streaming handler for event emission
-            self.streaming_handler = container.get_streaming_handler(
-                hook_manager=self.hook_manager
-            )
-            # Metrics is now handled by the metrics plugin, not core services
+            self.streaming_handler = container.get_streaming_handler()
             self.metrics = None
 
         def get_plugin_config(self, plugin_name: str) -> Any:
-            """Get plugin configuration."""
-            # Check if plugin config exists in settings
             if hasattr(self.settings, "plugins") and self.settings.plugins:
                 plugin_config = self.settings.plugins.get(plugin_name)
                 if plugin_config:
@@ -158,16 +129,11 @@ async def initialize_plugins_startup(app: FastAPI, settings: Settings) -> None:
                         if hasattr(plugin_config, "model_dump")
                         else plugin_config
                     )
-
-            # Return empty config as default
             return {}
 
     core_services = CoreServicesAdapter(service_container)
 
-    # Initialize all plugins with their runtime context
     await plugin_registry.initialize_all(core_services)
-
-    # No plugin-specific routing logic in core. Plugins register their own routes.
 
     logger.info(
         "plugins_initialization_completed",
@@ -187,26 +153,19 @@ async def shutdown_plugins(app: FastAPI) -> None:
 
 async def initialize_hooks_startup(app: FastAPI, settings: Settings) -> None:
     """Initialize hook system with plugins."""
-    # Hook system is always enabled; initialize if not already present
-
-    # Check if hook system was already created during plugin init
     if hasattr(app.state, "hook_registry") and hasattr(app.state, "hook_manager"):
         hook_registry = app.state.hook_registry
         hook_manager = app.state.hook_manager
         logger.debug("hook_system_already_created", category="lifecycle")
     else:
-        # Create hook system if not already created
         hook_registry = HookRegistry()
         hook_manager = HookManager(hook_registry)
-        # Store hook manager in app state
         app.state.hook_registry = hook_registry
         app.state.hook_manager = hook_manager
 
-    # Get plugin registry from app state
     if hasattr(app.state, "plugin_registry"):
         plugin_registry: PluginRegistry = app.state.plugin_registry
 
-        # Register hooks from plugin manifests
         for name, factory in plugin_registry.factories.items():
             manifest = factory.get_manifest()
             for hook_spec in manifest.hooks:
@@ -229,19 +188,13 @@ async def initialize_hooks_startup(app: FastAPI, settings: Settings) -> None:
                         category="lifecycle",
                     )
 
-    # Hooks middleware is already added during middleware setup and will get
-    # the hook manager from app state when processing requests
-
-    # Trigger startup hook
     try:
-        # Use the APP_STARTUP event from the enum
         await hook_manager.emit(HookEvent.APP_STARTUP, {"phase": "startup"})
     except Exception as e:
         logger.error(
             "startup_hook_failed", error=str(e), exc_info=e, category="lifecycle"
         )
 
-    # Use _hooks to get the count (or better, add a method to get count)
     logger.info(
         "hook_system_initialized",
         hook_count=len(hook_registry._hooks),
@@ -249,7 +202,6 @@ async def initialize_hooks_startup(app: FastAPI, settings: Settings) -> None:
     )
 
 
-# Define lifecycle components in order
 LIFECYCLE_COMPONENTS: list[LifecycleComponent] = [
     {
         "name": "Task Manager",
@@ -259,22 +211,21 @@ LIFECYCLE_COMPONENTS: list[LifecycleComponent] = [
     {
         "name": "Version Check",
         "startup": check_version_updates_startup,
-        "shutdown": None,  # One-time check, no cleanup needed
+        "shutdown": None,
     },
     {
         "name": "Claude CLI",
         "startup": check_claude_cli_startup,
-        "shutdown": None,  # Detection only, no cleanup needed
+        "shutdown": None,
     },
     {
         "name": "Scheduler",
         "startup": setup_scheduler_startup,
         "shutdown": setup_scheduler_shutdown,
     },
-    # Log storage is initialized by the duckdb_storage plugin.
     {
         "name": "Service Container",
-        "startup": initialize_service_container_startup,
+        "startup": None,
         "shutdown": setup_service_container_shutdown,
     },
     {
@@ -285,7 +236,7 @@ LIFECYCLE_COMPONENTS: list[LifecycleComponent] = [
     {
         "name": "Hook System",
         "startup": initialize_hooks_startup,
-        "shutdown": None,  # Hook system cleaned up automatically
+        "shutdown": None,
     },
 ]
 
@@ -295,16 +246,9 @@ SHUTDOWN_ONLY_COMPONENTS: list[ShutdownComponent] = []
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Application lifespan manager using component-based approach."""
-    # Use settings from app.state if available (modified by plugins during create_app)
-    # Otherwise get fresh settings
-    if hasattr(app.state, "settings"):
-        settings = app.state.settings
-    else:
-        settings = get_settings()
-        # Store settings in app state for reuse in dependencies
-        app.state.settings = settings
+    service_container: ServiceContainer = app.state.service_container
+    settings = service_container.get_service(Settings)
 
-    # Startup
     logger.info(
         "server_start",
         host=settings.server.host,
@@ -319,7 +263,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         category="config",
     )
 
-    # Execute startup components in order
     for component in LIFECYCLE_COMPONENTS:
         if component["startup"]:
             component_name = component["name"]
@@ -337,7 +280,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
                     exc_info=e,
                     category="lifecycle",
                 )
-                # Continue with graceful degradation
             except Exception as e:
                 logger.error(
                     f"{component_name.lower().replace(' ', '_')}_startup_failed",
@@ -346,14 +288,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
                     exc_info=e,
                     category="lifecycle",
                 )
-                # Continue with graceful degradation
 
     yield
 
-    # Shutdown
     logger.debug("server_stop", category="lifecycle")
 
-    # Execute shutdown-only components first
     for shutdown_component in SHUTDOWN_ONLY_COMPONENTS:
         if shutdown_component["shutdown"]:
             component_name = shutdown_component["name"]
@@ -380,7 +319,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
                     category="lifecycle",
                 )
 
-    # Execute shutdown components in reverse order
     for component in reversed(LIFECYCLE_COMPONENTS):
         if component["shutdown"]:
             component_name = component["name"]
@@ -389,7 +327,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
                     f"stopping_{component_name.lower().replace(' ', '_')}",
                     category="lifecycle",
                 )
-                # Some shutdown functions need settings, others don't
                 if component_name == "Permission Service":
                     await component["shutdown"](app, settings)  # type: ignore
                 else:
@@ -412,23 +349,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
                 )
 
 
-def create_app(settings: Settings | None = None) -> FastAPI:
-    """Create and configure the FastAPI application with plugin system.
-
-    Args:
-        settings: Optional settings override. If None, uses get_settings().
-
-    Returns:
-        Configured FastAPI application instance.
-    """
-    if settings is None:
-        settings = get_settings()
-
-    # Configure logging based on settings BEFORE any module uses logger
-
+def create_app(service_container: ServiceContainer) -> FastAPI:
+    """Create and configure the FastAPI application with plugin system."""
+    settings = service_container.get_service(Settings)
     if not structlog.is_configured():
-        # Only setup logging if structlog is not configured at all
-        # Use JSON logs based on the logging format setting
         json_logs = settings.logging.format == "json"
         setup_logging(
             json_logs=json_logs,
@@ -443,42 +367,41 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         lifespan=lifespan,
     )
 
-    # Create core-scoped OAuth registry (avoid module-level globals)
+    app.state.service_container = service_container
+
     app.state.oauth_registry = OAuthRegistry()
 
-    # PHASE 1: Plugin Discovery and Registration (before app starts)
     plugin_registry = PluginRegistry()
     middleware_manager = MiddlewareManager()
 
     if settings.enable_plugins:
-        # Centralized loader: build registry and middleware manager
         plugin_registry, middleware_manager = load_plugin_system(settings)
 
-        # Log registration summary
-        provider_count = sum(
-            1
-            for f in plugin_registry.factories.values()
-            if f.get_manifest().is_provider
-        )
         logger.info(
             "plugins_registered",
             total=len(plugin_registry.factories),
-            providers=provider_count,
-            system_plugins=len(plugin_registry.factories) - provider_count,
+            providers=sum(
+                1
+                for f in plugin_registry.factories.values()
+                if f.get_manifest().is_provider
+            ),
+            system_plugins=len(plugin_registry.factories)
+            - sum(
+                1
+                for f in plugin_registry.factories.values()
+                if f.get_manifest().is_provider
+            ),
             names=list(plugin_registry.factories.keys()),
             category="plugin",
         )
 
-        # Create a minimal core services adapter for manifest population
-        # This allows plugins to check their configuration and add middleware/routes
         class ManifestPopulationServices:
             def __init__(self, settings: Settings | None) -> None:
                 self.settings = settings
-                self.http_client = None  # Not needed for manifest population
+                self.http_client = None
                 self.logger = structlog.get_logger()
 
             def get_plugin_config(self, plugin_name: str) -> dict[str, Any]:
-                # Use the settings.plugins dictionary populated by Pydantic
                 if (
                     self.settings
                     and hasattr(self.settings, "plugins")
@@ -489,12 +412,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         manifest_services = ManifestPopulationServices(settings)
 
-        # Call create_context on each factory to populate manifests
-        # This allows plugins to conditionally add middleware/routes based on config
         for _name, factory in plugin_registry.factories.items():
             factory.create_context(manifest_services)
 
-        # Collect middleware from all plugins
         plugin_middleware_count = 0
         for name, factory in plugin_registry.factories.items():
             manifest = factory.get_manifest()
@@ -508,7 +428,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     category="lifecycle",
                 )
 
-        # Log middleware collection summary
         if plugin_middleware_count > 0:
             plugins_with_middleware = [
                 n
@@ -523,11 +442,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 category="lifecycle",
             )
 
-        # Register plugin routes (static registration during app creation)
         for name, factory in plugin_registry.factories.items():
             manifest = factory.get_manifest()
             for route_spec in manifest.routes:
-                # Normalize default tag to kebab-case (underscores -> hyphens)
                 default_tag = name.replace("_", "-")
                 app.include_router(
                     route_spec.router,
@@ -542,54 +459,32 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     category="lifecycle",
                 )
 
-    # Store plugin registry and middleware manager in app state for runtime initialization
     app.state.plugin_registry = plugin_registry
     app.state.middleware_manager = middleware_manager
 
-    # Store settings object that was potentially modified by plugins
-    # This ensures the same settings object is used throughout the app lifecycle
     app.state.settings = settings
 
-    # Setup CORS middleware first (needs to be outermost)
     setup_cors_middleware(app, settings)
     setup_error_handlers(app)
 
-    # Setup default core middleware
     setup_default_middleware(middleware_manager)
 
-    # Hooks middleware will be added during hook system initialization
-
-    # Apply all middleware in correct order
     middleware_manager.apply_to_app(app)
 
-    # Include core routers
     app.include_router(health_router, tags=["health"])
-
-    # Metrics endpoint is provided by the metrics plugin when enabled.
-
-    # Logs and dashboard routes are provided by plugins: analytics and dashboard.
 
     app.include_router(oauth_router, prefix="/oauth", tags=["oauth"])
 
-    # Plugin management endpoints (conditional on plugin system)
     if settings.enable_plugins:
-        # Mount under /plugins (no /api prefix)
-        app.include_router(plugins_router, tags=["plugins"])  # mounts at /plugins
-
-    # Dashboard static mounting is handled by the dashboard plugin.
+        app.include_router(plugins_router, tags=["plugins"])
 
     return app
 
 
 def get_app() -> FastAPI:
-    """Get the FastAPI app instance.
-
-    Convenience alias for create_app() using default settings.
-    """
-    from ccproxy.config.settings import get_settings
-
-    return create_app(get_settings())
+    """Get the FastAPI app instance."""
+    container = create_service_container()
+    return create_app(container)
 
 
-# Export create_app as the main factory
 __all__ = ["create_app", "get_app"]

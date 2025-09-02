@@ -14,6 +14,7 @@ import httpx
 from ccproxy.auth.oauth.protocol import ProfileLoggingMixin, StandardProfileFields
 from ccproxy.auth.oauth.registry import OAuthProviderInfo
 from ccproxy.core.logging import get_plugin_logger
+
 from .client import ClaudeOAuthClient
 from .config import ClaudeOAuthConfig
 from .models import ClaudeCredentials, ClaudeProfileInfo
@@ -278,6 +279,7 @@ class ClaudeOAuthProvider(ProfileLoggingMixin):
         from pathlib import Path
 
         from ccproxy.auth.storage.generic import GenericJsonStorage
+
         from .manager import ClaudeApiTokenManager
         from .models import ClaudeCredentials
 
@@ -312,6 +314,7 @@ class ClaudeOAuthProvider(ProfileLoggingMixin):
         from pathlib import Path
 
         from ccproxy.auth.storage.generic import GenericJsonStorage
+
         from .manager import ClaudeApiTokenManager
         from .models import ClaudeCredentials
 
@@ -383,7 +386,7 @@ class ClaudeOAuthProvider(ProfileLoggingMixin):
         if hasattr(credentials, "model_dump"):
             raw_data["credentials"] = credentials.model_dump()
 
-        profile_data["_raw_profile_data"] = raw_data
+        profile_data["raw_profile_data"] = raw_data
 
         return StandardProfileFields(**profile_data)
 
@@ -406,7 +409,7 @@ class ClaudeOAuthProvider(ProfileLoggingMixin):
             "active": getattr(credentials, "active", True),
             "expired": False,  # Claude handles expiration internally
             "has_refresh_token": bool(getattr(credentials, "refresh_token", None)),
-            "_raw_profile_data": {},
+            "raw_profile_data": {},
         }
 
         # Extract profile data
@@ -468,10 +471,10 @@ class ClaudeOAuthProvider(ProfileLoggingMixin):
         # Store full profile data in raw data (start from basic profile data)
         from typing import cast
 
-        base_raw = cast(dict[str, Any], basic_profile_data.get("_raw_profile_data", {}))
+        base_raw = cast(dict[str, Any], basic_profile_data.get("raw_profile_data", {}))
         raw_data = dict(base_raw)
         raw_data["full_profile"] = profile_dict
-        updates["_raw_profile_data"] = raw_data
+        updates["raw_profile_data"] = raw_data
 
         # Create new profile with updates starting from basic profile data
         profile_data = dict(basic_profile_data)

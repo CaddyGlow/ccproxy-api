@@ -3,13 +3,13 @@
 from typing import Any
 
 from ccproxy.core.logging import get_plugin_logger
-from ccproxy.hooks import HookRegistry
 from ccproxy.core.plugins import (
     PluginContext,
     PluginManifest,
     SystemPluginFactory,
     SystemPluginRuntime,
 )
+from ccproxy.hooks import HookRegistry
 
 from .config import MetricsConfig
 from .hook import MetricsHook

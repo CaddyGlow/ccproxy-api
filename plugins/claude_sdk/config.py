@@ -3,7 +3,7 @@
 from enum import Enum
 
 from claude_code_sdk import ClaudeCodeOptions
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, model_validator, ConfigDict
 
 from ccproxy.models.provider import ProviderConfig
 
@@ -198,7 +198,4 @@ class ClaudeSDKSettings(ProviderConfig):
             self.sdk_session_pool = SessionPoolSettings()
         return self
 
-    class Config:
-        """Pydantic configuration."""
-
-        extra = "allow"  # Allow extra fields from Claude configuration
+    model_config = ConfigDict(extra="allow")

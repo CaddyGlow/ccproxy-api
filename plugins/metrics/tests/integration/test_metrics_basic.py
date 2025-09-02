@@ -21,7 +21,8 @@ async def test_metrics_endpoint_available_when_enabled():
     app = create_app(settings)
     await initialize_plugins_startup(app, settings)
 
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test"
+    ) as client:
         resp = await client.get("/metrics")
         assert resp.status_code == 200
-

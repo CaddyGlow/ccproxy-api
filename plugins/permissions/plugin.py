@@ -10,6 +10,7 @@ from ccproxy.core.plugins import (
     SystemPluginFactory,
     SystemPluginRuntime,
 )
+
 from .config import PermissionsConfig
 from .mcp import mcp_router
 from .routes import router

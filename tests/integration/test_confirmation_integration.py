@@ -9,8 +9,9 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from ccproxy.config.settings import Settings, get_settings
+from ccproxy.config.settings import Settings
 from ccproxy.core.async_task_manager import start_task_manager, stop_task_manager
+from ccproxy.services.container import ServiceContainer
 from plugins.permissions.models import PermissionStatus
 from plugins.permissions.routes import router as confirmation_router
 from plugins.permissions.service import (
@@ -41,20 +42,14 @@ def app(confirmation_service: PermissionService) -> FastAPI:
     """Create a FastAPI app with real confirmation service."""
     from pydantic import BaseModel
 
+    settings = Settings()
+    container = ServiceContainer(settings)
+    container.register_service(PermissionService, instance=confirmation_service)
+
     app = FastAPI()
+    app.state.service_container = container
     app.include_router(confirmation_router, prefix="/confirmations")
 
-    # Override to use test service
-    app.dependency_overrides[get_permission_service] = lambda: confirmation_service
-
-    # Mock settings
-    mock_settings = Mock(spec=Settings)
-    mock_settings.server = Mock()
-    mock_settings.server.host = "localhost"
-    mock_settings.server.port = 8080
-    app.dependency_overrides[get_settings] = lambda: mock_settings
-
-    # Add test MCP endpoint since mcp.py doesn't export a router
     class MCPRequest(BaseModel):
         tool: str
         input: dict[str, str]
@@ -67,8 +62,7 @@ def app(confirmation_service: PermissionService) -> FastAPI:
 
             raise HTTPException(status_code=400, detail="Tool name is required")
 
-        # Use the same confirmation service instance
-        service = app.dependency_overrides[get_permission_service]()
+        service = container.get_service(PermissionService)
         confirmation_id = await service.request_permission(
             tool_name=request.tool,
             input=request.input,

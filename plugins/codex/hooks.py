@@ -5,6 +5,7 @@ from typing import Any
 
 from ccproxy.core.logging import get_plugin_logger
 from ccproxy.hooks import Hook, HookContext, HookEvent
+
 from .streaming_metrics import extract_usage_from_codex_chunk
 
 

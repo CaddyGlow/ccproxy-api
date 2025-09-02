@@ -40,11 +40,13 @@ class ClaudeApiTokenManager(BaseTokenManager[ClaudeCredentials]):
         super().__init__(storage)
         self._profile_cache: ClaudeProfileInfo | None = None
 
-        # Create default HTTP client if not provided
+        # Create default HTTP client if not provided; track ownership
+        self._owns_client = False
         if http_client is None:
             import httpx
 
             http_client = httpx.AsyncClient()
+            self._owns_client = True
         self.http_client = http_client
 
     # ==================== Internal helpers ====================
@@ -443,5 +445,5 @@ class ClaudeApiTokenManager(BaseTokenManager[ClaudeCredentials]):
 
     async def close(self) -> None:
         """Close the HTTP client if it was created internally."""
-        if self.http_client:
+        if getattr(self, "_owns_client", False) and self.http_client:
             await self.http_client.aclose()

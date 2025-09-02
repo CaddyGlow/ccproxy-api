@@ -1,6 +1,7 @@
 """Base token manager for all authentication providers."""
 
 import json
+import os
 from abc import ABC, abstractmethod
 from typing import Any, Generic, TypeVar
 
@@ -32,7 +33,9 @@ class BaseTokenManager(ABC, Generic[CredentialsT]):
         CredentialsT: The specific credential type (e.g., OpenAICredentials, ClaudeCredentials)
     """
 
-    def __init__(self, storage: TokenStorage[CredentialsT]):
+    def __init__(
+        self, storage: TokenStorage[CredentialsT], credentials_ttl: float | None = None
+    ):
         """Initialize token manager.
 
         Args:
@@ -44,18 +47,22 @@ class BaseTokenManager(ABC, Generic[CredentialsT]):
         # In-memory credentials cache to reduce file checks
         self._credentials_cache: CredentialsT | None = None
         self._credentials_loaded_at: float | None = None
-        # Default recheck interval (seconds). Can be tuned if needed.
         # TTL for rechecking credentials from storage (config-driven)
-        from ccproxy.config.settings import get_settings
-
-        try:
-            settings = get_settings()
-            ttl = getattr(
-                getattr(settings, "auth", None), "credentials_ttl_seconds", 30.0
-            )
-            self._credentials_ttl = float(ttl) if float(ttl) >= 0 else 30.0
-        except Exception:
-            self._credentials_ttl = 30.0
+        # Prefer explicit parameter; fallback to environment; then default.
+        if credentials_ttl is not None:
+            try:
+                ttl_val = float(credentials_ttl)
+                self._credentials_ttl = ttl_val if ttl_val >= 0 else 30.0
+            except Exception:
+                self._credentials_ttl = 30.0
+        else:
+            env_val = os.getenv("AUTH__CREDENTIALS_TTL_SECONDS")
+            try:
+                self._credentials_ttl = float(env_val) if env_val is not None else 30.0
+                if self._credentials_ttl < 0:
+                    self._credentials_ttl = 30.0
+            except Exception:
+                self._credentials_ttl = 30.0
 
     # ==================== Core Operations ====================
 

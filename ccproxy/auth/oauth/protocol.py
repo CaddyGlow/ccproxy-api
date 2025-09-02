@@ -9,7 +9,7 @@ from collections.abc import Awaitable, Callable
 from datetime import datetime
 from typing import Any, Protocol, cast
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from ccproxy.core.logging import get_logger
 
@@ -49,18 +49,15 @@ class StandardProfileFields(BaseModel):
     email_verified: bool | None = None
 
     # Additional Features (provider-specific)
-    features: dict[
-        str, Any
-    ] = {}  # For provider-specific features like 'has_claude_max'
+    features: dict[str, Any] = Field(
+        default_factory=dict
+    )  # For provider-specific features like 'has_claude_max'
 
     # Raw data (for debugging, not UI display)
-    _raw_profile_data: dict[str, Any] = {}
-
-    class Config:
-        """Pydantic configuration."""
-
-        # Exclude raw data from normal serialization
-        fields = {"_raw_profile_data": {"exclude": True}}
+    raw_profile_data: dict[str, Any] = Field(
+        default_factory=dict,
+        exclude=True,  # Exclude raw data from normal serialization
+    )
 
 
 class ProfileLoggingMixin:
@@ -77,7 +74,7 @@ class ProfileLoggingMixin:
             category: Log category (defaults to 'auth')
         """
         # Log clean UI-friendly profile data
-        profile_data = profile.model_dump(exclude={"_raw_profile_data"})
+        profile_data = profile.model_dump(exclude={"raw_profile_data"})
         logger.debug(
             f"{provider_name}_profile_full_dump",
             profile_data=profile_data,
@@ -85,10 +82,10 @@ class ProfileLoggingMixin:
         )
 
         # Optionally log raw data separately for debugging (only if needed)
-        if profile._raw_profile_data:
+        if profile.raw_profile_data:
             logger.debug(
                 f"{provider_name}_profile_raw_data",
-                raw_data=profile._raw_profile_data,
+                raw_data=profile.raw_profile_data,
                 category="auth_debug",
             )
 

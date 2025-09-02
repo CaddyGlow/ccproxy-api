@@ -9,9 +9,9 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from plugins.analytics import models as _analytics_models  # noqa: F401
-from plugins.analytics.service import AnalyticsService
 from plugins.analytics.routes import get_duckdb_storage
 from plugins.analytics.routes import router as analytics_router
+from plugins.analytics.service import AnalyticsService
 from plugins.duckdb_storage.storage import SimpleDuckDBStorage
 
 

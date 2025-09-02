@@ -41,6 +41,7 @@ async def claude_sdk_health_check(
         cli_version = detection_service.get_version()
         cli_path = detection_service.get_cli_path()
         is_available = detection_service.is_claude_available()
+        cli_info = detection_service.get_cli_health_info()
 
         if is_available and cli_path:
             checks.append(f"CLI: {cli_version or 'detected'} at {cli_path}")
@@ -64,21 +65,51 @@ async def claude_sdk_health_check(
         checks.append("Config: not loaded")
         status = "fail"
 
+    # Standardized details
+    from ccproxy.core.plugins.health_models import (
+        CLIHealth,
+        ConfigHealth,
+        ProviderHealthDetails,
+    )
+
+    cli_health = (
+        CLIHealth(
+            available=bool(
+                detection_service and detection_service.is_claude_available()
+            ),
+            status=(cli_info.status.value if detection_service else "unknown"),
+            version=(detection_service.get_version() if detection_service else None),
+            path=(
+                detection_service.get_cli_path()[0]
+                if detection_service and detection_service.get_cli_path()
+                else None
+            ),
+        )
+        if detection_service
+        else None
+    )
+
+    details = ProviderHealthDetails(
+        provider="claude_sdk",
+        enabled=bool(config and config.enabled),
+        base_url=None,
+        cli=cli_health,
+        auth=None,
+        config=ConfigHealth(
+            model_count=len(config.models) if config and config.models else 0,
+            supports_openai_format=config.supports_streaming if config else None,
+            extra={
+                "session_pool_enabled": bool(config.session_pool_enabled)
+                if config
+                else None
+            },
+        ),
+    ).model_dump()
+
     return HealthCheckResult(
         status=cast(Literal["pass", "warn", "fail"], status),
         componentId="plugin-claude_sdk",
         output="; ".join(checks),
         version="1.0.0",
-        details={
-            "cli_available": detection_service.is_claude_available()
-            if detection_service
-            else False,
-            "cli_version": detection_service.get_version()
-            if detection_service
-            else None,
-            "cli_path": detection_service.get_cli_path() if detection_service else None,
-            "config_loaded": config is not None,
-            "enabled": config.enabled if config else False,
-            "checks": checks,
-        },
+        details=details,
     )

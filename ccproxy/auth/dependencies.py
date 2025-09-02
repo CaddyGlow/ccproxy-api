@@ -68,10 +68,14 @@ async def _get_auth_manager_with_settings(
     )
 
 
+from ccproxy.api.dependencies import SettingsDep
+
+
 async def get_auth_manager(
     credentials: Annotated[
         HTTPAuthorizationCredentials | None, Depends(bearer_scheme)
     ] = None,
+    settings: SettingsDep = None,
 ) -> AuthManager:
     """Get authentication manager with fallback strategy.
 
@@ -86,10 +90,6 @@ async def get_auth_manager(
     Raises:
         HTTPException: If no valid authentication available
     """
-    # Import here to avoid circular imports
-    from ccproxy.config.settings import get_settings
-
-    settings = get_settings()
     return await _get_auth_manager_with_settings(credentials, settings)
 
 

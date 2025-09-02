@@ -54,4 +54,3 @@ async def test_service_pagination_asc_desc() -> None:
         assert p2a["count"] == 1
     finally:
         await s.close()
-

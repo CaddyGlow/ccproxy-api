@@ -10,7 +10,8 @@ import pytest
 from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
 
-from ccproxy.config.settings import Settings, get_settings
+from ccproxy.config.settings import Settings
+from ccproxy.services.container import ServiceContainer
 from plugins.permissions.models import (
     PermissionRequest,
     PermissionStatus,
@@ -47,19 +48,19 @@ def mock_settings() -> Settings:
     settings.server.host = "localhost"
     settings.server.port = 8080
     settings.security = Mock()
-    settings.security.auth_token = None  # No auth by default
+    settings.security.auth_token = None
     return settings
 
 
 @pytest.fixture
-def app(mock_settings: Settings) -> FastAPI:
+def app(mock_settings: Settings, mock_confirmation_service: Mock) -> FastAPI:
     """Create a test FastAPI app."""
     app = FastAPI()
 
-    # Override settings dependency
-    app.dependency_overrides[get_settings] = lambda: mock_settings
+    container = ServiceContainer(mock_settings)
+    container.register_service(PermissionService, instance=mock_confirmation_service)
+    app.state.service_container = container
 
-    # Include router
     app.include_router(router)
 
     return app

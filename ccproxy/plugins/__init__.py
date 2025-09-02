@@ -15,14 +15,15 @@ import importlib.abc
 import importlib.util
 import sys
 from types import ModuleType
-from typing import Optional
 
 
 class _CcproxyPluginsRedirectFinder(importlib.abc.MetaPathFinder, importlib.abc.Loader):
     prefix = "ccproxy.plugins."
 
     # MetaPathFinder API
-    def find_spec(self, fullname: str, path: object | None, target: object | None = None):  # type: ignore[override]
+    def find_spec(
+        self, fullname: str, path: object | None, target: object | None = None
+    ):  # type: ignore[override]
         if not fullname.startswith(self.prefix) or fullname == self.prefix[:-1]:
             return None
 
@@ -66,4 +67,3 @@ class _CcproxyPluginsRedirectFinder(importlib.abc.MetaPathFinder, importlib.abc.
 _installed = any(isinstance(f, _CcproxyPluginsRedirectFinder) for f in sys.meta_path)
 if not _installed:
     sys.meta_path.insert(0, _CcproxyPluginsRedirectFinder())
-

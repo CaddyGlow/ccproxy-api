@@ -12,7 +12,7 @@ import structlog
 import typer
 from pydantic import ValidationError
 
-from ccproxy.config.settings import get_settings
+from ccproxy.config.settings import Settings
 from ccproxy.core.async_task_manager import create_managed_task
 from ccproxy.core.logging import get_plugin_logger
 
@@ -538,7 +538,7 @@ def connect(
         wrapper_class=structlog.make_filtering_bound_logger(log_level),
     )
 
-    settings = get_settings()
+    settings = Settings.from_config()
 
     # Use provided URL or default from settings
     if not api_url:

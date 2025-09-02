@@ -45,17 +45,29 @@ async def codex_health_check(
                 version="1.0.0",
             )
 
-        # Get CLI status if detection service is available
-        cli_details = {}
-        if detection_service:
-            cli_version = detection_service.get_version()
-            cli_path = detection_service.get_binary_path()
+        # Standardized details models
+        from ccproxy.core.plugins.health_models import (
+            AuthHealth,
+            CLIHealth,
+            ConfigHealth,
+            ProviderHealthDetails,
+        )
 
-            cli_details = {
-                "cli_available": cli_path is not None,
-                "cli_version": cli_version,
-                "cli_path": cli_path,
-            }
+        cli_info = (
+            detection_service.get_cli_health_info() if detection_service else None
+        )
+        cli_health = (
+            CLIHealth(
+                available=bool(
+                    cli_info and getattr(cli_info, "status", None).value == "available"
+                ),
+                status=(cli_info.status.value if cli_info else "unknown"),
+                version=(cli_info.version if cli_info else None),
+                path=(cli_info.binary_path if cli_info else None),
+            )
+            if cli_info
+            else None
+        )
 
         # Get authentication status if auth manager is available
         auth_details: dict[str, Any] = {}
@@ -68,19 +80,39 @@ async def codex_health_check(
                     "Failed to check auth status", error=str(e), category="auth"
                 )
                 auth_details = {
-                    "auth_configured": False,
-                    "auth_error": str(e),
+                    "authenticated": False,
+                    "reason": str(e),
                 }
 
         # Determine overall status
         status: Literal["pass", "warn", "fail"]
-        if cli_details.get("cli_available") and auth_details.get("token_available"):
-            output = f"Codex plugin is healthy (CLI v{cli_details.get('cli_version')} available, authenticated)"
+        provider_auth = (
+            AuthHealth(
+                configured=bool(auth_manager),
+                token_available=auth_details.get("authenticated"),
+                token_expired=(
+                    not auth_details.get("authenticated")
+                    and auth_details.get("reason") == "Token expired"
+                ),
+                account_id=auth_details.get("account_id"),
+                expires_at=auth_details.get("expires_at"),
+                error=(
+                    None
+                    if auth_details.get("authenticated")
+                    else auth_details.get("reason")
+                ),
+            )
+            if auth_manager
+            else AuthHealth(configured=False)
+        )
+
+        if (cli_health and cli_health.available) and provider_auth.token_available:
+            output = f"Codex plugin is healthy (CLI v{cli_health.version} available, authenticated)"
             status = "pass"
-        elif cli_details.get("cli_available"):
-            output = f"Codex plugin is functional (CLI v{cli_details.get('cli_version')} available, auth missing)"
+        elif cli_health and cli_health.available:
+            output = f"Codex plugin is functional (CLI v{cli_health.version} available, auth missing)"
             status = "warn"
-        elif auth_details.get("token_available"):
+        elif provider_auth.token_available:
             output = "Codex plugin is functional (authenticated, CLI not found)"
             status = "warn"
         else:
@@ -94,13 +126,23 @@ async def codex_health_check(
             output=output,
             version="1.0.0",
             details={
-                "base_url": config.base_url,
-                "oauth_configured": bool(
-                    config.oauth.base_url and config.oauth.client_id
-                ),
-                "verbose_logging": config.verbose_logging,
-                **cli_details,  # Include CLI details if available
-                **auth_details,  # Include auth details if available
+                **ProviderHealthDetails(
+                    provider="codex",
+                    enabled=True,
+                    base_url=config.base_url,
+                    cli=cli_health,
+                    auth=provider_auth,
+                    config=ConfigHealth(
+                        model_count=None,
+                        supports_openai_format=None,
+                        verbose_logging=config.verbose_logging,
+                        extra={
+                            "oauth_configured": bool(
+                                config.oauth.base_url and config.oauth.client_id
+                            )
+                        },
+                    ),
+                ).model_dump(),
             },
         )
 

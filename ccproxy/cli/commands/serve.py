@@ -1,6 +1,5 @@
 """Serve command for CCProxy API server - consolidates server-related commands."""
 
-import json
 import os
 import subprocess
 from pathlib import Path
@@ -12,6 +11,8 @@ from click import get_current_context
 from structlog import get_logger
 
 from ccproxy._version import __version__
+from ccproxy.api.app import create_app
+from ccproxy.api.bootstrap import create_service_container
 from ccproxy.cli.helpers import (
     get_rich_toolkit,
     is_running_in_docker,
@@ -20,16 +21,13 @@ from ccproxy.cli.helpers import (
 from ccproxy.config.settings import (
     ConfigurationError,
     Settings,
-    config_manager,
 )
-from ccproxy.core.async_utils import get_root_package_name
 from ccproxy.docker import (
     create_docker_adapter,
 )
 
-from ..options.security_options import SecurityOptions, validate_auth_token
+from ..options.security_options import validate_auth_token
 from ..options.server_options import (
-    ServerOptions,
     validate_log_level,
     validate_port,
 )
@@ -43,7 +41,6 @@ def get_config_path_from_context() -> Path | None:
             config_path = ctx.obj["config_path"]
             return config_path if config_path is None else Path(config_path)
     except RuntimeError:
-        # No active click context (e.g., in tests)
         pass
     return None
 
@@ -55,15 +52,12 @@ def _show_api_usage_info(toolkit: Any, settings: Settings) -> None:
 
     toolkit.print_title("API Client Configuration", tag="config")
 
-    # Determine the base URLs
     anthropic_base_url = f"http://{settings.server.host}:{settings.server.port}"
     openai_base_url = f"http://{settings.server.host}:{settings.server.port}/openai"
 
-    # Show environment variable exports using code blocks
     toolkit.print("Environment Variables for API Clients:", tag="info")
     toolkit.print_line()
 
-    # Use rich console for code blocks
     console = Console()
 
     auth_token = "YOUR_AUTH_TOKEN" if settings.security.auth_token else "NOT_SET"
@@ -102,30 +96,18 @@ def _run_docker_server(
             key, value = env_var.split("=", 1)
             docker_env_dict[key] = value
 
-    # Add server configuration to Docker environment
     if settings.server.reload:
         docker_env_dict["RELOAD"] = "true"
     docker_env_dict["PORT"] = str(settings.server.port)
     docker_env_dict["HOST"] = "0.0.0.0"
 
-    # Display startup information
-    # toolkit.print_title(
-    #     "Starting CCProxy API server with Docker", tag="docker"
-    # )
-    # toolkit.print(
-    #     f"Server will be available at: http://{settings.server.host}:{settings.server.port}",
-    #     tag="info",
-    # )
     toolkit.print_line()
 
-    # Show Docker configuration summary
     toolkit.print_title("Docker Configuration Summary", tag="config")
 
-    # Determine effective directories for volume mapping
     home_dir = docker_home or settings.docker.docker_home_directory
     workspace_dir = docker_workspace or settings.docker.docker_workspace_directory
 
-    # Show volume information
     toolkit.print("Volumes:", tag="config")
     if home_dir:
         toolkit.print(f"  Home: {home_dir} → /data/home", tag="volume")
@@ -136,7 +118,6 @@ def _run_docker_server(
             toolkit.print(f"  Additional: {vol}", tag="volume")
     toolkit.print_line()
 
-    # Show environment information
     toolkit.print("Environment Variables:", tag="config")
     key_env_vars = {
         "CLAUDE_HOME": "/data/home",
@@ -150,11 +131,9 @@ def _run_docker_server(
     for key, value in key_env_vars.items():
         toolkit.print(f"  {key}={value}", tag="env")
 
-    # Show additional environment variables from CLI
     for env_var in docker_env:
         toolkit.print(f"  {env_var}", tag="env")
 
-    # Show debug environment information if log level is DEBUG
     if settings.logging.level == "DEBUG":
         toolkit.print_line()
         toolkit.print_title("Debug: All Environment Variables", tag="debug")
@@ -166,11 +145,9 @@ def _run_docker_server(
 
     toolkit.print_line()
 
-    # Show API usage information if auth token is configured
     if settings.security.auth_token:
         _show_api_usage_info(toolkit, settings)
 
-    # Execute using the new Docker adapter
     adapter = create_docker_adapter()
     image, volumes, environment, command, user_context, _ = (
         adapter.build_docker_run_args(
@@ -194,10 +171,8 @@ def _run_docker_server(
         effective_image=image,
     )
 
-    # Add port mapping
     ports = [f"{settings.server.port}:{settings.server.port}"]
 
-    # Create Docker adapter and execute
     adapter = create_docker_adapter()
     adapter.exec_container(
         image=image,
@@ -209,9 +184,7 @@ def _run_docker_server(
     )
 
 
-def _run_local_server(
-    settings: Settings, cli_overrides: dict[str, Any], config: Path | None = None
-) -> None:
+def _run_local_server(settings: Settings) -> None:
     """Run the server locally."""
     in_docker = is_running_in_docker()
     toolkit = get_rich_toolkit()
@@ -226,28 +199,9 @@ def _run_local_server(
             f"uid={warning(str(os.getuid()))} gid={warning(str(os.getgid()))}"
         )
         toolkit.print(f"HOME={os.environ['HOME']}")
-    # else:
-    #     toolkit.print_title("Starting CCProxy API server", tag="local")
 
-    # toolkit.print(
-    #     f"Server will be available at: http://{settings.server.host}:{settings.server.port}",
-    #     tag="info",
-    # )
-
-    # toolkit.print_line()
-
-    # Show API usage information if auth token is configured
     if settings.security.auth_token:
         _show_api_usage_info(toolkit, settings)
-
-    # Set environment variables for server to access CLI overrides
-    if cli_overrides:
-        os.environ["CCPROXY_CONFIG_OVERRIDES"] = json.dumps(cli_overrides)
-
-    # Set config file path for the app to use
-    if config:
-        os.environ["CONFIG_FILE"] = str(config)
-        logger.debug("config_file_set_in_env", path=str(config))
 
     logger.debug(
         "server_starting",
@@ -260,25 +214,24 @@ def _run_local_server(
     if settings.server.reload:
         reload_includes = ["ccproxy", "pyproject.toml", "uv.lock", "plugins"]
 
-    # Run uvicorn with our already configured logging
+    container = create_service_container(settings)
+
     uvicorn.run(
-        app=f"{get_root_package_name()}.api.app:create_app",
-        factory=True,
+        app=create_app(container),
+        factory=False,
         host=settings.server.host,
         port=settings.server.port,
         reload=settings.server.reload,
-        workers=None,  # ,settings.workers,
+        workers=None,
         log_config=None,
-        access_log=False,  # Disable uvicorn's default access logs
-        server_header=False,  # Disable uvicorn's server header to preserve upstream headers
-        date_header=False,  # Disable uvicorn's date header to preserve upstream headers
+        access_log=False,
+        server_header=False,
+        date_header=False,
         reload_includes=reload_includes,
-        # log_config=get_uvicorn_log_config(),
     )
 
 
 def api(
-    # Configuration
     config: Annotated[
         Path | None,
         typer.Option(
@@ -292,7 +245,6 @@ def api(
             rich_help_panel="Configuration",
         ),
     ] = None,
-    # Server options
     port: Annotated[
         int | None,
         typer.Option(
@@ -337,7 +289,6 @@ def api(
             rich_help_panel="Server Settings",
         ),
     ] = None,
-    # Security options
     auth_token: Annotated[
         str | None,
         typer.Option(
@@ -347,7 +298,6 @@ def api(
             rich_help_panel="Security Settings",
         ),
     ] = None,
-    # Plugin settings
     plugin_setting: Annotated[
         list[str] | None,
         typer.Option(
@@ -356,7 +306,6 @@ def api(
             rich_help_panel="Plugin Settings",
         ),
     ] = None,
-    # Core settings
     docker: Annotated[
         bool,
         typer.Option(
@@ -365,7 +314,6 @@ def api(
             help="Run API server using Docker instead of local execution",
         ),
     ] = False,
-    # Docker settings using shared parameters
     docker_image: Annotated[
         str | None,
         typer.Option(
@@ -440,7 +388,6 @@ def api(
             rich_help_panel="Docker Settings",
         ),
     ] = None,
-    # Network control flags
     no_network_calls: Annotated[
         bool,
         typer.Option(
@@ -466,113 +413,33 @@ def api(
         ),
     ] = False,
 ) -> None:
-    """
-    Start the CCProxy API server.
-
-    This command starts the API server either locally or in Docker.
-    The server provides both Anthropic and OpenAI-compatible endpoints.
-
-    All configuration options can be provided via CLI parameters,
-    which override values from configuration files and environment variables.
-
-    Examples:
-        ccproxy serve
-        ccproxy serve --port 8080 --reload
-        ccproxy serve --docker
-        ccproxy serve --docker --docker-image custom:latest --port 8080
-        ccproxy serve --max-thinking-tokens 10000 --allowed-tools Read,Write,Bash
-        ccproxy serve --port 8080 --workers 4
-    """
+    """Start the CCProxy API server."""
     try:
-        # Early logging - use basic print until logging is configured
-        # We'll log this properly after logging is configured
-
-        # Get config path from context if not provided directly
         if config is None:
             config = get_config_path_from_context()
 
-        # Create option containers for better organization
-        server_options = ServerOptions(
-            port=port,
-            host=host,
-            reload=reload,
-            log_level=log_level,
-            log_file=log_file,
-        )
-
-        security_options = SecurityOptions(auth_token=auth_token)
-
-        # Handle network control flags
         scheduler_overrides = {}
         if no_network_calls:
-            # Disable both network features
             scheduler_overrides["pricing_update_enabled"] = False
             scheduler_overrides["version_check_enabled"] = False
         else:
-            # Handle individual flags
             if disable_pricing_updates:
                 scheduler_overrides["pricing_update_enabled"] = False
             if disable_version_check:
                 scheduler_overrides["version_check_enabled"] = False
 
-        # Extract CLI overrides from structured option containers
-        cli_overrides = config_manager.get_cli_overrides_from_args(
-            # Server options
-            host=server_options.host,
-            port=server_options.port,
-            reload=server_options.reload,
-            log_level=server_options.log_level,
-            log_file=server_options.log_file,
-            use_terminal_confirmation_handler=server_options.use_terminal_confirmation_handler,
-            # Security options
-            auth_token=security_options.auth_token,
-            # Plugin settings
-            plugin_setting=plugin_setting,
-        )
-
-        # Add scheduler overrides if any
-        if scheduler_overrides:
-            cli_overrides["scheduler"] = scheduler_overrides
-
-        # Load settings with CLI overrides
-        settings = config_manager.load_settings(
-            config_path=config, cli_overrides=cli_overrides
-        )
-
-        # Set up logging once with the effective log level
-        # Import here to avoid circular import
+        settings = Settings.from_config(config_path=config)
 
         from ccproxy.core.logging import setup_logging
 
-        # always reconfigure logging to ensure log level changes are picked up
-        # use json logs if explicitly requested via env var
         setup_logging(
             json_logs=settings.logging.format == "json",
             log_level_name=settings.logging.level,
             log_file=settings.logging.file,
         )
 
-        # Re-get logger after logging is configured
         logger = get_logger(__name__)
 
-        # Test debug logging
-        logger.debug(
-            "Debug logging is enabled",
-            effective_log_level=server_options.log_level or settings.logging.level,
-        )
-
-        # Log CLI command that was deferred
-        logger.info(
-            "cli_command_starting",
-            command="serve",
-            version=__version__,
-            docker=docker,
-            port=server_options.port,
-            host=server_options.host,
-            config_path=str(config) if config else None,
-        )
-
-        # Log effective configuration
         logger.debug(
             "configuration_loaded",
             host=settings.server.host,
@@ -601,7 +468,7 @@ def api(
                 user_gid=user_gid,
             )
         else:
-            _run_local_server(settings, cli_overrides, config)
+            _run_local_server(settings)
 
     except ConfigurationError as e:
         toolkit = get_rich_toolkit()
@@ -638,7 +505,6 @@ def claude(
             help="Run claude command from docker image instead of local CLI",
         ),
     ] = False,
-    # Docker settings using shared parameters
     docker_image: Annotated[
         str | None,
         typer.Option(
@@ -714,30 +580,14 @@ def claude(
         ),
     ] = None,
 ) -> None:
-    """
-    Execute claude CLI commands directly.
-
-    This is a simple pass-through to the claude CLI executable
-    found by the settings system or run from docker image.
-
-    Examples:
-        ccproxy claude -- --version
-        ccproxy claude -- doctor
-        ccproxy claude -- config
-        ccproxy claude --docker -- --version
-        ccproxy claude --docker --docker-image custom:latest -- --version
-        ccproxy claude --docker --docker-env API_KEY=sk-... --docker-volume ./data:/data -- chat
-    """
-    # Handle None args case
+    """Execute claude CLI commands directly."""
     if args is None:
         args = []
 
     toolkit = get_rich_toolkit()
 
     try:
-        # Logger will be configured by configuration manager
         logger = get_logger(__name__)
-        # Log CLI command execution start
         logger.info(
             "cli_command_starting",
             command="claude",
@@ -746,13 +596,9 @@ def claude(
             args=args if args else [],
         )
 
-        # Load settings using configuration manager
-        settings = config_manager.load_settings(
-            config_path=get_config_path_from_context()
-        )
+        settings = Settings.from_config(get_config_path_from_context())
 
         if docker:
-            # Prepare Docker execution using new adapter
             adapter = create_docker_adapter()
             toolkit.print_title(f"image {settings.docker.docker_image}", tag="docker")
             image, volumes, environment, command, user_context, _ = (
@@ -782,7 +628,6 @@ def claude(
             toolkit.print(f"Executing: docker run ... {image} {cmd_str}", tag="docker")
             toolkit.print_line()
 
-            # Execute using the new Docker adapter
             adapter.exec_container(
                 image=image,
                 volumes=volumes,
@@ -791,13 +636,11 @@ def claude(
                 user_context=user_context,
             )
         else:
-            # Get claude command using binary resolver
             import shutil
             from pathlib import Path
 
             from ccproxy.utils.binary_resolver import BinaryResolver
 
-            # Check common installation locations first
             claude_paths = [
                 shutil.which("claude"),
                 Path.home() / ".cache" / ".bun" / "bin" / "claude",
@@ -811,12 +654,10 @@ def claude(
                     claude_cmd = str(path)
                     break
 
-            # If not found, try package manager fallback
             if not claude_cmd:
                 resolver = BinaryResolver()
                 result = resolver.find_binary("claude", "@anthropic-ai/claude-code")
                 if result:
-                    # Store the command as a string for direct binaries, or as the full command for package managers
                     claude_cmd = (
                         result.command[0] if result.is_direct else result.command
                     )
@@ -829,9 +670,7 @@ def claude(
                 )
                 raise typer.Exit(1)
 
-            # Handle both direct path and command list
             if isinstance(claude_cmd, str):
-                # Direct path - resolve to absolute if needed
                 if not Path(claude_cmd).is_absolute():
                     claude_cmd = str(Path(claude_cmd).resolve())
 
@@ -839,16 +678,12 @@ def claude(
                 toolkit.print(f"Executing: {claude_cmd} {' '.join(args)}", tag="claude")
                 toolkit.print_line()
 
-                # Execute command directly
                 try:
-                    # Use os.execvp to replace current process with claude
-                    # This hands over full control to claude, including signal handling
                     os.execvp(claude_cmd, [claude_cmd] + args)
                 except OSError as e:
                     toolkit.print(f"Failed to execute command: {e}", tag="error")
                     raise typer.Exit(1) from e
             else:
-                # Package manager command - use subprocess
                 if not isinstance(claude_cmd, list):
                     raise ValueError("Expected list for package manager command")
                 full_cmd = claude_cmd + args
@@ -861,7 +696,6 @@ def claude(
                 toolkit.print_line()
 
                 try:
-                    # Use subprocess.run for package manager execution
                     proc_result = subprocess.run(full_cmd, check=False)
                     raise typer.Exit(proc_result.returncode)
                 except subprocess.SubprocessError as e:

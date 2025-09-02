@@ -10,6 +10,7 @@ import httpx
 from ccproxy.auth.oauth.protocol import ProfileLoggingMixin, StandardProfileFields
 from ccproxy.auth.oauth.registry import OAuthProviderInfo
 from ccproxy.core.logging import get_plugin_logger
+
 from .client import CodexOAuthClient
 from .config import CodexOAuthConfig
 from .models import OpenAICredentials
@@ -281,6 +282,7 @@ class CodexOAuthProvider(ProfileLoggingMixin):
         from pathlib import Path
 
         from ccproxy.auth.storage.generic import GenericJsonStorage
+
         from .manager import CodexTokenManager
         from .models import OpenAICredentials
 
@@ -315,6 +317,7 @@ class CodexOAuthProvider(ProfileLoggingMixin):
         from pathlib import Path
 
         from ccproxy.auth.storage.generic import GenericJsonStorage
+
         from .manager import CodexTokenManager
         from .models import OpenAICredentials
 
@@ -470,7 +473,7 @@ class CodexOAuthProvider(ProfileLoggingMixin):
                 "has_subscription": True,
             }
 
-        profile_data["_raw_profile_data"] = raw_data
+        profile_data["raw_profile_data"] = raw_data
 
         return StandardProfileFields(**profile_data)
 

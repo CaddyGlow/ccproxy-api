@@ -42,6 +42,7 @@ class ClaudeSDKDetectionService:
         self._version: str | None = None
         self._cli_command: list[str] | None = None
         self._is_available = False
+        self._cli_info: ClaudeCliInfo | None = None
 
     @async_ttl_cache(maxsize=16, ttl=600.0)  # 10 minute cache for CLI detection
     async def initialize_detection(self) -> ClaudeDetectionData:
@@ -123,9 +124,34 @@ class ClaudeSDKDetectionService:
         """
         return self._is_available
 
+    def get_cli_health_info(self) -> "ClaudeCliInfo":
+        """Return CLI health info model using current detection state.
+
+        Returns:
+            ClaudeCliInfo with availability, version, and binary path
+        """
+        from .models import ClaudeCliInfo, ClaudeCliStatus
+
+        if self._cli_info is not None:
+            return self._cli_info
+
+        status = (
+            ClaudeCliStatus.AVAILABLE
+            if self._is_available
+            else ClaudeCliStatus.NOT_INSTALLED
+        )
+        cli_info = ClaudeCliInfo(
+            status=status,
+            version=self._version,
+            binary_path=self._cli_command[0] if self._cli_command else None,
+        )
+        self._cli_info = cli_info
+        return cli_info
+
     def invalidate_cache(self) -> None:
         """Clear all cached detection data."""
         # Clear the async cache for initialize_detection
         if hasattr(self.initialize_detection, "cache_clear"):
             self.initialize_detection.cache_clear()
+        self._cli_info = None
         logger.debug("detection_cache_cleared", category="plugin")

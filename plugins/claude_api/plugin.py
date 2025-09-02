@@ -10,6 +10,7 @@ from ccproxy.core.plugins import (
     TaskSpec,
 )
 from ccproxy.core.plugins.base_factory import BaseProviderPluginFactory
+
 from .adapter import ClaudeAPIAdapter
 from .config import ClaudeAPISettings
 from .detection_service import ClaudeAPIDetectionService

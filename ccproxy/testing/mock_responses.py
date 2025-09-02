@@ -277,7 +277,7 @@ class RealisticMockResponseGenerator:
         content, input_tokens, output_tokens = self.generate_response_content(
             "tool_use", model or "claude-3-sonnet"
         )
-        result = random.randint(1, 1000)
+        random.randint(1, 1000)
         return {
             "id": f"msg_{random.randint(1000, 9999)}",
             "type": "message",

@@ -318,7 +318,9 @@ class FastAPIAppFactory:
                 pass
 
             try:
-                from ccproxy.plugins.codex.routes import CodexAdapterDep as _CodexAdapterDep
+                from ccproxy.plugins.codex.routes import (
+                    CodexAdapterDep as _CodexAdapterDep,
+                )
 
                 CodexAdapterDep = _CodexAdapterDep
             except ImportError:

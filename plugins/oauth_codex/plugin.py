@@ -9,6 +9,7 @@ from ccproxy.core.plugins import (
     PluginContext,
     PluginManifest,
 )
+
 from .config import CodexOAuthConfig
 from .provider import CodexOAuthProvider
 

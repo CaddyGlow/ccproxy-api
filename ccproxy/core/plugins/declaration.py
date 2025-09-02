@@ -22,11 +22,11 @@ if TYPE_CHECKING:
 
     from ccproxy.auth.oauth.registry import OAuthRegistry
     from ccproxy.config.settings import Settings
+    from ccproxy.core.plugins.factory import PluginRegistry
+    from ccproxy.core.plugins.protocol import OAuthClientProtocol
     from ccproxy.hooks.base import Hook
     from ccproxy.hooks.manager import HookManager
     from ccproxy.hooks.registry import HookRegistry
-    from ccproxy.core.plugins.factory import PluginRegistry
-    from ccproxy.core.plugins.protocol import OAuthClientProtocol
     from ccproxy.scheduler.core import Scheduler
     from ccproxy.scheduler.tasks import BaseScheduledTask
     from ccproxy.services.adapters.base import BaseAdapter

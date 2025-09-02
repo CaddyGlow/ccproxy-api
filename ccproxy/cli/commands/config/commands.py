@@ -13,10 +13,17 @@ from pydantic.fields import FieldInfo
 
 from ccproxy._version import __version__
 from ccproxy.cli.helpers import get_rich_toolkit
-from ccproxy.config.settings import Settings, get_settings
+from ccproxy.config.settings import Settings
+from ccproxy.services.container import ServiceContainer
 
 
 logger = structlog.get_logger(__name__)
+
+
+def _get_service_container() -> ServiceContainer:
+    """Create a service container for the config commands."""
+    settings = Settings.from_config(config_path=get_config_path_from_context())
+    return ServiceContainer(settings)
 
 
 def _create_config_table(title: str, rows: list[tuple[str, str, str]]) -> Any:
@@ -43,7 +50,6 @@ def _format_value(value: Any) -> str:
     elif isinstance(value, str):
         if not value:
             return "[dim]Not set[/dim]"
-        # Special handling for sensitive values
         if any(
             keyword in value.lower()
             for keyword in ["token", "key", "secret", "password"]
@@ -68,7 +74,6 @@ def _get_field_description(field_info: FieldInfo) -> str:
     """Get a human-readable description from a Pydantic field."""
     if field_info.description:
         return field_info.description
-    # Generate a basic description from the field name
     return "Configuration setting"
 
 
@@ -82,10 +87,7 @@ def _generate_config_rows_from_model(
         field_value = getattr(model, field_name)
         display_name = f"{prefix}{field_name}" if prefix else field_name
 
-        # If the field value is also a BaseModel, we might want to flatten it
         if isinstance(field_value, BaseModel):
-            # For nested models, we can either flatten or show as a summary
-            # For now, let's show a summary and then add sub-rows
             model_name = field_value.__class__.__name__
             rows.append(
                 (
@@ -95,11 +97,9 @@ def _generate_config_rows_from_model(
                 )
             )
 
-            # Add sub-rows for the nested model
             sub_rows = _generate_config_rows_from_model(field_value, f"{display_name}_")
             rows.extend(sub_rows)
         else:
-            # Regular field
             formatted_value = _format_value(field_value)
             description = _get_field_description(_field_info)
             rows.append((display_name, formatted_value, description))
@@ -114,7 +114,6 @@ def _group_config_rows(
     groups: dict[str, list[tuple[str, str, str]]] = {}
 
     for setting, value, description in rows:
-        # Determine the group based on the setting name
         if setting.startswith("server"):
             group_name = "Server Configuration"
         elif setting.startswith("security"):
@@ -123,7 +122,6 @@ def _group_config_rows(
             group_name = "CORS Configuration"
         elif setting.startswith("claude"):
             group_name = "Claude CLI Configuration"
-        # reverse_proxy removed from Settings; skip grouping
         elif setting.startswith("auth"):
             group_name = "Authentication Configuration"
         elif setting.startswith("docker"):
@@ -140,7 +138,6 @@ def _group_config_rows(
         if group_name not in groups:
             groups[group_name] = []
 
-        # Clean up the setting name by removing the prefix
         clean_setting = setting.split("_", 1)[1] if "_" in setting else setting
         groups[group_name].append((clean_setting, value, description))
 
@@ -155,7 +152,6 @@ def get_config_path_from_context() -> Path | None:
             config_path = ctx.obj["config_path"]
             return config_path if config_path is None else Path(config_path)
     except RuntimeError:
-        # No active click context (e.g., in tests)
         pass
     return None
 
@@ -175,7 +171,8 @@ def config_list() -> None:
     toolkit = get_rich_toolkit()
 
     try:
-        settings = get_settings(config_path=get_config_path_from_context())
+        container = _get_service_container()
+        settings = container.get_service(Settings)
 
         from rich.console import Console
         from rich.panel import Panel
@@ -183,18 +180,14 @@ def config_list() -> None:
 
         console = Console()
 
-        # Generate configuration rows dynamically from the Settings model
         all_rows = _generate_config_rows_from_model(settings)
 
-        # Add computed fields that aren't part of the model but are useful to display
         all_rows.append(
             ("server_url", settings.server_url, "Complete server URL (computed)")
         )
 
-        # Group rows by configuration section
         grouped_rows = _group_config_rows(all_rows)
 
-        # Display header
         console.print(
             Panel.fit(
                 f"[bold]CCProxy API Configuration[/bold]\n[dim]Version: {__version__}[/dim]",
@@ -203,14 +196,12 @@ def config_list() -> None:
         )
         console.print()
 
-        # Display each configuration section as a table
         for section_name, section_rows in grouped_rows.items():
-            if section_rows:  # Only show sections that have data
+            if section_rows:
                 table = _create_config_table(section_name, section_rows)
                 console.print(table)
                 console.print()
 
-        # Show configuration file sources
         info_text = Text()
         info_text.append("Configuration loaded from: ", style="bold")
         info_text.append(
@@ -259,16 +250,7 @@ def config_init(
         help="Overwrite existing configuration files",
     ),
 ) -> None:
-    """Generate example configuration files.
-
-    This command creates example configuration files with all available options
-    and documentation comments.
-
-    Examples:
-        ccproxy config init                      # Create TOML config in default location
-        ccproxy config init --output-dir ./config  # Create in specific directory
-    """
-    # Validate format
+    """Generate example configuration files."""
     if format != "toml":
         toolkit = get_rich_toolkit()
         toolkit.print(
@@ -282,17 +264,13 @@ def config_init(
     try:
         from ccproxy.config.discovery import get_ccproxy_config_dir
 
-        # Determine output directory
         if output_dir is None:
             output_dir = get_ccproxy_config_dir()
 
-        # Create output directory if it doesn't exist
         output_dir.mkdir(parents=True, exist_ok=True)
 
-        # Generate configuration dynamically from Settings model
         example_config = _generate_default_config_from_model(Settings)
 
-        # Determine output file name
         if format == "toml":
             output_file = output_dir / "config.toml"
             if output_file.exists() and not force:
@@ -302,7 +280,6 @@ def config_init(
                 )
                 raise typer.Exit(1)
 
-            # Write TOML with comments using dynamic generation
             _write_toml_config_with_comments(output_file, example_config, Settings)
 
         toolkit.print(
@@ -356,23 +333,10 @@ def generate_token(
         help="Overwrite existing auth_token without confirmation",
     ),
 ) -> None:
-    """Generate a secure random token for API authentication.
-
-    This command generates a secure authentication token that can be used with
-    both Anthropic and OpenAI compatible APIs.
-
-    Use --save to write the token to a TOML configuration file.
-
-    Examples:
-        ccproxy config generate-token                    # Generate and display token
-        ccproxy config generate-token --save             # Generate and save to config
-        ccproxy config generate-token --save --config-file custom.toml  # Save to TOML config
-        ccproxy config generate-token --save --force     # Overwrite existing token
-    """
+    """Generate a secure random token for API authentication."""
     toolkit = get_rich_toolkit()
 
     try:
-        # Generate a secure token
         token = secrets.token_urlsafe(32)
 
         from rich.console import Console
@@ -380,7 +344,6 @@ def generate_token(
 
         console = Console()
 
-        # Display the generated token
         console.print()
         console.print(
             Panel.fit(
@@ -390,7 +353,6 @@ def generate_token(
         )
         console.print()
 
-        # Show environment variable commands - server first, then clients
         console.print("[bold]Server Environment Variables:[/bold]")
         console.print(f"[cyan]export SECURITY__AUTH_TOKEN={token}[/cyan]")
         console.print()
@@ -416,47 +378,40 @@ def generate_token(
 
         console.print("[bold]Usage with curl (using environment variables):[/bold]")
         console.print("[dim]Anthropic API:[/dim]")
-        console.print('[cyan]curl -H "x-api-key: $ANTHROPIC_API_KEY" \\\\[/cyan]')
-        console.print('[cyan]     -H "Content-Type: application/json" \\\\[/cyan]')
+        console.print(r'[cyan]curl -H "x-api-key: $ANTHROPIC_API_KEY" \ [/cyan]')
+        console.print(r'[cyan]     -H "Content-Type: application/json" \ [/cyan]')
         console.print('[cyan]     "$ANTHROPIC_BASE_URL/v1/messages"[/cyan]')
         console.print()
         console.print("[dim]OpenAI API:[/dim]")
         console.print(
-            '[cyan]curl -H "Authorization: Bearer $OPENAI_API_KEY" \\\\[/cyan]'
+            r'[cyan]curl -H "Authorization: Bearer $OPENAI_API_KEY" \ [/cyan]'
         )
-        console.print('[cyan]     -H "Content-Type: application/json" \\\\[/cyan]')
+        console.print(r'[cyan]     -H "Content-Type: application/json" \ [/cyan]')
         console.print('[cyan]     "$OPENAI_BASE_URL/v1/chat/completions"[/cyan]')
         console.print()
 
-        # Mention the save functionality if not using it
         if not save:
             console.print(
                 "[dim]Tip: Use --save to write this token to a configuration file[/dim]"
             )
             console.print()
 
-        # Save to config file if requested
         if save:
-            # Determine config file path
             if config_file is None:
-                # Try to find existing config file or create default
                 from ccproxy.config.discovery import find_toml_config_file
 
                 config_file = find_toml_config_file()
 
                 if config_file is None:
-                    # Create default config file in current directory
                     config_file = Path(".ccproxy.toml")
 
             console.print(
                 f"[bold]Saving token to configuration file:[/bold] {config_file}"
             )
 
-            # Detect file format from extension
             file_format = _detect_config_format(config_file)
             console.print(f"[dim]Detected format: {file_format.upper()}[/dim]")
 
-            # Read existing config or create new one using existing Settings functionality
             config_data = {}
             existing_token = None
 
@@ -500,7 +455,6 @@ def generate_token(
             else:
                 console.print("[dim]Will create new configuration file[/dim]")
 
-            # Check for existing token and ask for confirmation if needed
             if existing_token and not force:
                 console.print()
                 console.print(
@@ -514,10 +468,8 @@ def generate_token(
                     console.print("[dim]Token generation cancelled[/dim]")
                     return
 
-            # Update auth_token in config
             config_data["auth_token"] = token
 
-            # Write updated config in the appropriate format
             _write_config_file(config_file, config_data, file_format)
 
             console.print(f"[green]✓[/green] Token saved to {config_file}")
@@ -553,7 +505,6 @@ def _detect_config_format(config_file: Path) -> str:
     if suffix in [".toml"]:
         return "toml"
     else:
-        # Only TOML is supported
         return "toml"
 
 
@@ -561,20 +512,16 @@ def _generate_default_config_from_model(
     settings_class: type[Settings],
 ) -> dict[str, Any]:
     """Generate a default configuration dictionary from the Settings model."""
-    # Create a default instance to get all default values
     default_settings = settings_class()
 
     config_data: dict[str, Any] = {}
 
-    # Iterate through all fields and extract their default values
     for field_name, _field_info in settings_class.model_fields.items():
         field_value = getattr(default_settings, field_name)
 
         if isinstance(field_value, BaseModel):
-            # For nested models, recursively generate their config
             config_data[field_name] = _generate_nested_config_from_model(field_value)
         else:
-            # Convert Path objects to strings for JSON serialization
             if isinstance(field_value, Path):
                 config_data[field_name] = str(field_value)
             else:
@@ -593,7 +540,6 @@ def _generate_nested_config_from_model(model: BaseModel) -> dict[str, Any]:
         if isinstance(field_value, BaseModel):
             config_data[field_name] = _generate_nested_config_from_model(field_value)
         else:
-            # Convert Path objects to strings for JSON serialization
             if isinstance(field_value, Path):
                 config_data[field_name] = str(field_value)
             else:
@@ -612,7 +558,6 @@ def _write_toml_config_with_comments(
         f.write("# Most settings are commented out with their default values\n")
         f.write("# Uncomment and modify as needed\n\n")
 
-        # Write each top-level section
         for field_name, _field_info in settings_class.model_fields.items():
             field_value = config_data.get(field_name)
             description = _get_field_description(_field_info)
@@ -620,11 +565,9 @@ def _write_toml_config_with_comments(
             f.write(f"# {description}\n")
 
             if isinstance(field_value, dict):
-                # This is a nested model - write as a TOML section
                 f.write(f"# [{field_name}]\n")
                 _write_toml_section(f, field_value, prefix="# ", level=0)
             else:
-                # Simple field - write as commented line
                 formatted_value = _format_config_value_for_toml(field_value)
                 f.write(f"# {field_name} = {formatted_value}\n")
 
@@ -637,11 +580,9 @@ def _write_toml_section(
     """Write a TOML section with proper indentation and commenting."""
     for key, value in data.items():
         if isinstance(value, dict):
-            # Nested section
             f.write(f"{prefix}[{key}]\n")
             _write_toml_section(f, value, prefix, level + 1)
         else:
-            # Simple value
             formatted_value = _format_config_value_for_toml(value)
             f.write(f"{prefix}{key} = {formatted_value}\n")
 
@@ -653,28 +594,30 @@ def _format_config_value_for_toml(value: Any) -> str:
     elif isinstance(value, bool):
         return "true" if value else "false"
     elif isinstance(value, str):
-        return f'"{value}"'
+        return f'"{value}"'  # Correctly escape quotes within strings
     elif isinstance(value, int | float):
         return str(value)
     elif isinstance(value, list):
         if not value:
             return "[]"
-        # Format list items
         formatted_items = []
         for item in value:
             if isinstance(item, str):
-                formatted_items.append(f'"{item}"')
+                formatted_items.append(
+                    f'"{item}"'
+                )  # Correctly escape quotes within list strings
             else:
                 formatted_items.append(str(item))
-        return f"[{', '.join(formatted_items)}]"
+        return f"[{', '.join(formatted_items)}]]"
     elif isinstance(value, dict):
         if not value:
-            return "{}"
-        # Format dict as inline table
+            return "{{}}"
         formatted_items = []
         for k, v in value.items():
             if isinstance(v, str):
-                formatted_items.append(f'{k} = "{v}"')
+                formatted_items.append(
+                    f'{k} = "{v}"'
+                )  # Correctly escape quotes within dict strings
             else:
                 formatted_items.append(f"{k} = {v}")
         return f"{{{', '.join(formatted_items)}}}"

@@ -14,11 +14,12 @@ from rich.table import Table
 
 from ccproxy.auth.oauth.registry import OAuthRegistry
 from ccproxy.cli.helpers import get_rich_toolkit
-from ccproxy.config.settings import get_settings
+from ccproxy.config.settings import Settings
 from ccproxy.core.logging import bootstrap_cli_logging, get_logger, setup_logging
+from ccproxy.core.plugins.loader import load_plugin_system
 from ccproxy.hooks.manager import HookManager
 from ccproxy.hooks.registry import HookRegistry
-from ccproxy.core.plugins.loader import load_plugin_system
+from ccproxy.services.container import ServiceContainer
 
 
 app = typer.Typer(name="auth", help="Authentication and credential management")
@@ -27,56 +28,45 @@ console = Console()
 logger = get_logger(__name__)
 
 
-def _apply_auth_logger_level() -> None:
-    """Set logger level from settings without configuring handlers.
+def _get_service_container() -> ServiceContainer:
+    """Create a service container for the auth commands."""
+    settings = Settings.from_config()
+    return ServiceContainer(settings)
 
-    This ensures the auth command respects the configured log level while
-    relying on the global logging configuration for handlers/formatters.
-    """
+
+def _apply_auth_logger_level() -> None:
+    """Set logger level from settings without configuring handlers."""
     try:
-        level_name = get_settings().logging.level
+        level_name = _get_service_container().get_service(Settings).logging.level
         level = getattr(logging, level_name.upper(), logging.INFO)
     except Exception:
         level = logging.INFO
 
-    # Only adjust levels; do not add or modify handlers here.
-    # Apply to root CCProxy logger and this module's logger.
     logging.getLogger("ccproxy").setLevel(level)
     logging.getLogger(__name__).setLevel(level)
 
 
 def _ensure_logging_configured() -> None:
-    """Ensure global logging is configured with the standard format.
-
-    - If structlog is already configured, do nothing (respect global handlers).
-    - Otherwise, configure using Settings.logging (same path as `serve`).
-    """
+    """Ensure global logging is configured with the standard format."""
     if structlog.is_configured():
         return
 
-    # First try early bootstrap from env/argv without touching settings
     with contextlib.suppress(Exception):
         bootstrap_cli_logging()
 
     if structlog.is_configured():
         return
 
-    # If still not configured, apply a safe default console setup.
-    # Avoid reading settings here to prevent early logs in default format.
     level_name = os.getenv("LOGGING__LEVEL", "INFO")
     log_file = os.getenv("LOGGING__FILE")
     try:
         setup_logging(json_logs=False, log_level_name=level_name, log_file=log_file)
     except Exception:
-        # Last resort: level-only
         _apply_auth_logger_level()
 
 
 def _expected_plugin_class_name(provider: str) -> str:
-    """Return the expected plugin class name from provider input for messaging.
-
-    Example: 'claude_api' -> 'OauthClaudeApiPlugin', 'codex' -> 'OauthCodexPlugin'.
-    """
+    """Return the expected plugin class name from provider input for messaging."""
     import re
 
     base = re.sub(r"[^a-zA-Z0-9]+", "_", provider.strip()).strip("_")
@@ -86,12 +76,10 @@ def _expected_plugin_class_name(provider: str) -> str:
 
 
 def _render_profile_table(
-    profile: dict[str, Any], title: str = "Account Information"
+    profile: dict[str, Any],
+    title: str = "Account Information",
 ) -> None:
-    """Render a clean, two-column table of profile data using Rich.
-
-    Only non-empty fields are displayed. Datetimes are stringified.
-    """
+    """Render a clean, two-column table of profile data using Rich."""
     table = Table(show_header=False, box=box.SIMPLE, title=title)
     table.add_column("Field", style="bold")
     table.add_column("Value")
@@ -115,27 +103,22 @@ def _render_profile_table(
         if key in profile and profile[key] not in (None, "", []):
             table.add_row(label, _val(profile[key]))
 
-    # Identity
     _row("Provider", "provider_type")
     _row("Account ID", "account_id")
     _row("Email", "email")
     _row("Display Name", "display_name")
 
-    # Subscription
     _row("Subscription", "subscription_type")
     _row("Subscription Status", "subscription_status")
     _row("Subscription Expires", "subscription_expires_at")
 
-    # Organization
     _row("Organization", "organization_name")
     _row("Organization Role", "organization_role")
 
-    # Tokens
     _row("Has Refresh Token", "has_refresh_token")
     _row("Has ID Token", "has_id_token")
     _row("Token Expires", "token_expires_at")
 
-    # Verification
     _row("Email Verified", "email_verified")
 
     if len(table.rows) > 0:
@@ -156,17 +139,14 @@ def _render_profile_features(profile: dict[str, Any]) -> None:
                 if isinstance(v, bool) and v
                 else ("No" if isinstance(v, bool) else str(v))
             )
-            if val and val != "No":  # show enabled/meaningful features only
+            if val and val != "No":
                 table.add_row(name, val)
         if len(table.rows) > 0:
             console.print(table)
 
 
 def _provider_plugin_name(provider: str) -> str | None:
-    """Map CLI provider name to plugin manifest name.
-
-    Supported providers are explicit (no aliasing like 'openai' -> 'codex').
-    """
+    """Map CLI provider name to plugin manifest name."""
     key = provider.strip().lower()
     mapping: dict[str, str] = {
         "codex": "oauth_codex",
@@ -177,24 +157,18 @@ def _provider_plugin_name(provider: str) -> str | None:
 
 
 async def _lazy_register_oauth_provider(
-    provider: str, registry: OAuthRegistry
+    provider: str,
+    registry: OAuthRegistry,
+    container: ServiceContainer,
 ) -> Any | None:
-    """Lazily import and register just the requested provider's plugin.
-
-    Imports only the plugin module matching the provider, builds context, and
-    registers the provider in the OAuth registry. Returns the provider instance
-    or None if not found/import failed.
-    """
-    from ccproxy.config.settings import get_settings
+    """Lazily import and register just the requested provider's plugin."""
     from ccproxy.core.plugins.factory import AuthProviderPluginFactory
-    from ccproxy.services.cli_detection import CLIDetectionService
 
     plugin_name = _provider_plugin_name(provider)
     if not plugin_name:
         return None
 
-    # Use centralized loader to discover available auth providers
-    settings = get_settings()
+    settings = container.get_service(Settings)
     plugin_registry, _middleware_mgr = load_plugin_system(settings)
     factory = plugin_registry.get_factory(plugin_name)
     if not isinstance(factory, AuthProviderPluginFactory):
@@ -205,8 +179,7 @@ async def _lazy_register_oauth_provider(
         )
         return None
 
-    # Prepare minimal context for the auth provider
-    detection_service = CLIDetectionService(settings)
+    detection_service = container.get_cli_detection_service()
 
     hook_manager = None
     try:
@@ -219,23 +192,19 @@ async def _lazy_register_oauth_provider(
             tracer_config = RequestTracerConfig(
                 **settings.plugins.get("request_tracer", {})
             )
-            # Register HTTP tracer hook for generic HTTP interception
             http_hook = HTTPTracerHook(tracer_config)
             hook_registry.register(http_hook)
-            # logger.debug("http_tracer_hook_registered", category="auth")
     except Exception as e:
-        # Tracing is best-effort; continue without it
         logger.debug(
             "hook_registration_failed", error=str(e), category="auth", exc_info=e
         )
         pass
 
-    # Create HTTP client with hook support if enabled
     from ccproxy.core.http_client import HTTPClientFactory
 
     http_client = HTTPClientFactory.create_client(
         settings=settings,
-        hook_manager=hook_manager,  # Will use HookableHTTPClient if hook_manager is provided
+        hook_manager=hook_manager,
     )
 
     context_data: dict[str, Any] = {
@@ -244,7 +213,6 @@ async def _lazy_register_oauth_provider(
     }
 
     try:
-        # Context adheres to PluginContext keys; pass as Any to satisfy factory
         oauth_provider = factory.create_auth_provider(context_data)  # type: ignore[arg-type]
     except Exception as e:
         logger.debug(
@@ -253,28 +221,26 @@ async def _lazy_register_oauth_provider(
         return None
 
     try:
-        # Avoid double registration if already present
         if not registry.has_provider(oauth_provider.provider_name):
             registry.register_provider(oauth_provider)
     except Exception:
-        # Even if registration fails, return the instance if it matches
         pass
 
     return oauth_provider
 
 
-async def discover_oauth_providers() -> dict[str, tuple[str, str]]:
+async def discover_oauth_providers(
+    container: ServiceContainer,
+) -> dict[str, tuple[str, str]]:
     """Return available OAuth providers discovered via the plugin loader."""
     providers: dict[str, tuple[str, str]] = {}
     try:
-        settings = get_settings()
+        settings = container.get_service(Settings)
         registry, _ = load_plugin_system(settings)
         for name, factory in registry.factories.items():
-            # Only include auth provider plugin factories
             from ccproxy.core.plugins.factory import AuthProviderPluginFactory
 
             if isinstance(factory, AuthProviderPluginFactory):
-                # Map manifest name to CLI provider key
                 if name == "oauth_claude":
                     providers["claude-api"] = ("oauth", "Claude API OAuth")
                 elif name == "oauth_codex":
@@ -286,27 +252,18 @@ async def discover_oauth_providers() -> dict[str, tuple[str, str]]:
 
 def get_oauth_provider_choices() -> list[str]:
     """Get list of available OAuth provider names for CLI choices."""
-    providers = asyncio.run(discover_oauth_providers())
+    container = _get_service_container()
+    providers = asyncio.run(discover_oauth_providers(container))
     return list(providers.keys())
 
 
-# Removed legacy direct plugin access helper; use OAuth providers via registry
-
-
-async def get_oauth_client_for_provider(provider: str, registry: OAuthRegistry) -> Any:
-    """Get OAuth client for the specified provider.
-
-    Args:
-        provider: Provider name (e.g., 'claude_api', 'codex')
-
-    Returns:
-        OAuth client instance for the provider
-
-    Raises:
-        ValueError: If provider not found or doesn't support OAuth
-    """
-    # Load provider lazily and return its client
-    oauth_provider = await get_oauth_provider_for_name(provider, registry)
+async def get_oauth_client_for_provider(
+    provider: str,
+    registry: OAuthRegistry,
+    container: ServiceContainer,
+) -> Any:
+    """Get OAuth client for the specified provider."""
+    oauth_provider = await get_oauth_provider_for_name(provider, registry, container)
     if not oauth_provider:
         raise ValueError(f"Provider '{provider}' not found")
     oauth_client = getattr(oauth_provider, "client", None)
@@ -316,19 +273,15 @@ async def get_oauth_client_for_provider(provider: str, registry: OAuthRegistry) 
 
 
 async def check_provider_credentials(
-    provider: str, registry: OAuthRegistry
+    provider: str,
+    registry: OAuthRegistry,
+    container: ServiceContainer,
 ) -> dict[str, Any]:
-    """Check if provider has valid stored credentials.
-
-    Args:
-        provider: Provider name
-
-    Returns:
-        Dictionary with credential status information
-    """
+    """Check if provider has valid stored credentials."""
     try:
-        # Lazily load provider and inspect storage
-        oauth_provider = await get_oauth_provider_for_name(provider, registry)
+        oauth_provider = await get_oauth_provider_for_name(
+            provider, registry, container
+        )
         if not oauth_provider:
             return {
                 "has_credentials": False,
@@ -337,15 +290,14 @@ async def check_provider_credentials(
                 "credentials": None,
             }
 
-        # Try to load credentials via provider storage
         creds = await oauth_provider.load_credentials()
         has_credentials = creds is not None
 
         return {
             "has_credentials": has_credentials,
             "expired": not has_credentials,
-            "path": None,  # Provider-specific; not exposed in protocol
-            "credentials": None,  # Redacted
+            "path": None,
+            "credentials": None,
         }
 
     except AttributeError as e:
@@ -355,7 +307,6 @@ async def check_provider_credentials(
             error=str(e),
             exc_info=e,
         )
-        # If we can't check credentials, assume none exist
         return {
             "has_credentials": False,
             "expired": True,
@@ -366,7 +317,6 @@ async def check_provider_credentials(
         logger.debug(
             "credentials_file_not_found", provider=provider, error=str(e), exc_info=e
         )
-        # If we can't check credentials, assume none exist
         return {
             "has_credentials": False,
             "expired": True,
@@ -377,7 +327,6 @@ async def check_provider_credentials(
         logger.debug(
             "credentials_check_failed", provider=provider, error=str(e), exc_info=e
         )
-        # If we can't check credentials, assume none exist
         return {
             "has_credentials": False,
             "expired": True,
@@ -395,7 +344,8 @@ def list_providers() -> None:
     toolkit.print_line()
 
     try:
-        providers = asyncio.run(discover_oauth_providers())
+        container = _get_service_container()
+        providers = asyncio.run(discover_oauth_providers(container))
 
         if not providers:
             toolkit.print("No OAuth providers found", tag="warning")
@@ -445,30 +395,18 @@ def login_command(
         ),
     ] = False,
 ) -> None:
-    """Login to a provider using OAuth authentication.
-
-    Examples:
-        ccproxy auth login claude-api     # Claude API OAuth login
-        ccproxy auth login codex          # Codex/OpenAI OAuth login
-        ccproxy auth login claude-api --manual  # Manual code entry
-    """
+    """Login to a provider using OAuth authentication."""
     _ensure_logging_configured()
-    # Load settings early so configuration logs appear before other inits
-    with contextlib.suppress(Exception):
-        _ = get_settings()
     toolkit = get_rich_toolkit()
 
-    # Normalize provider name (no aliasing)
     provider = provider.strip().lower()
 
-    # Handle OAuth providers (claude-api, codex)
     toolkit.print(
         f"[bold cyan]OAuth Login - {provider.replace('_', '-').title()}[/bold cyan]",
         centered=True,
     )
     toolkit.print_line()
 
-    # CLI OAuth was removed. Provide a clear message and non-zero exit.
     toolkit.print(
         "CLI OAuth flow has been removed. Use provider-specific tooling or API tokens.",
         tag="error",
@@ -487,22 +425,10 @@ def status_command(
         typer.Option("--detailed", "-d", help="Show detailed credential information"),
     ] = False,
 ) -> None:
-    """Check authentication status and info for specified provider.
-
-    Shows authentication status, credential validity, and account information.
-
-    Examples:
-        ccproxy auth status claude-api   # Claude API OAuth status
-        ccproxy auth status codex        # Codex/OpenAI status
-        ccproxy auth status -d codex     # Detailed info with tokens
-    """
+    """Check authentication status and info for specified provider."""
     _ensure_logging_configured()
-    # Load settings early so configuration logs appear before other inits
-    with contextlib.suppress(Exception):
-        _ = get_settings()
     toolkit = get_rich_toolkit()
 
-    # Normalize provider (no aliasing) and derive display name
     provider = provider.strip().lower()
     display_name = provider.replace("_", "-").title()
 
@@ -513,11 +439,13 @@ def status_command(
     toolkit.print_line()
 
     try:
+        container = _get_service_container()
         registry = OAuthRegistry()
-        # Get the OAuth provider for this provider name
-        oauth_provider = asyncio.run(get_oauth_provider_for_name(provider, registry))
+        oauth_provider = asyncio.run(
+            get_oauth_provider_for_name(provider, registry, container)
+        )
         if not oauth_provider:
-            providers = asyncio.run(discover_oauth_providers())
+            providers = asyncio.run(discover_oauth_providers(container))
             available = ", ".join(providers.keys()) if providers else "none"
             expected = _expected_plugin_class_name(provider)
             toolkit.print(
@@ -530,7 +458,6 @@ def status_command(
         credentials = None
 
         if oauth_provider:
-            # Prefer lightweight, unified profile via token managers
             try:
                 storage = None
                 if hasattr(oauth_provider, "get_storage"):
@@ -542,7 +469,9 @@ def status_command(
                 manager: _Any | None = None
                 if provider in ("claude-api", "claude_api"):
                     try:
-                        from ccproxy.plugins.oauth_claude.manager import ClaudeApiTokenManager
+                        from ccproxy.plugins.oauth_claude.manager import (
+                            ClaudeApiTokenManager,
+                        )
 
                         if storage is not None:
                             manager = asyncio.run(
@@ -554,7 +483,9 @@ def status_command(
                         logger.debug("claude_manager_init_failed", error=str(e))
                 elif provider == "codex":
                     try:
-                        from ccproxy.plugins.oauth_codex.manager import CodexTokenManager
+                        from ccproxy.plugins.oauth_codex.manager import (
+                            CodexTokenManager,
+                        )
 
                         if storage is not None:
                             manager = asyncio.run(
@@ -565,17 +496,13 @@ def status_command(
                     except Exception as e:
                         logger.debug("codex_manager_init_failed", error=str(e))
 
-                # Load credentials via manager if available, else via provider
                 if manager is not None:
                     credentials = asyncio.run(manager.load_credentials())
                 else:
-                    # Fallback to provider loader (may be heavier)
                     credentials = asyncio.run(oauth_provider.load_credentials())
 
-                # Build profile info minimizing file checks
                 if credentials:
                     if provider == "codex":
-                        # Codex/OpenAI: derive standardized profile directly from JWT claims
                         standard_profile = None
                         if hasattr(oauth_provider, "get_standard_profile"):
                             with contextlib.suppress(Exception):
@@ -583,7 +510,8 @@ def status_command(
                                     oauth_provider.get_standard_profile(credentials)
                                 )
                         if not standard_profile and hasattr(
-                            oauth_provider, "_extract_standard_profile"
+                            oauth_provider,
+                            "_extract_standard_profile",
                         ):
                             with contextlib.suppress(Exception):
                                 standard_profile = (
@@ -594,7 +522,7 @@ def status_command(
                         if standard_profile is not None:
                             try:
                                 profile_info = standard_profile.model_dump(
-                                    exclude={"_raw_profile_data"}
+                                    exclude={"raw_profile_data"}
                                 )
                             except Exception:
                                 profile_info = {
@@ -604,10 +532,10 @@ def status_command(
                         else:
                             profile_info = {"provider": provider, "authenticated": True}
                     else:
-                        # Claude: use quick cache (no extra disk), then enrich from extras
                         quick = None
                         if manager is not None and hasattr(
-                            manager, "get_unified_profile_quick"
+                            manager,
+                            "get_unified_profile_quick",
                         ):
                             with contextlib.suppress(Exception):
                                 quick = asyncio.run(manager.get_unified_profile_quick())
@@ -676,7 +604,6 @@ def status_command(
                             except Exception:
                                 pass
                         else:
-                            # Fallback to provider standardized profile
                             standard_profile = None
                             if hasattr(oauth_provider, "get_standard_profile"):
                                 with contextlib.suppress(Exception):
@@ -686,7 +613,7 @@ def status_command(
                             if standard_profile is not None:
                                 try:
                                     profile_info = standard_profile.model_dump(
-                                        exclude={"_raw_profile_data"}
+                                        exclude={"raw_profile_data"}
                                     )
                                 except Exception:
                                     profile_info = {
@@ -699,11 +626,9 @@ def status_command(
                                     "authenticated": True,
                                 }
 
-                    # Ensure provider present for display consistency
                     if profile_info is not None and "provider" not in profile_info:
                         profile_info["provider"] = provider
 
-                    # Debug logging when important fields are missing (helps diagnose Codex issues)
                     try:
                         prov_dbg = (
                             profile_info.get("provider_type")
@@ -720,12 +645,10 @@ def status_command(
                                 missing.append(f)
                         if missing:
                             reasons: list[str] = []
-                            # Inspect quick extras for clues
                             qextra = (
                                 quick.get("extras") if isinstance(quick, dict) else None
                             )
                             if prov_dbg in {"codex", "openai"}:
-                                # OpenAI claims location
                                 auth_claims = None
                                 if isinstance(qextra, dict):
                                     auth_claims = qextra.get(
@@ -769,7 +692,6 @@ def status_command(
         if profile_info:
             console.print("[green]✓[/green] Authenticated with valid credentials")
 
-            # Normalize fields for rendering
             if "provider_type" not in profile_info and "provider" in profile_info:
                 try:
                     profile_info["provider_type"] = str(
@@ -782,20 +704,15 @@ def status_command(
                         else None
                     )
 
-            # Render a clean standardized view instead of dumping a dict
             _render_profile_table(profile_info, title="Account Information")
             _render_profile_features(profile_info)
 
-            # For detailed mode, try to show token preview if available
             if detailed and credentials:
-                # Try to extract token for preview
                 token_str = None
 
                 if hasattr(credentials, "access_token"):
-                    # Direct access token
                     token_str = str(credentials.access_token)
                 elif hasattr(credentials, "claude_ai_oauth"):
-                    # Claude OAuth structure
                     oauth = credentials.claude_ai_oauth
                     if hasattr(oauth, "access_token"):
                         if hasattr(oauth.access_token, "get_secret_value"):
@@ -807,7 +724,6 @@ def status_command(
                     token_preview = f"{token_str[:8]}...{token_str[-8:]}"
                     console.print(f"\n  Token: [dim]{token_preview}[/dim]")
         else:
-            # No profile info means not authenticated or provider doesn't exist
             console.print("[red]✗[/red] Not authenticated or provider not found")
             console.print(f"  Run 'ccproxy auth login {provider}' to authenticate")
 
@@ -828,31 +744,24 @@ def logout_command(
         str, typer.Argument(help="Provider to logout from (claude-api, codex)")
     ],
 ) -> None:
-    """Logout and remove stored credentials for specified provider.
-
-    Examples:
-        ccproxy auth logout codex
-        ccproxy auth logout claude-api
-    """
+    """Logout and remove stored credentials for specified provider."""
     _ensure_logging_configured()
-    # Load settings early so configuration logs appear before other inits
-    with contextlib.suppress(Exception):
-        _ = get_settings()
     toolkit = get_rich_toolkit()
 
-    # Normalize provider (no aliasing)
     provider = provider.strip().lower()
 
     toolkit.print(f"[bold cyan]{provider.title()} Logout[/bold cyan]", centered=True)
     toolkit.print_line()
 
     try:
+        container = _get_service_container()
         registry = OAuthRegistry()
-        # Get the OAuth provider for this provider name (lazy load)
-        oauth_provider = asyncio.run(get_oauth_provider_for_name(provider, registry))
+        oauth_provider = asyncio.run(
+            get_oauth_provider_for_name(provider, registry, container)
+        )
 
         if not oauth_provider:
-            providers = asyncio.run(discover_oauth_providers())
+            providers = asyncio.run(discover_oauth_providers(container))
             available = ", ".join(providers.keys()) if providers else "none"
             expected = _expected_plugin_class_name(provider)
             toolkit.print(
@@ -861,7 +770,6 @@ def logout_command(
             )
             raise typer.Exit(1)
 
-        # Check if credentials exist
         existing_creds = None
         with contextlib.suppress(Exception):
             existing_creds = asyncio.run(oauth_provider.load_credentials())
@@ -870,7 +778,6 @@ def logout_command(
             console.print("[yellow]No credentials found. Already logged out.[/yellow]")
             return
 
-        # Confirm logout
         confirm = typer.confirm(
             "Are you sure you want to logout and remove credentials?"
         )
@@ -878,7 +785,6 @@ def logout_command(
             console.print("Logout cancelled.")
             return
 
-        # Delete credentials using provider's storage
         success = False
         try:
             storage = oauth_provider.get_storage()
@@ -887,7 +793,6 @@ def logout_command(
             elif storage and hasattr(storage, "clear"):
                 success = asyncio.run(storage.clear())
             else:
-                # Try to delete through save with None
                 success = asyncio.run(oauth_provider.save_credentials(None))
         except Exception as e:
             logger.debug("logout_error", error=str(e), exc_info=e)
@@ -899,9 +804,8 @@ def logout_command(
             toolkit.print("Failed to remove credentials", tag="error")
             raise typer.Exit(1)
 
-    except FileNotFoundError as e:
+    except FileNotFoundError:
         toolkit.print("No credentials found to remove.", tag="warning")
-        # Don't exit with error for this case
     except OSError as e:
         toolkit.print(f"Failed to remove credential files: {e}", tag="error")
         raise typer.Exit(1) from e
@@ -913,25 +817,19 @@ def logout_command(
         raise typer.Exit(1) from e
 
 
-# OpenAI Codex Authentication Commands
-
-
-async def get_oauth_provider_for_name(provider: str, registry: OAuthRegistry) -> Any:
-    """Get OAuth provider instance for the specified provider name.
-
-    Args:
-        provider: Provider name (e.g., 'claude-api', 'codex')
-
-    Returns:
-        OAuth provider instance or None if not found
-    """
-    # Already registered?
+async def get_oauth_provider_for_name(
+    provider: str,
+    registry: OAuthRegistry,
+    container: ServiceContainer,
+) -> Any:
+    """Get OAuth provider instance for the specified provider name."""
     existing = registry.get_provider(provider)
     if existing:
         return existing
 
-    # Lazily import and register only this provider
-    provider_instance = await _lazy_register_oauth_provider(provider, registry)
+    provider_instance = await _lazy_register_oauth_provider(
+        provider, registry, container
+    )
     if provider_instance:
         return provider_instance
 

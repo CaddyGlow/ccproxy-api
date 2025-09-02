@@ -39,6 +39,7 @@ class DeferredStreaming(StreamingResponse):
         handler_config: "HandlerConfig | None" = None,
         request_context: "RequestContext | None" = None,
         hook_manager: HookManager | None = None,
+        close_client_on_finish: bool = False,
     ):
         """Store request details to execute later.
 
@@ -63,6 +64,7 @@ class DeferredStreaming(StreamingResponse):
         self.handler_config = handler_config
         self.request_context = request_context
         self.hook_manager = hook_manager
+        self._close_client_on_finish = close_client_on_finish
 
         # Create an async generator for the streaming content
         async def generate_content() -> AsyncGenerator[bytes, None]:
@@ -433,6 +435,14 @@ class DeferredStreaming(StreamingResponse):
 
             # Delegate to the actual response
             await actual_response(scope, receive, send)
+
+        # After the streaming context closes, optionally close the client we own
+        if self._close_client_on_finish:
+            try:
+                await self.client.aclose()
+            except Exception:
+                # Best-effort close; ignore errors on shutdown path
+                pass
 
     async def _process_sse_events(
         self, response: httpx.Response, adapter: "APIAdapter"

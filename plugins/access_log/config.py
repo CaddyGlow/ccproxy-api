@@ -1,6 +1,6 @@
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 
 class AccessLogConfig(BaseModel):
@@ -30,8 +30,4 @@ class AccessLogConfig(BaseModel):
     buffer_size: int = 100  # Buffer this many log entries before writing
     flush_interval: float = 1.0  # Flush buffer every N seconds
 
-    class Config:
-        """Pydantic configuration."""
-
-        # Allow environment variable override
-        case_sensitive = False
+    model_config = ConfigDict(case_sensitive=False)

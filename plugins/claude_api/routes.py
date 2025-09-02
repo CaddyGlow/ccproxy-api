@@ -7,7 +7,6 @@ from starlette.responses import Response, StreamingResponse
 
 from ccproxy.api.dependencies import get_plugin_adapter
 from ccproxy.auth.conditional import ConditionalAuthDep
-from ccproxy.config.settings import get_settings
 from ccproxy.streaming.deferred_streaming import DeferredStreaming
 
 
@@ -90,8 +89,6 @@ async def list_models(
 
     Returns a list of available models in OpenAI-compatible format.
     """
-
-    settings = get_settings()
 
     # Build OpenAI-compatible model list
     models = []

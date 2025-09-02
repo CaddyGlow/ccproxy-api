@@ -10,4 +10,3 @@ This module intentionally exports no additional symbols.
 """
 
 __all__: list[str] = []
-

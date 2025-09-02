@@ -15,11 +15,7 @@ from fastapi import FastAPI, Request, Response
 from ccproxy.config.discovery import get_ccproxy_cache_dir
 from ccproxy.config.settings import Settings
 from ccproxy.core.logging import get_plugin_logger
-from ccproxy.models.detection import (
-    CodexCacheData,
-    CodexHeaders,
-    CodexInstructionsData,
-)
+from ccproxy.models.detection import CodexCacheData, CodexHeaders, CodexInstructionsData
 from ccproxy.services.cli_detection import CLIDetectionService
 from ccproxy.utils.caching import async_ttl_cache
 
@@ -45,6 +41,7 @@ class CodexDetectionService:
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self._cached_data: CodexCacheData | None = None
         self._cli_service = cli_service or CLIDetectionService(settings)
+        self._cli_info: CodexCliInfo | None = None
 
     async def initialize_detection(self) -> CodexCacheData:
         """Initialize Codex detection at startup."""
@@ -111,6 +108,31 @@ class CodexDetectionService:
     def get_binary_path(self) -> list[str] | None:
         """Alias for get_cli_path for backward compatibility."""
         return self.get_cli_path()
+
+    def get_cli_health_info(self) -> CodexCliInfo:
+        """Get lightweight CLI health info using centralized detection, cached locally.
+
+        Returns:
+            CodexCliInfo with availability, version, and binary path
+        """
+        from .models import CodexCliInfo, CodexCliStatus
+
+        if self._cli_info is not None:
+            return self._cli_info
+
+        info = self._cli_service.get_cli_info("codex")
+        status = (
+            CodexCliStatus.AVAILABLE
+            if info["is_available"]
+            else CodexCliStatus.NOT_INSTALLED
+        )
+        cli_info = CodexCliInfo(
+            status=status,
+            version=info.get("version"),
+            binary_path=info.get("path"),
+        )
+        self._cli_info = cli_info
+        return cli_info
 
     @async_ttl_cache(maxsize=16, ttl=900.0)  # 15 minute cache for version
     async def _get_codex_version(self) -> str:
@@ -321,4 +343,5 @@ class CodexDetectionService:
         # Clear the async cache for _get_codex_version
         if hasattr(self._get_codex_version, "cache_clear"):
             self._get_codex_version.cache_clear()
+        self._cli_info = None
         logger.debug("detection_cache_cleared", category="plugin")

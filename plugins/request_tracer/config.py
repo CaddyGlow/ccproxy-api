@@ -1,6 +1,6 @@
 """Configuration for the RequestTracer plugin."""
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 
 class RequestTracerConfig(BaseModel):
@@ -96,11 +96,7 @@ class RequestTracerConfig(BaseModel):
         default=False, description="Log individual streaming chunks (verbose)"
     )
 
-    class Config:
-        """Pydantic configuration."""
-
-        # Allow environment variable override
-        case_sensitive = False
+    model_config = ConfigDict(case_sensitive=False)
 
     def get_json_log_dir(self) -> str:
         """Get directory for structured JSON logs."""

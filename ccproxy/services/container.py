@@ -4,13 +4,14 @@ This module provides a clean, testable dependency injection container that
 manages service lifecycles and dependencies without singleton anti-patterns.
 """
 
-from typing import Any, cast
+from collections.abc import Callable
+import inspect
+from typing import Any, TypeVar
 
 import httpx
 import structlog
 
 from ccproxy.config.settings import Settings
-from ccproxy.core.http import BaseProxyClient
 from ccproxy.services.cache import ResponseCache
 from ccproxy.services.cli_detection import CLIDetectionService
 from ccproxy.services.config import ProxyConfiguration
@@ -29,303 +30,136 @@ from ccproxy.utils.binary_resolver import BinaryResolver
 
 logger = structlog.get_logger(__name__)
 
+T = TypeVar("T")
+
 
 class ServiceContainer:
-    """Dependency injection container for all services.
+    """Dependency injection container for all services."""
 
-    This container manages service lifecycles and dependencies using proper
-    dependency injection patterns. It removes singleton anti-patterns and
-    provides a clean, testable interface for service management.
-
-    Key improvements:
-    - No singleton pattern (_instance class variable removed)
-    - Uses factory pattern for service creation
-    - Implements service interfaces for better testing
-    - Manages resource lifecycle properly
-    - Supports dependency injection for better testability
-    """
-
-    def __init__(self, settings: Settings, service_factory: Any | None = None) -> None:
-        """Initialize the service container.
-
-        Args:
-            settings: Application settings
-            service_factory: Optional service factory (for testing/customization)
-        """
+    def __init__(self, settings: Settings) -> None:
+        """Initialize the service container."""
         self.settings = settings
-        self._factory = service_factory or ConcreteServiceFactory()
+        self._services: dict[type[Any], Any] = {}
+        self._factories: dict[type[Any], Callable[[], Any]] = {}
 
-        # Service instances (created on-demand, not singletons)
-        self._services: dict[str, object] = {}
-        self._http_client: httpx.AsyncClient | None = None
-        self._pool_manager: HTTPPoolManager | None = None
-        self._request_tracer: IRequestTracer | None = None  # Set by plugin
-        self._proxy_client: BaseProxyClient | None = None  # Managed proxy client
+        self.register_service(Settings, self.settings)
+        self.register_service(ServiceContainer, self)
 
-        logger.debug(
-            "service_container_initialized",
-            has_factory=service_factory is not None,
-            category="lifecycle",
-        )
+        factory = ConcreteServiceFactory(self)
+        factory.register_services()
 
-    def set_proxy_client(self, proxy_client: BaseProxyClient) -> None:
-        """Set the proxy client for the container to manage.
+        # Ensure a request tracer is always available for early consumers
+        # Plugins may override this with a real tracer at runtime
+        self.register_service(IRequestTracer, instance=NullRequestTracer())
 
-        Args:
-            proxy_client: HTTP proxy client to manage
-        """
-        self._proxy_client = proxy_client
-        logger.debug("proxy_client_set", category="lifecycle")
+    def register_service(
+        self,
+        service_type: type[T],
+        instance: T | None = None,
+        factory: Callable[[], T] | None = None,
+    ) -> None:
+        """Register a service instance or factory."""
+        if instance is not None:
+            self._services[service_type] = instance
+        elif factory is not None:
+            self._factories[service_type] = factory
+        else:
+            raise ValueError("Either instance or factory must be provided")
+
+    def get_service(self, service_type: type[T]) -> T:
+        """Get a service instance."""
+        if service_type not in self._services:
+            if service_type in self._factories:
+                self._services[service_type] = self._factories[service_type]()
+            else:
+                raise ValueError(f"Service {service_type.__name__} not registered")
+        return self._services[service_type]
 
     def get_request_tracer(self) -> IRequestTracer:
-        """Get request tracer service instance.
-
-        Returns the plugin-injected tracer or NullRequestTracer as fallback.
-
-        Returns:
-            Request tracer service instance
-        """
-        if self._request_tracer is None:
-            # No plugin has registered a tracer, use null implementation
-            self._request_tracer = NullRequestTracer()
-            logger.debug("using_null_request_tracer", category="lifecycle")
-        return self._request_tracer
+        """Get request tracer service instance."""
+        return self.get_service(IRequestTracer)
 
     def set_request_tracer(self, tracer: IRequestTracer) -> None:
-        """Set the request tracer (called by plugin).
-
-        Args:
-            tracer: The request tracer implementation
-        """
-        self._request_tracer = tracer
-        logger.info(
-            "request_tracer_set",
-            tracer_type=type(tracer).__name__,
-            category="lifecycle",
-        )
+        """Set the request tracer (called by plugin)."""
+        self.register_service(IRequestTracer, instance=tracer)
 
     def get_mock_handler(self) -> MockResponseHandler:
-        """Get mock handler service instance.
+        """Get mock handler service instance."""
+        return self.get_service(MockResponseHandler)
 
-        Uses caching to ensure single instance per container lifetime,
-        but allows multiple containers for testing.
-
-        Returns:
-            Mock handler service instance
-        """
-        service_key = "mock_handler"
-        if service_key not in self._services:
-            self._services[service_key] = self._factory.create_mock_handler(
-                self.settings
-            )
-        return self._services[service_key]  # type: ignore
-
-    def get_streaming_handler(
-        self,
-        metrics: Any | None = None,
-        hook_manager: Any | None = None,
-    ) -> StreamingHandler:
-        """Get streaming handler service instance.
-
-        Uses caching to ensure single instance per container lifetime,
-        but allows multiple containers for testing.
-
-        Args:
-            metrics: Optional metrics service
-            hook_manager: Optional hook manager for event emission
-
-        Returns:
-            Streaming handler service instance
-        """
-        service_key = "streaming_handler"
-        if service_key not in self._services:
-            request_tracer = self.get_request_tracer()
-            self._services[service_key] = self._factory.create_streaming_handler(
-                self.settings,
-                metrics=metrics,
-                request_tracer=request_tracer,
-                hook_manager=hook_manager,
-            )
-        return cast(StreamingHandler, self._services[service_key])
+    def get_streaming_handler(self) -> StreamingHandler:
+        """Get streaming handler service instance."""
+        return self.get_service(StreamingHandler)
 
     def get_binary_resolver(self) -> BinaryResolver:
-        """Get binary resolver service instance.
-
-        Uses caching to ensure single instance per container lifetime,
-        but allows multiple containers for testing.
-
-        Returns:
-            Binary resolver service instance
-        """
-        service_key = "binary_resolver"
-        if service_key not in self._services:
-            self._services[service_key] = BinaryResolver.from_settings(self.settings)
-        return self._services[service_key]  # type: ignore
+        """Get binary resolver service instance."""
+        return self.get_service(BinaryResolver)
 
     def get_cli_detection_service(self) -> CLIDetectionService:
-        """Get CLI detection service instance.
-
-        Uses caching to ensure single instance per container lifetime,
-        but allows multiple containers for testing.
-
-        Returns:
-            CLI detection service instance
-        """
-        service_key = "cli_detection_service"
-        if service_key not in self._services:
-            binary_resolver = self.get_binary_resolver()
-            self._services[service_key] = CLIDetectionService(
-                self.settings, binary_resolver
-            )
-        return self._services[service_key]  # type: ignore
+        """Get CLI detection service instance."""
+        return self.get_service(CLIDetectionService)
 
     def get_proxy_config(self) -> ProxyConfiguration:
-        """Get proxy configuration service instance.
-
-        Uses caching to ensure single instance per container lifetime,
-        but allows multiple containers for testing.
-
-        Returns:
-            Proxy configuration service instance
-        """
-        service_key = "proxy_config"
-        if service_key not in self._services:
-            self._services[service_key] = self._factory.create_proxy_config()
-        return self._services[service_key]  # type: ignore
+        """Get proxy configuration service instance."""
+        return self.get_service(ProxyConfiguration)
 
     def get_http_client(self) -> httpx.AsyncClient:
-        """Get container-managed HTTP client instance.
-
-        This provides the centralized HTTP client with optimized configuration
-        for the proxy use case. Only one HTTP client per container to ensure
-        proper resource management.
-
-        Returns:
-            httpx.AsyncClient instance managed by this container
-        """
-        if not self._http_client:
-            # Use pool manager for centralized management
-            pool_manager = self.get_pool_manager()
-            # Use synchronous version during initialization
-            self._http_client = pool_manager.get_shared_client_sync()
-        return self._http_client
+        """Get container-managed HTTP client instance."""
+        return self.get_service(httpx.AsyncClient)
 
     def get_pool_manager(self) -> HTTPPoolManager:
-        """Get HTTP connection pool manager instance.
-
-        This provides centralized management of HTTP connection pools,
-        ensuring efficient resource usage across all components.
-
-        Returns:
-            HTTPPoolManager instance
-        """
-        if not self._pool_manager:
-            self._pool_manager = HTTPPoolManager(self.settings)
-            logger.debug("http_pool_manager_created", category="lifecycle")
-        return self._pool_manager
+        """Get HTTP connection pool manager instance."""
+        return self.get_service(HTTPPoolManager)
 
     def get_response_cache(self) -> ResponseCache:
-        """Get response cache service instance.
-
-        Returns:
-            ResponseCache instance for caching API responses
-        """
-        service_key = "response_cache"
-        if service_key not in self._services:
-            # Configure cache based on settings
-            cache_settings = getattr(self.settings, "cache", None)
-            if cache_settings:
-                ttl = getattr(cache_settings, "default_ttl", 300.0)
-                max_size = getattr(cache_settings, "max_size", 1000)
-                self._services[service_key] = ResponseCache(
-                    default_ttl=ttl, max_size=max_size
-                )
-            else:
-                # Default configuration
-                self._services[service_key] = ResponseCache()
-            logger.debug("response_cache_created", category="lifecycle")
-        return self._services[service_key]  # type: ignore
+        """Get response cache service instance."""
+        return self.get_service(ResponseCache)
 
     def get_connection_pool_manager(self) -> ConnectionPoolManager:
-        """Get connection pool manager service instance.
-
-        Returns:
-            ConnectionPoolManager instance for managing HTTP connection pools
-        """
-        service_key = "connection_pool_manager"
-        if service_key not in self._services:
-            # Configure based on settings
-            pool_settings = getattr(self.settings, "http", None)
-            if pool_settings:
-                timeout = getattr(pool_settings, "timeout", 120.0)
-                pool_size = getattr(pool_settings, "pool_size", 20)
-                self._services[service_key] = ConnectionPoolManager(
-                    default_timeout=timeout, pool_size=pool_size
-                )
-            else:
-                # Default configuration
-                self._services[service_key] = ConnectionPoolManager()
-            logger.debug("connection_pool_manager_created", category="lifecycle")
-        return self._services[service_key]  # type: ignore
+        """Get connection pool manager service instance."""
+        return self.get_service(ConnectionPoolManager)
 
     def get_adapter_dependencies(self, metrics: Any | None = None) -> dict[str, Any]:
-        """Get all services an adapter might need.
-
-        This method provides individual services for explicit dependency injection
-        in adapters.
-
-        Args:
-            metrics: Optional metrics service
-
-        Returns:
-            Dictionary of services that can be injected into adapters
-        """
+        """Get all services an adapter might need."""
         return {
             "http_client": self.get_http_client(),
             "request_tracer": self.get_request_tracer(),
             "metrics": metrics or NullMetricsCollector(),
-            "streaming_handler": self.get_streaming_handler(metrics),
+            "streaming_handler": self.get_streaming_handler(),
             "logger": structlog.get_logger(),
             "config": self.get_proxy_config(),
             "cli_detection_service": self.get_cli_detection_service(),
         }
 
     async def close(self) -> None:
-        """Close all managed resources during shutdown.
+        """Close all managed resources during shutdown."""
+        for service in list(self._services.values()):
+            # Avoid recursive self-close
+            if service is self:
+                continue
 
-        This method properly cleans up all resources managed by the container,
-        ensuring graceful shutdown and preventing resource leaks.
-        """
-        # Close proxy client if it exists
-        if self._proxy_client:
-            if hasattr(self._proxy_client, "close"):
-                try:
-                    await self._proxy_client.close()
-                    logger.debug("proxy_client_closed", category="lifecycle")
-                except Exception as e:
-                    logger.error(
-                        "proxy_client_close_failed",
-                        error=str(e),
-                        exc_info=e,
-                        category="lifecycle",
-                    )
-            self._proxy_client = None
-
-        # Close pool manager (which closes all HTTP clients including the
-        # container-managed default client)
-        if self._pool_manager:
-            await self._pool_manager.close_all()
-            self._pool_manager = None
-            # Clear the HTTP client reference since it's closed by pool manager
-            self._http_client = None
-            logger.debug("http_pool_manager_closed", category="lifecycle")
-
-        # Close HTTP client if it was created separately (should not happen normally)
-        elif self._http_client:
-            await self._http_client.aclose()
-            self._http_client = None
-            logger.debug("http_client_closed_directly", category="lifecycle")
-
-        # Clear service cache
+            try:
+                # Prefer aclose() if available (e.g., httpx.AsyncClient)
+                if hasattr(service, "aclose") and callable(getattr(service, "aclose")):
+                    maybe_coro = service.aclose()
+                    if inspect.isawaitable(maybe_coro):
+                        await maybe_coro
+                elif hasattr(service, "close") and callable(getattr(service, "close")):
+                    maybe_coro = service.close()
+                    if inspect.isawaitable(maybe_coro):
+                        await maybe_coro
+                # else: nothing to close
+            except Exception as e:
+                logger.error(
+                    "service_close_failed",
+                    service=type(service).__name__,
+                    error=str(e),
+                    exc_info=e,
+                    category="lifecycle",
+                )
         self._services.clear()
         logger.debug("service_container_resources_closed", category="lifecycle")
+
+    async def shutdown(self) -> None:
+        """Shutdown all services in the container."""
+        await self.close()
