@@ -456,68 +456,118 @@ class PluginRegistry:
     def resolve_dependencies(self) -> list[str]:
         """Resolve plugin dependencies and return initialization order.
 
+        Skips plugins with missing hard dependencies or required services
+        instead of failing the entire plugin system. Logs skipped plugins
+        and continues with the rest.
+
         Returns:
             List of plugin names in initialization order
-
-        Raises:
-            ValueError: If circular dependencies detected or missing dependencies
         """
         manifests = self.get_all_manifests()
+
+        # Start with all plugins available
         available = set(manifests.keys())
+        skipped: dict[str, str] = {}
 
-        # Check for missing plugin dependencies
-        for name, manifest in manifests.items():
-            missing = manifest.validate_dependencies(available)
-            if missing:
-                raise ValueError(f"Plugin {name} has missing dependencies: {missing}")
+        # Iteratively prune plugins with unsatisfied dependencies or services
+        while True:
+            removed_this_pass: set[str] = set()
 
-        # Add service dependency validation
-        for name, manifest in manifests.items():
-            # Check required services will be available
-            for required_service in manifest.requires:
-                # Find which plugin provides this service
-                provider_found = False
-                for other_name, other_manifest in manifests.items():
-                    if required_service in other_manifest.provides:
-                        provider_found = True
-                        # Ensure provider loads before consumer
-                        if other_name not in manifest.dependencies:
-                            manifest.dependencies.append(other_name)
-                        break
-                if not provider_found:
-                    raise ValueError(
-                        f"Plugin {name} requires service {required_service} but no plugin provides it"
-                    )
+            # Compute services provided by currently available plugins
+            available_services = {
+                service for name in available for service in manifests[name].provides
+            }
 
-        # Topological sort for dependency resolution
-        visited = set()
-        temp_mark = set()
-        order = []
+            for name in sorted(available):
+                manifest = manifests[name]
 
-        def visit(name: str) -> None:
-            if name in temp_mark:
-                raise ValueError(f"Circular dependency detected involving {name}")
-            if name in visited:
-                return
+                # Check plugin dependencies
+                missing_plugins = [
+                    dep for dep in manifest.dependencies if dep not in available
+                ]
+                if missing_plugins:
+                    removed_this_pass.add(name)
+                    skipped[name] = f"missing plugin dependencies: {missing_plugins}"
+                    continue
 
-            temp_mark.add(name)
+                # Check required services
+                missing_services = manifest.validate_service_dependencies(
+                    available_services
+                )
+                if missing_services:
+                    removed_this_pass.add(name)
+                    skipped[name] = f"missing required services: {missing_services}"
+
+            if not removed_this_pass:
+                break
+
+            # Remove the failing plugins and repeat until stable
+            available -= removed_this_pass
+
+        # Before sorting, ensure provider plugins load before consumers by
+        # adding provider plugins to the consumer's dependency list.
+        # Choose a stable provider (lexicographically first) when multiple exist.
+        for name in available:
             manifest = manifests[name]
+            for required_service in manifest.requires:
+                provider_names = [
+                    other_name
+                    for other_name in available
+                    if required_service in manifests[other_name].provides
+                ]
+                if provider_names:
+                    provider_names.sort()
+                    provider = provider_names[0]
+                    if provider != name and provider not in manifest.dependencies:
+                        manifest.dependencies.append(provider)
 
-            # Visit dependencies first
-            for dep in manifest.dependencies:
-                if dep in manifests:  # Only visit if dependency is registered
-                    visit(dep)
+        # Kahn's algorithm for topological sort over remaining plugins
+        # Build dependency graph restricted to available plugins
+        deps: dict[str, list[str]] = {
+            name: [dep for dep in manifests[name].dependencies if dep in available]
+            for name in available
+        }
+        in_degree: dict[str, int] = {name: len(deps[name]) for name in available}
+        dependents: dict[str, list[str]] = {name: [] for name in available}
+        for name, dlist in deps.items():
+            for dep in dlist:
+                dependents[dep].append(name)
 
-            temp_mark.remove(name)
-            visited.add(name)
-            order.append(name)
+        # Initialize queue with nodes having zero in-degree
+        queue = [name for name, deg in in_degree.items() if deg == 0]
+        queue.sort()
 
-        # Visit all plugins
-        for name in manifests:
-            if name not in visited:
-                visit(name)
+        order: list[str] = []
+        while queue:
+            node = queue.pop(0)
+            order.append(node)
+            for consumer in dependents[node]:
+                in_degree[consumer] -= 1
+                if in_degree[consumer] == 0:
+                    queue.append(consumer)
+            queue.sort()
 
+        # Any nodes not in order are part of cycles; skip them
+        cyclic = [name for name in available if name not in order]
+        if cyclic:
+            for name in cyclic:
+                skipped[name] = "circular dependency"
+            logger.error(
+                "plugin_dependency_cycle_detected",
+                skipped=cyclic,
+                category="plugin",
+            )
+
+        # Final initialization order excludes skipped and cyclic plugins
         self.initialization_order = order
+
+        if skipped:
+            logger.warning(
+                "plugins_skipped_due_to_missing_dependencies",
+                skipped=skipped,
+                category="plugin",
+            )
+
         return order
 
     async def create_runtime(self, name: str, core_services: Any) -> BasePluginRuntime:
@@ -583,7 +633,7 @@ class PluginRegistry:
             try:
                 await self.create_runtime(name, core_services)
             except Exception as e:
-                logger.error(
+                logger.warning(
                     "plugin_initialization_failed",
                     plugin=name,
                     error=str(e),
