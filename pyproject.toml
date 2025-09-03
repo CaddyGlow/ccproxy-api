@@ -505,9 +505,9 @@ ccproxy-duckdb-storage = { workspace = true }
 ccproxy-metrics = { workspace = true }
 ccproxy-oauth-codex = { workspace = true }
 ccproxy-permissions = { workspace = true }
-ccproxy-pricing-plugin = { workspace = true }
 ccproxy-request-tracer = { workspace = true }
 ccproxy-oauth-claude = { workspace = true }
+ccproxy-pricing-plugin = { workspace = true }
 
 [tool.pyright]
 pythonVersion = "3.11"
