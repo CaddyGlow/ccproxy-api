@@ -1,6 +1,6 @@
 # Metrics API Documentation
 
-This document provides comprehensive documentation for the CCProxy API's metrics endpoints and data models.
+This document describes metrics endpoints provided by the metrics plugin. The metrics surface is plugin-owned and mounted when the plugin is enabled.
 
 ## Overview
 
@@ -8,7 +8,7 @@ The metrics system provides comprehensive monitoring and analytics capabilities 
 
 ## Base URL
 
-All metrics endpoints are available under the `/metrics` prefix:
+Core metrics endpoints are available under the `/metrics` prefix:
 
 ```
 /metrics/*

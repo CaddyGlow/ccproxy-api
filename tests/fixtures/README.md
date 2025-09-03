@@ -9,7 +9,7 @@ tests/fixtures/
 ├── claude_sdk/           # Claude SDK service mocking
 │   ├── internal_mocks.py # AsyncMock for dependency injection
 │   └── responses.py      # Standard response data
-├── proxy_service/        # Proxy service mocking  
+├── proxy_service/        # OAuth endpoint mocking (historical naming)  
 │   └── oauth_mocks.py    # OAuth endpoint HTTP mocks
 ├── external_apis/        # External API HTTP mocking
 │   └── anthropic_api.py  # api.anthropic.com HTTP intercepts
@@ -43,7 +43,7 @@ def test_api_endpoint(client: TestClient, mock_internal_claude_sdk_service: Asyn
 **Purpose**: Intercept HTTP calls to external APIs  
 **Location**: `tests/fixtures/external_apis/anthropic_api.py`  
 **Technology**: pytest-httpx (HTTPXMock)  
-**Use Case**: Testing ProxyService and components making direct HTTP calls
+**Use Case**: Testing components making direct HTTP calls
 
 **Fixtures**:
 - `mock_external_anthropic_api` - Standard API responses
@@ -53,11 +53,9 @@ def test_api_endpoint(client: TestClient, mock_internal_claude_sdk_service: Asyn
 
 **Example Usage**:
 ```python
-def test_proxy_service(mock_external_anthropic_api: HTTPXMock):
-    # Test ProxyService with intercepted HTTP calls to api.anthropic.com
-    service = ProxyService()
-    response = await service.forward_request(request_data)
-    assert response.status_code == 200
+def test_http_forwarding(mock_external_anthropic_api: HTTPXMock):
+    # Intercept calls to api.anthropic.com and assert behavior
+    ...
 ```
 
 ### 3. OAuth Service Mocking
@@ -114,7 +112,7 @@ Use when testing FastAPI endpoints that inject ClaudeSDKService:
 
 ### External API Testing  
 Use when testing components that make HTTP calls:
-- ProxyService HTTP forwarding
+- HTTP forwarding behavior
 - OAuth authentication flows
 - Error handling for external API failures
 

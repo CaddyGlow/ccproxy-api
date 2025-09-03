@@ -1,7 +1,7 @@
 """Base adapter interface for API format conversion."""
 
 from abc import ABC, abstractmethod
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator, AsyncIterator
 from typing import Any
 
 
@@ -43,9 +43,9 @@ class APIAdapter(ABC):
         pass
 
     @abstractmethod
-    async def adapt_stream(
+    def adapt_stream(
         self, stream: AsyncIterator[dict[str, Any]]
-    ) -> AsyncIterator[dict[str, Any]]:
+    ) -> AsyncGenerator[dict[str, Any], None]:
         """Convert a streaming response from one API format to another.
 
         Args:
@@ -58,10 +58,8 @@ class APIAdapter(ABC):
             ValueError: If the stream format is invalid or unsupported
         """
         # This should be implemented as an async generator
-        # async def adapt_stream(self, stream):
-        #     async for item in stream:
-        #         yield transformed_item
-        raise NotImplementedError
+        # Subclasses must override this method
+        ...
 
 
 class BaseAPIAdapter(APIAdapter):

@@ -1,14 +1,15 @@
-"""Server header middleware to set a default server header for non-proxy routes."""
+"""Server header middleware to set default server and date headers for non-proxy routes."""
+
+from email.utils import formatdate
 
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 
 class ServerHeaderMiddleware:
-    """Middleware to set a default server header for responses.
+    """Middleware to set default server and date headers for responses.
 
-    This middleware adds a server header to responses that don't already have one.
-    Proxy responses using ProxyResponse will preserve their upstream server header,
-    while other routes will get the default header.
+    This middleware adds server and date headers to responses that don't already have them.
+    Proxy responses will preserve their upstream headers, while other routes will get defaults.
     """
 
     def __init__(self, app: ASGIApp, server_name: str = "Claude Code Proxy"):
@@ -31,27 +32,20 @@ class ServerHeaderMiddleware:
             if message["type"] == "http.response.start":
                 headers = list(message.get("headers", []))
 
-                # Check if server header already exists
+                # Check if headers already exist
                 has_server = any(header[0].lower() == b"server" for header in headers)
+                has_date = any(header[0].lower() == b"date" for header in headers)
 
-                # Only add server header for non-proxy routes
-                # Proxy routes will have their server header preserved from upstream
+                # Add server header if missing
                 if not has_server:
-                    # Check if this looks like a proxy response by looking for specific headers
-                    is_proxy_response = any(
-                        header[0].lower()
-                        in [
-                            b"cf-ray",
-                            b"cf-cache-status",
-                            b"anthropic-ratelimit-unified-status",
-                        ]
-                        for header in headers
-                    )
+                    headers.append((b"server", self.server_name.encode()))
 
-                    # Only add our server header if this is NOT a proxy response
-                    if not is_proxy_response:
-                        headers.append((b"server", self.server_name.encode()))
-                        message["headers"] = headers
+                # Add date header if missing
+                if not has_date:
+                    date_str = formatdate(timeval=None, localtime=False, usegmt=True)
+                    headers.append((b"date", date_str.encode()))
+
+                message["headers"] = headers
 
             await send(message)
 

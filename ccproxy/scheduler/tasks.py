@@ -10,6 +10,9 @@ from typing import Any
 
 import structlog
 
+from ccproxy.core.async_task_manager import create_managed_task
+from ccproxy.scheduler.errors import SchedulerError
+
 
 logger = structlog.get_logger(__name__)
 
@@ -115,8 +118,22 @@ class BaseScheduledTask(ABC):
 
         try:
             await self.setup()
-            self._task = asyncio.create_task(self._run_loop())
+            self._task = await create_managed_task(
+                self._run_loop(),
+                name=f"scheduled_task_{self.name}",
+                creator="BaseScheduledTask",
+            )
             logger.debug("task_started", task_name=self.name)
+        except SchedulerError as e:
+            self._running = False
+            logger.error(
+                "task_start_scheduler_error",
+                task_name=self.name,
+                error=str(e),
+                error_type=type(e).__name__,
+                exc_info=e,
+            )
+            raise
         except Exception as e:
             self._running = False
             logger.error(
@@ -124,6 +141,7 @@ class BaseScheduledTask(ABC):
                 task_name=self.name,
                 error=str(e),
                 error_type=type(e).__name__,
+                exc_info=e,
             )
             raise
 
@@ -144,12 +162,21 @@ class BaseScheduledTask(ABC):
         try:
             await self.cleanup()
             logger.debug("task_stopped", task_name=self.name)
+        except SchedulerError as e:
+            logger.error(
+                "task_cleanup_scheduler_error",
+                task_name=self.name,
+                error=str(e),
+                error_type=type(e).__name__,
+                exc_info=e,
+            )
         except Exception as e:
             logger.error(
                 "task_cleanup_failed",
                 task_name=self.name,
                 error=str(e),
                 error_type=type(e).__name__,
+                exc_info=e,
             )
 
     async def _run_loop(self) -> None:
@@ -199,6 +226,32 @@ class BaseScheduledTask(ABC):
             except asyncio.CancelledError:
                 logger.debug("task_cancelled", task_name=self.name)
                 break
+            except TimeoutError as e:
+                self._consecutive_failures += 1
+                logger.error(
+                    "task_execution_timeout_error",
+                    task_name=self.name,
+                    error=str(e),
+                    error_type=type(e).__name__,
+                    consecutive_failures=self._consecutive_failures,
+                    exc_info=e,
+                )
+                # Use backoff delay for exceptions too
+                backoff_delay = self.calculate_next_delay()
+                await asyncio.sleep(backoff_delay)
+            except SchedulerError as e:
+                self._consecutive_failures += 1
+                logger.error(
+                    "task_execution_scheduler_error",
+                    task_name=self.name,
+                    error=str(e),
+                    error_type=type(e).__name__,
+                    consecutive_failures=self._consecutive_failures,
+                    exc_info=e,
+                )
+                # Use backoff delay for exceptions too
+                backoff_delay = self.calculate_next_delay()
+                await asyncio.sleep(backoff_delay)
             except Exception as e:
                 self._consecutive_failures += 1
                 logger.error(
@@ -207,8 +260,8 @@ class BaseScheduledTask(ABC):
                     error=str(e),
                     error_type=type(e).__name__,
                     consecutive_failures=self._consecutive_failures,
+                    exc_info=e,
                 )
-
                 # Use backoff delay for exceptions too
                 backoff_delay = self.calculate_next_delay()
                 await asyncio.sleep(backoff_delay)
@@ -246,241 +299,8 @@ class BaseScheduledTask(ABC):
         }
 
 
-class PushgatewayTask(BaseScheduledTask):
-    """Task for pushing metrics to Pushgateway periodically."""
-
-    def __init__(
-        self,
-        name: str,
-        interval_seconds: float,
-        enabled: bool = True,
-        max_backoff_seconds: float = 300.0,
-    ):
-        """
-        Initialize pushgateway task.
-
-        Args:
-            name: Task name
-            interval_seconds: Interval between pushgateway operations
-            enabled: Whether task is enabled
-            max_backoff_seconds: Maximum backoff delay for failures
-        """
-        super().__init__(
-            name=name,
-            interval_seconds=interval_seconds,
-            enabled=enabled,
-            max_backoff_seconds=max_backoff_seconds,
-        )
-        self._metrics_instance: Any | None = None
-
-    async def setup(self) -> None:
-        """Initialize metrics instance for pushgateway operations."""
-        try:
-            from ccproxy.observability.metrics import get_metrics
-
-            self._metrics_instance = get_metrics()
-            logger.debug("pushgateway_task_setup_complete", task_name=self.name)
-        except Exception as e:
-            logger.error(
-                "pushgateway_task_setup_failed",
-                task_name=self.name,
-                error=str(e),
-                error_type=type(e).__name__,
-            )
-            raise
-
-    async def run(self) -> bool:
-        """Execute pushgateway metrics push."""
-        try:
-            if not self._metrics_instance:
-                logger.warning("pushgateway_no_metrics_instance", task_name=self.name)
-                return False
-
-            if not self._metrics_instance.is_pushgateway_enabled():
-                logger.debug("pushgateway_disabled", task_name=self.name)
-                return True  # Not an error, just disabled
-
-            success = bool(self._metrics_instance.push_to_gateway())
-
-            if success:
-                logger.debug("pushgateway_push_success", task_name=self.name)
-            else:
-                logger.warning("pushgateway_push_failed", task_name=self.name)
-
-            return success
-
-        except Exception as e:
-            logger.error(
-                "pushgateway_task_error",
-                task_name=self.name,
-                error=str(e),
-                error_type=type(e).__name__,
-            )
-            return False
-
-
-class StatsPrintingTask(BaseScheduledTask):
-    """Task for printing stats summary periodically."""
-
-    def __init__(
-        self,
-        name: str,
-        interval_seconds: float,
-        enabled: bool = True,
-    ):
-        """
-        Initialize stats printing task.
-
-        Args:
-            name: Task name
-            interval_seconds: Interval between stats printing
-            enabled: Whether task is enabled
-        """
-        super().__init__(
-            name=name,
-            interval_seconds=interval_seconds,
-            enabled=enabled,
-        )
-        self._stats_collector_instance: Any | None = None
-        self._metrics_instance: Any | None = None
-
-    async def setup(self) -> None:
-        """Initialize stats collector and metrics instances."""
-        try:
-            from ccproxy.config.settings import get_settings
-            from ccproxy.observability.metrics import get_metrics
-            from ccproxy.observability.stats_printer import get_stats_collector
-
-            self._metrics_instance = get_metrics()
-            settings = get_settings()
-            self._stats_collector_instance = get_stats_collector(
-                settings=settings.observability,
-                metrics_instance=self._metrics_instance,
-            )
-            logger.debug("stats_printing_task_setup_complete", task_name=self.name)
-        except Exception as e:
-            logger.error(
-                "stats_printing_task_setup_failed",
-                task_name=self.name,
-                error=str(e),
-                error_type=type(e).__name__,
-            )
-            raise
-
-    async def run(self) -> bool:
-        """Execute stats printing."""
-        try:
-            if not self._stats_collector_instance:
-                logger.warning("stats_printing_no_collector", task_name=self.name)
-                return False
-
-            await self._stats_collector_instance.print_stats()
-            logger.debug("stats_printing_success", task_name=self.name)
-            return True
-
-        except Exception as e:
-            logger.error(
-                "stats_printing_task_error",
-                task_name=self.name,
-                error=str(e),
-                error_type=type(e).__name__,
-            )
-            return False
-
-
-class PricingCacheUpdateTask(BaseScheduledTask):
-    """Task for updating pricing cache periodically."""
-
-    def __init__(
-        self,
-        name: str,
-        interval_seconds: float,
-        enabled: bool = True,
-        force_refresh_on_startup: bool = False,
-        pricing_updater: Any | None = None,
-    ):
-        """
-        Initialize pricing cache update task.
-
-        Args:
-            name: Task name
-            interval_seconds: Interval between pricing updates
-            enabled: Whether task is enabled
-            force_refresh_on_startup: Whether to force refresh on first run
-            pricing_updater: Injected pricing updater instance
-        """
-        super().__init__(
-            name=name,
-            interval_seconds=interval_seconds,
-            enabled=enabled,
-        )
-        self.force_refresh_on_startup = force_refresh_on_startup
-        self._pricing_updater = pricing_updater
-        self._first_run = True
-
-    async def setup(self) -> None:
-        """Initialize pricing updater instance if not injected."""
-        if self._pricing_updater is None:
-            try:
-                from ccproxy.config.pricing import PricingSettings
-                from ccproxy.pricing.cache import PricingCache
-                from ccproxy.pricing.updater import PricingUpdater
-
-                # Create pricing components with dependency injection
-                settings = PricingSettings()
-                cache = PricingCache(settings)
-                self._pricing_updater = PricingUpdater(cache, settings)
-                logger.debug("pricing_update_task_setup_complete", task_name=self.name)
-            except Exception as e:
-                logger.error(
-                    "pricing_update_task_setup_failed",
-                    task_name=self.name,
-                    error=str(e),
-                    error_type=type(e).__name__,
-                )
-                raise
-        else:
-            logger.debug(
-                "pricing_update_task_using_injected_updater", task_name=self.name
-            )
-
-    async def run(self) -> bool:
-        """Execute pricing cache update."""
-        try:
-            if not self._pricing_updater:
-                logger.warning("pricing_update_no_updater", task_name=self.name)
-                return False
-
-            # Force refresh on first run if configured
-            force_refresh = self._first_run and self.force_refresh_on_startup
-            self._first_run = False
-
-            if force_refresh:
-                logger.info("pricing_update_force_refresh_startup", task_name=self.name)
-                refresh_result = await self._pricing_updater.force_refresh()
-                success = bool(refresh_result)
-            else:
-                # Regular update check
-                pricing_data = await self._pricing_updater.get_current_pricing(
-                    force_refresh=False
-                )
-                success = pricing_data is not None
-
-            if success:
-                logger.debug("pricing_update_success", task_name=self.name)
-            else:
-                logger.warning("pricing_update_failed", task_name=self.name)
-
-            return success
-
-        except Exception as e:
-            logger.error(
-                "pricing_update_task_error",
-                task_name=self.name,
-                error=str(e),
-                error_type=type(e).__name__,
-            )
-            return False
+# PushgatewayTask removed - functionality moved to metrics plugin
+# StatsPrintingTask removed - functionality moved to metrics plugin
 
 
 class PoolStatsTask(BaseScheduledTask):
@@ -601,6 +421,7 @@ class PoolStatsTask(BaseScheduledTask):
                 task_name=self.name,
                 error=str(e),
                 error_type=type(e).__name__,
+                exc_info=e,
             )
             return False
 
@@ -761,11 +582,30 @@ class VersionUpdateCheckTask(BaseScheduledTask):
 
             return True
 
+        except ImportError as e:
+            logger.error(
+                "version_check_task_import_error",
+                task_name=self.name,
+                error=str(e),
+                error_type=type(e).__name__,
+                exc_info=e,
+            )
+            return False
+
         except Exception as e:
             logger.error(
                 "version_check_task_error",
                 task_name=self.name,
                 error=str(e),
                 error_type=type(e).__name__,
+                exc_info=e,
             )
             return False
+
+
+# Test helper task exposed for tests that import from this module
+class MockScheduledTask(BaseScheduledTask):
+    """Minimal mock task used by tests for registration and lifecycle checks."""
+
+    async def run(self) -> bool:
+        return True

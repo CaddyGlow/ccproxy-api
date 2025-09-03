@@ -21,16 +21,16 @@ import pytest
 import structlog
 from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
+from pydantic import SecretStr
 
 from ccproxy.api.app import create_app
-from ccproxy.observability.context import RequestContext
+from ccproxy.core.async_task_manager import start_task_manager, stop_task_manager
+from ccproxy.core.request_context import RequestContext
 
 
 if TYPE_CHECKING:
     from tests.factories import FastAPIAppFactory, FastAPIClientFactory
 from ccproxy.auth.manager import AuthManager
-from ccproxy.config.auth import AuthSettings, CredentialStorageSettings
-from ccproxy.config.observability import ObservabilitySettings
 from ccproxy.config.security import SecuritySettings
 from ccproxy.config.server import ServerSettings
 from ccproxy.config.settings import Settings
@@ -38,6 +38,20 @@ from ccproxy.docker.adapter import DockerAdapter
 from ccproxy.docker.docker_path import DockerPath, DockerPathSet
 from ccproxy.docker.models import DockerUserContext
 from ccproxy.docker.stream_process import DefaultOutputMiddleware
+
+
+# Global fixture for task manager (needed by many async tests)
+@pytest.fixture(autouse=True)
+async def task_manager_fixture():
+    """Start and stop the global task manager for each test.
+
+    This fixture ensures the AsyncTaskManager is properly started before
+    tests that use managed tasks (like PermissionService, scheduler, etc.)
+    and properly cleaned up afterwards.
+    """
+    await start_task_manager()
+    yield
+    await stop_task_manager()
 
 
 # Import organized fixture modules
@@ -151,20 +165,14 @@ def test_settings(isolated_environment: Path) -> Settings:
     return Settings(
         server=ServerSettings(log_level="WARNING"),
         security=SecuritySettings(auth_token=None),  # No auth by default
-        auth=AuthSettings(
-            storage=CredentialStorageSettings(
-                storage_paths=[isolated_environment / ".claude/"]
-            )
-        ),
-        observability=ObservabilitySettings(
-            # Enable all observability endpoints for testing
-            metrics_endpoint_enabled=True,
-            logs_endpoints_enabled=True,
-            logs_collection_enabled=True,
-            dashboard_enabled=True,
-            log_storage_backend="duckdb",
-            duckdb_path=str(isolated_environment / "test_metrics.duckdb"),
-        ),
+        plugins={
+            "duckdb_storage": {
+                "enabled": True,
+                "database_path": str(isolated_environment / "test_metrics.duckdb"),
+                "register_app_state_alias": True,
+            },
+            "analytics": {"enabled": True},
+        },
     )
 
 
@@ -179,21 +187,17 @@ def auth_settings(isolated_environment: Path) -> Settings:
     """
     return Settings(
         server=ServerSettings(log_level="WARNING"),
-        security=SecuritySettings(auth_token="test-auth-token-12345"),  # Auth enabled
-        auth=AuthSettings(
-            storage=CredentialStorageSettings(
-                storage_paths=[isolated_environment / ".claude/"]
-            )
-        ),
-        observability=ObservabilitySettings(
-            # Enable all observability endpoints for testing
-            metrics_endpoint_enabled=True,
-            logs_endpoints_enabled=True,
-            logs_collection_enabled=True,
-            dashboard_enabled=True,
-            log_storage_backend="duckdb",
-            duckdb_path=str(isolated_environment / "test_metrics.duckdb"),
-        ),
+        security=SecuritySettings(
+            auth_token=SecretStr("test-auth-token-12345")
+        ),  # Auth enabled
+        plugins={
+            "duckdb_storage": {
+                "enabled": True,
+                "database_path": str(isolated_environment / "test_metrics.duckdb"),
+                "register_app_state_alias": True,
+            },
+            "analytics": {"enabled": True},
+        },
     )
 
 
@@ -238,7 +242,7 @@ def app_with_claude_sdk_environment(
     app = create_app(settings=test_settings)
 
     # Override the settings dependency for testing
-    from ccproxy.api.dependencies import get_cached_claude_service, get_cached_settings
+    from ccproxy.api.dependencies import get_cached_settings
     from ccproxy.config.settings import get_settings as original_get_settings
 
     app.dependency_overrides[original_get_settings] = lambda: test_settings
@@ -250,13 +254,9 @@ def app_with_claude_sdk_environment(
         mock_get_cached_settings_for_claude_sdk
     )
 
-    # Override the actual dependency being used (get_cached_claude_service)
-    def mock_get_cached_claude_service_for_sdk(request: Request) -> AsyncMock:
-        return mock_internal_claude_sdk_service
-
-    app.dependency_overrides[get_cached_claude_service] = (
-        mock_get_cached_claude_service_for_sdk
-    )
+    # NOTE: Plugin-based architecture no longer uses get_cached_claude_service
+    # Store mock in app state for compatibility if needed by tests
+    app.state.claude_service_mock = mock_internal_claude_sdk_service
 
     return app
 
@@ -408,11 +408,6 @@ def auth_settings_factory() -> Callable[[dict[str, Any]], Settings]:
         settings = Settings(
             server=ServerSettings(log_level="WARNING"),
             security=SecuritySettings(auth_token=None),
-            auth=AuthSettings(
-                storage=CredentialStorageSettings(
-                    storage_paths=[Path("/tmp/test/.claude/")]
-                )
-            ),
         )
 
         if auth_config.get("has_configured_token"):
@@ -477,18 +472,14 @@ def app_factory(tmp_path: Path) -> Callable[[dict[str, Any]], FastAPI]:
         settings = Settings(
             server=ServerSettings(log_level="WARNING"),
             security=SecuritySettings(auth_token=None),
-            auth=AuthSettings(
-                storage=CredentialStorageSettings(storage_paths=[tmp_path / ".claude/"])
-            ),
-            observability=ObservabilitySettings(
-                # Enable all observability endpoints for testing
-                metrics_endpoint_enabled=True,
-                logs_endpoints_enabled=True,
-                logs_collection_enabled=True,
-                dashboard_enabled=True,
-                log_storage_backend="duckdb",
-                duckdb_path=str(tmp_path / "test_metrics.duckdb"),
-            ),
+            plugins={
+                "duckdb_storage": {
+                    "enabled": True,
+                    "database_path": str(tmp_path / "test_metrics.duckdb"),
+                    "register_app_state_alias": True,
+                },
+                "analytics": {"enabled": True},
+            },
         )
         if auth_config.get("has_configured_token"):
             settings.security.auth_token = auth_config["server_token"]
@@ -970,18 +961,23 @@ def client(app: FastAPI) -> TestClient:
 
 @pytest.fixture
 def mock_openai_credentials(isolated_environment: Path) -> dict[str, Any]:
-    """Mock OpenAI credentials for testing."""
-    import time
+    """Mock OpenAI credentials in current nested schema."""
     from datetime import UTC, datetime
 
-    # Set expiration to 1 hour from now (future)
-    future_timestamp = int(time.time()) + 3600
-
+    now = datetime.now(UTC)
+    # Create a faux JWT exp in the near future; we don't need real JWT here
+    # since most tests don't decode it, but structure should be valid for model
+    fake_access_token = "header.payload.signature"  # minimal-ish placeholder
     return {
-        "access_token": "test-openai-access-token-12345",
-        "refresh_token": "test-openai-refresh-token-67890",
-        "expires_at": datetime.fromtimestamp(future_timestamp, UTC),
-        "account_id": "test-account-id",
+        "OPENAI_API_KEY": None,
+        "tokens": {
+            "id_token": "id.header.payload",
+            "access_token": fake_access_token,
+            "refresh_token": "test-openai-refresh-token-67890",
+            "account_id": "test-account-id",
+        },
+        "last_refresh": now.isoformat(),
+        "active": True,
     }
 
 
@@ -1000,8 +996,10 @@ def client_with_mock_codex(
     # Mock OpenAI credentials
     from unittest.mock import patch
 
-    with patch("ccproxy.auth.openai.OpenAITokenManager.load_credentials") as mock_load:
-        from ccproxy.auth.openai import OpenAICredentials
+    with patch(
+        "plugins.oauth_codex.manager.CodexTokenManager.load_credentials"
+    ) as mock_load:
+        from ccproxy.plugins.oauth_codex.models import OpenAICredentials
 
         mock_load.return_value = OpenAICredentials(**mock_openai_credentials)
 
@@ -1023,8 +1021,10 @@ def client_with_mock_codex_streaming(
     # Mock OpenAI credentials
     from unittest.mock import patch
 
-    with patch("ccproxy.auth.openai.OpenAITokenManager.load_credentials") as mock_load:
-        from ccproxy.auth.openai import OpenAICredentials
+    with patch(
+        "plugins.oauth_codex.manager.CodexTokenManager.load_credentials"
+    ) as mock_load:
+        from ccproxy.plugins.oauth_codex.models import OpenAICredentials
 
         mock_load.return_value = OpenAICredentials(**mock_openai_credentials)
 

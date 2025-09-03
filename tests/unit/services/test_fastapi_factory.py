@@ -160,7 +160,7 @@ def test_custom_dependency_overrides(test_settings: Settings) -> None:
     from ccproxy.config.settings import get_settings
 
     # Create a custom override
-    def custom_override():
+    def custom_override() -> Settings:
         return test_settings
 
     factory = FastAPIAppFactory(default_settings=test_settings)

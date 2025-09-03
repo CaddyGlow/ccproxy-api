@@ -601,7 +601,7 @@ This is the initial public release of the CCProxy API.
 
 - **Unified `ccproxy` CLI**: A single, user-friendly command-line interface for managing the proxy.
 - **TOML Configuration**: Configure the server using a `config.toml` file with JSON Schema validation.
-- **Keyring Integration**: Securely stores and manages OAuth credentials in the system's native keyring.
+<!-- Keyring integration was planned but has been removed; credentials are stored via project-managed files. -->
 - **`generate-token` Command**: A CLI command to manually generate and manage API tokens.
 - **Systemd Integration**: Includes a setup script and service template for running the proxy as a systemd service in production environments.
 - **Docker Support**: A `Dockerfile` and `docker-compose.yml` for running the proxy in an isolated containerized environment.
@@ -609,7 +609,7 @@ This is the initial public release of the CCProxy API.
 #### Security
 
 - **Local-First Design**: All processing and authentication happens locally; no conversation data is stored or transmitted to third parties.
-- **Credential Security**: OAuth tokens are stored securely in the system keyring, not in plaintext files.
+<!-- Credential storage now uses project-managed files; system keyring is not used. -->
 - **Header Stripping**: Automatically removes client-side `Authorization` headers to prevent accidental key leakage.
 
 #### Developer Experience
@@ -619,3 +619,35 @@ This is the initial public release of the CCProxy API.
 - **Modern Tooling**: Uses `uv` for package management and `devenv` for a reproducible development environment.
 - **Extensive Test Suite**: Includes unit, integration, and benchmark tests to ensure reliability.
 - **Rich Logging**: Structured and colorized logging for improved readability during development and debugging.
+## [Unreleased]
+
+### Removed
+
+- Dead code: removed `ccproxy/utils/models_provider.py` (unreferenced; model listing is provided by plugins).
+- Pruned root runtime dependencies no longer used directly by core:
+  - `aiosqlite` (unused in repo)
+  - `h2` (no direct imports; `httpx[http2]` brings HTTP/2 support transitively)
+
+### Notes
+
+- Plugin-owned dependencies remain in root for now (plugins are bundled): `duckdb`, `duckdb-engine`, `sqlmodel`, `prometheus-client`, `textual`. These may move to plugin-specific distributions or optional extras in a future split.
+## [0.2.0] - 2025-09-02
+
+### Changed
+
+- Core health endpoints simplified and plugin-agnostic; provider/OAuth/SDK checks moved to plugin health under `/plugins/{name}/health`.
+- Plugins CLI now uses centralized `load_plugin_system()`; discovery logic consolidated.
+- Documentation updated to reflect plugin-first architecture and loader flow.
+
+### Removed
+
+- Legacy plugin management endpoints: `POST /plugins/{name}/reload`, `POST /plugins/discover`, `DELETE /plugins/{name}` (v2 loads at startup; restart to apply changes).
+- Scheduler references to Pushgateway in core; metrics plugin fully owns push task registration.
+- Core middleware reliance on `app.state.duckdb_storage` alias; storage wiring is plugin-owned.
+
+### Added
+
+- Configuration validation that fails fast when deprecated keys are present, with guidance to the corresponding `plugins.*` keys.
+- Migration guide: `docs/migration/0.2-plugin-first.md`.
+
+This release completes the plugin-first migration and removes transitional shims.

@@ -50,25 +50,8 @@ class SchedulerSettings(BaseSettings):
         description="Whether to force pricing refresh immediately on startup",
     )
 
-    # Observability tasks (migrated from ObservabilitySettings)
-    pushgateway_enabled: bool = Field(
-        default=False,
-        description="Whether pushgateway metrics pushing task is enabled",
-    )
-
-    pushgateway_interval_seconds: float = Field(
-        default=60.0,
-        ge=1.0,
-        le=3600.0,  # Max 1 hour
-        description="Interval in seconds between pushgateway metric pushes",
-    )
-
-    pushgateway_max_backoff_seconds: float = Field(
-        default=300.0,
-        ge=1.0,
-        le=1800.0,  # Max 30 minutes
-        description="Maximum backoff delay for failed pushgateway operations",
-    )
+    # Pushgateway settings removed - functionality moved to metrics plugin
+    # The metrics plugin now manages its own pushgateway configuration
 
     stats_printing_enabled: bool = Field(
         default=False,

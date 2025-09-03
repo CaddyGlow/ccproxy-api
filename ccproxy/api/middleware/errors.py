@@ -1,5 +1,7 @@
 """Error handling middleware for CCProxy API Server."""
 
+from collections.abc import Awaitable, Callable
+
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
@@ -23,7 +25,6 @@ from ccproxy.core.errors import (
     TransformationError,
     ValidationError,
 )
-from ccproxy.observability.metrics import get_metrics
 
 
 logger = get_logger(__name__)
@@ -35,541 +36,137 @@ def setup_error_handlers(app: FastAPI) -> None:
     Args:
         app: FastAPI application instance
     """
-    logger.debug("error_handlers_setup_start")
+    logger.debug("error_handlers_setup_start", category="lifecycle")
 
-    # Get metrics instance for error recording
-    try:
-        metrics = get_metrics()
-        logger.debug("error_handlers_metrics_loaded")
-    except Exception as e:
-        logger.warning("error_handlers_metrics_unavailable", error=str(e))
-        metrics = None
+    # Metrics are now handled by the metrics plugin via hooks
+    metrics = None
 
-    @app.exception_handler(ClaudeProxyError)
-    async def claude_proxy_error_handler(
-        request: Request, exc: ClaudeProxyError
+    # Define error type mappings with status codes and error types
+    ERROR_MAPPINGS: dict[type[Exception], tuple[int | None, str]] = {
+        ClaudeProxyError: (None, "claude_proxy_error"),  # Uses exc.status_code
+        ValidationError: (400, "validation_error"),
+        AuthenticationError: (401, "authentication_error"),
+        ProxyAuthenticationError: (401, "proxy_authentication_error"),
+        PermissionError: (403, "permission_error"),
+        NotFoundError: (404, "not_found_error"),
+        ModelNotFoundError: (404, "model_not_found_error"),
+        TimeoutError: (408, "timeout_error"),
+        RateLimitError: (429, "rate_limit_error"),
+        ProxyError: (500, "proxy_error"),
+        TransformationError: (500, "transformation_error"),
+        MiddlewareError: (500, "middleware_error"),
+        DockerError: (500, "docker_error"),
+        ProxyConnectionError: (502, "proxy_connection_error"),
+        ServiceUnavailableError: (503, "service_unavailable_error"),
+        ProxyTimeoutError: (504, "proxy_timeout_error"),
+    }
+
+    async def unified_error_handler(
+        request: Request,
+        exc: Exception,
+        status_code: int | None = None,
+        error_type: str | None = None,
+        include_client_info: bool = False,
     ) -> JSONResponse:
-        """Handle Claude proxy specific errors."""
+        """Unified error handler for all exception types.
+
+        Args:
+            request: The incoming request
+            exc: The exception that was raised
+            status_code: HTTP status code to return
+            error_type: Type of error for logging and response
+            include_client_info: Whether to include client IP in logs
+        """
+        # Get status code from exception if it has one
+        if status_code is None:
+            status_code = getattr(exc, "status_code", 500)
+
+        # Determine error type if not provided
+        if error_type is None:
+            error_type = getattr(exc, "error_type", "unknown_error")
+
+        # Get request ID from request state or headers
+        request_id = getattr(request.state, "request_id", None) or request.headers.get(
+            "x-request-id"
+        )
+
         # Store status code in request state for access logging
         if hasattr(request.state, "context") and hasattr(
             request.state.context, "metadata"
         ):
-            request.state.context.metadata["status_code"] = exc.status_code
+            request.state.context.metadata["status_code"] = status_code
 
+        # Build log kwargs
+        log_kwargs = {
+            "error_type": error_type,
+            "error_message": str(exc),
+            "status_code": status_code,
+            "request_method": request.method,
+            "request_url": str(request.url.path),
+        }
+
+        # Add client info if needed (for auth errors)
+        if include_client_info and request.client:
+            log_kwargs["client_ip"] = request.client.host
+            if error_type in ("authentication_error", "proxy_authentication_error"):
+                log_kwargs["user_agent"] = request.headers.get("user-agent", "unknown")
+
+        # Log the error
         logger.error(
-            "Claude proxy error",
-            error_type="claude_proxy_error",
-            error_message=str(exc),
-            status_code=exc.status_code,
-            request_method=request.method,
-            request_url=str(request.url.path),
+            f"{error_type.replace('_', ' ').title()}",
+            **log_kwargs,
+            category="middleware",
         )
 
         # Record error in metrics
         if metrics:
             metrics.record_error(
-                error_type="claude_proxy_error",
+                error_type=error_type,
                 endpoint=str(request.url.path),
                 model=None,
                 service_type="middleware",
             )
+
+        # Prepare headers with x-request-id if available
+        headers = {}
+        if request_id:
+            headers["x-request-id"] = request_id
+
+        # Return JSON response
         return JSONResponse(
-            status_code=exc.status_code,
+            status_code=status_code,
             content={
                 "error": {
-                    "type": exc.error_type,
+                    "type": error_type,
                     "message": str(exc),
                 }
             },
+            headers=headers,
         )
 
-    @app.exception_handler(ValidationError)
-    async def validation_error_handler(
-        request: Request, exc: ValidationError
-    ) -> JSONResponse:
-        """Handle validation errors."""
-        # Store status code in request state for access logging
-        if hasattr(request.state, "context") and hasattr(
-            request.state.context, "metadata"
-        ):
-            request.state.context.metadata["status_code"] = 400
-
-        logger.error(
-            "Validation error",
-            error_type="validation_error",
-            error_message=str(exc),
-            status_code=400,
-            request_method=request.method,
-            request_url=str(request.url.path),
+    # Register specific error handlers using the unified handler
+    for exc_class, (status, err_type) in ERROR_MAPPINGS.items():
+        # Determine if this error type should include client info
+        include_client = err_type in (
+            "authentication_error",
+            "proxy_authentication_error",
+            "permission_error",
+            "rate_limit_error",
         )
 
-        # Record error in metrics
-        if metrics:
-            metrics.record_error(
-                error_type="validation_error",
-                endpoint=str(request.url.path),
-                model=None,
-                service_type="middleware",
-            )
-        return JSONResponse(
-            status_code=400,
-            content={
-                "error": {
-                    "type": "validation_error",
-                    "message": str(exc),
-                }
-            },
-        )
+        # Create a closure to capture the specific error configuration
+        def make_handler(
+            status_code: int | None, error_type: str, include_client_info: bool
+        ) -> Callable[[Request, Exception], Awaitable[JSONResponse]]:
+            async def handler(request: Request, exc: Exception) -> JSONResponse:
+                return await unified_error_handler(
+                    request, exc, status_code, error_type, include_client_info
+                )
 
-    @app.exception_handler(AuthenticationError)
-    async def authentication_error_handler(
-        request: Request, exc: AuthenticationError
-    ) -> JSONResponse:
-        """Handle authentication errors."""
-        logger.error(
-            "Authentication error",
-            error_type="authentication_error",
-            error_message=str(exc),
-            status_code=401,
-            request_method=request.method,
-            request_url=str(request.url.path),
-            client_ip=request.client.host if request.client else "unknown",
-            user_agent=request.headers.get("user-agent", "unknown"),
-        )
+            return handler
 
-        # Record error in metrics
-        if metrics:
-            metrics.record_error(
-                error_type="authentication_error",
-                endpoint=str(request.url.path),
-                model=None,
-                service_type="middleware",
-            )
-        return JSONResponse(
-            status_code=401,
-            content={
-                "error": {
-                    "type": "authentication_error",
-                    "message": str(exc),
-                }
-            },
-        )
-
-    @app.exception_handler(PermissionError)
-    async def permission_error_handler(
-        request: Request, exc: PermissionError
-    ) -> JSONResponse:
-        """Handle permission errors."""
-        logger.error(
-            "Permission error",
-            error_type="permission_error",
-            error_message=str(exc),
-            status_code=403,
-            request_method=request.method,
-            request_url=str(request.url.path),
-            client_ip=request.client.host if request.client else "unknown",
-        )
-
-        # Record error in metrics
-        if metrics:
-            metrics.record_error(
-                error_type="permission_error",
-                endpoint=str(request.url.path),
-                model=None,
-                service_type="middleware",
-            )
-        return JSONResponse(
-            status_code=403,
-            content={
-                "error": {
-                    "type": "permission_error",
-                    "message": str(exc),
-                }
-            },
-        )
-
-    @app.exception_handler(NotFoundError)
-    async def not_found_error_handler(
-        request: Request, exc: NotFoundError
-    ) -> JSONResponse:
-        """Handle not found errors."""
-        logger.error(
-            "Not found error",
-            error_type="not_found_error",
-            error_message=str(exc),
-            status_code=404,
-            request_method=request.method,
-            request_url=str(request.url.path),
-        )
-
-        # Record error in metrics
-        if metrics:
-            metrics.record_error(
-                error_type="not_found_error",
-                endpoint=str(request.url.path),
-                model=None,
-                service_type="middleware",
-            )
-        return JSONResponse(
-            status_code=404,
-            content={
-                "error": {
-                    "type": "not_found_error",
-                    "message": str(exc),
-                }
-            },
-        )
-
-    @app.exception_handler(RateLimitError)
-    async def rate_limit_error_handler(
-        request: Request, exc: RateLimitError
-    ) -> JSONResponse:
-        """Handle rate limit errors."""
-        logger.error(
-            "Rate limit error",
-            error_type="rate_limit_error",
-            error_message=str(exc),
-            status_code=429,
-            request_method=request.method,
-            request_url=str(request.url.path),
-            client_ip=request.client.host if request.client else "unknown",
-        )
-
-        # Record error in metrics
-        if metrics:
-            metrics.record_error(
-                error_type="rate_limit_error",
-                endpoint=str(request.url.path),
-                model=None,
-                service_type="middleware",
-            )
-        return JSONResponse(
-            status_code=429,
-            content={
-                "error": {
-                    "type": "rate_limit_error",
-                    "message": str(exc),
-                }
-            },
-        )
-
-    @app.exception_handler(ModelNotFoundError)
-    async def model_not_found_error_handler(
-        request: Request, exc: ModelNotFoundError
-    ) -> JSONResponse:
-        """Handle model not found errors."""
-        logger.error(
-            "Model not found error",
-            error_type="model_not_found_error",
-            error_message=str(exc),
-            status_code=404,
-            request_method=request.method,
-            request_url=str(request.url.path),
-        )
-
-        # Record error in metrics
-        if metrics:
-            metrics.record_error(
-                error_type="model_not_found_error",
-                endpoint=str(request.url.path),
-                model=None,
-                service_type="middleware",
-            )
-        return JSONResponse(
-            status_code=404,
-            content={
-                "error": {
-                    "type": "model_not_found_error",
-                    "message": str(exc),
-                }
-            },
-        )
-
-    @app.exception_handler(TimeoutError)
-    async def timeout_error_handler(
-        request: Request, exc: TimeoutError
-    ) -> JSONResponse:
-        """Handle timeout errors."""
-        logger.error(
-            "Timeout error",
-            error_type="timeout_error",
-            error_message=str(exc),
-            status_code=408,
-            request_method=request.method,
-            request_url=str(request.url.path),
-        )
-
-        # Record error in metrics
-        if metrics:
-            metrics.record_error(
-                error_type="timeout_error",
-                endpoint=str(request.url.path),
-                model=None,
-                service_type="middleware",
-            )
-        return JSONResponse(
-            status_code=408,
-            content={
-                "error": {
-                    "type": "timeout_error",
-                    "message": str(exc),
-                }
-            },
-        )
-
-    @app.exception_handler(ServiceUnavailableError)
-    async def service_unavailable_error_handler(
-        request: Request, exc: ServiceUnavailableError
-    ) -> JSONResponse:
-        """Handle service unavailable errors."""
-        logger.error(
-            "Service unavailable error",
-            error_type="service_unavailable_error",
-            error_message=str(exc),
-            status_code=503,
-            request_method=request.method,
-            request_url=str(request.url.path),
-        )
-
-        # Record error in metrics
-        if metrics:
-            metrics.record_error(
-                error_type="service_unavailable_error",
-                endpoint=str(request.url.path),
-                model=None,
-                service_type="middleware",
-            )
-        return JSONResponse(
-            status_code=503,
-            content={
-                "error": {
-                    "type": "service_unavailable_error",
-                    "message": str(exc),
-                }
-            },
-        )
-
-    @app.exception_handler(DockerError)
-    async def docker_error_handler(request: Request, exc: DockerError) -> JSONResponse:
-        """Handle Docker errors."""
-        logger.error(
-            "Docker error",
-            error_type="docker_error",
-            error_message=str(exc),
-            status_code=500,
-            request_method=request.method,
-            request_url=str(request.url.path),
-        )
-
-        # Record error in metrics
-        if metrics:
-            metrics.record_error(
-                error_type="docker_error",
-                endpoint=str(request.url.path),
-                model=None,
-                service_type="middleware",
-            )
-        return JSONResponse(
-            status_code=500,
-            content={
-                "error": {
-                    "type": "docker_error",
-                    "message": str(exc),
-                }
-            },
-        )
-
-    # Core proxy errors
-    @app.exception_handler(ProxyError)
-    async def proxy_error_handler(request: Request, exc: ProxyError) -> JSONResponse:
-        """Handle proxy errors."""
-        logger.error(
-            "Proxy error",
-            error_type="proxy_error",
-            error_message=str(exc),
-            status_code=500,
-            request_method=request.method,
-            request_url=str(request.url.path),
-        )
-
-        # Record error in metrics
-        if metrics:
-            metrics.record_error(
-                error_type="proxy_error",
-                endpoint=str(request.url.path),
-                model=None,
-                service_type="middleware",
-            )
-        return JSONResponse(
-            status_code=500,
-            content={
-                "error": {
-                    "type": "proxy_error",
-                    "message": str(exc),
-                }
-            },
-        )
-
-    @app.exception_handler(TransformationError)
-    async def transformation_error_handler(
-        request: Request, exc: TransformationError
-    ) -> JSONResponse:
-        """Handle transformation errors."""
-        logger.error(
-            "Transformation error",
-            error_type="transformation_error",
-            error_message=str(exc),
-            status_code=500,
-            request_method=request.method,
-            request_url=str(request.url.path),
-        )
-
-        # Record error in metrics
-        if metrics:
-            metrics.record_error(
-                error_type="transformation_error",
-                endpoint=str(request.url.path),
-                model=None,
-                service_type="middleware",
-            )
-        return JSONResponse(
-            status_code=500,
-            content={
-                "error": {
-                    "type": "transformation_error",
-                    "message": str(exc),
-                }
-            },
-        )
-
-    @app.exception_handler(MiddlewareError)
-    async def middleware_error_handler(
-        request: Request, exc: MiddlewareError
-    ) -> JSONResponse:
-        """Handle middleware errors."""
-        logger.error(
-            "Middleware error",
-            error_type="middleware_error",
-            error_message=str(exc),
-            status_code=500,
-            request_method=request.method,
-            request_url=str(request.url.path),
-        )
-
-        # Record error in metrics
-        if metrics:
-            metrics.record_error(
-                error_type="middleware_error",
-                endpoint=str(request.url.path),
-                model=None,
-                service_type="middleware",
-            )
-        return JSONResponse(
-            status_code=500,
-            content={
-                "error": {
-                    "type": "middleware_error",
-                    "message": str(exc),
-                }
-            },
-        )
-
-    @app.exception_handler(ProxyConnectionError)
-    async def proxy_connection_error_handler(
-        request: Request, exc: ProxyConnectionError
-    ) -> JSONResponse:
-        """Handle proxy connection errors."""
-        logger.error(
-            "Proxy connection error",
-            error_type="proxy_connection_error",
-            error_message=str(exc),
-            status_code=502,
-            request_method=request.method,
-            request_url=str(request.url.path),
-        )
-
-        # Record error in metrics
-        if metrics:
-            metrics.record_error(
-                error_type="proxy_connection_error",
-                endpoint=str(request.url.path),
-                model=None,
-                service_type="middleware",
-            )
-        return JSONResponse(
-            status_code=502,
-            content={
-                "error": {
-                    "type": "proxy_connection_error",
-                    "message": str(exc),
-                }
-            },
-        )
-
-    @app.exception_handler(ProxyTimeoutError)
-    async def proxy_timeout_error_handler(
-        request: Request, exc: ProxyTimeoutError
-    ) -> JSONResponse:
-        """Handle proxy timeout errors."""
-        logger.error(
-            "Proxy timeout error",
-            error_type="proxy_timeout_error",
-            error_message=str(exc),
-            status_code=504,
-            request_method=request.method,
-            request_url=str(request.url.path),
-        )
-
-        # Record error in metrics
-        if metrics:
-            metrics.record_error(
-                error_type="proxy_timeout_error",
-                endpoint=str(request.url.path),
-                model=None,
-                service_type="middleware",
-            )
-        return JSONResponse(
-            status_code=504,
-            content={
-                "error": {
-                    "type": "proxy_timeout_error",
-                    "message": str(exc),
-                }
-            },
-        )
-
-    @app.exception_handler(ProxyAuthenticationError)
-    async def proxy_authentication_error_handler(
-        request: Request, exc: ProxyAuthenticationError
-    ) -> JSONResponse:
-        """Handle proxy authentication errors."""
-        logger.error(
-            "Proxy authentication error",
-            error_type="proxy_authentication_error",
-            error_message=str(exc),
-            status_code=401,
-            request_method=request.method,
-            request_url=str(request.url.path),
-            client_ip=request.client.host if request.client else "unknown",
-        )
-
-        # Record error in metrics
-        if metrics:
-            metrics.record_error(
-                error_type="proxy_authentication_error",
-                endpoint=str(request.url.path),
-                model=None,
-                service_type="middleware",
-            )
-        return JSONResponse(
-            status_code=401,
-            content={
-                "error": {
-                    "type": "proxy_authentication_error",
-                    "message": str(exc),
-                }
-            },
-        )
+        # Register the handler
+        app.exception_handler(exc_class)(make_handler(status, err_type, include_client))
 
     # Standard HTTP exceptions
     @app.exception_handler(HTTPException)
@@ -577,6 +174,11 @@ def setup_error_handlers(app: FastAPI) -> None:
         request: Request, exc: HTTPException
     ) -> JSONResponse:
         """Handle HTTP exceptions."""
+        # Get request ID from request state or headers
+        request_id = getattr(request.state, "request_id", None) or request.headers.get(
+            "x-request-id"
+        )
+
         # Store status code in request state for access logging
         if hasattr(request.state, "context") and hasattr(
             request.state.context, "metadata"
@@ -585,7 +187,6 @@ def setup_error_handlers(app: FastAPI) -> None:
 
         # Don't log stack trace for expected errors (404, 401)
         if exc.status_code in (404, 401):
-            log_level = "debug" if exc.status_code == 404 else "warning"
             log_func = logger.debug if exc.status_code == 404 else logger.warning
 
             log_func(
@@ -595,11 +196,10 @@ def setup_error_handlers(app: FastAPI) -> None:
                 status_code=exc.status_code,
                 request_method=request.method,
                 request_url=str(request.url.path),
+                category="middleware",
             )
         else:
             # Log with basic stack trace (no local variables)
-            stack_trace = None
-            # For structlog, we can always include traceback since structlog handles filtering
             import traceback
 
             stack_trace = traceback.format_exc(limit=5)  # Limit to 5 frames
@@ -612,6 +212,7 @@ def setup_error_handlers(app: FastAPI) -> None:
                 request_method=request.method,
                 request_url=str(request.url.path),
                 stack_trace=stack_trace,
+                category="middleware",
             )
 
         # Record error in metrics
@@ -629,6 +230,11 @@ def setup_error_handlers(app: FastAPI) -> None:
                 service_type="middleware",
             )
 
+        # Prepare headers with x-request-id if available
+        headers = {}
+        if request_id:
+            headers["x-request-id"] = request_id
+
         # TODO: Add when in prod hide details in response
         return JSONResponse(
             status_code=exc.status_code,
@@ -638,6 +244,7 @@ def setup_error_handlers(app: FastAPI) -> None:
                     "message": exc.detail,
                 }
             },
+            headers=headers,
         )
 
     @app.exception_handler(StarletteHTTPException)
@@ -645,6 +252,11 @@ def setup_error_handlers(app: FastAPI) -> None:
         request: Request, exc: StarletteHTTPException
     ) -> JSONResponse:
         """Handle Starlette HTTP exceptions."""
+        # Get request ID from request state or headers
+        request_id = getattr(request.state, "request_id", None) or request.headers.get(
+            "x-request-id"
+        )
+
         # Don't log stack trace for 404 errors as they're expected
         if exc.status_code == 404:
             logger.debug(
@@ -654,6 +266,7 @@ def setup_error_handlers(app: FastAPI) -> None:
                 status_code=404,
                 request_method=request.method,
                 request_url=str(request.url.path),
+                category="middleware",
             )
         else:
             logger.error(
@@ -663,6 +276,7 @@ def setup_error_handlers(app: FastAPI) -> None:
                 status_code=exc.status_code,
                 request_method=request.method,
                 request_url=str(request.url.path),
+                category="middleware",
             )
 
         # Record error in metrics
@@ -678,6 +292,12 @@ def setup_error_handlers(app: FastAPI) -> None:
                 model=None,
                 service_type="middleware",
             )
+
+        # Prepare headers with x-request-id if available
+        headers = {}
+        if request_id:
+            headers["x-request-id"] = request_id
+
         return JSONResponse(
             status_code=exc.status_code,
             content={
@@ -686,6 +306,7 @@ def setup_error_handlers(app: FastAPI) -> None:
                     "message": exc.detail,
                 }
             },
+            headers=headers,
         )
 
     # Global exception handler
@@ -694,6 +315,11 @@ def setup_error_handlers(app: FastAPI) -> None:
         request: Request, exc: Exception
     ) -> JSONResponse:
         """Handle all other unhandled exceptions."""
+        # Get request ID from request state or headers
+        request_id = getattr(request.state, "request_id", None) or request.headers.get(
+            "x-request-id"
+        )
+
         # Store status code in request state for access logging
         if hasattr(request.state, "context") and hasattr(
             request.state.context, "metadata"
@@ -708,6 +334,7 @@ def setup_error_handlers(app: FastAPI) -> None:
             request_method=request.method,
             request_url=str(request.url.path),
             exc_info=True,
+            category="middleware",
         )
 
         # Record error in metrics
@@ -718,6 +345,12 @@ def setup_error_handlers(app: FastAPI) -> None:
                 model=None,
                 service_type="middleware",
             )
+
+        # Prepare headers with x-request-id if available
+        headers = {}
+        if request_id:
+            headers["x-request-id"] = request_id
+
         return JSONResponse(
             status_code=500,
             content={
@@ -726,6 +359,7 @@ def setup_error_handlers(app: FastAPI) -> None:
                     "message": "An internal server error occurred",
                 }
             },
+            headers=headers,
         )
 
-    logger.debug("error_handlers_setup_completed")
+    logger.debug("error_handlers_setup_completed", category="lifecycle")

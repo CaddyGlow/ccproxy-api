@@ -20,9 +20,8 @@ from .core import Scheduler
 from .registry import TaskRegistry, register_task
 from .tasks import (
     BaseScheduledTask,
-    PricingCacheUpdateTask,
-    PushgatewayTask,
-    StatsPrintingTask,
+    # PushgatewayTask removed - functionality moved to metrics plugin
+    # StatsPrintingTask removed - functionality moved to metrics plugin
 )
 
 
@@ -34,7 +33,6 @@ __all__ = [
     "TaskRegistry",
     "register_task",
     "BaseScheduledTask",
-    "PushgatewayTask",
-    "StatsPrintingTask",
-    "PricingCacheUpdateTask",
+    # "PushgatewayTask",  # removed - functionality moved to metrics plugin
+    # "StatsPrintingTask",  # removed - functionality moved to metrics plugin
 ]

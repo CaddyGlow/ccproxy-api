@@ -32,7 +32,8 @@ class TestOpenAIAdapter:
         """Create OpenAI adapter instance for testing."""
         return OpenAIAdapter()
 
-    def test_adapt_request_basic_conversion(self, adapter: OpenAIAdapter) -> None:
+    @pytest.mark.asyncio
+    async def test_adapt_request_basic_conversion(self, adapter: OpenAIAdapter) -> None:
         """Test basic OpenAI to Anthropic request conversion."""
         openai_request = {
             "model": "gpt-4",
@@ -43,7 +44,7 @@ class TestOpenAIAdapter:
             "stream": False,
         }
 
-        result = adapter.adapt_request(openai_request)
+        result = await adapter.adapt_request(openai_request)
 
         assert result["model"] == "claude-3-5-sonnet-20241022"  # Default mapping
         assert result["max_tokens"] == 100
@@ -54,7 +55,8 @@ class TestOpenAIAdapter:
         assert result["messages"][0]["role"] == "user"
         assert result["messages"][0]["content"] == "Hello, world!"
 
-    def test_adapt_request_system_message_conversion(
+    @pytest.mark.asyncio
+    async def test_adapt_request_system_message_conversion(
         self, adapter: OpenAIAdapter
     ) -> None:
         """Test conversion of system messages to system prompt."""
@@ -67,14 +69,15 @@ class TestOpenAIAdapter:
             "max_tokens": 100,
         }
 
-        result = adapter.adapt_request(openai_request)
+        result = await adapter.adapt_request(openai_request)
 
         assert result["system"] == "You are a helpful assistant."
         assert len(result["messages"]) == 1
         assert result["messages"][0]["role"] == "user"
         assert result["messages"][0]["content"] == "Hello!"
 
-    def test_adapt_request_multiple_system_messages(
+    @pytest.mark.asyncio
+    async def test_adapt_request_multiple_system_messages(
         self, adapter: OpenAIAdapter
     ) -> None:
         """Test handling multiple system messages."""
@@ -88,12 +91,13 @@ class TestOpenAIAdapter:
             "max_tokens": 100,
         }
 
-        result = adapter.adapt_request(openai_request)
+        result = await adapter.adapt_request(openai_request)
 
         assert result["system"] == "You are helpful.\nBe concise."
         assert len(result["messages"]) == 1
 
-    def test_adapt_request_developer_message_conversion(
+    @pytest.mark.asyncio
+    async def test_adapt_request_developer_message_conversion(
         self, adapter: OpenAIAdapter
     ) -> None:
         """Test conversion of developer messages to system prompt."""
@@ -106,12 +110,15 @@ class TestOpenAIAdapter:
             "max_tokens": 100,
         }
 
-        result = adapter.adapt_request(openai_request)
+        result = await adapter.adapt_request(openai_request)
 
         assert result["system"] == "Debug mode enabled."
         assert len(result["messages"]) == 1
 
-    def test_adapt_request_image_content_base64(self, adapter: OpenAIAdapter) -> None:
+    @pytest.mark.asyncio
+    async def test_adapt_request_image_content_base64(
+        self, adapter: OpenAIAdapter
+    ) -> None:
         """Test conversion of base64 image content."""
         openai_request = {
             "model": "gpt-4-vision-preview",
@@ -132,7 +139,7 @@ class TestOpenAIAdapter:
             "max_tokens": 100,
         }
 
-        result = adapter.adapt_request(openai_request)
+        result = await adapter.adapt_request(openai_request)
 
         assert len(result["messages"]) == 1
         message_content = result["messages"][0]["content"]
@@ -151,7 +158,10 @@ class TestOpenAIAdapter:
             "/9j/4AAQSkZJRgABAQAAAQABAAD"
         )
 
-    def test_adapt_request_image_content_url(self, adapter: OpenAIAdapter) -> None:
+    @pytest.mark.asyncio
+    async def test_adapt_request_image_content_url(
+        self, adapter: OpenAIAdapter
+    ) -> None:
         """Test conversion of URL-based image content."""
         openai_request = {
             "model": "gpt-4-vision-preview",
@@ -169,7 +179,7 @@ class TestOpenAIAdapter:
             "max_tokens": 100,
         }
 
-        result = adapter.adapt_request(openai_request)
+        result = await adapter.adapt_request(openai_request)
 
         message_content = result["messages"][0]["content"]
         assert isinstance(message_content, list)
@@ -177,7 +187,8 @@ class TestOpenAIAdapter:
         assert message_content[0]["type"] == "text"
         assert "[Image: https://example.com/image.jpg]" in message_content[0]["text"]
 
-    def test_adapt_request_tools_conversion(self, adapter: OpenAIAdapter) -> None:
+    @pytest.mark.asyncio
+    async def test_adapt_request_tools_conversion(self, adapter: OpenAIAdapter) -> None:
         """Test conversion of OpenAI tools to Anthropic format."""
         openai_request = {
             "model": "gpt-4",
@@ -200,7 +211,7 @@ class TestOpenAIAdapter:
             "max_tokens": 100,
         }
 
-        result = adapter.adapt_request(openai_request)
+        result = await adapter.adapt_request(openai_request)
 
         assert "tools" in result
         assert len(result["tools"]) == 1
@@ -211,7 +222,11 @@ class TestOpenAIAdapter:
 
         assert result["tool_choice"]["type"] == "auto"
 
-    def test_adapt_request_functions_conversion(self, adapter: OpenAIAdapter) -> None:
+    @pytest.mark.skip("Deprecated functions/function_call fields removed")
+    @pytest.mark.asyncio
+    async def test_adapt_request_functions_conversion(
+        self, adapter: OpenAIAdapter
+    ) -> None:
         """Test conversion of deprecated OpenAI functions to tools."""
         openai_request = {
             "model": "gpt-4",
@@ -230,7 +245,7 @@ class TestOpenAIAdapter:
             "max_tokens": 100,
         }
 
-        result = adapter.adapt_request(openai_request)
+        result = await adapter.adapt_request(openai_request)
 
         assert "tools" in result
         assert len(result["tools"]) == 1
@@ -240,7 +255,10 @@ class TestOpenAIAdapter:
 
         assert result["tool_choice"]["type"] == "auto"
 
-    def test_adapt_request_tool_choice_specific(self, adapter: OpenAIAdapter) -> None:
+    @pytest.mark.asyncio
+    async def test_adapt_request_tool_choice_specific(
+        self, adapter: OpenAIAdapter
+    ) -> None:
         """Test conversion of specific tool choice."""
         openai_request = {
             "model": "gpt-4",
@@ -259,12 +277,13 @@ class TestOpenAIAdapter:
             "max_tokens": 100,
         }
 
-        result = adapter.adapt_request(openai_request)
+        result = await adapter.adapt_request(openai_request)
 
         assert result["tool_choice"]["type"] == "tool"
         assert result["tool_choice"]["name"] == "specific_tool"
 
-    def test_adapt_request_reasoning_effort(self, adapter: OpenAIAdapter) -> None:
+    @pytest.mark.asyncio
+    async def test_adapt_request_reasoning_effort(self, adapter: OpenAIAdapter) -> None:
         """Test conversion of reasoning_effort to thinking configuration."""
         openai_request = {
             "model": "o1-preview",
@@ -273,13 +292,14 @@ class TestOpenAIAdapter:
             "max_tokens": 100,
         }
 
-        result = adapter.adapt_request(openai_request)
+        result = await adapter.adapt_request(openai_request)
 
         assert "thinking" in result
         assert result["thinking"]["type"] == "enabled"
         assert result["thinking"]["budget_tokens"] == 10000
 
-    def test_adapt_request_stop_sequences(self, adapter: OpenAIAdapter) -> None:
+    @pytest.mark.asyncio
+    async def test_adapt_request_stop_sequences(self, adapter: OpenAIAdapter) -> None:
         """Test conversion of stop parameter to stop_sequences."""
         # Test string stop
         openai_request = {
@@ -289,16 +309,19 @@ class TestOpenAIAdapter:
             "max_tokens": 100,
         }
 
-        result = adapter.adapt_request(openai_request)
+        result = await adapter.adapt_request(openai_request)
         assert result["stop_sequences"] == ["STOP"]
 
         # Test list stop
         openai_request_list = openai_request.copy()
         openai_request_list["stop"] = ["STOP", "END"]
-        result = adapter.adapt_request(openai_request_list)
+        result = await adapter.adapt_request(openai_request_list)
         assert result["stop_sequences"] == ["STOP", "END"]
 
-    def test_adapt_request_response_format_json(self, adapter: OpenAIAdapter) -> None:
+    @pytest.mark.asyncio
+    async def test_adapt_request_response_format_json(
+        self, adapter: OpenAIAdapter
+    ) -> None:
         """Test response format conversion to system prompt."""
         openai_request = {
             "model": "gpt-4",
@@ -310,11 +333,14 @@ class TestOpenAIAdapter:
             "max_tokens": 100,
         }
 
-        result = adapter.adapt_request(openai_request)
+        result = await adapter.adapt_request(openai_request)
 
         assert "You must respond with valid JSON only." in result["system"]
 
-    def test_adapt_request_metadata_and_user(self, adapter: OpenAIAdapter) -> None:
+    @pytest.mark.asyncio
+    async def test_adapt_request_metadata_and_user(
+        self, adapter: OpenAIAdapter
+    ) -> None:
         """Test handling of metadata and user fields."""
         openai_request = {
             "model": "gpt-4",
@@ -324,12 +350,13 @@ class TestOpenAIAdapter:
             "max_tokens": 100,
         }
 
-        result = adapter.adapt_request(openai_request)
+        result = await adapter.adapt_request(openai_request)
 
         assert result["metadata"]["user_id"] == "test-user-123"
         assert result["metadata"]["session_id"] == "abc123"
 
-    def test_adapt_request_tool_messages(self, adapter: OpenAIAdapter) -> None:
+    @pytest.mark.asyncio
+    async def test_adapt_request_tool_messages(self, adapter: OpenAIAdapter) -> None:
         """Test conversion of tool result messages."""
         openai_request = {
             "model": "gpt-4",
@@ -358,7 +385,7 @@ class TestOpenAIAdapter:
             "max_tokens": 100,
         }
 
-        result = adapter.adapt_request(openai_request)
+        result = await adapter.adapt_request(openai_request)
 
         # The adapter creates 3 messages: user, assistant, user (with tool result)
         assert len(result["messages"]) == 3
@@ -389,14 +416,18 @@ class TestOpenAIAdapter:
         assert tool_result["tool_use_id"] == "call_123"
         assert tool_result["content"] == "It's sunny, 75°F"
 
-    def test_adapt_request_invalid_format(self, adapter: OpenAIAdapter) -> None:
+    @pytest.mark.asyncio
+    async def test_adapt_request_invalid_format(self, adapter: OpenAIAdapter) -> None:
         """Test handling of invalid request format."""
         invalid_request = {"invalid_field": "value"}
 
         with pytest.raises(ValueError, match="Invalid OpenAI request format"):
-            adapter.adapt_request(invalid_request)
+            await adapter.adapt_request(invalid_request)
 
-    def test_adapt_response_basic_conversion(self, adapter: OpenAIAdapter) -> None:
+    @pytest.mark.asyncio
+    async def test_adapt_response_basic_conversion(
+        self, adapter: OpenAIAdapter
+    ) -> None:
         """Test basic Anthropic to OpenAI response conversion."""
         anthropic_response = {
             "id": "msg_123",
@@ -408,7 +439,7 @@ class TestOpenAIAdapter:
             "usage": {"input_tokens": 10, "output_tokens": 15},
         }
 
-        result = adapter.adapt_response(anthropic_response)
+        result = await adapter.adapt_response(anthropic_response)
 
         assert result["object"] == "chat.completion"
         assert result["model"] == "claude-3-5-sonnet-20241022"
@@ -425,7 +456,10 @@ class TestOpenAIAdapter:
         assert usage["completion_tokens"] == 15
         assert usage["total_tokens"] == 25
 
-    def test_adapt_response_thinking_content(self, adapter: OpenAIAdapter) -> None:
+    @pytest.mark.asyncio
+    async def test_adapt_response_thinking_content(
+        self, adapter: OpenAIAdapter
+    ) -> None:
         """Test handling of thinking blocks in response."""
         anthropic_response = {
             "id": "msg_123",
@@ -444,7 +478,7 @@ class TestOpenAIAdapter:
             "usage": {"input_tokens": 10, "output_tokens": 15},
         }
 
-        result = adapter.adapt_response(anthropic_response)
+        result = await adapter.adapt_response(anthropic_response)
 
         choice = result["choices"][0]
         content = choice["message"]["content"]
@@ -454,7 +488,8 @@ class TestOpenAIAdapter:
         assert "</thinking>" in content
         assert "The answer is 42." in content
 
-    def test_adapt_response_tool_calls(self, adapter: OpenAIAdapter) -> None:
+    @pytest.mark.asyncio
+    async def test_adapt_response_tool_calls(self, adapter: OpenAIAdapter) -> None:
         """Test conversion of tool use to tool calls."""
         anthropic_response = {
             "id": "msg_123",
@@ -474,7 +509,7 @@ class TestOpenAIAdapter:
             "usage": {"input_tokens": 10, "output_tokens": 20},
         }
 
-        result = adapter.adapt_response(anthropic_response)
+        result = await adapter.adapt_response(anthropic_response)
 
         choice = result["choices"][0]
         assert choice["finish_reason"] == "tool_calls"
@@ -490,7 +525,8 @@ class TestOpenAIAdapter:
             == "San Francisco"
         )
 
-    def test_adapt_response_tool_calls_no_text_content(
+    @pytest.mark.asyncio
+    async def test_adapt_response_tool_calls_no_text_content(
         self, adapter: OpenAIAdapter
     ) -> None:
         """Test conversion of tool use when there's no text content."""
@@ -511,7 +547,7 @@ class TestOpenAIAdapter:
             "usage": {"input_tokens": 10, "output_tokens": 20},
         }
 
-        result = adapter.adapt_response(anthropic_response)
+        result = await adapter.adapt_response(anthropic_response)
 
         choice = result["choices"][0]
         assert choice["finish_reason"] == "tool_calls"
@@ -528,7 +564,10 @@ class TestOpenAIAdapter:
             == "San Francisco"
         )
 
-    def test_adapt_response_stop_reason_mapping(self, adapter: OpenAIAdapter) -> None:
+    @pytest.mark.asyncio
+    async def test_adapt_response_stop_reason_mapping(
+        self, adapter: OpenAIAdapter
+    ) -> None:
         """Test mapping of various stop reasons."""
         test_cases = [
             ("end_turn", "stop"),
@@ -551,17 +590,18 @@ class TestOpenAIAdapter:
                 "usage": {"input_tokens": 10, "output_tokens": 5},
             }
 
-            result = adapter.adapt_response(anthropic_response)
+            result = await adapter.adapt_response(anthropic_response)
             assert result["choices"][0]["finish_reason"] == expected_openai_reason
 
-    def test_adapt_response_invalid_format(self, adapter: OpenAIAdapter) -> None:
+    @pytest.mark.asyncio
+    async def test_adapt_response_invalid_format(self, adapter: OpenAIAdapter) -> None:
         """Test handling of invalid response format."""
         invalid_response = {"invalid_field": "value"}
 
         # The adapter might not raise for all invalid responses
         # Let's test with a response that actually causes an error
         try:
-            result = adapter.adapt_response(invalid_response)
+            result = await adapter.adapt_response(invalid_response)
             # If no error, check if it produces a reasonable result
             assert "choices" in result or "error" in result
         except (ValueError, KeyError, TypeError):
@@ -725,6 +765,7 @@ class TestOpenAIAdapter:
         result = adapter._convert_tool_choice_to_anthropic({"invalid": "format"})
         assert result["type"] == "auto"
 
+    @pytest.mark.skip("_convert_function_call_to_anthropic method removed")
     def test_function_call_edge_cases(self, adapter: OpenAIAdapter) -> None:
         """Test edge cases in function call conversion."""
         # Test unknown string function call
@@ -763,7 +804,8 @@ class TestOpenAIAdapter:
         result = adapter._convert_tool_call_to_anthropic(tool_call_dict)
         assert result["input"]["param"] == "value"
 
-    def test_special_characters_in_content(self, adapter: OpenAIAdapter) -> None:
+    @pytest.mark.asyncio
+    async def test_special_characters_in_content(self, adapter: OpenAIAdapter) -> None:
         """Test handling of special characters in content."""
         openai_request = {
             "model": "gpt-4",
@@ -776,14 +818,15 @@ class TestOpenAIAdapter:
             "max_tokens": 100,
         }
 
-        result = adapter.adapt_request(openai_request)
+        result = await adapter.adapt_request(openai_request)
 
         assert (
             result["messages"][0]["content"]
             == "Test with special chars: émojis 🚀, unicode ∑, quotes \"', and newlines\n\n"
         )
 
-    def test_empty_messages_list(self, adapter: OpenAIAdapter) -> None:
+    @pytest.mark.asyncio
+    async def test_empty_messages_list(self, adapter: OpenAIAdapter) -> None:
         """Test handling of empty messages list."""
         # The OpenAI request model requires at least one message
         # So we test with a minimal valid request instead
@@ -793,12 +836,13 @@ class TestOpenAIAdapter:
             "max_tokens": 100,
         }
 
-        result = adapter.adapt_request(openai_request)
+        result = await adapter.adapt_request(openai_request)
 
         assert len(result["messages"]) == 1
         assert result["messages"][0]["content"] == ""
 
-    def test_model_mapping(self, adapter: OpenAIAdapter) -> None:
+    @pytest.mark.asyncio
+    async def test_model_mapping(self, adapter: OpenAIAdapter) -> None:
         """Test model name mapping from OpenAI to Claude."""
         test_cases = [
             ("gpt-4", "claude-3-5-sonnet-20241022"),  # Direct mapping
@@ -825,10 +869,11 @@ class TestOpenAIAdapter:
                 "max_tokens": 100,
             }
 
-            result = adapter.adapt_request(openai_request)
+            result = await adapter.adapt_request(openai_request)
             assert result["model"] == expected_claude_model
 
-    def test_usage_missing_in_response(self, adapter: OpenAIAdapter) -> None:
+    @pytest.mark.asyncio
+    async def test_usage_missing_in_response(self, adapter: OpenAIAdapter) -> None:
         """Test handling of missing usage information in response."""
         anthropic_response = {
             "id": "msg_123",
@@ -840,14 +885,15 @@ class TestOpenAIAdapter:
             # Missing usage field
         }
 
-        result = adapter.adapt_response(anthropic_response)
+        result = await adapter.adapt_response(anthropic_response)
 
         usage = result["usage"]
         assert usage["prompt_tokens"] == 0
         assert usage["completion_tokens"] == 0
         assert usage["total_tokens"] == 0
 
-    def test_response_with_empty_content(self, adapter: OpenAIAdapter) -> None:
+    @pytest.mark.asyncio
+    async def test_response_with_empty_content(self, adapter: OpenAIAdapter) -> None:
         """Test handling of response with empty content."""
         anthropic_response = {
             "id": "msg_123",
@@ -859,13 +905,14 @@ class TestOpenAIAdapter:
             "usage": {"input_tokens": 10, "output_tokens": 0},
         }
 
-        result = adapter.adapt_response(anthropic_response)
+        result = await adapter.adapt_response(anthropic_response)
 
         choice = result["choices"][0]
         assert choice["message"]["content"] is None
         assert choice["message"]["tool_calls"] is None
 
-    def test_maximum_complexity_request(self, adapter: OpenAIAdapter) -> None:
+    @pytest.mark.asyncio
+    async def test_maximum_complexity_request(self, adapter: OpenAIAdapter) -> None:
         """Test conversion of a maximally complex request with all features."""
         openai_request = {
             "model": "gpt-4",
@@ -931,7 +978,7 @@ class TestOpenAIAdapter:
             "reasoning_effort": "medium",
         }
 
-        result = adapter.adapt_request(openai_request)
+        result = await adapter.adapt_request(openai_request)
 
         # Verify all aspects are converted correctly
         assert (
@@ -954,7 +1001,10 @@ class TestOpenAIAdapter:
         assert result["tool_choice"]["name"] == "analyze_image"
         assert result["thinking"]["budget_tokens"] == 5000
 
-    def test_request_without_optional_fields(self, adapter: OpenAIAdapter) -> None:
+    @pytest.mark.asyncio
+    async def test_request_without_optional_fields(
+        self, adapter: OpenAIAdapter
+    ) -> None:
         """Test request conversion when optional fields are None."""
         openai_request = {
             "model": "gpt-4",
@@ -966,7 +1016,7 @@ class TestOpenAIAdapter:
             "stop": None,
         }
 
-        result = adapter.adapt_request(openai_request)
+        result = await adapter.adapt_request(openai_request)
 
         # None values should not be included in the result
         assert "temperature" not in result
@@ -974,7 +1024,8 @@ class TestOpenAIAdapter:
         assert "stream" not in result
         assert "stop_sequences" not in result
 
-    def test_reasoning_effort_edge_cases(self, adapter: OpenAIAdapter) -> None:
+    @pytest.mark.asyncio
+    async def test_reasoning_effort_edge_cases(self, adapter: OpenAIAdapter) -> None:
         """Test different reasoning effort values."""
         test_cases = [
             ("low", 1000),
@@ -990,10 +1041,13 @@ class TestOpenAIAdapter:
                 "max_tokens": 100,
             }
 
-            result = adapter.adapt_request(openai_request)
+            result = await adapter.adapt_request(openai_request)
             assert result["thinking"]["budget_tokens"] == expected_tokens
 
-    def test_assistant_message_without_content(self, adapter: OpenAIAdapter) -> None:
+    @pytest.mark.asyncio
+    async def test_assistant_message_without_content(
+        self, adapter: OpenAIAdapter
+    ) -> None:
         """Test handling assistant message with empty content (only tool calls)."""
         openai_request = {
             "model": "gpt-4",
@@ -1014,7 +1068,7 @@ class TestOpenAIAdapter:
             "max_tokens": 100,
         }
 
-        result = adapter.adapt_request(openai_request)
+        result = await adapter.adapt_request(openai_request)
         assert len(result["messages"]) == 2
 
     def test_content_conversion_edge_cases(self, adapter: OpenAIAdapter) -> None:
@@ -1036,7 +1090,8 @@ class TestOpenAIAdapter:
         # Invalid base64 should be logged but no content added (according to the except block)
         assert result == ""
 
-    def test_multi_turn_conversation_with_thinking(
+    @pytest.mark.asyncio
+    async def test_multi_turn_conversation_with_thinking(
         self, adapter: OpenAIAdapter
     ) -> None:
         """Test multi-turn conversation with thinking blocks and tool calls."""
@@ -1068,7 +1123,7 @@ class TestOpenAIAdapter:
             "max_tokens": 100,
         }
 
-        result = adapter.adapt_request(openai_request)
+        result = await adapter.adapt_request(openai_request)
 
         # Check message count
         assert len(result["messages"]) == 4
@@ -1112,7 +1167,10 @@ class TestOpenAIAdapter:
         # For now, we'll test the format conversion in adapt_response
         pass  # Placeholder for streaming test
 
-    def test_thinking_block_without_signature(self, adapter: OpenAIAdapter) -> None:
+    @pytest.mark.asyncio
+    async def test_thinking_block_without_signature(
+        self, adapter: OpenAIAdapter
+    ) -> None:
         """Test handling of thinking blocks without signatures."""
         anthropic_response = {
             "id": "msg_123",
@@ -1127,7 +1185,7 @@ class TestOpenAIAdapter:
             "usage": {"input_tokens": 10, "output_tokens": 15},
         }
 
-        result = adapter.adapt_response(anthropic_response)
+        result = await adapter.adapt_response(anthropic_response)
 
         choice = result["choices"][0]
         content = choice["message"]["content"]

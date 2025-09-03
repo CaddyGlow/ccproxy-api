@@ -7,30 +7,26 @@ readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
   "aiofiles>=24.1.0",
-  "aiosqlite>=0.21.0",
-  "jsonschema>=0.33.2",
+  "jsonschema>=4.23.0",
   "fastapi[standard]>=0.115.14",
-  "httpx>=0.28.1",
-  "httpx-sse>=0.4.1",
-  "keyring>=25.6.0",
-  "openai>=1.93.0",
+  "httpx[http2]>=0.28.1",
   "prometheus-client>=0.22.1",
   "pydantic>=2.8.0",
   "pydantic-settings>=2.4.0",
   "rich>=13.0.0",
   "rich-toolkit>=0.14.8",
   "structlog>=25.4.0",
-  "tomli>=2.0.0; python_version<'3.11'",
   "typer>=0.16.0",
   "duckdb>=1.1.0",
   "typing-extensions>=4.0.0",
   "uvicorn>=0.34.0",
   "sqlmodel>=0.0.24",
   "duckdb-engine>=0.17.0",
-  "fastapi-mcp",
   "textual>=3.7.1",
-  "claude-code-sdk>=0.0.19",
-  "pyjwt>=2.10.1",
+  "packaging>=25.0",
+  "aiohttp>=3.12.15",
+  "sortedcontainers>=2.4.0",
+  "aioconsole>=0.8.1",
 ]
 
 [build-system]
@@ -45,12 +41,28 @@ source = "vcs"
 
 
 [tool.hatch.build.hooks.vcs]
-version-file = "ccproxy/_version.py"
+version-file = "ccproxy/core/_version.py"
 
 [tool.hatch.build.targets.wheel]
-packages = ["ccproxy"]
+packages = ["ccproxy", "plugins"]
 include = [
-    "ccproxy/data/*.json"
+  "ccproxy/data/*.json",
+  "plugins/**/*.py",
+  "plugins/**/*.json",
+  "plugins/**/*.toml",
+]
+
+[tool.hatch.build.targets.sdist]
+include = [
+  "ccproxy/**/*.py",
+  "ccproxy/**/*.json",
+  "ccproxy/static/dashboard/**",
+  "plugins/**/*.py",
+  "plugins/**/*.json",
+  "plugins/**/*.toml",
+  "README.md",
+  "LICENSE",
+  "pyproject.toml",
 ]
 
 [project.scripts]
@@ -59,51 +71,19 @@ ccproxy = "ccproxy.cli:main"
 ccproxy-api = "ccproxy.cli:main"
 ccproxy-perm = "ccproxy.cli.commands.permission:main"
 
-[dependency-groups]
-dev = [
-  "mypy>=1.16.1",
-  "ruff>=0.12.2",
-  "pytest>=7.0.0",
-  "pytest-asyncio>=0.23.0",
-  "pytest-cov>=4.0.0",
-  "pytest-env>=0.8.0",
-  "pytest-timeout>=2.1.0",
-  "pytest-mock>=3.12.0",
-  "pytest-xdist>=3.5.0",
-  "pytest-html>=4.1.0",
-  "pytest-benchmark>=4.0.0",
-  "tox>=4.27.0",
-  "pre-commit>=4.2.0",
-  "anthropic>=0.57.1",
-  "textual-dev>=1.7.0",
-  "pytest-httpx>=0.35.0",
-  "types-pyyaml>=6.0.12.20250516",
-  "types-aiofiles>=24.0.0",
-]
-security = [
-  "keyring>=25.0.0", # Optional keyring support for secure credential storage
-]
-docs = [
-  "mkdocs>=1.5.3",
-  "mkdocs-material>=9.5.0",
-  "mkdocstrings[python]>=0.24.0",
-  "mkdocs-gen-files>=0.5.0",
-  "mkdocs-literate-nav>=0.6.0",
-  "mkdocs-section-index>=0.3.0",
-  "mkdocs-swagger-ui-tag>=0.6.0",
-  "mkdocs-include-markdown-plugin>=6.0.0",
-  "mkdocs-mermaid2-plugin>=1.1.0",
-  "mkdocs-glightbox>=0.3.0",
-  "mkdocs-minify-plugin>=0.7.0",
-  "mkdocs-redirects>=1.2.0",
-]
-schema = ["pydantic>=2.8.0", "check-jsonschema>=0.33.2"]
+[project.optional-dependencies]
+# Plugin-focused extras to enable splitting plugin deps from core at install time.
+# Kept in root dependencies for now because plugins are bundled with the wheel.
+# These extras provide an escape hatch for future distribution changes.
+plugins-storage = ["duckdb>=1.1.0", "duckdb-engine>=0.17.0", "sqlmodel>=0.0.24"]
+plugins-metrics = ["prometheus-client>=0.22.1"]
+plugins-ui = ["textual>=3.7.1"]
 
 [tool.coverage.run]
 source = ["ccproxy", "tests"]
 include = ["ccproxy/*", "tests/*"]
 omit = [
-  "ccproxy/_version.py",
+  "ccproxy/core/_version.py",
   "ccproxy/__main__.py",
   "tests/conftest.py",
   "*/migrations/*",
@@ -147,6 +127,12 @@ output = "coverage.xml"
 target-version = "py311"
 line-length = 88
 
+# Add source paths for better import resolution
+src = ["ccproxy", "plugins", "tests"]
+
+# Extend include patterns for your monorepo
+extend-include = ["plugins/**/*.py"]
+
 [tool.ruff.lint]
 select = [
   "E",   # pycodestyle errors
@@ -170,15 +156,17 @@ ignore = [
   "F841",   # Local variable assigned but never used
 ]
 
-exclude = [
-  ".git",
-  ".venv",
-  "venv",
-  "__pycache__",
-  "build",
-  "dist",
-  "*.egg-info",
-]
+[tool.ruff.lint.flake8-tidy-imports]
+
+[tool.ruff.lint.per-file-ignores]
+"plugins/**" = ["TID251"]
+"tests/**" = ["TID251"]
+"scripts/**" = ["TID251"]
+
+# relax on scripts and tests
+"scripts/*" = ["T201"]                         # check for print statements
+"tests/*" = ["N802", "N803"]                   # arg/function name should be lowercase
+"plugins/*/tests/*" = ["N802", "N803", "S101"] # Allow assert in plugin tests
 
 
 [tool.ruff.format]
@@ -191,16 +179,22 @@ known-first-party = ["ccproxy"]
 force-single-line = false
 lines-after-imports = 2
 
-[tool.ruff.lint.per-file-ignores]
-# relax on scripts and tests
-"scripts/*" = ["T201"]       # check for print statements
-"tests/*" = ["N802", "N803"] # arg/function name should be lowercase
 
 [tool.mypy]
 python_version = "3.11"
 show_column_numbers = true
 follow_imports = "normal"
-exclude = ["^[^/]+\\.py$", "docs/", "site/", "tests.depracted/", "examples/"]
+exclude = [
+  "^[^/]+\\.py$",
+  "docs/",
+  "site/",
+  "tests.deprecated/",
+  "tests/",
+  "examples/",
+  "plugins/.*/tests/",
+]
+namespace_packages = true
+explicit_package_bases = true
 
 # Enable all strict mode flags
 strict = true
@@ -219,7 +213,7 @@ warn_return_any = true
 disallow_any_generics = true
 disallow_subclassing_any = true
 disallow_any_unimported = true
-warn_unreachable = true
+warn_unreachable = false
 
 # if we need to disable certain strict checks
 # disallow_incomplete_defs = false
@@ -228,13 +222,76 @@ warn_unreachable = true
 
 [[tool.mypy.overrides]]
 module = "tests.*"
-# ignore_errors = true
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = ["tomli", "sse_starlette.sse", "fastapi_mcp"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "plugins.permissions.mcp"
+disable_error_code = ["unused-ignore"]
+
+[[tool.mypy.overrides]]
+module = [
+  "tests.integration.test_metrics_plugin",
+  "tests.unit.api.test_metrics_api",
+  "tests.unit.test_hook_ordering",
+  "tests.unit.api.test_plugins_status",
+  "tests.unit.api.test_reset_endpoint",
+  "tests.unit.plugins.test_codex_transformers",
+  "tests.unit.api.test_api",
+  "tests.unit.services.test_queue_duckdb_storage",
+  "tests.unit.services.test_scheduler",
+  "tests.unit.services.test_pricing",
+  "tests.unit.plugins.test_claude_api_pricing",
+  "tests.unit.services.test_fastapi_factory",
+  "tests.unit.services.test_streaming",
+  # "tests.unit.utils.test_binary_resolver",  # many untyped helpers; keep ignored for now
+  "tests.unit.streaming.test_deferred_response",
+  "tests.unit.services.test_adapters",
+  "tests.unit.services.test_docker",
+  "tests.unit.services.test_confirmation_service",
+  "tests.unit.services.test_session_pool_race_condition",
+  "tests.unit.utils.test_startup_helpers",
+  "tests.unit.test_hooks",
+  "tests.unit.test_caching",
+  "tests.unit.test_plugin_system",
+  "tests.unit.api.test_confirmation_routes",
+  "tests.unit.api.test_mcp_route",
+  "tests.unit.utils.test_version_checker",
+  "tests.unit.services.test_sse_events",
+  "tests.unit.services.test_sse_stream_filtering",
+  "tests.unit.services.test_stats_printer",
+  "tests.unit.utils.test_binary_resolver",
+]
+ignore_errors = false
+
+[[tool.mypy.overrides]]
+module = [
+  "tests.unit.test_hooks",
+  "tests.unit.utils.test_binary_resolver",
+  "tests.unit.test_caching",
+  "tests.unit.test_plugin_system",
+  "tests.unit.api.test_confirmation_routes",
+  "tests.unit.api.test_mcp_route",
+]
 disallow_untyped_defs = false
-disallow_incomplete_defs = false
 disallow_untyped_calls = false
 warn_unused_ignores = false
-# Ignore call-arg errors for Pydantic models with optional fields
-disable_error_code = ["call-arg"]
+
+[[tool.mypy.overrides]]
+# Final override to relax type checking for tests during migration
+module = "tests.*"
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = ["ccproxy.plugins.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["plugins.*"]
+ignore_missing_imports = true
 
 
 [tool.pytest.ini_options]
@@ -272,6 +329,8 @@ norecursedirs = [
   ".devenv",
   "node_modules",
   "__pycache__",
+  ".devenv",
+  "tests_new",
 ]
 filterwarnings = [
   "ignore::UserWarning",
@@ -348,5 +407,94 @@ include = ["ccproxy*"]
 [tool.uv]
 package = true
 
+# Workspace configuration for plugins
+[tool.uv.workspace]
+members = [
+  "plugins/claude_sdk",
+  "plugins/claude_api",
+  "plugins/codex",
+  "plugins/permissions",
+  "plugins/metrics",
+  "plugins/request_tracer",
+  "plugins/access_log",
+  "plugins/pricing",
+  "plugins/duckdb_storage",
+  "plugins/analytics",
+  "plugins/dashboard",
+  "plugins/oauth_claude",
+  "plugins/oauth_codex",
+]
+
 [tool.uv.sources]
-fastapi-mcp = { git = "https://github.com/tadata-org/fastapi_mcp", rev = "6fdbff6168b2c84b22966886741d1f24a584856c" }
+ccproxy-plugin-claude-sdk = { workspace = true }
+
+
+[tool.pyright]
+pythonVersion = "3.11"
+typeCheckingMode = "standard" # or "strict"
+
+include = ["ccproxy", "plugins", "tests"] # Include all your workspace members
+
+# Exclude unnecessary directories
+exclude = [
+  "**/__pycache__",
+  ".venv",
+  "venv",
+  "build",
+  "dist",
+  "*.egg-info",
+  ".git",
+  ".tox",
+  "htmlcov",
+  ".pytest_cache",
+  ".mypy_cache",
+  ".ruff_cache",
+  ".devenv",
+]
+
+# Virtual environment configuration
+# venvPath = "."
+# venv = ".venv" # Adjust if using different name
+
+# Extra paths for import resolution
+extraPaths = [
+  ".",
+  "plugins/claude_api",
+  "plugins/claude_sdk",
+  "plugins/codex",
+  "plugins/permissions",
+  "plugins/request_tracer",
+  "plugins/duckdb_storage",
+  "plugins/analytics",
+  "plugins/dashboard",
+]
+
+# Type checking settings
+reportMissingImports = "warning"
+reportMissingTypeStubs = false
+reportPrivateImportUsage = false
+reportUnusedImport = true
+reportUnusedClass = true
+reportUnusedFunction = true
+reportUnusedVariable = true
+reportDuplicateImport = true
+reportOptionalMemberAccess = true
+reportOptionalCall = true
+reportOptionalIterable = true
+reportOptionalContextManager = true
+reportOptionalOperand = true
+reportTypedDictNotRequiredAccess = true
+reportPrivateUsage = "warning"
+reportUnboundVariable = true
+reportUnusedCoroutine = true
+reportGeneralTypeIssues = true
+reportUnnecessaryTypeIgnoreComment = true
+
+# Stub settings
+stubPath = "typings"
+useLibraryCodeForTypes = true
+
+[dependency-groups]
+plugins = [
+    "ccproxy-plugin-claude-sdk",
+]

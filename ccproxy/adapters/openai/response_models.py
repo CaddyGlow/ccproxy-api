@@ -6,7 +6,7 @@ used by Codex/ChatGPT backend.
 
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import Any, Literal, Union
 
 from pydantic import BaseModel
 
@@ -14,11 +14,29 @@ from pydantic import BaseModel
 # Request Models
 
 
-class ResponseMessageContent(BaseModel):
-    """Content block in a Response API message."""
+class ResponseFunction(BaseModel):
+    """Function definition in tool call."""
+    
+    name: str
+    arguments: str  # JSON string
 
-    type: Literal["input_text", "output_text"]
-    text: str
+
+class ResponseToolCall(BaseModel):
+    """Tool call in Response API format."""
+    
+    type: Literal["tool_call"]
+    id: str
+    function: ResponseFunction
+
+
+class ResponseMessageContent(BaseModel):
+    """Content block in a Response API message with function calling support."""
+
+    type: Literal["input_text", "output_text", "tool_call"]
+    text: str | None = None  # For text content
+    # Tool call fields (when type is "tool_call")
+    id: str | None = None
+    function: ResponseFunction | None = None
 
 
 class ResponseMessage(BaseModel):
@@ -30,6 +48,28 @@ class ResponseMessage(BaseModel):
     content: list[ResponseMessageContent]
 
 
+class ResponseToolFunction(BaseModel):
+    """Function definition in tool for requests."""
+    
+    name: str
+    description: str | None = None
+    parameters: dict[str, Any]
+
+
+class ResponseTool(BaseModel):
+    """Tool definition for Response API."""
+    
+    type: Literal["function"]
+    function: ResponseToolFunction
+
+
+class ResponseToolChoice(BaseModel):
+    """Tool choice object format for Response API."""
+    
+    type: Literal["function"]
+    function: dict[str, str]  # {"name": "function_name"}
+
+
 class ResponseReasoning(BaseModel):
     """Reasoning configuration for Response API."""
 
@@ -38,14 +78,16 @@ class ResponseReasoning(BaseModel):
 
 
 class ResponseRequest(BaseModel):
-    """OpenAI Response API request format."""
+    """OpenAI Response API request format with function calling support."""
 
     model: str
     instructions: str | None = None
     input: list[ResponseMessage]
     stream: bool = True
-    tool_choice: Literal["auto", "none", "required"] | str = "auto"
+    tool_choice: Union[Literal["auto", "none", "required"], ResponseToolChoice, str] = "auto"
+    tools: list[ResponseTool] | None = None
     parallel_tool_calls: bool = False
+    max_tool_calls: int | None = None
     reasoning: ResponseReasoning | None = None
     store: bool = False
     include: list[str] | None = None
@@ -131,12 +173,14 @@ class ResponseCompleted(BaseModel):
 
 
 class StreamingDelta(BaseModel):
-    """Delta content in streaming response."""
+    """Delta content in streaming response with function calling."""
 
     content: str | None = None
     role: Literal["assistant"] | None = None
     reasoning_content: str | None = None
     output: list[dict[str, Any]] | None = None
+    # Function calling deltas
+    tool_calls: list[dict[str, Any]] | None = None
 
 
 class StreamingChoice(BaseModel):
@@ -162,7 +206,7 @@ class StreamingChunk(BaseModel):
 
 
 class StreamingEvent(BaseModel):
-    """Server-sent event wrapper for streaming."""
+    """Server-sent event wrapper for streaming with function calling support."""
 
     event: (
         Literal[
@@ -172,7 +216,30 @@ class StreamingEvent(BaseModel):
             "response.output.completed",
             "response.completed",
             "response.failed",
+            # Function calling specific events
+            "response.tool_call.started",
+            "response.tool_call.delta", 
+            "response.tool_call.completed",
         ]
         | None
     ) = None
     data: dict[str, Any] | str
+
+
+# Utility Models for Function Calling
+
+
+class FunctionCallDelta(BaseModel):
+    """Delta for streaming function call arguments."""
+    
+    name: str | None = None
+    arguments: str | None = None  # Partial JSON string
+
+
+class ToolCallState(BaseModel):
+    """State tracking for streaming tool calls."""
+    
+    id: str
+    name: str
+    accumulated_arguments: str = ""
+    completed: bool = False

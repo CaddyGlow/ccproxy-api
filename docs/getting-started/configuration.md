@@ -30,7 +30,7 @@ Uses `__` (double underscore) as delimiter for nested configuration:
 ```bash
 SERVER__PORT=8080
 SERVER__HOST=0.0.0.0
-SERVER__LOG_LEVEL=DEBUG
+LOGGING__LEVEL=DEBUG
 SECURITY__AUTH_TOKEN=your-token
 ```
 
@@ -40,11 +40,11 @@ SECURITY__AUTH_TOKEN=your-token
 |----------|----------------|-------------|---------|---------|
 | `PORT` | `SERVER__PORT` | Server port | `8000` | `PORT=8080` |
 | `HOST` | `SERVER__HOST` | Server host | `127.0.0.1` | `HOST=0.0.0.0` |
-| `LOG_LEVEL` | `SERVER__LOG_LEVEL` | Logging level | `INFO` | `LOG_LEVEL=DEBUG` |
+| `LOG_LEVEL` | `LOGGING__LEVEL` | Logging level | `INFO` | `LOG_LEVEL=DEBUG` |
 | `WORKERS` | `SERVER__WORKERS` | Worker processes | `1` | `WORKERS=4` |
 | `RELOAD` | `SERVER__RELOAD` | Auto-reload | `false` | `RELOAD=true` |
-| - | `SERVER__LOG_FORMAT` | Log format | `auto` | `SERVER__LOG_FORMAT=json` |
-| - | `SERVER__LOG_FILE` | Log file path | - | `SERVER__LOG_FILE=/var/log/app.log` |
+| - | `LOGGING__FORMAT` | Log format | `auto` | `LOGGING__FORMAT=json` |
+| - | `LOGGING__FILE` | Log file path | - | `LOGGING__FILE=/var/log/app.log` |
 
 ### Security Configuration
 
@@ -58,6 +58,19 @@ The proxy accepts authentication tokens in multiple header formats:
 
 All formats use the same configured `SECURITY__AUTH_TOKEN` value.
 
+### Logging Configuration
+
+| Variable | Nested Variable | Description | Default | Example |
+|----------|----------------|-------------|---------|---------|
+| `LOG_LEVEL` | `LOGGING__LEVEL` | Logging level | `INFO` | `LOGGING__LEVEL=DEBUG` |
+| - | `LOGGING__FORMAT` | Log format | `auto` | `LOGGING__FORMAT=json` |
+| - | `LOGGING__FILE` | Log file path | - | `LOGGING__FILE=/var/log/app.log` |
+| - | `LOGGING__VERBOSE_API` | Verbose API logging | `false` | `LOGGING__VERBOSE_API=true` |
+| - | `LOGGING__PIPELINE_ENABLED` | Enable logging pipeline | `false` | `LOGGING__PIPELINE_ENABLED=true` |
+| - | `LOGGING__ENABLE_PLUGIN_LOGGING` | Global plugin logging | `true` | `LOGGING__ENABLE_PLUGIN_LOGGING=false` |
+| - | `LOGGING__PLUGIN_OVERRIDES` | Per-plugin control (JSON) | `{}` | `LOGGING__PLUGIN_OVERRIDES='{"pricing":false}'` |
+| - | `LOGGING__PLUGIN_LOG_BASE_DIR` | Plugin log base directory | `/tmp/ccproxy/plugins` | `LOGGING__PLUGIN_LOG_BASE_DIR=/var/log/plugins` |
+
 ### Claude CLI Configuration
 
 | Variable | Nested Variable | Description | Default | Example |
@@ -70,9 +83,9 @@ All formats use the same configured `SECURITY__AUTH_TOKEN` value.
 |----------|-------------|---------|
 | `CONFIG_FILE` | Path to custom TOML config | `CONFIG_FILE=/etc/ccproxy/config.toml` |
 | `CCPROXY_CONFIG_OVERRIDES` | JSON config overrides | `CCPROXY_CONFIG_OVERRIDES='{"server":{"port":9000}}'` |
-| `CCPROXY_VERBOSE_API` | Verbose API logging | `CCPROXY_VERBOSE_API=true` |
+| `LOGGING__VERBOSE_API` | Verbose API logging | `LOGGING__VERBOSE_API=true` |
 | `CCPROXY_VERBOSE_STREAMING` | Verbose streaming logs | `CCPROXY_VERBOSE_STREAMING=true` |
-| `CCPROXY_REQUEST_LOG_DIR` | Request/response log directory | `CCPROXY_REQUEST_LOG_DIR=/tmp/logs` |
+| `LOGGING__REQUEST_LOG_DIR` | Request/response log directory | `LOGGING__REQUEST_LOG_DIR=/tmp/logs` |
 | `CCPROXY_JSON_LOGS` | Force JSON logging | `CCPROXY_JSON_LOGS=true` |
 | `CCPROXY_TEST_MODE` | Enable test mode | `CCPROXY_TEST_MODE=true` |
 
@@ -87,8 +100,8 @@ SECURITY__AUTH_TOKEN=abc123xyz789abcdef...  # Optional authentication
 CLAUDE_CLI_PATH=/opt/claude/bin/claude
 
 # Advanced settings using nested syntax
-SERVER__LOG_FORMAT=json
-SERVER__LOG_FILE=/var/log/ccproxy/app.log
+LOGGING__FORMAT=json
+LOGGING__FILE=/var/log/ccproxy/app.log
 SCHEDULER__ENABLED=true
 PRICING__UPDATE_ON_STARTUP=true
 ```
@@ -107,8 +120,14 @@ TOML configuration files provide a more readable and structured format. Files ar
 # Server settings
 host = "127.0.0.1"
 port = 8080
-log_level = "DEBUG"
 workers = 2
+
+# Logging settings
+[logging]
+level = "DEBUG"
+format = "json"
+file = "/var/log/ccproxy/app.log"
+enable_plugin_logging = true
 
 # Security settings
 cors_origins = ["https://example.com", "https://app.com"]
@@ -133,6 +152,22 @@ version_check_enabled = false      # Default: false (privacy-first)
 cache_ttl_hours = 24
 update_on_startup = true
 enable_cost_tracking = true
+
+# Logging settings (centralized configuration)
+[logging]
+level = "INFO"
+format = "json"
+file = "/var/log/ccproxy/app.log"
+verbose_api = false
+pipeline_enabled = false
+enable_plugin_logging = true
+plugin_log_base_dir = "/tmp/ccproxy/plugins"
+
+# Per-plugin logging overrides
+[logging.plugin_overrides]
+raw_http_logger = true
+pricing = false
+permissions = true
 
 # Claude Code options
 [claude_code_options]
@@ -222,7 +257,7 @@ Controls Claude CLI integration:
 
 ### Logging Configuration
 
-Controls application logging:
+Controls application logging (centralized under `[logging]` section):
 
 ```json
 {
@@ -230,10 +265,14 @@ Controls application logging:
     "level": "INFO",                    // Log level (DEBUG, INFO, WARNING, ERROR)
     "format": "json",                   // Log format (json, text)
     "file": "logs/app.log",            // Log file path (optional)
-    "rotation": "1 day",               // Log rotation (optional)
-    "retention": "30 days",            // Log retention (optional)
-    "structured": true,                // Enable structured logging
-    "include_request_id": true         // Include request IDs
+    "verbose_api": false,               // Enable verbose API logging
+    "pipeline_enabled": false,          // Enable logging pipeline
+    "enable_plugin_logging": true,      // Global plugin logging control
+    "plugin_overrides": {               // Per-plugin logging overrides
+      "raw_http_logger": true,
+      "pricing": false
+    },
+    "plugin_log_base_dir": "/tmp/ccproxy/plugins"  // Base directory for plugin logs
   }
 }
 ```
@@ -379,6 +418,7 @@ services:
       - PORT=8000
       - HOST=0.0.0.0
       - LOG_LEVEL=INFO
+      - LOGGING__FORMAT=json
       - CLAUDE_CLI_PATH=/usr/local/bin/claude
     volumes:
       - ~/.config/claude:/root/.config/claude:ro
@@ -548,6 +588,8 @@ uv run python -m ccproxy.config.validate config.json
 HOST=0.0.0.0
 PORT=8000
 LOG_LEVEL=INFO
+LOGGING__FORMAT=json
+LOGGING__VERBOSE_API=false
 WORKERS=4
 RELOAD=false
 
@@ -559,16 +601,17 @@ SECURITY__AUTH_TOKEN=your-secure-token-here
 CORS_ORIGINS=https://yourdomain.com,https://app.yourdomain.com
 
 # Advanced configuration using nested syntax
-SERVER__LOG_FORMAT=json
-SERVER__LOG_FILE=/var/log/ccproxy/app.log
+LOGGING__FORMAT=json
+LOGGING__FILE=/var/log/ccproxy/app.log
+LOGGING__ENABLE_PLUGIN_LOGGING=true
 SCHEDULER__ENABLED=true
 SCHEDULER__PRICING_UPDATE_INTERVAL_HOURS=24
 PRICING__UPDATE_ON_STARTUP=true
-OBSERVABILITY__METRICS__ENABLED=false
+LOGGING__PIPELINE_ENABLED=false
 
 # Special environment variables
 CONFIG_FILE=/etc/ccproxy/config.toml
-CCPROXY_VERBOSE_API=false
+LOGGING__VERBOSE_API=false
 CCPROXY_JSON_LOGS=true
 ```
 
@@ -578,9 +621,13 @@ CCPROXY_JSON_LOGS=true
 {
   "host": "0.0.0.0",
   "port": 8000,
-  "log_level": "INFO",
   "workers": 4,
   "reload": false,
+  "logging": {
+    "level": "INFO",
+    "format": "json",
+    "enable_plugin_logging": true
+  },
   "cors_origins": ["https://yourdomain.com"],
   "claude_cli_path": "/usr/local/bin/claude",
   "docker_settings": {
@@ -621,7 +668,7 @@ All configuration values are automatically validated:
 
 - **Port**: Must be between 1-65535
 - **Log Level**: Must be DEBUG, INFO, WARNING, ERROR, or CRITICAL
-- **CORS Origins**: Must be valid URLs or "*"
+- **CORS Origins**: Must be valid URLs (avoid using "*" for security)
 - **Claude CLI Path**: Must exist and be executable
 - **Tools Handling**: Must be "error", "warning", or "ignore"
 
@@ -660,7 +707,7 @@ CLAUDE_GROUP=claude
   "host": "${HOST:-0.0.0.0}",
   "port": "${PORT:-8000}",
   "claude_cli_path": "${CLAUDE_CLI_PATH}",
-  "cors_origins": ["${CORS_ORIGIN:-*}"]
+  "cors_origins": ["${CORS_ORIGIN:-http://localhost:3000}"]
 }
 ```
 
@@ -713,7 +760,7 @@ CONFIG_FILE=/path/to/custom/config.json ccproxy run
 LOG_LEVEL=DEBUG ccproxy run
 
 # Validate configuration without starting server
-python -c "from ccproxy.config.settings import get_settings; print('Config valid')"
+python -c "from ccproxy.config.settings import Settings; Settings.from_config(); print('Config valid')"
 
 # Check Claude CLI path resolution
 ccproxy claude -- --version

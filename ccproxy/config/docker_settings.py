@@ -4,7 +4,7 @@ import os
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-from ccproxy import __version__
+from ccproxy.core import __version__
 from ccproxy.core.async_utils import format_version, get_claude_docker_home_dir
 
 

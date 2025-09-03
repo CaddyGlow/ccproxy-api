@@ -52,7 +52,7 @@ async def get_conditional_auth_manager(
         )
 
     # Validate the token
-    if credentials.credentials != settings.security.auth_token:
+    if credentials.credentials != settings.security.auth_token.get_secret_value():
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid authentication credentials",

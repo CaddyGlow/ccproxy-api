@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, SecretStr, field_validator
 
 
 class OAuthState(BaseModel):
@@ -40,9 +40,19 @@ class OAuthTokenRequest(BaseModel):
 class OAuthTokenResponse(BaseModel):
     """OAuth token exchange response."""
 
-    access_token: str = Field(..., description="Access token")
-    refresh_token: str | None = Field(None, description="Refresh token")
+    access_token: SecretStr = Field(..., description="Access token")
+    refresh_token: SecretStr | None = Field(None, description="Refresh token")
     expires_in: int | None = Field(None, description="Token expiration in seconds")
     scope: str | None = Field(None, description="Granted scopes")
     subscription_type: str | None = Field(None, description="Subscription type")
     token_type: str = Field(default="Bearer", description="Token type")
+
+    @field_validator("access_token", "refresh_token", mode="before")
+    @classmethod
+    def validate_tokens(cls, v: str | SecretStr | None) -> SecretStr | None:
+        """Convert string values to SecretStr."""
+        if v is None:
+            return None
+        if isinstance(v, str):
+            return SecretStr(v)
+        return v

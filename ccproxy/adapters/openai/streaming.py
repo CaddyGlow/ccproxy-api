@@ -11,14 +11,42 @@ import time
 from collections.abc import AsyncIterator
 from typing import Any, Literal
 
-import structlog
+from ccproxy.core.logging import get_logger
 
 from .models import (
     generate_openai_response_id,
 )
 
 
-logger = structlog.get_logger(__name__)
+logger = get_logger(__name__)
+
+
+class AnthropicSSEFormatter:
+    """Formats streaming responses to match Anthropic's Messages API SSE format."""
+    
+    @staticmethod
+    def format_event(event_type: str, data: dict[str, Any]) -> str:
+        """Format an event for Anthropic Messages API Server-Sent Events.
+        
+        Args:
+            event_type: Event type (e.g., 'message_start', 'content_block_delta')
+            data: Event data dictionary
+            
+        Returns:
+            Formatted SSE string with event and data lines
+        """
+        json_data = json.dumps(data, separators=(",", ":"))
+        return f"event: {event_type}\ndata: {json_data}\n\n"
+    
+    @staticmethod 
+    def format_ping() -> str:
+        """Format a ping event."""
+        return 'event: ping\ndata: {"type": "ping"}\n\n'
+    
+    @staticmethod
+    def format_done() -> str:
+        """Format the final [DONE] event."""
+        return "data: [DONE]\n\n"
 
 
 class OpenAISSEFormatter:
@@ -287,31 +315,22 @@ class OpenAIStreamProcessor:
         Yields:
             OpenAI-formatted SSE strings or dict objects based on output_format
         """
+        # Get logger with request context at the start of the function
+        logger = get_logger(__name__)
+
         try:
             chunk_count = 0
             processed_count = 0
             async for chunk in claude_stream:
                 chunk_count += 1
-                logger.debug(
-                    "openai_stream_chunk_received",
-                    chunk_count=chunk_count,
-                    chunk_type=chunk.get("type"),
-                    chunk=chunk,
-                )
                 async for sse_chunk in self._process_chunk(chunk):
                     processed_count += 1
-                    logger.debug(
-                        "openai_stream_chunk_processed",
-                        processed_count=processed_count,
-                        sse_chunk=sse_chunk,
-                    )
                     yield sse_chunk
 
             logger.debug(
                 "openai_stream_complete",
                 total_chunks=chunk_count,
                 processed_chunks=processed_count,
-                usage_info=self.usage_info,
             )
 
             # Send final chunk
@@ -327,7 +346,23 @@ class OpenAIStreamProcessor:
             if self.output_format == "sse":
                 yield self.formatter.format_done()
 
+        except (OSError, PermissionError) as e:
+            logger.error("stream_processing_io_error", error=str(e), exc_info=e)
+            # Send error chunk for IO errors
+            if self.output_format == "sse":
+                yield self.formatter.format_error_chunk(
+                    self.message_id,
+                    self.model,
+                    self.created,
+                    "error",
+                    f"IO error: {str(e)}",
+                )
+                yield self.formatter.format_done()
+            else:
+                # Dict format error
+                yield self._create_chunk_dict(finish_reason="error")
         except Exception as e:
+            logger.error("stream_processing_error", error=str(e), exc_info=e)
             # Send error chunk
             if self.output_format == "sse":
                 yield self.formatter.format_error_chunk(
@@ -378,7 +413,7 @@ class OpenAIStreamProcessor:
             elif block.get("type") == "system_message":
                 # Handle system message content block
                 system_text = block.get("text", "")
-                source = block.get("source", "claude_code_sdk")
+                source = block.get("source", "ccproxy")
                 # Format as text with clear source attribution
                 formatted_text = f"[{source}]: {system_text}"
                 yield self._format_chunk_output(delta={"content": formatted_text})
@@ -387,7 +422,7 @@ class OpenAIStreamProcessor:
                 tool_id = block.get("id", "")
                 tool_name = block.get("name", "")
                 tool_input = block.get("input", {})
-                source = block.get("source", "claude_code_sdk")
+                source = block.get("source", "ccproxy")
 
                 # For dict format, immediately yield the tool call
                 if self.output_format == "dict":
@@ -416,7 +451,7 @@ class OpenAIStreamProcessor:
                     }
             elif block.get("type") == "tool_result_sdk":
                 # Handle custom tool_result_sdk content block
-                source = block.get("source", "claude_code_sdk")
+                source = block.get("source", "ccproxy")
                 tool_use_id = block.get("tool_use_id", "")
                 result_content = block.get("content", "")
                 is_error = block.get("is_error", False)
@@ -425,7 +460,7 @@ class OpenAIStreamProcessor:
                 yield self._format_chunk_output(delta={"content": formatted_text})
             elif block.get("type") == "result_message":
                 # Handle custom result_message content block
-                source = block.get("source", "claude_code_sdk")
+                source = block.get("source", "ccproxy")
                 result_data = block.get("data", {})
                 session_id = result_data.get("session_id", "")
                 stop_reason = result_data.get("stop_reason", "")
@@ -620,9 +655,9 @@ class OpenAIStreamProcessor:
                     tool_call.get("function", {}).get("arguments"),
                 )
             else:
-                # Empty delta
-                return self.formatter.format_final_chunk(
-                    self.message_id, self.model, self.created, "stop"
+                # Empty delta - send chunk with null finish_reason
+                return self.formatter.format_content_chunk(
+                    self.message_id, self.model, self.created, ""
                 )
 
 

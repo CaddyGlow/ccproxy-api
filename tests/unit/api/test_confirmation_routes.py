@@ -10,19 +10,20 @@ import pytest
 from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
 
-from ccproxy.api.routes.permissions import (
-    event_generator,
-    router,
-)
-from ccproxy.api.services.permission_service import (
-    PermissionService,
-    get_permission_service,
-)
-from ccproxy.config.settings import Settings, get_settings
-from ccproxy.models.permissions import (
+from ccproxy.config.settings import Settings
+from ccproxy.plugins.permissions.models import (
     PermissionRequest,
     PermissionStatus,
 )
+from ccproxy.plugins.permissions.routes import (
+    event_generator,
+    router,
+)
+from ccproxy.plugins.permissions.service import (
+    PermissionService,
+    get_permission_service,
+)
+from ccproxy.services.container import ServiceContainer
 
 
 @pytest.fixture
@@ -47,19 +48,19 @@ def mock_settings() -> Settings:
     settings.server.host = "localhost"
     settings.server.port = 8080
     settings.security = Mock()
-    settings.security.auth_token = None  # No auth by default
+    settings.security.auth_token = None
     return settings
 
 
 @pytest.fixture
-def app(mock_settings: Settings) -> FastAPI:
+def app(mock_settings: Settings, mock_confirmation_service: Mock) -> FastAPI:
     """Create a test FastAPI app."""
     app = FastAPI()
 
-    # Override settings dependency
-    app.dependency_overrides[get_settings] = lambda: mock_settings
+    container = ServiceContainer(mock_settings)
+    container.register_service(PermissionService, instance=mock_confirmation_service)
+    app.state.service_container = container
 
-    # Include router
     app.include_router(router)
 
     return app
@@ -78,7 +79,7 @@ def patch_confirmation_service(test_func: Callable[..., Any]) -> Callable[..., A
         self: Any, test_client: TestClient, mock_confirmation_service: Any
     ) -> Any:
         with patch(
-            "ccproxy.api.routes.permissions.get_permission_service"
+            "ccproxy.plugins.permissions.routes.get_permission_service"
         ) as mock_get_service:
             mock_get_service.return_value = mock_confirmation_service
             return test_func(self, test_client, mock_confirmation_service)
@@ -108,7 +109,7 @@ class TestConfirmationRoutes:
         )
 
         # Create an async function that returns the request
-        async def mock_get_request(confirmation_id: str):
+        async def mock_get_request(confirmation_id: str) -> PermissionRequest:
             return mock_request
 
         mock_confirmation_service.get_request.side_effect = mock_get_request
@@ -279,7 +280,7 @@ class TestSSEEventGenerator:
 
         # Patch get_permission_service at module level
         with patch(
-            "ccproxy.api.routes.permissions.get_permission_service"
+            "plugins.permissions.routes.get_permission_service"
         ) as mock_get_service:
             mock_get_service.return_value = mock_confirmation_service
 
@@ -325,7 +326,7 @@ class TestSSEEventGenerator:
 
         # Patch get_permission_service
         with patch(
-            "ccproxy.api.routes.permissions.get_permission_service"
+            "plugins.permissions.routes.get_permission_service"
         ) as mock_get_service:
             mock_get_service.return_value = mock_confirmation_service
 
@@ -383,7 +384,7 @@ class TestSSEEventGenerator:
 
         # Patch get_permission_service
         with patch(
-            "ccproxy.api.routes.permissions.get_permission_service"
+            "plugins.permissions.routes.get_permission_service"
         ) as mock_get_service:
             mock_get_service.return_value = mock_confirmation_service
 
@@ -427,7 +428,7 @@ class TestSSEEventGenerator:
 
         # Patch get_permission_service
         with patch(
-            "ccproxy.api.routes.permissions.get_permission_service"
+            "plugins.permissions.routes.get_permission_service"
         ) as mock_get_service:
             mock_get_service.return_value = mock_confirmation_service
 
@@ -460,7 +461,7 @@ class TestSSEEventGenerator:
 
         # Patch get_permission_service
         with patch(
-            "ccproxy.api.routes.permissions.get_permission_service"
+            "plugins.permissions.routes.get_permission_service"
         ) as mock_get_service:
             mock_get_service.return_value = mock_confirmation_service
 

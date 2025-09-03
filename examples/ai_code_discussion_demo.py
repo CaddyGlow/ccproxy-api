@@ -453,7 +453,6 @@ Always investigate strategically, then provide focused explanations with code ex
                                     and hasattr(delta, "tool_calls")
                                     and delta.tool_calls
                                 ):
-                                    is_tool_call = True
                                     live.update(
                                         "🔧 [italic cyan]Using tools...[/italic cyan]"
                                     )
@@ -960,7 +959,6 @@ Ready to investigate and explain the key implementation details!"""
                 self.openai_messages.append(choice.message)
 
                 # Process all tool calls and collect results
-                tool_results = []
                 for tool_call in choice.message.tool_calls:
                     tool_name = tool_call.function.name
                     tool_args = json.loads(tool_call.function.arguments)
@@ -1062,7 +1060,6 @@ Ready to investigate and explain the key implementation details!"""
                 self.anthropic_messages.append(choice.message)
 
                 # Process all tool calls and collect results
-                tool_results = []
                 for tool_call in choice.message.tool_calls:
                     tool_name = tool_call.function.name
                     tool_args = json.loads(tool_call.function.arguments)

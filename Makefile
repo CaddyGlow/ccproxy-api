@@ -83,10 +83,10 @@ clean:
 
 # Fix code with unsafe fixes
 fix-hard:
-	uv run ruff check . --fix --unsafe-fixes
-	uv run uv run ruff check . --select F401 --fix --unsafe-fixes # Used variable import
-	uv run uv run ruff check . --select I --fix --unsafe-fixes  # Import order
-	uv run ruff format .
+	uv run ruff check . --fix --unsafe-fixes || true
+	uv run uv run ruff check . --select F401 --fix --unsafe-fixes || true # Used variable import
+	uv run uv run ruff check . --select I --fix --unsafe-fixes || true  # Import order
+	uv run ruff format . || true
 
 
 fix: format lint-fix
@@ -97,6 +97,8 @@ test: check
 	@echo "Running all tests with coverage..."
 	@if [ ! -d "tests" ]; then echo "Error: tests/ directory not found. Create tests/ directory and add test files."; exit 1; fi
 	$(UV_RUN) pytest tests/ -v --cov=ccproxy --cov-report=term-missing
+
+# New test suite targets
 
 # Run fast unit tests only (exclude tests marked with 'real_api')
 test-unit: check
@@ -176,6 +178,10 @@ format-check:
 # Combined checks (individual targets for granular control)
 check: lint typecheck format-check
 
+# Optional: verify import boundaries (core must not import plugins.*)
+check-boundaries:
+	uv run python3 scripts/check_import_boundaries.py
+
 # Pre-commit hooks (comprehensive checks + auto-fixes)
 pre-commit:
 	uv run pre-commit run --all-files
@@ -218,12 +224,19 @@ docker-compose-down:
 
 # Development server
 dev:
-	# uv run fastapi dev ccproxy/main.py
-	CCPROXY_REQUEST_LOG_DIR=/tmp/ccproxy/request \
-	  CCPROXY_VERBOSE_API=true \
-	  SERVER__LOG_FILE=/tmp/ccproxy/ccproxy.log \
-	  SERVER__LOG_LEVEL=debug \
-		uv run ccproxy serve --reload
+	PLUGINS__REQUEST_TRACER__ENABLED=true \
+		PLUGINS__REQUEST_TRACER__LOG_DIR=/tmp/ccproxy/tracer \
+		PLUGINS__REQUEST_TRACER__JSON_LOGS_ENABLED=true \
+		PLUGINS__REQUEST_TRACER__VERBOSE_API=true \
+		PLUGINS__REQUEST_TRACER__RAW_HTTP_ENABLED=true \
+		PLUGINS__ACCESS_LOG__ENABLED=true \
+		PLUGINS__ACCESS_LOG__CLIENT_LOG_FILE=/tmp/ccproxy/combined_access.log \
+		PLUGINS__ACCESS_LOG__CLIENT_FORMAT=combined \
+		HTTP__COMPRESSION_ENABLED=false \
+		LOGGING__FILE=/tmp/ccproxy/ccproxy.log \
+		LOGGING__LEVEL=debug \
+		LOGGING__VERBOSE_API=true \
+		uv run ccproxy-api serve --port 8000 --reload
 
 prod:
 	uv run ccproxy serve

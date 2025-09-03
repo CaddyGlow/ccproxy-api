@@ -1,0 +1,73 @@
+# Enable local plugin discovery so in-tree plugins are loaded from ./plugins
+plugins_disable_local_discovery = false
+
+# Logging configuration (centralized)
+[logging]
+level = "INFO"
+format = "auto"
+file = "/tmp/ccproxy/ccproxy.log"
+verbose_api = false
+enable_plugin_logging = true
+plugin_log_base_dir = "/tmp/ccproxy"
+
+
+# Per-plugin logging overrides
+[logging.plugin_overrides]
+request_tracer = true
+access_log = true
+pricing = true
+permissions = true
+
+# Request Tracer plugin configuration (unified tracer with JSON and raw HTTP)
+[plugins.request_tracer]
+enabled = true
+log_dir = "/tmp/ccproxy/tracer"
+json_logs_enabled = true
+raw_http_enabled = true                                    # Set to true if you want raw HTTP dumps
+verbose_api = true
+log_client_request = true
+log_client_response = true
+log_provider_request = true
+log_provider_response = true
+exclude_headers = ["authorization", "x-api-key", "cookie"]
+max_body_size = 10485760                                   # 10MB
+
+# Access Log plugin configuration
+[plugins.access_log]
+enabled = true
+client_enabled = true
+client_format = "combined"                             # Options: combined, common, structured
+client_log_file = "/tmp/ccproxy/combined_access.log"
+provider_enabled = false
+provider_format = "structured"
+provider_log_file = "/tmp/ccproxy/provider_access.log"
+exclude_paths = ["/health", "/metrics", "/logs"]
+buffer_size = 100
+flush_interval = 1.0
+
+[plugins.claude_api]
+enabled = true
+
+[plugins.codex]
+enabled = true
+
+[plugins.claude_sdk]
+enabled = true
+# default_session_id = "default-session"  # Commented out - should be None for normal operations
+
+[plugins.claude_sdk.sdk_session_pool]
+enabled = true
+session_ttl = 3600
+max_sessions = 1000
+
+[plugins.permissions]
+enabled = false
+
+# DuckDB storage and analytics plugins
+[plugins.duckdb_storage]
+enabled = true
+database_path = "/tmp/ccproxy/metrics.duckdb"
+register_app_state_alias = true
+
+[plugins.analytics]
+enabled = true

@@ -1,0 +1,103 @@
+# CCProxy Configuration Example
+# This file demonstrates how to configure CCProxy and its plugins
+
+# Server settings
+[server]
+host = "0.0.0.0"
+port = 8000
+log_level = "INFO"
+# log_file = "/var/log/ccproxy/ccproxy.log"  # Optional: Log to file
+
+# Security settings
+[security]
+enable_auth = false # Set to true to require authentication
+# auth_token = "your-secret-token"  # Required if enable_auth is true
+
+# CORS settings
+[cors]
+allow_origins = ["*"]
+allow_credentials = true
+allow_methods = ["*"]
+allow_headers = ["*"]
+
+# Claude settings (for Claude SDK integration)
+[claude]
+cli_path = "auto"                        # Auto-detect Claude CLI, or specify path
+builtin_permissions = true
+include_system_messages_in_stream = true
+
+# Scheduler settings
+[scheduler]
+enabled = true
+max_concurrent_tasks = 10
+graceful_shutdown_timeout = 30.0
+default_retry_attempts = 3
+default_retry_delay = 60.0
+
+# Plugin system settings
+enable_plugins = true
+
+# Plugin configurations
+# Each plugin can have its own configuration section under [plugins.PLUGIN_NAME].
+# Below are examples for common bundled plugins; uncomment and adjust as needed.
+
+# Access log plugin (structured/common/combined)
+[plugins.access_log]
+enabled = true
+client_enabled = true
+client_format = "structured"
+client_log_file = "/tmp/ccproxy/access.log"
+provider_enabled = false
+
+# Request tracer plugin (structured JSON + optional raw HTTP)
+[plugins.request_tracer]
+enabled = true
+verbose_api = true
+json_logs_enabled = true
+raw_http_enabled = true
+log_dir = "/tmp/ccproxy/traces"
+
+# Example: Additional plugin configuration
+# [plugins.another_plugin]
+# name = "another_plugin"
+# base_url = "https://api.example.com"
+# api_key = "your-api-key"
+
+# DuckDB storage plugin configuration (replaces observability.duckdb_path/backends)
+[plugins.duckdb_storage]
+enabled = true
+# database_path = "/var/lib/ccproxy/metrics.duckdb"  # Optional override
+# register_app_state_alias = false  # Back-compat alias (disabled by default)
+
+# Analytics (logs API) plugin
+[plugins.analytics]
+enabled = true
+# route_prefix = "/logs"
+
+# Metrics plugin (serves /metrics; optional Pushgateway)
+[plugins.metrics]
+enabled = true
+# pushgateway_enabled = false
+# pushgateway_url = "http://localhost:9091"
+# pushgateway_job = "ccproxy"
+# pushgateway_push_interval = 60
+
+# Dashboard plugin (serves /dashboard and mounts /dashboard/assets)
+[plugins.dashboard]
+enabled = true
+mount_static = true
+
+## Observability
+# Provided by plugins (metrics, analytics, dashboard). Configure them under [plugins.*]
+
+# Docker settings (for running Claude in containers)
+[docker]
+enabled = false
+# docker_image = "ghcr.io/anthropics/claude-code:latest"
+# docker_volumes = ["/host/data:/container/data"]
+
+# Pricing settings
+[pricing]
+update_interval_hours = 24
+cache_duration_hours = 24
+# pricing_file = "/path/to/custom/pricing.json"  # Optional: Custom pricing file

@@ -92,6 +92,7 @@ class FastAPIAppFactory:
         claude_service_mock: MockService | None = None,
         auth_enabled: bool = False,
         log_storage: Any | None = None,
+        register_plugin_routes: bool = True,
         **kwargs: Any,
     ) -> FastAPI:
         """Create a FastAPI application with specified configuration.
@@ -102,6 +103,7 @@ class FastAPIAppFactory:
             claude_service_mock: Mock Claude service (uses factory default if None)
             auth_enabled: Whether to enable authentication
             log_storage: Optional log storage instance to set in app state
+            register_plugin_routes: Whether to register plugin routes (default: True)
             **kwargs: Additional configuration options
 
         Returns:
@@ -141,6 +143,10 @@ class FastAPIAppFactory:
             app.state.scheduler = None
         if not hasattr(app.state, "permission_service"):
             app.state.permission_service = None
+
+        # Register plugin routes if requested and plugins are enabled
+        if register_plugin_routes and effective_settings.enable_plugins:
+            self._register_plugin_routes(app, effective_settings, effective_claude_mock)
 
         # Prepare all dependency overrides
         all_overrides = self._build_dependency_overrides(
@@ -189,18 +195,12 @@ class FastAPIAppFactory:
         overrides[get_cached_settings] = mock_get_cached_settings_for_factory
 
         # Override Claude service if mock provided
-        # NOTE: Since we're setting claude_service in app.state, the cached dependency
-        # should work automatically. We'll only add override as backup for non-cached calls.
+        # NOTE: Plugin-based architecture no longer uses get_claude_service dependency.
+        # Mock should be attached to app.state after app creation if needed.
+
+        # Override plugin adapter dependencies for tests
         if claude_service_mock is not None:
-            from ccproxy.api.dependencies import get_claude_service
-
-            def mock_get_claude_service(
-                settings: Any = None, auth_manager: Any = None
-            ) -> MockService:
-                return claude_service_mock
-
-            # Only override the non-cached version as backup
-            overrides[get_claude_service] = mock_get_claude_service
+            self._add_plugin_dependency_overrides(overrides, claude_service_mock)
 
         # Override auth manager if auth is enabled
         if auth_enabled and settings.security.auth_token:
@@ -223,6 +223,217 @@ class FastAPIAppFactory:
         overrides.update(custom_overrides)
 
         return overrides
+
+    def _add_plugin_dependency_overrides(
+        self, overrides: DependencyOverrides, claude_service_mock: MockService
+    ) -> None:
+        """Add plugin adapter dependency overrides for testing.
+
+        Args:
+            overrides: Dictionary to add overrides to
+            claude_service_mock: Mock Claude service to use
+        """
+        try:
+            # Create mock adapter that mimics the real adapter behavior
+            mock_adapter = AsyncMock()
+
+            async def mock_handle_request(
+                request, endpoint: str, method: str, **kwargs
+            ):
+                """Mock handle_request that behaves like the real adapter."""
+                import json
+
+                from starlette.responses import Response, StreamingResponse
+
+                # Parse request body
+                body = await request.body()
+                if body:
+                    try:
+                        request_data = json.loads(body)
+                    except json.JSONDecodeError:
+                        request_data = {}
+                else:
+                    request_data = {}
+
+                # Check if this is a streaming request
+                stream = request_data.get("stream", False)
+
+                # Call the mock service's create_completion method
+                result = await claude_service_mock.create_completion(**request_data)
+
+                if stream:
+                    # Return a proper StreamingResponse for streaming requests
+                    async def stream_generator():
+                        """Generate SSE stream from the async generator."""
+                        async for chunk in result:
+                            # Convert chunk to SSE format
+                            data = json.dumps(chunk)
+                            yield f"data: {data}\n\n".encode()
+                        # End with [DONE] marker
+                        yield b"data: [DONE]\n\n"
+
+                    return StreamingResponse(
+                        stream_generator(),
+                        media_type="text/event-stream",
+                        headers={
+                            "Cache-Control": "no-cache",
+                            "Connection": "keep-alive",
+                        },
+                    )
+                else:
+                    # Return JSON response for non-streaming requests
+                    response_data = (
+                        result.model_dump() if hasattr(result, "model_dump") else result
+                    )
+                    return Response(
+                        content=json.dumps(response_data),
+                        media_type="application/json",
+                    )
+
+            mock_adapter.handle_request = mock_handle_request
+
+            # Get the lambda functions from the Annotated dependency types
+            # These are the actual dependency functions that FastAPI calls
+            # Import adapter dependencies from plugin route modules
+            ClaudeSDKAdapterDep = None
+            ClaudeAPIAdapterDep = None
+            CodexAdapterDep = None
+
+            try:
+                from ccproxy.plugins.claude_sdk.routes import (
+                    ClaudeSDKAdapterDep as _ClaudeSDKAdapterDep,
+                )
+
+                ClaudeSDKAdapterDep = _ClaudeSDKAdapterDep
+            except ImportError:
+                pass
+
+            try:
+                from ccproxy.plugins.claude_api.routes import (
+                    ClaudeAPIAdapterDep as _ClaudeAPIAdapterDep,
+                )
+
+                ClaudeAPIAdapterDep = _ClaudeAPIAdapterDep
+            except ImportError:
+                pass
+
+            try:
+                from ccproxy.plugins.codex.routes import (
+                    CodexAdapterDep as _CodexAdapterDep,
+                )
+
+                CodexAdapterDep = _CodexAdapterDep
+            except ImportError:
+                pass
+
+            # Extract the dependency function from the Annotated type
+            # The dependency is the second argument in the Annotated type metadata
+            if ClaudeSDKAdapterDep and hasattr(ClaudeSDKAdapterDep, "__metadata__"):
+                claude_sdk_dep_func = ClaudeSDKAdapterDep.__metadata__[0]
+                if hasattr(claude_sdk_dep_func, "dependency"):
+                    overrides[claude_sdk_dep_func.dependency] = lambda: mock_adapter
+
+            if ClaudeAPIAdapterDep and hasattr(ClaudeAPIAdapterDep, "__metadata__"):
+                claude_api_dep_func = ClaudeAPIAdapterDep.__metadata__[0]
+                if hasattr(claude_api_dep_func, "dependency"):
+                    overrides[claude_api_dep_func.dependency] = lambda: mock_adapter
+
+            if CodexAdapterDep and hasattr(CodexAdapterDep, "__metadata__"):
+                codex_dep_func = CodexAdapterDep.__metadata__[0]
+                if hasattr(codex_dep_func, "dependency"):
+                    overrides[codex_dep_func.dependency] = lambda: mock_adapter
+
+        except ImportError:
+            # Dependencies not available, skip plugin overrides
+            pass
+
+    def _register_plugin_routes(
+        self,
+        app: FastAPI,
+        settings: Settings,
+        claude_service_mock: MockService | None = None,
+    ) -> None:
+        """Register plugin routes for test apps.
+
+        This mimics what happens in the app lifespan startup phase,
+        but simplified for testing purposes.
+
+        Args:
+            app: FastAPI application instance
+            settings: Application settings
+            claude_service_mock: Optional mock Claude service
+        """
+        try:
+            # Register Claude SDK routes if available
+            self._register_claude_sdk_routes(app, claude_service_mock)
+
+            # Register Claude API routes if available
+            self._register_claude_api_routes(app)
+
+            # Register Codex routes if available
+            self._register_codex_routes(app)
+
+        except Exception as e:
+            # Don't fail test setup if plugin routes can't be registered
+            # This allows tests to run even if plugins aren't available
+            import structlog
+
+            logger = structlog.get_logger(__name__)
+            logger.warning(
+                "test_plugin_route_registration_failed",
+                error=str(e),
+                exc_info=e,
+            )
+
+    def _register_claude_sdk_routes(
+        self, app: FastAPI, claude_service_mock: MockService | None = None
+    ) -> None:
+        """Register Claude SDK plugin routes."""
+        try:
+            from ccproxy.plugins.claude_sdk.routes import router as claude_sdk_router
+
+            # Register both /api and /sdk prefixes for Claude SDK
+            app.include_router(
+                claude_sdk_router,
+                prefix="/api",
+                tags=["plugin-claude_sdk", "claude-sdk-api"],
+            )
+            app.include_router(
+                claude_sdk_router,
+                prefix="/sdk",
+                tags=["plugin-claude_sdk", "claude-sdk"],
+            )
+        except ImportError:
+            # Claude SDK plugin not available, skip
+            pass
+
+    def _register_claude_api_routes(self, app: FastAPI) -> None:
+        """Register Claude API plugin routes."""
+        try:
+            from ccproxy.plugins.claude_api.routes import router as claude_api_router
+
+            app.include_router(
+                claude_api_router,
+                prefix="/api",
+                tags=["plugin-claude_api", "claude-api"],
+            )
+        except ImportError:
+            # Claude API plugin not available, skip
+            pass
+
+    def _register_codex_routes(self, app: FastAPI) -> None:
+        """Register Codex plugin routes."""
+        try:
+            from ccproxy.plugins.codex.routes import router as codex_router
+
+            app.include_router(
+                codex_router,
+                prefix="/api",
+                tags=["plugin-codex", "openai-codex"],
+            )
+        except ImportError:
+            # Codex plugin not available, skip
+            pass
 
 
 class FastAPIClientFactory:
@@ -247,6 +458,7 @@ class FastAPIClientFactory:
         claude_service_mock: MockService | None = None,
         auth_enabled: bool = False,
         log_storage: Any | None = None,
+        register_plugin_routes: bool = True,
         **kwargs: Any,
     ) -> TestClient:
         """Create a synchronous test client.
@@ -257,6 +469,7 @@ class FastAPIClientFactory:
             claude_service_mock: Mock Claude service
             auth_enabled: Whether to enable authentication
             log_storage: Optional log storage instance to set in app state
+            register_plugin_routes: Whether to register plugin routes (default: True)
             **kwargs: Additional configuration options
 
         Returns:
@@ -268,6 +481,7 @@ class FastAPIClientFactory:
             claude_service_mock=claude_service_mock,
             auth_enabled=auth_enabled,
             log_storage=log_storage,
+            register_plugin_routes=register_plugin_routes,
             **kwargs,
         )
         return TestClient(app)
@@ -279,6 +493,7 @@ class FastAPIClientFactory:
         claude_service_mock: MockService | None = None,
         auth_enabled: bool = False,
         log_storage: Any | None = None,
+        register_plugin_routes: bool = True,
         **kwargs: Any,
     ) -> AsyncClient:
         """Create an asynchronous test client.
@@ -289,6 +504,7 @@ class FastAPIClientFactory:
             claude_service_mock: Mock Claude service
             auth_enabled: Whether to enable authentication
             log_storage: Optional log storage instance to set in app state
+            register_plugin_routes: Whether to register plugin routes (default: True)
             **kwargs: Additional configuration options
 
         Returns:
@@ -300,6 +516,7 @@ class FastAPIClientFactory:
             claude_service_mock=claude_service_mock,
             auth_enabled=auth_enabled,
             log_storage=log_storage,
+            register_plugin_routes=register_plugin_routes,
             **kwargs,
         )
 
@@ -312,6 +529,7 @@ class FastAPIClientFactory:
         dependency_overrides: DependencyOverrides | None = None,
         claude_service_mock: MockService | None = None,
         auth_enabled: bool = False,
+        register_plugin_routes: bool = True,
         **kwargs: Any,
     ) -> TestClient:
         """Create a test client with log storage set in app state and dependency override.
@@ -322,6 +540,7 @@ class FastAPIClientFactory:
             dependency_overrides: Custom dependency overrides
             claude_service_mock: Mock Claude service
             auth_enabled: Whether to enable authentication
+            register_plugin_routes: Whether to register plugin routes (default: True)
             **kwargs: Additional configuration options
 
         Returns:
@@ -335,6 +554,7 @@ class FastAPIClientFactory:
             claude_service_mock=claude_service_mock,
             auth_enabled=auth_enabled,
             log_storage=storage,
+            register_plugin_routes=register_plugin_routes,
             **kwargs,
         )
 
@@ -345,6 +565,7 @@ def create_mock_claude_app(
     claude_mock: MockService,
     auth_enabled: bool = False,
     log_storage: Any | None = None,
+    register_plugin_routes: bool = True,
     **kwargs: Any,
 ) -> FastAPI:
     """Convenience function to create app with mocked Claude service.
@@ -354,6 +575,7 @@ def create_mock_claude_app(
         claude_mock: Mock Claude service
         auth_enabled: Whether to enable authentication
         log_storage: Optional log storage instance to set in app state
+        register_plugin_routes: Whether to register plugin routes (default: True)
         **kwargs: Additional configuration options
 
     Returns:
@@ -364,6 +586,7 @@ def create_mock_claude_app(
         claude_service_mock=claude_mock,
         auth_enabled=auth_enabled,
         log_storage=log_storage,
+        register_plugin_routes=register_plugin_routes,
         **kwargs,
     )
 
@@ -372,6 +595,7 @@ def create_auth_app(
     settings: Settings,
     claude_mock: MockService | None = None,
     log_storage: Any | None = None,
+    register_plugin_routes: bool = True,
     **kwargs: Any,
 ) -> FastAPI:
     """Convenience function to create app with authentication enabled.
@@ -380,6 +604,7 @@ def create_auth_app(
         settings: Application settings (should have auth_token set)
         claude_mock: Optional mock Claude service
         log_storage: Optional log storage instance to set in app state
+        register_plugin_routes: Whether to register plugin routes (default: True)
         **kwargs: Additional configuration options
 
     Returns:
@@ -390,6 +615,7 @@ def create_auth_app(
         claude_service_mock=claude_mock,
         auth_enabled=True,
         log_storage=log_storage,
+        register_plugin_routes=register_plugin_routes,
         **kwargs,
     )
 
@@ -399,6 +625,7 @@ def create_unavailable_claude_app(
     unavailable_mock: MockService,
     auth_enabled: bool = False,
     log_storage: Any | None = None,
+    register_plugin_routes: bool = True,
     **kwargs: Any,
 ) -> FastAPI:
     """Convenience function to create app with unavailable Claude service.
@@ -408,6 +635,7 @@ def create_unavailable_claude_app(
         unavailable_mock: Mock that simulates unavailable Claude service
         auth_enabled: Whether to enable authentication
         log_storage: Optional log storage instance to set in app state
+        register_plugin_routes: Whether to register plugin routes (default: True)
         **kwargs: Additional configuration options
 
     Returns:
@@ -418,5 +646,6 @@ def create_unavailable_claude_app(
         claude_service_mock=unavailable_mock,
         auth_enabled=auth_enabled,
         log_storage=log_storage,
+        register_plugin_routes=register_plugin_routes,
         **kwargs,
     )

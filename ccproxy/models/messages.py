@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING, Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from .claude_sdk import SDKContentBlock
+# Removed plugin import - moved SDK content block types to core
 from .requests import Message, ToolDefinition, Usage
 
 
@@ -237,7 +237,8 @@ MessageContentBlock = Annotated[
 ]
 
 
-CCProxyContentBlock = MessageContentBlock | SDKContentBlock
+# CCProxyContentBlock = MessageContentBlock | SDKContentBlock
+CCProxyContentBlock = MessageContentBlock
 
 
 class MessageResponse(BaseModel):

@@ -14,11 +14,8 @@ from unittest.mock import patch
 import pytest
 from sqlmodel import Session, select
 
-from ccproxy.observability.storage.duckdb_simple import (
-    AccessLogPayload,
-    SimpleDuckDBStorage,
-)
-from ccproxy.observability.storage.models import AccessLog
+from ccproxy.plugins.analytics.models import AccessLog, AccessLogPayload
+from ccproxy.plugins.duckdb_storage.storage import SimpleDuckDBStorage
 
 
 @pytest.fixture
@@ -83,9 +80,21 @@ class TestQueueBasedDuckDBStorage:
         await memory_storage.initialize()
 
         assert memory_storage._initialized
-        assert memory_storage._background_worker_task is not None  # type: ignore[unreachable]
+        assert memory_storage._background_worker_task is not None
         assert not memory_storage._background_worker_task.done()
 
+        await memory_storage.close()
+
+    async def test_schema_creation_is_idempotent(
+        self, memory_storage: SimpleDuckDBStorage
+    ) -> None:
+        """Calling initialize() twice should not raise or duplicate schema."""
+        # First init
+        await memory_storage.initialize()
+        # Second init should be a no-op and not raise
+        await memory_storage.initialize()
+        assert memory_storage._initialized is True
+        assert memory_storage._background_worker_task is not None
         await memory_storage.close()
 
     async def test_store_request_queues_data(
@@ -190,7 +199,9 @@ class TestQueueBasedDuckDBStorage:
         original_method = initialized_storage._store_request_sync
         call_count = 0
 
-        def mock_store_sync(data: AccessLogPayload) -> bool:
+        from typing import Any
+
+        def mock_store_sync(data: dict[str, Any]) -> bool:
             nonlocal call_count
             call_count += 1
             if call_count == 1:
@@ -310,6 +321,34 @@ class TestQueueBasedDuckDBStorage:
 
         finally:
             await storage.close()
+
+    async def test_persistence_across_restarts(
+        self, temp_db_path: Path, sample_access_log: AccessLogPayload
+    ) -> None:
+        """Data written before shutdown persists after restart (file DB)."""
+        # First run: initialize and store
+        storage1 = SimpleDuckDBStorage(temp_db_path)
+        await storage1.initialize()
+        try:
+            ok = await storage1.store_request(sample_access_log)
+            assert ok is True
+            await asyncio.sleep(0.1)
+        finally:
+            await storage1.close()
+
+        # Second run: re-open and verify data exists
+        storage2 = SimpleDuckDBStorage(temp_db_path)
+        await storage2.initialize()
+        try:
+            with Session(storage2._engine) as session:
+                result = session.exec(
+                    select(AccessLog).where(
+                        AccessLog.request_id == sample_access_log["request_id"]
+                    )
+                ).first()
+                assert result is not None
+        finally:
+            await storage2.close()
 
     async def test_health_check_with_queue_storage(
         self,

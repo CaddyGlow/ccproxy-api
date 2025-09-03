@@ -79,7 +79,7 @@ class TestMetricsAPIEndpoints:
         self, client: TestClient, mock_storage: AsyncMock
     ) -> None:
         """Test successful query execution with filters."""
-        from ccproxy.api.dependencies import get_duckdb_storage
+        from ccproxy.plugins.analytics.routes import get_duckdb_storage
 
         # Mock the storage engine and session
         mock_engine = MagicMock()
@@ -101,7 +101,7 @@ class TestMetricsAPIEndpoints:
 
         try:
             with patch(
-                "ccproxy.api.routes.metrics.Session", return_value=mock_session_context
+                "plugins.analytics.service.Session", return_value=mock_session_context
             ):
                 # Mock the exec method to return mock results
                 mock_result = MagicMock()
@@ -134,7 +134,7 @@ class TestMetricsAPIEndpoints:
                 assert "results" in data
                 assert "count" in data
                 assert "limit" in data
-                assert "timestamp" in data
+                assert "query_time" in data
 
                 assert data["count"] == 1
                 assert data["limit"] == 100
@@ -148,7 +148,7 @@ class TestMetricsAPIEndpoints:
         self, client: TestClient, mock_storage: AsyncMock
     ) -> None:
         """Test that query endpoint doesn't accept raw SQL (no SQL injection risk)."""
-        from ccproxy.api.dependencies import get_duckdb_storage
+        from ccproxy.plugins.analytics.routes import get_duckdb_storage
 
         # Mock the storage engine and session
         mock_engine = MagicMock()
@@ -174,7 +174,7 @@ class TestMetricsAPIEndpoints:
 
         try:
             with patch(
-                "ccproxy.api.routes.metrics.Session", return_value=mock_session_context
+                "plugins.analytics.service.Session", return_value=mock_session_context
             ):
                 # Mock the exec method to return empty results
                 mock_result = MagicMock()
@@ -196,7 +196,7 @@ class TestMetricsAPIEndpoints:
         self, client: TestClient, mock_storage: AsyncMock
     ) -> None:
         """Test valid filter parameters are accepted."""
-        from ccproxy.api.dependencies import get_duckdb_storage
+        from ccproxy.plugins.analytics.routes import get_duckdb_storage
 
         # Mock the storage engine and session
         mock_engine = MagicMock()
@@ -217,7 +217,7 @@ class TestMetricsAPIEndpoints:
 
         try:
             with patch(
-                "ccproxy.api.routes.metrics.Session", return_value=mock_session_context
+                "plugins.analytics.service.Session", return_value=mock_session_context
             ):
                 # Mock the exec method to return empty results
                 mock_result = MagicMock()
@@ -241,7 +241,7 @@ class TestMetricsAPIEndpoints:
 
     def test_query_endpoint_no_storage(self, client: TestClient) -> None:
         """Test query endpoint when storage is not available."""
-        from ccproxy.api.dependencies import get_duckdb_storage
+        from ccproxy.plugins.analytics.routes import get_duckdb_storage
 
         # Override the dependency to return None
         async def get_mock_storage(request: Request) -> None:
@@ -267,7 +267,7 @@ class TestMetricsAPIEndpoints:
         self, client: TestClient, mock_storage: AsyncMock
     ) -> None:
         """Test successful analytics generation."""
-        from ccproxy.api.dependencies import get_duckdb_storage
+        from ccproxy.plugins.analytics.routes import get_duckdb_storage
 
         # Mock the dependency to return the storage
         async def get_mock_storage(request: Request) -> AsyncMock:
@@ -288,7 +288,7 @@ class TestMetricsAPIEndpoints:
             mock_session_context.__exit__.return_value = None
 
             with patch(
-                "ccproxy.api.routes.metrics.Session", return_value=mock_session_context
+                "plugins.analytics.service.Session", return_value=mock_session_context
             ):
                 # Mock the exec method to return analytics data
                 mock_result = MagicMock()
@@ -349,7 +349,7 @@ class TestMetricsAPIEndpoints:
         self, client: TestClient, mock_storage: AsyncMock
     ) -> None:
         """Test analytics with time and model filters."""
-        from ccproxy.api.dependencies import get_duckdb_storage
+        from ccproxy.plugins.analytics.routes import get_duckdb_storage
 
         # Override the dependency to return the storage
         async def get_mock_storage(request: Request) -> AsyncMock:
@@ -370,7 +370,7 @@ class TestMetricsAPIEndpoints:
             mock_session_context.__exit__.return_value = None
 
             with patch(
-                "ccproxy.api.routes.metrics.Session", return_value=mock_session_context
+                "plugins.analytics.service.Session", return_value=mock_session_context
             ):
                 # Mock the exec method to return basic analytics data
                 mock_result = MagicMock()
@@ -405,7 +405,7 @@ class TestMetricsAPIEndpoints:
         self, client: TestClient, mock_storage: AsyncMock
     ) -> None:
         """Test analytics with default time range."""
-        from ccproxy.api.dependencies import get_duckdb_storage
+        from ccproxy.plugins.analytics.routes import get_duckdb_storage
 
         # Override the dependency to return the storage
         async def get_mock_storage(request: Request) -> AsyncMock:
@@ -426,7 +426,7 @@ class TestMetricsAPIEndpoints:
             mock_session_context.__exit__.return_value = None
 
             with patch(
-                "ccproxy.api.routes.metrics.Session", return_value=mock_session_context
+                "plugins.analytics.service.Session", return_value=mock_session_context
             ):
                 # Mock the exec method to return basic analytics data
                 mock_result = MagicMock()
@@ -452,7 +452,7 @@ class TestMetricsAPIEndpoints:
 
     def test_analytics_endpoint_no_storage(self, client: TestClient) -> None:
         """Test analytics endpoint when storage is not available."""
-        from ccproxy.api.dependencies import get_duckdb_storage
+        from ccproxy.plugins.analytics.routes import get_duckdb_storage
 
         # Override the dependency to return None
         async def get_mock_storage(request: Request) -> None:
@@ -473,13 +473,6 @@ class TestMetricsAPIEndpoints:
 
     def test_prometheus_endpoint_unavailable(self, client: TestClient) -> None:
         """Test prometheus endpoint when prometheus_client not available."""
-        with patch("ccproxy.observability.metrics.PROMETHEUS_AVAILABLE", False):
-            from ccproxy.observability import reset_metrics
-
-            # Reset global state to pick up the patched PROMETHEUS_AVAILABLE
-            reset_metrics()
-
-            response = client.get("/metrics")
-
-            # Should get 503 due to missing prometheus_client
-            assert response.status_code == 503
+        # Metrics endpoint is provided by the metrics plugin; when disabled, return 404
+        response = client.get("/metrics")
+        assert response.status_code in (404, 503)

@@ -163,3 +163,4 @@ ccproxy/static/dashboard/
 
 *.wal
 *.duckdb
+.lazy.lua

@@ -21,9 +21,7 @@ CCProxy supports multiple authentication methods with separate credential storag
 
 ### CCProxy Claude Authentication (API Mode)
 - **Used by**: `ccproxy auth` commands (login, validate, info)
-- **Storage**:
-  - **Primary**: System keyring (secure, recommended)
-  - **Fallback**: `~/.config/ccproxy/credentials.json`
+- **Storage**: `~/.config/ccproxy/credentials.json`
 - **Purpose**: Authenticates for API mode operations using Anthropic OAuth2
 - **Note**: Separate from Claude CLI credentials to avoid conflicts
 
@@ -61,7 +59,7 @@ ccproxy auth info
 ```
 Displays detailed credential information and automatically renews the token if expired. Shows:
 - Account email and organization
-- Storage location (keyring or file)
+- Storage location (file)
 - Token expiration and time remaining
 - Access token (partially masked)
 
@@ -148,8 +146,7 @@ This confirms:
 ### Credential Storage Locations
 
 #### Claude Credentials
-- **Primary storage**: System keyring (when available)
-- **Fallback storage**: `~/.config/ccproxy/credentials.json`
+- **Storage**: `~/.config/ccproxy/credentials.json`
 - Tokens are automatically managed and renewed by CCProxy
 
 #### OpenAI/Codex Credentials

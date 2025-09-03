@@ -35,11 +35,11 @@ API mode provides direct proxy access to Claude without requiring the Claude Cod
 ```bash
 $ uvx ccproxy-api
 2025-07-22 20:24:19 [info     ] cli_command_starting           command=serve config_path=None docker=False host=None port=None
-2025-07-22 20:24:19 [info     ] configuration_loaded           auth_enabled=False claude_cli_path=None docker_image=None docker_mode=False duckdb_enabled=True duckdb_path=/home/rick/.local/share/ccproxy/metrics.duckdb host=127.0.0.1 log_file=None log_level=INFO port=8000
+2025-07-22 20:24:19 [info     ] configuration_loaded           auth_enabled=False claude_cli_path=None docker_image=None docker_mode=False duckdb_enabled=True host=127.0.0.1 log_file=None log_level=INFO port=8000
 2025-07-22 20:24:19 [info     ] server_start                   host=127.0.0.1 port=8000 url=http://127.0.0.1:8000
 2025-07-22 20:24:19 [info     ] auth_token_valid               credentials_path=/home/rick/.claude/.credentials.json expires_in_hours=8752 subscription_type=None
 2025-07-22 20:24:19 [warning  ] claude_binary_not_found        install_command='npm install -g @anthropic-ai/claude-code' message='Claude CLI binary not found. Please install Claude CLI to use SDK features.' searched_paths=['PATH environment variable', '/home/rick/.claude/local/claude', '/home/rick/node_modules/.bin/claude', '/home/rick/.cache/uv/archive-v0/-l4GqN2esEE9n92CfK2fP/lib/python3.11/site-packages/node_modules/.bin/claude', '/home/rick/node_modules/.bin/claude', '/usr/local/bin/claude', '/opt/homebrew/bin/claude']
-2025-07-22 20:24:19 [info     ] scheduler_starting             max_concurrent_tasks=10 registered_tasks=['pushgateway', 'stats_printing', 'pricing_cache_update']
+2025-07-22 20:24:19 [info     ] scheduler_starting             max_concurrent_tasks=10 registered_tasks=['version_update_check', 'pool_stats']
 2025-07-22 20:24:19 [info     ] scheduler_started              active_tasks=0 running_tasks=[]
 2025-07-22 20:24:19 [info     ] task_added_and_started         task_name=pricing_cache_update task_type=pricing_cache_update
 2025-07-22 20:24:19 [info     ] pricing_update_task_added      force_refresh_on_startup=False interval_hours=24
@@ -148,11 +148,11 @@ $ claude /login
 # Start CCProxy with a working directory
 $ uvx ccproxy-api serve --cwd /tmp/tmp.AZyCo5a42N
 2025-07-22 20:48:49 [info     ] cli_command_starting           command=serve config_path=None docker=False host=None port=None
-2025-07-22 20:48:49 [info     ] configuration_loaded           auth_enabled=False claude_cli_path=/home/rick/.cache/.bun/bin/claude docker_image=None docker_mode=False duckdb_enabled=True duckdb_path=/home/rick/.local/share/ccproxy/metrics.duckdb host=127.0.0.1 log_file=None log_level=INFO port=8000
+2025-07-22 20:48:49 [info     ] configuration_loaded           auth_enabled=False claude_cli_path=/home/rick/.cache/.bun/bin/claude docker_image=None docker_mode=False duckdb_enabled=True host=127.0.0.1 log_file=None log_level=INFO port=8000
 2025-07-22 20:48:49 [info     ] server_start                   host=127.0.0.1 port=8000 url=http://127.0.0.1:8000
 2025-07-22 20:48:49 [info     ] auth_token_valid               credentials_path=/home/rick/.claude/.credentials.json expires_in_hours=8751 subscription_type=None
 2025-07-22 20:48:49 [info     ] claude_binary_found            found_in_path=False message='Claude CLI binary found at: /home/rick/.cache/.bun/bin/claude' path=/home/rick/.cache/.bun/bin/claude
-2025-07-22 20:48:49 [info     ] scheduler_starting             max_concurrent_tasks=10 registered_tasks=['pushgateway', 'stats_printing', 'pricing_cache_update']
+2025-07-22 20:48:49 [info     ] scheduler_starting             max_concurrent_tasks=10 registered_tasks=['version_update_check', 'pool_stats']
 2025-07-22 20:48:49 [info     ] scheduler_started              active_tasks=0 running_tasks=[]
 2025-07-22 20:48:49 [info     ] task_added_and_started         task_name=pricing_cache_update task_type=pricing_cache_update
 2025-07-22 20:48:49 [info     ] pricing_update_task_added      force_refresh_on_startup=False interval_hours=24
@@ -176,7 +176,7 @@ Start the server with specific permissions:
 ```bash
 $ uv --project ~/projects-caddy/claude-code-proxy-api run ccproxy serve --cwd /tmp/tmp.AZyCo5a42N --allowed-tools Read,Write --permission-mode acceptEdits
 2025-07-22 21:49:05 [info     ] cli_command_starting           command=serve config_path=None docker=False host=None port=None
-2025-07-22 21:49:05 [info     ] configuration_loaded           auth_enabled=False claude_cli_path=/home/rick/.cache/.bun/bin/claude docker_image=None docker_mode=False duckdb_enabled=True duckdb_path=/home/rick/.local/share/ccproxy/metrics.duckdb host=127.0.0.1 log_file=None log_level=INFO port=8000
+2025-07-22 21:49:05 [info     ] configuration_loaded           auth_enabled=False claude_cli_path=/home/rick/.cache/.bun/bin/claude docker_image=None docker_mode=False duckdb_enabled=True host=127.0.0.1 log_file=None log_level=INFO port=8000
 2025-07-22 21:49:05 [info     ] server_start                   host=127.0.0.1 port=8000 url=http://127.0.0.1:8000
 2025-07-22 21:49:05 [info     ] auth_token_valid               credentials_path=/home/rick/.claude/.credentials.json expires_in_hours=8750 subscription_type=None
 2025-07-22 21:49:05 [info     ] claude_binary_found            found_in_path=False message='Claude CLI binary found at: /home/rick/.cache/.bun/bin/claude' path=/home/rick/.cache/.bun/bin/claude

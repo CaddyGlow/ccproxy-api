@@ -1,8 +1,5 @@
 """Docker-related CLI utilities for Claude Code Proxy."""
 
-from ccproxy.cli.docker.adapter_factory import (
-    _create_docker_adapter_from_settings,
-)
 from ccproxy.cli.docker.params import (
     DockerOptions,
     docker_arg_option,
@@ -18,8 +15,6 @@ from ccproxy.cli.docker.params import (
 
 
 __all__ = [
-    # Factory functions
-    "_create_docker_adapter_from_settings",
     # Docker options
     "DockerOptions",
     "docker_image_option",

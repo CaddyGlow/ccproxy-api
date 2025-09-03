@@ -1,7 +1,7 @@
-"""Internal mocks for ClaudeSDKService.
+"""Internal mocks for Claude SDK components.
 
 These fixtures provide AsyncMock objects for dependency injection testing.
-They mock the ClaudeSDKService class directly for use with app.dependency_overrides.
+They mock Claude SDK components for use with app.dependency_overrides.
 """
 
 from collections.abc import AsyncGenerator

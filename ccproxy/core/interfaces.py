@@ -8,7 +8,6 @@ from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator
 from typing import Any, Protocol, TypeVar, runtime_checkable
 
-from ccproxy.auth.models import ClaudeCredentials
 from ccproxy.core.types import TransformContext
 
 
@@ -17,7 +16,6 @@ __all__ = [
     "RequestTransformer",
     "ResponseTransformer",
     "StreamTransformer",
-    "APIAdapter",
     "TransformerProtocol",
     # Storage interfaces
     "TokenStorage",
@@ -92,65 +90,6 @@ class StreamTransformer(ABC):
         pass
 
 
-class APIAdapter(ABC):
-    """Abstract base class for API format adapters.
-
-    Combines all transformation interfaces to provide a complete adapter
-    for converting between different API formats.
-    """
-
-    @abstractmethod
-    def adapt_request(self, request: dict[str, Any]) -> dict[str, Any]:
-        """Convert a request from one API format to another.
-
-        Args:
-            request: The request data to convert
-
-        Returns:
-            The converted request data
-
-        Raises:
-            ValueError: If the request format is invalid or unsupported
-        """
-        pass
-
-    @abstractmethod
-    def adapt_response(self, response: dict[str, Any]) -> dict[str, Any]:
-        """Convert a response from one API format to another.
-
-        Args:
-            response: The response data to convert
-
-        Returns:
-            The converted response data
-
-        Raises:
-            ValueError: If the response format is invalid or unsupported
-        """
-        pass
-
-    @abstractmethod
-    def adapt_stream(
-        self, stream: AsyncIterator[dict[str, Any]]
-    ) -> AsyncIterator[dict[str, Any]]:
-        """Convert a streaming response from one API format to another.
-
-        Args:
-            stream: The streaming response data to convert
-
-        Yields:
-            The converted streaming response chunks
-
-        Raises:
-            ValueError: If the stream format is invalid or unsupported
-        """
-        # This should be implemented as an async generator
-        # async def adapt_stream(self, stream): ...
-        #     async for item in stream:
-        #         yield transformed_item
-        raise NotImplementedError
-
-
 @runtime_checkable
 class TransformerProtocol(Protocol[T, R]):
     """Protocol defining the transformer interface."""
@@ -164,10 +103,14 @@ class TransformerProtocol(Protocol[T, R]):
 
 
 class TokenStorage(ABC):
-    """Abstract interface for token storage backends."""
+    """Abstract interface for token storage backends.
+
+    Note: This is kept for backward compatibility but the generic
+    version in ccproxy.auth.storage.base should be used instead.
+    """
 
     @abstractmethod
-    async def load(self) -> ClaudeCredentials | None:
+    async def load(self) -> Any:
         """Load credentials from storage.
 
         Returns:
@@ -176,7 +119,7 @@ class TokenStorage(ABC):
         pass
 
     @abstractmethod
-    async def save(self, credentials: ClaudeCredentials) -> bool:
+    async def save(self, credentials: Any) -> bool:
         """Save credentials to storage.
 
         Args:
