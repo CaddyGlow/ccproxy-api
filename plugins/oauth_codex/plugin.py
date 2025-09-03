@@ -93,6 +93,7 @@ class OAuthCodexFactory(AuthProviderPluginFactory):
         """
         # Prefer validated config from context when available
         from typing import cast as _cast
+
         if context and isinstance(context.get("config"), CodexOAuthConfig):
             cfg = _cast(CodexOAuthConfig, context.get("config"))
         else:

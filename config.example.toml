@@ -38,10 +38,8 @@ default_retry_delay = 60.0
 enable_plugins = true
 
 # Plugin configurations
-"""
-Each plugin can have its own configuration section under [plugins.PLUGIN_NAME].
-Below are examples for common bundled plugins; uncomment and adjust as needed.
-"""
+# Each plugin can have its own configuration section under [plugins.PLUGIN_NAME].
+# Below are examples for common bundled plugins; uncomment and adjust as needed.
 
 # Access log plugin (structured/common/combined)
 [plugins.access_log]

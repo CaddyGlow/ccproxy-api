@@ -57,7 +57,9 @@ async def codex_health_check(
             detection_service.get_cli_health_info() if detection_service else None
         )
         status_val = (
-            cli_info.status.value if (cli_info and hasattr(cli_info, "status")) else "unknown"
+            cli_info.status.value
+            if (cli_info and hasattr(cli_info, "status"))
+            else "unknown"
         )
         available = bool(status_val == "available")
         cli_health = (

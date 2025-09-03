@@ -93,6 +93,7 @@ class OAuthClaudeFactory(AuthProviderPluginFactory):
         """
         # Prefer validated config from context when available
         from typing import cast as _cast
+
         if context and isinstance(context.get("config"), ClaudeOAuthConfig):
             cfg = _cast(ClaudeOAuthConfig, context.get("config"))
         else:

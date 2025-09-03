@@ -3,6 +3,7 @@
 from collections.abc import Callable
 from typing import Any, ParamSpec, TypeVar
 
+
 P = ParamSpec("P")
 R = TypeVar("R")
 
@@ -30,7 +31,9 @@ def needs_auth_provider() -> Callable[[Callable[P, R]], Callable[P, R]]:
     return decorator
 
 
-def allows_plugins(plugin_names: list[str]) -> Callable[[Callable[P, R]], Callable[P, R]]:
+def allows_plugins(
+    plugin_names: list[str],
+) -> Callable[[Callable[P, R]], Callable[P, R]]:
     """Decorator to specify additional plugins a CLI command can use.
 
     This decorator specifies additional CLI-safe plugins that the command

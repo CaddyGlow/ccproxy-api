@@ -16,11 +16,7 @@ from ccproxy.scheduler.errors import SchedulerError
 from ccproxy.scheduler.manager import start_scheduler, stop_scheduler
 
 
-# Note: get_claude_cli_info is imported locally to avoid circular imports
-"""Startup utility functions for application lifecycle management.
-
-Note: DuckDB storage initialization has moved to the duckdb_storage plugin.
-"""
+# Note: DuckDB storage initialization has moved to the duckdb_storage plugin.
 
 
 # Note: get_permission_service is imported locally to avoid circular imports

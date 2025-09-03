@@ -53,14 +53,12 @@ class PluginHealthResponse(BaseModel):
     details: dict[str, Any] | None = None
 
 
-"""
-Only core plugin management endpoints are exposed:
-- GET /plugins: list loaded plugins
-- GET /plugins/{plugin_name}/health: check plugin health if provided by runtime
-- GET /plugins/status: summarize manifests and initialization state
-
-Dynamic reload/discover/unregister are not supported in v2 and have been removed.
-"""
+# Only core plugin management endpoints are exposed:
+# - GET /plugins: list loaded plugins
+# - GET /plugins/{plugin_name}/health: check plugin health if provided by runtime
+# - GET /plugins/status: summarize manifests and initialization state
+#
+# Dynamic reload/discover/unregister are not supported in v2 and have been removed.
 
 
 # Plugin registry is accessed directly from app state
