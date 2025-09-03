@@ -16,4 +16,4 @@ build-backend = "hatchling.build"
 permissions = "ccproxy.plugins.permissions.plugin:factory"
 
 [tool.hatch.build.targets.wheel]
-packages = ["."]
+packages = ['ccproxy']

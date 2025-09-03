@@ -14,7 +14,7 @@ build-backend = "hatchling.build"
 claude_sdk = "ccproxy.plugins.claude_sdk.plugin:factory"
 
 [tool.hatch.build.targets.wheel]
-packages = ["."]
+packages = ['ccproxy']
 
 
 [tool.uv.sources]
