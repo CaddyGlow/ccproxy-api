@@ -214,15 +214,16 @@ def _run_local_server(settings: Settings) -> None:
     if settings.server.reload:
         reload_includes = ["ccproxy", "pyproject.toml", "uv.lock", "plugins"]
 
-    container = create_service_container(settings)
+    # container = create_service_container(settings)
 
     uvicorn.run(
-        app=create_app(container),
-        factory=False,
+        # app=create_app(container),
+        app="ccproxy.api.app:create_app",
+        factory=True,
         host=settings.server.host,
         port=settings.server.port,
         reload=settings.server.reload,
-        workers=None,
+        workers=settings.server.workers,
         log_config=None,
         access_log=False,
         server_header=False,

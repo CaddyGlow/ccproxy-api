@@ -1,7 +1,7 @@
-"""OpenAI Response API models.
+"""OpenAI Response API models with function calling support.
 
 This module contains data models for OpenAI's Response API format
-used by Codex/ChatGPT backend.
+used by Codex/ChatGPT backend, enhanced with function calling capabilities.
 """
 
 from __future__ import annotations
@@ -11,7 +11,7 @@ from typing import Any, Literal, Union
 from pydantic import BaseModel
 
 
-# Request Models
+# Request Models with Function Calling
 
 
 class ResponseFunction(BaseModel):
@@ -169,7 +169,7 @@ class ResponseCompleted(BaseModel):
     response: ResponseData
 
 
-# Streaming Models
+# Streaming Models with Function Calling Support
 
 
 class StreamingDelta(BaseModel):

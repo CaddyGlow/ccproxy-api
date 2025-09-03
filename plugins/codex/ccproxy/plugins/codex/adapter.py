@@ -11,6 +11,7 @@ from starlette.responses import Response, StreamingResponse
 
 from ccproxy.auth.manager import AuthManager
 from ccproxy.config.constants import (
+    ANTHROPIC_MESSAGES_PATH,
     CODEX_API_BASE_URL,
     CODEX_RESPONSES_ENDPOINT,
     OPENAI_CHAT_COMPLETIONS_PATH,
@@ -33,6 +34,7 @@ if TYPE_CHECKING:
 
     from .detection_service import CodexDetectionService
 
+from .anthropic_adapter import AnthropicMessagesAdapter
 from .format_adapter import CodexFormatAdapter
 from .transformers import CodexRequestTransformer, CodexResponseTransformer
 
@@ -104,8 +106,12 @@ class CodexAdapter(BaseHTTPAdapter):
             context=cast("PluginContext | None", context),
         )
 
-        # Initialize components
-        self.format_adapter = CodexFormatAdapter()
+        # Initialize format adapters
+        self.openai_format_adapter = CodexFormatAdapter()
+        self.anthropic_format_adapter = AnthropicMessagesAdapter()
+        
+        # Store current endpoint for format adapter selection
+        self._current_endpoint = ""
 
         # Complete initialization if needed
         self._complete_initialization()
@@ -119,16 +125,36 @@ class CodexAdapter(BaseHTTPAdapter):
         Returns:
             Tuple of (target_url, needs_conversion)
         """
+        # Store current endpoint for format adapter selection
+        self._current_endpoint = endpoint
+        
         # Check if format conversion is needed based on endpoint
-        # OpenAI format endpoints need conversion to Codex format
-        needs_conversion = endpoint.endswith(
-            OPENAI_CHAT_COMPLETIONS_PATH
-        ) or endpoint.endswith(OPENAI_COMPLETIONS_PATH)
+        # OpenAI and Anthropic format endpoints need conversion to Codex format
+        needs_conversion = (
+            endpoint.endswith(OPENAI_CHAT_COMPLETIONS_PATH)
+            or endpoint.endswith(OPENAI_COMPLETIONS_PATH)
+            or endpoint.endswith(ANTHROPIC_MESSAGES_PATH)
+        )
 
         # Build target URL (always uses Codex responses endpoint)
         target_url = f"{CODEX_API_BASE_URL}{CODEX_RESPONSES_ENDPOINT}"
 
         return target_url, needs_conversion
+
+    def _select_format_adapter(self, endpoint: str):
+        """Select appropriate format adapter based on endpoint.
+        
+        Args:
+            endpoint: The requested endpoint path
+            
+        Returns:
+            Format adapter for the given endpoint type
+        """
+        if endpoint.endswith(ANTHROPIC_MESSAGES_PATH):
+            return self.anthropic_format_adapter
+        else:
+            # OpenAI endpoints or other formats use the Codex format adapter
+            return self.openai_format_adapter
 
     async def _create_handler_config(
         self,
@@ -144,9 +170,12 @@ class CodexAdapter(BaseHTTPAdapter):
         Returns:
             HandlerConfig instance
         """
+        # Select appropriate format adapter based on current endpoint
+        format_adapter = self._select_format_adapter(self._current_endpoint) if needs_conversion else None
+        
         return HandlerConfig(
-            request_adapter=self.format_adapter if needs_conversion else None,
-            response_adapter=self.format_adapter if needs_conversion else None,
+            request_adapter=format_adapter,
+            response_adapter=format_adapter,
             request_transformer=self._request_transformer,
             response_transformer=self._response_transformer,
             supports_streaming=True,

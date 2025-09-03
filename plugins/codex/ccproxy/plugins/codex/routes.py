@@ -33,6 +33,10 @@ def codex_path_transformer(path: str) -> str:
     # Map OpenAI-style completions to Codex responses
     if path == "/completions" or path == "/v1/completions":
         return "/responses"
+        
+    # Map Anthropic-style messages to Codex responses
+    if path == "/v1/messages" or path == "/messages":
+        return "/responses"
 
     # For everything else, just return as-is
     return path
@@ -188,3 +192,54 @@ async def list_models(
         "object": "list",
         "data": models,
     }
+
+
+@router.post("/v1/messages", response_model=None)
+async def codex_v1_messages(
+    request: Request,
+    auth: ConditionalAuthDep,
+    adapter: CodexAdapterDep,
+) -> StreamingResponse | Response | DeferredStreaming:
+    """Anthropic Messages API compatible endpoint using Codex backend.
+
+    This endpoint handles Anthropic Messages API format requests and converts them
+    to/from Codex Response API format transparently, with full function calling support.
+    """
+    # Get session_id from header if provided
+    header_session_id = request.headers.get("session_id")
+    session_id = header_session_id or str(uuid.uuid4())
+
+    # Call adapter directly - hooks are now handled by HooksMiddleware
+    result = await adapter.handle_request(
+        request=request,
+        endpoint="/v1/messages",
+        method=request.method,
+        session_id=session_id,
+    )
+    from typing import cast as _cast
+
+    return _cast(StreamingResponse | Response | DeferredStreaming, result)
+
+
+@router.post("/{session_id}/v1/messages", response_model=None)
+async def codex_v1_messages_with_session(
+    session_id: str,
+    request: Request,
+    auth: ConditionalAuthDep,
+    adapter: CodexAdapterDep,
+) -> StreamingResponse | Response | DeferredStreaming:
+    """Anthropic Messages API with session_id using Codex backend.
+
+    This endpoint handles Anthropic Messages API format requests with a specific session_id.
+    Includes full function calling support through Response API transformation.
+    """
+    # Call adapter directly - hooks are now handled by HooksMiddleware
+    result = await adapter.handle_request(
+        request=request,
+        endpoint="/{session_id}/v1/messages",
+        method=request.method,
+        session_id=session_id,
+    )
+    from typing import cast as _cast
+
+    return _cast(StreamingResponse | Response | DeferredStreaming, result)

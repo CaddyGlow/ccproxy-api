@@ -19,6 +19,7 @@ CODEX_RESPONSES_ENDPOINT = "/codex/responses"
 # Format Conversion Patterns
 OPENAI_CHAT_COMPLETIONS_PATH = "/v1/chat/completions"
 OPENAI_COMPLETIONS_PATH = "/chat/completions"
+ANTHROPIC_MESSAGES_PATH = "/v1/messages"
 
 # HTTP Client Configuration
 HTTP_CLIENT_TIMEOUT = 120.0  # 2 minutes default timeout

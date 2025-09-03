@@ -342,7 +342,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
                 )
 
 
-def create_app(service_container: ServiceContainer) -> FastAPI:
+def create_app(service_container: ServiceContainer | None = None) -> FastAPI:
+    if service_container is None:
+        service_container = create_service_container()
     """Create and configure the FastAPI application with plugin system."""
     settings = service_container.get_service(Settings)
     if not structlog.is_configured():

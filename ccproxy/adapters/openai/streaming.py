@@ -21,6 +21,34 @@ from .models import (
 logger = get_logger(__name__)
 
 
+class AnthropicSSEFormatter:
+    """Formats streaming responses to match Anthropic's Messages API SSE format."""
+    
+    @staticmethod
+    def format_event(event_type: str, data: dict[str, Any]) -> str:
+        """Format an event for Anthropic Messages API Server-Sent Events.
+        
+        Args:
+            event_type: Event type (e.g., 'message_start', 'content_block_delta')
+            data: Event data dictionary
+            
+        Returns:
+            Formatted SSE string with event and data lines
+        """
+        json_data = json.dumps(data, separators=(",", ":"))
+        return f"event: {event_type}\ndata: {json_data}\n\n"
+    
+    @staticmethod 
+    def format_ping() -> str:
+        """Format a ping event."""
+        return 'event: ping\ndata: {"type": "ping"}\n\n'
+    
+    @staticmethod
+    def format_done() -> str:
+        """Format the final [DONE] event."""
+        return "data: [DONE]\n\n"
+
+
 class OpenAISSEFormatter:
     """Formats streaming responses to match OpenAI's SSE format."""
 
