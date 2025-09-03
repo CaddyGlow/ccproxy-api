@@ -1,9 +1,13 @@
 """CLI command decorators for plugin dependency management."""
 
 from collections.abc import Callable
+from typing import Any, ParamSpec, TypeVar
+
+P = ParamSpec("P")
+R = TypeVar("R")
 
 
-def needs_auth_provider() -> Callable[[Callable], Callable]:
+def needs_auth_provider() -> Callable[[Callable[P, R]], Callable[P, R]]:
     """Decorator to mark CLI commands that need an auth provider.
 
     This decorator marks the command as requiring the auth provider specified
@@ -18,7 +22,7 @@ def needs_auth_provider() -> Callable[[Callable], Callable]:
             pass
     """
 
-    def decorator(func: Callable) -> Callable:
+    def decorator(func: Callable[P, R]) -> Callable[P, R]:
         # Add metadata to the function
         func._needs_auth_provider = True  # type: ignore
         return func
@@ -26,7 +30,7 @@ def needs_auth_provider() -> Callable[[Callable], Callable]:
     return decorator
 
 
-def allows_plugins(plugin_names: list[str]) -> Callable[[Callable], Callable]:
+def allows_plugins(plugin_names: list[str]) -> Callable[[Callable[P, R]], Callable[P, R]]:
     """Decorator to specify additional plugins a CLI command can use.
 
     This decorator specifies additional CLI-safe plugins that the command
@@ -44,7 +48,7 @@ def allows_plugins(plugin_names: list[str]) -> Callable[[Callable], Callable]:
             pass
     """
 
-    def decorator(func: Callable) -> Callable:
+    def decorator(func: Callable[P, R]) -> Callable[P, R]:
         # Add metadata to the function
         func._allows_plugins = plugin_names  # type: ignore
         return func
@@ -52,7 +56,7 @@ def allows_plugins(plugin_names: list[str]) -> Callable[[Callable], Callable]:
     return decorator
 
 
-def get_command_auth_provider(func: Callable) -> bool:
+def get_command_auth_provider(func: Callable[..., Any]) -> bool:
     """Check if a command needs an auth provider.
 
     Args:
@@ -64,7 +68,7 @@ def get_command_auth_provider(func: Callable) -> bool:
     return getattr(func, "_needs_auth_provider", False)
 
 
-def get_command_allowed_plugins(func: Callable) -> list[str]:
+def get_command_allowed_plugins(func: Callable[..., Any]) -> list[str]:
     """Get the allowed plugins for a command.
 
     Args:

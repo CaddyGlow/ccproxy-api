@@ -130,6 +130,11 @@ class Settings(BaseSettings):
         """
         return self.model_dump(mode="json")
 
+    # Backward-compat: provide legacy helper used in some tests
+    @classmethod
+    def get_settings(cls) -> "Settings":  # pragma: no cover - legacy alias for tests
+        return cls.from_config()
+
     @classmethod
     def _validate_deprecated_keys(cls, config_data: dict[str, Any]) -> None:
         """Fail fast if deprecated legacy config keys are present."""
@@ -301,3 +306,8 @@ class Settings(BaseSettings):
 
 
 logger = get_logger(__name__)
+
+
+# Legacy module-level helper for tests expecting this symbol
+def get_settings() -> Settings:  # pragma: no cover - legacy alias for tests
+    return Settings.from_config()

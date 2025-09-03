@@ -92,11 +92,12 @@ class OAuthCodexFactory(AuthProviderPluginFactory):
             CodexOAuthProvider instance
         """
         # Prefer validated config from context when available
-        config = (
-            context.get("config")
-            if context and isinstance(context.get("config"), CodexOAuthConfig)
-            else CodexOAuthConfig()
-        )
+        from typing import cast as _cast
+        if context and isinstance(context.get("config"), CodexOAuthConfig):
+            cfg = _cast(CodexOAuthConfig, context.get("config"))
+        else:
+            cfg = CodexOAuthConfig()
+        config: CodexOAuthConfig = cfg
         http_client = context.get("http_client") if context else None
         hook_manager = context.get("hook_manager") if context else None
         return CodexOAuthProvider(

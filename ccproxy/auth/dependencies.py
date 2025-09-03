@@ -73,8 +73,8 @@ async def _get_auth_manager_with_settings(
 async def get_auth_manager(
     credentials: Annotated[
         HTTPAuthorizationCredentials | None, Depends(bearer_scheme)
-    ] = None,
-    settings: SettingsDep = None,
+    ],
+    settings: SettingsDep,
 ) -> AuthManager:
     """Get authentication manager with fallback strategy.
 

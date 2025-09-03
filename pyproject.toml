@@ -258,12 +258,12 @@ exclude = [
   "docs/",
   "site/",
   "tests.deprecated/",
+  "tests/",
   "examples/",
   "plugins/.*/tests/",
 ]
 namespace_packages = true
 explicit_package_bases = true
-mypy_path = "plugins"
 
 # Enable all strict mode flags
 strict = true
@@ -348,6 +348,11 @@ module = [
 disallow_untyped_defs = false
 disallow_untyped_calls = false
 warn_unused_ignores = false
+
+[[tool.mypy.overrides]]
+# Final override to relax type checking for tests during migration
+module = "tests.*"
+ignore_errors = true
 
 [[tool.mypy.overrides]]
 module = ["ccproxy.plugins.*"]

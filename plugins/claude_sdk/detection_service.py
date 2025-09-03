@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, NamedTuple
+from typing import Any, NamedTuple
 
 from ccproxy.config.settings import Settings
 from ccproxy.core.logging import get_plugin_logger
@@ -13,8 +13,8 @@ from ccproxy.utils.caching import async_ttl_cache
 logger = get_plugin_logger()
 
 
-if TYPE_CHECKING:
-    from .models import ClaudeCliInfo
+# Avoid hard dependency in type hints to keep mypy happy in monorepo layout
+ClaudeCliInfoType = Any
 
 
 class ClaudeDetectionData(NamedTuple):
@@ -48,7 +48,7 @@ class ClaudeSDKDetectionService:
         self._version: str | None = None
         self._cli_command: list[str] | None = None
         self._is_available = False
-        self._cli_info: ClaudeCliInfo | None = None
+        self._cli_info: ClaudeCliInfoType | None = None
 
     @async_ttl_cache(maxsize=16, ttl=600.0)  # 10 minute cache for CLI detection
     async def initialize_detection(self) -> ClaudeDetectionData:
@@ -130,13 +130,13 @@ class ClaudeSDKDetectionService:
         """
         return self._is_available
 
-    def get_cli_health_info(self) -> ClaudeCliInfo:
+    def get_cli_health_info(self) -> Any:
         """Return CLI health info model using current detection state.
 
         Returns:
             ClaudeCliInfo with availability, version, and binary path
         """
-        from .models import ClaudeCliInfo, ClaudeCliStatus
+        from ..claude_api.models import ClaudeCliInfo, ClaudeCliStatus
 
         if self._cli_info is not None:
             return self._cli_info

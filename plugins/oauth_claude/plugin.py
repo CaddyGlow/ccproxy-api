@@ -92,11 +92,12 @@ class OAuthClaudeFactory(AuthProviderPluginFactory):
             ClaudeOAuthProvider instance
         """
         # Prefer validated config from context when available
-        config = (
-            context.get("config")
-            if context and isinstance(context.get("config"), ClaudeOAuthConfig)
-            else ClaudeOAuthConfig()
-        )
+        from typing import cast as _cast
+        if context and isinstance(context.get("config"), ClaudeOAuthConfig):
+            cfg = _cast(ClaudeOAuthConfig, context.get("config"))
+        else:
+            cfg = ClaudeOAuthConfig()
+        config: ClaudeOAuthConfig = cfg
         http_client = context.get("http_client") if context else None
         hook_manager = context.get("hook_manager") if context else None
         # CLIDetectionService is injected under 'cli_detection_service' in base context

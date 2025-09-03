@@ -16,6 +16,7 @@ class PluginTransformerProtocol(Protocol):
         """Transform request headers."""
         ...
 
+
 @runtime_checkable
 class SSEParserProtocol(Protocol):
     """Protocol for SSE parsers to extract a final JSON response.
@@ -24,7 +25,9 @@ class SSEParserProtocol(Protocol):
     None if no final response could be determined.
     """
 
-    def __call__(self, raw: str) -> dict[str, Any] | None:  # pragma: no cover - protocol
+    def __call__(
+        self, raw: str
+    ) -> dict[str, Any] | None:  # pragma: no cover - protocol
         ...
 
     def transform_body(self, body: Any) -> Any:

@@ -492,9 +492,9 @@ class RequestTracerHook(Hook):
         )
 
         if self.json_formatter:
+            # Ensure error is an Exception for formatter typing
+            err_obj = error if isinstance(error, Exception) else Exception(str(error))
             await self.json_formatter.log_error(
                 request_id=request_id,
-                method=method,
-                url=url,
-                error=str(error),
+                error=err_obj,
             )

@@ -57,7 +57,9 @@ class AccessLog(SQLModel, table=True):
     session_error_count: int = Field(default=0)
     session_is_new: bool = Field(default=True)
 
-    model_config = ConfigDict(from_attributes=True)
+    # SQLModel provides its own config typing; avoid overriding with Pydantic ConfigDict
+    # from_attributes=True is not required for SQLModel usage here
+    # Keep default SQLModel config to satisfy mypy type expectations
 
 
 class AccessLogPayload(TypedDict, total=False):

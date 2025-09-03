@@ -56,12 +56,14 @@ async def codex_health_check(
         cli_info = (
             detection_service.get_cli_health_info() if detection_service else None
         )
+        status_val = (
+            cli_info.status.value if (cli_info and hasattr(cli_info, "status")) else "unknown"
+        )
+        available = bool(status_val == "available")
         cli_health = (
             CLIHealth(
-                available=bool(
-                    cli_info and getattr(cli_info, "status", None).value == "available"
-                ),
-                status=(cli_info.status.value if cli_info else "unknown"),
+                available=available,
+                status=status_val,
                 version=(cli_info.version if cli_info else None),
                 path=(cli_info.binary_path if cli_info else None),
             )

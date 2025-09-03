@@ -87,7 +87,7 @@ class SimpleDuckDBStorage:
         if not self._engine:
             return
         try:
-            with self._engine.connect() as conn:  # type: ignore[attr-defined]
+            with self._engine.connect() as conn:
                 conn.exec_driver_sql("PRAGMA optimize")
                 logger.debug("duckdb_optimize_completed")
         except Exception as e:  # pragma: no cover - non-critical maintenance

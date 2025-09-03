@@ -135,7 +135,7 @@ class HTTPTracerHook(Hook):
         request_id = context.data.get("request_id", str(uuid.uuid4()))
         status_code = context.data.get("status_code", 0)
         headers = context.data.get("response_headers", {})
-        body = context.data.get("response_body")
+        body_any = context.data.get("response_body")
 
         logger.debug(
             "http_response",
@@ -145,19 +145,28 @@ class HTTPTracerHook(Hook):
 
         # Log with JSON formatter
         if self.json_formatter:
-            # Pass body directly - JSONFormatter now handles different data types
+            # Normalize body to bytes for formatter typing
+            if body_any is None:
+                body_bytes = b""
+            elif isinstance(body_any, bytes):
+                body_bytes = body_any
+            elif isinstance(body_any, str):
+                body_bytes = body_any.encode("utf-8")
+            else:
+                body_bytes = json.dumps(body_any).encode("utf-8")
+
             await self.json_formatter.log_response(
                 request_id=request_id,
                 status=status_code,
                 headers=headers,
-                body=body,  # Pass original body data directly
+                body=body_bytes,
                 response_type="http",
             )
 
         # Log with raw HTTP formatter
         if self.raw_formatter:
             # Build raw HTTP response
-            raw_response = self._build_raw_http_response(status_code, headers, body)
+            raw_response = self._build_raw_http_response(status_code, headers, body_any)
             await self.raw_formatter.log_client_response(
                 request_id=request_id,
                 raw_data=raw_response,

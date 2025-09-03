@@ -30,4 +30,5 @@ class AccessLogConfig(BaseModel):
     buffer_size: int = 100  # Buffer this many log entries before writing
     flush_interval: float = 1.0  # Flush buffer every N seconds
 
-    model_config = ConfigDict(case_sensitive=False)
+    # BaseModel's ConfigDict does not support case_sensitive; remove for mypy compatibility
+    model_config = ConfigDict()

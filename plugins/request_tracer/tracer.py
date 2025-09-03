@@ -58,7 +58,7 @@ class RequestTracerImpl(RequestTracer, StreamingTracer):
         method: str,
         url: str,
         headers: dict[str, str],
-        body: bytes | None,
+        body: bytes | None = None,
     ) -> None:
         """Record request details for debugging/monitoring.
 
@@ -82,7 +82,7 @@ class RequestTracerImpl(RequestTracer, StreamingTracer):
         request_id: str,
         status: int,
         headers: dict[str, str],
-        body: bytes,
+        body: bytes | None = None,
     ) -> None:
         """Record response details.
 
@@ -97,7 +97,7 @@ class RequestTracerImpl(RequestTracer, StreamingTracer):
                 request_id=request_id,
                 status=status,
                 headers=headers,
-                body=body,
+                body=body or b"",
             )
 
     # StreamingTracer interface implementation
@@ -179,6 +179,10 @@ class RequestTracerImpl(RequestTracer, StreamingTracer):
         return bool(
             self.enabled and self.raw_formatter and self.raw_formatter.should_log()
         )
+
+    def should_trace(self) -> bool:
+        """Check if tracing is enabled and any formatter is active."""
+        return bool(self.enabled and (self.json_formatter or self.raw_formatter))
 
     def should_trace_path(self, path: str) -> bool:
         """Check if a path should be traced based on include/exclude rules."""

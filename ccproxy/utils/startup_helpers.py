@@ -195,25 +195,15 @@ async def initialize_service_container_startup(
     """
     try:
         # Create HTTP client for proxy
-        from ccproxy.core.http import BaseProxyClient, HTTPXClient
         from ccproxy.services.container import ServiceContainer
-
-        http_client = HTTPXClient()
-        proxy_client = BaseProxyClient(http_client)
 
         # Reuse ServiceContainer from app state or create new one
         if hasattr(app.state, "service_container"):
             container = app.state.service_container
         else:
-            from ccproxy.services.factories import ConcreteServiceFactory
-
             logger.debug("creating_new_service_container")
-            factory = ConcreteServiceFactory()
-            container = ServiceContainer(settings, factory)
+            container = ServiceContainer(settings)
             app.state.service_container = container
-
-        # Set proxy client in container for lifecycle management
-        container.set_proxy_client(proxy_client)
 
         # Metrics are now handled by the metrics plugin
         app.state.metrics = None

@@ -72,22 +72,16 @@ async def claude_sdk_health_check(
         ProviderHealthDetails,
     )
 
-    cli_health = (
-        CLIHealth(
-            available=bool(
-                detection_service and detection_service.is_claude_available()
-            ),
-            status=(cli_info.status.value if detection_service else "unknown"),
-            version=(detection_service.get_version() if detection_service else None),
-            path=(
-                detection_service.get_cli_path()[0]
-                if detection_service and detection_service.get_cli_path()
-                else None
-            ),
+    cli_health = None
+    if detection_service:
+        path_list = detection_service.get_cli_path()
+        cli_status = cli_info.status.value if cli_info else "unknown"
+        cli_health = CLIHealth(
+            available=bool(detection_service.is_claude_available()),
+            status=cli_status,
+            version=detection_service.get_version(),
+            path=(path_list[0] if path_list else None),
         )
-        if detection_service
-        else None
-    )
 
     details = ProviderHealthDetails(
         provider="claude_sdk",

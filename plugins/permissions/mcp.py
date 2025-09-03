@@ -6,7 +6,7 @@ Provides MCP server functionality including permission checking tools.
 from typing import Annotated
 
 from fastapi import APIRouter, FastAPI
-from fastapi_mcp import FastApiMCP  # type: ignore[import-not-found]
+from fastapi_mcp import FastApiMCP
 from pydantic import BaseModel, ConfigDict, Field
 
 from ccproxy.api.dependencies import SettingsDep

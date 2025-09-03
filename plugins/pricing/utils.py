@@ -7,8 +7,6 @@ that already have one; otherwise they create a default service on demand.
 
 from __future__ import annotations
 
-from typing import Any
-
 from .config import PricingConfig
 from .service import PricingService
 
@@ -99,4 +97,3 @@ async def calculate_cost_breakdown(
         }
     except Exception:
         return None
-

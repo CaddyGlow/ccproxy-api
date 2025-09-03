@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Annotated, Any, TypeVar
+from typing import TYPE_CHECKING, Annotated, Any, Callable, TypeVar, cast
 
 import httpx
 from fastapi import Depends, Request
@@ -21,8 +21,8 @@ logger = get_logger(__name__)
 T = TypeVar("T")
 
 
-def get_service(service_type: type[T]) -> T:
-    """Get a service from the container."""
+def get_service(service_type: type[T]) -> Callable[[Request], T]:
+    """Return a dependency callable that fetches a service from the container."""
 
     def _get_service(request: Request) -> T:
         """Get a service from the container."""
@@ -39,9 +39,9 @@ def get_service(service_type: type[T]) -> T:
             raise HTTPException(
                 status_code=503, detail="Service container not initialized"
             )
-        return container.get_service(service_type)
+        return cast(T, container.get_service(service_type))
 
-    return _get_service  # type: ignore[return-value]
+    return _get_service
 
 
 def get_cached_settings(request: Request) -> Settings:

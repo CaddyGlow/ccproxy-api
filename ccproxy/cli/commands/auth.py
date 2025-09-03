@@ -538,7 +538,9 @@ def status_command(
                             oauth_provider, "get_unified_profile"
                         ):
                             with contextlib.suppress(Exception):
-                                quick = asyncio.run(oauth_provider.get_unified_profile())
+                                quick = asyncio.run(
+                                    oauth_provider.get_unified_profile()
+                                )
                         if quick and isinstance(quick, dict) and quick != {}:
                             profile_info = quick
                             try:

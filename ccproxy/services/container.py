@@ -6,7 +6,7 @@ manages service lifecycles and dependencies without singleton anti-patterns.
 
 import inspect
 from collections.abc import Callable
-from typing import Any, TypeVar
+from typing import Any, TypeVar, cast
 
 import httpx
 import structlog
@@ -50,13 +50,14 @@ class ServiceContainer:
 
         # Ensure a request tracer is always available for early consumers
         # Plugins may override this with a real tracer at runtime
+        # Register a default tracer using the protocol as key
         self.register_service(IRequestTracer, instance=NullRequestTracer())
 
     def register_service(
         self,
-        service_type: type[T],
-        instance: T | None = None,
-        factory: Callable[[], T] | None = None,
+        service_type: type[Any],
+        instance: Any | None = None,
+        factory: Callable[[], Any] | None = None,
     ) -> None:
         """Register a service instance or factory."""
         if instance is not None:
@@ -66,18 +67,20 @@ class ServiceContainer:
         else:
             raise ValueError("Either instance or factory must be provided")
 
-    def get_service(self, service_type: type[T]) -> T:
-        """Get a service instance."""
+    def get_service(self, service_type: Any) -> Any:
+        """Get a service instance by key (type or protocol)."""
         if service_type not in self._services:
             if service_type in self._factories:
                 self._services[service_type] = self._factories[service_type]()
             else:
-                raise ValueError(f"Service {service_type.__name__} not registered")
+                # Best-effort name for error messages
+                type_name = getattr(service_type, "__name__", str(service_type))
+                raise ValueError(f"Service {type_name} not registered")
         return self._services[service_type]
 
     def get_request_tracer(self) -> IRequestTracer:
         """Get request tracer service instance."""
-        return self.get_service(IRequestTracer)
+        return cast(IRequestTracer, self.get_service(IRequestTracer))
 
     def set_request_tracer(self, tracer: IRequestTracer) -> None:
         """Set the request tracer (called by plugin)."""
@@ -85,39 +88,39 @@ class ServiceContainer:
 
     def get_mock_handler(self) -> MockResponseHandler:
         """Get mock handler service instance."""
-        return self.get_service(MockResponseHandler)
+        return cast(MockResponseHandler, self.get_service(MockResponseHandler))
 
     def get_streaming_handler(self) -> StreamingHandler:
         """Get streaming handler service instance."""
-        return self.get_service(StreamingHandler)
+        return cast(StreamingHandler, self.get_service(StreamingHandler))
 
     def get_binary_resolver(self) -> BinaryResolver:
         """Get binary resolver service instance."""
-        return self.get_service(BinaryResolver)
+        return cast(BinaryResolver, self.get_service(BinaryResolver))
 
     def get_cli_detection_service(self) -> CLIDetectionService:
         """Get CLI detection service instance."""
-        return self.get_service(CLIDetectionService)
+        return cast(CLIDetectionService, self.get_service(CLIDetectionService))
 
     def get_proxy_config(self) -> ProxyConfiguration:
         """Get proxy configuration service instance."""
-        return self.get_service(ProxyConfiguration)
+        return cast(ProxyConfiguration, self.get_service(ProxyConfiguration))
 
     def get_http_client(self) -> httpx.AsyncClient:
         """Get container-managed HTTP client instance."""
-        return self.get_service(httpx.AsyncClient)
+        return cast(httpx.AsyncClient, self.get_service(httpx.AsyncClient))
 
     def get_pool_manager(self) -> HTTPPoolManager:
         """Get HTTP connection pool manager instance."""
-        return self.get_service(HTTPPoolManager)
+        return cast(HTTPPoolManager, self.get_service(HTTPPoolManager))
 
     def get_response_cache(self) -> ResponseCache:
         """Get response cache service instance."""
-        return self.get_service(ResponseCache)
+        return cast(ResponseCache, self.get_service(ResponseCache))
 
     def get_connection_pool_manager(self) -> ConnectionPoolManager:
         """Get connection pool manager service instance."""
-        return self.get_service(ConnectionPoolManager)
+        return cast(ConnectionPoolManager, self.get_service(ConnectionPoolManager))
 
     def get_adapter_dependencies(self, metrics: Any | None = None) -> dict[str, Any]:
         """Get all services an adapter might need."""

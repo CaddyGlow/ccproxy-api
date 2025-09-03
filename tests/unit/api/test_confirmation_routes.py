@@ -11,7 +11,6 @@ from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
 
 from ccproxy.config.settings import Settings
-from ccproxy.services.container import ServiceContainer
 from ccproxy.plugins.permissions.models import (
     PermissionRequest,
     PermissionStatus,
@@ -24,6 +23,7 @@ from ccproxy.plugins.permissions.service import (
     PermissionService,
     get_permission_service,
 )
+from ccproxy.services.container import ServiceContainer
 
 
 @pytest.fixture

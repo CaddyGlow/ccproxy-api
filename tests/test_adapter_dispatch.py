@@ -36,7 +36,10 @@ class MockAuthManager(AuthManager):
             from ccproxy.auth.exceptions import AuthenticationError
 
             raise AuthenticationError("Mock auth failure")
-        from ccproxy.plugins.oauth_claude.models import ClaudeCredentials, ClaudeOAuthToken
+        from ccproxy.plugins.oauth_claude.models import (
+            ClaudeCredentials,
+            ClaudeOAuthToken,
+        )
 
         oauth_token = ClaudeOAuthToken(
             accessToken=SecretStr("test-token"),
