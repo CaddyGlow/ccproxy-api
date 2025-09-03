@@ -4,7 +4,8 @@ This module defines interfaces that providers can implement to extend
 streaming functionality without coupling core code to specific providers.
 """
 
-from typing import Protocol, TypedDict
+from typing import Protocol
+from typing_extensions import TypedDict
 
 
 class StreamingMetrics(TypedDict, total=False):

@@ -71,75 +71,6 @@ ccproxy = "ccproxy.cli:main"
 ccproxy-api = "ccproxy.cli:main"
 ccproxy-perm = "ccproxy.cli.commands.permission:main"
 
-# [project.entry-points."ccproxy.plugins"]
-# access_log = "plugins.access_log.plugin:factory"
-# analytics = "plugins.analytics.plugin:factory"
-# dashboard = "plugins.dashboard.plugin:factory"
-# duckdb_storage = "plugins.duckdb_storage.plugin:factory"
-# metrics = "plugins.metrics.plugin:factory"
-# permissions = "plugins.permissions.plugin:factory"
-# pricing = "plugins.pricing.plugin:factory"
-# request_tracer = "plugins.request_tracer.plugin:factory"
-# claude_api = "plugins.claude_api.plugin:factory"
-# claude_sdk = "plugins.claude_sdk.plugin:factory"
-# codex = "plugins.codex.plugin:factory"
-# oauth_claude = "plugins.oauth_claude.plugin:factory"
-# oauth_codex = "plugins.oauth_codex.plugin:factory"
-[dependency-groups]
-dev = [
-  "mypy>=1.16.1",
-  "ruff>=0.12.2",
-  "pytest>=7.0.0",
-  "pytest-asyncio>=0.23.0",
-  "pytest-cov>=4.0.0",
-  "pytest-env>=0.8.0",
-  "pytest-timeout>=2.1.0",
-  "pytest-mock>=3.12.0",
-  "pytest-xdist>=3.5.0",
-  "pytest-html>=4.1.0",
-  "pytest-benchmark>=4.0.0",
-  "tox>=4.27.0",
-  "pre-commit>=4.2.0",
-  "anthropic>=0.57.1",
-  "textual-dev>=1.7.0",
-  "pytest-httpx>=0.35.0",
-  "types-pyyaml>=6.0.12.20250516",
-  "types-aiofiles>=24.0.0",
-  "openai>=1.99.9",
-  "pyjwt>=2.10.1",
-  "claude-code-sdk>=0.0.20",
-]
-docs = [
-  "mkdocs>=1.5.3",
-  "mkdocs-material>=9.5.0",
-  "mkdocstrings[python]>=0.24.0",
-  "mkdocs-gen-files>=0.5.0",
-  "mkdocs-literate-nav>=0.6.0",
-  "mkdocs-section-index>=0.3.0",
-  "mkdocs-swagger-ui-tag>=0.6.0",
-  "mkdocs-include-markdown-plugin>=6.0.0",
-  "mkdocs-mermaid2-plugin>=1.1.0",
-  "mkdocs-glightbox>=0.3.0",
-  "mkdocs-minify-plugin>=0.7.0",
-  "mkdocs-redirects>=1.2.0",
-]
-plugins = [
-  "ccproxy-analytics",
-  "ccproxy-claude-api",
-  "ccproxy-claude-sdk",
-  "ccproxy-codex",
-  "ccproxy-dashboard",
-  "ccproxy-duckdb-storage",
-  "ccproxy-metrics",
-  "ccproxy-oauth-claude",
-  "ccproxy-oauth-codex",
-  "ccproxy-permissions",
-  "ccproxy-plugin-access-log",
-  "ccproxy-pricing-plugin",
-  "ccproxy-request-tracer",
-]
-schema = ["pydantic>=2.8.0", "check-jsonschema>=0.33.2"]
-
 [project.optional-dependencies]
 # Plugin-focused extras to enable splitting plugin deps from core at install time.
 # Kept in root dependencies for now because plugins are bundled with the wheel.
@@ -495,19 +426,8 @@ members = [
 ]
 
 [tool.uv.sources]
-ccproxy-plugin-access-log = { workspace = true }
-ccproxy-analytics = { workspace = true }
-ccproxy-claude-api = { workspace = true }
-ccproxy-claude-sdk = { workspace = true }
-ccproxy-codex = { workspace = true }
-ccproxy-dashboard = { workspace = true }
-ccproxy-duckdb-storage = { workspace = true }
-ccproxy-metrics = { workspace = true }
-ccproxy-oauth-codex = { workspace = true }
-ccproxy-permissions = { workspace = true }
-ccproxy-request-tracer = { workspace = true }
-ccproxy-oauth-claude = { workspace = true }
-ccproxy-pricing-plugin = { workspace = true }
+ccproxy-plugin-claude-sdk = { workspace = true }
+
 
 [tool.pyright]
 pythonVersion = "3.11"
@@ -573,3 +493,8 @@ reportUnnecessaryTypeIgnoreComment = true
 # Stub settings
 stubPath = "typings"
 useLibraryCodeForTypes = true
+
+[dependency-groups]
+plugins = [
+    "ccproxy-plugin-claude-sdk",
+]

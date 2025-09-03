@@ -1,5 +1,5 @@
 [project]
-name = "ccproxy-codex"
+name = "ccproxy-plugin-codex"
 version = "1.0.0"
 description = "OpenAI Codex provider plugin for CCProxy"
 readme = "README.md"

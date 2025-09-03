@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 
 from ccproxy.auth.conditional import ConditionalAuthDep
-from plugins.duckdb_storage.storage import SimpleDuckDBStorage
+from ccproxy.plugins.duckdb_storage.storage import SimpleDuckDBStorage
 
 
 router = APIRouter()

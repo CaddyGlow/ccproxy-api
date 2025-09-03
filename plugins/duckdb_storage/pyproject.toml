@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "ccproxy-duckdb-storage"
+name = "ccproxy-plugin-duckdb-storage"
 version = "1.0.0"
 description = "DuckDB-backed log storage plugin for CCProxy"
 readme = "README.md"

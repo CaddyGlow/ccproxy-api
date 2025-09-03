@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import TypedDict
+from typing_extensions import TypedDict
 
 from pydantic import ConfigDict
 from sqlmodel import Field, SQLModel

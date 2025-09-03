@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "ccproxy-metrics"
+name = "ccproxy-plugin-metrics"
 version = "1.0.0"
 description = "Prometheus metrics collection plugin for CCProxy"
 readme = "README.md"

@@ -8,7 +8,8 @@ rather than runtime (lifespan).
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import IntEnum
-from typing import TYPE_CHECKING, Any, Protocol, TypedDict
+from typing import TYPE_CHECKING, Any, Protocol
+from typing_extensions import TypedDict
 
 import httpx
 import structlog

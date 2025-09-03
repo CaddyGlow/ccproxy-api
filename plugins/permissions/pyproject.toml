@@ -1,5 +1,5 @@
 [project]
-name = "ccproxy-permissions"
+name = "ccproxy-plugin-permissions"
 version = "1.0.0"
 description = "Permissions management plugin for CCProxy"
 readme = "README.md"

@@ -3,7 +3,8 @@
 import shutil
 import subprocess
 from pathlib import Path
-from typing import TYPE_CHECKING, NamedTuple, TypedDict
+from typing import TYPE_CHECKING, NamedTuple
+from typing_extensions import TypedDict
 
 from ccproxy.core.logging import TraceBoundLogger, get_logger
 from ccproxy.utils.caching import ttl_cache

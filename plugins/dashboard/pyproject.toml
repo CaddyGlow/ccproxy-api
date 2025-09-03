@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "ccproxy-dashboard"
+name = "ccproxy-plugin-dashboard"
 version = "1.0.0"
 description = "Dashboard plugin for CCProxy (serves SPA and mounts assets)"
 readme = "README.md"

@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "ccproxy-pricing-plugin"
+name = "ccproxy-plugin-pricing"
 version = "1.0.0"
 description = "Dynamic pricing plugin for CCProxy"
 dependencies = [

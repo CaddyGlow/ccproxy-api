@@ -1,6 +1,7 @@
 """Configuration for Claude SDK plugin."""
 
 from enum import Enum
+from typing import Any
 
 from claude_code_sdk import ClaudeCodeOptions
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -172,7 +173,8 @@ class ClaudeSDKSettings(ProviderConfig):
     temperature_default: float = 0.7
 
     # Additional fields from ClaudeSettings to prevent validation errors
-    code_options: ClaudeCodeOptions | None = None
+    # Use Any to avoid Pydantic schema generation on external TypedDicts (Py<3.12)
+    code_options: Any | None = None
     system_prompt_injection_mode: SystemPromptInjectionMode = (
         SystemPromptInjectionMode.MINIMAL
     )

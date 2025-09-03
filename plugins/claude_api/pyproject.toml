@@ -1,5 +1,5 @@
 [project]
-name = "ccproxy-claude-api"
+name = "ccproxy-plugin-claude-api"
 version = "1.0.0"
 description = "Claude API provider plugin for CCProxy"
 readme = "README.md"
