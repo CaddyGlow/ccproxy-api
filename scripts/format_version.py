@@ -16,7 +16,7 @@ try:
 except ImportError:
     sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from ccproxy import __version__
+from ccproxy.core import __version__
 from ccproxy.core.async_utils import format_version
 
 

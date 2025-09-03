@@ -271,7 +271,7 @@ class PrometheusMetrics:
 
         # Set initial system info
         try:
-            from ccproxy import __version__
+            from ccproxy.core import __version__
 
             version = __version__
         except ImportError:

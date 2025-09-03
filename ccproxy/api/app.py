@@ -4,11 +4,11 @@ from collections.abc import AsyncGenerator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from typing import Any
 
+from pydantic_settings import BaseSettings
 import structlog
 from fastapi import FastAPI
 from typing_extensions import TypedDict
 
-from ccproxy import __version__
 from ccproxy.api.bootstrap import create_service_container
 from ccproxy.api.middleware.cors import setup_cors_middleware
 from ccproxy.api.middleware.errors import setup_error_handlers
@@ -17,6 +17,7 @@ from ccproxy.api.routes.plugins import router as plugins_router
 from ccproxy.auth.oauth.registry import OAuthRegistry
 from ccproxy.auth.oauth.routes import router as oauth_router
 from ccproxy.config.settings import Settings
+from ccproxy.core import __version__
 from ccproxy.core.async_task_manager import start_task_manager, stop_task_manager
 from ccproxy.core.logging import TraceBoundLogger, get_logger, setup_logging
 from ccproxy.core.plugins import (
@@ -346,6 +347,7 @@ def create_app(service_container: ServiceContainer) -> FastAPI:
     settings = service_container.get_service(Settings)
     if not structlog.is_configured():
         json_logs = settings.logging.format == "json"
+
         setup_logging(
             json_logs=json_logs,
             log_level_name=settings.logging.level,
@@ -393,7 +395,7 @@ def create_app(service_container: ServiceContainer) -> FastAPI:
                 self.http_client = None
                 self.logger = structlog.get_logger()
 
-            def get_plugin_config(self, plugin_name: str) -> dict[str, Any]:
+            def get_plugin_config(self, plugin_name: str) -> dict[str, BaseSettings]:
                 if (
                     self.settings
                     and hasattr(self.settings, "plugins")

@@ -41,7 +41,7 @@ source = "vcs"
 
 
 [tool.hatch.build.hooks.vcs]
-version-file = "ccproxy/_version.py"
+version-file = "ccproxy/core/_version.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["ccproxy", "plugins"]
@@ -152,7 +152,7 @@ plugins-ui = ["textual>=3.7.1"]
 source = ["ccproxy", "tests"]
 include = ["ccproxy/*", "tests/*"]
 omit = [
-  "ccproxy/_version.py",
+  "ccproxy/core/_version.py",
   "ccproxy/__main__.py",
   "tests/conftest.py",
   "*/migrations/*",

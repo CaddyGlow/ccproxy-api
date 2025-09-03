@@ -15,7 +15,7 @@ from typing import Any
 from fastapi import APIRouter, Response, status
 from structlog import get_logger
 
-from ccproxy import __version__
+from ccproxy.core import __version__
 
 
 router = APIRouter()

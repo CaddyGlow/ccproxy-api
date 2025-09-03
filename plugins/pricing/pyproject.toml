@@ -14,7 +14,14 @@ dependencies = [
 ]
 
 [project.entry-points."ccproxy.plugins"]
-pricing = "ccproxy.plugins.pricing.plugin:factory"
+pricing = "plugin:factory"
 
-[tool.hatch.build.targets.wheel]
-packages = ["."]
+[tool.hatch.build.wheel]
+sources = "plugins/pricing"
+only-include = ["*.py", "py.typed"]
+
+[tool.hatch.build.targets.wheel.sources]
+"." = "ccproxy/plugins/pricing"
+# [tool.hatch.build.targets.wheel]
+# only-include = ["*.py", "py.typed"]
+# sources = { "." = "ccproxy/plugins/pricing" }
