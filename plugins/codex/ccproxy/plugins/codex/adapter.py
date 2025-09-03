@@ -34,7 +34,7 @@ if TYPE_CHECKING:
 
     from .detection_service import CodexDetectionService
 
-from .anthropic_adapter import AnthropicMessagesAdapter
+from .composite_anthropic_adapter import CompositeAnthropicAdapter
 from .format_adapter import CodexFormatAdapter
 from .transformers import CodexRequestTransformer, CodexResponseTransformer
 
@@ -108,7 +108,7 @@ class CodexAdapter(BaseHTTPAdapter):
 
         # Initialize format adapters
         self.openai_format_adapter = CodexFormatAdapter()
-        self.anthropic_format_adapter = AnthropicMessagesAdapter()
+        self.anthropic_format_adapter = CompositeAnthropicAdapter()
         
         # Store current endpoint for format adapter selection
         self._current_endpoint = ""
