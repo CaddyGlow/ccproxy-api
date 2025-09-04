@@ -513,6 +513,7 @@ def setup_logging(
         "fastapi_mcp",
         "sse_starlette",
         "mcp",
+        "hpack",
     ]:
         noisy_logger = logging.getLogger(noisy_logger_name)
         noisy_logger.handlers = []
@@ -522,11 +523,11 @@ def setup_logging(
     [
         logging.getLogger(logger_name).setLevel(
             logging.INFO if log_level <= logging.DEBUG else log_level
-        )  # type: ignore[func-returns-value]
+        )
         for logger_name in suppress_debug
     ]
 
-    return structlog.get_logger()  # type: ignore[no-any-return]
+    return structlog.get_logger()
 
 
 # Create a convenience function for getting loggers

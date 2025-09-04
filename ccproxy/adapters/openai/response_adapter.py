@@ -75,7 +75,7 @@ class ResponseAdapter:
 
             # Convert user/assistant messages to Response API format
             content_blocks = []
-            
+
             # Handle text content
             if isinstance(content, str) and content:
                 content_blocks.append(
@@ -165,15 +165,14 @@ class ResponseAdapter:
             # The following parameters are not supported by Response API:
             # temperature, max_output_tokens, top_p, frequency_penalty, presence_penalty
         }
-        
+
         # Add tools if present
         if tools:
             request_data["tools"] = tools
-            
-        # Add max_tool_calls if present
-        if chat_dict.get("max_tool_calls"):
-            request_data["max_tool_calls"] = chat_dict["max_tool_calls"]
-            
+
+        # Note: max_tool_calls is not supported by Response API
+        # It will be filtered out during transformation
+
         request = ResponseRequest(**request_data)
 
         return request
@@ -182,15 +181,15 @@ class ResponseAdapter:
         self, tools: list[dict[str, Any]]
     ) -> list[ResponseTool]:
         """Convert Chat Completions tools to Response API format.
-        
+
         Args:
             tools: List of OpenAI Chat Completions tools
-            
+
         Returns:
             List of Response API tools
         """
         response_tools = []
-        
+
         for tool in tools:
             if tool.get("type") == "function":
                 func = tool.get("function", {})
@@ -204,17 +203,17 @@ class ResponseAdapter:
                         ),
                     )
                 )
-                
+
         return response_tools
 
     def _convert_tool_choice_to_response_api(
         self, tool_choice: str | dict[str, Any] | None
     ) -> str | ResponseToolChoice:
         """Convert Chat Completions tool_choice to Response API format.
-        
+
         Args:
             tool_choice: OpenAI Chat Completions tool_choice
-            
+
         Returns:
             Response API tool_choice
         """
@@ -274,10 +273,10 @@ class ResponseAdapter:
 
         # Extract tool calls from content
         tool_calls = self._extract_tool_calls_from_output(output)
-        
+
         # Determine finish reason
         finish_reason = "tool_calls" if tool_calls else "stop"
-        
+
         return OpenAIChatCompletionResponse(
             id=response_dict.get("id", f"resp_{uuid.uuid4().hex}"),
             object="chat.completion",
@@ -302,15 +301,15 @@ class ResponseAdapter:
         self, output: list[dict[str, Any]]
     ) -> list[Any] | None:
         """Extract tool calls from Response API output.
-        
+
         Args:
             output: Response API output array
-            
+
         Returns:
             List of OpenAI-format tool calls or None
         """
         tool_calls = []
-        
+
         for output_item in output:
             if output_item.get("type") == "message":
                 output_content = output_item.get("content", [])
@@ -319,7 +318,7 @@ class ResponseAdapter:
                         # Convert Response API tool call to Anthropic-style format
                         # then use existing format_openai_tool_call function
                         func = content_block.get("function", {})
-                        
+
                         # Parse arguments JSON string to dict
                         arguments_str = func.get("arguments", "{}")
                         try:
@@ -336,17 +335,17 @@ class ResponseAdapter:
                                 operation="extract_tool_calls_from_output",
                             )
                             input_dict = {}
-                        
+
                         # Create Anthropic-style tool use for conversion
                         anthropic_tool_use = {
                             "id": content_block.get("id", ""),
                             "name": func.get("name", ""),
                             "input": input_dict,
                         }
-                        
+
                         # Use existing conversion function
                         tool_calls.append(format_openai_tool_call(anthropic_tool_use))
-        
+
         return tool_calls if tool_calls else None
 
     async def stream_response_to_chat(
@@ -364,7 +363,7 @@ class ResponseAdapter:
         created = int(time.time())
         accumulated_content = ""
         buffer = ""
-        
+
         # Tool call state tracking
         tool_calls_state: dict[str, dict[str, Any]] = {}
         role_sent = False
@@ -453,8 +452,13 @@ class ResponseAdapter:
                                                 delta_content += block.get("text", "")
                                             elif block.get("type") == "tool_call":
                                                 # Handle tool call delta
-                                                for chunk in self._process_tool_call_delta(
-                                                    block, tool_calls_state, stream_id, created
+                                                for (
+                                                    chunk
+                                                ) in self._process_tool_call_delta(
+                                                    block,
+                                                    tool_calls_state,
+                                                    stream_id,
+                                                    created,
                                                 ):
                                                     yield chunk
 
@@ -513,14 +517,18 @@ class ResponseAdapter:
                         # Determine finish reason based on tool calls
                         has_tool_calls = bool(tool_calls_state)
                         finish_reason = "tool_calls" if has_tool_calls else "stop"
-                        
+
                         chunk_data = {
                             "id": stream_id,
                             "object": "chat.completion.chunk",
                             "created": created,
                             "model": response.get("model", "gpt-5"),
                             "choices": [
-                                {"index": 0, "delta": {}, "finish_reason": finish_reason}
+                                {
+                                    "index": 0,
+                                    "delta": {},
+                                    "finish_reason": finish_reason,
+                                }
                             ],
                         }
 
@@ -552,7 +560,6 @@ class ResponseAdapter:
             total_tokens=response_usage.get("total_tokens", 0),
         )
 
-
     def _process_tool_call_delta(
         self,
         block: dict[str, Any],
@@ -561,13 +568,13 @@ class ResponseAdapter:
         created: int,
     ):
         """Process tool call delta events and yield streaming chunks.
-        
+
         Args:
             block: Tool call content block from Response API
             tool_calls_state: State tracking for tool calls
             stream_id: Stream ID
             created: Timestamp
-            
+
         Yields:
             Chat Completions streaming chunks for tool calls
         """
@@ -575,7 +582,7 @@ class ResponseAdapter:
         function_data = block.get("function", {})
         function_name = function_data.get("name")
         function_args = function_data.get("arguments", "")
-        
+
         if tool_id not in tool_calls_state:
             # Start of new tool call
             tool_calls_state[tool_id] = {
@@ -583,7 +590,7 @@ class ResponseAdapter:
                 "name": function_name or "",
                 "arguments": "",
             }
-            
+
             # Send tool call start chunk if we have the name
             if function_name:
                 yield {
@@ -612,11 +619,11 @@ class ResponseAdapter:
             # Update existing tool call name if provided
             if function_name and not tool_calls_state[tool_id]["name"]:
                 tool_calls_state[tool_id]["name"] = function_name
-                
+
         # Handle function arguments delta
         if function_args:
             tool_calls_state[tool_id]["arguments"] += function_args
-            
+
             # Send arguments delta
             yield {
                 "id": stream_id,
@@ -629,7 +636,9 @@ class ResponseAdapter:
                         "delta": {
                             "tool_calls": [
                                 {
-                                    "index": list(tool_calls_state.keys()).index(tool_id),
+                                    "index": list(tool_calls_state.keys()).index(
+                                        tool_id
+                                    ),
                                     "function": {"arguments": function_args},
                                 }
                             ]

@@ -10,6 +10,7 @@ Flow:
 - Stream: Response API streaming → OpenAI streaming → Anthropic streaming
 """
 
+import json
 from collections.abc import AsyncGenerator, AsyncIterator
 from typing import Any
 
@@ -66,12 +67,21 @@ class CompositeAnthropicAdapter(APIAdapter):
             response_request = self.response_adapter.chat_to_response_request(openai_request)
             response_api_request = response_request.model_dump()
 
+            # Ensure Codex-specific model mapping (always use gpt-5 for Codex)
+            response_api_request["model"] = "gpt-5"
+            
+            # Remove parameters not supported by Codex Response API
+            response_api_request.pop("max_tool_calls", None)
+            
+            # Clean Codex-specific unsupported fields
+            self._clean_codex_request(response_api_request)
+
             logger.debug(
                 "composite_adapter_step2_completed", 
                 conversion="openai_to_response_api",
                 response_keys=list(response_api_request.keys()),
                 model=response_api_request.get("model"),
-                tools_count=len(response_api_request.get("tools", [])),
+                tools_count=len(response_api_request.get("tools") or []),
             )
 
             return response_api_request
@@ -144,6 +154,7 @@ class CompositeAnthropicAdapter(APIAdapter):
         Yields:
             Anthropic Messages streaming events
         """
+        logger.info("composite_anthropic_adapter_adapt_stream_called")
         return self._adapt_stream_impl(stream)
 
     async def _adapt_stream_impl(
@@ -245,12 +256,16 @@ class CompositeAnthropicAdapter(APIAdapter):
                         text_content += block.get("text", "")
                     elif block.get("type") == "tool_use":
                         # Convert Anthropic tool_use to OpenAI tool_call
+                        # Convert input dict to JSON string for OpenAI format
+                        input_data = block.get("input", {})
+                        arguments_str = json.dumps(input_data) if input_data else "{}"
+                        
                         tool_calls.append({
                             "id": block.get("id", ""),
                             "type": "function",
                             "function": {
                                 "name": block.get("name", ""),
-                                "arguments": block.get("input", {}),
+                                "arguments": arguments_str,
                             }
                         })
                 
@@ -488,6 +503,25 @@ class CompositeAnthropicAdapter(APIAdapter):
                     }
                 
                 yield {"type": "message_stop"}
+
+    def _clean_codex_request(self, codex_request: dict[str, Any]) -> None:
+        """Remove fields from request that are not supported by Codex.
+        
+        Args:
+            codex_request: The Codex request to clean (modified in place)
+        """
+        # Clean input messages
+        if "input" in codex_request and isinstance(codex_request["input"], list):
+            for message in codex_request["input"]:
+                if isinstance(message, dict) and "content" in message:
+                    if isinstance(message["content"], list):
+                        for content_block in message["content"]:
+                            if isinstance(content_block, dict):
+                                # Remove id fields that Codex doesn't support
+                                content_block.pop("id", None)
+                                # Remove function field from non-tool_call blocks
+                                if content_block.get("type") != "tool_call":
+                                    content_block.pop("function", None)
 
     async def _dict_stream_to_bytes(
         self, dict_stream: AsyncIterator[dict[str, Any]]

@@ -136,6 +136,13 @@ class CodexAdapter(BaseHTTPAdapter):
             or endpoint.endswith(ANTHROPIC_MESSAGES_PATH)
         )
 
+        logger.info(
+            "codex_resolve_endpoint",
+            endpoint=endpoint,
+            needs_conversion=needs_conversion,
+            current_endpoint=self._current_endpoint,
+        )
+
         # Build target URL (always uses Codex responses endpoint)
         target_url = f"{CODEX_API_BASE_URL}{CODEX_RESPONSES_ENDPOINT}"
 
@@ -151,9 +158,19 @@ class CodexAdapter(BaseHTTPAdapter):
             Format adapter for the given endpoint type
         """
         if endpoint.endswith(ANTHROPIC_MESSAGES_PATH):
+            logger.info(
+                "selected_anthropic_format_adapter",
+                endpoint=endpoint,
+                adapter_type="CompositeAnthropicAdapter"
+            )
             return self.anthropic_format_adapter
         else:
             # OpenAI endpoints or other formats use the Codex format adapter
+            logger.info(
+                "selected_openai_format_adapter", 
+                endpoint=endpoint,
+                adapter_type="CodexFormatAdapter"
+            )
             return self.openai_format_adapter
 
     async def _create_handler_config(

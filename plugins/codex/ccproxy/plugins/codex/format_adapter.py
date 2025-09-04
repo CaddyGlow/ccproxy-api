@@ -58,12 +58,13 @@ class CodexFormatAdapter(APIAdapter):
             if "model" not in codex_request:
                 codex_request["model"] = "gpt-5"
 
+            tools = codex_request.get("tools") or []
             logger.debug(
                 "codex_request_conversion",
                 format_type=format_type,
                 original_keys=list(request_data.keys()),
                 converted_keys=list(codex_request.keys()),
-                tools_count=len(codex_request.get("tools", [])),
+                tools_count=len(tools),
                 tool_choice=codex_request.get("tool_choice", "auto"),
             )
             return codex_request
