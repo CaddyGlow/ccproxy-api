@@ -232,6 +232,7 @@ class RequestTracerHook(Hook):
 
         request_id = context.metadata.get("request_id", "unknown")
         status_code = context.data.get("status_code", 200)
+        headers = context.data.get("headers", {})  # Get response headers from hook data
         body = context.data.get("body")  # Get response body from hook data
         provider = context.provider or "unknown"
         is_streaming = context.data.get("is_streaming", False)
@@ -246,7 +247,7 @@ class RequestTracerHook(Hook):
                 request_id=request_id,
                 provider=provider,
                 status_code=status_code,
-                headers={},  # Headers not available in current hook context
+                headers=headers,  # Use headers from hook context
                 body=body,  # Include response body for debugging
             )
 

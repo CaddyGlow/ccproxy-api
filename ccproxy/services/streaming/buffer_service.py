@@ -5,7 +5,6 @@ internally to a streaming request, buffered, and then returned as a non-streamin
 """
 
 import json
-from collections.abc import AsyncIterator
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
@@ -19,7 +18,8 @@ from ccproxy.hooks.base import HookContext
 
 if TYPE_CHECKING:
     from ccproxy.core.request_context import RequestContext
-    from ccproxy.services.handler_config import HandlerConfig, SSEParserProtocol
+    from ccproxy.services.handler_config import HandlerConfig
+    from ccproxy.services.http_pool import HTTPPoolManager
     from ccproxy.services.interfaces import IRequestTracer
 
 
@@ -39,6 +39,7 @@ class StreamingBufferService:
         http_client: httpx.AsyncClient,
         request_tracer: "IRequestTracer | None" = None,
         hook_manager: HookManager | None = None,
+        http_pool_manager: "HTTPPoolManager | None" = None,
     ) -> None:
         """Initialize the streaming buffer service.
 
@@ -46,10 +47,25 @@ class StreamingBufferService:
             http_client: HTTP client for making requests
             request_tracer: Optional request tracer for observability
             hook_manager: Optional hook manager for event emission
+            http_pool_manager: Optional HTTP pool manager for getting clients on demand
         """
         self.http_client = http_client
         self.request_tracer = request_tracer
         self.hook_manager = hook_manager
+        self._http_pool_manager = http_pool_manager
+
+    async def _get_http_client(self) -> httpx.AsyncClient:
+        """Get HTTP client, either existing or from pool manager.
+
+        Returns:
+            HTTP client instance
+        """
+        # If we have a pool manager, get a fresh client from it
+        if self._http_pool_manager is not None:
+            return await self._http_pool_manager.get_client()
+
+        # Fall back to existing client
+        return self.http_client
 
     async def handle_buffered_streaming_request(
         self,
@@ -251,7 +267,10 @@ class StreamingBufferService:
         total_chunks = 0
         total_bytes = 0
 
-        async with self.http_client.stream(
+        # Get HTTP client from pool manager if available for hook-enabled client
+        http_client = await self._get_http_client()
+
+        async with http_client.stream(
             method=method,
             url=url,
             headers=headers,

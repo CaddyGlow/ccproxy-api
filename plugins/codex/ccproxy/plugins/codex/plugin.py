@@ -310,9 +310,11 @@ class CodexFactory(BaseProviderPluginFactory):
     dependencies = ["oauth_codex"]
     optional_requires = ["pricing"]
 
-    def create_adapter(self, context: PluginContext) -> CodexAdapter:
+    async def create_adapter(self, context: PluginContext) -> CodexAdapter:
         """Create the Codex adapter with validation."""
-        http_client = context.get("http_client")
+        from ccproxy.services.http_pool import HTTPPoolManager
+
+        http_pool_manager: HTTPPoolManager | None = context.get("http_pool_manager")
         auth_manager = context.get("credentials_manager")
         detection_service = context.get("detection_service")
         request_tracer = context.get("request_tracer")
@@ -320,12 +322,15 @@ class CodexFactory(BaseProviderPluginFactory):
         streaming_handler = context.get("streaming_handler")
         hook_manager = context.get("hook_manager")
 
-        if not http_client:
-            raise RuntimeError("HTTP client is required for Codex adapter")
+        if not http_pool_manager:
+            raise RuntimeError("HTTP pool manager is required for Codex adapter")
         if not auth_manager:
             raise RuntimeError("Auth manager is required for Codex adapter")
         if not detection_service:
             raise RuntimeError("Detection service is required for Codex adapter")
+
+        # Get HTTP client from pool manager
+        http_client = await http_pool_manager.get_client()
 
         return CodexAdapter(
             http_client=http_client,

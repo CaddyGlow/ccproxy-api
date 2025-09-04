@@ -80,6 +80,17 @@ class JSONFormatter:
             return str(cmd_id)
         return str(uuid.uuid4())
 
+    def _compose_file_id_with_timestamp(self, request_id: str | None) -> str:
+        """Build filename ID with timestamp suffix for better organization.
+        
+        Format: {base_id}_{timestamp}
+        Where timestamp is in format: YYYYMMDD_HHMMSS_microseconds
+        """
+        from datetime import datetime
+        base_id = self._compose_file_id(request_id)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+        return f"{base_id}_{timestamp}"
+
     @staticmethod
     def redact_headers(headers: dict[str, str]) -> dict[str, str]:
         """Redact sensitive headers for safe logging.
@@ -155,7 +166,7 @@ class JSONFormatter:
             file_suffix = (
                 f"{request_type}_request" if request_type != "provider" else "request"
             )
-            base_id = self._compose_file_id(request_id)
+            base_id = self._compose_file_id_with_timestamp(request_id)
             request_file = self.request_log_dir / f"{base_id}_{file_suffix}.json"
 
             # Handle body content - could be bytes, dict/list (from JSON), or string
@@ -283,7 +294,7 @@ class JSONFormatter:
                 body_size=len(body) if body else 0,
                 body_preview=body[:100] if body else None,
             )
-            base_id = self._compose_file_id(request_id)
+            base_id = self._compose_file_id_with_timestamp(request_id)
             response_file = self.request_log_dir / f"{base_id}_{file_suffix}.json"
 
             # Try to parse body as JSON first, then string, then base64

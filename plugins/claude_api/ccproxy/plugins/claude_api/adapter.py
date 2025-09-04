@@ -55,6 +55,7 @@ class ClaudeAPIAdapter(BaseHTTPAdapter):
         metrics: "IMetricsCollector | None" = None,
         streaming_handler: "IStreamingHandler | None" = None,
         hook_manager: "HookManager | None" = None,
+        http_pool_manager: Any = None,
         # Plugin-specific context
         context: "PluginContext | dict[str, Any] | None" = None,
     ) -> None:
@@ -68,6 +69,7 @@ class ClaudeAPIAdapter(BaseHTTPAdapter):
             metrics: Optional metrics collector
             streaming_handler: Optional streaming handler
             hook_manager: Optional hook manager for event emission
+            http_pool_manager: Optional HTTP pool manager for getting clients on demand
             context: Optional plugin context containing plugin_registry and other services
         """
         # Get injection mode from config if available
@@ -114,6 +116,7 @@ class ClaudeAPIAdapter(BaseHTTPAdapter):
             request_transformer=request_transformer,
             response_transformer=response_transformer,
             hook_manager=hook_manager,
+            http_pool_manager=http_pool_manager,
             context=cast("PluginContext | None", context),
         )
 

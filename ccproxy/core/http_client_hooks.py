@@ -68,7 +68,7 @@ class HookableHTTPClient(httpx.AsyncClient):
             request_context["is_json"] = False
         elif content is not None:
             # Handle content parameter - could be bytes, string, or other
-            if isinstance(content, (bytes, str)):
+            if isinstance(content, bytes | str):
                 try:
                     # Try to parse as JSON if it's a string/bytes that looks like JSON
                     import json as json_module

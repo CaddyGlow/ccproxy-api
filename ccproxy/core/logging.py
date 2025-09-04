@@ -499,7 +499,7 @@ def setup_logging(
     httpx_logger = logging.getLogger("httpx")
     httpx_logger.handlers = []
     httpx_logger.propagate = True
-    httpx_logger.setLevel(logging.INFO if log_level < logging.INFO else logging.WARNING)
+    # httpx_logger.setLevel(logging.INFO if log_level < logging.INFO else logging.WARNING)
 
     # Set noisy HTTP-related loggers to WARNING
     noisy_log_level = logging.WARNING if log_level <= logging.WARNING else log_level

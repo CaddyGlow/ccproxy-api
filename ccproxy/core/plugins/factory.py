@@ -100,7 +100,7 @@ class BasePluginFactory(PluginFactory):
         """
         context: PluginContext = {
             "settings": core_services.settings,
-            "http_client": core_services.http_client,
+            "http_pool_manager": core_services.http_pool_manager,
             "logger": core_services.logger.bind(plugin=self.manifest.name),
         }
 
@@ -210,7 +210,7 @@ class ProviderPluginFactory(BasePluginFactory):
         return context
 
     @abstractmethod
-    def create_adapter(self, context: PluginContext) -> Any:
+    async def create_adapter(self, context: PluginContext) -> Any:
         """Create the adapter for this provider.
 
         Args:
@@ -602,7 +602,7 @@ class PluginRegistry:
             # Create credentials manager and detection service first as adapter may depend on them
             context["detection_service"] = factory.create_detection_service(context)
             context["credentials_manager"] = factory.create_credentials_manager(context)
-            context["adapter"] = factory.create_adapter(context)
+            context["adapter"] = await factory.create_adapter(context)
         # For auth provider plugins, create auth components
         elif isinstance(factory, AuthProviderPluginFactory):
             context["auth_provider"] = factory.create_auth_provider(context)

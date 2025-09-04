@@ -75,6 +75,17 @@ class RawHTTPFormatter:
             return str(cmd_id)
         return str(uuid.uuid4())
 
+    def _compose_file_id_with_timestamp(self, request_id: str | None) -> str:
+        """Build filename ID with timestamp suffix for better organization.
+        
+        Format: {base_id}_{timestamp}
+        Where timestamp is in format: YYYYMMDD_HHMMSS_microseconds
+        """
+        from datetime import datetime
+        base_id = self._compose_file_id(request_id)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+        return f"{base_id}_{timestamp}"
+
     def should_log(self) -> bool:
         """Check if raw logging is enabled."""
         return bool(self.enabled)
@@ -88,7 +99,7 @@ class RawHTTPFormatter:
         if len(raw_data) > self.max_body_size:
             raw_data = raw_data[: self.max_body_size] + b"\n[TRUNCATED]"
 
-        base_id = self._compose_file_id(request_id)
+        base_id = self._compose_file_id_with_timestamp(request_id)
         file_path = self.log_dir / f"{base_id}_client_request.http"
         file_key = f"{base_id}_client_request"
 
@@ -115,7 +126,7 @@ class RawHTTPFormatter:
         if len(raw_data) > self.max_body_size:
             raw_data = raw_data[: self.max_body_size] + b"\n[TRUNCATED]"
 
-        base_id = self._compose_file_id(request_id)
+        base_id = self._compose_file_id_with_timestamp(request_id)
         file_path = self.log_dir / f"{base_id}_client_response.http"
         file_key = f"{base_id}_client_response"
 
@@ -142,7 +153,7 @@ class RawHTTPFormatter:
         if len(raw_data) > self.max_body_size:
             raw_data = raw_data[: self.max_body_size] + b"\n[TRUNCATED]"
 
-        base_id = self._compose_file_id(request_id)
+        base_id = self._compose_file_id_with_timestamp(request_id)
         file_path = self.log_dir / f"{base_id}_provider_request.http"
         file_key = f"{base_id}_provider_request"
 
@@ -169,7 +180,7 @@ class RawHTTPFormatter:
         if len(raw_data) > self.max_body_size:
             raw_data = raw_data[: self.max_body_size] + b"\n[TRUNCATED]"
 
-        base_id = self._compose_file_id(request_id)
+        base_id = self._compose_file_id_with_timestamp(request_id)
         file_path = self.log_dir / f"{base_id}_provider_response.http"
         file_key = f"{base_id}_provider_response"
 

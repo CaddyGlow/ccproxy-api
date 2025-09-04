@@ -1,6 +1,6 @@
 """Refactored HTTP handler for plugin adapters using improved abstractions."""
 
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 import httpx
 import structlog
@@ -14,6 +14,10 @@ from ccproxy.services.http.base import BaseHTTPHandler
 from ccproxy.services.http.processor import RequestProcessor
 from ccproxy.services.interfaces import IRequestTracer
 from ccproxy.streaming.deferred_streaming import DeferredStreaming
+
+
+if TYPE_CHECKING:
+    from ccproxy.services.http_pool import HTTPPoolManager
 
 
 logger = get_logger(__name__)
@@ -32,20 +36,42 @@ class PluginHTTPHandler(BaseHTTPHandler):
         logger: structlog.BoundLogger | None = None,
         response_cache: ResponseCache | None = None,
         request_tracer: IRequestTracer | None = None,
+        http_pool_manager: "HTTPPoolManager | None" = None,
     ) -> None:
         """Initialize the HTTP handler.
 
         Args:
-            http_client: Container-managed HTTP client instance
+            http_client: Container-managed HTTP client instance (fallback)
             logger: Optional structured logger instance
             response_cache: Optional response cache for performance optimization
             request_tracer: Optional request tracer for verbose logging
+            http_pool_manager: Optional HTTP pool manager for getting clients on demand
         """
         self.logger = logger or get_logger(__name__)
         self._http_client = http_client
+        self._http_pool_manager = http_pool_manager
         self._processor = RequestProcessor(logger=self.logger)
         self._response_cache = response_cache
         self._request_tracer: IRequestTracer | None = request_tracer
+
+    async def _get_http_client(self) -> httpx.AsyncClient:
+        """Get HTTP client, either from pool manager or fallback to existing client.
+
+        Returns:
+            HTTP client instance
+
+        Raises:
+            ValueError: If no HTTP client is available
+        """
+        # If we have a pool manager, get a fresh client from it
+        if self._http_pool_manager is not None:
+            return await self._http_pool_manager.get_client()
+
+        # Fall back to existing client
+        if self._http_client is not None:
+            return self._http_client
+
+        raise ValueError("No HTTP client available")
 
     async def handle_request(
         self,
@@ -75,6 +101,9 @@ class PluginHTTPHandler(BaseHTTPHandler):
 
         if is_streaming and streaming_handler:
             # Delegate to streaming handler
+            # Get HTTP client from pool manager for hook-enabled client
+            http_client = await self._get_http_client()
+
             response: DeferredStreaming = await streaming_handler.handle_streaming_request(
                 method=method,
                 url=url,
@@ -82,7 +111,7 @@ class PluginHTTPHandler(BaseHTTPHandler):
                 body=body,
                 handler_config=handler_config,
                 request_context=request_context or {},
-                client=self._http_client,  # use container-managed client so logging transport applies
+                client=http_client,  # use container-managed client so logging transport applies
             )
             return response
 
@@ -239,10 +268,8 @@ class PluginHTTPHandler(BaseHTTPHandler):
         Raises:
             RuntimeError: If no HTTP client is available
         """
-        if not self._http_client:
-            raise RuntimeError(
-                "No HTTP client available - must provide http_client in constructor"
-            )
+        # Get HTTP client from pool manager for hook-enabled client
+        http_client = await self._get_http_client()
 
         # Pass request ID via extensions for internal tracking (not sent upstream)
         extensions = {}
@@ -261,8 +288,8 @@ class PluginHTTPHandler(BaseHTTPHandler):
                 body=body,
             )
 
-        # Use provided HTTP client (managed by the container/pool)
-        response = await self._http_client.request(
+        # Use HTTP client from pool manager for hook-enabled requests
+        response = await http_client.request(
             method=method,
             url=url,
             headers=headers,

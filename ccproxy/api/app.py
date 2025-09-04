@@ -99,7 +99,7 @@ async def initialize_plugins_startup(app: FastAPI, settings: Settings) -> None:
     class CoreServicesAdapter:
         def __init__(self, container: ServiceContainer):
             self.settings = container.settings
-            self.http_client = container.get_http_client()
+            self.http_pool_manager = container.get_pool_manager()
             self.logger = get_logger()
             self.cli_detection_service = container.get_cli_detection_service()
             self.scheduler = getattr(app.state, "scheduler", None)
@@ -395,6 +395,7 @@ def create_app(service_container: ServiceContainer | None = None) -> FastAPI:
             def __init__(self, settings: Settings | None) -> None:
                 self.settings = settings
                 self.http_client = None
+                self.http_pool_manager = None
                 self.logger = structlog.get_logger()
 
             def get_plugin_config(self, plugin_name: str) -> dict[str, BaseSettings]:

@@ -29,7 +29,9 @@ class HTTPPoolManager:
     - Configuration is consistent across all clients
     """
 
-    def __init__(self, settings: Settings | None = None, hook_manager: Any | None = None) -> None:
+    def __init__(
+        self, settings: Settings | None = None, hook_manager: Any | None = None
+    ) -> None:
         """Initialize the HTTP pool manager.
 
         Args:

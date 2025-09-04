@@ -33,6 +33,7 @@ if TYPE_CHECKING:
     from ccproxy.core.plugins.declaration import PluginContext
     from ccproxy.core.request_context import RequestContext
     from ccproxy.services.handler_config import PluginTransformerProtocol
+    from ccproxy.services.http_pool import HTTPPoolManager
 
 
 logger = get_plugin_logger()
@@ -63,6 +64,7 @@ class BaseHTTPAdapter(BaseAdapter):
         response_transformer: "PluginTransformerProtocol | None" = None,
         hook_manager: "HookManager | None" = None,
         buffer_service: "StreamingBufferService | None" = None,
+        http_pool_manager: "HTTPPoolManager | None" = None,
         # Context for plugin-specific services
         context: "PluginContext | None" = None,
     ) -> None:
@@ -79,6 +81,7 @@ class BaseHTTPAdapter(BaseAdapter):
             response_transformer: Optional response transformer
             hook_manager: Optional hook manager for event emission
             buffer_service: Optional streaming buffer service for stream-to-buffer conversion
+            http_pool_manager: Optional HTTP pool manager for getting clients on demand
             context: Optional plugin context containing plugin_registry and other services
         """
         # Store required dependencies
@@ -86,6 +89,7 @@ class BaseHTTPAdapter(BaseAdapter):
         self._auth_manager = auth_manager
         self._detection_service = detection_service
         self._hook_manager = hook_manager
+        self._http_pool_manager = http_pool_manager
 
         # Use null object pattern for optional dependencies
         self.request_tracer = request_tracer or NullRequestTracer()
@@ -104,12 +108,27 @@ class BaseHTTPAdapter(BaseAdapter):
 
         # Initialize HTTP handler with explicit dependencies
         self._http_handler: PluginHTTPHandler = PluginHTTPHandler(
-            http_client=http_client, request_tracer=self.request_tracer
+            http_client=http_client,
+            request_tracer=self.request_tracer,
+            http_pool_manager=http_pool_manager,
         )
 
     def _get_hook_manager(self) -> "HookManager | None":
         """Get the injected hook manager."""
         return self._hook_manager
+
+    async def _get_http_client(self) -> "httpx.AsyncClient":
+        """Get HTTP client, either existing or from pool manager.
+
+        Returns:
+            HTTP client instance
+        """
+        # If we have a pool manager, get a fresh client from it
+        if self._http_pool_manager is not None:
+            return await self._http_pool_manager.get_client()
+
+        # Fall back to existing client
+        return self.http_client
 
     def _get_pricing_service(self) -> Any:
         """Get pricing service from plugin registry if available.
@@ -428,10 +447,14 @@ class BaseHTTPAdapter(BaseAdapter):
 
         # Lazy initialization - create buffer service with current dependencies
         try:
+            # Get HTTP client from pool manager if available for hook-enabled client
+            http_client = await self._get_http_client()
+
             self._buffer_service = StreamingBufferService(
-                http_client=self.http_client,
+                http_client=http_client,
                 request_tracer=self.request_tracer,
                 hook_manager=self._hook_manager,
+                http_pool_manager=self._http_pool_manager,
             )
             logger.debug("buffer_service_created_lazily")
             return self._buffer_service
@@ -600,6 +623,10 @@ class BaseHTTPAdapter(BaseAdapter):
                     # Add response status for non-streaming responses
                     if hasattr(response, "status_code"):
                         response_data["status_code"] = response.status_code
+
+                    # Add response headers
+                    if hasattr(response, "headers"):
+                        response_data["headers"] = dict(response.headers)
 
                     # Add response body for debugging (only for non-streaming responses)
                     if not is_streaming and hasattr(response, "text"):

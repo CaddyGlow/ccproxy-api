@@ -6,7 +6,7 @@ used by Codex/ChatGPT backend.
 
 from __future__ import annotations
 
-from typing import Any, Literal, Union
+from typing import Any, Literal
 
 from pydantic import BaseModel
 

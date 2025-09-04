@@ -27,6 +27,8 @@ from .runtime import ProviderPluginRuntime
 if TYPE_CHECKING:
     import httpx
 
+    from ccproxy.services.http_pool import HTTPPoolManager
+
 
 class BaseProviderPluginFactory(ProviderPluginFactory):
     """Base factory for provider plugins that eliminates common boilerplate.
@@ -136,7 +138,7 @@ class BaseProviderPluginFactory(ProviderPluginFactory):
         """Create runtime instance using the configured runtime class."""
         return cast(ProviderPluginRuntime, self.runtime_class(self.manifest))
 
-    def create_adapter(self, context: PluginContext) -> BaseAdapter:
+    async def create_adapter(self, context: PluginContext) -> BaseAdapter:
         """Create adapter instance with explicit dependencies.
 
         This method extracts services from context and creates the adapter
@@ -150,7 +152,7 @@ class BaseProviderPluginFactory(ProviderPluginFactory):
             Adapter instance
         """
         # Extract services from context (one-time extraction)
-        http_client: httpx.AsyncClient | None = context.get("http_client")
+        http_pool_manager: HTTPPoolManager | None = cast("HTTPPoolManager | None", context.get("http_pool_manager"))
         request_tracer: IRequestTracer | None = context.get("request_tracer")
         metrics: IMetricsCollector | None = context.get("metrics")
         streaming_handler: IStreamingHandler | None = context.get("streaming_handler")
@@ -165,11 +167,14 @@ class BaseProviderPluginFactory(ProviderPluginFactory):
 
         # Check if this is an HTTP-based adapter
         if issubclass(self.adapter_class, BaseHTTPAdapter):
-            # HTTP adapters require http_client
-            if not http_client:
+            # HTTP adapters require http_pool_manager
+            if not http_pool_manager:
                 raise RuntimeError(
-                    f"HTTP client required for {self.adapter_class.__name__} but not available in context"
+                    f"HTTP pool manager required for {self.adapter_class.__name__} but not available in context"
                 )
+
+            # Get HTTP client from pool manager
+            http_client = await http_pool_manager.get_client()
 
             # Create HTTP adapter with explicit dependencies
             return cast(
@@ -182,6 +187,7 @@ class BaseProviderPluginFactory(ProviderPluginFactory):
                     metrics=metrics or NullMetricsCollector(),
                     streaming_handler=streaming_handler or NullStreamingHandler(),
                     hook_manager=hook_manager,
+                    http_pool_manager=http_pool_manager,
                     context=context,
                 ),
             )
@@ -196,10 +202,16 @@ class BaseProviderPluginFactory(ProviderPluginFactory):
             sig = inspect.signature(self.adapter_class.__init__)
             params = sig.parameters
 
+            # For non-HTTP adapters, create http_client from pool manager if needed
+            client_for_non_http: httpx.AsyncClient | None = None
+            if http_pool_manager and "http_client" in params:
+                client_for_non_http = await http_pool_manager.get_client()
+
             # Map available services to expected parameters
             param_mapping = {
                 "config": config,
-                "http_client": http_client,
+                "http_client": client_for_non_http,
+                "http_pool_manager": http_pool_manager,
                 "auth_manager": auth_manager,
                 "detection_service": detection_service,
                 "session_manager": context.get("session_manager"),

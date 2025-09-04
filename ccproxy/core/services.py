@@ -3,7 +3,6 @@
 from typing import TYPE_CHECKING, Any, cast
 
 import structlog
-from httpx import AsyncClient
 
 from ccproxy.config.settings import Settings
 
@@ -11,6 +10,7 @@ from ccproxy.config.settings import Settings
 if TYPE_CHECKING:
     from ccproxy.core.plugins.factory import PluginRegistry
     from ccproxy.scheduler.core import Scheduler
+    from ccproxy.services.http_pool import HTTPPoolManager
 
 
 class CoreServices:
@@ -18,7 +18,7 @@ class CoreServices:
 
     def __init__(
         self,
-        http_client: AsyncClient,
+        http_pool_manager: "HTTPPoolManager",
         logger: structlog.BoundLogger,
         settings: Settings,
         scheduler: "Scheduler | None" = None,
@@ -27,13 +27,13 @@ class CoreServices:
         """Initialize core services.
 
         Args:
-            http_client: Shared HTTP client for plugins
+            http_pool_manager: HTTP pool manager for plugins to get clients
             logger: Shared logger instance
             settings: Application settings
             scheduler: Optional scheduler for plugin tasks
             plugin_registry: Optional plugin registry for config introspection
         """
-        self.http_client = http_client
+        self.http_pool_manager = http_pool_manager
         self.logger = logger
         self.settings = settings
         self.scheduler = scheduler

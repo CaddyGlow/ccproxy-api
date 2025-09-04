@@ -146,7 +146,7 @@ class ClaudeSDKFactory(BaseProviderPluginFactory):
         )
     ]
 
-    def create_adapter(self, context: PluginContext) -> ClaudeSDKAdapter:
+    async def create_adapter(self, context: PluginContext) -> ClaudeSDKAdapter:
         """Create the Claude SDK adapter.
 
         This method overrides the base implementation because Claude SDK

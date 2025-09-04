@@ -10,8 +10,6 @@ import uvicorn
 from click import get_current_context
 from structlog import get_logger
 
-from ccproxy.api.app import create_app
-from ccproxy.api.bootstrap import create_service_container
 from ccproxy.cli.helpers import (
     get_rich_toolkit,
     is_running_in_docker,

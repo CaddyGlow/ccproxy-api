@@ -116,6 +116,12 @@ class ConcreteServiceFactory:
         """Create HTTP pool manager instance."""
         settings = self._container.get_service(Settings)
         hook_manager = self._container.get_service(HookManager)
+        logger.debug(
+            "http_pool_manager_created",
+            has_hook_manager=hook_manager is not None,
+            hook_manager_type=type(hook_manager).__name__ if hook_manager else "None",
+            category="lifecycle",
+        )
         return HTTPPoolManager(settings, hook_manager)
 
     def create_response_cache(self) -> ResponseCache:
