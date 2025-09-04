@@ -13,8 +13,8 @@ import structlog
 from packaging import version as pkg_version
 from pydantic import BaseModel
 
-from ccproxy.core._version import __version__
 from ccproxy.config.discovery import get_ccproxy_config_dir
+from ccproxy.core._version import __version__
 
 
 logger = structlog.get_logger(__name__)

@@ -140,9 +140,11 @@ class RequestProcessor:
             "parse_request_body_input",
             has_body=body is not None,
             body_length=len(body) if body else 0,
-            body_preview=body.decode("utf-8", errors="replace")[:200] if body else "empty",
+            body_preview=body.decode("utf-8", errors="replace")[:200]
+            if body
+            else "empty",
         )
-        
+
         if not body:
             return {}, False
 
@@ -162,13 +164,15 @@ class RequestProcessor:
             self.logger.warning(
                 "parse_request_body_failed",
                 error=str(e),
-                body_preview=body.decode("utf-8", errors="replace")[:100] if body else "empty",
+                body_preview=body.decode("utf-8", errors="replace")[:100]
+                if body
+                else "empty",
             )
             # Instead of silently returning empty data, raise a proper HTTP error
             from fastapi import HTTPException
+
             raise HTTPException(
-                status_code=400,
-                detail=f"Invalid JSON in request body: {str(e)}"
+                status_code=400, detail=f"Invalid JSON in request body: {str(e)}"
             )
 
     async def _apply_request_adapter(

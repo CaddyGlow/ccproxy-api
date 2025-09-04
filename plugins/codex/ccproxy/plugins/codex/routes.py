@@ -33,7 +33,7 @@ def codex_path_transformer(path: str) -> str:
     # Map OpenAI-style completions to Codex responses
     if path == "/completions" or path == "/v1/completions":
         return "/responses"
-        
+
     # Map Anthropic-style messages to Codex responses
     if path == "/v1/messages" or path == "/messages":
         return "/responses"

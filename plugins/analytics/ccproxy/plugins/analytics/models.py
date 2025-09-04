@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing_extensions import TypedDict
 
 from pydantic import ConfigDict
 from sqlmodel import Field, SQLModel
+from typing_extensions import TypedDict
 
 
 class AccessLog(SQLModel, table=True):

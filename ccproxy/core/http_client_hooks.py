@@ -72,12 +72,13 @@ class HookableHTTPClient(httpx.AsyncClient):
                 try:
                     # Try to parse as JSON if it's a string/bytes that looks like JSON
                     import json as json_module
+
                     if isinstance(content, bytes):
-                        content_str = content.decode('utf-8')
+                        content_str = content.decode("utf-8")
                     else:
                         content_str = content
-                    
-                    if content_str.strip().startswith(('{', '[')):
+
+                    if content_str.strip().startswith(("{", "[")):
                         request_context["body"] = json_module.loads(content_str)
                         request_context["is_json"] = True
                     else:

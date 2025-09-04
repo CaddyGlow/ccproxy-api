@@ -22,6 +22,7 @@ from ccproxy.services.interfaces import (
     NullRequestTracer,
     NullStreamingHandler,
 )
+from ccproxy.services.streaming.buffer_service import StreamingBufferService
 from ccproxy.streaming.deferred_streaming import DeferredStreaming
 
 
@@ -61,6 +62,7 @@ class BaseHTTPAdapter(BaseAdapter):
         request_transformer: "PluginTransformerProtocol | None" = None,
         response_transformer: "PluginTransformerProtocol | None" = None,
         hook_manager: "HookManager | None" = None,
+        buffer_service: "StreamingBufferService | None" = None,
         # Context for plugin-specific services
         context: "PluginContext | None" = None,
     ) -> None:
@@ -76,6 +78,7 @@ class BaseHTTPAdapter(BaseAdapter):
             request_transformer: Optional request transformer
             response_transformer: Optional response transformer
             hook_manager: Optional hook manager for event emission
+            buffer_service: Optional streaming buffer service for stream-to-buffer conversion
             context: Optional plugin context containing plugin_registry and other services
         """
         # Store required dependencies
@@ -88,6 +91,9 @@ class BaseHTTPAdapter(BaseAdapter):
         self.request_tracer = request_tracer or NullRequestTracer()
         self.metrics = metrics or NullMetricsCollector()
         self.streaming_handler = streaming_handler or NullStreamingHandler()
+
+        # Initialize buffer service (will be lazily created if None)
+        self._buffer_service = buffer_service
 
         # Store context for plugin-specific needs
         self.context = context or {}
@@ -224,6 +230,125 @@ class BaseHTTPAdapter(BaseAdapter):
         """
         ...
 
+    @abstractmethod
+    async def _should_buffer_stream(
+        self, request_data: dict[str, Any], is_streaming: bool
+    ) -> bool:
+        """Determine if a non-streaming request should use buffered streaming internally.
+
+        This method allows plugins to override the default behavior and decide
+        when to convert a non-streaming request to a streaming request internally,
+        buffer the entire response, and then return it as a non-streaming response.
+
+        Args:
+            request_data: Parsed request body data
+            is_streaming: Whether the original request is streaming
+
+        Returns:
+            True if buffered streaming should be used, False otherwise
+        """
+        ...
+
+    async def _handle_buffered_streaming(
+        self,
+        method: str,
+        target_url: str,
+        body: bytes,
+        headers: dict[str, str],
+        handler_config: HandlerConfig,
+        endpoint: str,
+        request_context: "RequestContext",
+    ) -> Response:
+        """Handle buffered streaming by converting non-streaming request to stream internally.
+
+        This method orchestrates the conversion of a non-streaming request to a streaming
+        request internally, buffers the entire response, and converts it back to a
+        non-streaming response while maintaining full observability.
+
+        Args:
+            method: HTTP method
+            target_url: Target API URL
+            body: Request body
+            headers: Request headers
+            handler_config: Handler configuration with SSE parser
+            endpoint: Original endpoint for logging
+            request_context: Request context for observability
+
+        Returns:
+            Non-streaming Response with buffered content
+
+        Raises:
+            HTTPException: If buffer service is not available or streaming fails
+        """
+        # Ensure buffer service is available (lazy initialization if needed)
+        buffer_service = await self._get_buffer_service()
+        if not buffer_service:
+            raise HTTPException(
+                status_code=503, detail="Streaming buffer service not available"
+            )
+
+        # Extract provider name for hook events
+        provider_name = self.__class__.__name__.replace("Adapter", "")
+
+        logger.debug(
+            "initiating_buffered_streaming",
+            method=method,
+            url=target_url,
+            endpoint=endpoint,
+            provider=provider_name,
+            request_id=getattr(request_context, "request_id", None),
+        )
+
+        # Delegate to buffer service for stream-to-buffer conversion
+        try:
+            return await buffer_service.handle_buffered_streaming_request(
+                method=method,
+                url=target_url,
+                headers=headers,
+                body=body,
+                handler_config=handler_config,
+                request_context=request_context,
+                provider_name=provider_name,
+            )
+        except Exception as e:
+            logger.error(
+                "buffered_streaming_failed",
+                method=method,
+                url=target_url,
+                endpoint=endpoint,
+                provider=provider_name,
+                error=str(e),
+                request_id=getattr(request_context, "request_id", None),
+                exc_info=e,
+            )
+            raise
+
+    async def _get_buffer_service(self) -> "StreamingBufferService | None":
+        """Get or create the streaming buffer service.
+
+        Returns:
+            StreamingBufferService instance or None if creation fails
+        """
+        if self._buffer_service is not None:
+            return self._buffer_service
+
+        # Lazy initialization - create buffer service with current dependencies
+        try:
+            self._buffer_service = StreamingBufferService(
+                http_client=self.http_client,
+                request_tracer=self.request_tracer,
+                hook_manager=self._hook_manager,
+            )
+            logger.debug("buffer_service_created_lazily")
+            return self._buffer_service
+        except Exception as e:
+            logger.warning(
+                "buffer_service_creation_failed",
+                error=str(e),
+                exc_info=e,
+            )
+            return None
+
     async def _execute_request(
         self,
         method: str,
@@ -285,6 +410,25 @@ class BaseHTTPAdapter(BaseAdapter):
         self._log_request(
             endpoint, request_context, is_streaming, needs_conversion, target_url
         )
+
+        # Check if we should buffer stream for non-streaming requests
+        if not is_streaming and await self._should_buffer_stream(
+            request_data, is_streaming
+        ):
+            logger.debug(
+                "using_buffered_streaming_mode",
+                endpoint=endpoint,
+                request_id=request_context.request_id,
+            )
+            return await self._handle_buffered_streaming(
+                method=method,
+                target_url=target_url,
+                body=transformed_body,
+                headers=headers,
+                handler_config=handler_config,
+                endpoint=endpoint,
+                request_context=request_context,
+            )
 
         # Get streaming handler if needed
         streaming_handler = self.streaming_handler if is_streaming else None
@@ -362,7 +506,7 @@ class BaseHTTPAdapter(BaseAdapter):
                     # Add response status for non-streaming responses
                     if hasattr(response, "status_code"):
                         response_data["status_code"] = response.status_code
-                    
+
                     # Add response body for debugging (only for non-streaming responses)
                     if not is_streaming and hasattr(response, "text"):
                         try:
@@ -372,7 +516,9 @@ class BaseHTTPAdapter(BaseAdapter):
                             # If text fails, try to get content as bytes
                             try:
                                 if hasattr(response, "content"):
-                                    response_data["body"] = response.content.decode('utf-8', errors='ignore')
+                                    response_data["body"] = response.content.decode(
+                                        "utf-8", errors="ignore"
+                                    )
                             except Exception:
                                 response_data["body"] = None
 

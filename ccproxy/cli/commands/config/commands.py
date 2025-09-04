@@ -11,9 +11,9 @@ from click import get_current_context
 from pydantic import BaseModel
 from pydantic.fields import FieldInfo
 
-from ccproxy.core._version import __version__
 from ccproxy.cli.helpers import get_rich_toolkit
 from ccproxy.config.settings import Settings
+from ccproxy.core._version import __version__
 from ccproxy.services.container import ServiceContainer
 
 

@@ -5,6 +5,7 @@ streaming functionality without coupling core code to specific providers.
 """
 
 from typing import Protocol
+
 from typing_extensions import TypedDict
 
 

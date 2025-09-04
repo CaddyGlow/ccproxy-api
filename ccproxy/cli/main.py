@@ -12,10 +12,10 @@ from typing import Annotated
 import typer
 from structlog import get_logger
 
-from ccproxy.core._version import __version__
 from ccproxy.cli.helpers import (
     get_rich_toolkit,
 )
+from ccproxy.core._version import __version__
 from ccproxy.core.logging import bootstrap_cli_logging, set_command_context
 
 # from plugins.permissions.handlers.cli import app as permission_handler_app

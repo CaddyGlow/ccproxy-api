@@ -20,7 +20,9 @@ class TestAnthropicMessagesAdapter:
         return AnthropicMessagesAdapter()
 
     @pytest.mark.asyncio
-    async def test_adapt_request_basic_conversion(self, adapter: AnthropicMessagesAdapter) -> None:
+    async def test_adapt_request_basic_conversion(
+        self, adapter: AnthropicMessagesAdapter
+    ) -> None:
         """Test basic Anthropic Messages to Response API request conversion."""
         anthropic_request = {
             "model": "claude-3-5-sonnet-20241022",
@@ -40,10 +42,12 @@ class TestAnthropicMessagesAdapter:
         assert result["input"][0]["role"] == "user"
 
     @pytest.mark.asyncio
-    async def test_adapt_request_with_tools(self, adapter: AnthropicMessagesAdapter) -> None:
+    async def test_adapt_request_with_tools(
+        self, adapter: AnthropicMessagesAdapter
+    ) -> None:
         """Test request conversion with tools/functions."""
         anthropic_request = {
-            "model": "claude-3-5-sonnet-20241022", 
+            "model": "claude-3-5-sonnet-20241022",
             "messages": [{"role": "user", "content": "Get weather"}],
             "max_tokens": 100,
             "tools": [
@@ -69,7 +73,9 @@ class TestAnthropicMessagesAdapter:
             assert result["tools"][0]["name"] == "get_weather"
 
     @pytest.mark.asyncio
-    async def test_adapt_request_passthrough(self, adapter: AnthropicMessagesAdapter) -> None:
+    async def test_adapt_request_passthrough(
+        self, adapter: AnthropicMessagesAdapter
+    ) -> None:
         """Test request passthrough for native Response API format."""
         response_api_request = {
             "instructions": "You are a helpful assistant",
@@ -83,14 +89,19 @@ class TestAnthropicMessagesAdapter:
         assert result == response_api_request
 
     @pytest.mark.asyncio
-    async def test_adapt_response_basic_conversion(self, adapter: AnthropicMessagesAdapter) -> None:
+    async def test_adapt_response_basic_conversion(
+        self, adapter: AnthropicMessagesAdapter
+    ) -> None:
         """Test basic Response API to Anthropic Messages response conversion."""
         # Mock the ResponseAdapter
         mock_chat_response = MagicMock()
         mock_chat_response.model_dump.return_value = {
             "choices": [
                 {
-                    "message": {"content": "Hello! How can I help you today?", "role": "assistant"},
+                    "message": {
+                        "content": "Hello! How can I help you today?",
+                        "role": "assistant",
+                    },
                     "finish_reason": "stop",
                 }
             ],
@@ -98,13 +109,17 @@ class TestAnthropicMessagesAdapter:
             "model": "gpt-5",
             "id": "test-id",
         }
-        adapter._response_adapter.response_to_chat_completion = MagicMock(return_value=mock_chat_response)
+        adapter._response_adapter.response_to_chat_completion = MagicMock(
+            return_value=mock_chat_response
+        )
 
         response_api_response = {
             "output": [
                 {
                     "type": "message",
-                    "content": [{"type": "text", "text": "Hello! How can I help you today?"}],
+                    "content": [
+                        {"type": "text", "text": "Hello! How can I help you today?"}
+                    ],
                 }
             ]
         }
@@ -120,7 +135,9 @@ class TestAnthropicMessagesAdapter:
         assert result["stop_reason"] == "end_turn"
 
     @pytest.mark.asyncio
-    async def test_adapt_response_with_tools(self, adapter: AnthropicMessagesAdapter) -> None:
+    async def test_adapt_response_with_tools(
+        self, adapter: AnthropicMessagesAdapter
+    ) -> None:
         """Test response conversion with tool calls."""
         # Mock the ResponseAdapter
         mock_chat_response = MagicMock()
@@ -129,7 +146,7 @@ class TestAnthropicMessagesAdapter:
                 {
                     "message": {
                         "content": None,
-                        "role": "assistant", 
+                        "role": "assistant",
                         "tool_calls": [
                             {
                                 "id": "call_123",
@@ -145,7 +162,9 @@ class TestAnthropicMessagesAdapter:
             ],
             "usage": {"prompt_tokens": 10, "completion_tokens": 20},
         }
-        adapter._response_adapter.response_to_chat_completion = MagicMock(return_value=mock_chat_response)
+        adapter._response_adapter.response_to_chat_completion = MagicMock(
+            return_value=mock_chat_response
+        )
 
         response_api_response = {
             "output": [
@@ -175,7 +194,9 @@ class TestAnthropicMessagesAdapter:
         assert result["stop_reason"] == "tool_use"
 
     @pytest.mark.asyncio
-    async def test_adapt_response_passthrough(self, adapter: AnthropicMessagesAdapter) -> None:
+    async def test_adapt_response_passthrough(
+        self, adapter: AnthropicMessagesAdapter
+    ) -> None:
         """Test response passthrough for non-Response API format."""
         anthropic_response = {
             "content": [{"type": "text", "text": "Direct response"}],
@@ -188,7 +209,9 @@ class TestAnthropicMessagesAdapter:
         assert result == anthropic_response
 
     @pytest.mark.asyncio
-    async def test_convert_to_anthropic_format_with_mixed_content(self, adapter: AnthropicMessagesAdapter) -> None:
+    async def test_convert_to_anthropic_format_with_mixed_content(
+        self, adapter: AnthropicMessagesAdapter
+    ) -> None:
         """Test conversion to Anthropic format with both text and tool calls."""
         openai_response = {
             "choices": [
@@ -198,7 +221,7 @@ class TestAnthropicMessagesAdapter:
                         "role": "assistant",
                         "tool_calls": [
                             {
-                                "id": "call_456", 
+                                "id": "call_456",
                                 "function": {
                                     "name": "search_docs",
                                     "arguments": '{"query": "API documentation"}',
@@ -237,7 +260,9 @@ class TestAnthropicMessagesAdapter:
         anthropic_response = {"content": [{"type": "text"}], "stop_reason": "end_turn"}
         assert adapter._is_response_api_format(anthropic_response) is False
 
-    def test_has_tool_calls_in_response(self, adapter: AnthropicMessagesAdapter) -> None:
+    def test_has_tool_calls_in_response(
+        self, adapter: AnthropicMessagesAdapter
+    ) -> None:
         """Test tool calls detection in responses."""
         # Response with tool calls
         response_with_tools = {
@@ -254,7 +279,7 @@ class TestAnthropicMessagesAdapter:
         response_without_tools = {
             "output": [
                 {
-                    "type": "message", 
+                    "type": "message",
                     "content": [{"type": "text", "text": "Hello"}],
                 }
             ]
@@ -275,8 +300,11 @@ class TestAnthropicMessagesAdapter:
         assert adapter._has_tool_calls_in_response(wrapped_response) is True
 
     @pytest.mark.asyncio
-    async def test_streaming_conversion(self, adapter: AnthropicMessagesAdapter) -> None:
+    async def test_streaming_conversion(
+        self, adapter: AnthropicMessagesAdapter
+    ) -> None:
         """Test streaming format conversion."""
+
         # Mock the OpenAI streaming response
         async def mock_openai_stream():
             yield {"choices": [{"delta": {"role": "assistant"}}]}
@@ -285,13 +313,18 @@ class TestAnthropicMessagesAdapter:
             yield {"choices": [{"finish_reason": "stop"}]}
 
         mock_stream = mock_openai_stream()
-        adapter._response_adapter.stream_response_to_chat = MagicMock(return_value=mock_stream)
+        adapter._response_adapter.stream_response_to_chat = MagicMock(
+            return_value=mock_stream
+        )
 
         # Create a mock stream
         async def mock_response_stream():
             yield {"type": "response.output_text.delta", "delta": "Hello"}
             yield {"type": "response.output_text.delta", "delta": " world"}
-            yield {"type": "response.completed", "response": {"usage": {"input_tokens": 5, "output_tokens": 2}}}
+            yield {
+                "type": "response.completed",
+                "response": {"usage": {"input_tokens": 5, "output_tokens": 2}},
+            }
 
         stream_result = []
         anthropic_stream = adapter.adapt_stream(mock_response_stream())
@@ -303,11 +336,15 @@ class TestAnthropicMessagesAdapter:
         # First chunk should be message_start
         assert any(chunk.get("type") == "message_start" for chunk in stream_result)
         # Should have content_block_delta chunks
-        assert any(chunk.get("type") == "content_block_delta" for chunk in stream_result) 
+        assert any(
+            chunk.get("type") == "content_block_delta" for chunk in stream_result
+        )
         # Should end with message_stop
         assert any(chunk.get("type") == "message_stop" for chunk in stream_result)
 
-    def test_convert_to_anthropic_format_invalid_json(self, adapter: AnthropicMessagesAdapter) -> None:
+    def test_convert_to_anthropic_format_invalid_json(
+        self, adapter: AnthropicMessagesAdapter
+    ) -> None:
         """Test handling of invalid JSON in tool arguments."""
         openai_response = {
             "choices": [

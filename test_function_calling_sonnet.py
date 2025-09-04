@@ -5,16 +5,17 @@ Anthropic Messages API and OpenAI Response API formats.
 """
 
 import json
-import pytest
-from unittest.mock import Mock, AsyncMock
 from typing import Any, Dict, List
+from unittest.mock import AsyncMock, Mock
+
+import pytest
 
 from ccproxy.adapters.openai.response_adapter import ResponseAdapter
 from ccproxy.adapters.openai.response_models import (
     ResponseRequest,
     ResponseTool,
-    ResponseToolFunction,
     ResponseToolChoice,
+    ResponseToolFunction,
 )
 
 
@@ -93,10 +94,10 @@ class TestFunctionCallingRequestTransformation:
 
         assert response_request.tools is not None
         assert len(response_request.tools) == 2
-        
+
         weather_tool = response_request.tools[0]
         assert weather_tool.function.name == "get_weather"
-        
+
         email_tool = response_request.tools[1]
         assert email_tool.function.name == "send_email"
         assert len(email_tool.function.parameters["required"]) == 2
@@ -191,7 +192,9 @@ class TestFunctionCallingRequestTransformation:
         chat_request = {
             "model": "gpt-4",
             "messages": [{"role": "user", "content": "Test"}],
-            "tools": [{"type": "function", "function": {"name": "test", "parameters": {}}}],
+            "tools": [
+                {"type": "function", "function": {"name": "test", "parameters": {}}}
+            ],
             "parallel_tool_calls": True,
             "max_tool_calls": 5,
         }
@@ -259,7 +262,10 @@ class TestFunctionCallingResponseTransformation:
         assert tool_call.id == "call_abc123"
         assert tool_call.type == "function"
         assert tool_call.function.name == "get_weather"
-        assert tool_call.function.arguments == '{"location": "San Francisco", "unit": "celsius"}'
+        assert (
+            tool_call.function.arguments
+            == '{"location": "San Francisco", "unit": "celsius"}'
+        )
 
         # Check usage
         assert chat_response.usage.prompt_tokens == 50
@@ -275,7 +281,10 @@ class TestFunctionCallingResponseTransformation:
                 {
                     "type": "message",
                     "content": [
-                        {"type": "output_text", "text": "I'll help you with both tasks."},
+                        {
+                            "type": "output_text",
+                            "text": "I'll help you with both tasks.",
+                        },
                         {
                             "type": "tool_call",
                             "id": "call_1",
@@ -284,7 +293,10 @@ class TestFunctionCallingResponseTransformation:
                         {
                             "type": "tool_call",
                             "id": "call_2",
-                            "function": {"name": "send_email", "arguments": '{"to": "test@example.com"}'},
+                            "function": {
+                                "name": "send_email",
+                                "arguments": '{"to": "test@example.com"}',
+                            },
                         },
                     ],
                 }
@@ -380,10 +392,12 @@ class TestFunctionCallingResponseTransformation:
 
         # Should not raise an exception, should preserve the string
         chat_response = self.adapter.response_to_chat_completion(response_data)
-        
+
         choice = chat_response.choices[0]
         tool_call = choice.message.tool_calls[0]
-        assert tool_call.function.arguments == '{}'  # Should be empty dict due to JSON parse failure
+        assert (
+            tool_call.function.arguments == "{}"
+        )  # Should be empty dict due to JSON parse failure
 
 
 class TestFunctionCallingStreamingTransformation:
@@ -399,16 +413,12 @@ class TestFunctionCallingStreamingTransformation:
         sse_chunks = [
             # Initial response setup
             b'event: response.output.delta\ndata: {"output": [{"type": "message", "content": [{"type": "output_text", "text": "I\'ll help you"}]}]}\n\n',
-            
             # Tool call start
             b'event: response.output.delta\ndata: {"output": [{"type": "message", "content": [{"type": "tool_call", "id": "call_123", "function": {"name": "get_weather"}}]}]}\n\n',
-            
             # Tool call arguments (partial)
             b'event: response.output.delta\ndata: {"output": [{"type": "message", "content": [{"type": "tool_call", "id": "call_123", "function": {"arguments": "{\\"location\\""}}]}]}\n\n',
-            
             # Tool call arguments (continued)
             b'event: response.output.delta\ndata: {"output": [{"type": "message", "content": [{"type": "tool_call", "id": "call_123", "function": {"arguments": ": \\"SF\\"}"}}]}]}\n\n',
-            
             # Completion
             b'event: response.completed\ndata: {"response": {"id": "resp_123", "model": "gpt-5", "usage": {"input_tokens": 20, "output_tokens": 15}}}\n\n',
         ]
@@ -425,23 +435,37 @@ class TestFunctionCallingStreamingTransformation:
 
         # Verify we got the expected chunks
         assert len(chunks) > 0
-        
+
         # Check for role chunk
-        role_chunks = [c for c in chunks if c.get("choices", [{}])[0].get("delta", {}).get("role") == "assistant"]
+        role_chunks = [
+            c
+            for c in chunks
+            if c.get("choices", [{}])[0].get("delta", {}).get("role") == "assistant"
+        ]
         assert len(role_chunks) >= 1
-        
+
         # Check for content chunks
-        content_chunks = [c for c in chunks if "content" in c.get("choices", [{}])[0].get("delta", {})]
+        content_chunks = [
+            c for c in chunks if "content" in c.get("choices", [{}])[0].get("delta", {})
+        ]
         assert len(content_chunks) >= 1
-        
+
         # Check for tool call chunks
-        tool_call_chunks = [c for c in chunks if "tool_calls" in c.get("choices", [{}])[0].get("delta", {})]
+        tool_call_chunks = [
+            c
+            for c in chunks
+            if "tool_calls" in c.get("choices", [{}])[0].get("delta", {})
+        ]
         assert len(tool_call_chunks) >= 1
-        
+
         # Check final completion chunk
-        completion_chunks = [c for c in chunks if c.get("choices", [{}])[0].get("finish_reason") == "tool_calls"]
+        completion_chunks = [
+            c
+            for c in chunks
+            if c.get("choices", [{}])[0].get("finish_reason") == "tool_calls"
+        ]
         assert len(completion_chunks) == 1
-        
+
         # Verify usage information in final chunk
         final_chunk = completion_chunks[0]
         assert "usage" in final_chunk
@@ -466,7 +490,11 @@ class TestFunctionCallingStreamingTransformation:
             chunks.append(chunk)
 
         # Should have content chunks and completion with stop reason
-        completion_chunks = [c for c in chunks if c.get("choices", [{}])[0].get("finish_reason") == "stop"]
+        completion_chunks = [
+            c
+            for c in chunks
+            if c.get("choices", [{}])[0].get("finish_reason") == "stop"
+        ]
         assert len(completion_chunks) == 1
 
 
@@ -506,7 +534,9 @@ class TestToolCallUtilities:
         # Test string choices
         assert self.adapter._convert_tool_choice_to_response_api("auto") == "auto"
         assert self.adapter._convert_tool_choice_to_response_api("none") == "none"
-        assert self.adapter._convert_tool_choice_to_response_api("required") == "required"
+        assert (
+            self.adapter._convert_tool_choice_to_response_api("required") == "required"
+        )
         assert self.adapter._convert_tool_choice_to_response_api(None) == "auto"
 
         # Test function choice
@@ -526,7 +556,10 @@ class TestToolCallUtilities:
                     {
                         "type": "tool_call",
                         "id": "call_extract_test",
-                        "function": {"name": "extract_func", "arguments": '{"param": "value"}'},
+                        "function": {
+                            "name": "extract_func",
+                            "arguments": '{"param": "value"}',
+                        },
                     },
                 ],
             }

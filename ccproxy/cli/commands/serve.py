@@ -10,7 +10,6 @@ import uvicorn
 from click import get_current_context
 from structlog import get_logger
 
-from ccproxy.core._version import __version__
 from ccproxy.api.app import create_app
 from ccproxy.api.bootstrap import create_service_container
 from ccproxy.cli.helpers import (
@@ -22,6 +21,7 @@ from ccproxy.config.settings import (
     ConfigurationError,
     Settings,
 )
+from ccproxy.core._version import __version__
 from ccproxy.docker import (
     create_docker_adapter,
 )

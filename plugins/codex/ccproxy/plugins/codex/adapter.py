@@ -20,6 +20,7 @@ from ccproxy.config.constants import (
 from ccproxy.core.logging import get_plugin_logger
 from ccproxy.services.adapters.http_adapter import BaseHTTPAdapter
 from ccproxy.services.handler_config import HandlerConfig
+from ccproxy.services.streaming.sse_parsers import last_json_data_event
 
 
 if TYPE_CHECKING:
@@ -109,7 +110,7 @@ class CodexAdapter(BaseHTTPAdapter):
         # Initialize format adapters
         self.openai_format_adapter = CodexFormatAdapter()
         self.anthropic_format_adapter = CompositeAnthropicAdapter()
-        
+
         # Store current endpoint for format adapter selection
         self._current_endpoint = ""
 
@@ -127,7 +128,7 @@ class CodexAdapter(BaseHTTPAdapter):
         """
         # Store current endpoint for format adapter selection
         self._current_endpoint = endpoint
-        
+
         # Check if format conversion is needed based on endpoint
         # OpenAI and Anthropic format endpoints need conversion to Codex format
         needs_conversion = (
@@ -150,10 +151,10 @@ class CodexAdapter(BaseHTTPAdapter):
 
     def _select_format_adapter(self, endpoint: str):
         """Select appropriate format adapter based on endpoint.
-        
+
         Args:
             endpoint: The requested endpoint path
-            
+
         Returns:
             Format adapter for the given endpoint type
         """
@@ -161,15 +162,15 @@ class CodexAdapter(BaseHTTPAdapter):
             logger.info(
                 "selected_anthropic_format_adapter",
                 endpoint=endpoint,
-                adapter_type="CompositeAnthropicAdapter"
+                adapter_type="CompositeAnthropicAdapter",
             )
             return self.anthropic_format_adapter
         else:
             # OpenAI endpoints or other formats use the Codex format adapter
             logger.info(
-                "selected_openai_format_adapter", 
+                "selected_openai_format_adapter",
                 endpoint=endpoint,
-                adapter_type="CodexFormatAdapter"
+                adapter_type="CodexFormatAdapter",
             )
             return self.openai_format_adapter
 
@@ -188,14 +189,19 @@ class CodexAdapter(BaseHTTPAdapter):
             HandlerConfig instance
         """
         # Select appropriate format adapter based on current endpoint
-        format_adapter = self._select_format_adapter(self._current_endpoint) if needs_conversion else None
-        
+        format_adapter = (
+            self._select_format_adapter(self._current_endpoint)
+            if needs_conversion
+            else None
+        )
+
         return HandlerConfig(
             request_adapter=format_adapter,
             response_adapter=format_adapter,
             request_transformer=self._request_transformer,
             response_transformer=self._response_transformer,
             supports_streaming=True,
+            sse_parser=last_json_data_event,
         )
 
     async def _update_request_context(
@@ -367,44 +373,9 @@ class CodexAdapter(BaseHTTPAdapter):
     async def handle_streaming(
         self, request: Request, endpoint: str, **kwargs: Any
     ) -> StreamingResponse:
-        """Handle a streaming request to the Codex API.
-
-        Args:
-            request: FastAPI request object
-            endpoint: Target endpoint path
-            **kwargs: Additional arguments
-
-        Returns:
-            Streaming response from Codex API
-        """
-
-        # Ensure stream=true in request body
-        body = await request.body()
-        request_data = {}
-        if body:
-            with contextlib.suppress(json.JSONDecodeError):
-                request_data = json.loads(body)
-
-        # Force streaming
-        request_data["stream"] = True
-        modified_body = json.dumps(request_data).encode()
-
-        # Create modified request with stream=true
-        modified_scope = {
-            **request.scope,
-            "_body": modified_body,
-        }
-
-        from starlette.requests import Request as StarletteRequest
-
-        modified_request = StarletteRequest(
-            scope=modified_scope,
-            receive=request.receive,
-        )
-        modified_request._body = modified_body
-
-        # Delegate to handle_request which will handle streaming
-        result = await self.handle_request(modified_request, endpoint, "POST", **kwargs)
+        """Handle a streaming request to the Codex API."""
+        # Delegate to the base handler - buffer service will handle non-streaming conversion
+        result = await self.handle_request(request, endpoint, "POST", **kwargs)
 
         # Ensure we return a streaming response
         if not isinstance(result, StreamingResponse):
@@ -414,6 +385,23 @@ class CodexAdapter(BaseHTTPAdapter):
             )
 
         return result
+
+    async def _should_buffer_stream(
+        self, request_data: dict[str, Any], is_streaming: bool
+    ) -> bool:
+        """Determine if non-streaming request should be converted to buffered streaming.
+
+        For Codex, we want to buffer stream for non-streaming requests since
+        Codex backend often provides more complete results via streaming.
+
+        Args:
+            request_data: Parsed request body data
+            is_streaming: Whether the client requested streaming
+
+        Returns:
+            True if should convert to buffered streaming, False otherwise
+        """
+        return not is_streaming  # Buffer non-streaming requests
 
     async def cleanup(self) -> None:
         """Cleanup resources when shutting down."""

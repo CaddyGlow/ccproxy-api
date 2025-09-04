@@ -9,12 +9,12 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import IntEnum
 from typing import TYPE_CHECKING, Any, Protocol
-from typing_extensions import TypedDict
 
 import httpx
 import structlog
 from fastapi import APIRouter
 from pydantic import BaseModel
+from typing_extensions import TypedDict
 
 
 if TYPE_CHECKING:

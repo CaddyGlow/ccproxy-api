@@ -16,14 +16,14 @@ from pydantic import BaseModel
 
 class ResponseFunction(BaseModel):
     """Function definition in tool call."""
-    
+
     name: str
     arguments: str  # JSON string
 
 
 class ResponseToolCall(BaseModel):
     """Tool call in Response API format."""
-    
+
     type: Literal["tool_call"]
     id: str
     function: ResponseFunction
@@ -50,7 +50,7 @@ class ResponseMessage(BaseModel):
 
 class ResponseToolFunction(BaseModel):
     """Function definition in tool for requests."""
-    
+
     name: str
     description: str | None = None
     parameters: dict[str, Any]
@@ -58,14 +58,14 @@ class ResponseToolFunction(BaseModel):
 
 class ResponseTool(BaseModel):
     """Tool definition for Response API."""
-    
+
     type: Literal["function"]
     function: ResponseToolFunction
 
 
 class ResponseToolChoice(BaseModel):
     """Tool choice object format for Response API."""
-    
+
     type: Literal["function"]
     function: dict[str, str]  # {"name": "function_name"}
 
@@ -84,7 +84,7 @@ class ResponseRequest(BaseModel):
     instructions: str | None = None
     input: list[ResponseMessage]
     stream: bool = True
-    tool_choice: Union[Literal["auto", "none", "required"], ResponseToolChoice, str] = "auto"
+    tool_choice: Literal["auto", "none", "required"] | ResponseToolChoice | str = "auto"
     tools: list[ResponseTool] | None = None
     parallel_tool_calls: bool = False
     max_tool_calls: int | None = None
@@ -218,7 +218,7 @@ class StreamingEvent(BaseModel):
             "response.failed",
             # Function calling specific events
             "response.tool_call.started",
-            "response.tool_call.delta", 
+            "response.tool_call.delta",
             "response.tool_call.completed",
         ]
         | None
@@ -231,14 +231,14 @@ class StreamingEvent(BaseModel):
 
 class FunctionCallDelta(BaseModel):
     """Delta for streaming function call arguments."""
-    
+
     name: str | None = None
     arguments: str | None = None  # Partial JSON string
 
 
 class ToolCallState(BaseModel):
     """State tracking for streaming tool calls."""
-    
+
     id: str
     name: str
     accumulated_arguments: str = ""

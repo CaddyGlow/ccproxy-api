@@ -4,9 +4,9 @@ from collections.abc import AsyncGenerator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from typing import Any
 
-from pydantic_settings import BaseSettings
 import structlog
 from fastapi import FastAPI
+from pydantic_settings import BaseSettings
 from typing_extensions import TypedDict
 
 from ccproxy.api.bootstrap import create_service_container

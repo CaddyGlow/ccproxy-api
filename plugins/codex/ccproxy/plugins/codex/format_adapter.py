@@ -44,11 +44,11 @@ class CodexFormatAdapter(APIAdapter):
             request_data_size=len(str(request_data)) if request_data else 0,
             request_data_preview=str(request_data)[:200] if request_data else "empty",
         )
-        
+
         if "messages" in request_data:
             # Detect format type for logging
             format_type = self._detect_request_format(request_data)
-            
+
             # Use ResponseAdapter to convert Messages → Response API
             # This works for both OpenAI Chat Completions and Anthropic Messages
             has_tools = bool(request_data.get("tools"))
@@ -85,7 +85,7 @@ class CodexFormatAdapter(APIAdapter):
 
     async def adapt_response(self, response_data: dict[str, Any]) -> dict[str, Any]:
         """Convert Response API response to Messages format.
-        
+
         Converts to OpenAI Chat Completions format, which is compatible
         with Anthropic Messages format for most use cases.
 
@@ -107,7 +107,7 @@ class CodexFormatAdapter(APIAdapter):
                 response_data
             )
             converted_response = chat_response.model_dump()
-            
+
             # Log conversion details
             choices = converted_response.get("choices", [])
             if choices:
@@ -120,7 +120,7 @@ class CodexFormatAdapter(APIAdapter):
                     tool_calls_count=len(tool_calls),
                     content_length=len(message.get("content", "") or ""),
                 )
-            
+
             return converted_response
 
         return response_data
@@ -298,7 +298,7 @@ class CodexFormatAdapter(APIAdapter):
         """Check if response is in Response API format (used by Codex)."""
         # Response API responses have 'output' field or are wrapped in 'response'
         return "output" in response_data or "response" in response_data
-    
+
     def _has_tool_calls_in_response(self, response_data: dict[str, Any]) -> bool:
         """Check if response contains tool calls."""
         # Check direct response format
@@ -310,30 +310,30 @@ class CodexFormatAdapter(APIAdapter):
                     for block in content:
                         if block.get("type") == "tool_call":
                             return True
-        
+
         # Check wrapped response format
         response = response_data.get("response", {})
         if response:
             return self._has_tool_calls_in_response(response)
-            
+
         return False
-    
+
     def _detect_request_format(self, request_data: dict[str, Any]) -> str:
         """Detect whether request is OpenAI Chat Completions or Anthropic Messages format.
-        
+
         Args:
             request_data: The request data
-            
+
         Returns:
             Format type: 'openai_chat' or 'anthropic_messages'
         """
         # Check for Anthropic-specific fields
         if "max_tokens" in request_data:
             return "anthropic_messages"
-        
+
         # Check for OpenAI-specific fields
         if "max_completion_tokens" in request_data or "max_tokens" not in request_data:
             return "openai_chat"
-            
+
         # Default to openai_chat if unclear
         return "openai_chat"

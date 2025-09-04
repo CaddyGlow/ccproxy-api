@@ -34,7 +34,6 @@ from ccproxy.adapters.openai.response_models import (
     ResponseToolChoice,
     ResponseToolFunction,
 )
-from collections.abc import AsyncIterator
 
 
 logger = structlog.get_logger(__name__)

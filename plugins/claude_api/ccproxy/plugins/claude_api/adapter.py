@@ -474,6 +474,25 @@ class ClaudeAPIAdapter(BaseHTTPAdapter):
 
         return modified_request
 
+    async def _should_buffer_stream(
+        self, request_data: dict[str, Any], is_streaming: bool
+    ) -> bool:
+        """Determine if a non-streaming request should use buffered streaming internally.
+
+        For Claude API adapter, we typically don't need buffered streaming since the
+        Claude API already handles non-streaming requests appropriately. This can be
+        overridden by subclasses or configured via plugin settings if needed.
+
+        Args:
+            request_data: Parsed request body data
+            is_streaming: Whether the original request is streaming
+
+        Returns:
+            False (Claude API doesn't use buffered streaming by default)
+        """
+        # Claude API doesn't typically need buffered streaming
+        return False
+
     async def cleanup(self) -> None:
         """Cleanup resources when shutting down."""
         try:

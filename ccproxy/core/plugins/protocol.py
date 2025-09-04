@@ -1,10 +1,10 @@
 """Plugin protocol for provider plugins."""
 
 from typing import TYPE_CHECKING, Any, Literal, Protocol, runtime_checkable
-from typing_extensions import TypedDict
 
 from fastapi import APIRouter
 from pydantic import BaseModel
+from typing_extensions import TypedDict
 
 from ccproxy.core.services import CoreServices
 from ccproxy.hooks.base import Hook
