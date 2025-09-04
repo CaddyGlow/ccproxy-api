@@ -100,7 +100,10 @@ class ConcreteServiceFactory:
     def create_http_client(self) -> httpx.AsyncClient:
         """Create HTTP client instance."""
         settings = self._container.get_service(Settings)
-        client = HTTPClientFactory.create_client(settings=settings)
+        hook_manager = self._container.get_service(HookManager)
+        client = HTTPClientFactory.create_client(
+            settings=settings, hook_manager=hook_manager
+        )
         logger.debug("http_client_created", category="lifecycle")
         return client
 
@@ -112,7 +115,8 @@ class ConcreteServiceFactory:
     def create_http_pool_manager(self) -> HTTPPoolManager:
         """Create HTTP pool manager instance."""
         settings = self._container.get_service(Settings)
-        return HTTPPoolManager(settings)
+        hook_manager = self._container.get_service(HookManager)
+        return HTTPPoolManager(settings, hook_manager)
 
     def create_response_cache(self) -> ResponseCache:
         """Create response cache instance."""

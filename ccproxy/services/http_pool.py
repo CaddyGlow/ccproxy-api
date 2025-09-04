@@ -29,13 +29,15 @@ class HTTPPoolManager:
     - Configuration is consistent across all clients
     """
 
-    def __init__(self, settings: Settings | None = None) -> None:
+    def __init__(self, settings: Settings | None = None, hook_manager: Any | None = None) -> None:
         """Initialize the HTTP pool manager.
 
         Args:
             settings: Optional application settings for configuration
+            hook_manager: Optional hook manager for request/response tracing
         """
         self.settings = settings
+        self.hook_manager = hook_manager
         self._pools: dict[str, httpx.AsyncClient] = {}
         self._shared_client: httpx.AsyncClient | None = None
         self._lock = asyncio.Lock()
@@ -103,6 +105,7 @@ class HTTPPoolManager:
             # Create the client using the factory with HTTP/2 enabled for better multiplexing
             client = HTTPClientFactory.create_client(
                 settings=self.settings,
+                hook_manager=self.hook_manager,
                 http2=True,  # Enable HTTP/2 for connection multiplexing
                 **client_config,
             )
@@ -126,6 +129,7 @@ class HTTPPoolManager:
                 logger.info("default_client_created")
                 self._shared_client = HTTPClientFactory.create_client(
                     settings=self.settings,
+                    hook_manager=self.hook_manager,
                     http2=True,  # Enable HTTP/2 for default client
                 )
             return self._shared_client
@@ -144,6 +148,7 @@ class HTTPPoolManager:
             logger.debug("default_client_created_sync")
             self._shared_client = HTTPClientFactory.create_client(
                 settings=self.settings,
+                hook_manager=self.hook_manager,
                 http2=False,  # Disable HTTP/2 to ensure logging transport works
             )
         return self._shared_client
