@@ -305,6 +305,7 @@ class BaseHTTPAdapter(BaseAdapter):
                         "is_streaming": is_streaming,
                         "endpoint": endpoint,
                         "model": request_data.get("model", "unknown"),
+                        "body": request_data,  # Include full request body for debugging
                     },
                     metadata={
                         "request_id": request_context.request_id,
@@ -361,6 +362,19 @@ class BaseHTTPAdapter(BaseAdapter):
                     # Add response status for non-streaming responses
                     if hasattr(response, "status_code"):
                         response_data["status_code"] = response.status_code
+                    
+                    # Add response body for debugging (only for non-streaming responses)
+                    if not is_streaming and hasattr(response, "text"):
+                        try:
+                            # Try to get response text
+                            response_data["body"] = response.text
+                        except Exception:
+                            # If text fails, try to get content as bytes
+                            try:
+                                if hasattr(response, "content"):
+                                    response_data["body"] = response.content.decode('utf-8', errors='ignore')
+                            except Exception:
+                                response_data["body"] = None
 
                     response_hook_context = HookContext(
                         event=HookEvent.PROVIDER_RESPONSE_RECEIVED,

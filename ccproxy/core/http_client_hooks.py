@@ -67,8 +67,29 @@ class HookableHTTPClient(httpx.AsyncClient):
             request_context["body"] = data
             request_context["is_json"] = False
         elif content is not None:
-            request_context["body"] = content
-            request_context["is_json"] = False
+            # Handle content parameter - could be bytes, string, or other
+            if isinstance(content, (bytes, str)):
+                try:
+                    # Try to parse as JSON if it's a string/bytes that looks like JSON
+                    import json as json_module
+                    if isinstance(content, bytes):
+                        content_str = content.decode('utf-8')
+                    else:
+                        content_str = content
+                    
+                    if content_str.strip().startswith(('{', '[')):
+                        request_context["body"] = json_module.loads(content_str)
+                        request_context["is_json"] = True
+                    else:
+                        request_context["body"] = content
+                        request_context["is_json"] = False
+                except Exception:
+                    # If parsing fails, just include as-is
+                    request_context["body"] = content
+                    request_context["is_json"] = False
+            else:
+                request_context["body"] = content
+                request_context["is_json"] = False
 
         # Emit pre-request hook
         if self.hook_manager:
@@ -107,12 +128,21 @@ class HookableHTTPClient(httpx.AsyncClient):
                     "response_headers": dict(response.headers),
                 }
 
-                # Try to include response body if it's JSON
+                # Try to include response body
                 try:
-                    if "application/json" in response.headers.get("content-type", ""):
-                        response_context["response_body"] = response.json()
+                    content_type = response.headers.get("content-type", "")
+                    if "application/json" in content_type:
+                        # Try to parse as JSON first
+                        try:
+                            response_context["response_body"] = response.json()
+                        except Exception:
+                            # If JSON parsing fails, fall back to text
+                            response_context["response_body"] = response.text
+                    else:
+                        # For non-JSON content, include as text
+                        response_context["response_body"] = response.text
                 except Exception:
-                    # Can't parse body, that's OK
+                    # Can't get body content, that's OK
                     pass
 
                 try:

@@ -96,11 +96,15 @@ class HTTPTracerHook(Hook):
         # Store request ID in context for response correlation
         context.data["request_id"] = request_id
 
+        # Determine if this is a provider request
+        is_provider_request = self._is_provider_request(url)
+
         logger.debug(
             "http_request",
             request_id=request_id,
             method=method,
             url=url,
+            is_provider_request=is_provider_request,
         )
 
         # Log with JSON formatter
@@ -112,7 +116,7 @@ class HTTPTracerHook(Hook):
                 url=url,
                 headers=headers,
                 body=body,  # Pass original body data directly
-                request_type="http",
+                request_type="provider" if is_provider_request else "http",
             )
 
         # Log with raw HTTP formatter
@@ -121,10 +125,18 @@ class HTTPTracerHook(Hook):
             raw_request = self._build_raw_http_request(
                 method, url, headers, body, is_json
             )
-            await self.raw_formatter.log_client_request(
-                request_id=request_id,
-                raw_data=raw_request,
-            )
+
+            # Use appropriate logging method based on request type
+            if is_provider_request:
+                await self.raw_formatter.log_provider_request(
+                    request_id=request_id,
+                    raw_data=raw_request,
+                )
+            else:
+                await self.raw_formatter.log_client_request(
+                    request_id=request_id,
+                    raw_data=raw_request,
+                )
 
     async def _log_http_response(self, context: HookContext) -> None:
         """Log an HTTP response.
@@ -136,11 +148,16 @@ class HTTPTracerHook(Hook):
         status_code = context.data.get("status_code", 0)
         headers = context.data.get("response_headers", {})
         body_any = context.data.get("response_body")
+        url = context.data.get("url", "")
+
+        # Determine if this is a provider response
+        is_provider_response = self._is_provider_request(url)
 
         logger.debug(
             "http_response",
             request_id=request_id,
             status_code=status_code,
+            is_provider_response=is_provider_response,
         )
 
         # Log with JSON formatter
@@ -160,17 +177,25 @@ class HTTPTracerHook(Hook):
                 status=status_code,
                 headers=headers,
                 body=body_bytes,
-                response_type="http",
+                response_type="provider" if is_provider_response else "http",
             )
 
         # Log with raw HTTP formatter
         if self.raw_formatter:
             # Build raw HTTP response
             raw_response = self._build_raw_http_response(status_code, headers, body_any)
-            await self.raw_formatter.log_client_response(
-                request_id=request_id,
-                raw_data=raw_response,
-            )
+
+            # Use appropriate logging method based on response type
+            if is_provider_response:
+                await self.raw_formatter.log_provider_response(
+                    request_id=request_id,
+                    raw_data=raw_response,
+                )
+            else:
+                await self.raw_formatter.log_client_response(
+                    request_id=request_id,
+                    raw_data=raw_response,
+                )
 
     async def _log_http_error(self, context: HookContext) -> None:
         """Log an HTTP error.
@@ -183,6 +208,10 @@ class HTTPTracerHook(Hook):
         error_detail = context.data.get("error_detail", "")
         status_code = context.data.get("status_code", 0)
         response_body = context.data.get("response_body", "")
+        url = context.data.get("url", "")
+
+        # Determine if this is a provider error
+        is_provider_error = self._is_provider_request(url)
 
         logger.error(
             "http_error",
@@ -190,6 +219,7 @@ class HTTPTracerHook(Hook):
             error_type=error_type,
             status_code=status_code,
             error_detail=error_detail,
+            is_provider_error=is_provider_error,
         )
 
         # Log error response with formatters
@@ -202,10 +232,18 @@ class HTTPTracerHook(Hook):
         if self.raw_formatter and status_code > 0:
             # Build error response
             raw_response = f"HTTP/1.1 {status_code} Error\r\n\r\n{response_body}"
-            await self.raw_formatter.log_client_response(
-                request_id=request_id,
-                raw_data=raw_response.encode(),
-            )
+
+            # Use appropriate logging method based on error type
+            if is_provider_error:
+                await self.raw_formatter.log_provider_response(
+                    request_id=request_id,
+                    raw_data=raw_response.encode(),
+                )
+            else:
+                await self.raw_formatter.log_client_response(
+                    request_id=request_id,
+                    raw_data=raw_response.encode(),
+                )
 
     def _build_raw_http_request(
         self,
@@ -309,3 +347,24 @@ class HTTPTracerHook(Hook):
             lines.append("")
 
         return "\r\n".join(lines).encode()
+
+    def _is_provider_request(self, url: str) -> bool:
+        """Determine if this is a request to a provider API.
+
+        Args:
+            url: The request URL
+
+        Returns:
+            True if this is a provider request, False for client requests
+        """
+        # Known provider domains
+        provider_domains = [
+            "api.anthropic.com",
+            "claude.ai",
+            "api.openai.com",
+            "chatgpt.com",
+        ]
+
+        # Check if URL contains any provider domain
+        url_lower = url.lower()
+        return any(domain in url_lower for domain in provider_domains)

@@ -135,15 +135,41 @@ class RequestProcessor:
         Returns:
             Tuple of (parsed_data, is_streaming)
         """
+        # Debug logging to track request body parsing
+        self.logger.debug(
+            "parse_request_body_input",
+            has_body=body is not None,
+            body_length=len(body) if body else 0,
+            body_preview=body.decode("utf-8", errors="replace")[:200] if body else "empty",
+        )
+        
         if not body:
             return {}, False
 
         try:
             data = json.loads(body)
             is_streaming = bool(data.get("stream", False))
+            self.logger.debug(
+                "parse_request_body_success",
+                parsed_keys=list(data.keys()),
+                has_messages="messages" in data,
+                has_model="model" in data,
+                is_streaming=is_streaming,
+                data_preview=str(data)[:200],
+            )
             return data, is_streaming
-        except (json.JSONDecodeError, UnicodeDecodeError):
-            return {}, False
+        except (json.JSONDecodeError, UnicodeDecodeError) as e:
+            self.logger.warning(
+                "parse_request_body_failed",
+                error=str(e),
+                body_preview=body.decode("utf-8", errors="replace")[:100] if body else "empty",
+            )
+            # Instead of silently returning empty data, raise a proper HTTP error
+            from fastapi import HTTPException
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid JSON in request body: {str(e)}"
+            )
 
     async def _apply_request_adapter(
         self,

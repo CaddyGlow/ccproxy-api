@@ -147,6 +147,15 @@ class CodexRequestTransformer:
             return body
 
         try:
+            # Debug: log raw body before parsing
+            raw_body_preview = body.decode("utf-8")[:500] if body else "empty"
+            logger.debug(
+                "body_transformer_raw_input", 
+                body_length=len(body) if body else 0,
+                raw_body_preview=raw_body_preview,
+                category="transform",
+            )
+            
             data = json.loads(body.decode("utf-8"))
             logger.trace(
                 "parsed_request_body",

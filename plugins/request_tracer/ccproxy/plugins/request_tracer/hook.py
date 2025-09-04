@@ -209,6 +209,7 @@ class RequestTracerHook(Hook):
         url = context.data.get("url", "")
         method = context.data.get("method", "UNKNOWN")
         headers = context.data.get("headers", {})
+        body = context.data.get("body")  # Get body from hook data
         provider = context.provider or "unknown"
 
         # Log with JSON formatter
@@ -219,7 +220,7 @@ class RequestTracerHook(Hook):
                 method=method,
                 url=url,
                 headers=headers,
-                body=None,  # Body not included in hook for security
+                body=body,  # Include body for debugging
             )
 
         # Note: Raw formatter requires actual HTTP bytes which aren't available in hooks
@@ -231,6 +232,7 @@ class RequestTracerHook(Hook):
 
         request_id = context.metadata.get("request_id", "unknown")
         status_code = context.data.get("status_code", 200)
+        body = context.data.get("body")  # Get response body from hook data
         provider = context.provider or "unknown"
         is_streaming = context.data.get("is_streaming", False)
 
@@ -245,7 +247,7 @@ class RequestTracerHook(Hook):
                 provider=provider,
                 status_code=status_code,
                 headers={},  # Headers not available in current hook context
-                body=None,
+                body=body,  # Include response body for debugging
             )
 
         # Note: Raw formatter requires actual HTTP bytes which aren't available in hooks

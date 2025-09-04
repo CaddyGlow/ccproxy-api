@@ -35,6 +35,16 @@ class CodexFormatAdapter(APIAdapter):
         Returns:
             Codex Response API formatted request
         """
+        # Debug logging to track request data
+        logger.debug(
+            "format_adapter_received_request",
+            request_data_keys=list(request_data.keys()),
+            has_messages="messages" in request_data,
+            has_model="model" in request_data,
+            request_data_size=len(str(request_data)) if request_data else 0,
+            request_data_preview=str(request_data)[:200] if request_data else "empty",
+        )
+        
         if "messages" in request_data:
             # Detect format type for logging
             format_type = self._detect_request_format(request_data)
@@ -52,7 +62,7 @@ class CodexFormatAdapter(APIAdapter):
             response_request = self._response_adapter.chat_to_response_request(
                 request_data
             )
-            codex_request = response_request.model_dump()
+            codex_request = response_request.model_dump(exclude_none=True)
 
             # Ensure Codex-specific defaults
             if "model" not in codex_request:
