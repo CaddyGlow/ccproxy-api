@@ -65,6 +65,25 @@ class FormatAdapterRegistry:
 
         return adapter
 
+    def get_adapter_if_exists(self, from_format: str, to_format: str) -> APIAdapter | None:
+        """Get adapter if it exists, return None if not found (no exception).
+        
+        This method allows plugins to check for existing adapters without failing
+        when the adapter doesn't exist, enabling adapter reuse patterns.
+        
+        Args:
+            from_format: Source format name
+            to_format: Target format name
+            
+        Returns:
+            APIAdapter instance if found, None otherwise
+        """
+        if not from_format or not to_format:
+            raise ValueError("Format names cannot be empty")
+
+        key = (from_format, to_format)
+        return self._adapters.get(key)
+
     def list_formats(self) -> list[str]:
         """List all supported format combinations."""
         return [f"{from_fmt}->{to_fmt}" for from_fmt, to_fmt in self._adapters]

@@ -149,7 +149,10 @@ class ConcreteServiceFactory:
         return BinaryResolver.from_settings(settings)
 
     def create_format_registry(self) -> FormatAdapterRegistry:
-        """Create format adapter registry."""
+        """Create empty format adapter registry.
+        
+        Plugins will register their own adapters during initialization.
+        """
         return FormatAdapterRegistry()
 
     def create_format_detector(self) -> FormatDetectionService:

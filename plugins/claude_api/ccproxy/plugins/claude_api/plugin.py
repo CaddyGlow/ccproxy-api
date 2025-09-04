@@ -51,6 +51,9 @@ class ClaudeAPIRuntime(ProviderPluginRuntime):
             logger.info("plugin_using_default_config")
         self.config = config
 
+        # Setup format registry
+        await self._setup_format_registry()
+
         # Register streaming metrics hook
         await self._register_streaming_metrics_hook()
 
@@ -168,6 +171,40 @@ class ClaudeAPIRuntime(ProviderPluginRuntime):
             )
 
         return None
+
+    async def _setup_format_registry(self) -> None:
+        """Register format adapters with fail-fast error handling."""
+        try:
+            from ccproxy.adapters.openai.adapter import OpenAIAdapter
+            from ccproxy.services.adapters.format_registry import FormatAdapterRegistry
+
+            from .response_api_adapter import ResponseAPIAnthropicAdapter
+
+            if not self.context:
+                raise RuntimeError("Context not available for format registry setup")
+
+            # Get format registry from service container
+            service_container = self.context.get("service_container")
+            if not service_container:
+                raise RuntimeError("Service container not available")
+
+            registry = service_container.get_service(FormatAdapterRegistry)
+
+            # Note: OpenAI <-> Anthropic adapter is already registered by claude_sdk plugin
+            # Only register Response API <-> Anthropic adapter which is unique to claude_api
+
+            # Register Response API <-> Anthropic adapter
+            response_api_adapter = ResponseAPIAnthropicAdapter()
+            registry.register("response_api", "anthropic", response_api_adapter, "claude_api")
+            registry.register("anthropic", "response_api", response_api_adapter, "claude_api")
+
+            logger.info(
+                "claude_api_format_adapters_registered", formats=registry.list_formats()
+            )
+
+        except Exception as e:
+            logger.error("claude_api_format_registry_setup_failed", error=str(e), exc_info=e)
+            raise RuntimeError(f"Failed to setup Claude API format registry: {e}") from e
 
     async def _register_streaming_metrics_hook(self) -> None:
         """Register the streaming metrics extraction hook."""

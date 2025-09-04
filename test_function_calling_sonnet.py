@@ -4,18 +4,12 @@ This test suite covers all aspects of function calling transformation between
 Anthropic Messages API and OpenAI Response API formats.
 """
 
-import json
-from typing import Any, Dict, List
-from unittest.mock import AsyncMock, Mock
-
 import pytest
 
 from ccproxy.adapters.openai.response_adapter import ResponseAdapter
 from ccproxy.adapters.openai.response_models import (
-    ResponseRequest,
     ResponseTool,
     ResponseToolChoice,
-    ResponseToolFunction,
 )
 
 

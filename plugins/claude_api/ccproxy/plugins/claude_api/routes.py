@@ -1,5 +1,6 @@
 """Claude API plugin routes."""
 
+import uuid
 from typing import TYPE_CHECKING, Annotated, Any
 
 from fastapi import APIRouter, Depends, Request
@@ -22,11 +23,15 @@ router = APIRouter()
 def claude_api_path_transformer(path: str) -> str:
     """Transform stripped paths for Claude API.
 
-    The path comes in already stripped of the /claude-api prefix,
-    so we need to map OpenAI-style paths to Anthropic equivalents.
+    The path comes in already stripped of the /claude-api prefix.
+    Maps various endpoint patterns to their Claude API equivalents.
     """
     # Map OpenAI chat completions to Anthropic messages
     if path == "/v1/chat/completions":
+        return "/v1/messages"
+    
+    # Map Response API format to Anthropic messages
+    if path == "/v1/responses" or path == "/responses":
         return "/v1/messages"
 
     # Pass through native Anthropic paths
@@ -117,3 +122,53 @@ async def list_models(
         "object": "list",
         "data": models,
     }
+
+
+@router.post("/v1/responses", response_model=None)
+async def claude_v1_responses(
+    request: Request,
+    auth: ConditionalAuthDep,
+    adapter: ClaudeAPIAdapterDep,
+) -> StreamingResponse | Response | DeferredStreaming:
+    """Response API compatible endpoint using Claude backend.
+
+    This endpoint handles Response API format requests and converts them
+    to/from Claude API format transparently.
+    """
+    # Get session_id from header if provided
+    header_session_id = request.headers.get("session_id")
+    session_id = header_session_id or str(uuid.uuid4())
+
+    # Call adapter directly - hooks are now handled by HooksMiddleware
+    result = await adapter.handle_request(
+        request=request,
+        endpoint="/v1/responses",
+        method=request.method,
+        session_id=session_id,
+    )
+    from typing import cast as _cast
+
+    return _cast(StreamingResponse | Response | DeferredStreaming, result)
+
+
+@router.post("/{session_id}/v1/responses", response_model=None)
+async def claude_v1_responses_with_session(
+    session_id: str,
+    request: Request,
+    auth: ConditionalAuthDep,
+    adapter: ClaudeAPIAdapterDep,
+) -> StreamingResponse | Response | DeferredStreaming:
+    """Response API with session_id using Claude backend.
+
+    This endpoint handles Response API format requests with a specific session_id.
+    """
+    # Call adapter directly - hooks are now handled by HooksMiddleware
+    result = await adapter.handle_request(
+        request=request,
+        endpoint="/{session_id}/v1/responses",
+        method=request.method,
+        session_id=session_id,
+    )
+    from typing import cast as _cast
+
+    return _cast(StreamingResponse | Response | DeferredStreaming, result)

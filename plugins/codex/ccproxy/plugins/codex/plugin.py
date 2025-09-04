@@ -230,7 +230,7 @@ class CodexRuntime(ProviderPluginRuntime):
         return details
 
     async def _setup_format_registry(self) -> None:
-        """Register format adapters with fail-fast error handling."""
+        """Register format adapters with adapter reuse detection."""
         try:
             from ccproxy.services.adapters.format_registry import FormatAdapterRegistry
 
@@ -247,19 +247,103 @@ class CodexRuntime(ProviderPluginRuntime):
 
             registry = service_container.get_service(FormatAdapterRegistry)
 
-            # Register format adapters - fail fast if registry unavailable
+            # Register OpenAI -> Response API adapter (should not conflict)
             registry.register("openai", "response_api", CodexFormatAdapter(), "codex")
-            registry.register(
-                "anthropic", "response_api", CompositeAnthropicAdapter(), "codex"
-            )
+
+            # Check if anthropic -> response_api adapter already exists
+            existing_adapter = registry.get_adapter_if_exists("anthropic", "response_api")
+            if existing_adapter:
+                # Verify compatibility of existing adapter
+                if await self._is_adapter_compatible(existing_adapter):
+                    logger.info(
+                        "codex_reusing_existing_anthropic_adapter",
+                        existing_adapter_type=type(existing_adapter).__name__,
+                        reason="compatible_functionality"
+                    )
+                else:
+                    logger.warning(
+                        "codex_existing_adapter_incompatible",
+                        existing_adapter_type=type(existing_adapter).__name__,
+                        fallback_action="registering_composite_adapter"
+                    )
+                    # Try to register our adapter, will fail if incompatible
+                    registry.register(
+                        "anthropic", "response_api", CompositeAnthropicAdapter(), "codex"
+                    )
+            else:
+                # No existing adapter, register our own
+                registry.register(
+                    "anthropic", "response_api", CompositeAnthropicAdapter(), "codex"
+                )
+                logger.info(
+                    "codex_registered_composite_anthropic_adapter",
+                    reason="no_existing_adapter"
+                )
 
             logger.info(
-                "codex_format_adapters_registered", formats=registry.list_formats()
+                "codex_format_adapters_setup_completed", 
+                formats=registry.list_formats(),
+                reused_existing=existing_adapter is not None and await self._is_adapter_compatible(existing_adapter) if existing_adapter else False
             )
 
         except Exception as e:
             logger.error("codex_format_registry_setup_failed", error=str(e), exc_info=e)
             raise RuntimeError(f"Failed to setup Codex format registry: {e}") from e
+
+    async def _is_adapter_compatible(self, adapter: Any) -> bool:
+        """Check if existing adapter is compatible with Codex requirements.
+        
+        Args:
+            adapter: The existing adapter to check
+            
+        Returns:
+            True if adapter is compatible, False otherwise
+        """
+        try:
+            # Check if adapter has required methods for Codex functionality
+            required_methods = ["adapt_request", "adapt_response"]
+            for method in required_methods:
+                if not hasattr(adapter, method):
+                    logger.debug(
+                        "codex_adapter_compatibility_check_failed",
+                        missing_method=method,
+                        adapter_type=type(adapter).__name__
+                    )
+                    return False
+            
+            # Check if adapter supports streaming (optional but preferred)
+            supports_streaming = hasattr(adapter, "adapt_stream")
+            
+            # Check adapter type compatibility by name (avoid import issues)
+            adapter_type_name = type(adapter).__name__
+            
+            # ResponseAPIAnthropicAdapter from claude_api plugin is compatible
+            if adapter_type_name == "ResponseAPIAnthropicAdapter":
+                logger.debug(
+                    "codex_adapter_compatibility_verified",
+                    adapter_type=adapter_type_name,
+                    supports_streaming=supports_streaming,
+                    reason="response_api_anthropic_adapter_compatible"
+                )
+                return True
+            
+            # For other adapters, do more thorough compatibility check
+            # We could add more specific compatibility checks here if needed
+            logger.debug(
+                "codex_adapter_compatibility_unknown",
+                adapter_type=type(adapter).__name__,
+                supports_streaming=supports_streaming,
+                reason="unknown_adapter_type"
+            )
+            return False
+            
+        except Exception as e:
+            logger.debug(
+                "codex_adapter_compatibility_check_error",
+                error=str(e),
+                adapter_type=type(adapter).__name__ if adapter else "None"
+            )
+            return False
 
     async def _register_streaming_metrics_hook(self) -> None:
         """Register the streaming metrics extraction hook."""
