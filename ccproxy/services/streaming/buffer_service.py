@@ -514,20 +514,21 @@ class StreamingBufferService:
 
         # Copy relevant headers from streaming response
         for key, value in response_headers.items():
-            # Skip streaming-specific headers
+            # Skip streaming-specific headers and content-length
             if key.lower() not in {
                 "transfer-encoding",
                 "connection",
                 "cache-control",
                 "x-accel-buffering",
+                "content-length",
             }:
                 final_headers[key] = value
 
         # Set appropriate headers for JSON response
+        # Note: Don't set Content-Length as the response may be wrapped by streaming middleware
         final_headers.update(
             {
                 "Content-Type": "application/json",
-                "Content-Length": str(len(response_content)),
             }
         )
 
@@ -544,9 +545,19 @@ class StreamingBufferService:
             request_id=request_id,
         )
 
-        return Response(
+        # Create response - Starlette will automatically add Content-Length
+        response = Response(
             content=response_content,
             status_code=status_code,
             headers=final_headers,
             media_type="application/json",
         )
+
+        # Explicitly remove content-length header to avoid conflicts with middleware conversion
+        # This follows the same pattern as the main branch for streaming response handling
+        if "content-length" in response.headers:
+            del response.headers["content-length"]
+        if "Content-Length" in response.headers:
+            del response.headers["Content-Length"]
+
+        return response

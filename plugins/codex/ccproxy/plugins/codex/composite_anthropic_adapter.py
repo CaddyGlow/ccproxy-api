@@ -40,13 +40,13 @@ class CompositeAnthropicAdapter(APIAdapter):
         # OpenAIAdapter handles OpenAI Chat Completions ↔ Anthropic Messages
         self.openai_adapter = OpenAIAdapter()
 
-    async def adapt_request(self, request_data: dict[str, Any]) -> dict[str, Any]:
+    async def adapt_request(self, request: dict[str, Any]) -> dict[str, Any]:
         """Convert Anthropic Messages request to Response API format.
 
         Flow: Anthropic Messages → OpenAI Chat Completions → Response API
 
         Args:
-            request_data: Anthropic Messages API request
+            request: Anthropic Messages API request
 
         Returns:
             Response API formatted request
@@ -54,7 +54,7 @@ class CompositeAnthropicAdapter(APIAdapter):
         try:
             # Step 1: Convert Anthropic Messages → OpenAI Chat Completions
             # We need to reverse the OpenAI adapter's adapt_request method
-            openai_request = self._anthropic_to_openai_request(request_data)
+            openai_request = self._anthropic_to_openai_request(request)
 
             logger.debug(
                 "composite_adapter_step1_completed",
@@ -93,20 +93,20 @@ class CompositeAnthropicAdapter(APIAdapter):
             logger.error(
                 "composite_adapter_request_conversion_failed",
                 error=str(e),
-                request_keys=list(request_data.keys())
-                if isinstance(request_data, dict)
+                request_keys=list(request.keys())
+                if isinstance(request, dict)
                 else "not_dict",
                 exc_info=e,
             )
             raise
 
-    async def adapt_response(self, response_data: dict[str, Any]) -> dict[str, Any]:
+    async def adapt_response(self, response: dict[str, Any]) -> dict[str, Any]:
         """Convert Response API response to Anthropic Messages format.
 
         Flow: Response API → OpenAI Chat Completions → Anthropic Messages
 
         Args:
-            response_data: Response API response
+            response: Response API response
 
         Returns:
             Anthropic Messages formatted response
@@ -114,7 +114,7 @@ class CompositeAnthropicAdapter(APIAdapter):
         try:
             # Step 1: Convert Response API → OpenAI Chat Completions
             openai_response = self.response_adapter.response_to_chat_completion(
-                response_data
+                response
             )
             openai_response_dict = openai_response.model_dump()
 
@@ -145,8 +145,8 @@ class CompositeAnthropicAdapter(APIAdapter):
             logger.error(
                 "composite_adapter_response_conversion_failed",
                 error=str(e),
-                response_keys=list(response_data.keys())
-                if isinstance(response_data, dict)
+                response_keys=list(response.keys())
+                if isinstance(response, dict)
                 else "not_dict",
                 exc_info=e,
             )
@@ -259,7 +259,7 @@ class CompositeAnthropicAdapter(APIAdapter):
 
         for msg in anthropic_messages:
             role = msg.get("role", "user")
-            content = msg.get("content", [])
+            content = msg.get("content") or []
 
             # Handle different content formats
             if isinstance(content, str):
@@ -368,7 +368,7 @@ class CompositeAnthropicAdapter(APIAdapter):
             content.append({"type": "text", "text": message["content"]})
 
         # Add tool use blocks
-        tool_calls = message.get("tool_calls", [])
+        tool_calls = message.get("tool_calls") or []
         for tool_call in tool_calls:
             function = tool_call.get("function", {})
             # Parse arguments if they're a JSON string
