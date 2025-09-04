@@ -103,10 +103,23 @@ class CodexFormatAdapter(APIAdapter):
                 "converting_response_api_to_chat_completions",
                 has_tool_calls=has_tool_calls,
             )
-            chat_response = self._response_adapter.response_to_chat_completion(
-                response_data
-            )
-            converted_response = chat_response.model_dump()
+            try:
+                chat_response = self._response_adapter.response_to_chat_completion(
+                    response_data
+                )
+                converted_response = chat_response.model_dump()
+            except Exception as e:
+                logger.error(
+                    "response_adapter_conversion_failed",
+                    error=str(e),
+                    error_type=type(e).__name__,
+                    response_data_keys=list(response_data.keys())
+                    if isinstance(response_data, dict)
+                    else None,
+                    exc_info=e,
+                )
+                # Return original data if conversion fails
+                return response_data
 
             # Log conversion details
             choices = converted_response.get("choices", [])
@@ -114,11 +127,13 @@ class CodexFormatAdapter(APIAdapter):
                 choice = choices[0]
                 message = choice.get("message", {})
                 tool_calls = message.get("tool_calls", [])
+                # Handle potential None content safely
+                content = message.get("content") or ""
                 logger.debug(
                     "response_conversion_completed",
                     finish_reason=choice.get("finish_reason"),
-                    tool_calls_count=len(tool_calls),
-                    content_length=len(message.get("content", "") or ""),
+                    # tool_calls_count=len(tool_calls),
+                    # content_length=len(content),
                 )
 
             return converted_response

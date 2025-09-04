@@ -301,7 +301,7 @@ class BaseHTTPAdapter(BaseAdapter):
 
         # Delegate to buffer service for stream-to-buffer conversion
         try:
-            return await buffer_service.handle_buffered_streaming_request(
+            response = await buffer_service.handle_buffered_streaming_request(
                 method=method,
                 url=target_url,
                 headers=headers,
@@ -310,6 +310,100 @@ class BaseHTTPAdapter(BaseAdapter):
                 request_context=request_context,
                 provider_name=provider_name,
             )
+
+            # Apply format adapter if available to convert response format
+            logger.debug(
+                "checking_format_adapter_conditions",
+                has_response_adapter=bool(handler_config.response_adapter),
+                response_adapter_type=type(handler_config.response_adapter).__name__
+                if handler_config.response_adapter
+                else None,
+                has_body_attr=hasattr(response, "body"),
+                response_type=type(response).__name__,
+                request_id=getattr(request_context, "request_id", None),
+            )
+            if handler_config.response_adapter and hasattr(response, "body"):
+                try:
+                    import json
+
+                    # Parse the response body
+                    response_data = json.loads(response.body)
+
+                    logger.debug(
+                        "calling_format_adapter_adapt_response",
+                        response_data_type=type(response_data).__name__,
+                        response_data_keys=list(response_data.keys())
+                        if isinstance(response_data, dict)
+                        else None,
+                        request_id=getattr(request_context, "request_id", None),
+                    )
+
+                    logger.debug(
+                        "response_adapter", adapter=handler_config.response_adapter
+                    )
+                    # Apply format adapter to convert response format (e.g., Codex -> OpenAI)
+                    adapted_data = await handler_config.response_adapter.adapt_response(
+                        response_data
+                    )
+
+                    logger.debug(
+                        "format_adapter_adapt_response_completed",
+                        adapted_data_type=type(adapted_data).__name__
+                        if adapted_data
+                        else "NoneType",
+                        adapted_data_keys=list(adapted_data.keys())
+                        if isinstance(adapted_data, dict)
+                        else None,
+                        request_id=getattr(request_context, "request_id", None),
+                    )
+
+                    # Check if format adapter returned valid data
+                    if adapted_data is None:
+                        logger.warning(
+                            "format_adapter_returned_none",
+                            request_id=getattr(request_context, "request_id", None),
+                        )
+                        # Fall back to original response
+                        return response
+
+                    # Create new response with adapted data
+                    logger.debug(
+                        "creating_adapted_response",
+                        adapted_data_type=type(adapted_data).__name__,
+                        status_code=response.status_code,
+                        request_id=getattr(request_context, "request_id", None),
+                    )
+                    from starlette.responses import Response
+
+                    adapted_content = json.dumps(adapted_data).encode()
+
+                    # Safely handle response headers
+                    try:
+                        response_headers = dict(response.headers)
+                    except Exception as header_error:
+                        logger.warning(
+                            "response_headers_conversion_failed",
+                            error=str(header_error),
+                            request_id=getattr(request_context, "request_id", None),
+                        )
+                        response_headers = {"Content-Type": "application/json"}
+
+                    return Response(
+                        content=adapted_content,
+                        status_code=response.status_code,
+                        headers=response_headers,
+                        media_type="application/json",
+                    )
+                except Exception as adapter_error:
+                    logger.warning(
+                        "format_adapter_failed_in_buffered_streaming",
+                        error=str(adapter_error),
+                        exc_info=adapter_error,
+                        request_id=getattr(request_context, "request_id", None),
+                    )
+                    # Fall back to original response if format adaptation fails
+
+            return response
         except Exception as e:
             logger.error(
                 "buffered_streaming_failed",
