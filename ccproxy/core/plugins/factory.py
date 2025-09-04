@@ -139,6 +139,10 @@ class BasePluginFactory(PluginFactory):
         if hasattr(core_services, "app"):
             context["app"] = core_services.app
 
+        # Add service container if available
+        if hasattr(core_services, "_container"):
+            context["service_container"] = core_services._container
+
         # Add plugin-specific config if available
         if hasattr(core_services, "get_plugin_config"):
             plugin_config = core_services.get_plugin_config(self.manifest.name)

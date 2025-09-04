@@ -4,9 +4,11 @@ This module handles format conversion between OpenAI and Anthropic formats
 for the Claude SDK plugin.
 """
 
+from collections.abc import AsyncGenerator, AsyncIterator
 from typing import Any
 
 from ccproxy.adapters.openai.adapter import OpenAIAdapter
+from ccproxy.adapters.openai.streaming import AnthropicSSEFormatter
 from ccproxy.core.logging import get_plugin_logger
 
 
@@ -72,22 +74,23 @@ class ClaudeSDKFormatAdapter:
 
         return response_data
 
-    async def adapt_streaming_response(
-        self, chunk: dict[str, Any], needs_openai_format: bool = False
-    ) -> dict[str, Any]:
-        """Convert streaming response chunk between formats if needed.
+    def adapt_stream(
+        self, stream: AsyncIterator[dict[str, Any]]
+    ) -> AsyncGenerator[dict[str, Any], None]:
+        """Convert streaming response, passing through Anthropic format chunks.
 
         Args:
-            chunk: Streaming chunk in Anthropic format
-            needs_openai_format: Whether to convert to OpenAI format
+            stream: Stream of Anthropic message chunks
 
-        Returns:
-            Chunk in appropriate format
+        Yields:
+            Anthropic format dict objects (SSE formatting handled by streaming system)
         """
-        if needs_openai_format:
-            # Convert Anthropic SSE to OpenAI SSE format
-            # The OpenAIAdapter doesn't have adapt_streaming_chunk, use adapt_response
-            # For streaming, we need to handle this differently
-            return chunk  # Pass through for now, streaming conversion is complex
+        return self._adapt_stream_impl(stream)
 
-        return chunk
+    async def _adapt_stream_impl(
+        self, stream: AsyncIterator[dict[str, Any]]
+    ) -> AsyncGenerator[dict[str, Any], None]:
+        """Implementation of stream adaptation - pass through dict objects."""
+        async for chunk in stream:
+            if isinstance(chunk, dict):
+                yield chunk

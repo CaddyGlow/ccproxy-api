@@ -34,6 +34,9 @@ class ClaudeSDKRuntime(ProviderPluginRuntime):
         # Call parent initialization to set up adapter, detection_service, etc.
         await super()._on_initialize()
 
+        # NEW: Setup format registry
+        await self._setup_format_registry()
+
         if not self.context:
             raise RuntimeError("Context not set")
 
@@ -118,6 +121,36 @@ class ClaudeSDKRuntime(ProviderPluginRuntime):
             )
 
         return details
+
+    async def _setup_format_registry(self) -> None:
+        """Register Claude SDK format adapters."""
+        try:
+            from ccproxy.services.adapters.format_registry import FormatAdapterRegistry
+
+            from .format_adapter import ClaudeSDKFormatAdapter
+
+            if not self.context:
+                raise RuntimeError("Context not available for format registry setup")
+
+            # Get format registry from service container
+            service_container = self.context.get("service_container")
+            if not service_container:
+                raise RuntimeError("Service container not available")
+
+            registry = service_container.get_service(FormatAdapterRegistry)
+            registry.register(
+                "openai", "anthropic", ClaudeSDKFormatAdapter(), "claude_sdk"
+            )
+
+            logger.info("claude_sdk_format_adapters_registered")
+
+        except Exception as e:
+            logger.error(
+                "claude_sdk_format_registry_setup_failed", error=str(e), exc_info=e
+            )
+            raise RuntimeError(
+                f"Failed to setup Claude SDK format registry: {e}"
+            ) from e
 
 
 class ClaudeSDKFactory(BaseProviderPluginFactory):

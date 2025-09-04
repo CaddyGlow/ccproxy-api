@@ -152,7 +152,9 @@ class BaseProviderPluginFactory(ProviderPluginFactory):
             Adapter instance
         """
         # Extract services from context (one-time extraction)
-        http_pool_manager: HTTPPoolManager | None = cast("HTTPPoolManager | None", context.get("http_pool_manager"))
+        http_pool_manager: HTTPPoolManager | None = cast(
+            "HTTPPoolManager | None", context.get("http_pool_manager")
+        )
         request_tracer: IRequestTracer | None = context.get("request_tracer")
         metrics: IMetricsCollector | None = context.get("metrics")
         streaming_handler: IStreamingHandler | None = context.get("streaming_handler")

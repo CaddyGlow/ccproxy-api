@@ -17,6 +17,7 @@ from typing import Any
 from ccproxy.adapters.base import APIAdapter
 from ccproxy.adapters.openai.adapter import OpenAIAdapter
 from ccproxy.adapters.openai.response_adapter import ResponseAdapter
+from ccproxy.adapters.openai.streaming import AnthropicSSEFormatter
 from ccproxy.core.logging import get_plugin_logger
 
 
@@ -155,7 +156,7 @@ class CompositeAnthropicAdapter(APIAdapter):
     def adapt_stream(
         self, stream: AsyncIterator[dict[str, Any]]
     ) -> AsyncGenerator[dict[str, Any], None]:
-        """Convert Response API streaming to Anthropic Messages streaming format.
+        """Convert Response API streaming to Anthropic Messages format.
 
         Flow: Response API streaming → OpenAI streaming → Anthropic Messages streaming
 
@@ -163,7 +164,7 @@ class CompositeAnthropicAdapter(APIAdapter):
             stream: Response API streaming events
 
         Yields:
-            Anthropic Messages streaming events
+            Anthropic Messages format dict objects (SSE formatting handled by streaming system)
         """
         logger.info("composite_anthropic_adapter_adapt_stream_called")
         return self._adapt_stream_impl(stream)
@@ -171,7 +172,7 @@ class CompositeAnthropicAdapter(APIAdapter):
     async def _adapt_stream_impl(
         self, stream: AsyncIterator[dict[str, Any]]
     ) -> AsyncGenerator[dict[str, Any], None]:
-        """Implementation of streaming conversion."""
+        """Implementation of streaming conversion - return dict objects."""
         try:
             logger.debug("composite_adapter_stream_conversion_started")
 
@@ -185,15 +186,21 @@ class CompositeAnthropicAdapter(APIAdapter):
             # We need to reverse the OpenAI adapter's adapt_stream method
             anthropic_stream = self._openai_stream_to_anthropic(openai_stream)
 
+            # Step 3: Yield dict objects for SSE formatting by streaming system
             event_count = 0
+
             async for event in anthropic_stream:
                 event_count += 1
+                event_type = event.get("type")
                 logger.debug(
                     "composite_adapter_stream_event",
                     event_number=event_count,
-                    event_type=event.get("type"),
+                    event_type=event_type,
                 )
-                yield event
+
+                # Yield dict objects - SSE formatting handled by streaming system
+                if isinstance(event, dict):
+                    yield event
 
             logger.debug(
                 "composite_adapter_stream_conversion_completed",

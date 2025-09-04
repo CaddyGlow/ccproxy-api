@@ -33,8 +33,8 @@ if TYPE_CHECKING:
 
     from .detection_service import CodexDetectionService
 
-from .composite_anthropic_adapter import CompositeAnthropicAdapter
-from .format_adapter import CodexFormatAdapter
+from ccproxy.services.adapters.format_context import FormatContext
+
 from .transformers import CodexRequestTransformer, CodexResponseTransformer
 
 
@@ -108,9 +108,14 @@ class CodexAdapter(BaseHTTPAdapter):
             context=cast("PluginContext | None", context),
         )
 
-        # Initialize format adapters
-        self.openai_format_adapter = CodexFormatAdapter()
-        self.anthropic_format_adapter = CompositeAnthropicAdapter()
+        # Get format services from context (fail fast if missing)
+        self.format_registry = context.get("format_registry") if context else None
+        self.format_detector = context.get("format_detector") if context else None
+
+        if not self.format_registry:
+            raise RuntimeError("FormatAdapterRegistry not available in context")
+        if not self.format_detector:
+            raise RuntimeError("FormatDetectionService not available in context")
 
         # Store current endpoint for format adapter selection
         self._current_endpoint = ""
@@ -150,30 +155,24 @@ class CodexAdapter(BaseHTTPAdapter):
 
         return target_url, needs_conversion
 
-    def _select_format_adapter(self, endpoint: str):
-        """Select appropriate format adapter based on endpoint.
+    def _get_format_adapter(self, source_format: str):
+        """Get format adapter with fail-fast error handling.
 
         Args:
-            endpoint: The requested endpoint path
+            source_format: The source format to convert from
 
         Returns:
-            Format adapter for the given endpoint type
+            Format adapter for the conversion
         """
-        if endpoint.endswith(ANTHROPIC_MESSAGES_PATH):
-            logger.info(
-                "selected_anthropic_format_adapter",
-                endpoint=endpoint,
-                adapter_type="CompositeAnthropicAdapter",
+        try:
+            return self.format_registry.get_adapter(source_format, "response_api")
+        except ValueError as e:
+            logger.error(
+                "format_adapter_not_found", source_format=source_format, error=str(e)
             )
-            return self.anthropic_format_adapter
-        else:
-            # OpenAI endpoints or other formats use the Codex format adapter
-            logger.info(
-                "selected_openai_format_adapter",
-                endpoint=endpoint,
-                adapter_type="CodexFormatAdapter",
-            )
-            return self.openai_format_adapter
+            raise RuntimeError(
+                f"No format adapter found for {source_format}->response_api"
+            ) from e
 
     async def _create_handler_config(
         self,
@@ -189,16 +188,35 @@ class CodexAdapter(BaseHTTPAdapter):
         Returns:
             HandlerConfig instance
         """
-        # Select appropriate format adapter based on current endpoint
-        format_adapter = (
-            self._select_format_adapter(self._current_endpoint)
-            if needs_conversion
-            else None
-        )
+        format_adapter = None
+        format_context = None
+
+        if needs_conversion:
+            try:
+                source_format = self.format_detector.get_format_from_endpoint(
+                    self._current_endpoint
+                )
+                format_adapter = self._get_format_adapter(source_format)
+                format_context = FormatContext(
+                    source_format=source_format,
+                    target_format="response_api",
+                    conversion_needed=True,
+                    streaming_mode="streaming",  # Use config.preferred_upstream_mode from context
+                )
+            except (ValueError, RuntimeError) as e:
+                logger.error(
+                    "format_detection_failed",
+                    endpoint=self._current_endpoint,
+                    error=str(e),
+                )
+                raise RuntimeError(
+                    f"Format detection failed for endpoint {self._current_endpoint}"
+                ) from e
 
         return HandlerConfig(
             request_adapter=format_adapter,
             response_adapter=format_adapter,
+            format_context=format_context,  # NEW FIELD
             request_transformer=self._request_transformer,
             response_transformer=self._response_transformer,
             supports_streaming=True,
@@ -390,10 +408,7 @@ class CodexAdapter(BaseHTTPAdapter):
     async def _should_buffer_stream(
         self, request_data: dict[str, Any], is_streaming: bool
     ) -> bool:
-        """Determine if non-streaming request should be converted to buffered streaming.
-
-        For Codex, we want to buffer stream for non-streaming requests since
-        Codex backend often provides more complete results via streaming.
+        """Use configuration to determine buffering with fail-fast validation.
 
         Args:
             request_data: Parsed request body data
@@ -402,7 +417,25 @@ class CodexAdapter(BaseHTTPAdapter):
         Returns:
             True if should convert to buffered streaming, False otherwise
         """
-        return not is_streaming  # Buffer non-streaming requests
+        # Get config from context - this should be available from plugin initialization
+        config = None
+        if hasattr(self, "_context") and self._context:
+            config = self._context.get("config")
+
+        if not config:
+            # Fallback to default behavior if config not available
+            logger.warning(
+                "codex_config_not_available", using_default_buffer_behavior=True
+            )
+            return not is_streaming
+
+        # Respect configuration settings
+        if not getattr(config, "buffer_non_streaming", True):
+            return False
+
+        # If preferred mode is streaming and request is not streaming, buffer it
+        preferred_mode = getattr(config, "preferred_upstream_mode", "streaming")
+        return preferred_mode == "streaming" and not is_streaming
 
     async def cleanup(self) -> None:
         """Cleanup resources when shutting down."""

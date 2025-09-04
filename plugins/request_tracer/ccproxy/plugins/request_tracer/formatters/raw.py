@@ -77,11 +77,12 @@ class RawHTTPFormatter:
 
     def _compose_file_id_with_timestamp(self, request_id: str | None) -> str:
         """Build filename ID with timestamp suffix for better organization.
-        
+
         Format: {base_id}_{timestamp}
         Where timestamp is in format: YYYYMMDD_HHMMSS_microseconds
         """
         from datetime import datetime
+
         base_id = self._compose_file_id(request_id)
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
         return f"{base_id}_{timestamp}"

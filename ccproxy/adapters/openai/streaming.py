@@ -21,6 +21,65 @@ from .models import (
 logger = get_logger(__name__)
 
 
+class AnthropicStreamProcessor:
+    """Processes OpenAI streaming data into Anthropic SSE format."""
+
+    def __init__(self, model: str = "claude-3-5-sonnet-20241022"):
+        """Initialize the stream processor.
+
+        Args:
+            model: Model name for responses
+        """
+        self.model = model
+        self.formatter = AnthropicSSEFormatter()
+
+    async def process_openai_to_anthropic_stream(
+        self, stream: AsyncIterator[dict[str, Any]]
+    ) -> AsyncIterator[str]:
+        """Process OpenAI-format streaming data into Anthropic SSE format.
+
+        Args:
+            stream: Async iterator of OpenAI-style response chunks
+
+        Yields:
+            Anthropic-formatted SSE strings with proper event: lines
+        """
+        message_started = False
+        content_block_started = False
+
+        async for chunk in stream:
+            if not isinstance(chunk, dict):
+                continue
+
+            chunk_type = chunk.get("type")
+
+            if chunk_type == "message_start":
+                if not message_started:
+                    yield self.formatter.format_event("message_start", chunk)
+                    message_started = True
+
+            elif chunk_type == "content_block_start":
+                if not content_block_started:
+                    yield self.formatter.format_event("content_block_start", chunk)
+                    content_block_started = True
+
+            elif chunk_type == "content_block_delta":
+                yield self.formatter.format_event("content_block_delta", chunk)
+
+            elif chunk_type == "ping":
+                yield self.formatter.format_ping()
+
+            elif chunk_type == "content_block_stop":
+                yield self.formatter.format_event("content_block_stop", chunk)
+
+            elif chunk_type == "message_delta":
+                yield self.formatter.format_event("message_delta", chunk)
+
+            elif chunk_type == "message_stop":
+                yield self.formatter.format_event("message_stop", chunk)
+                break
+
+
 class AnthropicSSEFormatter:
     """Formats streaming responses to match Anthropic's Messages API SSE format."""
 

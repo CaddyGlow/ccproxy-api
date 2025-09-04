@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Any, Protocol, runtime_checkable
 
 from ccproxy.adapters.base import APIAdapter
+from ccproxy.services.adapters.format_context import FormatContext
 
 
 @runtime_checkable
@@ -60,3 +61,6 @@ class HandlerConfig:
 
     # Optional SSE parser provided by plugins that return SSE streams
     sse_parser: SSEParserProtocol | None = None
+
+    # NEW: Format context for adapter selection
+    format_context: FormatContext | None = None

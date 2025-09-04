@@ -510,17 +510,33 @@ class DeferredStreaming(StreamingResponse):
     ) -> AsyncGenerator[bytes, None]:
         """Serialize JSON chunks back to SSE format.
 
-        Converts JSON objects to SSE event format:
-        data: {json}\\n\\n
+        Converts JSON objects to appropriate SSE event format:
+        - For Anthropic format (has "type" field): event: {type}\ndata: {json}\n\n
+        - For OpenAI format: data: {json}\n\n
 
         Args:
             json_stream: Stream of JSON objects after format conversion
         """
+        from ccproxy.adapters.openai.streaming import AnthropicSSEFormatter
+
+        formatter = AnthropicSSEFormatter()
+        
         async for json_obj in json_stream:
-            # Convert to SSE format
-            json_str = json.dumps(json_obj, ensure_ascii=False)
-            sse_event = f"data: {json_str}\n\n"
-            sse_bytes = sse_event.encode("utf-8")
+            # Check if this is Anthropic format (has "type" field)
+            event_type = json_obj.get("type")
+            if event_type:
+                # Use proper Anthropic SSE formatting with event: lines
+                if event_type == "ping":
+                    sse_event = formatter.format_ping()
+                else:
+                    sse_event = formatter.format_event(event_type, json_obj)
+                sse_bytes = sse_event.encode("utf-8")
+            else:
+                # Use standard OpenAI format (data: only)
+                json_str = json.dumps(json_obj, ensure_ascii=False)
+                sse_event = f"data: {json_str}\n\n"
+                sse_bytes = sse_event.encode("utf-8")
+            
             yield sse_bytes
 
         # Send final [DONE] event

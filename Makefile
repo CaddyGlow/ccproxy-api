@@ -236,7 +236,9 @@ dev:
 		LOGGING__FILE=/tmp/ccproxy/ccproxy.log \
 		LOGGING__LEVEL=debug \
 		LOGGING__VERBOSE_API=true \
-		uv run ccproxy-api serve --port 8000 --reload
+		SERVER__RELOAD=true \
+		SERVER__WORKERS=1 \
+		uv run ccproxy-api serve 
 
 prod:
 	uv run ccproxy serve

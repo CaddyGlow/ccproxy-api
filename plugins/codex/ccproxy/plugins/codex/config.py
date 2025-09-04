@@ -1,5 +1,7 @@
 """Codex plugin-specific configuration settings."""
 
+from typing import Literal
+
 from pydantic import BaseModel, Field, field_validator
 
 from ccproxy.models.provider import ProviderConfig
@@ -80,6 +82,21 @@ class CodexSettings(ProviderConfig):
     models: list[str] = Field(
         default_factory=lambda: ["gpt-5"],
         description="List of supported models",
+    )
+
+    # NEW FORMAT CONFIGURATION
+    supported_input_formats: list[str] = Field(
+        default_factory=lambda: ["response_api", "openai", "anthropic"],
+        description="List of supported input formats",
+    )
+    preferred_upstream_mode: Literal["streaming", "non_streaming"] = Field(
+        default="streaming", description="Preferred upstream mode for requests"
+    )
+    buffer_non_streaming: bool = Field(
+        default=True, description="Whether to buffer non-streaming requests"
+    )
+    enable_format_registry: bool = Field(
+        default=True, description="Whether to enable format adapter registry"
     )
 
     @field_validator("base_url")

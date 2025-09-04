@@ -15,6 +15,8 @@ from ccproxy.adapters.openai.adapter import OpenAIAdapter
 from ccproxy.config.settings import Settings
 from ccproxy.core.http_client import HTTPClientFactory
 from ccproxy.hooks import HookManager
+from ccproxy.services.adapters.format_detector import FormatDetectionService
+from ccproxy.services.adapters.format_registry import FormatAdapterRegistry
 from ccproxy.services.cache import ResponseCache
 from ccproxy.services.cli_detection import CLIDetectionService
 from ccproxy.services.config import ProxyConfiguration
@@ -67,6 +69,14 @@ class ConcreteServiceFactory:
         )
         self._container.register_service(
             BinaryResolver, factory=self.create_binary_resolver
+        )
+
+        # NEW: Register format services
+        self._container.register_service(
+            FormatAdapterRegistry, factory=self.create_format_registry
+        )
+        self._container.register_service(
+            FormatDetectionService, factory=self.create_format_detector
         )
 
     def create_mock_handler(self) -> MockResponseHandler:
@@ -137,3 +147,11 @@ class ConcreteServiceFactory:
         """Create a BinaryResolver from settings."""
         settings = self._container.get_service(Settings)
         return BinaryResolver.from_settings(settings)
+
+    def create_format_registry(self) -> FormatAdapterRegistry:
+        """Create format adapter registry."""
+        return FormatAdapterRegistry()
+
+    def create_format_detector(self) -> FormatDetectionService:
+        """Create format detection service."""
+        return FormatDetectionService()
