@@ -224,18 +224,16 @@ docker-compose-down:
 
 # Development server
 dev:
-	PLUGINS__REQUEST_TRACER__ENABLED=true \
-		PLUGINS__REQUEST_TRACER__LOG_DIR=/tmp/ccproxy/tracer \
-		PLUGINS__REQUEST_TRACER__JSON_LOGS_ENABLED=true \
-		PLUGINS__REQUEST_TRACER__VERBOSE_API=true \
-		PLUGINS__REQUEST_TRACER__RAW_HTTP_ENABLED=true \
+	LOGGING__LEVEL=debug \
+		LOGGING__FILE=/tmp/ccproxy/ccproxy.log \
+		LOGGING__VERBOSE_API=true \
+		LOGGING__ENABLE_PLUGIN_LOGGING=true \
+		LOGGING__PLUGIN_LOG_BASE_DIR=/tmp/ccproxy \
+		PLUGINS__REQUEST_TRACER__ENABLED=true \
 		PLUGINS__ACCESS_LOG__ENABLED=true \
 		PLUGINS__ACCESS_LOG__CLIENT_LOG_FILE=/tmp/ccproxy/combined_access.log \
 		PLUGINS__ACCESS_LOG__CLIENT_FORMAT=combined \
 		HTTP__COMPRESSION_ENABLED=false \
-		LOGGING__FILE=/tmp/ccproxy/ccproxy.log \
-		LOGGING__LEVEL=debug \
-		LOGGING__VERBOSE_API=true \
 		SERVER__RELOAD=true \
 		SERVER__WORKERS=1 \
 		uv run ccproxy-api serve

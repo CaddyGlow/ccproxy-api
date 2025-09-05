@@ -181,7 +181,7 @@ async def initialize_hooks_startup(app: FastAPI, settings: Settings) -> None:
             log_dir = getattr(settings.logging, "plugin_log_base_dir", "/tmp/ccproxy")
 
             json_formatter = JSONFormatter(
-                log_dir=str(log_dir),
+                log_dir=f"{log_dir}/tracer",
                 verbose_api=getattr(settings.logging, "verbose_api", True),
                 json_logs_enabled=True,
                 redact_sensitive=True,
@@ -189,7 +189,7 @@ async def initialize_hooks_startup(app: FastAPI, settings: Settings) -> None:
             )
 
             raw_formatter = RawHTTPFormatter(
-                log_dir=f"{log_dir}",
+                log_dir=f"{log_dir}/tracer",
                 enabled=True,
                 log_client_request=True,
                 log_client_response=True,

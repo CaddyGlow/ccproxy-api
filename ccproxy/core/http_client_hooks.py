@@ -133,28 +133,32 @@ class HookableHTTPClient(httpx.AsyncClient):
 
             # Emit post-response hook
             if self.hook_manager:
+                # Read response content FIRST before any other processing
+                response_content = response.content
+                
                 response_context = {
                     **request_context,  # Include request info
                     "status_code": response.status_code,
                     "response_headers": dict(response.headers),
                 }
 
-                # Try to include response body
+                # Include response body from the content we just read
                 try:
                     content_type = response.headers.get("content-type", "")
                     if "application/json" in content_type:
-                        # Try to parse as JSON first
+                        # Try to parse the raw content as JSON
                         try:
-                            response_context["response_body"] = response.json()
+                            import json
+                            response_context["response_body"] = json.loads(response_content.decode('utf-8'))
                         except Exception:
-                            # If JSON parsing fails, fall back to text
-                            response_context["response_body"] = response.text
+                            # If JSON parsing fails, include as text
+                            response_context["response_body"] = response_content.decode('utf-8', errors='replace')
                     else:
                         # For non-JSON content, include as text
-                        response_context["response_body"] = response.text
+                        response_context["response_body"] = response_content.decode('utf-8', errors='replace')
                 except Exception:
-                    # Can't get body content, that's OK
-                    pass
+                    # Last resort - include as bytes
+                    response_context["response_body"] = response_content
 
                 try:
                     await self.hook_manager.emit(
@@ -167,6 +171,21 @@ class HookableHTTPClient(httpx.AsyncClient):
                         error=str(e),
                         status_code=response.status_code,
                     )
+
+                # Recreate response with the consumed content so it can be consumed again
+                import httpx
+                try:
+                    recreated_response = httpx.Response(
+                        status_code=response.status_code,
+                        headers=response.headers,
+                        content=response_content,
+                        request=response.request,
+                    )
+                    return recreated_response
+                except Exception:
+                    # If recreation fails, return original (may have empty body)
+                    logger.debug("response_recreation_failed")
+                    return response
 
             return response
 

@@ -1,7 +1,7 @@
 # Enable local plugin discovery so in-tree plugins are loaded from ./plugins
 plugins_disable_local_discovery = false
 
-# Logging configuration (centralized)
+# Logging configuration
 [logging]
 level = "INFO"
 format = "auto"
@@ -10,7 +10,6 @@ verbose_api = false
 enable_plugin_logging = true
 plugin_log_base_dir = "/tmp/ccproxy"
 
-
 # Per-plugin logging overrides
 [logging.plugin_overrides]
 request_tracer = true
@@ -18,19 +17,14 @@ access_log = true
 pricing = true
 permissions = true
 
-# Request Tracer plugin configuration (unified tracer with JSON and raw HTTP)
+# Request Tracer plugin configuration
 [plugins.request_tracer]
 enabled = true
 log_dir = "/tmp/ccproxy/tracer"
 json_logs_enabled = true
-raw_http_enabled = true                                    # Set to true if you want raw HTTP dumps
 verbose_api = true
 log_client_request = true
 log_client_response = true
-log_provider_request = true
-log_provider_response = true
-exclude_headers = ["authorization", "x-api-key", "cookie"]
-max_body_size = 10485760                                   # 10MB
 
 # Access Log plugin configuration
 [plugins.access_log]
@@ -76,3 +70,10 @@ enabled = true
 [features]
 manifest_format_adapters = true
 deprecate_manual_format_setup = true
+
+# =============================================================================
+# LEGACY MIGRATION NOTES
+# =============================================================================
+# HTTP tracing refactored: Core HTTPTracerHook now handles all HTTP events automatically.
+# Raw HTTP files: /tmp/ccproxy/raw/ | JSON logs: integrated into main log stream
+# Control via: LOGGING__ENABLE_PLUGIN_LOGGING=true (replaces old RAW_HTTP_ENABLED)

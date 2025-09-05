@@ -209,9 +209,12 @@ class PluginHTTPHandler(BaseHTTPHandler):
                 method, url, headers, body, request_context
             )
 
+            # Read response content once to avoid consumption issues
+            response_content = response.content
+            
             # Process response through adapters and transformers
             processed_body, processed_headers = await self._processor.process_response(
-                body=response.content,
+                body=response_content,
                 headers=dict(response.headers),
                 status_code=response.status_code,
                 handler_config=handler_config,
@@ -301,6 +304,7 @@ class PluginHTTPHandler(BaseHTTPHandler):
             )
 
         # Use HTTP client from pool manager for hook-enabled requests
+        # The HookableHTTPClient will handle response body consumption and recreation
         response = await http_client.request(
             method=method,
             url=url,
@@ -312,11 +316,13 @@ class PluginHTTPHandler(BaseHTTPHandler):
 
         # Trace the response if tracer is available
         if self._request_tracer and request_id:
+            # Read content for tracer (response may have been recreated by HTTP hooks)
+            response_content = response.content
             await self._request_tracer.trace_response(
                 request_id=request_id,
                 status=response.status_code,
                 headers=dict(response.headers),
-                body=response.content,
+                body=response_content,
             )
 
         return response

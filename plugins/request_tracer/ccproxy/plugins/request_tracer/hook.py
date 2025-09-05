@@ -163,17 +163,15 @@ class RequestTracerHook(Hook):
         if self._should_exclude_path(path):
             return
 
-        # Log with JSON formatter
-        if self.json_formatter and self.config.verbose_api:
-            await self.json_formatter.log_response(
-                request_id=request_id,
-                status=status_code,
-                headers=headers,
-                body=body or b"",  # Use body from context if available
-                response_type="client",
-                context=getattr(context, "context", None),
-                hook_type="tracer",  # Indicate this came from RequestTracerHook
-            )
+        # Note: Response body logging is now handled by core HTTPTracerHook
+        # REQUEST_COMPLETED events don't contain response bodies
+        logger.debug(
+            "request_completed",
+            request_id=request_id,
+            status_code=status_code,
+            duration_ms=duration_ms,
+            note="Response body logged by core HTTPTracerHook"
+        )
 
     async def _handle_request_failed(self, context: HookContext) -> None:
         """Handle REQUEST_FAILED event."""
@@ -239,15 +237,16 @@ class RequestTracerHook(Hook):
         if is_streaming and self.config.log_streaming_chunks:
             return
 
-        # Log with JSON formatter
-        if self.json_formatter:
-            await self.json_formatter.log_provider_response(
-                request_id=request_id,
-                provider=provider,
-                status_code=status_code,
-                headers=headers,  # Use headers from hook context
-                body=body,  # Include response body for debugging
-            )
+        # Note: Provider response body logging is now handled by core HTTPTracerHook
+        # PROVIDER_RESPONSE_RECEIVED events don't contain response bodies
+        logger.debug(
+            "provider_response_received",
+            request_id=request_id,
+            provider=provider,
+            status_code=status_code,
+            is_streaming=is_streaming,
+            note="Response body logged by core HTTPTracerHook"
+        )
 
     async def _handle_provider_error(self, context: HookContext) -> None:
         """Handle PROVIDER_ERROR event."""
