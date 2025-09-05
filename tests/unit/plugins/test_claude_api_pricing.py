@@ -46,7 +46,7 @@ def adapter_with_pricing(
     adapter = ClaudeAPIAdapter(
         auth_manager=Mock(),
         detection_service=Mock(),
-        http_client=AsyncClient(),
+        http_pool_manager=Mock(),
         context=context,
     )
 
@@ -78,7 +78,7 @@ class TestClaudeAPIPricingIntegration:
         adapter = ClaudeAPIAdapter(
             auth_manager=Mock(),
             detection_service=Mock(),
-            http_client=AsyncClient(),
+            http_pool_manager=Mock(),
             context={},  # Empty context, no plugin_registry
         )
 
@@ -93,7 +93,7 @@ class TestClaudeAPIPricingIntegration:
         adapter = ClaudeAPIAdapter(
             auth_manager=Mock(),
             detection_service=Mock(),
-            http_client=AsyncClient(),
+            http_pool_manager=Mock(),
             context=context,
         )
 
@@ -154,7 +154,7 @@ class TestClaudeAPIPricingIntegration:
         adapter = ClaudeAPIAdapter(
             auth_manager=Mock(),
             detection_service=Mock(),
-            http_client=AsyncClient(),
+            http_pool_manager=Mock(),
             context={},  # No plugin_registry
         )
 

@@ -6,7 +6,6 @@ from typing import Any
 
 import structlog
 from fastapi import FastAPI
-from pydantic_settings import BaseSettings
 from typing_extensions import TypedDict
 
 from ccproxy.api.bootstrap import create_service_container
@@ -125,6 +124,11 @@ async def initialize_plugins_startup(app: FastAPI, settings: Settings) -> None:
             return {}
 
     core_services = CoreServicesAdapter(service_container)
+
+    # Perform manifest population with access to http_pool_manager
+    # This allows plugins to modify their manifests during context creation
+    for _name, factory in plugin_registry.factories.items():
+        factory.create_context(core_services)
 
     await plugin_registry.initialize_all(core_services)
 
@@ -391,26 +395,7 @@ def create_app(service_container: ServiceContainer | None = None) -> FastAPI:
             category="plugin",
         )
 
-        class ManifestPopulationServices:
-            def __init__(self, settings: Settings | None) -> None:
-                self.settings = settings
-                self.http_client = None
-                self.http_pool_manager = None
-                self.logger = structlog.get_logger()
-
-            def get_plugin_config(self, plugin_name: str) -> dict[str, BaseSettings]:
-                if (
-                    self.settings
-                    and hasattr(self.settings, "plugins")
-                    and self.settings.plugins
-                ):
-                    return self.settings.plugins.get(plugin_name, {})
-                return {}
-
-        manifest_services = ManifestPopulationServices(settings)
-
-        for _name, factory in plugin_registry.factories.items():
-            factory.create_context(manifest_services)
+        # Manifest population will be done during startup when core services are available
 
         plugin_middleware_count = 0
         for name, factory in plugin_registry.factories.items():

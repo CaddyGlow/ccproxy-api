@@ -4,7 +4,6 @@ import uuid
 from typing import TYPE_CHECKING, Any, cast
 
 from fastapi import Request
-from httpx import AsyncClient
 from starlette.responses import Response, StreamingResponse
 
 from ccproxy.auth.manager import AuthManager
@@ -51,29 +50,27 @@ class CodexAdapter(BaseHTTPAdapter):
     def __init__(
         self,
         # Required dependencies
-        http_client: AsyncClient,
         auth_manager: AuthManager,
         detection_service: "CodexDetectionService",
+        http_pool_manager: Any,
         # Optional dependencies
         request_tracer: "IRequestTracer | None" = None,
         metrics: "IMetricsCollector | None" = None,
         streaming_handler: "IStreamingHandler | None" = None,
         hook_manager: "HookManager | None" = None,
-        http_pool_manager: Any = None,
         # Plugin-specific context
         context: "PluginContext | dict[str, Any] | None" = None,
     ):
         """Initialize the Codex adapter with explicit dependencies.
 
         Args:
-            http_client: HTTP client for making requests
             auth_manager: Authentication manager for credentials
             detection_service: Detection service for Codex CLI detection
+            http_pool_manager: HTTP pool manager for getting clients on demand
             request_tracer: Optional request tracer
             metrics: Optional metrics collector
             streaming_handler: Optional streaming handler
             hook_manager: Optional hook manager for event emission
-            http_pool_manager: Optional HTTP pool manager for getting clients on demand
             context: Optional plugin context containing plugin_registry and other services
         """
         # Initialize transformers
@@ -95,33 +92,52 @@ class CodexAdapter(BaseHTTPAdapter):
 
         # Initialize base HTTP adapter with explicit dependencies
         super().__init__(
-            http_client=http_client,
             auth_manager=auth_manager,
             detection_service=detection_service,
+            http_pool_manager=http_pool_manager,
             request_tracer=request_tracer,
             metrics=metrics,
             streaming_handler=streaming_handler,
             request_transformer=request_transformer,
             response_transformer=response_transformer,
             hook_manager=hook_manager,
-            http_pool_manager=http_pool_manager,
             context=cast("PluginContext | None", context),
         )
 
-        # Get format services from context (fail fast if missing)
-        self.format_registry = context.get("format_registry") if context else None
-        self.format_detector = context.get("format_detector") if context else None
+        from ccproxy.services.adapters.format_detector import FormatDetectionService
+        from ccproxy.services.adapters.format_registry import FormatAdapterRegistry
 
-        if not self.format_registry:
-            raise RuntimeError("FormatAdapterRegistry not available in context")
-        if not self.format_detector:
-            raise RuntimeError("FormatDetectionService not available in context")
+        # Get format services from service container
+        self.format_registry: FormatAdapterRegistry | None = None
+        self.format_detector: FormatDetectionService | None = None
 
-        # Store current endpoint for format adapter selection
-        self._current_endpoint = ""
+        if context and "service_container" in context:
+            service_container = context["service_container"]
+            try:
+                from ccproxy.services.adapters.format_detector import (
+                    FormatDetectionService,
+                )
+                from ccproxy.services.adapters.format_registry import (
+                    FormatAdapterRegistry,
+                )
 
-        # Complete initialization if needed
-        self._complete_initialization()
+                self.format_registry = service_container.get_service(
+                    FormatAdapterRegistry
+                )
+                self.format_detector = service_container.get_service(
+                    FormatDetectionService
+                )
+
+                logger.debug(
+                    "format_services_loaded",
+                    has_registry=bool(self.format_registry),
+                    has_detector=bool(self.format_detector),
+                )
+            except Exception as e:
+                logger.warning("failed_to_load_format_services", error=str(e))
+
+        # Current endpoint tracking for format detection
+        self._current_endpoint: str | None = None
 
     async def _resolve_endpoint(self, endpoint: str) -> tuple[str, bool]:
         """Resolve the target URL and determine if format conversion is needed.
@@ -279,12 +295,6 @@ class CodexAdapter(BaseHTTPAdapter):
             needs_conversion=needs_conversion,
             target_url=target_url,
         )
-
-    def _complete_initialization(self) -> None:
-        """Complete initialization - no longer needed with explicit dependencies."""
-        # HTTP handler is already initialized by BaseHTTPAdapter
-        # Transformers are already set from constructor
-        pass
 
     async def handle_request(
         self, request: Request, endpoint: str, method: str, **kwargs: Any

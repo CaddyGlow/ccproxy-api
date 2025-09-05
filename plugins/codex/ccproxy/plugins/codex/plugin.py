@@ -26,7 +26,7 @@ class CodexRuntime(ProviderPluginRuntime):
         """Initialize runtime."""
         super().__init__(manifest)
         self.config: CodexSettings | None = None
-        self.auth_manager: Any | None = None
+        self.credential_manager: Any | None = None
 
     async def _on_initialize(self) -> None:
         """Initialize the Codex provider plugin."""
@@ -43,12 +43,11 @@ class CodexRuntime(ProviderPluginRuntime):
         self.config = config
 
         # Get auth manager from context
-        self.auth_manager = self.context.get("credentials_manager")
+        self.credential_manager = self.context.get("credentials_manager")
 
         # Call parent to initialize adapter and detection service
         await super()._on_initialize()
 
-        # NEW: Setup format registry
         await self._setup_format_registry()
 
         # Register streaming metrics hook
@@ -85,7 +84,7 @@ class CodexRuntime(ProviderPluginRuntime):
             plugin="codex",
             version="1.0.0",
             status="initialized",
-            has_credentials=self.auth_manager is not None,
+            has_credentials=self.credential_manager is not None,
             has_adapter=self.adapter is not None,
             has_detection=self.detection_service is not None,
             **cli_info,
@@ -98,10 +97,10 @@ class CodexRuntime(ProviderPluginRuntime):
             import json
 
             # Get access token from stored credentials
-            if not self.auth_manager:
+            if not self.credential_manager:
                 return None
 
-            access_token = await self.auth_manager.get_access_token()
+            access_token = await self.credential_manager.get_access_token()
             if not access_token:
                 return None
 
@@ -161,11 +160,11 @@ class CodexRuntime(ProviderPluginRuntime):
 
     async def get_auth_summary(self) -> dict[str, Any]:
         """Get detailed authentication status."""
-        if not self.auth_manager:
+        if not self.credential_manager:
             return {"auth": "not_configured"}
 
         try:
-            auth_status = await self.auth_manager.get_auth_status()
+            auth_status = await self.credential_manager.get_auth_status()
             summary = {"auth": "not_configured"}
 
             if auth_status.get("auth_configured"):
@@ -202,9 +201,9 @@ class CodexRuntime(ProviderPluginRuntime):
             )
 
         # Add authentication status
-        if self.auth_manager:
+        if self.credential_manager:
             try:
-                auth_status = await self.auth_manager.get_auth_status()
+                auth_status = await self.credential_manager.get_auth_status()
                 details["auth_configured"] = auth_status.get("auth_configured", False)
                 details["token_available"] = auth_status.get("token_available", False)
             except Exception as e:
@@ -216,7 +215,7 @@ class CodexRuntime(ProviderPluginRuntime):
 
             if self.config and self.detection_service:
                 health_result = await codex_health_check(
-                    self.config, self.detection_service, self.auth_manager
+                    self.config, self.detection_service, self.credential_manager
                 )
                 details.update(
                     {
@@ -234,7 +233,6 @@ class CodexRuntime(ProviderPluginRuntime):
         try:
             from ccproxy.services.adapters.format_registry import FormatAdapterRegistry
 
-            from .composite_anthropic_adapter import CompositeAnthropicAdapter
             from .format_adapter import CodexFormatAdapter
 
             if not self.context:
@@ -247,111 +245,21 @@ class CodexRuntime(ProviderPluginRuntime):
 
             registry = service_container.get_service(FormatAdapterRegistry)
 
-            # Register OpenAI -> Response API adapter (should not conflict)
+            # Register plugin-specific OpenAI -> Response API adapter
             registry.register("openai", "response_api", CodexFormatAdapter(), "codex")
 
-            # Check if anthropic -> response_api adapter already exists
-            existing_adapter = registry.get_adapter_if_exists(
-                "anthropic", "response_api"
-            )
-            if existing_adapter:
-                # Verify compatibility of existing adapter
-                if await self._is_adapter_compatible(existing_adapter):
-                    logger.info(
-                        "codex_reusing_existing_anthropic_adapter",
-                        existing_adapter_type=type(existing_adapter).__name__,
-                        reason="compatible_functionality",
-                    )
-                else:
-                    logger.warning(
-                        "codex_existing_adapter_incompatible",
-                        existing_adapter_type=type(existing_adapter).__name__,
-                        fallback_action="registering_composite_adapter",
-                    )
-                    # Try to register our adapter, will fail if incompatible
-                    registry.register(
-                        "anthropic",
-                        "response_api",
-                        CompositeAnthropicAdapter(),
-                        "codex",
-                    )
-            else:
-                # No existing adapter, register our own
-                registry.register(
-                    "anthropic", "response_api", CompositeAnthropicAdapter(), "codex"
-                )
-                logger.info(
-                    "codex_registered_composite_anthropic_adapter",
-                    reason="no_existing_adapter",
-                )
+            # Note: anthropic -> response_api conversion is handled by core pre-registered adapter
+            # No need to register CompositeAnthropicAdapter - use core AnthropicResponseAPIAdapter
 
             logger.info(
-                "codex_format_adapters_setup_completed",
+                "codex_format_adapters_registered",
                 formats=registry.list_formats(),
-                reused_existing=existing_adapter is not None
-                and await self._is_adapter_compatible(existing_adapter)
-                if existing_adapter
-                else False,
+                message="Registered codex-specific adapters, using core adapter for anthropic<->response_api",
             )
 
         except Exception as e:
             logger.error("codex_format_registry_setup_failed", error=str(e), exc_info=e)
             raise RuntimeError(f"Failed to setup Codex format registry: {e}") from e
-
-    async def _is_adapter_compatible(self, adapter: Any) -> bool:
-        """Check if existing adapter is compatible with Codex requirements.
-
-        Args:
-            adapter: The existing adapter to check
-
-        Returns:
-            True if adapter is compatible, False otherwise
-        """
-        try:
-            # Check if adapter has required methods for Codex functionality
-            required_methods = ["adapt_request", "adapt_response"]
-            for method in required_methods:
-                if not hasattr(adapter, method):
-                    logger.debug(
-                        "codex_adapter_compatibility_check_failed",
-                        missing_method=method,
-                        adapter_type=type(adapter).__name__,
-                    )
-                    return False
-
-            # Check if adapter supports streaming (optional but preferred)
-            supports_streaming = hasattr(adapter, "adapt_stream")
-
-            # Check adapter type compatibility by name (avoid import issues)
-            adapter_type_name = type(adapter).__name__
-
-            # ResponseAPIAnthropicAdapter from claude_api plugin is compatible
-            if adapter_type_name == "ResponseAPIAnthropicAdapter":
-                logger.debug(
-                    "codex_adapter_compatibility_verified",
-                    adapter_type=adapter_type_name,
-                    supports_streaming=supports_streaming,
-                    reason="response_api_anthropic_adapter_compatible",
-                )
-                return True
-
-            # For other adapters, do more thorough compatibility check
-            # We could add more specific compatibility checks here if needed
-            logger.debug(
-                "codex_adapter_compatibility_unknown",
-                adapter_type=type(adapter).__name__,
-                supports_streaming=supports_streaming,
-                reason="unknown_adapter_type",
-            )
-            return False
-
-        except Exception as e:
-            logger.debug(
-                "codex_adapter_compatibility_check_error",
-                error=str(e),
-                adapter_type=type(adapter).__name__ if adapter else "None",
-            )
-            return False
 
     async def _register_streaming_metrics_hook(self) -> None:
         """Register the streaming metrics extraction hook."""
@@ -437,53 +345,6 @@ class CodexFactory(BaseProviderPluginFactory):
     dependencies = ["oauth_codex"]
     optional_requires = ["pricing"]
 
-    async def create_adapter(self, context: PluginContext) -> CodexAdapter:
-        """Create the Codex adapter with validation."""
-        from ccproxy.services.adapters.format_detector import FormatDetectionService
-        from ccproxy.services.adapters.format_registry import FormatAdapterRegistry
-        from ccproxy.services.http_pool import HTTPPoolManager
-
-        http_pool_manager: HTTPPoolManager | None = context.get("http_pool_manager")
-        auth_manager = context.get("credentials_manager")
-        detection_service = context.get("detection_service")
-        request_tracer = context.get("request_tracer")
-        metrics = context.get("metrics")
-        streaming_handler = context.get("streaming_handler")
-        hook_manager = context.get("hook_manager")
-
-        # Get format services from service container
-        service_container = context.get("service_container")
-        if not service_container:
-            raise RuntimeError("Service container is required for format services")
-
-        format_registry = service_container.get_service(FormatAdapterRegistry)
-        format_detector = service_container.get_service(FormatDetectionService)
-
-        # Add format services to context for adapter
-        context["format_registry"] = format_registry
-        context["format_detector"] = format_detector
-
-        if not http_pool_manager:
-            raise RuntimeError("HTTP pool manager is required for Codex adapter")
-        if not auth_manager:
-            raise RuntimeError("Auth manager is required for Codex adapter")
-        if not detection_service:
-            raise RuntimeError("Detection service is required for Codex adapter")
-
-        # Get HTTP client from pool manager
-        http_client = await http_pool_manager.get_client()
-
-        return CodexAdapter(
-            http_client=http_client,
-            auth_manager=auth_manager,
-            detection_service=detection_service,
-            request_tracer=request_tracer,
-            metrics=metrics,
-            streaming_handler=streaming_handler,
-            hook_manager=hook_manager,
-            context=context,
-        )
-
     def create_detection_service(self, context: PluginContext) -> CodexDetectionService:
         """Create the Codex detection service with validation."""
         settings = context.get("settings")
@@ -492,16 +353,6 @@ class CodexFactory(BaseProviderPluginFactory):
 
         cli_service = context.get("cli_detection_service")
         return CodexDetectionService(settings, cli_service)
-
-    def create_credentials_manager(self, context: PluginContext) -> Any:
-        """Create the Codex credentials manager.
-
-        Note: OAuth functionality is now provided by the oauth_codex plugin.
-        The token manager will look up OAuth providers from the registry as needed.
-        """
-        from ccproxy.plugins.oauth_codex.manager import CodexTokenManager
-
-        return CodexTokenManager()
 
 
 # Export the factory instance

@@ -217,6 +217,9 @@ class PluginContext(TypedDict, total=False):
     token_manager: Any  # Token manager instance for auth providers
     storage: Any  # Storage instance for auth providers
 
+    format_registry: Any
+    format_detector: Any
+
     # Testing/utilities
     proxy_service: Any  # Proxy service (tests/mocks)
 

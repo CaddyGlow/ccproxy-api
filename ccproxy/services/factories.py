@@ -149,11 +149,21 @@ class ConcreteServiceFactory:
         return BinaryResolver.from_settings(settings)
 
     def create_format_registry(self) -> FormatAdapterRegistry:
-        """Create empty format adapter registry.
+        """Create format adapter registry with core adapters pre-registered.
 
-        Plugins will register their own adapters during initialization.
+        Pre-registers common format conversions to prevent plugin conflicts.
+        Plugins can still register their own plugin-specific adapters.
         """
-        return FormatAdapterRegistry()
+        from ccproxy.adapters.openai import AnthropicResponseAPIAdapter
+
+        registry = FormatAdapterRegistry()
+
+        # Register core shared adapters to prevent plugin conflicts
+        core_adapter = AnthropicResponseAPIAdapter()
+        registry.register("anthropic", "response_api", core_adapter, "core")
+        registry.register("response_api", "anthropic", core_adapter, "core")
+
+        return registry
 
     def create_format_detector(self) -> FormatDetectionService:
         """Create format detection service."""

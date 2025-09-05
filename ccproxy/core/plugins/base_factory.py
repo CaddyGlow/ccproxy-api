@@ -167,6 +167,11 @@ class BaseProviderPluginFactory(ProviderPluginFactory):
         # Get config if available
         config = context.get("config")
 
+        # Get format services from service container
+        service_container = context.get("service_container")
+        if not service_container:
+            raise RuntimeError("Service container is required for format services")
+
         # Check if this is an HTTP-based adapter
         if issubclass(self.adapter_class, BaseHTTPAdapter):
             # HTTP adapters require http_pool_manager
@@ -175,21 +180,17 @@ class BaseProviderPluginFactory(ProviderPluginFactory):
                     f"HTTP pool manager required for {self.adapter_class.__name__} but not available in context"
                 )
 
-            # Get HTTP client from pool manager
-            http_client = await http_pool_manager.get_client()
-
             # Create HTTP adapter with explicit dependencies
             return cast(
                 BaseAdapter,
                 self.adapter_class(
-                    http_client=http_client,
                     auth_manager=auth_manager,
                     detection_service=detection_service,
+                    http_pool_manager=http_pool_manager,
                     request_tracer=request_tracer or NullRequestTracer(),
                     metrics=metrics or NullMetricsCollector(),
                     streaming_handler=streaming_handler or NullStreamingHandler(),
                     hook_manager=hook_manager,
-                    http_pool_manager=http_pool_manager,
                     context=context,
                 ),
             )

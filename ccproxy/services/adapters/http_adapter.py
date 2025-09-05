@@ -53,9 +53,9 @@ class BaseHTTPAdapter(BaseAdapter):
     def __init__(
         self,
         # Required dependencies
-        http_client: "httpx.AsyncClient",
         auth_manager: "AuthManager",
         detection_service: Any,
+        http_pool_manager: "HTTPPoolManager",
         # Optional dependencies with defaults
         request_tracer: "IRequestTracer | None" = None,
         metrics: "IMetricsCollector | None" = None,
@@ -64,16 +64,15 @@ class BaseHTTPAdapter(BaseAdapter):
         response_transformer: "PluginTransformerProtocol | None" = None,
         hook_manager: "HookManager | None" = None,
         buffer_service: "StreamingBufferService | None" = None,
-        http_pool_manager: "HTTPPoolManager | None" = None,
         # Context for plugin-specific services
         context: "PluginContext | None" = None,
     ) -> None:
         """Initialize the base HTTP adapter with explicit dependencies.
 
         Args:
-            http_client: HTTP client for making requests
             auth_manager: Authentication manager for credentials
             detection_service: Detection service for CLI detection
+            http_pool_manager: HTTP pool manager for getting clients on demand
             request_tracer: Optional request tracer
             metrics: Optional metrics collector
             streaming_handler: Optional streaming handler
@@ -81,11 +80,9 @@ class BaseHTTPAdapter(BaseAdapter):
             response_transformer: Optional response transformer
             hook_manager: Optional hook manager for event emission
             buffer_service: Optional streaming buffer service for stream-to-buffer conversion
-            http_pool_manager: Optional HTTP pool manager for getting clients on demand
             context: Optional plugin context containing plugin_registry and other services
         """
         # Store required dependencies
-        self.http_client = http_client
         self._auth_manager = auth_manager
         self._detection_service = detection_service
         self._hook_manager = hook_manager
@@ -108,7 +105,6 @@ class BaseHTTPAdapter(BaseAdapter):
 
         # Initialize HTTP handler with explicit dependencies
         self._http_handler: PluginHTTPHandler = PluginHTTPHandler(
-            http_client=http_client,
             request_tracer=self.request_tracer,
             http_pool_manager=http_pool_manager,
         )
@@ -118,17 +114,18 @@ class BaseHTTPAdapter(BaseAdapter):
         return self._hook_manager
 
     async def _get_http_client(self) -> "httpx.AsyncClient":
-        """Get HTTP client, either existing or from pool manager.
+        """Get HTTP client from pool manager.
 
         Returns:
             HTTP client instance
+
+        Raises:
+            RuntimeError: If no HTTP pool manager is available
         """
-        # If we have a pool manager, get a fresh client from it
         if self._http_pool_manager is not None:
             return await self._http_pool_manager.get_client()
 
-        # Fall back to existing client
-        return self.http_client
+        raise RuntimeError("HTTP pool manager is required but not available")
 
     def _get_pricing_service(self) -> Any:
         """Get pricing service from plugin registry if available.
@@ -809,7 +806,7 @@ class BaseHTTPAdapter(BaseAdapter):
             # Clear references
             self._request_transformer = None
             self._response_transformer = None
-            # Keep http_client reference managed by container; set observability to null implementations
+            # Set observability to null implementations
             self.request_tracer = NullRequestTracer()
             self.metrics = NullMetricsCollector()
             self.streaming_handler = NullStreamingHandler()

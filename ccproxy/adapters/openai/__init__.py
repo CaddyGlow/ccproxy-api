@@ -5,6 +5,7 @@ between OpenAI and Anthropic API formats.
 """
 
 from .adapter import OpenAIAdapter
+from .anthropic_response_adapter import AnthropicResponseAPIAdapter
 from .models import (
     OpenAIChatCompletionResponse,
     OpenAIChoice,
@@ -22,8 +23,9 @@ from .streaming import OpenAISSEFormatter, OpenAIStreamProcessor
 
 
 __all__ = [
-    # Adapter
+    # Adapters
     "OpenAIAdapter",
+    "AnthropicResponseAPIAdapter",
     # Models
     "OpenAIMessage",
     "OpenAIMessageContent",

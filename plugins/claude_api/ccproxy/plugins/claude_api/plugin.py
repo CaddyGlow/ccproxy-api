@@ -177,8 +177,6 @@ class ClaudeAPIRuntime(ProviderPluginRuntime):
         try:
             from ccproxy.services.adapters.format_registry import FormatAdapterRegistry
 
-            from .response_api_adapter import ResponseAPIAnthropicAdapter
-
             if not self.context:
                 raise RuntimeError("Context not available for format registry setup")
 
@@ -189,20 +187,15 @@ class ClaudeAPIRuntime(ProviderPluginRuntime):
 
             registry = service_container.get_service(FormatAdapterRegistry)
 
-            # Note: OpenAI <-> Anthropic adapter is already registered by claude_sdk plugin
-            # Only register Response API <-> Anthropic adapter which is unique to claude_api
-
-            # Register Response API <-> Anthropic adapter
-            response_api_adapter = ResponseAPIAnthropicAdapter()
-            registry.register(
-                "response_api", "anthropic", response_api_adapter, "claude_api"
-            )
-            registry.register(
-                "anthropic", "response_api", response_api_adapter, "claude_api"
-            )
+            # Note: Core adapters are pre-registered in FormatAdapterRegistry factory:
+            # - OpenAI <-> Anthropic (registered by claude_sdk plugin)
+            # - Response API <-> Anthropic (registered by core)
+            # No additional adapters needed for claude_api plugin
 
             logger.info(
-                "claude_api_format_adapters_registered", formats=registry.list_formats()
+                "claude_api_using_core_format_adapters",
+                formats=registry.list_formats(),
+                message="Using pre-registered core adapters for Response API <-> Anthropic conversion",
             )
 
         except Exception as e:
@@ -341,19 +334,6 @@ class ClaudeAPIFactory(BaseProviderPluginFactory):
             kwargs={"skip_initial_run": True},
         )
     ]
-
-    def create_credentials_manager(self, context: PluginContext) -> Any:
-        """Create the credentials manager for Claude API.
-
-        Args:
-            context: Plugin context
-
-        Returns:
-            ClaudeApiTokenManager instance
-        """
-        from ccproxy.plugins.oauth_claude.manager import ClaudeApiTokenManager
-
-        return ClaudeApiTokenManager()
 
     def create_detection_service(self, context: PluginContext) -> Any:
         """Create detection service and inject it into task kwargs.

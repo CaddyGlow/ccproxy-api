@@ -4,7 +4,6 @@ import json
 from typing import TYPE_CHECKING, Any, cast
 
 from fastapi import HTTPException, Request
-from httpx import AsyncClient
 from starlette.responses import StreamingResponse
 
 
@@ -13,8 +12,6 @@ if TYPE_CHECKING:
     from ccproxy.core.plugins.declaration import PluginContext
     from ccproxy.core.request_context import RequestContext
     from ccproxy.hooks import HookManager
-    from ccproxy.services.adapters.format_detector import FormatDetectionService
-    from ccproxy.services.adapters.format_registry import FormatAdapterRegistry
     from ccproxy.services.interfaces import (
         IMetricsCollector,
         IRequestTracer,
@@ -49,29 +46,27 @@ class ClaudeAPIAdapter(BaseHTTPAdapter):
     def __init__(
         self,
         # Required dependencies
-        http_client: AsyncClient,
         auth_manager: "AuthManager",
         detection_service: "ClaudeAPIDetectionService",
+        http_pool_manager: Any,
         # Optional dependencies
         request_tracer: "IRequestTracer | None" = None,
         metrics: "IMetricsCollector | None" = None,
         streaming_handler: "IStreamingHandler | None" = None,
         hook_manager: "HookManager | None" = None,
-        http_pool_manager: Any = None,
         # Plugin-specific context
         context: "PluginContext | dict[str, Any] | None" = None,
     ) -> None:
         """Initialize the Claude API adapter with explicit dependencies.
 
         Args:
-            http_client: HTTP client for making requests
             auth_manager: Authentication manager for credentials
             detection_service: Detection service for Claude CLI detection
+            http_pool_manager: HTTP pool manager for getting clients on demand
             request_tracer: Optional request tracer
             metrics: Optional metrics collector
             streaming_handler: Optional streaming handler
             hook_manager: Optional hook manager for event emission
-            http_pool_manager: Optional HTTP pool manager for getting clients on demand
             context: Optional plugin context containing plugin_registry and other services
         """
         # Get injection mode from config if available
@@ -109,18 +104,20 @@ class ClaudeAPIAdapter(BaseHTTPAdapter):
 
         # Initialize base HTTP adapter with explicit dependencies
         super().__init__(
-            http_client=http_client,
             auth_manager=auth_manager,
             detection_service=detection_service,
+            http_pool_manager=http_pool_manager,
             request_tracer=request_tracer,
             metrics=metrics,
             streaming_handler=streaming_handler,
             request_transformer=request_transformer,
             response_transformer=response_transformer,
             hook_manager=hook_manager,
-            http_pool_manager=http_pool_manager,
             context=cast("PluginContext | None", context),
         )
+
+        from ccproxy.services.adapters.format_detector import FormatDetectionService
+        from ccproxy.services.adapters.format_registry import FormatAdapterRegistry
 
         # Get format services from service container
         self.format_registry: FormatAdapterRegistry | None = None
