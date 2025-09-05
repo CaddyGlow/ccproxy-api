@@ -10,6 +10,7 @@ from ccproxy.core.plugins import (
     TaskSpec,
 )
 from ccproxy.core.plugins.base_factory import BaseProviderPluginFactory
+from ccproxy.core.plugins.declaration import FormatAdapterSpec, FormatPair
 
 from .adapter import ClaudeSDKAdapter
 from .config import ClaudeSDKSettings
@@ -123,7 +124,29 @@ class ClaudeSDKRuntime(ProviderPluginRuntime):
         return details
 
     async def _setup_format_registry(self) -> None:
-        """Register Claude SDK format adapters."""
+        """Format registry setup with feature flag control."""
+        from ccproxy.config.settings import get_settings
+
+        settings = get_settings()
+
+        # Skip manual setup if manifest system is enabled
+        if settings.features.manifest_format_adapters:
+            logger.debug(
+                "claude_sdk_format_registry_setup_skipped_using_manifest",
+                category="format",
+            )
+            return
+
+        # Deprecation warning for double registration
+        if settings.features.deprecate_manual_format_setup:
+            logger.warning(
+                "deprecated_claude_sdk_manual_format_registry_setup",
+                message="Manual format registry setup is deprecated. Use manifest format_adapters instead.",
+                migration_guide="Update ClaudeSDKFactory.format_adapters list",
+                category="format",
+            )
+
+        # Existing manual registration logic
         try:
             from .format_adapter import ClaudeSDKFormatAdapter
 
@@ -140,15 +163,17 @@ class ClaudeSDKRuntime(ProviderPluginRuntime):
                 "openai", "anthropic", ClaudeSDKFormatAdapter(), "claude_sdk"
             )
 
-            logger.info("claude_sdk_format_adapters_registered")
+            logger.info(
+                "claude_sdk_format_adapters_registered_manually", category="format"
+            )
 
         except Exception as e:
             logger.error(
-                "claude_sdk_format_registry_setup_failed", error=str(e), exc_info=e
+                "claude_sdk_format_registry_setup_failed",
+                error=str(e),
+                category="format",
             )
-            raise RuntimeError(
-                f"Failed to setup Claude SDK format registry: {e}"
-            ) from e
+            raise ValueError("Failed to register Claude SDK format adapters") from e
 
 
 class ClaudeSDKFactory(BaseProviderPluginFactory):
@@ -166,6 +191,26 @@ class ClaudeSDKFactory(BaseProviderPluginFactory):
     router = router
     route_prefix = "/claude"
     optional_requires = ["pricing"]
+
+    # NEW: Declarative format adapter specification
+    format_adapters = [
+        FormatAdapterSpec(
+            from_format="openai",
+            to_format="anthropic",
+            adapter_factory=lambda: __import__(
+                "plugins.claude_sdk.ccproxy.plugins.claude_sdk.format_adapter",
+                fromlist=["ClaudeSDKFormatAdapter"],
+            ).ClaudeSDKFormatAdapter(),
+            priority=40,  # Higher priority than API plugin
+            description="OpenAI to Anthropic format conversion for Claude SDK",
+        )
+    ]
+
+    # Dependencies: anthropic -> response_api handled by core
+    requires_format_adapters: list[FormatPair] = [
+        ("anthropic", "response_api"),
+    ]
+
     tasks = [
         TaskSpec(
             task_name="claude_sdk_detection_refresh",

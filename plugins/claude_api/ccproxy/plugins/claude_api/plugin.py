@@ -10,6 +10,7 @@ from ccproxy.core.plugins import (
     TaskSpec,
 )
 from ccproxy.core.plugins.base_factory import BaseProviderPluginFactory
+from ccproxy.core.plugins.declaration import FormatAdapterSpec, FormatPair
 from ccproxy.plugins.oauth_claude.manager import ClaudeApiTokenManager
 
 from .adapter import ClaudeAPIAdapter
@@ -179,7 +180,29 @@ class ClaudeAPIRuntime(ProviderPluginRuntime):
         return None
 
     async def _setup_format_registry(self) -> None:
-        """Register format adapters with fail-fast error handling."""
+        """Format registry setup with feature flag control."""
+        from ccproxy.config.settings import get_settings
+
+        settings = get_settings()
+
+        # Skip manual setup if manifest system is enabled
+        if settings.features.manifest_format_adapters:
+            logger.debug(
+                "claude_api_format_registry_setup_skipped_using_manifest",
+                category="format",
+            )
+            return
+
+        # Deprecation warning for double registration
+        if settings.features.deprecate_manual_format_setup:
+            logger.warning(
+                "deprecated_claude_api_manual_format_registry_setup",
+                message="Manual format registry setup is deprecated. Use manifest format_adapters instead.",
+                migration_guide="Update ClaudeAPIFactory.format_adapters list",
+                category="format",
+            )
+
+        # Existing manual registration logic (or lack thereof)
         try:
             if not self.context:
                 raise RuntimeError("Context not available for format registry setup")
@@ -188,27 +211,34 @@ class ClaudeAPIRuntime(ProviderPluginRuntime):
             from ccproxy.services.container import ServiceContainer
 
             service_container = self.context.get(ServiceContainer)
-
             registry = service_container.get_format_registry()
 
-            # Note: Core adapters are pre-registered in FormatAdapterRegistry factory:
-            # - OpenAI <-> Anthropic (registered by claude_sdk plugin)
-            # - Response API <-> Anthropic (registered by core)
-            # No additional adapters needed for claude_api plugin
+            # Claude API plugin now registers its own adapters manually
+            from ccproxy.adapters.openai.adapter import OpenAIAdapter
+            from ccproxy.adapters.anthropic.response_adapter import (
+                AnthropicResponseAPIAdapter,
+            )
+
+            # Register the format adapters manually
+            registry.register("openai", "anthropic", OpenAIAdapter(), "claude_api")
+            registry.register(
+                "response_api", "anthropic", AnthropicResponseAPIAdapter(), "claude_api"
+            )
 
             logger.info(
-                "claude_api_using_core_format_adapters",
+                "claude_api_format_adapters_registered_manually",
                 formats=registry.list_formats(),
-                message="Using pre-registered core adapters for Response API <-> Anthropic conversion",
+                message="Registered claude_api format adapters manually",
+                category="format",
             )
 
         except Exception as e:
             logger.error(
-                "claude_api_format_registry_setup_failed", error=str(e), exc_info=e
+                "claude_api_format_registry_setup_failed",
+                error=str(e),
+                category="format",
             )
-            raise RuntimeError(
-                f"Failed to setup Claude API format registry: {e}"
-            ) from e
+            raise ValueError("Failed to register Claude API format adapters") from e
 
     async def _register_streaming_metrics_hook(self) -> None:
         """Register the streaming metrics extraction hook."""
@@ -333,6 +363,34 @@ class ClaudeAPIFactory(BaseProviderPluginFactory):
     # first-class OAuth flows in the UI.
     dependencies = ["oauth_claude"]
     optional_requires = ["pricing"]
+
+    # NEW: Declarative format adapter specification
+    format_adapters = [
+        FormatAdapterSpec(
+            from_format="openai",
+            to_format="anthropic",
+            adapter_factory=lambda: __import__(
+                "ccproxy.adapters.openai.adapter", fromlist=["OpenAIAdapter"]
+            ).OpenAIAdapter(),
+            priority=60,  # Lower priority than SDK plugin
+            description="OpenAI to Anthropic format conversion for Claude API",
+        ),
+        FormatAdapterSpec(
+            from_format="response_api",
+            to_format="anthropic",
+            adapter_factory=lambda: __import__(
+                "ccproxy.adapters.anthropic.response_adapter",
+                fromlist=["AnthropicResponseAPIAdapter"],
+            ).AnthropicResponseAPIAdapter(),
+            priority=50,  # Medium priority
+            description="Response API to Anthropic format conversion for Claude API",
+        ),
+    ]
+
+    # Define requirements for adapters this plugin needs
+    requires_format_adapters: list[FormatPair] = [
+        ("anthropic", "response_api"),  # Provided by core
+    ]
     tasks = [
         TaskSpec(
             task_name="claude_api_detection_refresh",

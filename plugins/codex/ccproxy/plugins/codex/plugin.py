@@ -9,6 +9,7 @@ from ccproxy.core.plugins import (
     ProviderPluginRuntime,
 )
 from ccproxy.core.plugins.base_factory import BaseProviderPluginFactory
+from ccproxy.core.plugins.declaration import FormatAdapterSpec
 from ccproxy.plugins.oauth_codex.manager import CodexTokenManager
 
 from .adapter import CodexAdapter
@@ -238,7 +239,28 @@ class CodexRuntime(ProviderPluginRuntime):
         return details
 
     async def _setup_format_registry(self) -> None:
-        """Register format adapters with adapter reuse detection."""
+        """Format registry setup with feature flag control."""
+        from ccproxy.config.settings import get_settings
+
+        settings = get_settings()
+
+        # Skip manual setup if manifest system is enabled
+        if settings.features.manifest_format_adapters:
+            logger.debug(
+                "codex_format_registry_setup_skipped_using_manifest", category="format"
+            )
+            return
+
+        # Deprecation warning for double registration
+        if settings.features.deprecate_manual_format_setup:
+            logger.warning(
+                "deprecated_codex_manual_format_registry_setup",
+                message="Manual format registry setup is deprecated. Use manifest format_adapters instead.",
+                migration_guide="Update CodexFactory.format_adapters list",
+                category="format",
+            )
+
+        # Existing manual registration logic
         try:
             from .format_adapter import CodexFormatAdapter
 
@@ -249,24 +271,26 @@ class CodexRuntime(ProviderPluginRuntime):
             from ccproxy.services.container import ServiceContainer
 
             service_container = self.context.get(ServiceContainer)
-
             registry = service_container.get_format_registry()
 
-            # Register plugin-specific OpenAI -> Response API adapter
+            # Register plugin-specific format adapters manually
             registry.register("openai", "response_api", CodexFormatAdapter(), "codex")
-
-            # Note: anthropic -> response_api conversion is handled by core pre-registered adapter
-            # No need to register CompositeAnthropicAdapter - use core AnthropicResponseAPIAdapter
+            registry.register(
+                "anthropic", "response_api", CodexFormatAdapter(), "codex"
+            )
 
             logger.info(
-                "codex_format_adapters_registered",
+                "codex_format_adapters_registered_manually",
                 formats=registry.list_formats(),
-                message="Registered codex-specific adapters, using core adapter for anthropic<->response_api",
+                message="Registered codex format adapters manually",
+                category="format",
             )
 
         except Exception as e:
-            logger.error("codex_format_registry_setup_failed", error=str(e), exc_info=e)
-            raise RuntimeError(f"Failed to setup Codex format registry: {e}") from e
+            logger.error(
+                "codex_format_registry_setup_failed", error=str(e), category="format"
+            )
+            raise ValueError("Failed to register Codex format adapters") from e
 
     async def _register_streaming_metrics_hook(self) -> None:
         """Register the streaming metrics extraction hook."""
@@ -356,6 +380,30 @@ class CodexFactory(BaseProviderPluginFactory):
     route_prefix = "/api/codex"
     dependencies = ["oauth_codex"]
     optional_requires = ["pricing"]
+
+    # NEW: Declarative format adapter specification
+    format_adapters = [
+        FormatAdapterSpec(
+            from_format="openai",
+            to_format="response_api",
+            adapter_factory=lambda: __import__(
+                "plugins.codex.ccproxy.plugins.codex.format_adapter",
+                fromlist=["CodexFormatAdapter"],
+            ).CodexFormatAdapter(),
+            priority=50,  # Medium priority
+            description="OpenAI Chat Completions to Codex Response API conversion",
+        ),
+        FormatAdapterSpec(
+            from_format="anthropic",
+            to_format="response_api",
+            adapter_factory=lambda: __import__(
+                "plugins.codex.ccproxy.plugins.codex.format_adapter",
+                fromlist=["CodexFormatAdapter"],
+            ).CodexFormatAdapter(),
+            priority=50,  # Medium priority
+            description="Anthropic Messages to Codex Response API conversion",
+        ),
+    ]
 
     def create_detection_service(self, context: PluginContext) -> CodexDetectionService:
         """Create the Codex detection service with validation."""

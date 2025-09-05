@@ -594,9 +594,20 @@ class PluginRegistry:
         return order
 
     def _validate_format_adapter_requirements(self) -> dict[str, list[tuple[str, str]]]:
-        """Self-contained helper for format adapter requirement validation."""
-        # This is a placeholder - in practice, format registry would be injected
-        # For now, return empty dict to avoid runtime errors during feature development
+        """Self-contained helper for format adapter requirement validation.
+        
+        This method is called during dependency resolution when core_services
+        is not yet available. In practice, format adapter validation happens
+        later in the initialization process when the format registry is available.
+        """
+        # During dependency resolution phase, format registry may not be available yet
+        # Return empty dict to allow dependency resolution to continue
+        # Actual format adapter validation happens during initialize_all()
+        logger.debug(
+            "format_adapter_requirements_validation_deferred",
+            message="Format adapter validation will happen during plugin initialization",
+            category="format",
+        )
         return {}
 
     async def create_runtime(self, name: str, core_services: Any) -> BasePluginRuntime:
@@ -664,12 +675,17 @@ class PluginRegistry:
 
         # NEW: Register format adapters from manifests in first pass
         if settings.features.manifest_format_adapters:
-            # For now, skip manifest registration during development
-            # This will be implemented once the service container integration is complete
-            logger.debug(
-                "format_adapter_manifest_registration_placeholder",
-                category="format",
-            )
+            format_registry = core_services.get_format_registry()
+            manifests = self.get_all_manifests()
+            for name, manifest in manifests.items():
+                if manifest.format_adapters:
+                    await format_registry.register_from_manifest(manifest, name)
+                    logger.debug(
+                        "plugin_format_adapters_registered_from_manifest",
+                        plugin=name,
+                        adapter_count=len(manifest.format_adapters),
+                        category="format",
+                    )
 
         for name in order:
             try:
@@ -686,10 +702,9 @@ class PluginRegistry:
 
         # NEW: Finalize format registry after plugin initialization
         if settings.features.manifest_format_adapters:
-            # Placeholder for format registry finalization
-            logger.debug(
-                "format_adapter_registry_finalization_placeholder",
-                category="format",
+            format_registry = core_services.get_format_registry()
+            await format_registry.resolve_conflicts_and_finalize(
+                enable_priority_mode=True
             )
 
     async def shutdown_all(self) -> None:
