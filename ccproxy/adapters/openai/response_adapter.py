@@ -10,8 +10,8 @@ from __future__ import annotations
 import json
 import time
 import uuid
-from collections.abc import AsyncIterator
-from typing import Any
+from collections.abc import AsyncIterator, Generator
+from typing import Any, Literal
 
 import structlog
 
@@ -274,7 +274,9 @@ class ResponseAdapter:
         tool_calls = self._extract_tool_calls_from_output(output)
 
         # Determine finish reason
-        finish_reason = "tool_calls" if tool_calls else "stop"
+        finish_reason: Literal["stop", "length", "tool_calls", "content_filter"] = (
+            "tool_calls" if tool_calls else "stop"
+        )
 
         return OpenAIChatCompletionResponse(
             id=response_dict.get("id", f"resp_{uuid.uuid4().hex}"),
@@ -452,14 +454,14 @@ class ResponseAdapter:
                                             elif block.get("type") == "tool_call":
                                                 # Handle tool call delta
                                                 for (
-                                                    chunk
+                                                    tool_chunk
                                                 ) in self._process_tool_call_delta(
                                                     block,
                                                     tool_calls_state,
                                                     stream_id,
                                                     created,
                                                 ):
-                                                    yield chunk
+                                                    yield tool_chunk
 
                         # Send initial role chunk if not sent yet
                         if not role_sent:
@@ -515,7 +517,9 @@ class ResponseAdapter:
 
                         # Determine finish reason based on tool calls
                         has_tool_calls = bool(tool_calls_state)
-                        finish_reason = "tool_calls" if has_tool_calls else "stop"
+                        finish_reason: Literal[
+                            "stop", "length", "tool_calls", "content_filter"
+                        ] = "tool_calls" if has_tool_calls else "stop"
 
                         chunk_data = {
                             "id": stream_id,
@@ -565,7 +569,7 @@ class ResponseAdapter:
         tool_calls_state: dict[str, dict[str, Any]],
         stream_id: str,
         created: int,
-    ):
+    ) -> Generator[dict[str, Any], None, None]:
         """Process tool call delta events and yield streaming chunks.
 
         Args:

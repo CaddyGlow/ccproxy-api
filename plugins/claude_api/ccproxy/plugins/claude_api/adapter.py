@@ -123,22 +123,34 @@ class ClaudeAPIAdapter(BaseHTTPAdapter):
         )
 
         # Get format services from service container
-        self.format_registry: "FormatAdapterRegistry | None" = None
-        self.format_detector: "FormatDetectionService | None" = None
-        
+        self.format_registry: FormatAdapterRegistry | None = None
+        self.format_detector: FormatDetectionService | None = None
+
         if context and "service_container" in context:
             service_container = context["service_container"]
             try:
-                from ccproxy.services.adapters.format_registry import FormatAdapterRegistry
-                from ccproxy.services.adapters.format_detector import FormatDetectionService
-                
-                self.format_registry = service_container.get_service(FormatAdapterRegistry)
-                self.format_detector = service_container.get_service(FormatDetectionService)
-                
-                logger.debug("format_services_loaded", has_registry=bool(self.format_registry), has_detector=bool(self.format_detector))
+                from ccproxy.services.adapters.format_detector import (
+                    FormatDetectionService,
+                )
+                from ccproxy.services.adapters.format_registry import (
+                    FormatAdapterRegistry,
+                )
+
+                self.format_registry = service_container.get_service(
+                    FormatAdapterRegistry
+                )
+                self.format_detector = service_container.get_service(
+                    FormatDetectionService
+                )
+
+                logger.debug(
+                    "format_services_loaded",
+                    has_registry=bool(self.format_registry),
+                    has_detector=bool(self.format_detector),
+                )
             except Exception as e:
                 logger.warning("failed_to_load_format_services", error=str(e))
-                
+
         # Current endpoint tracking for format detection
         self._current_endpoint: str | None = None
 
@@ -153,12 +165,16 @@ class ClaudeAPIAdapter(BaseHTTPAdapter):
         """
         # Store current endpoint for format detection
         self._current_endpoint = endpoint
-        
+
         # Check for session-based endpoints
         if "/v1/messages" in endpoint or endpoint.endswith(CLAUDE_MESSAGES_ENDPOINT):
             # Native Anthropic format
             return f"{CLAUDE_API_BASE_URL}{CLAUDE_MESSAGES_ENDPOINT}", False
-        elif "/chat/completions" in endpoint or "/v1/chat/completions" in endpoint or endpoint.endswith(OPENAI_CHAT_COMPLETIONS_PATH):
+        elif (
+            "/chat/completions" in endpoint
+            or "/v1/chat/completions" in endpoint
+            or endpoint.endswith(OPENAI_CHAT_COMPLETIONS_PATH)
+        ):
             # OpenAI format - needs conversion
             return f"{CLAUDE_API_BASE_URL}{CLAUDE_MESSAGES_ENDPOINT}", True
         elif "/responses" in endpoint or "/v1/responses" in endpoint:
@@ -186,18 +202,20 @@ class ClaudeAPIAdapter(BaseHTTPAdapter):
         """
         request_adapter = None
         response_adapter = None
-        
+
         if needs_conversion:
             if not self.format_registry or not self.format_detector:
                 raise RuntimeError("Format services not available for conversion")
-                
+
             try:
                 # Detect source format from endpoint
                 source_format = self.format_detector.get_format_from_endpoint(
                     self._current_endpoint
                 )
-                target_format = "anthropic"  # Claude API always expects Anthropic format
-                
+                target_format = (
+                    "anthropic"  # Claude API always expects Anthropic format
+                )
+
                 # Get adapters from registry
                 request_adapter = self.format_registry.get_adapter(
                     source_format, target_format
@@ -205,7 +223,7 @@ class ClaudeAPIAdapter(BaseHTTPAdapter):
                 response_adapter = self.format_registry.get_adapter(
                     target_format, source_format
                 )
-                
+
                 logger.debug(
                     "format_adapters_loaded",
                     source_format=source_format,
@@ -213,7 +231,7 @@ class ClaudeAPIAdapter(BaseHTTPAdapter):
                     has_request_adapter=bool(request_adapter),
                     has_response_adapter=bool(response_adapter),
                 )
-                
+
             except Exception as e:
                 logger.error(
                     "format_adapter_loading_failed",
@@ -223,7 +241,7 @@ class ClaudeAPIAdapter(BaseHTTPAdapter):
                 raise RuntimeError(
                     f"Format detection failed for endpoint {self._current_endpoint}"
                 ) from e
-        
+
         return HandlerConfig(
             request_adapter=request_adapter,
             response_adapter=response_adapter,

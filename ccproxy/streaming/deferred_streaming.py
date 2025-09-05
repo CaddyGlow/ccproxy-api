@@ -520,7 +520,7 @@ class DeferredStreaming(StreamingResponse):
         from ccproxy.adapters.openai.streaming import AnthropicSSEFormatter
 
         formatter = AnthropicSSEFormatter()
-        
+
         async for json_obj in json_stream:
             # Check if this is Anthropic format (has "type" field)
             event_type = json_obj.get("type")
@@ -536,7 +536,7 @@ class DeferredStreaming(StreamingResponse):
                 json_str = json.dumps(json_obj, ensure_ascii=False)
                 sse_event = f"data: {json_str}\n\n"
                 sse_bytes = sse_event.encode("utf-8")
-            
+
             yield sse_bytes
 
         # Send final [DONE] event

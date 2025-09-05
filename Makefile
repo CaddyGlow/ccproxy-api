@@ -238,7 +238,7 @@ dev:
 		LOGGING__VERBOSE_API=true \
 		SERVER__RELOAD=true \
 		SERVER__WORKERS=1 \
-		uv run ccproxy-api serve 
+		uv run ccproxy-api serve
 
 prod:
 	uv run ccproxy serve

@@ -211,6 +211,8 @@ class PluginContext(TypedDict, total=False):
     detection_service: Any  # Detection service instance (provider-specific)
     credentials_manager: Any  # Credentials manager (plugin-specific)
     oauth_registry: "OAuthRegistry"  # OAuth registry available in app state
+    http_pool_manager: Any  # HTTP pool manager instance
+    service_container: Any  # Service container instance
     auth_provider: Any  # OAuth provider instance (auth provider plugins)
     token_manager: Any  # Token manager instance for auth providers
     storage: Any  # Storage instance for auth providers

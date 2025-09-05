@@ -346,7 +346,12 @@ class BaseHTTPAdapter(BaseAdapter):
                     import json
 
                     # Parse the response body
-                    response_data = json.loads(response.body)
+                    body_data = (
+                        bytes(response.body)
+                        if isinstance(response.body, memoryview)
+                        else response.body
+                    )
+                    response_data = json.loads(body_data)
 
                     logger.debug(
                         "calling_format_adapter_adapt_response",

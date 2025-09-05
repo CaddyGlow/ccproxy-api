@@ -47,7 +47,7 @@ class FormatDetectionService:
             return "openai"
         elif CODEX_RESPONSES_ENDPOINT in endpoint:
             return "response_api"
-        
+
         # Handle session-based endpoints (e.g., /{session_id}/v1/messages, /{session_id}/chat/completions)
         # Check if the endpoint contains the path patterns after session parameters
         if "/v1/messages" in endpoint:

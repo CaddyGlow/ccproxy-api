@@ -190,10 +190,10 @@ exclude = [
   "^[^/]+\\.py$",
   "docs/",
   "site/",
-  "tests.deprecated/",
   "tests/",
   "examples/",
   "plugins/.*/tests/",
+  "plugins/.*/ccproxy/.*",
 ]
 namespace_packages = true
 explicit_package_bases = true

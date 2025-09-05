@@ -17,7 +17,6 @@ from typing import Any
 from ccproxy.adapters.base import APIAdapter
 from ccproxy.adapters.openai.adapter import OpenAIAdapter
 from ccproxy.adapters.openai.response_adapter import ResponseAdapter
-from ccproxy.adapters.openai.streaming import AnthropicSSEFormatter
 from ccproxy.core.logging import get_plugin_logger
 
 

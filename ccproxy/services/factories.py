@@ -150,7 +150,7 @@ class ConcreteServiceFactory:
 
     def create_format_registry(self) -> FormatAdapterRegistry:
         """Create empty format adapter registry.
-        
+
         Plugins will register their own adapters during initialization.
         """
         return FormatAdapterRegistry()

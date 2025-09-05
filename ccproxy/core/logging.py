@@ -520,14 +520,12 @@ def setup_logging(
         noisy_logger.propagate = True
         noisy_logger.setLevel(noisy_log_level)
 
-    [
+    for logger_name in suppress_debug:
         logging.getLogger(logger_name).setLevel(
             logging.INFO if log_level <= logging.DEBUG else log_level
         )
-        for logger_name in suppress_debug
-    ]
 
-    return structlog.get_logger()
+    return structlog.get_logger()  # type: ignore[no-any-return]
 
 
 # Create a convenience function for getting loggers

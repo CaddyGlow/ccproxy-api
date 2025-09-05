@@ -30,7 +30,7 @@ class ResponseAPIAnthropicAdapter(APIAdapter):
         """Initialize the composite adapter with chained adapters."""
         # ResponseAdapter handles Response API ↔ OpenAI Chat Completions
         self.response_adapter = ResponseAdapter()
-        
+
         # OpenAIAdapter handles OpenAI Chat Completions ↔ Anthropic Messages
         self.openai_adapter = OpenAIAdapter()
 
@@ -74,7 +74,9 @@ class ResponseAPIAnthropicAdapter(APIAdapter):
             logger.error(
                 "response_api_adapter_request_conversion_failed",
                 error=str(e),
-                request_keys=list(request.keys()) if isinstance(request, dict) else "not_dict",
+                request_keys=list(request.keys())
+                if isinstance(request, dict)
+                else "not_dict",
                 exc_info=e,
             )
             raise
@@ -103,7 +105,9 @@ class ResponseAPIAnthropicAdapter(APIAdapter):
 
             # Step 2: Convert OpenAI Chat Completions → Response API
             # Use ResponseAdapter's chat_to_response_request method
-            response_request = self.response_adapter.chat_to_response_request(openai_response)
+            response_request = self.response_adapter.chat_to_response_request(
+                openai_response
+            )
             response_api_response = response_request.model_dump()
 
             logger.debug(
@@ -119,7 +123,9 @@ class ResponseAPIAnthropicAdapter(APIAdapter):
             logger.error(
                 "response_api_adapter_response_conversion_failed",
                 error=str(e),
-                response_keys=list(response.keys()) if isinstance(response, dict) else "not_dict",
+                response_keys=list(response.keys())
+                if isinstance(response, dict)
+                else "not_dict",
                 exc_info=e,
             )
             raise
@@ -162,24 +168,26 @@ class ResponseAPIAnthropicAdapter(APIAdapter):
             )
             raise
 
-    def _response_api_to_openai_request(self, response_api_request: dict[str, Any]) -> dict[str, Any]:
+    def _response_api_to_openai_request(
+        self, response_api_request: dict[str, Any]
+    ) -> dict[str, Any]:
         """Convert Response API request to OpenAI Chat Completions request format.
-        
+
         Response API format:
         {
             "model": "claude-3-5-sonnet-20241022",
             "input": [
                 {
-                    "role": "user", 
+                    "role": "user",
                     "content": [{"type": "text", "text": "Hello!"}]
                 }
             ],
             "max_completion_tokens": 50
         }
-        
+
         OpenAI format:
         {
-            "model": "claude-3-5-sonnet-20241022", 
+            "model": "claude-3-5-sonnet-20241022",
             "messages": [
                 {
                     "role": "user",
@@ -190,17 +198,17 @@ class ResponseAPIAnthropicAdapter(APIAdapter):
         }
         """
         openai_request = {}
-        
+
         # Copy basic fields
         if "model" in response_api_request:
             openai_request["model"] = response_api_request["model"]
-        
+
         # Convert input to messages and flatten content
         if "input" in response_api_request:
             messages = []
             for msg in response_api_request["input"]:
                 openai_msg = {"role": msg.get("role", "user")}
-                
+
                 # Flatten content from Response API structured format to simple string
                 content = msg.get("content", [])
                 if isinstance(content, list):
@@ -214,19 +222,19 @@ class ResponseAPIAnthropicAdapter(APIAdapter):
                     openai_msg["content"] = content
                 else:
                     openai_msg["content"] = str(content)
-                    
+
                 messages.append(openai_msg)
             openai_request["messages"] = messages
-        
+
         # Convert token limits
         if "max_completion_tokens" in response_api_request:
             openai_request["max_tokens"] = response_api_request["max_completion_tokens"]
         elif "max_tokens" in response_api_request:
             openai_request["max_tokens"] = response_api_request["max_tokens"]
-            
+
         # Copy other optional fields
         for field in ["temperature", "top_p", "stream", "tools", "tool_choice"]:
             if field in response_api_request:
                 openai_request[field] = response_api_request[field]
-        
+
         return openai_request

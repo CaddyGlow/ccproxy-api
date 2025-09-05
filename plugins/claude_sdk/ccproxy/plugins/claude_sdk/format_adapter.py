@@ -8,7 +8,6 @@ from collections.abc import AsyncGenerator, AsyncIterator
 from typing import Any
 
 from ccproxy.adapters.openai.adapter import OpenAIAdapter
-from ccproxy.adapters.openai.streaming import AnthropicSSEFormatter
 from ccproxy.core.logging import get_plugin_logger
 
 

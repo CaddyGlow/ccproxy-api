@@ -29,7 +29,7 @@ def claude_api_path_transformer(path: str) -> str:
     # Map OpenAI chat completions to Anthropic messages
     if path == "/v1/chat/completions":
         return "/v1/messages"
-    
+
     # Map Response API format to Anthropic messages
     if path == "/v1/responses" or path == "/responses":
         return "/v1/messages"
