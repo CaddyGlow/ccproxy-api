@@ -8,13 +8,12 @@ rather than runtime (lifespan).
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import IntEnum
-from typing import TYPE_CHECKING, Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol, TypeVar
 
 import httpx
 import structlog
 from fastapi import APIRouter
 from pydantic import BaseModel
-from typing_extensions import TypedDict
 
 
 if TYPE_CHECKING:
@@ -40,6 +39,9 @@ if TYPE_CHECKING:
 else:
     # Runtime import - mypy doesn't have stubs for fastapi.middleware
     from starlette.middleware.base import BaseHTTPMiddleware
+
+
+T = TypeVar("T")
 
 
 class MiddlewareLayer(IntEnum):
@@ -185,43 +187,162 @@ class PluginManifest:
         return sorted(self.middleware)
 
 
-class PluginContext(TypedDict, total=False):
+class PluginContext:
     """Context provided to plugin runtime during initialization."""
 
-    settings: "Settings"  # Application settings
-    http_client: httpx.AsyncClient  # Shared HTTP client
-    logger: structlog.BoundLogger  # Structured logger
-    scheduler: "Scheduler"  # Scheduler instance
-    config: BaseModel | None  # Plugin-specific configuration
-    cli_detection_service: "CLIDetectionService"  # Shared CLI detection service
-    plugin_registry: "PluginRegistry"  # Plugin registry for inter-plugin access (single source for all plugin/service access)
+    def __init__(self) -> None:
+        """Initialize plugin context."""
+        # Application settings
+        self.settings: Settings | None = None
+        self.http_client: httpx.AsyncClient | None = None
+        self.logger: structlog.BoundLogger | None = None
+        self.scheduler: Scheduler | None = None
+        self.config: BaseModel | None = None
+        self.cli_detection_service: CLIDetectionService | None = None
+        self.plugin_registry: PluginRegistry | None = None
 
-    # Core app and hook system
-    app: "FastAPI"  # FastAPI application instance
-    hook_registry: "HookRegistry"
-    hook_manager: "HookManager"
+        # Core app and hook system
+        self.app: FastAPI | None = None
+        self.hook_registry: HookRegistry | None = None
+        self.hook_manager: HookManager | None = None
 
-    # Observability and streaming
-    request_tracer: "IRequestTracer | None"
-    streaming_handler: "IStreamingHandler | None"
-    metrics: "IMetricsCollector | None"
+        # Observability and streaming
+        self.request_tracer: IRequestTracer | None = None
+        self.streaming_handler: IStreamingHandler | None = None
+        self.metrics: IMetricsCollector | None = None
 
-    # Provider-specific
-    adapter: "BaseAdapter"  # BaseAdapter instance
-    detection_service: Any  # Detection service instance (provider-specific)
-    credentials_manager: Any  # Credentials manager (plugin-specific)
-    oauth_registry: "OAuthRegistry"  # OAuth registry available in app state
-    http_pool_manager: Any  # HTTP pool manager instance
-    service_container: Any  # Service container instance
-    auth_provider: Any  # OAuth provider instance (auth provider plugins)
-    token_manager: Any  # Token manager instance for auth providers
-    storage: Any  # Storage instance for auth providers
+        # Provider-specific
+        self.adapter: BaseAdapter | None = None
+        self.detection_service: Any = None
+        self.credentials_manager: Any = None
+        self.oauth_registry: OAuthRegistry | None = None
+        self.http_pool_manager: Any = None
+        self.service_container: Any = None
+        self.auth_provider: Any = None
+        self.token_manager: Any = None
+        self.storage: Any = None
 
-    format_registry: Any
-    format_detector: Any
+        self.format_registry: Any = None
+        self.format_detector: Any = None
 
-    # Testing/utilities
-    proxy_service: Any  # Proxy service (tests/mocks)
+        # Testing/utilities
+        self.proxy_service: Any = None
+
+        # Internal service mapping for type-safe access
+        self._service_map: dict[type[Any], str] = {}
+        self._initialize_service_map()
+
+    def _initialize_service_map(self) -> None:
+        """Initialize the service type mapping."""
+        if TYPE_CHECKING:
+            pass
+
+        # Map service types to their attribute names
+        self._service_map = {
+            # Core services - using Any to avoid circular imports at runtime
+            **(
+                {}
+                if TYPE_CHECKING
+                else {
+                    type(None): "settings",  # Placeholder, will be populated at runtime
+                }
+            ),
+            httpx.AsyncClient: "http_client",
+            structlog.BoundLogger: "logger",
+            BaseModel: "config",
+        }
+
+    def get_service(self, service_type: type[T]) -> T:
+        """Get a service instance by type with proper type safety.
+
+        Args:
+            service_type: The type of service to retrieve
+
+        Returns:
+            The service instance
+
+        Raises:
+            ValueError: If the service is not available
+        """
+        # Create service mappings dynamically to access current values
+        service_mappings: dict[type[Any], Any] = {}
+
+        # Common concrete types
+        if self.settings is not None:
+            service_mappings[type(self.settings)] = self.settings
+        if self.http_client is not None:
+            service_mappings[httpx.AsyncClient] = self.http_client
+        if self.logger is not None:
+            service_mappings[structlog.BoundLogger] = self.logger
+        if self.config is not None:
+            service_mappings[type(self.config)] = self.config
+            service_mappings[BaseModel] = self.config
+
+        # Check if service type directly matches a known service
+        if service_type in service_mappings:
+            return service_mappings[service_type]  # type: ignore[no-any-return]
+
+        # Check all attributes for an instance of the requested type
+        for attr_name in dir(self):
+            if not attr_name.startswith("_"):  # Skip private attributes
+                attr_value = getattr(self, attr_name)
+                if attr_value is not None and isinstance(attr_value, service_type):
+                    return attr_value  # type: ignore[no-any-return]
+
+        # Service not found
+        type_name = getattr(service_type, "__name__", str(service_type))
+        raise ValueError(f"Service {type_name} not available in plugin context")
+
+    def get(self, key_or_type: type[T] | str, default: Any = None) -> T | Any:
+        """Get service by type (new) or by string key (backward compatibility).
+
+        Args:
+            key_or_type: Service type for type-safe access or string key for compatibility
+            default: Default value for string-based access (ignored for type-safe access)
+
+        Returns:
+            Service instance for type-safe access, or attribute value for string access
+        """
+        if isinstance(key_or_type, str):
+            # Backward compatibility: string-based access
+            return getattr(self, key_or_type, default)
+        else:
+            # Type-safe access
+            return self.get_service(key_or_type)
+
+    def get_attr(self, key: str, default: Any = None) -> Any:
+        """Get attribute by string name - for backward compatibility.
+
+        Args:
+            key: String attribute name
+            default: Default value if attribute not found
+
+        Returns:
+            Attribute value or default
+        """
+        return getattr(self, key, default)
+
+    def __getitem__(self, key: str) -> Any:
+        """Backward compatibility: Allow dictionary-style access."""
+        return getattr(self, key, None)
+
+    def __setitem__(self, key: str, value: Any) -> None:
+        """Backward compatibility: Allow dictionary-style assignment."""
+        setattr(self, key, value)
+
+    def __contains__(self, key: str) -> bool:
+        """Backward compatibility: Support 'key in context' checks."""
+        return hasattr(self, key) and getattr(self, key) is not None
+
+    def keys(self) -> list[str]:
+        """Backward compatibility: Return list of available service keys."""
+        return [
+            attr
+            for attr in dir(self)
+            if not attr.startswith("_")
+            and not callable(getattr(self, attr))
+            and getattr(self, attr) is not None
+        ]
 
 
 class PluginRuntimeProtocol(Protocol):

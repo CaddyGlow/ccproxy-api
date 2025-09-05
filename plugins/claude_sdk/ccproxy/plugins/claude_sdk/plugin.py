@@ -125,8 +125,6 @@ class ClaudeSDKRuntime(ProviderPluginRuntime):
     async def _setup_format_registry(self) -> None:
         """Register Claude SDK format adapters."""
         try:
-            from ccproxy.services.adapters.format_registry import FormatAdapterRegistry
-
             from .format_adapter import ClaudeSDKFormatAdapter
 
             if not self.context:

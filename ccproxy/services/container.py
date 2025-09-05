@@ -69,7 +69,7 @@ class ServiceContainer:
         else:
             raise ValueError("Either instance or factory must be provided")
 
-    def get_service(self, service_type: Any) -> Any:
+    def get_service(self, service_type: type[T]) -> T:
         """Get a service instance by key (type or protocol)."""
         if service_type not in self._services:
             if service_type in self._factories:

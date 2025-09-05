@@ -1,6 +1,6 @@
 """Codex provider plugin v2 implementation."""
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from ccproxy.core.logging import get_plugin_logger
 from ccproxy.core.plugins import (
@@ -9,11 +9,16 @@ from ccproxy.core.plugins import (
     ProviderPluginRuntime,
 )
 from ccproxy.core.plugins.base_factory import BaseProviderPluginFactory
+from ccproxy.plugins.oauth_codex.manager import CodexTokenManager
 
 from .adapter import CodexAdapter
 from .config import CodexSettings
 from .detection_service import CodexDetectionService
 from .routes import router as codex_router
+
+
+if TYPE_CHECKING:
+    pass
 
 
 logger = get_plugin_logger()
@@ -26,7 +31,7 @@ class CodexRuntime(ProviderPluginRuntime):
         """Initialize runtime."""
         super().__init__(manifest)
         self.config: CodexSettings | None = None
-        self.credential_manager: Any | None = None
+        self.credential_manager: CodexTokenManager | None = None
 
     async def _on_initialize(self) -> None:
         """Initialize the Codex provider plugin."""
@@ -34,8 +39,9 @@ class CodexRuntime(ProviderPluginRuntime):
             raise RuntimeError("Context not set")
 
         # Get configuration
-        config = self.context.get("config")
-        if not isinstance(config, CodexSettings):
+        try:
+            config = self.context.get(CodexSettings)
+        except ValueError:
             logger.warning("plugin_no_config")
             # Use default config if none provided
             config = CodexSettings()
@@ -43,7 +49,10 @@ class CodexRuntime(ProviderPluginRuntime):
         self.config = config
 
         # Get auth manager from context
-        self.credential_manager = self.context.get("credentials_manager")
+        try:
+            self.credential_manager = self.context.get(CodexTokenManager)
+        except ValueError:
+            self.credential_manager = None
 
         # Call parent to initialize adapter and detection service
         await super()._on_initialize()
@@ -231,17 +240,15 @@ class CodexRuntime(ProviderPluginRuntime):
     async def _setup_format_registry(self) -> None:
         """Register format adapters with adapter reuse detection."""
         try:
-            from ccproxy.services.adapters.format_registry import FormatAdapterRegistry
-
             from .format_adapter import CodexFormatAdapter
 
             if not self.context:
                 raise RuntimeError("Context not available for format registry setup")
 
             # Get format registry from service container
-            service_container = self.context.get("service_container")
-            if not service_container:
-                raise RuntimeError("Service container not available")
+            from ccproxy.services.container import ServiceContainer
+
+            service_container = self.context.get(ServiceContainer)
 
             registry = service_container.get_format_registry()
 
@@ -272,8 +279,11 @@ class CodexRuntime(ProviderPluginRuntime):
                 )
                 return
             # Get hook registry from context
-            hook_registry = self.context.get("hook_registry")
-            if not hook_registry:
+            from ccproxy.hooks.registry import HookRegistry
+
+            try:
+                hook_registry = self.context.get(HookRegistry)
+            except ValueError:
                 logger.warning(
                     "streaming_metrics_hook_not_registered",
                     reason="no_hook_registry",
@@ -340,6 +350,8 @@ class CodexFactory(BaseProviderPluginFactory):
     adapter_class = CodexAdapter
     detection_service_class = CodexDetectionService
     config_class = CodexSettings
+    # Provide credentials manager so HTTP adapter receives an auth manager
+    credentials_manager_class = CodexTokenManager
     router = codex_router
     route_prefix = "/api/codex"
     dependencies = ["oauth_codex"]
@@ -347,11 +359,15 @@ class CodexFactory(BaseProviderPluginFactory):
 
     def create_detection_service(self, context: PluginContext) -> CodexDetectionService:
         """Create the Codex detection service with validation."""
-        settings = context.get("settings")
-        if not settings:
-            raise RuntimeError("Settings are required for Codex detection service")
+        from ccproxy.config.settings import Settings
+        from ccproxy.services.cli_detection import CLIDetectionService
 
-        cli_service = context.get("cli_detection_service")
+        settings = context.get(Settings)
+        try:
+            cli_service = context.get(CLIDetectionService)
+        except ValueError:
+            cli_service = None
+
         return CodexDetectionService(settings, cli_service)
 
 

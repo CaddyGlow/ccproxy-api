@@ -98,50 +98,51 @@ class BasePluginFactory(PluginFactory):
         Returns:
             Plugin context with base services
         """
-        context: PluginContext = {
-            "settings": core_services.settings,
-            "http_pool_manager": core_services.http_pool_manager,
-            "logger": core_services.logger.bind(plugin=self.manifest.name),
-        }
+        context = PluginContext()
+
+        # Set core services
+        context.settings = core_services.settings
+        context.http_pool_manager = core_services.http_pool_manager
+        context.logger = core_services.logger.bind(plugin=self.manifest.name)
 
         # Add explicit dependency injection services
         if hasattr(core_services, "request_tracer"):
-            context["request_tracer"] = core_services.request_tracer
+            context.request_tracer = core_services.request_tracer
         if hasattr(core_services, "streaming_handler"):
-            context["streaming_handler"] = core_services.streaming_handler
+            context.streaming_handler = core_services.streaming_handler
         if hasattr(core_services, "metrics"):
-            context["metrics"] = core_services.metrics
+            context.metrics = core_services.metrics
 
         # Add CLI detection service if available
         if hasattr(core_services, "cli_detection_service"):
-            context["cli_detection_service"] = core_services.cli_detection_service
+            context.cli_detection_service = core_services.cli_detection_service
 
         # Add scheduler if available
         if hasattr(core_services, "scheduler"):
-            context["scheduler"] = core_services.scheduler
+            context.scheduler = core_services.scheduler
 
         # Add plugin registry (SINGLE SOURCE for all plugin/service access)
         if hasattr(core_services, "plugin_registry"):
-            context["plugin_registry"] = core_services.plugin_registry
+            context.plugin_registry = core_services.plugin_registry
 
         # Add OAuth registry for auth providers if available (avoid globals)
         if (
             hasattr(core_services, "oauth_registry")
             and core_services.oauth_registry is not None
         ):
-            context["oauth_registry"] = core_services.oauth_registry
+            context.oauth_registry = core_services.oauth_registry
 
         # Add hook registry and manager if available
         if hasattr(core_services, "hook_registry"):
-            context["hook_registry"] = core_services.hook_registry
+            context.hook_registry = core_services.hook_registry
         if hasattr(core_services, "hook_manager"):
-            context["hook_manager"] = core_services.hook_manager
+            context.hook_manager = core_services.hook_manager
         if hasattr(core_services, "app"):
-            context["app"] = core_services.app
+            context.app = core_services.app
 
         # Add service container if available
         if hasattr(core_services, "_container"):
-            context["service_container"] = core_services._container
+            context.service_container = core_services._container
 
         # Add plugin-specific config if available
         if hasattr(core_services, "get_plugin_config"):
@@ -151,7 +152,7 @@ class BasePluginFactory(PluginFactory):
                 validated_config = self.manifest.config_class.model_validate(
                     plugin_config
                 )
-                context["config"] = validated_config
+                context.config = validated_config
 
         return context
 
@@ -604,14 +605,14 @@ class PluginRegistry:
         # For provider plugins, create additional components
         if isinstance(factory, ProviderPluginFactory):
             # Create credentials manager and detection service first as adapter may depend on them
-            context["detection_service"] = factory.create_detection_service(context)
-            context["credentials_manager"] = factory.create_credentials_manager(context)
-            context["adapter"] = await factory.create_adapter(context)
+            context.detection_service = factory.create_detection_service(context)
+            context.credentials_manager = factory.create_credentials_manager(context)
+            context.adapter = await factory.create_adapter(context)
         # For auth provider plugins, create auth components
         elif isinstance(factory, AuthProviderPluginFactory):
-            context["auth_provider"] = factory.create_auth_provider(context)
-            context["token_manager"] = factory.create_token_manager()
-            context["storage"] = factory.create_storage()
+            context.auth_provider = factory.create_auth_provider(context)
+            context.token_manager = factory.create_token_manager()
+            context.storage = factory.create_storage()
 
         # Initialize runtime
         await runtime.initialize(context)

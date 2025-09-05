@@ -10,6 +10,7 @@ from ccproxy.core.plugins import (
     TaskSpec,
 )
 from ccproxy.core.plugins.base_factory import BaseProviderPluginFactory
+from ccproxy.plugins.oauth_claude.manager import ClaudeApiTokenManager
 
 from .adapter import ClaudeAPIAdapter
 from .config import ClaudeAPISettings
@@ -17,6 +18,13 @@ from .detection_service import ClaudeAPIDetectionService
 from .health import claude_api_health_check
 from .routes import router as claude_api_router
 from .tasks import ClaudeAPIDetectionRefreshTask
+
+
+# if TYPE_CHECKING:
+#     from ccproxy.config.settings import Settings
+#     from ccproxy.hooks.registry import HookRegistry
+#     from ccproxy.services.cli_detection import CLIDetectionService
+#     from ccproxy.services.container import ServiceContainer
 
 
 logger = get_plugin_logger()
@@ -27,6 +35,7 @@ class ClaudeAPIRuntime(ProviderPluginRuntime):
 
     def __init__(self, manifest: PluginManifest):
         """Initialize runtime."""
+        self.credential_manager: ClaudeApiTokenManager | None = None
         super().__init__(manifest)
         self.config: ClaudeAPISettings | None = None
 
@@ -39,13 +48,10 @@ class ClaudeAPIRuntime(ProviderPluginRuntime):
             raise RuntimeError("Context not set")
 
         # Get configuration
-        config = self.context.get("config")
-        if not isinstance(config, ClaudeAPISettings):
-            logger.warning(
-                "plugin_no_config",
-                config_type=type(config).__name__ if config else None,
-                config_value=config,
-            )
+        try:
+            config = self.context.get(ClaudeAPISettings)
+        except ValueError:
+            logger.warning("plugin_no_config")
             # Use default config if none provided
             config = ClaudeAPISettings()
             logger.info("plugin_using_default_config")
@@ -175,15 +181,13 @@ class ClaudeAPIRuntime(ProviderPluginRuntime):
     async def _setup_format_registry(self) -> None:
         """Register format adapters with fail-fast error handling."""
         try:
-            from ccproxy.services.adapters.format_registry import FormatAdapterRegistry
-
             if not self.context:
                 raise RuntimeError("Context not available for format registry setup")
 
             # Get format registry from service container
-            service_container = self.context.get("service_container")
-            if not service_container:
-                raise RuntimeError("Service container not available")
+            from ccproxy.services.container import ServiceContainer
+
+            service_container = self.context.get(ServiceContainer)
 
             registry = service_container.get_format_registry()
 
@@ -228,8 +232,11 @@ class ClaudeAPIRuntime(ProviderPluginRuntime):
             )
 
             # Get hook registry from context
-            hook_registry = self.context.get("hook_registry")
-            if not hook_registry:
+            from ccproxy.hooks.registry import HookRegistry
+
+            try:
+                hook_registry = self.context.get(HookRegistry)
+            except ValueError:
                 logger.warning(
                     "streaming_metrics_hook_not_registered",
                     reason="no_hook_registry",
@@ -317,6 +324,8 @@ class ClaudeAPIFactory(BaseProviderPluginFactory):
     adapter_class = ClaudeAPIAdapter
     detection_service_class = ClaudeAPIDetectionService
     config_class = ClaudeAPISettings
+    # Provide credentials manager so HTTP adapter receives an auth manager
+    credentials_manager_class = ClaudeApiTokenManager
     router = claude_api_router
     route_prefix = "/api"
     # OAuth provider is optional because the token manager can operate

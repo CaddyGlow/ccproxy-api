@@ -3,6 +3,7 @@
 import uuid
 from typing import TYPE_CHECKING, Any, cast
 
+
 if TYPE_CHECKING:
     from ccproxy.services.adapters.format_detector import FormatDetectionService
     from ccproxy.services.adapters.format_registry import FormatAdapterRegistry
