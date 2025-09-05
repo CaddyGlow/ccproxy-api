@@ -49,8 +49,8 @@ class RawHTTPFormatter:
                 # Disable logging if we can't create the directory
                 self.enabled = False
 
-        # Track which files we've already logged to (to only log once)
-        self._logged_files: set[str] = set()
+        # Track which files we've already created (for logging purposes only)
+        self._created_files: set[str] = set()
 
     def _compose_file_id(self, request_id: str | None) -> str:
         """Build filename ID using cmd_id and request_id per rules.
@@ -78,14 +78,19 @@ class RawHTTPFormatter:
     def _compose_file_id_with_timestamp(self, request_id: str | None) -> str:
         """Build filename ID with timestamp suffix for better organization.
 
-        Format: {base_id}_{timestamp}
+        Format: {base_id}_{timestamp}_{sequence}
         Where timestamp is in format: YYYYMMDD_HHMMSS_microseconds
+        And sequence is a counter to prevent collisions
         """
+        import time
         from datetime import datetime
 
         base_id = self._compose_file_id(request_id)
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-        return f"{base_id}_{timestamp}"
+
+        # Add a high-resolution timestamp with nanoseconds for uniqueness
+        nanos = time.time_ns() % 1000000  # Get nanosecond portion
+        return f"{base_id}_{timestamp}_{nanos:06d}"
 
     def should_log(self) -> bool:
         """Check if raw logging is enabled."""
@@ -109,19 +114,19 @@ class RawHTTPFormatter:
         else:
             file_suffix = base_suffix
         file_path = self.log_dir / f"{base_id}_{file_suffix}.http"
-        file_key = f"{base_id}_client_request"
 
-        # Only log on first write to this file
-        if file_key not in self._logged_files:
-            self._logged_files.add(file_key)
+        # Log file creation (only once per unique file path)
+        if str(file_path) not in self._created_files:
+            self._created_files.add(str(file_path))
             logger.debug(
-                "raw_http_log_started",
+                "raw_http_log_created",
                 request_id=request_id,
                 log_type="client_request",
                 file_path=str(file_path),
-                category="middleware",
+                category="raw_formatter",
             )
 
+        # Write data to file (append mode for multiple chunks)
         async with aiofiles.open(file_path, "ab") as f:
             await f.write(raw_data)
 
@@ -143,19 +148,19 @@ class RawHTTPFormatter:
         else:
             file_suffix = base_suffix
         file_path = self.log_dir / f"{base_id}_{file_suffix}.http"
-        file_key = f"{base_id}_client_response"
 
-        # Only log on first write to this file
-        if file_key not in self._logged_files:
-            self._logged_files.add(file_key)
+        # Log file creation (only once per unique file path)
+        if str(file_path) not in self._created_files:
+            self._created_files.add(str(file_path))
             logger.debug(
-                "raw_http_log_started",
+                "raw_http_log_created",
                 request_id=request_id,
                 log_type="client_response",
                 file_path=str(file_path),
-                category="middleware",
+                category="raw_formatter",
             )
 
+        # Write data to file (append mode for multiple chunks)
         async with aiofiles.open(file_path, "ab") as f:
             await f.write(raw_data)
 
@@ -177,19 +182,19 @@ class RawHTTPFormatter:
         else:
             file_suffix = base_suffix
         file_path = self.log_dir / f"{base_id}_{file_suffix}.http"
-        file_key = f"{base_id}_provider_request"
 
-        # Only log on first write to this file
-        if file_key not in self._logged_files:
-            self._logged_files.add(file_key)
+        # Log file creation (only once per unique file path)
+        if str(file_path) not in self._created_files:
+            self._created_files.add(str(file_path))
             logger.debug(
-                "raw_http_log_started",
+                "raw_http_log_created",
                 request_id=request_id,
                 log_type="provider_request",
                 file_path=str(file_path),
-                category="middleware",
+                category="raw_formatter",
             )
 
+        # Write data to file (append mode for multiple chunks)
         async with aiofiles.open(file_path, "ab") as f:
             await f.write(raw_data)
 
@@ -211,19 +216,19 @@ class RawHTTPFormatter:
         else:
             file_suffix = base_suffix
         file_path = self.log_dir / f"{base_id}_{file_suffix}.http"
-        file_key = f"{base_id}_provider_response"
 
-        # Only log on first write to this file
-        if file_key not in self._logged_files:
-            self._logged_files.add(file_key)
+        # Log file creation (only once per unique file path)
+        if str(file_path) not in self._created_files:
+            self._created_files.add(str(file_path))
             logger.debug(
-                "raw_http_log_started",
+                "raw_http_log_created",
                 request_id=request_id,
                 log_type="provider_response",
                 file_path=str(file_path),
-                category="middleware",
+                category="raw_formatter",
             )
 
+        # Write data to file (append mode for multiple chunks)
         async with aiofiles.open(file_path, "ab") as f:
             await f.write(raw_data)
 

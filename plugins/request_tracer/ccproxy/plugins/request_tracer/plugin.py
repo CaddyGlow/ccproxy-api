@@ -51,6 +51,31 @@ class RequestTracerRuntime(SystemPluginRuntime):
             logger.info("plugin_using_default_config")
         self.config = config
 
+        # Debug log the actual configuration being used
+        logger.info(
+            "plugin_configuration_loaded",
+            enabled=config.enabled,
+            json_logs_enabled=config.json_logs_enabled,
+            raw_http_enabled=config.raw_http_enabled,
+            verbose_api=config.verbose_api,
+            log_dir=config.log_dir,
+            exclude_paths=config.exclude_paths,
+            log_client_request=config.log_client_request,
+            log_client_response=config.log_client_response,
+        )
+
+        # Validate configuration
+        validation_errors = self._validate_config(config)
+        if validation_errors:
+            logger.error(
+                "plugin_config_validation_failed",
+                errors=validation_errors,
+                config=config.model_dump() if hasattr(config, 'model_dump') else str(config),
+            )
+            # Don't fail initialization, but log warnings
+            for error in validation_errors:
+                logger.warning("config_validation_warning", issue=error)
+
         # Create or reuse tracer instance
         # If factory created one (for middleware/raw HTTP), reuse it from context
         existing_tracer = self.context.get("request_tracer")
@@ -62,11 +87,8 @@ class RequestTracerRuntime(SystemPluginRuntime):
         if self.config.enabled:
             if self.use_hooks:
                 # Hook-based mode
-                # Exclude HTTP events from RequestTracerHook when raw HTTP is enabled (HTTPTracerHook will handle them)
-                exclude_http_events = self.config.raw_http_enabled
-                self.hook = RequestTracerHook(
-                    self.config, exclude_http_events=exclude_http_events
-                )
+                # Always register RequestTracerHook for JSON logging and client request/response events
+                self.hook = RequestTracerHook(self.config, exclude_http_events=False)
 
                 # Try to get hook registry from context
                 hook_registry = None
@@ -89,14 +111,23 @@ class RequestTracerRuntime(SystemPluginRuntime):
                 if hook_registry and isinstance(hook_registry, HookRegistry):
                     hook_registry.register(self.hook)
 
-                    # Also register HTTPTracerHook for raw HTTP logging via hooks
-                    if self.config.raw_http_enabled:
+                    # Register HTTPTracerHook ONLY if middleware is not handling raw HTTP logging
+                    # This prevents duplicate .http file writes
+                    # Check if middleware was created by factory (via manifest.middleware)
+                    middleware_handles_raw = (
+                        self.config.raw_http_enabled and
+                        hasattr(self.manifest, 'middleware') and
+                        self.manifest.middleware is not None and
+                        len(self.manifest.middleware) > 0
+                    )
+
+                    if self.config.raw_http_enabled and not middleware_handles_raw:
                         self.http_hook = HTTPTracerHook(self.config)
                         hook_registry.register(self.http_hook)
                         logger.info(
                             "http_tracer_hook_registered",
                             raw_http_enabled=True,
-                            note="HTTPTracerHook registered for .http file generation via hooks",
+                            note="HTTPTracerHook registered for .http file generation (middleware not active)",
                         )
 
                     logger.info(
@@ -104,7 +135,10 @@ class RequestTracerRuntime(SystemPluginRuntime):
                         mode="hooks",
                         verbose_api=self.config.verbose_api,
                         raw_http=self.config.raw_http_enabled,
+                        middleware_handles_raw=middleware_handles_raw,
                         http_hook_registered=self.http_hook is not None,
+                        middleware_count=len(self.manifest.middleware) if hasattr(self.manifest, 'middleware') and self.manifest.middleware else 0,
+                        manifest_has_middleware=hasattr(self.manifest, 'middleware') and self.manifest.middleware is not None,
                     )
                 else:
                     logger.warning(
@@ -145,6 +179,61 @@ class RequestTracerRuntime(SystemPluginRuntime):
             )
         else:
             logger.info("request_tracer_disabled")
+
+    def _validate_config(self, config: RequestTracerConfig) -> list[str]:
+        """Validate plugin configuration.
+
+        Returns:
+            List of validation error messages (empty if valid)
+        """
+        errors = []
+
+        if not config.enabled:
+            return errors  # No validation needed if disabled
+
+        # Validate directories
+        from pathlib import Path
+
+        try:
+            log_dir = Path(config.log_dir)
+            if config.json_logs_enabled:
+                json_dir = Path(config.get_json_log_dir())
+                if not json_dir.exists():
+                    try:
+                        json_dir.mkdir(parents=True, exist_ok=True)
+                        logger.debug("created_json_log_directory", path=str(json_dir))
+                    except OSError as e:
+                        errors.append(f"Cannot create JSON log directory {json_dir}: {e}")
+
+            if config.raw_http_enabled:
+                raw_dir = Path(config.get_raw_log_dir())
+                if not raw_dir.exists():
+                    try:
+                        raw_dir.mkdir(parents=True, exist_ok=True)
+                        logger.debug("created_raw_log_directory", path=str(raw_dir))
+                    except OSError as e:
+                        errors.append(f"Cannot create raw HTTP log directory {raw_dir}: {e}")
+
+        except Exception as e:
+            errors.append(f"Directory validation failed: {e}")
+
+        # Validate configuration consistency
+        if not config.json_logs_enabled and not config.raw_http_enabled:
+            errors.append("Both JSON logs and raw HTTP logging are disabled - no output will be generated")
+
+        if config.max_body_size <= 0:
+            errors.append("max_body_size must be positive")
+
+        if config.truncate_body_preview <= 0:
+            errors.append("truncate_body_preview must be positive")
+
+        # Validate path filters
+        if config.include_paths and config.exclude_paths:
+            overlapping = set(config.include_paths) & set(config.exclude_paths)
+            if overlapping:
+                errors.append(f"Paths appear in both include and exclude lists: {overlapping}")
+
+        return errors
 
     async def _on_shutdown(self) -> None:
         """Cleanup on shutdown."""
@@ -233,11 +322,26 @@ class RequestTracerFactory(SystemPluginFactory):
 
         # Check if plugin is enabled and raw HTTP logging is enabled
         config = context.get("config")
+
+        logger.debug(
+            "factory_checking_middleware_creation_conditions",
+            config_available=config is not None,
+            config_type=type(config).__name__ if config else None,
+            enabled=config.enabled if hasattr(config, 'enabled') else None,
+            raw_http_enabled=config.raw_http_enabled if hasattr(config, 'raw_http_enabled') else None,
+        )
+
         if (
             isinstance(config, RequestTracerConfig)
             and config.enabled
             and config.raw_http_enabled
         ):
+            logger.info(
+                "factory_creating_middleware_for_raw_http_logging",
+                enabled=config.enabled,
+                raw_http_enabled=config.raw_http_enabled,
+                log_dir=config.log_dir,
+            )
             # Disable HTTP compression for readable traces
             settings = getattr(core_services, "settings", None)
             if settings and hasattr(settings, "http"):
@@ -261,14 +365,31 @@ class RequestTracerFactory(SystemPluginFactory):
                 self.manifest.middleware = []
 
             # Create middleware spec with proper configuration
+            # Note: We can't access hook_manager during factory creation,
+            # so we'll pass it via a lazy loader pattern
+            def get_hook_manager_from_app(app):
+                return getattr(app.state, 'hook_manager', None)
+
             middleware_spec = MiddlewareSpec(
                 middleware_class=RequestTracingMiddleware,  # type: ignore[arg-type]
                 priority=MiddlewareLayer.OBSERVABILITY
                 - 10,  # Early in observability layer
-                kwargs={"tracer": self._tracer_instance},
+                kwargs={
+                    "tracer": self._tracer_instance,
+                    "hook_manager_factory": get_hook_manager_from_app,
+                },
             )
 
             self.manifest.middleware.append(middleware_spec)
+        else:
+            logger.debug(
+                "factory_skipping_middleware_creation",
+                reason="conditions_not_met",
+                config_available=config is not None,
+                config_type=type(config).__name__ if config else None,
+                enabled=config.enabled if hasattr(config, 'enabled') else None,
+                raw_http_enabled=config.raw_http_enabled if hasattr(config, 'raw_http_enabled') else None,
+            )
 
         return context
 

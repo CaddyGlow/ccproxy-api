@@ -83,14 +83,19 @@ class JSONFormatter:
     def _compose_file_id_with_timestamp(self, request_id: str | None) -> str:
         """Build filename ID with timestamp suffix for better organization.
 
-        Format: {base_id}_{timestamp}
+        Format: {base_id}_{timestamp}_{sequence}
         Where timestamp is in format: YYYYMMDD_HHMMSS_microseconds
+        And sequence is a counter to prevent collisions
         """
+        import time
         from datetime import datetime
 
         base_id = self._compose_file_id(request_id)
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-        return f"{base_id}_{timestamp}"
+
+        # Add a high-resolution timestamp with nanoseconds for uniqueness
+        nanos = time.time_ns() % 1000000  # Get nanosecond portion
+        return f"{base_id}_{timestamp}_{nanos:06d}"
 
     @staticmethod
     def redact_headers(headers: dict[str, str]) -> dict[str, str]:

@@ -4,13 +4,8 @@ import time
 from collections.abc import Callable
 from typing import Any
 
-# Event classes removed - functionality moved to hooks
-# from ccproxy.observability import (
-#     ClientRequestEvent,
-#     ClientResponseEvent,
-#     get_observability_pipeline,
-# )
 from ccproxy.core.request_context import RequestContext
+from ccproxy.hooks import HookEvent, HookManager
 
 from .tracer import RequestTracerImpl
 
@@ -19,11 +14,45 @@ class RequestTracingMiddleware:
     """ASGI middleware for tracing HTTP requests and responses."""
 
     def __init__(
-        self, app: Callable[..., Any], tracer: RequestTracerImpl | None = None
+        self,
+        app: Callable[..., Any],
+        tracer: RequestTracerImpl | None = None,
+        hook_manager: HookManager | None = None,
+        hook_manager_factory: Callable[[Any], HookManager | None] | None = None,
     ) -> None:
         self.app = app
         self.tracer = tracer
-        # Pipeline removed - functionality moved to hooks
+        self.hook_manager = hook_manager
+        self.hook_manager_factory = hook_manager_factory
+        self._lazy_hook_manager: HookManager | None = None
+
+        # Debug log to confirm middleware is being created
+        import structlog
+        logger = structlog.get_logger(__name__)
+        logger.info(
+            "request_tracing_middleware_created",
+            tracer_available=tracer is not None,
+            hook_manager_available=hook_manager is not None,
+            hook_manager_factory_available=hook_manager_factory is not None,
+            should_log_raw=tracer.should_log_raw() if tracer else False,
+        )
+
+    def _get_hook_manager(self, scope: dict[str, Any]) -> HookManager | None:
+        """Get hook manager, loading it lazily if needed."""
+        if self.hook_manager:
+            return self.hook_manager
+
+        if self._lazy_hook_manager:
+            return self._lazy_hook_manager
+
+        if self.hook_manager_factory:
+            # Try to get the app from ASGI scope
+            app = scope.get("app")
+            if app:
+                self._lazy_hook_manager = self.hook_manager_factory(app)
+                return self._lazy_hook_manager
+
+        return None
 
     async def __call__(
         self,
@@ -32,24 +61,65 @@ class RequestTracingMiddleware:
         send: Callable[[dict[str, Any]], Any],
     ) -> None:
         """Process ASGI request with raw logging."""
+        import structlog
+        logger = structlog.get_logger(__name__)
+
+        # Debug log to confirm middleware is being invoked
+        logger.info(
+            "request_tracing_middleware_invoked",
+            scope_type=scope.get("type"),
+            path=scope.get("path"),
+            method=scope.get("method"),
+        )
+
         # Only handle HTTP requests
         if scope["type"] != "http":
+            logger.trace("skipping_non_http_request", scope_type=scope.get("type"))
             await self.app(scope, receive, send)
             return
 
+        # Extract request ID early for debugging
+        request_id = self._get_request_id(scope)
+        path = scope.get("path", "/")
+        method = scope.get("method", "GET")
+
+        logger.debug(
+            "middleware_processing_request",
+            request_id=request_id,
+            method=method,
+            path=path,
+            tracer_available=self.tracer is not None,
+            should_log_raw=self.tracer.should_log_raw() if self.tracer else False,
+        )
+
         # Skip if tracing is disabled or tracer not set
         if not self.tracer or not self.tracer.should_log_raw():
+            logger.debug(
+                "middleware_skipping_request",
+                request_id=request_id,
+                reason="tracer_disabled_or_missing",
+                tracer_available=self.tracer is not None,
+            )
             await self.app(scope, receive, send)
             return
 
         # Check if path should be traced based on include/exclude rules
-        path = scope.get("path", "/")
         if not self.tracer.should_trace_path(path):
+            logger.debug(
+                "middleware_skipping_request",
+                request_id=request_id,
+                path=path,
+                reason="path_excluded",
+            )
             await self.app(scope, receive, send)
             return
 
-        # Extract request ID from headers or generate one
-        request_id = self._get_request_id(scope)
+        logger.debug(
+            "middleware_will_trace_request",
+            request_id=request_id,
+            method=method,
+            path=path,
+        )
 
         # Buffer to collect request body
         request_body_chunks = []
@@ -89,7 +159,7 @@ class RequestTracingMiddleware:
         request_start_time = time.time()
 
         # Wrap send to capture response chunks and emit response event
-        wrapped_send = self._wrap_send(send, request_id, request_start_time)
+        wrapped_send = self._wrap_send(send, request_id, request_start_time, scope)
 
         # Forward to app
         await self.app(scope, wrapped_receive, wrapped_send)
@@ -114,7 +184,11 @@ class RequestTracingMiddleware:
     async def _emit_client_request_event(
         self, scope: dict[str, Any], request_id: str, body: bytes | None = None
     ) -> None:
-        """Emit client request event to the observability pipeline."""
+        """Emit client request event via hook system."""
+        hook_manager = self._get_hook_manager(scope)
+        if not hook_manager:
+            return
+
         # Get current RequestContext if available
         context = RequestContext.get_current()
 
@@ -159,21 +233,49 @@ class RequestTracingMiddleware:
                         else str(client_info)
                     )
 
-        # Event classes removed - functionality moved to hooks
-        # event = ClientRequestEvent(
-        #     request_id=request_id,
-        #     method=method,
-        #     path=path,
-        #     query=query,
-        #     headers=headers_dict,  # Include headers!
-        #     body=body,  # Include the body!
-        #     client_ip=client_ip,
-        #     user_agent=user_agent,
-        #     context=context,  # Pass the full context!
-        # )
+        # Emit REQUEST_STARTED event via hook system
+        try:
+            import structlog
+            logger = structlog.get_logger(__name__)
 
-        # Pipeline removed - events now handled by hooks
-        # await self.pipeline.notify_client_request(event)
+            logger.debug(
+                "middleware_emitting_request_event",
+                request_id=request_id,
+                method=method,
+                path=path,
+                body_size=len(body) if body else 0,
+            )
+
+            await hook_manager.emit(
+                HookEvent.REQUEST_STARTED,
+                data={
+                    "request_id": request_id,
+                    "method": method,
+                    "path": path,
+                    "query": query,
+                    "headers": headers_dict,
+                    "body": body,
+                    "client_ip": client_ip,
+                    "user_agent": user_agent,
+                    "scope": scope,  # Include full ASGI scope for hooks that need it
+                },
+                context=context,
+            )
+
+            logger.debug(
+                "middleware_request_event_emitted",
+                request_id=request_id,
+            )
+        except Exception as e:
+            # Log error but don't break the request
+            import structlog
+            logger = structlog.get_logger(__name__)
+            logger.error(
+                "failed_to_emit_request_event",
+                request_id=request_id,
+                error=str(e),
+                exc_info=e,
+            )
 
     async def _log_complete_request(
         self, scope: dict[str, Any], request_id: str, body: bytes | None = None
@@ -223,6 +325,7 @@ class RequestTracingMiddleware:
         send: Callable[[dict[str, Any]], Any],
         request_id: str,
         request_start_time: float,
+        scope: dict[str, Any],
     ) -> Callable[[dict[str, Any]], Any]:
         """Wrap send to capture response chunks."""
         response_status = 200
@@ -278,19 +381,56 @@ class RequestTracingMiddleware:
                     # Get current context
                     context = RequestContext.get_current()
 
-                    # Emit client response event with full body
-                    # Event classes removed - functionality moved to hooks
-                    # event = ClientResponseEvent(
-                    #     request_id=request_id,
-                    #     status_code=response_status,
-                    #     headers=response_headers,  # Include headers!
-                    #     body=full_body,  # Include the full accumulated body!
-                    #     body_size=response_body_size,
-                    #     duration_ms=duration_ms,
-                    #     context=context,  # Pass the context!
-                    # )
-                    # Pipeline removed - events now handled by hooks
-                    # await self.pipeline.notify_client_response(event)
+                    # Emit client response event via hook system
+                    hook_manager = self._get_hook_manager(scope)
+                    if hook_manager:
+                        try:
+                            import structlog
+                            logger = structlog.get_logger(__name__)
+
+                            logger.debug(
+                                "middleware_emitting_response_event",
+                                request_id=request_id,
+                                status_code=response_status,
+                                body_size=response_body_size,
+                                duration_ms=duration_ms,
+                            )
+
+                            await hook_manager.emit(
+                                HookEvent.REQUEST_COMPLETED,
+                                data={
+                                    "request_id": request_id,
+                                    "status_code": response_status,
+                                    "headers": response_headers,
+                                    "body": full_body,
+                                    "body_size": response_body_size,
+                                    "duration_ms": duration_ms,
+                                },
+                                context=context,
+                            )
+
+                            logger.debug(
+                                "middleware_response_event_emitted",
+                                request_id=request_id,
+                            )
+                        except Exception as e:
+                            # Log error but don't break the response
+                            import structlog
+                            logger = structlog.get_logger(__name__)
+                            logger.error(
+                                "failed_to_emit_response_event",
+                                request_id=request_id,
+                                error=str(e),
+                                exc_info=e,
+                            )
+                    else:
+                        import structlog
+                        logger = structlog.get_logger(__name__)
+                        logger.warning(
+                            "middleware_no_hook_manager",
+                            request_id=request_id,
+                            note="Cannot emit response event - hook manager not available",
+                        )
 
             # Forward message
             await send(message)

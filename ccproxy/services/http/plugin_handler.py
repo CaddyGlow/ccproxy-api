@@ -279,7 +279,17 @@ class PluginHTTPHandler(BaseHTTPHandler):
             extensions["request_id"] = request_id
 
         # Trace the outgoing request if tracer is available
+        self.logger.info(
+            "request_tracer_check",
+            has_tracer=self._request_tracer is not None,
+            tracer_type=type(self._request_tracer).__name__ if self._request_tracer else None,
+            has_request_id=request_id is not None,
+            request_id=request_id,
+            url=url
+        )
+        
         if self._request_tracer and request_id:
+            self.logger.info("calling_trace_request", request_id=request_id, url=url)
             await self._request_tracer.trace_request(
                 request_id=request_id,
                 method=method,
