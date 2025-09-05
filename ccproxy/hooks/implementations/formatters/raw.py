@@ -3,14 +3,13 @@
 import uuid
 from collections.abc import Sequence
 from pathlib import Path
+from typing import Any
 
 import aiofiles
 import structlog
 from structlog.contextvars import get_merged_contextvars
 
 from ccproxy.core.logging import get_plugin_logger
-
-from ..config import RequestTracerConfig
 
 
 logger = get_plugin_logger()
@@ -19,21 +18,43 @@ logger = get_plugin_logger()
 class RawHTTPFormatter:
     """Formats and logs raw HTTP protocol data."""
 
-    def __init__(self, config: RequestTracerConfig) -> None:
+    def __init__(
+        self,
+        log_dir: str = "/tmp/ccproxy/traces",
+        enabled: bool = True,
+        log_client_request: bool = True,
+        log_client_response: bool = True,
+        log_provider_request: bool = True,
+        log_provider_response: bool = True,
+        max_body_size: int = 10485760,  # 10MB
+        exclude_headers: list[str] | None = None,
+    ) -> None:
         """Initialize with configuration.
 
         Args:
-            config: RequestTracerConfig instance
+            log_dir: Directory for raw HTTP log files
+            enabled: Enable raw HTTP logging
+            log_client_request: Log client requests
+            log_client_response: Log client responses
+            log_provider_request: Log provider requests
+            log_provider_response: Log provider responses
+            max_body_size: Maximum body size to log
+            exclude_headers: Headers to redact
         """
-        self.config = config
-        self.enabled = config.raw_http_enabled
-        self.log_dir = Path(config.get_raw_log_dir())
-        self._log_client_request = config.log_client_request
-        self._log_client_response = config.log_client_response
-        self._log_provider_request = config.log_provider_request
-        self._log_provider_response = config.log_provider_response
-        self.max_body_size = config.max_body_size
-        self.exclude_headers = [h.lower() for h in config.exclude_headers]
+        self.enabled = enabled
+        self.log_dir = Path(log_dir)
+        self._log_client_request = log_client_request
+        self._log_client_response = log_client_response
+        self._log_provider_request = log_provider_request
+        self._log_provider_response = log_provider_response
+        self.max_body_size = max_body_size
+        self.exclude_headers = [
+            h.lower()
+            for h in (
+                exclude_headers
+                or ["authorization", "x-api-key", "cookie", "x-auth-token"]
+            )
+        ]
 
         if self.enabled:
             # Create log directory if it doesn't exist
@@ -51,6 +72,27 @@ class RawHTTPFormatter:
 
         # Track which files we've already created (for logging purposes only)
         self._created_files: set[str] = set()
+
+    @classmethod
+    def from_config(cls, config: Any) -> "RawHTTPFormatter":
+        """Create RawHTTPFormatter from a RequestTracerConfig.
+
+        Args:
+            config: RequestTracerConfig instance
+
+        Returns:
+            RawHTTPFormatter instance
+        """
+        return cls(
+            log_dir=config.get_raw_log_dir(),
+            enabled=config.raw_http_enabled,
+            log_client_request=config.log_client_request,
+            log_client_response=config.log_client_response,
+            log_provider_request=config.log_provider_request,
+            log_provider_response=config.log_provider_response,
+            max_body_size=config.max_body_size,
+            exclude_headers=config.exclude_headers,
+        )
 
     def _compose_file_id(self, request_id: str | None) -> str:
         """Build filename ID using cmd_id and request_id per rules.

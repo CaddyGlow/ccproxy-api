@@ -7,6 +7,10 @@ This module contains standard hook implementations for common use cases:
 - AccessLoggingHook: Access logging (replaces AccessLogMiddleware)
 - ContentLoggingHook: Content logging for hooks-based logging
 - StreamingCaptureHook: Streaming response capture
+- HTTPTracerHook: Core HTTP request/response tracing
 """
 
-__all__: list[str] = []
+from .http_tracer import HTTPTracerHook
+
+
+__all__: list[str] = ["HTTPTracerHook"]

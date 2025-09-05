@@ -194,11 +194,6 @@ class BaseHTTPAdapter(BaseAdapter):
             needs_conversion, request_context
         )
 
-        # Emit CLIENT_REQUEST_READY event for tracing with complete request data
-        await self._emit_client_request_ready_event(
-            request, method, endpoint, body, request_context
-        )
-
         # Prepare and execute request
         return await self._execute_request(
             method=method,
@@ -744,89 +739,6 @@ class BaseHTTPAdapter(BaseAdapter):
             target_url: Target API URL
         """
         ...
-
-    async def _emit_client_request_ready_event(
-        self,
-        request: Request,
-        method: str,
-        endpoint: str,
-        body: bytes,
-        request_context: "RequestContext",
-    ) -> None:
-        """Emit CLIENT_REQUEST_READY event with complete request data for tracing.
-        
-        Args:
-            request: FastAPI request object with headers
-            method: HTTP method
-            endpoint: Target endpoint path
-            body: Request body bytes
-            request_context: Request context
-        """
-        try:
-            # Check if hook manager is available
-            app = getattr(request, "app", None)
-            hook_manager = None
-            if app and hasattr(app.state, "hook_manager"):
-                hook_manager = app.state.hook_manager
-                
-            if not hook_manager:
-                return
-                
-            from ccproxy.hooks import HookEvent, HookContext
-            from datetime import datetime
-            from urllib.parse import urlparse, parse_qs
-            
-            # Parse query string
-            query_string = str(request.url.query) if request.url.query else None
-            
-            # Extract path from endpoint
-            path = endpoint
-            
-            # Convert body to string if it's JSON
-            body_str = None
-            if body:
-                try:
-                    body_str = body.decode('utf-8')
-                except UnicodeDecodeError:
-                    body_str = "<binary data>"
-            
-            # Create hook context
-            context = HookContext(
-                event=HookEvent.CLIENT_REQUEST_READY,
-                timestamp=datetime.now(),
-                data={
-                    "request_id": request_context.request_id,
-                    "method": method,
-                    "path": path,
-                    "query": query_string,
-                    "headers": dict(request.headers),
-                    "body": body_str,
-                    "source": "http_adapter"
-                },
-                metadata={
-                    "request_context": request_context,
-                },
-                request=request,
-            )
-            
-            await hook_manager.emit_with_context(context)
-            
-            logger.debug(
-                "client_request_ready_event_emitted",
-                request_id=request_context.request_id,
-                method=method,
-                path=path,
-                headers_count=len(request.headers),
-                body_size=len(body) if body else 0,
-            )
-            
-        except Exception as e:
-            logger.error(
-                "failed_to_emit_client_request_ready_event",
-                request_id=getattr(request_context, "request_id", "unknown"),
-                error=str(e),
-                exc_info=e,
-            )
 
     async def _post_process_response(
         self,

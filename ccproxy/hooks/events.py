@@ -15,8 +15,6 @@ class HookEvent(str, Enum):
     REQUEST_STARTED = "request.started"
     REQUEST_COMPLETED = "request.completed"
     REQUEST_FAILED = "request.failed"
-    CLIENT_REQUEST_READY = "client.request.ready"
-    CLIENT_RESPONSE_READY = "client.response.ready"
 
     # Provider Integration
     PROVIDER_REQUEST_SENT = "provider.request.sent"

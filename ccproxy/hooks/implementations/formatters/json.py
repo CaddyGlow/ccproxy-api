@@ -22,17 +22,28 @@ except ImportError:
 class JSONFormatter:
     """Formats requests/responses as structured JSON for observability."""
 
-    def __init__(self, config: Any) -> None:
+    def __init__(
+        self,
+        log_dir: str = "/tmp/ccproxy/traces",
+        verbose_api: bool = True,
+        json_logs_enabled: bool = True,
+        redact_sensitive: bool = True,
+        truncate_body_preview: int = 1024,
+    ) -> None:
         """Initialize with configuration.
 
         Args:
-            config: RequestTracerConfig instance
+            log_dir: Directory for log files
+            verbose_api: Enable verbose API logging
+            json_logs_enabled: Enable JSON file logging
+            redact_sensitive: Redact sensitive headers
+            truncate_body_preview: Max body preview size
         """
-        self.config = config
-        self.verbose_api = config.verbose_api
-        self.json_logs_enabled = config.json_logs_enabled
-        self.redact_sensitive = config.redact_sensitive
-        self.truncate_body_preview = config.truncate_body_preview
+        self.log_dir = log_dir
+        self.verbose_api = verbose_api
+        self.json_logs_enabled = json_logs_enabled
+        self.redact_sensitive = redact_sensitive
+        self.truncate_body_preview = truncate_body_preview
 
         # Check if TRACE level is enabled
         current_level = (
@@ -45,8 +56,26 @@ class JSONFormatter:
         # Setup log directory if file logging is enabled
         self.request_log_dir = None
         if self.json_logs_enabled:
-            self.request_log_dir = Path(config.get_json_log_dir())
+            self.request_log_dir = Path(log_dir)
             self.request_log_dir.mkdir(parents=True, exist_ok=True)
+
+    @classmethod
+    def from_config(cls, config: Any) -> "JSONFormatter":
+        """Create JSONFormatter from a RequestTracerConfig.
+
+        Args:
+            config: RequestTracerConfig instance
+
+        Returns:
+            JSONFormatter instance
+        """
+        return cls(
+            log_dir=config.get_json_log_dir(),
+            verbose_api=config.verbose_api,
+            json_logs_enabled=config.json_logs_enabled,
+            redact_sensitive=config.redact_sensitive,
+            truncate_body_preview=config.truncate_body_preview,
+        )
 
     def _current_cmd_id(self) -> str | None:
         """Return current cmd_id from structlog contextvars or env."""
@@ -398,9 +427,6 @@ class JSONFormatter:
         self, request_id: str, chunk: bytes, chunk_number: int
     ) -> None:
         """Record individual stream chunk (optional, for deep debugging)."""
-        if not self.config.log_streaming_chunks:
-            return
-
         logger.debug(
             "stream_chunk",
             category="streaming",
@@ -433,6 +459,7 @@ class JSONFormatter:
 
         logger.error("request_error", **error_data)
 
+    # Legacy compatibility methods
     async def log_provider_request(
         self,
         request_id: str,

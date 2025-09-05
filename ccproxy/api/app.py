@@ -164,6 +164,76 @@ async def initialize_hooks_startup(app: FastAPI, settings: Settings) -> None:
         app.state.hook_registry = hook_registry
         app.state.hook_manager = hook_manager
 
+    # Register core HTTP tracer hook first (high priority)
+    try:
+        from ccproxy.hooks.implementations import HTTPTracerHook
+        from ccproxy.hooks.implementations.formatters import (
+            JSONFormatter,
+            RawHTTPFormatter,
+        )
+
+        # Check if core HTTP tracing should be enabled
+        # We'll enable it if logging.enable_plugin_logging is True and no explicit disable is set
+        core_tracer_enabled = getattr(settings.logging, "enable_plugin_logging", True)
+
+        if core_tracer_enabled:
+            # Create formatters with settings-based configuration
+            log_dir = getattr(settings.logging, "plugin_log_base_dir", "/tmp/ccproxy")
+
+            json_formatter = JSONFormatter(
+                log_dir=str(log_dir),
+                verbose_api=getattr(settings.logging, "verbose_api", True),
+                json_logs_enabled=True,
+                redact_sensitive=True,
+                truncate_body_preview=1024,
+            )
+
+            raw_formatter = RawHTTPFormatter(
+                log_dir=f"{log_dir}",
+                enabled=True,
+                log_client_request=True,
+                log_client_response=True,
+                log_provider_request=True,
+                log_provider_response=True,
+                max_body_size=10485760,  # 10MB
+                exclude_headers=[
+                    "authorization",
+                    "x-api-key",
+                    "cookie",
+                    "x-auth-token",
+                ],
+            )
+
+            # Create and register core HTTP tracer
+            core_http_tracer = HTTPTracerHook(
+                json_formatter=json_formatter,
+                raw_formatter=raw_formatter,
+                enabled=True,
+            )
+
+            hook_registry.register(core_http_tracer)
+            logger.info(
+                "core_http_tracer_registered",
+                hook_name=core_http_tracer.name,
+                events=core_http_tracer.events,
+                category="lifecycle",
+            )
+        else:
+            logger.debug(
+                "core_http_tracer_disabled",
+                reason="plugin_logging_disabled",
+                category="lifecycle",
+            )
+
+    except Exception as e:
+        logger.error(
+            "core_http_tracer_registration_failed",
+            error=str(e),
+            exc_info=e,
+            category="lifecycle",
+        )
+
+    # Register plugin hooks
     if hasattr(app.state, "plugin_registry"):
         plugin_registry: PluginRegistry = app.state.plugin_registry
 

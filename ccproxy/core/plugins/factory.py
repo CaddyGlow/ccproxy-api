@@ -595,7 +595,7 @@ class PluginRegistry:
 
     def _validate_format_adapter_requirements(self) -> dict[str, list[tuple[str, str]]]:
         """Self-contained helper for format adapter requirement validation.
-        
+
         This method is called during dependency resolution when core_services
         is not yet available. In practice, format adapter validation happens
         later in the initialization process when the format registry is available.

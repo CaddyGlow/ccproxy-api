@@ -214,10 +214,10 @@ class ClaudeAPIRuntime(ProviderPluginRuntime):
             registry = service_container.get_format_registry()
 
             # Claude API plugin now registers its own adapters manually
-            from ccproxy.adapters.openai.adapter import OpenAIAdapter
             from ccproxy.adapters.anthropic.response_adapter import (
                 AnthropicResponseAPIAdapter,
             )
+            from ccproxy.adapters.openai.adapter import OpenAIAdapter
 
             # Register the format adapters manually
             registry.register("openai", "anthropic", OpenAIAdapter(), "claude_api")

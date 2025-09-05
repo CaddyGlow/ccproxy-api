@@ -98,31 +98,46 @@ class AnthropicResponseAPIAdapter(APIAdapter):
             Anthropic Messages formatted response
         """
         logger.info(
-            "anthropic_response_adapter_received", 
+            "anthropic_response_adapter_received",
             response_keys=list(response.keys()) if response else [],
             response_preview=str(response)[:500] if response else "empty",
-            response_type=type(response).__name__
+            response_type=type(response).__name__,
         )
-        
+
         try:
             # Extract content from Response API format
             content_blocks = []
             stop_reason = "end_turn"
-            
+
             # Handle SSE event wrapper format
             actual_response = response
             if "response" in response and isinstance(response["response"], dict):
-                logger.info("anthropic_adapter_using_nested_response", nested_keys=list(response["response"].keys()))
+                logger.info(
+                    "anthropic_adapter_using_nested_response",
+                    nested_keys=list(response["response"].keys()),
+                )
                 actual_response = response["response"]
 
             # Response API has nested structure: output -> message -> content
             if "output" in actual_response:
                 output = actual_response["output"]
-                logger.info("anthropic_adapter_found_output", output_type=type(output).__name__, output_length=len(output) if isinstance(output, list) else "not_list")
-                
+                logger.info(
+                    "anthropic_adapter_found_output",
+                    output_type=type(output).__name__,
+                    output_length=len(output)
+                    if isinstance(output, list)
+                    else "not_list",
+                )
+
                 if isinstance(output, list):
                     for i, item in enumerate(output):
-                        logger.info(f"anthropic_adapter_output_item_{i}", item_type=type(item).__name__, item_keys=list(item.keys()) if isinstance(item, dict) else "not_dict")
+                        logger.info(
+                            f"anthropic_adapter_output_item_{i}",
+                            item_type=type(item).__name__,
+                            item_keys=list(item.keys())
+                            if isinstance(item, dict)
+                            else "not_dict",
+                        )
                         if isinstance(item, dict):
                             # Handle direct content blocks (legacy format)
                             if item.get("type") == "text" and "text" in item:
@@ -144,9 +159,17 @@ class AnthropicResponseAPIAdapter(APIAdapter):
                                 message_content = item.get("content", [])
                                 for content_block in message_content:
                                     if isinstance(content_block, dict):
-                                        if content_block.get("type") in ["text", "output_text"] and "text" in content_block:
+                                        if (
+                                            content_block.get("type")
+                                            in ["text", "output_text"]
+                                            and "text" in content_block
+                                        ):
                                             extracted_text = content_block["text"]
-                                            logger.info("anthropic_adapter_extracted_text", text_length=len(extracted_text), text_preview=extracted_text[:100])
+                                            logger.info(
+                                                "anthropic_adapter_extracted_text",
+                                                text_length=len(extracted_text),
+                                                text_preview=extracted_text[:100],
+                                            )
                                             content_blocks.append(
                                                 {"type": "text", "text": extracted_text}
                                             )
@@ -155,8 +178,12 @@ class AnthropicResponseAPIAdapter(APIAdapter):
                                                 {
                                                     "type": "tool_use",
                                                     "id": content_block.get("id", ""),
-                                                    "name": content_block.get("name", ""),
-                                                    "input": content_block.get("input", {}),
+                                                    "name": content_block.get(
+                                                        "name", ""
+                                                    ),
+                                                    "input": content_block.get(
+                                                        "input", {}
+                                                    ),
                                                 }
                                             )
                 elif isinstance(output, str):
@@ -219,12 +246,12 @@ class AnthropicResponseAPIAdapter(APIAdapter):
                 "content": content_blocks,
                 "stop_reason": stop_reason,
             }
-            
+
             logger.info(
                 "anthropic_adapter_final_result",
                 content_blocks_count=len(content_blocks),
                 has_content=bool(content_blocks),
-                result_preview=str(anthropic_response)[:200]
+                result_preview=str(anthropic_response)[:200],
             )
 
             # Add usage information

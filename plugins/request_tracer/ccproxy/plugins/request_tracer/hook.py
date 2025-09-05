@@ -1,4 +1,4 @@
-"""Hook-based request tracer implementation."""
+"""Hook-based request tracer implementation - simplified for REQUEST_* events only."""
 
 import structlog
 
@@ -7,17 +7,17 @@ from ccproxy.hooks.base import HookContext
 from ccproxy.hooks.events import HookEvent
 
 from .config import RequestTracerConfig
-from .formatters.json import JSONFormatter
 
 
 logger = structlog.get_logger(__name__)
 
 
 class RequestTracerHook(Hook):
-    """Hook-based request tracer implementation.
+    """Simplified hook-based request tracer implementation.
 
-    This hook listens to request/response lifecycle events and logs them
-    using both JSON and raw HTTP formatters.
+    This hook only handles REQUEST_* events since HTTP_* events are now
+    handled by the core HTTPTracerHook. This eliminates duplication and
+    follows the single responsibility principle.
     """
 
     name = "request_tracer"
@@ -25,56 +25,35 @@ class RequestTracerHook(Hook):
         HookEvent.REQUEST_STARTED,
         HookEvent.REQUEST_COMPLETED,
         HookEvent.REQUEST_FAILED,
-        HookEvent.CLIENT_REQUEST_READY,
-        HookEvent.CLIENT_RESPONSE_READY,
+        # Legacy provider events for compatibility
         HookEvent.PROVIDER_REQUEST_SENT,
         HookEvent.PROVIDER_RESPONSE_RECEIVED,
         HookEvent.PROVIDER_ERROR,
         HookEvent.PROVIDER_STREAM_START,
         HookEvent.PROVIDER_STREAM_CHUNK,
         HookEvent.PROVIDER_STREAM_END,
-        # HTTP client level events
-        HookEvent.HTTP_REQUEST,
-        HookEvent.HTTP_RESPONSE,
-        HookEvent.HTTP_ERROR,
     ]
     priority = 300  # HookLayer.ENRICHMENT - Capture/enrich request context early
 
     def __init__(
         self,
         config: RequestTracerConfig | None = None,
-        exclude_http_events: bool = False,
     ) -> None:
         """Initialize the request tracer hook.
 
         Args:
             config: Request tracer configuration
-            exclude_http_events: If True, remove HTTP_* events from this hook (when HTTPTracerHook is active)
         """
         self.config = config or RequestTracerConfig()
 
-        # Modify events list based on whether HTTPTracerHook is handling HTTP events
-        if exclude_http_events:
-            # Remove HTTP events when HTTPTracerHook is active to avoid duplication
-            self.events = [
-                HookEvent.REQUEST_STARTED,
-                HookEvent.REQUEST_COMPLETED,
-                HookEvent.REQUEST_FAILED,
-                HookEvent.CLIENT_REQUEST_READY,
-                HookEvent.CLIENT_RESPONSE_READY,
-                HookEvent.PROVIDER_REQUEST_SENT,
-                HookEvent.PROVIDER_RESPONSE_RECEIVED,
-                HookEvent.PROVIDER_ERROR,
-                HookEvent.PROVIDER_STREAM_START,
-                HookEvent.PROVIDER_STREAM_CHUNK,
-                HookEvent.PROVIDER_STREAM_END,
-            ]
+        # Use core formatters from the new location
+        from ccproxy.hooks.implementations.formatters import JSONFormatter
 
-        # Initialize formatters based on config
-        # Note: Only JSON formatter is supported in hooks mode
-        # Raw HTTP logging requires access to actual network bytes
+        # Initialize JSON formatter for structured logging
         self.json_formatter = (
-            JSONFormatter(self.config) if self.config.json_logs_enabled else None
+            JSONFormatter.from_config(self.config)
+            if self.config.json_logs_enabled
+            else None
         )
 
         logger.info(
@@ -82,7 +61,7 @@ class RequestTracerHook(Hook):
             enabled=self.config.enabled,
             json_logs=self.config.json_logs_enabled,
             log_dir=str(self.config.log_dir),
-            note="Raw HTTP logging not available in hooks mode",
+            note="HTTP tracing handled by core HTTPTracerHook",
         )
 
     async def __call__(self, context: HookContext) -> None:
@@ -107,18 +86,12 @@ class RequestTracerHook(Hook):
             HookEvent.REQUEST_STARTED: self._handle_request_start,
             HookEvent.REQUEST_COMPLETED: self._handle_request_complete,
             HookEvent.REQUEST_FAILED: self._handle_request_failed,
-            HookEvent.CLIENT_REQUEST_READY: self._handle_client_request_ready,
-            HookEvent.CLIENT_RESPONSE_READY: self._handle_client_response_ready,
             HookEvent.PROVIDER_REQUEST_SENT: self._handle_provider_request,
             HookEvent.PROVIDER_RESPONSE_RECEIVED: self._handle_provider_response,
             HookEvent.PROVIDER_ERROR: self._handle_provider_error,
             HookEvent.PROVIDER_STREAM_START: self._handle_stream_start,
             HookEvent.PROVIDER_STREAM_CHUNK: self._handle_stream_chunk,
             HookEvent.PROVIDER_STREAM_END: self._handle_stream_end,
-            # HTTP client level events
-            HookEvent.HTTP_REQUEST: self._handle_http_request,
-            HookEvent.HTTP_RESPONSE: self._handle_http_response,
-            HookEvent.HTTP_ERROR: self._handle_http_error,
         }
 
         handler = handlers.get(context.event)
@@ -168,12 +141,9 @@ class RequestTracerHook(Hook):
                 headers=headers,
                 body=body,  # Include request body if available
                 request_type="client",
-                context=getattr(context, 'context', None),
+                context=getattr(context, "context", None),
                 hook_type="tracer",  # Indicate this came from RequestTracerHook
             )
-
-        # Note: Raw formatter requires actual HTTP bytes which aren't available in hooks
-        # Raw logging must be done at the network layer, not via hooks
 
     async def _handle_request_complete(self, context: HookContext) -> None:
         """Handle REQUEST_COMPLETED event."""
@@ -201,91 +171,9 @@ class RequestTracerHook(Hook):
                 headers=headers,
                 body=body or b"",  # Use body from context if available
                 response_type="client",
-                context=getattr(context, 'context', None),
+                context=getattr(context, "context", None),
                 hook_type="tracer",  # Indicate this came from RequestTracerHook
             )
-
-        # Note: Raw formatter requires actual HTTP bytes which aren't available in hooks
-
-    async def _handle_client_response_ready(self, context: HookContext) -> None:
-        """Handle CLIENT_RESPONSE_READY event with actual response body."""
-        if not self.config.log_client_response:
-            return
-
-        request_id = context.data.get("request_id", "unknown")
-        status_code = context.data.get("status_code", 200)
-        response_headers = context.data.get("response_headers", {})
-        response_body = context.data.get("response_body", b"")
-        content_type = context.data.get("content_type", "application/json")
-        source = context.data.get("source", "unknown")
-        
-        # Request data for .http file generation
-        request_method = context.data.get("request_method", "POST")
-        request_path = context.data.get("request_path", "/unknown")
-        request_headers = context.data.get("request_headers", {})
-        request_body = context.data.get("request_body")
-        request_query = context.data.get("request_query")
-        
-        logger.debug(
-            "client_response_ready_event_received",
-            request_id=request_id,
-            status_code=status_code,
-            body_size=len(response_body) if response_body else 0,
-            content_type=content_type,
-            source=source,
-            request_method=request_method,
-            request_path=request_path,
-            request_headers_count=len(request_headers) if request_headers else 0,
-            request_body_size=len(request_body) if request_body else 0,
-        )
-
-        # Get cmd_id for correlation
-        cmd_id = self._current_cmd_id()
-
-        # Log the response with actual body using a unique suffix to avoid conflicts
-        if self.json_formatter and self.config.verbose_api:
-            logger.debug(
-                "writing_client_response_with_body_json",
-                request_id=request_id,
-                json_formatter_available=self.json_formatter is not None,
-                verbose_api=self.config.verbose_api,
-                body_size=len(response_body) if response_body else 0,
-            )
-            await self.json_formatter.log_response(
-                request_id=request_id,
-                status=status_code,
-                headers=response_headers,
-                body=response_body,
-                response_type="client_with_body",  # Different suffix to avoid overwrite
-                hook_type="tracer",
-            )
-            logger.debug(
-                "client_response_with_body_json_written",
-                request_id=request_id,
-            )
-        else:
-            logger.debug(
-                "skipping_client_response_json",
-                request_id=request_id,
-                json_formatter_available=self.json_formatter is not None,
-                verbose_api=self.config.verbose_api,
-            )
-
-        # Write .http files if raw HTTP logging is enabled
-        # This handles the case where middleware wasn't invoked
-        if self.config.raw_http_enabled:
-            
-            # Generate client request .http file
-            await self._write_client_request_http_file(
-                request_id, request_method, request_path, request_query,
-                request_headers, request_body
-            )
-            
-            # Generate client response .http file
-            if response_body:
-                await self._write_client_response_http_file(
-                    request_id, status_code, response_headers, response_body
-                )
 
     async def _handle_request_failed(self, context: HookContext) -> None:
         """Handle REQUEST_FAILED event."""
@@ -335,8 +223,6 @@ class RequestTracerHook(Hook):
                 body=body,  # Include body for debugging
             )
 
-        # Note: Raw formatter requires actual HTTP bytes which aren't available in hooks
-
     async def _handle_provider_response(self, context: HookContext) -> None:
         """Handle PROVIDER_RESPONSE_RECEIVED event."""
         if not self.config.log_provider_response:
@@ -362,8 +248,6 @@ class RequestTracerHook(Hook):
                 headers=headers,  # Use headers from hook context
                 body=body,  # Include response body for debugging
             )
-
-        # Note: Raw formatter requires actual HTTP bytes which aren't available in hooks
 
     async def _handle_provider_error(self, context: HookContext) -> None:
         """Handle PROVIDER_ERROR event."""
@@ -446,143 +330,6 @@ class RequestTracerHook(Hook):
                 usage_metrics=usage_metrics,
             )
 
-    async def _write_client_request_http_file(
-        self, 
-        request_id: str, 
-        method: str, 
-        path: str, 
-        query: str | None,
-        headers: dict[str, str], 
-        body: str | bytes | None
-    ) -> None:
-        """Write client request to .http file."""
-        try:
-            from pathlib import Path
-            import time
-            
-            # Build request line
-            full_path = path
-            if query:
-                full_path = f"{path}?{query}"
-            
-            lines = [f"{method} {full_path} HTTP/1.1"]
-            
-            # Add headers
-            for name, value in headers.items():
-                if name.lower() not in [h.lower() for h in self.config.exclude_headers]:
-                    lines.append(f"{name}: {value}")
-                else:
-                    lines.append(f"{name}: [REDACTED]")
-            
-            # Build complete raw request
-            raw_request = "\r\n".join(lines).encode("utf-8")
-            raw_request += b"\r\n\r\n"
-            
-            # Add body if present
-            if body:
-                if isinstance(body, str):
-                    raw_request += body.encode('utf-8')
-                elif isinstance(body, bytes):
-                    raw_request += body
-                else:
-                    raw_request += str(body).encode('utf-8')
-            
-            # Write to .http file
-            raw_dir = Path(self.config.get_raw_log_dir())
-            raw_dir.mkdir(parents=True, exist_ok=True)
-            
-            timestamp = time.strftime("%Y%m%d_%H%M%S")
-            nanos = time.time_ns() % 1000000
-            filename = f"{request_id}_{timestamp}_{nanos:06d}_client_request.http"
-            filepath = raw_dir / filename
-            
-            with open(filepath, 'wb') as f:
-                f.write(raw_request)
-                
-            logger.debug(
-                "client_request_http_file_written",
-                request_id=request_id,
-                filepath=str(filepath),
-                body_size=len(body) if body else 0,
-            )
-            
-        except Exception as e:
-            logger.error(
-                "failed_to_write_client_request_http_file",
-                request_id=request_id,
-                error=str(e),
-                exc_info=e,
-            )
-
-    async def _write_client_response_http_file(
-        self, 
-        request_id: str, 
-        status_code: int, 
-        headers: dict[str, str], 
-        body: str | bytes
-    ) -> None:
-        """Write client response to .http file."""
-        try:
-            from pathlib import Path
-            import time
-            
-            # Convert response body to bytes
-            if isinstance(body, str):
-                body_bytes = body.encode('utf-8')
-            elif isinstance(body, bytes):
-                body_bytes = body
-            else:
-                body_bytes = str(body).encode('utf-8')
-            
-            # Build status line
-            status_phrases = {
-                200: "OK", 201: "Created", 204: "No Content",
-                400: "Bad Request", 401: "Unauthorized", 403: "Forbidden",
-                404: "Not Found", 500: "Internal Server Error",
-                502: "Bad Gateway", 503: "Service Unavailable",
-            }
-            reason = status_phrases.get(status_code, "Unknown")
-            lines = [f"HTTP/1.1 {status_code} {reason}"]
-            
-            # Add headers
-            for name, value in headers.items():
-                if name.lower() not in [h.lower() for h in self.config.exclude_headers]:
-                    lines.append(f"{name}: {value}")
-                else:
-                    lines.append(f"{name}: [REDACTED]")
-            
-            # Build complete raw response
-            raw_response = "\r\n".join(lines).encode("utf-8")
-            raw_response += b"\r\n\r\n"
-            raw_response += body_bytes
-            
-            # Write to .http file
-            raw_dir = Path(self.config.get_raw_log_dir())
-            raw_dir.mkdir(parents=True, exist_ok=True)
-            
-            timestamp = time.strftime("%Y%m%d_%H%M%S")
-            nanos = time.time_ns() % 1000000
-            filename = f"{request_id}_{timestamp}_{nanos:06d}_client_response.http"
-            filepath = raw_dir / filename
-            
-            with open(filepath, 'wb') as f:
-                f.write(raw_response)
-                
-            logger.debug(
-                "client_response_http_file_written",
-                request_id=request_id,
-                filepath=str(filepath),
-                body_size=len(body_bytes),
-            )
-            
-        except Exception as e:
-            logger.error(
-                "failed_to_write_client_response_http_file",
-                request_id=request_id,
-                error=str(e),
-                exc_info=e,
-            )
-
     def _extract_path(self, url: str) -> str:
         """Extract path from URL."""
         if "://" in url:
@@ -602,170 +349,3 @@ class RequestTracerHook(Hook):
             return any(path.startswith(p) for p in self.config.exclude_paths)
 
         return False
-
-    def _current_cmd_id(self) -> str | None:
-        """Return current cmd_id from structlog contextvars."""
-        try:
-            from structlog.contextvars import get_merged_contextvars
-
-            ctx = get_merged_contextvars(logger) or {}
-            cmd_id = ctx.get("cmd_id")
-        except Exception:
-            cmd_id = None
-
-        return str(cmd_id) if cmd_id else None
-
-    # ==================== HTTP Client Event Handlers ====================
-
-    async def _handle_http_request(self, context: HookContext) -> None:
-        """Handle HTTP_REQUEST event from HTTP client."""
-        if not self.config.log_client_request:
-            return
-
-        # Extract request data from context
-        method = context.data.get("method", "UNKNOWN")
-        url = context.data.get("url", "")
-        headers = context.data.get("headers", {})
-
-        # Check path filters
-        path = self._extract_path(url)
-        if self._should_exclude_path(path):
-            return
-
-        # Use existing request ID from context, cmd_id, or generate new UUID
-        request_id = context.data.get("request_id") or context.metadata.get(
-            "request_id"
-        )
-        if not request_id:
-            cmd_id = self._current_cmd_id()
-            if cmd_id:
-                request_id = cmd_id
-            else:
-                import uuid
-
-                request_id = str(uuid.uuid4())
-
-        # Get cmd_id for correlation
-        cmd_id = self._current_cmd_id()
-
-        # Log via debug (avoid conflict with structured logging)
-        logger.debug(
-            f"http_request_started: {method} {url} [request_id={request_id}] [cmd_id={cmd_id}]"
-        )
-
-        if self.json_formatter:
-            # Apply header redaction if sensitive data should be redacted
-            filtered_headers = (
-                self.json_formatter.redact_headers(headers)
-                if self.config.redact_sensitive
-                else headers
-            )
-            await self.json_formatter.log_request(
-                request_id=request_id,
-                method=method,
-                url=url,
-                headers=filtered_headers,
-                body=context.data.get("body"),
-                request_type="http_client",
-                hook_type="tracer",  # Indicate this came from RequestTracerHook
-            )
-
-    async def _handle_http_response(self, context: HookContext) -> None:
-        """Handle HTTP_RESPONSE event from HTTP client."""
-        if not self.config.log_client_response:
-            return
-
-        # Extract response data from context
-        method = context.data.get("method", "UNKNOWN")
-        url = context.data.get("url", "")
-        status_code = context.data.get("status_code", 0)
-        headers = context.data.get("response_headers", {})
-
-        # Check path filters
-        path = self._extract_path(url)
-        if self._should_exclude_path(path):
-            return
-
-        # Use existing request ID from context, cmd_id, or generate new UUID
-        request_id = context.data.get("request_id") or context.metadata.get(
-            "request_id"
-        )
-        # Get cmd_id for correlation
-        cmd_id = self._current_cmd_id()
-
-        if not request_id:
-            if cmd_id:
-                request_id = cmd_id
-            else:
-                import uuid
-
-                request_id = str(uuid.uuid4())
-
-        logger.debug(
-            f"http_response_received: {method} {url} [{status_code}] [request_id={request_id}] [cmd_id={cmd_id}]"
-        )
-
-        if self.json_formatter:
-            # Apply header redaction if sensitive data should be redacted
-            filtered_headers = (
-                self.json_formatter.redact_headers(headers)
-                if self.config.redact_sensitive
-                else headers
-            )
-
-            # Convert response body to bytes if it's not already
-            response_body = context.data.get("response_body")
-            if response_body is None:
-                body_bytes = b""
-            elif isinstance(response_body, bytes):
-                body_bytes = response_body
-            elif isinstance(response_body, str):
-                body_bytes = response_body.encode("utf-8")
-            else:
-                # For dict/list responses (JSON), convert to JSON bytes
-                import json
-
-                body_bytes = json.dumps(response_body).encode("utf-8")
-
-            await self.json_formatter.log_response(
-                request_id=request_id,
-                status=status_code,
-                headers=filtered_headers,
-                body=body_bytes,
-                response_type="http_client",
-                hook_type="tracer",  # Indicate this came from RequestTracerHook
-            )
-
-    async def _handle_http_error(self, context: HookContext) -> None:
-        """Handle HTTP_ERROR event from HTTP client."""
-        # Extract error data from context
-        method = context.data.get("method", "UNKNOWN")
-        url = context.data.get("url", "")
-        error = context.data.get("error", "Unknown error")
-
-        # Use existing request ID from context, cmd_id, or generate new UUID
-        request_id = context.data.get("request_id") or context.metadata.get(
-            "request_id"
-        )
-        # Get cmd_id for correlation
-        cmd_id = self._current_cmd_id()
-
-        if not request_id:
-            if cmd_id:
-                request_id = cmd_id
-            else:
-                import uuid
-
-                request_id = str(uuid.uuid4())
-
-        logger.debug(
-            f"http_request_error: {method} {url} [error={str(error)}] [request_id={request_id}] [cmd_id={cmd_id}]"
-        )
-
-        if self.json_formatter:
-            # Ensure error is an Exception for formatter typing
-            err_obj = error if isinstance(error, Exception) else Exception(str(error))
-            await self.json_formatter.log_error(
-                request_id=request_id,
-                error=err_obj,
-            )

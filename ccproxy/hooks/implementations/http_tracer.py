@@ -1,4 +1,4 @@
-"""Generic HTTP request tracer hook."""
+"""Core HTTP request tracer hook implementation."""
 
 import json
 import uuid
@@ -10,17 +10,19 @@ from ccproxy.hooks import Hook
 from ccproxy.hooks.base import HookContext
 from ccproxy.hooks.events import HookEvent
 
-from ..config import RequestTracerConfig
-from ..formatters import JSONFormatter, RawHTTPFormatter
-
 
 logger = structlog.get_logger(__name__)
 
 
 class HTTPTracerHook(Hook):
-    """Hook for tracing all HTTP requests and responses."""
+    """Core hook for tracing all HTTP requests and responses.
 
-    name = "http_tracer"
+    This hook captures HTTP_REQUEST, HTTP_RESPONSE, and HTTP_ERROR events
+    for both client-side (CCProxy → providers) and server-side (client → CCProxy)
+    HTTP traffic. It uses injected formatters for consistent logging.
+    """
+
+    name = "core_http_tracer"
     events = [
         HookEvent.HTTP_REQUEST,
         HookEvent.HTTP_RESPONSE,
@@ -28,29 +30,25 @@ class HTTPTracerHook(Hook):
     ]
     priority = 100  # Run early to capture raw data
 
-    def __init__(self, config: RequestTracerConfig | None = None) -> None:
+    def __init__(
+        self, json_formatter=None, raw_formatter=None, enabled: bool = True
+    ) -> None:
         """Initialize the HTTP tracer hook.
 
         Args:
-            config: Request tracer configuration
+            json_formatter: JSONFormatter instance for structured logging
+            raw_formatter: RawHTTPFormatter instance for raw HTTP logging
+            enabled: Whether the hook is enabled
         """
-        self.config = config or RequestTracerConfig()
-        self.enabled = self.config.enabled
-
-        # Initialize formatters if enabled
-        self.json_formatter = (
-            JSONFormatter(self.config) if self.config.json_logs_enabled else None
-        )
-        self.raw_formatter = (
-            RawHTTPFormatter(self.config) if self.config.raw_http_enabled else None
-        )
+        self.enabled = enabled
+        self.json_formatter = json_formatter
+        self.raw_formatter = raw_formatter
 
         if self.enabled:
             logger.info(
-                "http_tracer_hook_initialized",
-                json_logs=self.config.json_logs_enabled,
-                raw_http=self.config.raw_http_enabled,
-                log_dir=self.config.log_dir,
+                "core_http_tracer_hook_initialized",
+                json_logs=json_formatter is not None,
+                raw_http=raw_formatter is not None,
             )
 
     async def __call__(self, context: HookContext) -> None:
@@ -72,7 +70,7 @@ class HTTPTracerHook(Hook):
                 await self._log_http_error(context)
         except Exception as e:
             logger.error(
-                "http_tracer_hook_error",
+                "core_http_tracer_hook_error",
                 hook_event=event.value if hasattr(event, "value") else str(event),
                 error=str(e),
                 exc_info=e,
@@ -104,7 +102,7 @@ class HTTPTracerHook(Hook):
         is_provider_request = self._is_provider_request(url)
 
         logger.debug(
-            "http_request",
+            "core_http_request",
             request_id=request_id,
             method=method,
             url=url,
@@ -113,7 +111,6 @@ class HTTPTracerHook(Hook):
 
         # Log with JSON formatter
         if self.json_formatter:
-            # Pass body directly - JSONFormatter now handles different data types
             await self.json_formatter.log_request(
                 request_id=request_id,
                 method=method,
@@ -121,7 +118,7 @@ class HTTPTracerHook(Hook):
                 headers=headers,
                 body=body,  # Pass original body data directly
                 request_type="provider" if is_provider_request else "http",
-                hook_type="http",  # Indicate this came from HTTPTracerHook
+                hook_type="core_http",  # Indicate this came from core HTTPTracerHook
             )
 
         # Log with raw HTTP formatter
@@ -136,13 +133,13 @@ class HTTPTracerHook(Hook):
                 await self.raw_formatter.log_provider_request(
                     request_id=request_id,
                     raw_data=raw_request,
-                    hook_type="http",  # Indicate this came from HTTPTracerHook
+                    hook_type="core_http",  # Indicate this came from core HTTPTracerHook
                 )
             else:
                 await self.raw_formatter.log_client_request(
                     request_id=request_id,
                     raw_data=raw_request,
-                    hook_type="http",  # Indicate this came from HTTPTracerHook
+                    hook_type="core_http",  # Indicate this came from core HTTPTracerHook
                 )
 
     async def _log_http_response(self, context: HookContext) -> None:
@@ -161,7 +158,7 @@ class HTTPTracerHook(Hook):
         is_provider_response = self._is_provider_request(url)
 
         logger.debug(
-            "http_response",
+            "core_http_response",
             request_id=request_id,
             status_code=status_code,
             is_provider_response=is_provider_response,
@@ -185,7 +182,7 @@ class HTTPTracerHook(Hook):
                 headers=headers,
                 body=body_bytes,
                 response_type="provider" if is_provider_response else "http",
-                hook_type="http",  # Indicate this came from HTTPTracerHook
+                hook_type="core_http",  # Indicate this came from core HTTPTracerHook
             )
 
         # Log with raw HTTP formatter
@@ -198,13 +195,13 @@ class HTTPTracerHook(Hook):
                 await self.raw_formatter.log_provider_response(
                     request_id=request_id,
                     raw_data=raw_response,
-                    hook_type="http",  # Indicate this came from HTTPTracerHook
+                    hook_type="core_http",  # Indicate this came from core HTTPTracerHook
                 )
             else:
                 await self.raw_formatter.log_client_response(
                     request_id=request_id,
                     raw_data=raw_response,
-                    hook_type="http",  # Indicate this came from HTTPTracerHook
+                    hook_type="core_http",  # Indicate this came from core HTTPTracerHook
                 )
 
     async def _log_http_error(self, context: HookContext) -> None:
@@ -224,7 +221,7 @@ class HTTPTracerHook(Hook):
         is_provider_error = self._is_provider_request(url)
 
         logger.error(
-            "http_error",
+            "core_http_error",
             request_id=request_id,
             error_type=error_type,
             status_code=status_code,

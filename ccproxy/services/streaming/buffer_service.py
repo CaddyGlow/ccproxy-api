@@ -564,59 +564,6 @@ class StreamingBufferService:
             request_id=request_id,
         )
 
-        # Emit hook event with final response body for tracing
-        if self.hook_manager and request_id:
-            try:
-                from datetime import datetime
-                # Extract request information from context metadata for .http file generation
-                request_metadata = getattr(request_context, "metadata", {})
-                
-                logger.debug(
-                    "streaming_buffer_request_metadata",
-                    request_id=request_id,
-                    metadata_keys=list(request_metadata.keys()),
-                    has_method=request_metadata.get("method") is not None,
-                    has_path=request_metadata.get("path") is not None,
-                    has_headers=request_metadata.get("headers") is not None,
-                    has_body=request_metadata.get("body") is not None,
-                )
-                
-                context = HookContext(
-                    event=HookEvent.CLIENT_RESPONSE_READY,
-                    timestamp=datetime.now(),
-                    data={
-                        "request_id": request_id,
-                        "status_code": status_code,
-                        "response_headers": dict(final_headers),
-                        "response_body": response_content,
-                        "content_type": "application/json",
-                        "source": "streaming_buffer_service",
-                        # Include request data for .http file generation
-                        "request_method": request_metadata.get("method", "POST"),
-                        "request_path": request_metadata.get("path", "/unknown"),
-                        "request_headers": request_metadata.get("headers", {}),
-                        "request_body": request_metadata.get("body"),
-                        "request_query": request_metadata.get("query"),
-                    },
-                    metadata={
-                        "request_context": request_context,
-                    }
-                )
-                await self.hook_manager.emit_with_context(context)
-                
-                logger.debug(
-                    "client_response_ready_event_emitted", 
-                    request_id=request_id,
-                    body_size=len(response_content)
-                )
-            except Exception as e:
-                logger.error(
-                    "failed_to_emit_client_response_ready_event",
-                    request_id=request_id,
-                    error=str(e),
-                    exc_info=e,
-                )
-
         # Create response - Starlette will automatically add Content-Length
         response = Response(
             content=response_content,

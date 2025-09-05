@@ -166,8 +166,12 @@ ignore = [
 "scripts/**" = ["TID251"]
 
 # relax on scripts and tests
-"scripts/*" = ["T201"]                         # check for print statements
-"tests/*" = ["N802", "N803"]                   # arg/function name should be lowercase
+"scripts/*" = ["T201"] # check for print statements
+"tests/*" = [
+  "N802",
+  "N803",
+  "B023",
+] # arg/function name should be lowercase, allow assert, does not bind loop variable
 "plugins/*/tests/*" = ["N802", "N803", "S101"] # Allow assert in plugin tests
 
 
@@ -185,7 +189,7 @@ lines-after-imports = 2
 [tool.mypy]
 python_version = "3.11"
 show_column_numbers = true
-follow_imports = "silent"
+follow_imports = "normal"
 exclude = [
   "^[^/]+\\.py$",
   "docs/",

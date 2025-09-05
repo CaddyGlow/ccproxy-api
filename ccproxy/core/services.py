@@ -121,10 +121,10 @@ class CoreServices:
 
     def get_format_registry(self) -> "FormatAdapterRegistry":
         """Get format adapter registry service instance.
-        
+
         Returns:
             FormatAdapterRegistry: The format adapter registry service
-            
+
         Raises:
             RuntimeError: If format registry is not available
         """

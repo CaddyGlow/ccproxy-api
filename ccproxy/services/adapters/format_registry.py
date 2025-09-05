@@ -76,7 +76,7 @@ class FormatAdapterRegistry:
             to_format=to_format,
             adapter_found=adapter is not None,
             adapter_type=type(adapter).__name__ if adapter else None,
-            category="format"
+            category="format",
         )
 
         if not adapter:

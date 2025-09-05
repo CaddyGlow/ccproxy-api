@@ -1,7 +1,7 @@
-"""Request Tracer plugin for unified HTTP tracing."""
+"""Request Tracer plugin for simplified request tracing."""
 
 from .config import RequestTracerConfig
-from .tracer import RequestTracerImpl
+from .hook import RequestTracerHook
 
 
-__all__ = ["RequestTracerConfig", "RequestTracerImpl"]
+__all__ = ["RequestTracerConfig", "RequestTracerHook"]
