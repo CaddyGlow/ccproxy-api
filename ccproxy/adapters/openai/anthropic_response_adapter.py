@@ -63,6 +63,11 @@ class AnthropicResponseAPIAdapter(APIAdapter):
             if "temperature" in request:
                 response_api_request["temperature"] = request["temperature"]
 
+            # Mandatory fixed field for codex
+            response_api_request["model"] = "gpt-5"
+            response_api_request["store"] = False
+            response_api_request.pop("max_completion_tokens")
+
             logger.debug(
                 "anthropic_to_response_api_conversion",
                 original_keys=list(request.keys()),
@@ -92,18 +97,34 @@ class AnthropicResponseAPIAdapter(APIAdapter):
         Returns:
             Anthropic Messages formatted response
         """
+        logger.info(
+            "anthropic_response_adapter_received", 
+            response_keys=list(response.keys()) if response else [],
+            response_preview=str(response)[:500] if response else "empty",
+            response_type=type(response).__name__
+        )
+        
         try:
             # Extract content from Response API format
             content_blocks = []
             stop_reason = "end_turn"
+            
+            # Handle SSE event wrapper format
+            actual_response = response
+            if "response" in response and isinstance(response["response"], dict):
+                logger.info("anthropic_adapter_using_nested_response", nested_keys=list(response["response"].keys()))
+                actual_response = response["response"]
 
-            # Response API typically has output content in various formats
-            # Look for text content in the response
-            if "output" in response:
-                output = response["output"]
+            # Response API has nested structure: output -> message -> content
+            if "output" in actual_response:
+                output = actual_response["output"]
+                logger.info("anthropic_adapter_found_output", output_type=type(output).__name__, output_length=len(output) if isinstance(output, list) else "not_list")
+                
                 if isinstance(output, list):
-                    for item in output:
+                    for i, item in enumerate(output):
+                        logger.info(f"anthropic_adapter_output_item_{i}", item_type=type(item).__name__, item_keys=list(item.keys()) if isinstance(item, dict) else "not_dict")
                         if isinstance(item, dict):
+                            # Handle direct content blocks (legacy format)
                             if item.get("type") == "text" and "text" in item:
                                 content_blocks.append(
                                     {"type": "text", "text": item["text"]}
@@ -118,6 +139,26 @@ class AnthropicResponseAPIAdapter(APIAdapter):
                                         "input": item.get("input", {}),
                                     }
                                 )
+                            # Handle nested message format (current Codex format)
+                            elif item.get("type") == "message":
+                                message_content = item.get("content", [])
+                                for content_block in message_content:
+                                    if isinstance(content_block, dict):
+                                        if content_block.get("type") in ["text", "output_text"] and "text" in content_block:
+                                            extracted_text = content_block["text"]
+                                            logger.info("anthropic_adapter_extracted_text", text_length=len(extracted_text), text_preview=extracted_text[:100])
+                                            content_blocks.append(
+                                                {"type": "text", "text": extracted_text}
+                                            )
+                                        elif content_block.get("type") == "tool_use":
+                                            content_blocks.append(
+                                                {
+                                                    "type": "tool_use",
+                                                    "id": content_block.get("id", ""),
+                                                    "name": content_block.get("name", ""),
+                                                    "input": content_block.get("input", {}),
+                                                }
+                                            )
                 elif isinstance(output, str):
                     # Simple string output
                     content_blocks.append({"type": "text", "text": output})
@@ -178,10 +219,17 @@ class AnthropicResponseAPIAdapter(APIAdapter):
                 "content": content_blocks,
                 "stop_reason": stop_reason,
             }
+            
+            logger.info(
+                "anthropic_adapter_final_result",
+                content_blocks_count=len(content_blocks),
+                has_content=bool(content_blocks),
+                result_preview=str(anthropic_response)[:200]
+            )
 
             # Add usage information
-            if "usage" in response:
-                usage = response["usage"]
+            if "usage" in actual_response:
+                usage = actual_response["usage"]
                 if isinstance(usage, dict):
                     anthropic_response["usage"] = {
                         "input_tokens": usage.get("prompt_tokens", 0),

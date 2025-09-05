@@ -10,6 +10,7 @@ from ccproxy.config.settings import Settings
 if TYPE_CHECKING:
     from ccproxy.core.plugins.factory import PluginRegistry
     from ccproxy.scheduler.core import Scheduler
+    from ccproxy.services.adapters.format_registry import FormatAdapterRegistry
     from ccproxy.services.http_pool import HTTPPoolManager
 
 
@@ -23,6 +24,7 @@ class CoreServices:
         settings: Settings,
         scheduler: "Scheduler | None" = None,
         plugin_registry: "PluginRegistry | None" = None,
+        format_registry: "FormatAdapterRegistry | None" = None,
     ):
         """Initialize core services.
 
@@ -32,12 +34,14 @@ class CoreServices:
             settings: Application settings
             scheduler: Optional scheduler for plugin tasks
             plugin_registry: Optional plugin registry for config introspection
+            format_registry: Optional format adapter registry for declarative adapters
         """
         self.http_pool_manager = http_pool_manager
         self.logger = logger
         self.settings = settings
         self.scheduler = scheduler
         self.plugin_registry = plugin_registry
+        self.format_registry = format_registry
 
     def is_plugin_logging_enabled(self, plugin_name: str) -> bool:
         """Check if logging is enabled for a specific plugin.
@@ -114,3 +118,16 @@ class CoreServices:
             config["log_dir"] = f"{self.settings.logging.plugin_log_base_dir}/raw"
 
         return config
+
+    def get_format_registry(self) -> "FormatAdapterRegistry":
+        """Get format adapter registry service instance.
+        
+        Returns:
+            FormatAdapterRegistry: The format adapter registry service
+            
+        Raises:
+            RuntimeError: If format registry is not available
+        """
+        if self.format_registry is None:
+            raise RuntimeError("Format adapter registry is not available")
+        return self.format_registry

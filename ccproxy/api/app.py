@@ -123,6 +123,10 @@ async def initialize_plugins_startup(app: FastAPI, settings: Settings) -> None:
                     )
             return {}
 
+        def get_format_registry(self):
+            """Get format adapter registry service instance."""
+            return self._container.get_format_registry()
+
     core_services = CoreServicesAdapter(service_container)
 
     # Perform manifest population with access to http_pool_manager
