@@ -1,17 +1,31 @@
+from typing import TYPE_CHECKING, Literal
+
 import structlog
 
 from ccproxy.adapters.base import APIAdapter
 
 
+if TYPE_CHECKING:
+    from ccproxy.core.plugins.declaration import (
+        FormatAdapterSpec,
+        PluginManifest,
+    )
+
 logger = structlog.get_logger(__name__)
 
 
 class FormatAdapterRegistry:
-    """Registry for managing format adapters and their relationships."""
+    """Registry for managing format adapters with production-safe migration."""
 
-    def __init__(self) -> None:
+    def __init__(
+        self, conflict_mode: Literal["fail_fast", "priority"] = "fail_fast"
+    ) -> None:
         self._adapters: dict[tuple[str, str], APIAdapter] = {}
         self._registered_plugins: set[str] = set()
+        self._adapter_specs: dict[tuple[str, str], FormatAdapterSpec] = {}
+        self._conflicts: dict[tuple[str, str], list[FormatAdapterSpec]] = {}
+        self._finalized: bool = False
+        self._conflict_mode = conflict_mode
 
     def register(
         self,
@@ -98,3 +112,150 @@ class FormatAdapterRegistry:
         """Clear registry - for testing only."""
         self._adapters.clear()
         self._registered_plugins.clear()
+        self._adapter_specs.clear()
+        self._conflicts.clear()
+        self._finalized = False
+
+    async def register_from_manifest(
+        self, manifest: "PluginManifest", plugin_name: str
+    ) -> None:
+        """Register format adapters from plugin manifest."""
+        if self._finalized:
+            logger.warning(
+                "format_adapter_registry_finalized_registration_ignored",
+                plugin=plugin_name,
+                category="format",
+            )
+            return
+
+        for spec in manifest.format_adapters:
+            format_pair = spec.format_pair
+
+            # Track potential conflicts
+            if format_pair in self._adapter_specs:
+                if format_pair not in self._conflicts:
+                    self._conflicts[format_pair] = [self._adapter_specs[format_pair]]
+                self._conflicts[format_pair].append(spec)
+
+                logger.debug(
+                    "format_adapter_conflict_detected",
+                    from_format=spec.from_format,
+                    to_format=spec.to_format,
+                    plugin=plugin_name,
+                    existing_plugins=[
+                        s.adapter_factory.__module__
+                        for s in self._conflicts[format_pair]
+                    ],
+                    category="format",
+                )
+            else:
+                self._adapter_specs[format_pair] = spec
+
+        self._registered_plugins.add(plugin_name)
+
+    def validate_requirements(
+        self, manifests: dict[str, "PluginManifest"]
+    ) -> dict[str, list[tuple[str, str]]]:
+        """Validate format adapter requirements across all manifests."""
+        # Get all available adapters (including core pre-registered ones)
+        available = set(self._adapters.keys()) | set(self._adapter_specs.keys())
+
+        missing = {}
+        for name, manifest in manifests.items():
+            missing_reqs = manifest.validate_format_adapter_requirements(available)
+            if missing_reqs:
+                missing[name] = missing_reqs
+
+        return missing
+
+    async def resolve_conflicts_and_finalize(
+        self, enable_priority_mode: bool = False
+    ) -> None:
+        """Resolve conflicts and finalize registry with feature flag control."""
+        if self._finalized:
+            return
+
+        # Handle conflicts based on mode
+        if self._conflict_mode == "priority" or enable_priority_mode:
+            await self._resolve_conflicts_by_priority()
+        else:
+            await self._fail_fast_on_conflicts()
+
+        # Instantiate all registered adapters asynchronously
+        for format_pair, spec in self._adapter_specs.items():
+            if (
+                format_pair not in self._adapters
+            ):  # Don't override pre-registered core adapters
+                try:
+                    # All adapter factories are now standardized as Callable[[], APIAdapter]
+                    adapter = spec.adapter_factory()
+                    # Handle async factories if needed
+                    if hasattr(adapter, "__await__"):
+                        adapter = await adapter
+                    self._adapters[format_pair] = adapter  # type: ignore[assignment]
+                except Exception as e:
+                    logger.error(
+                        "format_adapter_instantiation_failed",
+                        from_format=spec.from_format,
+                        to_format=spec.to_format,
+                        factory=spec.adapter_factory.__name__,
+                        error=str(e),
+                        category="format",
+                    )
+                    raise ValueError(
+                        f"Failed to instantiate adapter {spec.from_format} -> {spec.to_format}"
+                    ) from e
+
+        self._finalized = True
+        logger.info(
+            "format_adapter_registry_finalized",
+            total_adapters=len(self._adapters),
+            registered_plugins=list(self._registered_plugins),
+            conflict_mode=self._conflict_mode,
+            category="format",
+        )
+
+    async def _resolve_conflicts_by_priority(self) -> None:
+        """Resolve conflicts using priority (lower = higher priority)."""
+        for format_pair, conflicting_specs in self._conflicts.items():
+            # Sort by priority (lower = higher priority)
+            winner = min(conflicting_specs, key=lambda s: s.priority)
+            self._adapter_specs[format_pair] = winner
+
+            logger.warning(
+                "format_adapter_conflict_resolved_by_priority",
+                from_format=format_pair[0],
+                to_format=format_pair[1],
+                winner=winner.adapter_factory.__name__,
+                winner_priority=winner.priority,
+                conflicting_specs=[
+                    {"name": s.adapter_factory.__name__, "priority": s.priority}
+                    for s in conflicting_specs
+                ],
+                category="format",
+            )
+
+    async def _fail_fast_on_conflicts(self) -> None:
+        """Fail fast when conflicts are detected (current behavior)."""
+        if self._conflicts:
+            conflict_details = []
+            for format_pair, specs in self._conflicts.items():
+                conflict_details.append(
+                    {
+                        "format_pair": format_pair,
+                        "conflicting_adapters": [
+                            s.adapter_factory.__name__ for s in specs
+                        ],
+                    }
+                )
+
+            logger.error(
+                "format_adapter_conflicts_detected_failing_fast",
+                conflicts=conflict_details,
+                category="format",
+            )
+
+            raise ValueError(
+                f"Format adapter conflicts detected: {conflict_details}. "
+                "Enable priority mode to resolve automatically."
+            )

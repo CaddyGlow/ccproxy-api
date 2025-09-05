@@ -19,7 +19,14 @@ from ccproxy.services.interfaces import (
     NullStreamingHandler,
 )
 
-from .declaration import PluginContext, PluginManifest, RouteSpec, TaskSpec
+from .declaration import (
+    FormatAdapterSpec,
+    FormatPair,
+    PluginContext,
+    PluginManifest,
+    RouteSpec,
+    TaskSpec,
+)
 from .factory import ProviderPluginFactory
 from .runtime import ProviderPluginRuntime
 
@@ -72,6 +79,10 @@ class BaseProviderPluginFactory(ProviderPluginFactory):
     optional_requires: list[str] = []
     tasks: list[TaskSpec] = []
 
+    # Format adapter declarations (populated by subclasses)
+    format_adapters: list[FormatAdapterSpec] = []
+    requires_format_adapters: list[FormatPair] = []
+
     def __init__(self) -> None:
         """Initialize factory with manifest built from class attributes."""
         # Validate required class attributes
@@ -107,7 +118,16 @@ class BaseProviderPluginFactory(ProviderPluginFactory):
             optional_requires=self.optional_requires.copy(),
             routes=routes,
             tasks=self.tasks.copy(),
+            format_adapters=self.format_adapters.copy(),
+            requires_format_adapters=self.requires_format_adapters.copy(),
         )
+
+        # Validate format adapter specifications if feature is enabled
+        from ccproxy.config.settings import get_settings
+
+        settings = get_settings()
+        if settings.features.manifest_format_adapters:
+            self._validate_format_adapter_specs()
 
         # Store the manifest and runtime class directly
         # We don't call parent __init__ because ProviderPluginFactory
@@ -133,6 +153,15 @@ class BaseProviderPluginFactory(ProviderPluginFactory):
                 raise ValueError(
                     f"Class attribute '{attr}' must be defined in {self.__class__.__name__}"
                 )
+
+    def _validate_format_adapter_specs(self) -> None:
+        """Validate format adapter specifications."""
+        for spec in self.format_adapters:
+            if not callable(spec.adapter_factory):
+                raise ValueError(
+                    f"Invalid adapter factory for {spec.from_format} -> {spec.to_format}: "
+                    f"must be callable"
+                ) from None
 
     def create_runtime(self) -> ProviderPluginRuntime:
         """Create runtime instance using the configured runtime class."""

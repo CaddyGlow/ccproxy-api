@@ -13,6 +13,7 @@ from .auth import AuthSettings
 from .binary import BinarySettings
 from .cors import CORSSettings
 from .docker_settings import DockerSettings
+from .features import FeatureSettings
 from .http import HTTPSettings
 from .logging import LoggingSettings
 from .scheduler import SchedulerSettings
@@ -96,6 +97,11 @@ class Settings(BaseSettings):
     scheduler: SchedulerSettings = Field(
         default_factory=SchedulerSettings,
         description="Task scheduler configuration settings",
+    )
+
+    features: FeatureSettings = Field(
+        default_factory=FeatureSettings,
+        description="Feature flags for safe deployment of new functionality",
     )
 
     enable_plugins: bool = Field(
@@ -248,7 +254,9 @@ class Settings(BaseSettings):
 
         for key, value in config_data.items():
             if hasattr(settings, key):
-                if key in ["logging", "server", "security"] and isinstance(value, dict):
+                if key in ["logging", "server", "security", "features"] and isinstance(
+                    value, dict
+                ):
                     nested_obj = getattr(settings, key)
                     for nested_key, nested_value in value.items():
                         env_key = f"{key.upper()}__{nested_key.upper()}"

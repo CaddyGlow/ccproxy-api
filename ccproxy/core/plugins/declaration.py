@@ -43,6 +43,32 @@ else:
 
 T = TypeVar("T")
 
+# Type aliases for format adapter system
+FormatPair = tuple[str, str]
+
+
+@dataclass
+class FormatAdapterSpec:
+    """Specification for format adapter registration."""
+
+    from_format: str
+    to_format: str
+    adapter_factory: Callable[[], "BaseAdapter"]  # Returns APIAdapter instance
+    priority: int = 100  # Lower = higher priority for conflict resolution
+    description: str = ""
+
+    def __post_init__(self) -> None:
+        """Validate specification."""
+        if not self.from_format or not self.to_format:
+            raise ValueError("Format names cannot be empty") from None
+        if self.from_format == self.to_format:
+            raise ValueError("from_format and to_format cannot be the same") from None
+
+    @property
+    def format_pair(self) -> FormatPair:
+        """Get the format pair tuple."""
+        return (self.from_format, self.to_format)
+
 
 class MiddlewareLayer(IntEnum):
     """Middleware layers for ordering."""
@@ -156,6 +182,10 @@ class PluginManifest:
         default_factory=list
     )  # Plugin-specific OAuth routes
 
+    # Format adapter declarations
+    format_adapters: list[FormatAdapterSpec] = field(default_factory=list)
+    requires_format_adapters: list[FormatPair] = field(default_factory=list)
+
     def validate_dependencies(self, available_plugins: set[str]) -> list[str]:
         """Validate that all dependencies are available.
 
@@ -185,6 +215,16 @@ class PluginManifest:
     def get_sorted_middleware(self) -> list[MiddlewareSpec]:
         """Get middleware sorted by priority."""
         return sorted(self.middleware)
+
+    def validate_format_adapter_requirements(
+        self, available_adapters: set[FormatPair]
+    ) -> list[FormatPair]:
+        """Validate that required format adapters are available."""
+        return [
+            req
+            for req in self.requires_format_adapters
+            if req not in available_adapters
+        ]
 
 
 class PluginContext:

@@ -474,6 +474,24 @@ class PluginRegistry:
         available = set(manifests.keys())
         skipped: dict[str, str] = {}
 
+        # NEW: Validate format adapter dependencies if feature enabled
+        from ccproxy.config.settings import get_settings
+
+        settings = get_settings()
+        if settings.features.manifest_format_adapters:
+            missing_format_adapters = self._validate_format_adapter_requirements()
+            if missing_format_adapters:
+                for plugin_name, missing in missing_format_adapters.items():
+                    logger.error(
+                        "plugin_missing_format_adapters",
+                        plugin=plugin_name,
+                        missing_adapters=missing,
+                        category="format",
+                    )
+                    # Remove plugins with missing format adapter requirements
+                    available.discard(plugin_name)
+                    skipped[plugin_name] = f"missing format adapters: {missing}"
+
         # Iteratively prune plugins with unsatisfied dependencies or services
         while True:
             removed_this_pass: set[str] = set()
@@ -575,6 +593,12 @@ class PluginRegistry:
 
         return order
 
+    def _validate_format_adapter_requirements(self) -> dict[str, list[tuple[str, str]]]:
+        """Self-contained helper for format adapter requirement validation."""
+        # This is a placeholder - in practice, format registry would be injected
+        # For now, return empty dict to avoid runtime errors during feature development
+        return {}
+
     async def create_runtime(self, name: str, core_services: Any) -> BasePluginRuntime:
         """Create and initialize a plugin runtime.
 
@@ -623,16 +647,29 @@ class PluginRegistry:
         return runtime
 
     async def initialize_all(self, core_services: Any) -> None:
-        """Initialize all registered plugins in dependency order.
+        """Initialize all registered plugins with format adapter support.
 
         Args:
             core_services: Core services container
         """
+        from ccproxy.config.settings import get_settings
+
+        settings = get_settings()
+
         order = self.resolve_dependencies()
 
         logger.info(
             "initializing_plugins", count=len(order), order=order, category="plugin"
         )
+
+        # NEW: Register format adapters from manifests in first pass
+        if settings.features.manifest_format_adapters:
+            # For now, skip manifest registration during development
+            # This will be implemented once the service container integration is complete
+            logger.debug(
+                "format_adapter_manifest_registration_placeholder",
+                category="format",
+            )
 
         for name in order:
             try:
@@ -646,6 +683,14 @@ class PluginRegistry:
                     category="plugin",
                 )
                 # Continue with other plugins
+
+        # NEW: Finalize format registry after plugin initialization
+        if settings.features.manifest_format_adapters:
+            # Placeholder for format registry finalization
+            logger.debug(
+                "format_adapter_registry_finalization_placeholder",
+                category="format",
+            )
 
     async def shutdown_all(self) -> None:
         """Shutdown all plugin runtimes in reverse initialization order."""

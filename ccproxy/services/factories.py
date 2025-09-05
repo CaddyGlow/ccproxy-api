@@ -6,7 +6,7 @@ create and configure service instances according to their interfaces.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 import httpx
 import structlog
@@ -154,16 +154,46 @@ class ConcreteServiceFactory:
         Pre-registers common format conversions to prevent plugin conflicts.
         Plugins can still register their own plugin-specific adapters.
         """
-        from ccproxy.adapters.openai import AnthropicResponseAPIAdapter
+        settings = self._container.get_service(Settings)
 
-        registry = FormatAdapterRegistry()
+        # Create registry with conflict mode based on features
+        conflict_mode: Literal["fail_fast", "priority"] = (
+            "priority" if settings.features.manifest_format_adapters else "fail_fast"
+        )
+        registry = FormatAdapterRegistry(conflict_mode=conflict_mode)
 
-        # Register core shared adapters to prevent plugin conflicts
-        core_adapter = AnthropicResponseAPIAdapter()
-        registry.register("anthropic", "response_api", core_adapter, "core")
-        registry.register("response_api", "anthropic", core_adapter, "core")
+        # Pre-register core format adapters
+        self._register_core_format_adapters(registry)
+
+        logger.debug(
+            "format_registry_created",
+            conflict_mode=conflict_mode,
+            enable_manifest_adapters=settings.features.manifest_format_adapters,
+            category="format",
+        )
 
         return registry
+
+    def _register_core_format_adapters(self, registry: FormatAdapterRegistry) -> None:
+        """Pre-register core format adapters with high priority."""
+        from ccproxy.adapters.openai import AnthropicResponseAPIAdapter
+        from ccproxy.adapters.openai.adapter import OpenAIAdapter
+
+        # Core adapters that are always available
+        core_adapters = {
+            ("anthropic", "response_api"): AnthropicResponseAPIAdapter(),
+            ("response_api", "anthropic"): AnthropicResponseAPIAdapter(),
+            ("openai", "anthropic"): OpenAIAdapter(),
+        }
+
+        for format_pair, adapter in core_adapters.items():
+            registry.register(format_pair[0], format_pair[1], adapter, "core")
+
+        logger.debug(
+            "core_format_adapters_registered",
+            adapters=list(core_adapters.keys()),
+            category="format",
+        )
 
     def create_format_detector(self) -> FormatDetectionService:
         """Create format detection service."""

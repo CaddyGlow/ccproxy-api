@@ -409,6 +409,9 @@ class ProviderPluginRuntime(BasePluginRuntime):
         if self.manifest.oauth_provider_factory:
             await self._register_oauth_provider()
 
+        # Set up format registry with migration safety
+        await self._setup_format_registry()
+
     async def _register_oauth_provider(self) -> None:
         """Register OAuth provider with the app-scoped registry."""
         if not self.manifest.oauth_provider_factory:
@@ -487,6 +490,42 @@ class ProviderPluginRuntime(BasePluginRuntime):
                 exc_info=e,
                 category="plugin",
             )
+
+    async def _setup_format_registry(self) -> None:
+        """Legacy format registry setup with migration safety."""
+        from ccproxy.config.settings import get_settings
+
+        settings = get_settings()
+
+        # Feature flag: Skip if manifest system is enabled
+        if settings.features.manifest_format_adapters:
+            logger.debug(
+                "format_registry_setup_skipped_manifest_mode_enabled",
+                plugin=self.__class__.__name__,
+                category="format",
+            )
+            return
+
+        # Deprecation warning if both systems would register same adapters
+        if settings.features.deprecate_manual_format_setup:
+            if self.manifest and self.manifest.format_adapters:
+                logger.warning(
+                    "deprecated_manual_format_registry_setup_with_manifest_declared",
+                    plugin=self.__class__.__name__,
+                    manifest_adapters=[
+                        f"{spec.from_format}->{spec.to_format}"
+                        for spec in self.manifest.format_adapters
+                    ],
+                    message="Manual _setup_format_registry() is deprecated when manifest declares format_adapters",
+                    category="format",
+                )
+
+        # Base implementation does nothing - subclasses override for manual registration
+        logger.debug(
+            "format_registry_setup_base_implementation_noop",
+            plugin=self.name,
+            category="format",
+        )
 
     async def _on_shutdown(self) -> None:
         """Provider plugin cleanup."""
