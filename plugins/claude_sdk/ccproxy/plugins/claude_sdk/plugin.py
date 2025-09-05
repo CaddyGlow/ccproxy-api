@@ -137,7 +137,7 @@ class ClaudeSDKRuntime(ProviderPluginRuntime):
             if not service_container:
                 raise RuntimeError("Service container not available")
 
-            registry = service_container.get_service(FormatAdapterRegistry)
+            registry = service_container.get_format_registry()
             registry.register(
                 "openai", "anthropic", ClaudeSDKFormatAdapter(), "claude_sdk"
             )

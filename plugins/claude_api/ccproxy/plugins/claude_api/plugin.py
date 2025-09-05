@@ -185,7 +185,7 @@ class ClaudeAPIRuntime(ProviderPluginRuntime):
             if not service_container:
                 raise RuntimeError("Service container not available")
 
-            registry = service_container.get_service(FormatAdapterRegistry)
+            registry = service_container.get_format_registry()
 
             # Note: Core adapters are pre-registered in FormatAdapterRegistry factory:
             # - OpenAI <-> Anthropic (registered by claude_sdk plugin)

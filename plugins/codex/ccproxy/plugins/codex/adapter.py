@@ -3,6 +3,10 @@
 import uuid
 from typing import TYPE_CHECKING, Any, cast
 
+if TYPE_CHECKING:
+    from ccproxy.services.adapters.format_detector import FormatDetectionService
+    from ccproxy.services.adapters.format_registry import FormatAdapterRegistry
+
 from fastapi import Request
 from starlette.responses import Response, StreamingResponse
 
@@ -58,6 +62,9 @@ class CodexAdapter(BaseHTTPAdapter):
         metrics: "IMetricsCollector | None" = None,
         streaming_handler: "IStreamingHandler | None" = None,
         hook_manager: "HookManager | None" = None,
+        # Format services
+        format_registry: "FormatAdapterRegistry | None" = None,
+        format_detector: "FormatDetectionService | None" = None,
         # Plugin-specific context
         context: "PluginContext | dict[str, Any] | None" = None,
     ):
@@ -71,6 +78,8 @@ class CodexAdapter(BaseHTTPAdapter):
             metrics: Optional metrics collector
             streaming_handler: Optional streaming handler
             hook_manager: Optional hook manager for event emission
+            format_registry: Format adapter registry for protocol conversions
+            format_detector: Format detection service for endpoint analysis
             context: Optional plugin context containing plugin_registry and other services
         """
         # Initialize transformers
@@ -104,37 +113,15 @@ class CodexAdapter(BaseHTTPAdapter):
             context=cast("PluginContext | None", context),
         )
 
-        from ccproxy.services.adapters.format_detector import FormatDetectionService
-        from ccproxy.services.adapters.format_registry import FormatAdapterRegistry
+        # Assign format services from constructor parameters
+        self.format_registry = format_registry
+        self.format_detector = format_detector
 
-        # Get format services from service container
-        self.format_registry: FormatAdapterRegistry | None = None
-        self.format_detector: FormatDetectionService | None = None
-
-        if context and "service_container" in context:
-            service_container = context["service_container"]
-            try:
-                from ccproxy.services.adapters.format_detector import (
-                    FormatDetectionService,
-                )
-                from ccproxy.services.adapters.format_registry import (
-                    FormatAdapterRegistry,
-                )
-
-                self.format_registry = service_container.get_service(
-                    FormatAdapterRegistry
-                )
-                self.format_detector = service_container.get_service(
-                    FormatDetectionService
-                )
-
-                logger.debug(
-                    "format_services_loaded",
-                    has_registry=bool(self.format_registry),
-                    has_detector=bool(self.format_detector),
-                )
-            except Exception as e:
-                logger.warning("failed_to_load_format_services", error=str(e))
+        logger.debug(
+            "format_services_loaded",
+            has_registry=bool(self.format_registry),
+            has_detector=bool(self.format_detector),
+        )
 
         # Current endpoint tracking for format detection
         self._current_endpoint: str | None = None

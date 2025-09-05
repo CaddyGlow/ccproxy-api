@@ -243,7 +243,7 @@ class CodexRuntime(ProviderPluginRuntime):
             if not service_container:
                 raise RuntimeError("Service container not available")
 
-            registry = service_container.get_service(FormatAdapterRegistry)
+            registry = service_container.get_format_registry()
 
             # Register plugin-specific OpenAI -> Response API adapter
             registry.register("openai", "response_api", CodexFormatAdapter(), "codex")

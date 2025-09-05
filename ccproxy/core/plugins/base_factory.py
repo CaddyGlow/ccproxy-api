@@ -167,10 +167,13 @@ class BaseProviderPluginFactory(ProviderPluginFactory):
         # Get config if available
         config = context.get("config")
 
-        # Get format services from service container
+        # Get all adapter dependencies from service container
         service_container = context.get("service_container")
         if not service_container:
-            raise RuntimeError("Service container is required for format services")
+            raise RuntimeError("Service container is required for adapter services")
+
+        # Get standardized adapter dependencies
+        adapter_dependencies = service_container.get_adapter_dependencies(metrics)
 
         # Check if this is an HTTP-based adapter
         if issubclass(self.adapter_class, BaseHTTPAdapter):
@@ -180,7 +183,7 @@ class BaseProviderPluginFactory(ProviderPluginFactory):
                     f"HTTP pool manager required for {self.adapter_class.__name__} but not available in context"
                 )
 
-            # Create HTTP adapter with explicit dependencies
+            # Create HTTP adapter with explicit dependencies including format services
             return cast(
                 BaseAdapter,
                 self.adapter_class(
@@ -191,6 +194,8 @@ class BaseProviderPluginFactory(ProviderPluginFactory):
                     metrics=metrics or NullMetricsCollector(),
                     streaming_handler=streaming_handler or NullStreamingHandler(),
                     hook_manager=hook_manager,
+                    format_registry=adapter_dependencies["format_registry"],
+                    format_detector=adapter_dependencies["format_detector"],
                     context=context,
                 ),
             )
@@ -222,6 +227,8 @@ class BaseProviderPluginFactory(ProviderPluginFactory):
                 "metrics": metrics,
                 "streaming_handler": streaming_handler,
                 "hook_manager": hook_manager,
+                "format_registry": adapter_dependencies["format_registry"],
+                "format_detector": adapter_dependencies["format_detector"],
                 "context": context,
             }
 

@@ -12,6 +12,8 @@ import httpx
 import structlog
 
 from ccproxy.config.settings import Settings
+from ccproxy.services.adapters.format_detector import FormatDetectionService
+from ccproxy.services.adapters.format_registry import FormatAdapterRegistry
 from ccproxy.services.cache import ResponseCache
 from ccproxy.services.cli_detection import CLIDetectionService
 from ccproxy.services.config import ProxyConfiguration
@@ -122,6 +124,14 @@ class ServiceContainer:
         """Get connection pool manager service instance."""
         return cast(ConnectionPoolManager, self.get_service(ConnectionPoolManager))
 
+    def get_format_registry(self) -> FormatAdapterRegistry:
+        """Get format adapter registry service instance."""
+        return cast(FormatAdapterRegistry, self.get_service(FormatAdapterRegistry))
+
+    def get_format_detector(self) -> FormatDetectionService:
+        """Get format detection service instance."""
+        return cast(FormatDetectionService, self.get_service(FormatDetectionService))
+
     def get_adapter_dependencies(self, metrics: Any | None = None) -> dict[str, Any]:
         """Get all services an adapter might need."""
         return {
@@ -132,6 +142,8 @@ class ServiceContainer:
             "logger": structlog.get_logger(),
             "config": self.get_proxy_config(),
             "cli_detection_service": self.get_cli_detection_service(),
+            "format_registry": self.get_format_registry(),
+            "format_detector": self.get_format_detector(),
         }
 
     async def close(self) -> None:
