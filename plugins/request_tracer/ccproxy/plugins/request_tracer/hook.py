@@ -18,6 +18,9 @@ class RequestTracerHook(Hook):
     This hook only handles REQUEST_* events since HTTP_* events are now
     handled by the core HTTPTracerHook. This eliminates duplication and
     follows the single responsibility principle.
+    
+    The plugin now focuses purely on request lifecycle logging without
+    attempting to capture HTTP request/response bodies.
     """
 
     name = "request_tracer"
@@ -46,22 +49,10 @@ class RequestTracerHook(Hook):
         """
         self.config = config or RequestTracerConfig()
 
-        # Use core formatters from the new location
-        from ccproxy.hooks.implementations.formatters import JSONFormatter
-
-        # Initialize JSON formatter for structured logging
-        self.json_formatter = (
-            JSONFormatter.from_config(self.config)
-            if self.config.json_logs_enabled
-            else None
-        )
-
         logger.info(
             "request_tracer_hook_initialized",
             enabled=self.config.enabled,
-            json_logs=self.config.json_logs_enabled,
-            log_dir=str(self.config.log_dir),
-            note="HTTP tracing handled by core HTTPTracerHook",
+            note="Simplified - HTTP tracing handled by core HTTPTracerHook",
         )
 
     async def __call__(self, context: HookContext) -> None:
@@ -116,34 +107,18 @@ class RequestTracerHook(Hook):
         method = context.data.get("method", "UNKNOWN")
         url = context.data.get("url", "")
         path = context.data.get("path", url)  # Use direct path if available
-        headers = context.data.get("headers", {})
-
-        # Try to get request body from context data or request object
-        body = context.data.get("body")
-        if body is None and context.request:
-            # Try to get body from FastAPI request object
-            try:
-                body = await context.request.body()
-            except Exception:
-                # Body might not be available or already consumed
-                body = None
 
         # Check path filters
         if self._should_exclude_path(path):
             return
 
-        # Log with JSON formatter
-        if self.json_formatter and self.config.verbose_api:
-            await self.json_formatter.log_request(
-                request_id=request_id,
-                method=method,
-                url=url,
-                headers=headers,
-                body=body,  # Include request body if available
-                request_type="client",
-                context=getattr(context, "context", None),
-                hook_type="tracer",  # Indicate this came from RequestTracerHook
-            )
+        logger.debug(
+            "request_started",
+            request_id=request_id,
+            method=method,
+            url=url,
+            note="Request body logged by core HTTPTracerHook"
+        )
 
     async def _handle_request_complete(self, context: HookContext) -> None:
         """Handle REQUEST_COMPLETED event."""
@@ -152,9 +127,6 @@ class RequestTracerHook(Hook):
 
         request_id = context.data.get("request_id", "unknown")
         status_code = context.data.get("status_code", 200)
-        headers = context.data.get("headers", {})
-        body = context.data.get("body", b"")
-        body_size = context.data.get("body_size", 0)
         duration_ms = context.data.get("duration_ms", 0)
 
         # Check path filters
@@ -163,8 +135,6 @@ class RequestTracerHook(Hook):
         if self._should_exclude_path(path):
             return
 
-        # Note: Response body logging is now handled by core HTTPTracerHook
-        # REQUEST_COMPLETED events don't contain response bodies
         logger.debug(
             "request_completed",
             request_id=request_id,
@@ -175,28 +145,16 @@ class RequestTracerHook(Hook):
 
     async def _handle_request_failed(self, context: HookContext) -> None:
         """Handle REQUEST_FAILED event."""
-        if not self.config.log_client_response:
-            return
-
         request_id = context.data.get("request_id", "unknown")
         error = context.error
         duration = context.data.get("duration", 0)
 
-        # Log error
         logger.error(
             "request_failed",
             request_id=request_id,
             error=str(error) if error else "unknown",
             duration=duration,
         )
-
-        # Log with formatters if enabled
-        if self.json_formatter and self.config.verbose_api:
-            await self.json_formatter.log_error(
-                request_id=request_id,
-                error=error,
-                duration=duration,
-            )
 
     async def _handle_provider_request(self, context: HookContext) -> None:
         """Handle PROVIDER_REQUEST_SENT event."""
@@ -206,20 +164,16 @@ class RequestTracerHook(Hook):
         request_id = context.metadata.get("request_id", "unknown")
         url = context.data.get("url", "")
         method = context.data.get("method", "UNKNOWN")
-        headers = context.data.get("headers", {})
-        body = context.data.get("body")  # Get body from hook data
         provider = context.provider or "unknown"
 
-        # Log with JSON formatter
-        if self.json_formatter:
-            await self.json_formatter.log_provider_request(
-                request_id=request_id,
-                provider=provider,
-                method=method,
-                url=url,
-                headers=headers,
-                body=body,  # Include body for debugging
-            )
+        logger.debug(
+            "provider_request_sent",
+            request_id=request_id,
+            provider=provider,
+            method=method,
+            url=url,
+            note="Request body logged by core HTTPTracerHook"
+        )
 
     async def _handle_provider_response(self, context: HookContext) -> None:
         """Handle PROVIDER_RESPONSE_RECEIVED event."""
@@ -228,17 +182,9 @@ class RequestTracerHook(Hook):
 
         request_id = context.metadata.get("request_id", "unknown")
         status_code = context.data.get("status_code", 200)
-        headers = context.data.get("headers", {})  # Get response headers from hook data
-        body = context.data.get("body")  # Get response body from hook data
         provider = context.provider or "unknown"
         is_streaming = context.data.get("is_streaming", False)
 
-        # Skip if streaming (will be handled by stream events)
-        if is_streaming and self.config.log_streaming_chunks:
-            return
-
-        # Note: Provider response body logging is now handled by core HTTPTracerHook
-        # PROVIDER_RESPONSE_RECEIVED events don't contain response bodies
         logger.debug(
             "provider_response_received",
             request_id=request_id,
@@ -250,9 +196,6 @@ class RequestTracerHook(Hook):
 
     async def _handle_provider_error(self, context: HookContext) -> None:
         """Handle PROVIDER_ERROR event."""
-        if not self.config.log_provider_response:
-            return
-
         request_id = context.metadata.get("request_id", "unknown")
         provider = context.provider or "unknown"
         error = context.error
@@ -263,13 +206,6 @@ class RequestTracerHook(Hook):
             provider=provider,
             error=str(error) if error else "unknown",
         )
-
-        if self.json_formatter:
-            await self.json_formatter.log_error(
-                request_id=request_id,
-                error=error,
-                provider=provider,
-            )
 
     async def _handle_stream_start(self, context: HookContext) -> None:
         """Handle PROVIDER_STREAM_START event."""
@@ -284,12 +220,6 @@ class RequestTracerHook(Hook):
             request_id=request_id,
             provider=provider,
         )
-
-        if self.json_formatter:
-            await self.json_formatter.log_stream_start(
-                request_id=request_id,
-                provider=provider,
-            )
 
     async def _handle_stream_chunk(self, context: HookContext) -> None:
         """Handle PROVIDER_STREAM_CHUNK event."""
@@ -319,15 +249,6 @@ class RequestTracerHook(Hook):
             total_bytes=total_bytes,
             usage_metrics=usage_metrics,
         )
-
-        if self.json_formatter:
-            await self.json_formatter.log_stream_complete(
-                request_id=request_id,
-                provider=provider,
-                total_chunks=total_chunks,
-                total_bytes=total_bytes,
-                usage_metrics=usage_metrics,
-            )
 
     def _extract_path(self, url: str) -> str:
         """Extract path from URL."""

@@ -1,4 +1,4 @@
-"""Request Tracer plugin implementation - simplified after refactoring."""
+"""Request Tracer plugin implementation -  after refactoring."""
 
 from typing import Any
 
@@ -18,13 +18,10 @@ logger = get_plugin_logger()
 
 
 class RequestTracerRuntime(SystemPluginRuntime):
-    """Simplified runtime for request tracer plugin.
+    """Runtime for the request tracer plugin.
 
-    After refactoring:
-    - Removed dual middleware/hooks architecture
-    - No longer manages HTTPTracerHook (handled by core)
-    - No longer manages middleware or raw HTTP logging
-    - Focused only on REQUEST_* events via simplified hook
+    Handles only REQUEST_* events via a  hook.
+    HTTP events are managed by the core HTTPTracerHook.
     """
 
     def __init__(self, manifest: PluginManifest):
@@ -34,7 +31,7 @@ class RequestTracerRuntime(SystemPluginRuntime):
         self.hook: RequestTracerHook | None = None
 
     async def _on_initialize(self) -> None:
-        """Initialize the simplified request tracer."""
+        """Initialize the  request tracer."""
         if not self.context:
             raise RuntimeError("Context not set")
 
@@ -73,7 +70,7 @@ class RequestTracerRuntime(SystemPluginRuntime):
                 logger.warning("config_validation_warning", issue=error)
 
         if self.config.enabled:
-            # Register simplified hook for REQUEST_* events only
+            # Register  hook for REQUEST_* events only
             self.hook = RequestTracerHook(self.config)
 
             # Try to get hook registry from context
@@ -89,7 +86,7 @@ class RequestTracerRuntime(SystemPluginRuntime):
                 hook_registry.register(self.hook)
                 logger.info(
                     "request_tracer_hook_registered",
-                    mode="simplified_hooks",
+                    mode="hooks",
                     json_logs=self.config.json_logs_enabled,
                     verbose_api=self.config.verbose_api,
                     note="HTTP events handled by core HTTPTracerHook",
@@ -106,7 +103,7 @@ class RequestTracerRuntime(SystemPluginRuntime):
                 log_dir=self.config.log_dir,
                 json_logs=self.config.json_logs_enabled,
                 exclude_paths=self.config.exclude_paths,
-                architecture="simplified_hooks_only",
+                architecture="hooks_only",
             )
         else:
             logger.info("request_tracer_disabled")
@@ -154,15 +151,15 @@ class RequestTracerRuntime(SystemPluginRuntime):
 
 
 class RequestTracerFactory(SystemPluginFactory):
-    """Simplified factory for request tracer plugin."""
+    """factory for request tracer plugin."""
 
     def __init__(self) -> None:
         """Initialize factory with manifest."""
-        # Create manifest with static declarations (simplified from original)
+        # Create manifest with static declarations ( from original)
         manifest = PluginManifest(
             name="request_tracer",
             version="2.0.0",  # Version bump to reflect refactoring
-            description="Simplified request tracing for REQUEST_* events only",
+            description=" request tracing for REQUEST_* events only",
             is_provider=False,
             config_class=RequestTracerConfig,
         )
@@ -185,12 +182,6 @@ class RequestTracerFactory(SystemPluginFactory):
         """Create context for the plugin."""
         # Get base context from parent
         context = super().create_context(core_services)
-
-        # No middleware creation - all HTTP tracing handled by core
-        logger.debug(
-            "factory_context_created",
-            note="Middleware removed - HTTP tracing handled by core HTTPTracerHook",
-        )
 
         return context
 

@@ -181,9 +181,10 @@ class ClaudeAPIRuntime(ProviderPluginRuntime):
 
     async def _setup_format_registry(self) -> None:
         """Format registry setup with feature flag control."""
-        from ccproxy.config.settings import get_settings
-
-        settings = get_settings()
+        settings = self.context.get("settings")
+        if settings is None:
+            from ccproxy.config.settings import Settings
+            settings = Settings()
 
         # Skip manual setup if manifest system is enabled
         if settings.features.manifest_format_adapters:
