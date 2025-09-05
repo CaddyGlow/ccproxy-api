@@ -127,6 +127,7 @@ class JSONFormatter:
         body: bytes | None,
         request_type: str = "provider",  # "client" or "provider"
         context: Any = None,  # RequestContext
+        hook_type: str | None = None,  # Hook type for filename (e.g., "tracer", "http")
     ) -> None:
         """Log structured request data.
 
@@ -163,10 +164,15 @@ class JSONFormatter:
 
         # Write to file if configured
         if self.request_log_dir and self.json_logs_enabled:
-            # Use different file names for client vs provider
-            file_suffix = (
+            # Build file suffix with hook type
+            base_suffix = (
                 f"{request_type}_request" if request_type != "provider" else "request"
             )
+            if hook_type:
+                file_suffix = f"{base_suffix}_{hook_type}"
+            else:
+                file_suffix = base_suffix
+
             base_id = self._compose_file_id_with_timestamp(request_id)
             request_file = self.request_log_dir / f"{base_id}_{file_suffix}.json"
 
@@ -242,6 +248,7 @@ class JSONFormatter:
         body: bytes,
         response_type: str = "provider",  # "client" or "provider"
         context: Any = None,  # RequestContext
+        hook_type: str | None = None,  # Hook type for filename (e.g., "tracer", "http")
     ) -> None:
         """Log structured response data.
 
@@ -279,12 +286,16 @@ class JSONFormatter:
 
         # Write to file if configured
         if self.request_log_dir and self.json_logs_enabled:
-            # Use different file names for client vs provider
-            file_suffix = (
+            # Build file suffix with hook type
+            base_suffix = (
                 f"{response_type}_response"
                 if response_type != "provider"
                 else "response"
             )
+            if hook_type:
+                file_suffix = f"{base_suffix}_{hook_type}"
+            else:
+                file_suffix = base_suffix
             logger.debug(
                 "Writing response JSON file",
                 request_id=request_id,

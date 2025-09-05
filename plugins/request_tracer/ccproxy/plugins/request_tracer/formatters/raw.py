@@ -91,7 +91,9 @@ class RawHTTPFormatter:
         """Check if raw logging is enabled."""
         return bool(self.enabled)
 
-    async def log_client_request(self, request_id: str, raw_data: bytes) -> None:
+    async def log_client_request(
+        self, request_id: str, raw_data: bytes, hook_type: str | None = None
+    ) -> None:
         """Log raw client request data."""
         if not self.enabled or not self._log_client_request:
             return
@@ -101,7 +103,12 @@ class RawHTTPFormatter:
             raw_data = raw_data[: self.max_body_size] + b"\n[TRUNCATED]"
 
         base_id = self._compose_file_id_with_timestamp(request_id)
-        file_path = self.log_dir / f"{base_id}_client_request.http"
+        base_suffix = "client_request"
+        if hook_type:
+            file_suffix = f"{base_suffix}_{hook_type}"
+        else:
+            file_suffix = base_suffix
+        file_path = self.log_dir / f"{base_id}_{file_suffix}.http"
         file_key = f"{base_id}_client_request"
 
         # Only log on first write to this file
@@ -118,7 +125,9 @@ class RawHTTPFormatter:
         async with aiofiles.open(file_path, "ab") as f:
             await f.write(raw_data)
 
-    async def log_client_response(self, request_id: str, raw_data: bytes) -> None:
+    async def log_client_response(
+        self, request_id: str, raw_data: bytes, hook_type: str | None = None
+    ) -> None:
         """Log raw client response data."""
         if not self.enabled or not self._log_client_response:
             return
@@ -128,7 +137,12 @@ class RawHTTPFormatter:
             raw_data = raw_data[: self.max_body_size] + b"\n[TRUNCATED]"
 
         base_id = self._compose_file_id_with_timestamp(request_id)
-        file_path = self.log_dir / f"{base_id}_client_response.http"
+        base_suffix = "client_response"
+        if hook_type:
+            file_suffix = f"{base_suffix}_{hook_type}"
+        else:
+            file_suffix = base_suffix
+        file_path = self.log_dir / f"{base_id}_{file_suffix}.http"
         file_key = f"{base_id}_client_response"
 
         # Only log on first write to this file
@@ -145,7 +159,9 @@ class RawHTTPFormatter:
         async with aiofiles.open(file_path, "ab") as f:
             await f.write(raw_data)
 
-    async def log_provider_request(self, request_id: str, raw_data: bytes) -> None:
+    async def log_provider_request(
+        self, request_id: str, raw_data: bytes, hook_type: str | None = None
+    ) -> None:
         """Log raw provider request data."""
         if not self.enabled or not self._log_provider_request:
             return
@@ -155,7 +171,12 @@ class RawHTTPFormatter:
             raw_data = raw_data[: self.max_body_size] + b"\n[TRUNCATED]"
 
         base_id = self._compose_file_id_with_timestamp(request_id)
-        file_path = self.log_dir / f"{base_id}_provider_request.http"
+        base_suffix = "provider_request"
+        if hook_type:
+            file_suffix = f"{base_suffix}_{hook_type}"
+        else:
+            file_suffix = base_suffix
+        file_path = self.log_dir / f"{base_id}_{file_suffix}.http"
         file_key = f"{base_id}_provider_request"
 
         # Only log on first write to this file
@@ -172,7 +193,9 @@ class RawHTTPFormatter:
         async with aiofiles.open(file_path, "ab") as f:
             await f.write(raw_data)
 
-    async def log_provider_response(self, request_id: str, raw_data: bytes) -> None:
+    async def log_provider_response(
+        self, request_id: str, raw_data: bytes, hook_type: str | None = None
+    ) -> None:
         """Log raw provider response data."""
         if not self.enabled or not self._log_provider_response:
             return
@@ -182,7 +205,12 @@ class RawHTTPFormatter:
             raw_data = raw_data[: self.max_body_size] + b"\n[TRUNCATED]"
 
         base_id = self._compose_file_id_with_timestamp(request_id)
-        file_path = self.log_dir / f"{base_id}_provider_response.http"
+        base_suffix = "provider_response"
+        if hook_type:
+            file_suffix = f"{base_suffix}_{hook_type}"
+        else:
+            file_suffix = base_suffix
+        file_path = self.log_dir / f"{base_id}_{file_suffix}.http"
         file_key = f"{base_id}_provider_response"
 
         # Only log on first write to this file

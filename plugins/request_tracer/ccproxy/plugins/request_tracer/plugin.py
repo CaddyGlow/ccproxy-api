@@ -1,5 +1,6 @@
 """Request Tracer plugin implementation."""
 
+import os
 from typing import Any
 
 from ccproxy.core.logging import get_plugin_logger
@@ -15,6 +16,7 @@ from ccproxy.hooks import HookRegistry
 
 from .config import RequestTracerConfig
 from .hook import RequestTracerHook
+from .hooks.http import HTTPTracerHook
 from .middleware import RequestTracingMiddleware
 from .tracer import RequestTracerImpl
 
@@ -31,8 +33,9 @@ class RequestTracerRuntime(SystemPluginRuntime):
         self.config: RequestTracerConfig | None = None
         self.tracer_instance: RequestTracerImpl | None = None
         self.hook: RequestTracerHook | None = None
+        self.http_hook: HTTPTracerHook | None = None
         # Feature flag to control hook mode only
-        self.use_hooks = True  # os.getenv("HOOKS_ENABLED", "false").lower() == "true"
+        self.use_hooks = os.getenv("HOOKS_ENABLED", "true").lower() == "true"
 
     async def _on_initialize(self) -> None:
         """Initialize the request tracer."""
@@ -59,7 +62,11 @@ class RequestTracerRuntime(SystemPluginRuntime):
         if self.config.enabled:
             if self.use_hooks:
                 # Hook-based mode
-                self.hook = RequestTracerHook(self.config)
+                # Exclude HTTP events from RequestTracerHook when raw HTTP is enabled (HTTPTracerHook will handle them)
+                exclude_http_events = self.config.raw_http_enabled
+                self.hook = RequestTracerHook(
+                    self.config, exclude_http_events=exclude_http_events
+                )
 
                 # Try to get hook registry from context
                 hook_registry = None
@@ -81,11 +88,23 @@ class RequestTracerRuntime(SystemPluginRuntime):
 
                 if hook_registry and isinstance(hook_registry, HookRegistry):
                     hook_registry.register(self.hook)
+
+                    # Also register HTTPTracerHook for raw HTTP logging via hooks
+                    if self.config.raw_http_enabled:
+                        self.http_hook = HTTPTracerHook(self.config)
+                        hook_registry.register(self.http_hook)
+                        logger.info(
+                            "http_tracer_hook_registered",
+                            raw_http_enabled=True,
+                            note="HTTPTracerHook registered for .http file generation via hooks",
+                        )
+
                     logger.info(
                         "request_tracer_hook_registered",
                         mode="hooks",
                         verbose_api=self.config.verbose_api,
                         raw_http=self.config.raw_http_enabled,
+                        http_hook_registered=self.http_hook is not None,
                     )
                 else:
                     logger.warning(
@@ -142,6 +161,9 @@ class RequestTracerRuntime(SystemPluginRuntime):
 
             if hook_registry and isinstance(hook_registry, HookRegistry):
                 hook_registry.unregister(self.hook)
+                if self.http_hook:
+                    hook_registry.unregister(self.http_hook)
+                    logger.debug("http_tracer_hook_unregistered", category="middleware")
                 logger.debug("tracer_hook_unregistered", category="middleware")
 
         # Restore null tracer on shutdown

@@ -12,6 +12,7 @@ from httpx._types import (
 )
 
 from ccproxy.core.logging import get_logger
+from ccproxy.core.request_context import RequestContext
 from ccproxy.hooks.events import HookEvent
 
 
@@ -58,6 +59,15 @@ class HookableHTTPClient(httpx.AsyncClient):
             "url": str(url),
             "headers": dict(headers) if headers else {},
         }
+
+        # Try to get current request ID from RequestContext
+        try:
+            current_context = RequestContext.get_current()
+            if current_context and hasattr(current_context, "request_id"):
+                request_context["request_id"] = current_context.request_id
+        except Exception:
+            # If no request context available, hooks will generate their own ID
+            pass
 
         # Add body information
         if json is not None:

@@ -38,13 +38,33 @@ class RequestTracerHook(Hook):
     ]
     priority = 300  # HookLayer.ENRICHMENT - Capture/enrich request context early
 
-    def __init__(self, config: RequestTracerConfig | None = None) -> None:
+    def __init__(
+        self,
+        config: RequestTracerConfig | None = None,
+        exclude_http_events: bool = False,
+    ) -> None:
         """Initialize the request tracer hook.
 
         Args:
             config: Request tracer configuration
+            exclude_http_events: If True, remove HTTP_* events from this hook (when HTTPTracerHook is active)
         """
         self.config = config or RequestTracerConfig()
+
+        # Modify events list based on whether HTTPTracerHook is handling HTTP events
+        if exclude_http_events:
+            # Remove HTTP events when HTTPTracerHook is active to avoid duplication
+            self.events = [
+                HookEvent.REQUEST_STARTED,
+                HookEvent.REQUEST_COMPLETED,
+                HookEvent.REQUEST_FAILED,
+                HookEvent.PROVIDER_REQUEST_SENT,
+                HookEvent.PROVIDER_RESPONSE_RECEIVED,
+                HookEvent.PROVIDER_ERROR,
+                HookEvent.PROVIDER_STREAM_START,
+                HookEvent.PROVIDER_STREAM_CHUNK,
+                HookEvent.PROVIDER_STREAM_END,
+            ]
 
         # Initialize formatters based on config
         # Note: Only JSON formatter is supported in hooks mode
@@ -142,6 +162,7 @@ class RequestTracerHook(Hook):
                 headers=headers,
                 body=body,  # Include request body if available
                 request_type="client",
+                hook_type="tracer",  # Indicate this came from RequestTracerHook
             )
 
         # Note: Raw formatter requires actual HTTP bytes which aren't available in hooks
@@ -171,6 +192,7 @@ class RequestTracerHook(Hook):
                 headers=headers,
                 body=b"",  # Body not available in hook context
                 response_type="client",
+                hook_type="tracer",  # Indicate this came from RequestTracerHook
             )
 
         # Note: Raw formatter requires actual HTTP bytes which aren't available in hooks
@@ -383,14 +405,18 @@ class RequestTracerHook(Hook):
         if self._should_exclude_path(path):
             return
 
-        # Use cmd_id as request ID if available, otherwise generate UUID
-        cmd_id = self._current_cmd_id()
-        if cmd_id:
-            request_id = cmd_id
-        else:
-            import uuid
+        # Use existing request ID from context, cmd_id, or generate new UUID
+        request_id = context.data.get("request_id") or context.metadata.get(
+            "request_id"
+        )
+        if not request_id:
+            cmd_id = self._current_cmd_id()
+            if cmd_id:
+                request_id = cmd_id
+            else:
+                import uuid
 
-            request_id = str(uuid.uuid4())
+                request_id = str(uuid.uuid4())
 
         # Log via debug (avoid conflict with structured logging)
         logger.debug(
@@ -411,6 +437,7 @@ class RequestTracerHook(Hook):
                 headers=filtered_headers,
                 body=context.data.get("body"),
                 request_type="http_client",
+                hook_type="tracer",  # Indicate this came from RequestTracerHook
             )
 
     async def _handle_http_response(self, context: HookContext) -> None:
@@ -429,15 +456,18 @@ class RequestTracerHook(Hook):
         if self._should_exclude_path(path):
             return
 
-        # Use cmd_id as request ID if available, otherwise use UUID
-        cmd_id = self._current_cmd_id()
-        if cmd_id:
-            request_id = cmd_id
-        else:
-            # Try to get request_id from context, fallback to UUID
-            import uuid
+        # Use existing request ID from context, cmd_id, or generate new UUID
+        request_id = context.data.get("request_id") or context.metadata.get(
+            "request_id"
+        )
+        if not request_id:
+            cmd_id = self._current_cmd_id()
+            if cmd_id:
+                request_id = cmd_id
+            else:
+                import uuid
 
-            request_id = context.data.get("request_id", str(uuid.uuid4()))
+                request_id = str(uuid.uuid4())
 
         logger.debug(
             f"http_response_received: {method} {url} [{status_code}] [request_id={request_id}] [cmd_id={cmd_id}]"
@@ -471,6 +501,7 @@ class RequestTracerHook(Hook):
                 headers=filtered_headers,
                 body=body_bytes,
                 response_type="http_client",
+                hook_type="tracer",  # Indicate this came from RequestTracerHook
             )
 
     async def _handle_http_error(self, context: HookContext) -> None:
@@ -480,15 +511,18 @@ class RequestTracerHook(Hook):
         url = context.data.get("url", "")
         error = context.data.get("error", "Unknown error")
 
-        # Use cmd_id as request ID if available, otherwise use UUID
-        cmd_id = self._current_cmd_id()
-        if cmd_id:
-            request_id = cmd_id
-        else:
-            # Try to get request_id from context, fallback to UUID
-            import uuid
+        # Use existing request ID from context, cmd_id, or generate new UUID
+        request_id = context.data.get("request_id") or context.metadata.get(
+            "request_id"
+        )
+        if not request_id:
+            cmd_id = self._current_cmd_id()
+            if cmd_id:
+                request_id = cmd_id
+            else:
+                import uuid
 
-            request_id = context.data.get("request_id", str(uuid.uuid4()))
+                request_id = str(uuid.uuid4())
 
         logger.debug(
             f"http_request_error: {method} {url} [error={str(error)}] [request_id={request_id}] [cmd_id={cmd_id}]"
