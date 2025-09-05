@@ -1,5 +1,7 @@
 """HTTP client with hook support for request/response interception."""
 
+import contextlib
+import json
 from typing import Any
 
 import httpx
@@ -196,6 +198,172 @@ class HookableHTTPClient(httpx.AsyncClient):
                     **request_context,
                     "error_type": type(error).__name__,
                     "error_detail": str(error),
+                }
+
+                # Add response info if it's an HTTPStatusError
+                if isinstance(error, httpx.HTTPStatusError):
+                    error_context["status_code"] = error.response.status_code
+                    error_context["response_body"] = error.response.text
+
+                try:
+                    await self.hook_manager.emit(
+                        HookEvent.HTTP_ERROR,
+                        error_context,
+                    )
+                except Exception as e:
+                    logger.debug(
+                        "http_error_hook_error",
+                        error=str(e),
+                        original_error=str(error),
+                    )
+
+            # Re-raise the original error
+            raise
+
+    @contextlib.asynccontextmanager
+    async def stream(
+        self,
+        method: str,
+        url: httpx.URL | str,
+        *,
+        content: RequestContent | None = None,
+        data: RequestData | None = None,
+        files: RequestFiles | None = None,
+        params: QueryParamTypes | None = None,
+        headers: HeaderTypes | None = None,
+        json: Any | None = None,
+        **kwargs: Any,
+    ):
+        """Make a streaming HTTP request with hook emissions.
+
+        This method emits HTTP hooks for streaming requests, capturing the complete
+        response body while maintaining streaming behavior.
+
+        Emits:
+            - HTTP_REQUEST before sending
+            - HTTP_RESPONSE after receiving complete response
+            - HTTP_ERROR on errors
+        """
+        # Build request context for hooks (same as request() method)
+        request_context: dict[str, Any] = {
+            "method": method,
+            "url": str(url),
+            "headers": dict(headers) if headers else {},
+        }
+
+        # Try to get current request ID from RequestContext
+        try:
+            current_context = RequestContext.get_current()
+            if current_context and hasattr(current_context, "request_id"):
+                request_context["request_id"] = current_context.request_id
+        except Exception:
+            # No current context available, that's OK
+            pass
+
+        # Add request body to context if available
+        if content is not None:
+            request_context["body"] = content
+
+        # Emit pre-request hook
+        if self.hook_manager:
+            try:
+                await self.hook_manager.emit(
+                    HookEvent.HTTP_REQUEST,
+                    request_context,
+                )
+            except Exception as e:
+                logger.debug(
+                    "http_request_hook_error",
+                    error=str(e),
+                    method=method,
+                    url=str(url),
+                )
+
+        try:
+            # Start the streaming request
+            async with super().stream(
+                method=method,
+                url=url,
+                content=content,
+                data=data,
+                files=files,
+                params=params,
+                headers=headers,
+                json=json,
+                **kwargs,
+            ) as response:
+
+                # For streaming responses, we need to collect all chunks first
+                # to provide complete response body to hooks
+                if self.hook_manager:
+                    # Read all chunks from the stream to build complete response body
+                    response_chunks = []
+                    async for chunk in response.aiter_bytes():
+                        response_chunks.append(chunk)
+                    
+                    # Combine all chunks to get complete response body
+                    response_content = b''.join(response_chunks)
+                    
+                    response_context = {
+                        **request_context,  # Include request info
+                        "status_code": response.status_code,
+                        "response_headers": dict(response.headers),
+                    }
+
+                    # Include response body from the content we collected
+                    try:
+                        content_type = response.headers.get("content-type", "")
+                        if "application/json" in content_type:
+                            # Try to parse the raw content as JSON
+                            try:
+                                response_context["response_body"] = json.loads(response_content.decode('utf-8'))
+                            except Exception:
+                                # If JSON parsing fails, include as text
+                                response_context["response_body"] = response_content.decode('utf-8', errors='replace')
+                        else:
+                            # For non-JSON content, include as text
+                            response_context["response_body"] = response_content.decode('utf-8', errors='replace')
+                    except Exception:
+                        # Last resort - include as bytes
+                        response_context["response_body"] = response_content
+
+                    try:
+                        await self.hook_manager.emit(
+                            HookEvent.HTTP_RESPONSE,
+                            response_context,
+                        )
+                    except Exception as e:
+                        logger.debug(
+                            "http_response_hook_error",
+                            error=str(e),
+                            status_code=response.status_code,
+                        )
+
+                    # Create a new response with the collected content for consumers
+                    # This allows the StreamingBufferService to work with the complete response
+                    try:
+                        recreated_response = httpx.Response(
+                            status_code=response.status_code,
+                            headers=response.headers,
+                            content=response_content,
+                            request=response.request,
+                        )
+                        yield recreated_response
+                        return
+                    except Exception:
+                        # If recreation fails, yield original (may have empty body)
+                        logger.debug("streaming_response_recreation_failed")
+
+                # If no hook manager, just yield original response
+                yield response
+
+        except Exception as error:
+            # Emit error hook
+            if self.hook_manager:
+                error_context = {
+                    **request_context,
+                    "error": error,
+                    "error_type": type(error).__name__,
                 }
 
                 # Add response info if it's an HTTPStatusError

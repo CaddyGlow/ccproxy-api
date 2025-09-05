@@ -15,6 +15,7 @@ from ccproxy.adapters.openai.adapter import OpenAIAdapter
 from ccproxy.config.settings import Settings
 from ccproxy.core.http_client import HTTPClientFactory
 from ccproxy.hooks import HookManager
+from ccproxy.hooks.thread_manager import BackgroundHookThreadManager
 from ccproxy.services.adapters.format_detector import FormatDetectionService
 from ccproxy.services.adapters.format_registry import FormatAdapterRegistry
 from ccproxy.services.cache import ResponseCache
@@ -77,6 +78,11 @@ class ConcreteServiceFactory:
         )
         self._container.register_service(
             FormatDetectionService, factory=self.create_format_detector
+        )
+        
+        # Register background thread manager for hooks
+        self._container.register_service(
+            BackgroundHookThreadManager, factory=self.create_background_hook_thread_manager
         )
 
     def create_mock_handler(self) -> MockResponseHandler:
@@ -198,3 +204,9 @@ class ConcreteServiceFactory:
     def create_format_detector(self) -> FormatDetectionService:
         """Create format detection service."""
         return FormatDetectionService()
+
+    def create_background_hook_thread_manager(self) -> BackgroundHookThreadManager:
+        """Create background hook thread manager instance."""
+        manager = BackgroundHookThreadManager()
+        logger.debug("background_hook_thread_manager_created", category="lifecycle")
+        return manager

@@ -306,7 +306,7 @@ class JSONFormatter:
                 body_preview=body_preview,
                 body_size=len(body),
             )
-        elif self.verbose_api:
+        else:
             # Fallback for backward compatibility
             logger.info(
                 "api_response",

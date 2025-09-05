@@ -28,6 +28,7 @@ from ccproxy.services.interfaces import (
 from ccproxy.services.mocking import MockResponseHandler
 from ccproxy.services.streaming import StreamingHandler
 from ccproxy.utils.binary_resolver import BinaryResolver
+from ccproxy.hooks.thread_manager import BackgroundHookThreadManager
 
 
 logger = structlog.get_logger(__name__)
@@ -131,6 +132,10 @@ class ServiceContainer:
     def get_format_detector(self) -> FormatDetectionService:
         """Get format detection service instance."""
         return cast(FormatDetectionService, self.get_service(FormatDetectionService))
+
+    def get_background_hook_thread_manager(self) -> BackgroundHookThreadManager:
+        """Get background hook thread manager instance."""
+        return cast(BackgroundHookThreadManager, self.get_service(BackgroundHookThreadManager))
 
     def get_adapter_dependencies(self, metrics: Any | None = None) -> dict[str, Any]:
         """Get all services an adapter might need."""

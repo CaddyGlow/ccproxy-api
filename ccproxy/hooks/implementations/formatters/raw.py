@@ -200,11 +200,24 @@ class RawHTTPFormatter:
                 log_type="client_response",
                 file_path=str(file_path),
                 category="raw_formatter",
+                length=len(raw_data),
             )
 
         # Write data to file (append mode for multiple chunks)
-        async with aiofiles.open(file_path, "ab") as f:
+        logger.debug("open_file_", length=len(raw_data), file_path=str(file_path))
+
+        # Note: Async file write is only creating the file
+        # and not writing data.
+        # It seem to block the event loop and make the following hook to not execute
+        # for example the request.completed
+        # sync write seem to solve the issue
+        # with Path(file_path).open("ab") as sync_f:
+        #     sync_f.write(raw_data)
+        async with aiofiles.open(file_path, "wb") as f:
+            logger.debug("writing_raw_data", length=len(raw_data))
             await f.write(raw_data)
+
+        logger.debug("finish_to_write", length=len(raw_data), file_path=str(file_path))
 
     async def log_provider_request(
         self, request_id: str, raw_data: bytes, hook_type: str | None = None
@@ -236,7 +249,6 @@ class RawHTTPFormatter:
                 category="raw_formatter",
             )
 
-        # Write data to file (append mode for multiple chunks)
         async with aiofiles.open(file_path, "ab") as f:
             await f.write(raw_data)
 

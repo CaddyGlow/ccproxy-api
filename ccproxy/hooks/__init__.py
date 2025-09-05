@@ -10,12 +10,21 @@ Key components:
 - Hook: Protocol for hook implementations
 - HookRegistry: Registry for managing hooks
 - HookManager: Manager for executing hooks
+- BackgroundHookThreadManager: Background thread manager for async hook execution
 """
 
 from .base import Hook, HookContext
 from .events import HookEvent
 from .manager import HookManager
 from .registry import HookRegistry
+from .thread_manager import BackgroundHookThreadManager
 
 
-__all__ = ["Hook", "HookContext", "HookEvent", "HookManager", "HookRegistry"]
+__all__ = [
+    "Hook", 
+    "HookContext", 
+    "HookEvent", 
+    "HookManager", 
+    "HookRegistry",
+    "BackgroundHookThreadManager",
+]

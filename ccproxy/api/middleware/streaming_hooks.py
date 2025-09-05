@@ -77,10 +77,13 @@ class StreamingResponseWithHooks(StreamingResponse):
         """
         error_occurred = None
         final_status = status_code
+        # Collect chunks for HTTP_RESPONSE hook
+        collected_chunks: list[bytes] = []
 
         try:
             # Stream all content from the original generator
             async for chunk in content:
+                collected_chunks.append(chunk)  # Collect for HTTP hook
                 yield chunk
 
         except GeneratorExit:
@@ -95,12 +98,18 @@ class StreamingResponseWithHooks(StreamingResponse):
             raise
 
         finally:
-            # Emit REQUEST_COMPLETED hook when streaming actually completes
+            # Emit HTTP_RESPONSE hook first with collected body, then REQUEST_COMPLETED
             if self.hook_manager:
                 try:
                     end_time = time.time()
                     duration = end_time - self.start_time
 
+                    # First emit HTTP_RESPONSE hook with collected streaming body
+                    await self._emit_http_response_hook(
+                        collected_chunks, final_status, end_time
+                    )
+
+                    # Then emit REQUEST_COMPLETED hook (existing behavior)
                     completion_data = {
                         "request_id": self.request_id,
                         "duration": duration,
@@ -141,3 +150,68 @@ class StreamingResponseWithHooks(StreamingResponse):
                 except Exception:
                     # Silently ignore hook emission errors to avoid breaking the stream
                     pass
+
+    async def _emit_http_response_hook(
+        self,
+        collected_chunks: list[bytes],
+        status_code: int,
+        end_time: float
+    ) -> None:
+        """Emit HTTP_RESPONSE hook with collected streaming response body.
+        
+        Args:
+            collected_chunks: All chunks collected from the stream
+            status_code: Final HTTP status code
+            end_time: Timestamp when streaming completed
+        """
+        try:
+            # Combine all chunks to get full response body
+            full_response_body = b''.join(collected_chunks)
+            
+            # Build HTTP response context
+            http_response_context = {
+                "request_id": self.request_id,
+                "status_code": status_code,
+                "is_client_response": True,  # Distinguish from provider responses
+            }
+            
+            # Include request data for context
+            if self.request_data:
+                http_response_context.update({
+                    "method": self.request_data.get("method"),
+                    "url": self.request_data.get("url"),
+                    "headers": self.request_data.get("headers"),
+                })
+            
+            # Add response headers if available
+            if hasattr(self, 'headers'):
+                http_response_context["response_headers"] = dict(self.headers)
+            
+            # Parse response body
+            if full_response_body:
+                try:
+                    # For streaming responses, try to parse as text first
+                    response_text = full_response_body.decode('utf-8', errors='replace')
+                    
+                    # Check if it looks like JSON
+                    content_type = http_response_context.get("response_headers", {}).get('content-type', '')
+                    if 'application/json' in content_type:
+                        try:
+                            import json
+                            http_response_context["response_body"] = json.loads(response_text)
+                        except json.JSONDecodeError:
+                            http_response_context["response_body"] = response_text
+                    else:
+                        # For streaming responses (like SSE), include as text
+                        http_response_context["response_body"] = response_text
+                        
+                except UnicodeDecodeError:
+                    # If decode fails, include as bytes
+                    http_response_context["response_body"] = full_response_body
+            
+            # Emit HTTP_RESPONSE hook
+            await self.hook_manager.emit(HookEvent.HTTP_RESPONSE, http_response_context)
+            
+        except Exception:
+            # Silently ignore HTTP hook emission errors
+            pass

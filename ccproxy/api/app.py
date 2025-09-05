@@ -87,7 +87,8 @@ async def initialize_plugins_startup(app: FastAPI, settings: Settings) -> None:
     service_container: ServiceContainer = app.state.service_container
 
     hook_registry = HookRegistry()
-    hook_manager = HookManager(hook_registry)
+    background_thread_manager = service_container.get_background_hook_thread_manager()
+    hook_manager = HookManager(hook_registry, background_thread_manager)
     app.state.hook_registry = hook_registry
     app.state.hook_manager = hook_manager
     service_container.register_service(HookManager, instance=hook_manager)
@@ -152,6 +153,23 @@ async def shutdown_plugins(app: FastAPI) -> None:
         logger.debug("plugins_shutdown_completed", category="lifecycle")
 
 
+async def shutdown_hook_system(app: FastAPI) -> None:
+    """Shutdown the hook system and background thread."""
+    try:
+        # Get hook manager from app state - it will shutdown its own background manager
+        hook_manager = getattr(app.state, "hook_manager", None)
+        if hook_manager:
+            hook_manager.shutdown()
+        
+        logger.debug("hook_system_shutdown_completed", category="lifecycle")
+    except Exception as e:
+        logger.error(
+            "hook_system_shutdown_failed",
+            error=str(e),
+            category="lifecycle",
+        )
+
+
 async def initialize_hooks_startup(app: FastAPI, settings: Settings) -> None:
     """Initialize hook system with plugins."""
     if hasattr(app.state, "hook_registry") and hasattr(app.state, "hook_manager"):
@@ -160,7 +178,9 @@ async def initialize_hooks_startup(app: FastAPI, settings: Settings) -> None:
         logger.debug("hook_system_already_created", category="lifecycle")
     else:
         hook_registry = HookRegistry()
-        hook_manager = HookManager(hook_registry)
+        service_container: ServiceContainer = app.state.service_container
+        background_thread_manager = service_container.get_background_hook_thread_manager()
+        hook_manager = HookManager(hook_registry, background_thread_manager)
         app.state.hook_registry = hook_registry
         app.state.hook_manager = hook_manager
 
@@ -307,7 +327,7 @@ LIFECYCLE_COMPONENTS: list[LifecycleComponent] = [
     {
         "name": "Hook System",
         "startup": initialize_hooks_startup,
-        "shutdown": None,
+        "shutdown": shutdown_hook_system,
     },
 ]
 

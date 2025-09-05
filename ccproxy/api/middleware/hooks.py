@@ -101,6 +101,9 @@ class HooksMiddleware(BaseHTTPMiddleware):
             # Emit REQUEST_STARTED before processing
             await hook_manager.emit_with_context(hook_context)
 
+            # Capture and emit HTTP_REQUEST hook with body
+            await self._emit_http_request_hook(hook_manager, request, hook_context)
+
             # Process the request
             response = cast(Response, await call_next(request))
 
@@ -189,7 +192,10 @@ class HooksMiddleware(BaseHTTPMiddleware):
 
                 return wrapped_response
             else:
-                # For regular responses, emit REQUEST_COMPLETED
+                # For regular responses, emit HTTP_RESPONSE and REQUEST_COMPLETED
+                await self._emit_http_response_hook(
+                    hook_manager, request, response, hook_context
+                )
                 await hook_manager.emit_with_context(response_hook_context)
 
                 logger.debug(
@@ -247,6 +253,158 @@ class HooksMiddleware(BaseHTTPMiddleware):
 
             # Re-raise the original exception
             raise
+
+    async def _emit_http_request_hook(
+        self, hook_manager: HookManager, request: Request, base_context: HookContext
+    ) -> None:
+        """Emit HTTP_REQUEST hook with request body capture.
+
+        Args:
+            hook_manager: Hook manager for emitting events
+            request: FastAPI request object
+            base_context: Base hook context for request metadata
+        """
+        try:
+            # Capture request body - this may be empty for GET requests
+            request_body = await self._capture_request_body(request)
+
+            # Build HTTP request context
+            http_request_context = {
+                "request_id": base_context.data.get("request_id"),
+                "method": request.method,
+                "url": str(request.url),
+                "headers": dict(request.headers),
+                "is_client_request": True,  # Distinguish from provider requests
+            }
+
+            # Add body information if available - pass raw data to let formatters handle conversion
+            if request_body:
+                http_request_context["body"] = request_body
+                # Set content type for formatters to use
+                content_type = request.headers.get("content-type", "")
+                http_request_context["is_json"] = "application/json" in content_type
+
+            # Emit HTTP_REQUEST hook
+            await hook_manager.emit(HookEvent.HTTP_REQUEST, http_request_context)
+
+        except Exception as e:
+            logger.debug(
+                "http_request_hook_emission_failed",
+                error=str(e),
+                request_id=base_context.data.get("request_id"),
+                method=request.method,
+                category="hooks",
+            )
+
+    async def _emit_http_response_hook(
+        self,
+        hook_manager: HookManager,
+        request: Request,
+        response: Response,
+        base_context: HookContext,
+    ) -> None:
+        """Emit HTTP_RESPONSE hook with response body capture.
+
+        Args:
+            hook_manager: Hook manager for emitting events
+            request: FastAPI request object
+            response: FastAPI response object
+            base_context: Base hook context for request metadata
+        """
+        try:
+            # Build HTTP response context
+            http_response_context = {
+                "request_id": base_context.data.get("request_id"),
+                "method": request.method,
+                "url": str(request.url),
+                "headers": dict(request.headers),
+                "status_code": getattr(response, "status_code", 200),
+                "response_headers": dict(getattr(response, "headers", {})),
+                "is_client_response": True,  # Distinguish from provider responses
+            }
+
+            # Capture response body for non-streaming responses
+            response_body = await self._capture_response_body(response)
+            if response_body is not None:
+                http_response_context["response_body"] = response_body
+
+            # Emit HTTP_RESPONSE hook
+            await hook_manager.emit(HookEvent.HTTP_RESPONSE, http_response_context)
+
+        except Exception as e:
+            logger.debug(
+                "http_response_hook_emission_failed",
+                error=str(e),
+                request_id=base_context.data.get("request_id"),
+                status_code=getattr(response, "status_code", 200),
+                category="hooks",
+            )
+
+    async def _capture_request_body(self, request: Request) -> bytes:
+        """Capture request body, handling caching for multiple reads.
+
+        Args:
+            request: FastAPI request object
+
+        Returns:
+            Request body as bytes
+        """
+        try:
+            # Check if body is already cached
+            if hasattr(request.state, "cached_body"):
+                return request.state.cached_body
+
+            # Read and cache body for future use
+            body = await request.body()
+            request.state.cached_body = body
+            return body
+
+        except Exception as e:
+            logger.debug(
+                "request_body_capture_failed",
+                error=str(e),
+                method=request.method,
+                url=str(request.url),
+            )
+            return b""
+
+    async def _capture_response_body(self, response: Response) -> bytes | None:
+        """Capture response body for non-streaming responses.
+
+        Args:
+            response: FastAPI response object
+
+        Returns:
+            Response body as raw bytes or None if unavailable
+        """
+        try:
+            # For regular Response objects, try to get body
+            if hasattr(response, "body") and response.body:
+                body_data = response.body
+                logger.debug(
+                    "response_body_capture_debug",
+                    body_type=type(body_data).__name__,
+                    body_size=len(body_data) if hasattr(body_data, '__len__') else "no_len",
+                    has_body_attr=hasattr(response, "body"),
+                    body_truthy=bool(response.body),
+                )
+                return body_data
+
+            logger.debug(
+                "response_body_capture_none",
+                has_body_attr=hasattr(response, "body"),
+                body_truthy=bool(getattr(response, "body", None)),
+                response_type=type(response).__name__,
+            )
+            return None
+
+        except Exception as e:
+            logger.debug(
+                "response_body_capture_failed",
+                error=str(e),
+                status_code=getattr(response, "status_code", 200),
+            )
+            return None
 
 
 def create_hooks_middleware(

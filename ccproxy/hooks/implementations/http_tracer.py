@@ -31,7 +31,7 @@ class HTTPTracerHook(Hook):
     priority = 100  # Run early to capture raw data
 
     def __init__(
-        self, json_formatter=None, raw_formatter=None, enabled: bool = True
+        self, json_formatter: Any = None, raw_formatter: Any = None, enabled: bool = True
     ) -> None:
         """Initialize the HTTP tracer hook.
 
@@ -99,7 +99,14 @@ class HTTPTracerHook(Hook):
         context.data["request_id"] = request_id
 
         # Determine if this is a provider request
-        is_provider_request = self._is_provider_request(url)
+        # First check explicit context markers, then fall back to URL analysis
+        if context.data.get("is_provider_request"):
+            is_provider_request = True
+        elif context.data.get("is_client_request"):
+            is_provider_request = False
+        else:
+            # Fall back to URL analysis for backward compatibility
+            is_provider_request = self._is_provider_request(url)
 
         logger.debug(
             "core_http_request",
@@ -155,7 +162,14 @@ class HTTPTracerHook(Hook):
         url = context.data.get("url", "")
 
         # Determine if this is a provider response
-        is_provider_response = self._is_provider_request(url)
+        # First check explicit context markers, then fall back to URL analysis
+        if context.data.get("is_provider_response"):
+            is_provider_response = True
+        elif context.data.get("is_client_response"):
+            is_provider_response = False
+        else:
+            # Fall back to URL analysis for backward compatibility
+            is_provider_response = self._is_provider_request(url)
 
         logger.debug(
             "core_http_response",
@@ -190,18 +204,31 @@ class HTTPTracerHook(Hook):
             # Build raw HTTP response
             raw_response = self._build_raw_http_response(status_code, headers, body_any)
 
-            # Use appropriate logging method based on response type
-            if is_provider_response:
-                await self.raw_formatter.log_provider_response(
+            logger.debug(
+                "CCCCCCC",
+                raw_response=raw_response,
+                is_provider_response=is_provider_response,
+            )
+            try:
+                # Use appropriate logging method based on response type
+                if is_provider_response:
+                    await self.raw_formatter.log_provider_response(
+                        request_id=request_id,
+                        raw_data=raw_response,
+                        hook_type="core_http",  # Indicate this came from core HTTPTracerHook
+                    )
+                else:
+                    await self.raw_formatter.log_client_response(
+                        request_id=request_id,
+                        raw_data=raw_response,
+                        hook_type="core_http",  # Indicate this came from core HTTPTracerHook
+                    )
+            except Exception as e:
+                logger.error(
+                    "core_http_tracer_hook_response_logging_error",
                     request_id=request_id,
-                    raw_data=raw_response,
-                    hook_type="core_http",  # Indicate this came from core HTTPTracerHook
-                )
-            else:
-                await self.raw_formatter.log_client_response(
-                    request_id=request_id,
-                    raw_data=raw_response,
-                    hook_type="core_http",  # Indicate this came from core HTTPTracerHook
+                    error=str(e),
+                    exc_info=e,
                 )
 
     async def _log_http_error(self, context: HookContext) -> None:
@@ -337,13 +364,13 @@ class HTTPTracerHook(Hook):
 
         # Add body
         if body:
-            if isinstance(body, dict):
-                body_str = json.dumps(body, indent=2)
-            elif isinstance(body, bytes):
+            if isinstance(body, bytes):
                 try:
-                    body_str = body.decode()
-                except (UnicodeDecodeError, AttributeError):
-                    body_str = str(body)
+                    body_str = body.decode("utf-8")
+                except UnicodeDecodeError:
+                    body_str = body.decode("utf-8", errors="replace")
+            elif isinstance(body, dict):
+                body_str = json.dumps(body, indent=2)
             else:
                 body_str = str(body)
 
