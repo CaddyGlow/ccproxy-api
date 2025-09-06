@@ -28,16 +28,33 @@ console = Console()
 logger = get_logger(__name__)
 
 
+# Cache settings and container to avoid repeated config file loading
+_cached_settings: Settings | None = None
+_cached_container: ServiceContainer | None = None
+
+
+def _get_cached_settings() -> Settings:
+    """Get cached settings instance."""
+    global _cached_settings
+    if _cached_settings is None:
+        _cached_settings = Settings.from_config()
+    return _cached_settings
+
+
 def _get_service_container() -> ServiceContainer:
     """Create a service container for the auth commands."""
-    settings = Settings.from_config()
-    return ServiceContainer(settings)
+    global _cached_container
+    if _cached_container is None:
+        settings = _get_cached_settings()
+        _cached_container = ServiceContainer(settings)
+    return _cached_container
 
 
 def _apply_auth_logger_level() -> None:
     """Set logger level from settings without configuring handlers."""
     try:
-        level_name = _get_service_container().get_service(Settings).logging.level
+        settings = _get_cached_settings()
+        level_name = settings.logging.level
         level = getattr(logging, level_name.upper(), logging.INFO)
     except Exception:
         level = logging.INFO
@@ -203,6 +220,21 @@ async def _lazy_register_oauth_provider(
             # Pass through current tracer/streaming handler if needed
             self.request_tracer = container.get_request_tracer()
             self.streaming_handler = container.get_streaming_handler()
+            # Add http_pool_manager for plugin context (minimal implementation for CLI)
+            self.http_pool_manager = self._create_minimal_pool_manager()
+        
+        def _create_minimal_pool_manager(self) -> Any:
+            """Create minimal pool manager for CLI context."""
+            # For CLI use, we may not need full pool management
+            # Return a simple wrapper or the http_client itself
+            class MinimalPoolManager:
+                def __init__(self, client):
+                    self.client = client
+                    
+                def get_client(self):
+                    return self.client
+                    
+            return MinimalPoolManager(self.http_client)
 
         def get_plugin_config(self, plugin_name: str) -> Any:
             if hasattr(settings, "plugins") and settings.plugins:
@@ -210,6 +242,16 @@ async def _lazy_register_oauth_provider(
                 if cfg:
                     return cfg.model_dump() if hasattr(cfg, "model_dump") else cfg
             return {}
+        
+        def get_format_registry(self) -> Any:
+            # For CLI context, we may not need full format registry functionality
+            # Create a minimal registry if needed, or return None
+            try:
+                from ccproxy.services.format_registry import FormatRegistry
+                return FormatRegistry()
+            except ImportError:
+                # Fallback for minimal CLI operations
+                return None
 
     core_services = CoreServicesAdapter()
 
