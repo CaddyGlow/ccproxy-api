@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING, Any
 from fastapi.responses import StreamingResponse
 
 from ccproxy.hooks import HookContext, HookEvent
+from ccproxy.utils.headers import HeaderBag
 
 
 if TYPE_CHECKING:
@@ -182,9 +183,14 @@ class StreamingResponseWithHooks(StreamingResponse):
                     }
                 )
 
-            # Add response headers if available
-            if hasattr(self, "headers"):
-                http_response_context["response_headers"] = dict(self.headers)
+            # Add response headers if available, preserving order and case
+            try:
+                http_response_context["response_headers"] = (
+                    HeaderBag.from_starlette_response(self, case_mode="lower")
+                )
+            except Exception:
+                if hasattr(self, "headers"):
+                    http_response_context["response_headers"] = dict(self.headers)
 
             # Parse response body
             if full_response_body:

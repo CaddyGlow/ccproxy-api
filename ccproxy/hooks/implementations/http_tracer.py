@@ -87,7 +87,8 @@ class HTTPTracerHook(Hook):
         """
         method = context.data.get("method", "UNKNOWN")
         url = context.data.get("url", "")
-        headers = context.data.get("headers", {})
+        headers_any = context.data.get("headers", {})
+        headers_pairs = self._normalize_header_pairs(headers_any)
         body = context.data.get("body")
         is_json = context.data.get("is_json", False)
 
@@ -125,7 +126,7 @@ class HTTPTracerHook(Hook):
                 request_id=request_id,
                 method=method,
                 url=url,
-                headers=headers,
+                headers=headers_any,
                 body=body,  # Pass original body data directly
                 request_type="provider" if is_provider_request else "http",
                 hook_type="core_http",  # Indicate this came from core HTTPTracerHook
@@ -135,7 +136,7 @@ class HTTPTracerHook(Hook):
         if self.raw_formatter:
             # Build raw HTTP request
             raw_request = self._build_raw_http_request(
-                method, url, headers, body, is_json
+                method, url, headers_pairs, body, is_json
             )
 
             # Use appropriate logging method based on request type
@@ -160,7 +161,8 @@ class HTTPTracerHook(Hook):
         """
         request_id = context.data.get("request_id", str(uuid.uuid4()))
         status_code = context.data.get("status_code", 0)
-        headers = context.data.get("response_headers", {})
+        headers_any = context.data.get("response_headers", {})
+        headers_pairs = self._normalize_header_pairs(headers_any)
         body_any = context.data.get("response_body")
         url = context.data.get("url", "")
 
@@ -196,7 +198,7 @@ class HTTPTracerHook(Hook):
             await self.json_formatter.log_response(
                 request_id=request_id,
                 status=status_code,
-                headers=headers,
+                headers=headers_any,
                 body=body_bytes,
                 response_type="provider" if is_provider_response else "http",
                 hook_type="core_http",  # Indicate this came from core HTTPTracerHook
@@ -205,13 +207,10 @@ class HTTPTracerHook(Hook):
         # Log with raw HTTP formatter
         if self.raw_formatter:
             # Build raw HTTP response
-            raw_response = self._build_raw_http_response(status_code, headers, body_any)
-
-            logger.debug(
-                "CCCCCCC",
-                raw_response=raw_response,
-                is_provider_response=is_provider_response,
+            raw_response = self._build_raw_http_response(
+                status_code, headers_pairs, body_any
             )
+
             try:
                 # Use appropriate logging method based on response type
                 if is_provider_response:
@@ -286,7 +285,7 @@ class HTTPTracerHook(Hook):
         self,
         method: str,
         url: str,
-        headers: dict[str, str],
+        headers_pairs: list[tuple[str, str]] | Any,
         body: Any,
         is_json: bool,
     ) -> bytes:
@@ -313,12 +312,14 @@ class HTTPTracerHook(Hook):
         # Build request line
         lines = [f"{method} {path} HTTP/1.1"]
 
-        # Add Host header
-        if parsed.netloc:
+        headers_list = self._normalize_header_pairs(headers_pairs)
+        # Add Host header only if not already present in headers
+        has_host = any(k.lower() == "host" for k, _ in headers_list)
+        if parsed.netloc and not has_host:
             lines.append(f"Host: {parsed.netloc}")
 
-        # Add other headers
-        for key, value in headers.items():
+        # Add other headers (preserve input order, duplicates allowed)
+        for key, value in headers_list:
             lines.append(f"{key}: {value}")
 
         # Add body
@@ -334,7 +335,10 @@ class HTTPTracerHook(Hook):
             else:
                 body_str = str(body)
 
-            lines.append(f"Content-Length: {len(body_str)}")
+            # Add Content-Length only if not already present in headers
+            has_cl = any(k.lower() == "content-length" for k, _ in headers_list)
+            if not has_cl:
+                lines.append(f"Content-Length: {len(body_str)}")
             lines.append("")
             lines.append(body_str)
         else:
@@ -345,7 +349,7 @@ class HTTPTracerHook(Hook):
     def _build_raw_http_response(
         self,
         status_code: int,
-        headers: dict[str, str],
+        headers_pairs: list[tuple[str, str]] | Any,
         body: Any,
     ) -> bytes:
         """Build raw HTTP response for logging.
@@ -361,8 +365,9 @@ class HTTPTracerHook(Hook):
         # Build status line
         lines = [f"HTTP/1.1 {status_code} OK"]
 
-        # Add headers
-        for key, value in headers.items():
+        # Add headers (preserve order and duplicates)
+        headers_list = self._normalize_header_pairs(headers_pairs)
+        for key, value in headers_list:
             lines.append(f"{key}: {value}")
 
         # Add body
@@ -377,7 +382,10 @@ class HTTPTracerHook(Hook):
             else:
                 body_str = str(body)
 
-            lines.append(f"Content-Length: {len(body_str)}")
+            # Add Content-Length only if not already present in headers
+            has_cl = any(k.lower() == "content-length" for k, _ in headers_list)
+            if not has_cl:
+                lines.append(f"Content-Length: {len(body_str)}")
             lines.append("")
             lines.append(body_str)
         else:
@@ -405,3 +413,18 @@ class HTTPTracerHook(Hook):
         # Check if URL contains any provider domain
         url_lower = url.lower()
         return any(domain in url_lower for domain in provider_domains)
+
+    def _normalize_header_pairs(self, headers: Any) -> list[tuple[str, str]]:
+        """Normalize headers to a list of pairs preserving order and duplicates.
+
+        Accepts HeaderBag (items()), dict (items()), or any iterable of pairs.
+        """
+        try:
+            if headers is None:
+                return []
+            if hasattr(headers, "items") and callable(headers.items):
+                return list(headers.items())  # type: ignore[no-any-return]
+            # Already a sequence of pairs
+            return list(headers)
+        except Exception:
+            return []

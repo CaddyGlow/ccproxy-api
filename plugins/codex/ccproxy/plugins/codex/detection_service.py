@@ -18,6 +18,7 @@ from ccproxy.core.logging import get_plugin_logger
 from ccproxy.models.detection import CodexCacheData, CodexHeaders, CodexInstructionsData
 from ccproxy.services.cli_detection import CLIDetectionService
 from ccproxy.utils.caching import async_ttl_cache
+from ccproxy.utils.headers import HeaderBag
 
 
 logger = get_plugin_logger()
@@ -176,7 +177,10 @@ class CodexDetectionService:
 
         async def capture_handler(request: Request) -> Response:
             """Capture the Codex CLI request."""
-            captured_data["headers"] = dict(request.headers)
+            # Preserve order and original casing when capturing headers
+            bag = HeaderBag.from_request(request, case_mode="preserve")
+            captured_data["headers_ordered"] = list(bag.items())
+            captured_data["headers"] = bag.to_dict()
             captured_data["body"] = await request.body()
             # Return a mock response to satisfy Codex CLI
             return Response(
@@ -187,7 +191,23 @@ class CodexDetectionService:
 
         # Create temporary FastAPI app
         temp_app = FastAPI()
+        # Current Codex endpoint used by CLI
         temp_app.post("/backend-api/codex/responses")(capture_handler)
+
+        # from starlette.middleware.base import BaseHTTPMiddleware
+        # from starlette.requests import Request
+        #
+        # Another way to recover the headers
+        # class DumpHeadersMiddleware(BaseHTTPMiddleware):
+        #     async def dispatch(self, request: Request, call_next):
+        #         # Print all headers
+        #         print("Request Headers:")
+        #         for name, value in request.headers.items():
+        #             print(f"{name}: {value}")
+        #         response = await call_next(request)
+        #         return response
+        #
+        # temp_app.add_middleware(DumpHeadersMiddleware)
 
         # Find available port
         sock = socket.socket()
@@ -217,6 +237,7 @@ class CodexDetectionService:
                     "OPENAI_API_KEY": "dummy-key-for-detection",
                     "HOME": temp_home,
                 }
+                del env["OPENAI_API_KEY"]
 
                 # Get codex command from CLI service
                 cli_info = self._cli_service.get_cli_info("codex")
@@ -260,7 +281,10 @@ class CodexDetectionService:
             instructions = self._extract_instructions(captured_data["body"])
 
             return CodexCacheData(
-                codex_version=version, headers=headers, instructions=instructions
+                codex_version=version,
+                headers=headers,
+                instructions=instructions,
+                raw_headers_ordered=captured_data.get("headers_ordered", []),
             )
 
         except Exception as e:

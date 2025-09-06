@@ -24,6 +24,7 @@ from ccproxy.services.interfaces import (
 )
 from ccproxy.services.streaming.buffer_service import StreamingBufferService
 from ccproxy.streaming.deferred_streaming import DeferredStreaming
+from ccproxy.utils.headers import HeaderBag
 
 
 if TYPE_CHECKING:
@@ -201,7 +202,10 @@ class BaseHTTPAdapter(BaseAdapter):
             body=body,
             auth_headers=auth_headers,
             access_token=access_token,
-            request_headers=dict(request.headers),
+            # Preserve incoming order and original casing for upstream
+            request_headers=HeaderBag.from_request(
+                request, case_mode="preserve"
+            ).to_dict(),
             handler_config=handler_config,
             endpoint=endpoint,
             needs_conversion=needs_conversion,

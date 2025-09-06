@@ -35,7 +35,15 @@ class StreamingHandler:
         - Also checks for generic 'stream' indicator
         - Case-insensitive comparison
         """
-        accept_header = headers.get("accept", "").lower()
+        # Case-insensitive access for Accept header
+        accept_header = ""
+        try:
+            accept_header = next(
+                (v for k, v in headers.items() if k.lower() == "accept"),
+                "",
+            ).lower()
+        except Exception:
+            accept_header = headers.get("accept", "").lower()
         return "text/event-stream" in accept_header or "stream" in accept_header
 
     async def should_stream(

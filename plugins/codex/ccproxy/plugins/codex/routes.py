@@ -1,6 +1,5 @@
 """Codex plugin routes."""
 
-import uuid
 from typing import TYPE_CHECKING, Annotated, Any
 
 from fastapi import APIRouter, Depends, Request
@@ -38,9 +37,6 @@ async def handle_codex_request(
 ) -> StreamingResponse | Response | DeferredStreaming:
     from typing import cast as _cast
 
-    if not session_id:
-        header_session_id = request.headers.get("session_id")
-        session_id = header_session_id or str(uuid.uuid4())
     result = await adapter.handle_request(
         request=request,
         endpoint=endpoint,

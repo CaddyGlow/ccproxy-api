@@ -7,6 +7,7 @@ import structlog
 
 from ccproxy.core.logging import TraceBoundLogger, get_logger
 from ccproxy.services.handler_config import HandlerConfig
+from ccproxy.utils.headers import canonicalize_headers_preserve_order
 
 
 logger = get_logger(__name__)
@@ -66,6 +67,11 @@ class RequestProcessor:
         processed_headers = self._apply_request_transformer(
             filtered_headers, handler_config, **transform_kwargs
         )
+
+        # Canonicalize header names and preserve order after transformation
+        # unless handler configuration explicitly requests preserving header case
+        if not getattr(handler_config, "preserve_header_case", False):
+            processed_headers = canonicalize_headers_preserve_order(processed_headers)
 
         # Transform body if transformer has that capability
         if handler_config.request_transformer and hasattr(

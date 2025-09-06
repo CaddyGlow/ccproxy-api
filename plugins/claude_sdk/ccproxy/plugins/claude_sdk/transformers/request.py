@@ -25,7 +25,7 @@ class ClaudeSDKRequestTransformer:
         self.logger = logger
 
     def transform_headers(
-        self, headers: dict[str, str], **kwargs: Any
+        self, headers: dict[str, str] | Any, **kwargs: Any
     ) -> dict[str, str]:
         """Transform request headers for Claude SDK.
 
@@ -39,6 +39,13 @@ class ClaudeSDKRequestTransformer:
         Returns:
             Transformed headers
         """
+        # Normalize potential HeaderBag to dict view (preserves order)
+        if hasattr(headers, "to_dict"):
+            try:
+                headers = headers.to_dict()
+            except Exception:
+                headers = dict(headers)
+
         # Remove any existing auth headers since SDK handles auth
         transformed = {
             k: v

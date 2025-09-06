@@ -59,8 +59,13 @@ class HandlerConfig:
     # Feature flag
     supports_streaming: bool = True
 
+    # Header case preservation toggle for upstream requests
+    # When True, RequestProcessor will not canonicalize header names and will
+    # forward them with their original casing/order as produced by transformers.
+    preserve_header_case: bool = False
+
     # Optional SSE parser provided by plugins that return SSE streams
     sse_parser: SSEParserProtocol | None = None
 
-    # NEW: Format context for adapter selection
+    # Format context for adapter selection
     format_context: FormatContext | None = None

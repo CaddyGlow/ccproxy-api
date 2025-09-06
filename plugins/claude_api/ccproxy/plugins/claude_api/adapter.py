@@ -233,6 +233,7 @@ class ClaudeAPIAdapter(BaseHTTPAdapter):
             request_transformer=self._request_transformer,
             response_transformer=self._response_transformer,
             supports_streaming=True,
+            preserve_header_case=True,
         )
 
     async def _update_request_context(

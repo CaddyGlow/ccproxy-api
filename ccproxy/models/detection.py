@@ -115,6 +115,14 @@ class ClaudeCacheData(BaseModel):
     system_prompt: Annotated[
         SystemPromptData, Field(description="Extracted system prompt")
     ]
+    # Preserve canonical-cased, ordered header pairs as captured
+    raw_headers_ordered: Annotated[
+        list[tuple[str, str]] | list[list[str]],
+        Field(
+            description="Ordered list of header pairs as captured (canonical casing)",
+            default_factory=list,
+        ),
+    ]
     cached_at: Annotated[
         datetime,
         Field(
@@ -124,6 +132,18 @@ class ClaudeCacheData(BaseModel):
     ] = None  # type: ignore # Pydantic handles this via default_factory
 
     model_config = ConfigDict(extra="forbid")
+
+    def headers_ordered_pairs(self) -> list[tuple[str, str]]:
+        """Return preserved, canonical-cased header pairs in original order."""
+        # Coerce potential nested lists back to tuples of strs
+        return [(str(k), str(v)) for k, v in self.raw_headers_ordered]
+
+    def headers_ordered_dict(self) -> dict[str, str]:
+        """Return headers as an ordered dict (last occurrence wins)."""
+        out: dict[str, str] = {}
+        for k, v in self.headers_ordered_pairs():
+            out[k] = v
+        return out
 
 
 class CodexHeaders(BaseModel):
@@ -197,6 +217,14 @@ class CodexCacheData(BaseModel):
     instructions: Annotated[
         CodexInstructionsData, Field(description="Extracted instructions")
     ]
+    # Preserve canonical-cased, ordered header pairs as captured
+    raw_headers_ordered: Annotated[
+        list[tuple[str, str]] | list[list[str]],
+        Field(
+            description="Ordered list of header pairs as captured (canonical casing)",
+            default_factory=list,
+        ),
+    ]
     cached_at: Annotated[
         datetime,
         Field(
@@ -206,3 +234,14 @@ class CodexCacheData(BaseModel):
     ] = None  # type: ignore # Pydantic handles this via default_factory
 
     model_config = ConfigDict(extra="forbid")
+
+    def headers_ordered_pairs(self) -> list[tuple[str, str]]:
+        """Return preserved, canonical-cased header pairs in original order."""
+        return [(str(k), str(v)) for k, v in self.raw_headers_ordered]
+
+    def headers_ordered_dict(self) -> dict[str, str]:
+        """Return headers as an ordered dict (last occurrence wins)."""
+        out: dict[str, str] = {}
+        for k, v in self.headers_ordered_pairs():
+            out[k] = v
+        return out

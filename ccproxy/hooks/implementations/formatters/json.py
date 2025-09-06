@@ -9,6 +9,8 @@ from typing import Any
 import structlog
 from structlog.contextvars import get_merged_contextvars
 
+from ccproxy.hooks.types import HookHeaders
+
 
 logger = structlog.get_logger(__name__)
 
@@ -157,7 +159,7 @@ class JSONFormatter:
         request_id: str,
         method: str,
         url: str,
-        headers: dict[str, str],
+        headers: HookHeaders | dict[str, str],
         body: bytes | None,
         request_type: str = "provider",  # "client" or "provider"
         context: Any = None,  # RequestContext
@@ -171,8 +173,20 @@ class JSONFormatter:
         if not self.trace_enabled:
             return
 
+        # Normalize headers (preserve order/case if HeaderBag-like)
+        headers_dict = (
+            headers.to_dict() if hasattr(headers, "to_dict") else dict(headers)
+        )
+        # Also capture ordered pairs to preserve duplicates perfectly
+        try:
+            headers_pairs = list(headers.items())  # type: ignore[attr-defined]
+        except Exception:
+            headers_pairs = list(headers_dict.items())
+
         # Log at TRACE level with redacted headers
-        log_headers = self.redact_headers(headers) if self.redact_sensitive else headers
+        log_headers = (
+            self.redact_headers(headers_dict) if self.redact_sensitive else headers_dict
+        )
 
         if hasattr(logger, "trace"):
             logger.trace(
@@ -249,7 +263,8 @@ class JSONFormatter:
                 "request_id": request_id,
                 "method": method,
                 "url": url,
-                "headers": dict(headers),  # Full headers in file
+                "headers": headers_dict,  # Full headers in file
+                "headers_pairs": headers_pairs,
                 "body": body_content,
                 "type": request_type,
             }
@@ -278,7 +293,7 @@ class JSONFormatter:
         self,
         request_id: str,
         status: int,
-        headers: dict[str, str],
+        headers: HookHeaders | dict[str, str],
         body: bytes,
         response_type: str = "provider",  # "client" or "provider"
         context: Any = None,  # RequestContext
@@ -295,6 +310,15 @@ class JSONFormatter:
 
         body_preview = self._get_body_preview(body)
 
+        # Normalize headers (preserve order/case if HeaderBag-like)
+        headers_dict = (
+            headers.to_dict() if hasattr(headers, "to_dict") else dict(headers)
+        )
+        try:
+            headers_pairs = list(headers.items())  # type: ignore[attr-defined]
+        except Exception:
+            headers_pairs = list(headers_dict.items())
+
         # Log at TRACE level
         if hasattr(logger, "trace"):
             logger.trace(
@@ -302,7 +326,7 @@ class JSONFormatter:
                 category="http",
                 request_id=request_id,
                 status=status,
-                headers=dict(headers),
+                headers=headers_dict,
                 body_preview=body_preview,
                 body_size=len(body),
             )
@@ -313,7 +337,7 @@ class JSONFormatter:
                 category="http",
                 request_id=request_id,
                 status=status,
-                headers=dict(headers),
+                headers=headers_dict,
                 body_preview=body_preview,
                 body_size=len(body),
             )
@@ -367,7 +391,8 @@ class JSONFormatter:
             response_data = {
                 "request_id": request_id,
                 "status": status,
-                "headers": dict(headers),
+                "headers": headers_dict,
+                "headers_pairs": headers_pairs,
                 "body": body_content,
                 "type": response_type,
             }

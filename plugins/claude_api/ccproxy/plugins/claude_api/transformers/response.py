@@ -28,7 +28,7 @@ class ClaudeAPIResponseTransformer:
         self.cors_settings = cors_settings
 
     def transform_headers(
-        self, headers: dict[str, str], **kwargs: Any
+        self, headers: dict[str, str] | Any, **kwargs: Any
     ) -> dict[str, str]:
         """Transform response headers.
 
@@ -43,6 +43,13 @@ class ClaudeAPIResponseTransformer:
         """
         # Get logger with request context at the start of the function
         logger = get_plugin_logger()
+
+        # Normalize potential HeaderBag to dict for processing
+        if hasattr(headers, "to_dict"):
+            try:
+                headers = headers.to_dict()
+            except Exception:
+                headers = dict(headers)
 
         transformed = {}
 
@@ -63,6 +70,11 @@ class ClaudeAPIResponseTransformer:
         # Add secure CORS headers if settings are available
         if self.cors_settings:
             request_headers = kwargs.get("request_headers", {})
+            if hasattr(request_headers, "to_dict"):
+                try:
+                    request_headers = request_headers.to_dict()
+                except Exception:
+                    request_headers = dict(request_headers)
             request_origin = get_request_origin(request_headers)
             cors_headers = get_cors_headers(
                 self.cors_settings, request_origin, request_headers
@@ -75,6 +87,11 @@ class ClaudeAPIResponseTransformer:
             )
             # Only add CORS headers if Origin header is present in request
             request_headers = kwargs.get("request_headers", {})
+            if hasattr(request_headers, "to_dict"):
+                try:
+                    request_headers = request_headers.to_dict()
+                except Exception:
+                    request_headers = dict(request_headers)
             request_origin = get_request_origin(request_headers)
             # Use a secure default - localhost origins only
             if request_origin and any(

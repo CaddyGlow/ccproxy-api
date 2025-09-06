@@ -100,7 +100,14 @@ class ClaudeAPIRequestTransformer:
         if self.detection_service:
             cached_data = self.detection_service.get_cached_data()
             if cached_data and cached_data.headers:
-                detected_headers = cached_data.headers.to_headers_dict()
+                # Prefer preserved order/case if available, otherwise fall back
+                try:
+                    detected_headers = cached_data.headers_ordered_dict()
+                except Exception:
+                    detected_headers = {}
+                if not detected_headers:
+                    detected_headers = cached_data.headers.to_headers_dict()
+
                 logger.trace(
                     "injecting_detected_headers",
                     version=cached_data.claude_version,

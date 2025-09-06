@@ -30,7 +30,7 @@ class CodexRequestTransformer:
 
     def transform_headers(
         self,
-        headers: dict[str, str],
+        headers: dict[str, str] | Any,
         session_id: str | None = None,
         access_token: str | None = None,
         **kwargs: Any,
@@ -60,6 +60,13 @@ class CodexRequestTransformer:
             request_id=kwargs.get("request_id"),
         )
 
+        # Normalize potential HeaderBag to dict
+        if hasattr(headers, "to_dict"):
+            try:
+                headers = headers.to_dict()
+            except Exception:
+                headers = dict(headers)
+
         transformed = headers.copy()
 
         # Remove hop-by-hop headers
@@ -84,7 +91,19 @@ class CodexRequestTransformer:
         if self.detection_service:
             cached_data = self.detection_service.get_cached_data()
             if cached_data and cached_data.headers:
-                detected_headers = cached_data.headers.to_headers_dict()
+                # Prefer preserved order/case if available, otherwise fall back
+                try:
+                    detected_headers = cached_data.headers_ordered_dict()
+                except Exception:
+                    detected_headers = {}
+
+                # Merge in typed/normalized headers to ensure required fields
+                # like chatgpt-account-id are present even if not captured raw.
+                typed_headers = cached_data.headers.to_headers_dict()
+                for k, v in typed_headers.items():
+                    if k not in detected_headers or not detected_headers.get(k):
+                        detected_headers[k] = v
+
                 logger.trace(
                     "injecting_detected_headers",
                     version=cached_data.codex_version,
@@ -105,13 +124,16 @@ class CodexRequestTransformer:
         # if "accept" not in [k.lower() for k in transformed]:
         #     transformed["Accept"] = "application/json"
 
+        # if "accept" not in [k.lower() for k in transformed]:
+        #     transformed["Accept"] = "application/json"
+        transformed["accept"] = "*/*"
         # Inject session id if provided
         if session_id:
             transformed["session_id"] = session_id
 
         # Inject access token in Authentication header only when provided
         if access_token:
-            transformed["Authorization"] = f"Bearer {access_token}"
+            transformed["authorization"] = f"Bearer {access_token}"
 
         # Debug logging - what headers are we returning?
         logger.trace(

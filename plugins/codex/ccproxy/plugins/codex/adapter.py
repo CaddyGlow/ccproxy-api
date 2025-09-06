@@ -1,6 +1,5 @@
 """Simplified Codex adapter using delegation pattern."""
 
-import uuid
 from typing import TYPE_CHECKING, Any, cast
 
 
@@ -225,6 +224,7 @@ class CodexAdapter(BaseHTTPAdapter):
             response_transformer=self._response_transformer,
             supports_streaming=True,
             sse_parser=last_json_data_event,
+            preserve_header_case=True,
         )
 
     async def _update_request_context(
@@ -299,7 +299,7 @@ class CodexAdapter(BaseHTTPAdapter):
             Response from Codex API
         """
         # Extract session_id for Codex-specific handling
-        session_id = kwargs.get("session_id") or str(uuid.uuid4())
+        session_id = kwargs.get("session_id")
 
         # Store session_id in request state for prepare_request
         request.state.codex_session_id = session_id
