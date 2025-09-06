@@ -181,6 +181,53 @@ class BaseHTTPAdapter(BaseAdapter):
 
         # Get access token directly from auth manager
         access_token = await self._auth_manager.get_access_token()
+        
+        # Get chatgpt_account_id from user profile if available
+        chatgpt_account_id = None
+        try:
+            user_profile = await self._auth_manager.get_profile()
+            logger.debug(
+                "auth_profile_extraction",
+                has_profile=user_profile is not None,
+                profile_type=type(user_profile).__name__ if user_profile else None,
+                has_chatgpt_account_id_attr=hasattr(user_profile, 'chatgpt_account_id') if user_profile else False,
+            )
+            
+            if user_profile and hasattr(user_profile, 'chatgpt_account_id'):
+                account_id = getattr(user_profile, 'chatgpt_account_id', None)
+                logger.debug(
+                    "chatgpt_account_id_extraction",
+                    raw_account_id=account_id,
+                    account_id_type=type(account_id).__name__ if account_id is not None else None,
+                    is_string=isinstance(account_id, str),
+                    is_truthy=bool(account_id),
+                )
+                if account_id and isinstance(account_id, str):
+                    chatgpt_account_id = account_id
+                    logger.debug(
+                        "chatgpt_account_id_set",
+                        account_id_length=len(account_id),
+                    )
+                    
+            # Also debug the extras content to see JWT claims structure
+            if user_profile and hasattr(user_profile, 'extras'):
+                extras = getattr(user_profile, 'extras', {})
+                auth_claims = extras.get("https://api.openai.com/auth", {})
+                logger.debug(
+                    "jwt_claims_debug",
+                    has_extras=bool(extras),
+                    extras_keys=list(extras.keys()) if isinstance(extras, dict) else None,
+                    has_auth_claims=bool(auth_claims),
+                    auth_claims_keys=list(auth_claims.keys()) if isinstance(auth_claims, dict) else None,
+                    raw_chatgpt_account_id=auth_claims.get("chatgpt_account_id") if isinstance(auth_claims, dict) else None,
+                )
+                
+        except Exception as e:
+            logger.warning(
+                "chatgpt_account_id_extraction_failed",
+                error=str(e),
+                error_type=type(e).__name__,
+            )
 
         # Build auth headers with Bearer token only if available
         auth_headers: dict[str, str] = {}
@@ -202,6 +249,7 @@ class BaseHTTPAdapter(BaseAdapter):
             body=body,
             auth_headers=auth_headers,
             access_token=access_token,
+            chatgpt_account_id=chatgpt_account_id,
             # Preserve incoming order and original casing for upstream
             request_headers=HeaderBag.from_request(
                 request, case_mode="preserve"
@@ -479,6 +527,7 @@ class BaseHTTPAdapter(BaseAdapter):
         body: bytes,
         auth_headers: dict[str, str],
         access_token: str | None,
+        chatgpt_account_id: str | None,
         request_headers: dict[str, str],
         handler_config: HandlerConfig,
         endpoint: str,
@@ -516,6 +565,7 @@ class BaseHTTPAdapter(BaseAdapter):
             auth_headers=auth_headers,
             request_headers=request_headers,
             access_token=access_token,
+            chatgpt_account_id=chatgpt_account_id,
         )
 
         # Parse request body to extract model and other metadata

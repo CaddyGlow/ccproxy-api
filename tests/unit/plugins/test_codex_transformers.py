@@ -49,7 +49,9 @@ class TestCodexRequestTransformer:
             "version": "0.22.0",
             "custom-codex": "detected",
         }
-        mock_cached_data.codex_version = "0.22.0"
+        mock_cached_data.codx_version = "0.22.0"
+        # Mock headers_ordered_dict to raise an exception so it falls back to to_headers_dict
+        mock_cached_data.headers_ordered_dict.side_effect = Exception("Mock exception")
         mock_service.get_cached_data.return_value = mock_cached_data
 
         transformer = CodexRequestTransformer(mock_service)
@@ -60,6 +62,23 @@ class TestCodexRequestTransformer:
         assert result["version"] == "0.22.0"
         assert result["custom-codex"] == "detected"
         assert result["session_id"] == "test-session"  # Should not be overridden
+        
+    def test_transform_headers_with_chatgpt_account_id(self) -> None:
+        """Test header transformation with chatgpt_account_id parameter."""
+        transformer = CodexRequestTransformer()
+        headers = {"content-type": "application/json"}
+        
+        result = transformer.transform_headers(
+            headers, 
+            session_id="test-session", 
+            access_token="test-token",
+            chatgpt_account_id="test-account-123"
+        )
+        
+        assert result["session_id"] == "test-session"
+        assert result["Authorization"] == "Bearer test-token" 
+        assert result["chatgpt-account-id"] == "test-account-123"
+        assert result["originator"] == "codex_cli_rs"  # From fallback headers
 
     def test_transform_body_with_instructions(self) -> None:
         """Test body transformation when instructions already exist."""
@@ -269,7 +288,7 @@ async def test_transformers_integration() -> None:
     request_headers = {"content-type": "application/json"}
     request_body = json.dumps({"model": "gpt-5"}).encode()
 
-    transformed_headers = request_transformer.transform_headers(
+    transformed_headers = await request_transformer.transform_headers(
         request_headers, "test-session", "test-token"
     )
     transformed_body = request_transformer.transform_body(request_body)

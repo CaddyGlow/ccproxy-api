@@ -33,6 +33,7 @@ class CodexRequestTransformer:
         headers: dict[str, str] | Any,
         session_id: str | None = None,
         access_token: str | None = None,
+        chatgpt_account_id: str | None = None,
         **kwargs: Any,
     ) -> dict[str, str]:
         """Transform request headers for Codex API.
@@ -50,7 +51,7 @@ class CodexRequestTransformer:
         logger = get_plugin_logger()
 
         # Debug logging
-        logger.trace(
+        logger.debug(
             "transform_headers",
             has_session_id=session_id is not None,
             has_access_token=access_token is not None,
@@ -86,7 +87,7 @@ class CodexRequestTransformer:
             k: v for k, v in transformed.items() if k.lower() not in hop_by_hop
         }
 
-        # Inject detected headers if available
+        # Inject detected headers if available, otherwise use fallback headers
         has_detected_headers = False
         if self.detection_service:
             cached_data = self.detection_service.get_cached_data()
@@ -104,7 +105,7 @@ class CodexRequestTransformer:
                     if k not in detected_headers or not detected_headers.get(k):
                         detected_headers[k] = v
 
-                logger.trace(
+                logger.debug(
                     "injecting_detected_headers",
                     version=cached_data.codex_version,
                     header_count=len(detected_headers),
@@ -113,6 +114,19 @@ class CodexRequestTransformer:
                 # Detected headers take precedence
                 transformed.update(detected_headers)
                 has_detected_headers = True
+        else:
+            # Use fallback headers when no detection service
+            fallback_headers = {
+                "originator": "codex_cli_rs",
+                "version": "0.21.0",
+                "openai_beta": "responses=experimental",
+            }
+            transformed.update(fallback_headers)
+            logger.debug(
+                "injecting_fallback_headers",
+                header_count=len(fallback_headers),
+                request_id=kwargs.get("request_id"),
+            )
 
         # If an explicit access_token is provided, inject it; otherwise, trust
         # headers prepared upstream (adapter/credential manager) without failing here.
@@ -126,7 +140,7 @@ class CodexRequestTransformer:
 
         # if "accept" not in [k.lower() for k in transformed]:
         #     transformed["Accept"] = "application/json"
-        transformed["accept"] = "*/*"
+        transformed["accept"] = "text/event-stream"
         # Inject session id if provided
         if session_id:
             transformed["session_id"] = session_id
@@ -135,10 +149,20 @@ class CodexRequestTransformer:
         if access_token:
             transformed["authorization"] = f"Bearer {access_token}"
 
+        # Inject chatgpt_account_id if provided
+        if chatgpt_account_id:
+            transformed["chatgpt-account-id"] = chatgpt_account_id
+            logger.debug(
+                "injected_chatgpt_account_id",
+                account_id_length=len(chatgpt_account_id),
+                request_id=kwargs.get("request_id"),
+            )
+
         # Debug logging - what headers are we returning?
-        logger.trace(
+        logger.debug(
             "transform_headers_result",
             has_authorization="Authorization" in transformed,
+            has_chatgpt_account_id="chatgpt-account-id" in transformed,
             header_count=len(transformed),
             detected_headers_used=has_detected_headers,
             request_id=kwargs.get("request_id"),
@@ -157,7 +181,7 @@ class CodexRequestTransformer:
         """
         logger = get_plugin_logger()
 
-        logger.trace(
+        logger.debug(
             "transform_body",
             has_body=body is not None,
             body_length=len(body) if body else 0,
@@ -179,7 +203,7 @@ class CodexRequestTransformer:
             )
 
             data = json.loads(body.decode("utf-8"))
-            logger.trace(
+            logger.debug(
                 "parsed_request_body",
                 keys=list(data.keys()),
                 category="transform",
@@ -198,7 +222,7 @@ class CodexRequestTransformer:
         # Only inject instructions if missing or None
         if "instructions" not in data or data.get("instructions") is None:
             instructions = self._get_instructions()
-            logger.trace(
+            logger.debug(
                 "getting_instructions",
                 has_detection_service=bool(self.detection_service),
                 instructions_length=len(instructions) if instructions else 0,
@@ -206,7 +230,7 @@ class CodexRequestTransformer:
             )
             if instructions:
                 data["instructions"] = instructions
-                logger.trace(
+                logger.debug(
                     "injected_codex_instructions",
                     instructions_length=len(instructions),
                     instructions_preview=f"{instructions[:100]}..."
@@ -224,7 +248,7 @@ class CodexRequestTransformer:
             )
 
         result = json.dumps(data).encode("utf-8")
-        logger.trace(
+        logger.debug(
             "transform_body_result", result_length=len(result), category="transform"
         )
         return result

@@ -5,9 +5,15 @@ from plugin manifests and manages the plugin lifecycle.
 """
 
 from abc import ABC, abstractmethod
-from typing import Any, TypeVar
+from typing import TYPE_CHECKING, Any, TypeVar
 
 import structlog
+
+from ccproxy.core.services import CoreServices
+
+
+if TYPE_CHECKING:
+    from ccproxy.config.settings import Settings
 
 from .declaration import PluginContext, PluginManifest
 from .runtime import (
@@ -458,12 +464,15 @@ class PluginRegistry:
             name: factory.get_manifest() for name, factory in self.factories.items()
         }
 
-    def resolve_dependencies(self) -> list[str]:
+    def resolve_dependencies(self, settings: "Settings") -> list[str]:
         """Resolve plugin dependencies and return initialization order.
 
         Skips plugins with missing hard dependencies or required services
         instead of failing the entire plugin system. Logs skipped plugins
         and continues with the rest.
+
+        Args:
+            settings: Settings instance for feature flag access
 
         Returns:
             List of plugin names in initialization order
@@ -475,9 +484,6 @@ class PluginRegistry:
         skipped: dict[str, str] = {}
 
         # NEW: Validate format adapter dependencies if feature enabled
-        from ccproxy.config.settings import get_settings
-
-        settings = get_settings()
         if settings.features.manifest_format_adapters:
             missing_format_adapters = self._validate_format_adapter_requirements()
             if missing_format_adapters:
@@ -657,17 +663,16 @@ class PluginRegistry:
 
         return runtime
 
-    async def initialize_all(self, core_services: Any) -> None:
+    async def initialize_all(self, core_services: CoreServices) -> None:
         """Initialize all registered plugins with format adapter support.
 
         Args:
             core_services: Core services container
         """
-        from ccproxy.config.settings import get_settings
 
-        settings = get_settings()
-
-        order = self.resolve_dependencies()
+        # Resolve dependencies and get initialization order
+        settings = core_services.settings
+        order = self.resolve_dependencies(settings)
 
         logger.info(
             "initializing_plugins", count=len(order), order=order, category="plugin"

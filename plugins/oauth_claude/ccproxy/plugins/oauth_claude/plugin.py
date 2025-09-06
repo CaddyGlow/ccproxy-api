@@ -76,6 +76,29 @@ class OAuthClaudeFactory(AuthProviderPluginFactory):
         # Initialize with manifest
         super().__init__(manifest)
 
+    def create_context(self, core_services: Any) -> PluginContext:
+        """Create context with auth provider components.
+
+        Args:
+            core_services: Core services container
+
+        Returns:
+            Plugin context with auth provider components
+        """
+        # Start with base context
+        context = super().create_context(core_services)
+
+        # Create auth provider for this plugin
+        auth_provider = self.create_auth_provider(context)
+        context["auth_provider"] = auth_provider
+
+        # Add other auth-specific components if needed
+        storage = self.create_storage()
+        if storage:
+            context["storage"] = storage
+
+        return context
+
     def create_runtime(self) -> OAuthClaudeRuntime:
         """Create runtime instance."""
         return OAuthClaudeRuntime(self.manifest)

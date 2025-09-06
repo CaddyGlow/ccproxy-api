@@ -6,6 +6,7 @@ plugin instances and their lifecycle after the application has started.
 
 from typing import Any
 
+from ccproxy.config.settings import Settings
 from ccproxy.core.logging import TraceBoundLogger, get_logger
 
 from .declaration import PluginContext, PluginManifest, PluginRuntimeProtocol
@@ -491,11 +492,19 @@ class ProviderPluginRuntime(BasePluginRuntime):
                 category="plugin",
             )
 
-    async def _setup_format_registry(self) -> None:
+    async def _setup_format_registry(
+        self,
+    ) -> None:
         """Legacy format registry setup with migration safety."""
-        from ccproxy.config.settings import get_settings
-
-        settings = get_settings()
+        if self.context and "settings" in self.context:
+            settings = self.context.get(Settings)
+        else:
+            logger.warning(
+                "oauth_setup_missing_context_settings",
+                plugin=self.name,
+                category="plugin",
+            )
+            return
 
         # Feature flag: Skip if manifest system is enabled
         if settings.features.manifest_format_adapters:

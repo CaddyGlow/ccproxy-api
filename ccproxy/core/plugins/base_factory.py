@@ -6,6 +6,10 @@ shared across all provider plugin factories, reducing code duplication by 60-70%
 
 from typing import TYPE_CHECKING, Any, cast
 
+
+if TYPE_CHECKING:
+    from ccproxy.config.settings import Settings
+
 from fastapi import APIRouter
 
 from ccproxy.services.adapters.base import BaseAdapter
@@ -122,18 +126,23 @@ class BaseProviderPluginFactory(ProviderPluginFactory):
             requires_format_adapters=self.requires_format_adapters.copy(),
         )
 
-        # Validate format adapter specifications if feature is enabled
-        from ccproxy.config.settings import get_settings
-
-        settings = get_settings()
-        if settings.features.manifest_format_adapters:
-            self._validate_format_adapter_specs()
+        # Format adapter specification validation is deferred to runtime
+        # when settings are available via dependency injection
 
         # Store the manifest and runtime class directly
         # We don't call parent __init__ because ProviderPluginFactory
         # would override our runtime_class with ProviderPluginRuntime
         self.manifest = manifest
         self.runtime_class = self.__class__.runtime_class
+    
+    def validate_format_adapters_with_settings(self, settings: "Settings") -> None:
+        """Validate format adapter specifications with injected settings.
+        
+        Args:
+            settings: Settings instance for feature flag access
+        """
+        if settings.features.manifest_format_adapters:
+            self._validate_format_adapter_specs()
 
     def _validate_class_attributes(self) -> None:
         """Validate that required class attributes are defined."""

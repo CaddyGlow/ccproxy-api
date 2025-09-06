@@ -305,18 +305,18 @@ class RawHTTPFormatter:
         # Build request line
         lines = [f"{method} {path} HTTP/1.1"]
 
-        # Add Host header if not present
-        has_host = any(
-            (
-                h[0].lower() == b"host"
-                if isinstance(h[0], bytes)
-                else h[0].lower() == "host"
-            )
-            for h in headers
-        )
-        if not has_host and parsed.netloc:
-            lines.append(f"Host: {parsed.netloc}")
-
+        # # Add Host header if not present
+        # has_host = any(
+        #     (
+        #         h[0].lower() == b"host"
+        #         if isinstance(h[0], bytes)
+        #         else h[0].lower() == "host"
+        #     )
+        #     for h in headers
+        # )
+        # if not has_host and parsed.netloc:
+        #     lines.append(f"Host: {parsed.netloc}")
+        #
         # Add headers with optional redaction
         for name, value in headers:
             if isinstance(name, bytes):
