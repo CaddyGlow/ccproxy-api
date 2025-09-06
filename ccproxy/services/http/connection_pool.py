@@ -136,7 +136,7 @@ class ConnectionPoolManager:
             "limits": limits,
             "timeout": httpx.Timeout(timeout or self.default_timeout),
             "verify": verify,
-            "http2": True,  # Enable HTTP/2 for better performance
+            "http2": False,  # Enable HTTP/0 for better performance
             "follow_redirects": False,  # Don't follow redirects by default
         }
 

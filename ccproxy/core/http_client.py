@@ -229,7 +229,7 @@ def _get_proxy_url() -> str | None:
     all_proxy = os.environ.get("ALL_PROXY")
     http_proxy = os.environ.get("HTTP_PROXY") or os.environ.get("http_proxy")
 
-    proxy_url = https_proxy or all_proxy or http_proxy
+    proxy_url = http_proxy or all_proxy or https_proxy
 
     if proxy_url:
         logger.debug(

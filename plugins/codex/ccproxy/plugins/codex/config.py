@@ -99,6 +99,12 @@ class CodexSettings(ProviderConfig):
         default=True, description="Whether to enable format adapter registry"
     )
 
+    # Detection configuration
+    detection_home_mode: Literal["temp", "home"] = Field(
+        default="home",
+        description="Home directory mode for CLI detection: 'temp' uses temporary directory, 'home' uses actual user HOME",
+    )
+
     @field_validator("base_url")
     @classmethod
     def validate_base_url(cls, v: str) -> str:

@@ -108,7 +108,7 @@ class HTTPPoolManager:
             client = HTTPClientFactory.create_client(
                 settings=self.settings,
                 hook_manager=self.hook_manager,
-                http2=True,  # Enable HTTP/2 for connection multiplexing
+                http2=False,  # Enable HTTP/2 for connection multiplexing
                 **client_config,
             )
 
@@ -132,7 +132,7 @@ class HTTPPoolManager:
                 self._shared_client = HTTPClientFactory.create_client(
                     settings=self.settings,
                     hook_manager=self.hook_manager,
-                    http2=True,  # Enable HTTP/2 for default client
+                    http2=False,  # Enable HTTP/1 for default client
                 )
             return self._shared_client
 

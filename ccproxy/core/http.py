@@ -147,6 +147,8 @@ class HTTPXClient(HTTPClient):
         """
         import httpx
 
+        proxy = os.environ.get("HTTP_PROXY") or os.environ.get("http_proxy") or proxy
+
         self.timeout = timeout
         self.proxy = proxy
         self.verify = verify

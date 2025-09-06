@@ -2,6 +2,7 @@
 
 import json
 from typing import Any
+import uuid
 
 from ccproxy.core.logging import get_plugin_logger
 
@@ -70,8 +71,8 @@ class CodexRequestTransformer:
 
         transformed = headers.copy()
 
-        # Remove hop-by-hop headers
-        hop_by_hop = {
+        # Strip potentially problematic headers (aligned with main branch logic)
+        excluded_headers = {
             "host",
             "connection",
             "keep-alive",
@@ -82,9 +83,30 @@ class CodexRequestTransformer:
             "proxy-authorization",
             "te",
             "trailer",
+            # Additional headers from main branch that cause issues
+            "x-forwarded-for",
+            "x-forwarded-proto",
+            "x-forwarded-host",
+            "forwarded",
+            # Authentication headers to be replaced
+            "x-api-key",
+            # Compression headers to avoid decompression issues
+            "accept-encoding",
+            "content-encoding",
+            # CORS headers - should not be forwarded to upstream
+            "origin",
+            "access-control-request-method",
+            "access-control-request-headers",
+            "access-control-allow-origin",
+            "access-control-allow-methods",
+            "access-control-allow-headers",
+            "access-control-allow-credentials",
+            "access-control-max-age",
+            "access-control-expose-headers",
+            "authorization",  # Will be re-injected if access_token is provided
         }
         transformed = {
-            k: v for k, v in transformed.items() if k.lower() not in hop_by_hop
+            k: v for k, v in transformed.items() if k.lower() not in excluded_headers
         }
 
         # Inject detected headers if available, otherwise use fallback headers
@@ -102,6 +124,7 @@ class CodexRequestTransformer:
                 # like chatgpt-account-id are present even if not captured raw.
                 typed_headers = cached_data.headers.to_headers_dict()
                 for k, v in typed_headers.items():
+                    # Only add if not already present to preserve raw header precedenc
                     if k not in detected_headers or not detected_headers.get(k):
                         detected_headers[k] = v
 
@@ -115,11 +138,11 @@ class CodexRequestTransformer:
                 transformed.update(detected_headers)
                 has_detected_headers = True
         else:
-            # Use fallback headers when no detection service
+            # Use fallback headers when no detection service (aligned with main branch)
             fallback_headers = {
                 "originator": "codex_cli_rs",
                 "version": "0.21.0",
-                "openai_beta": "responses=experimental",
+                "openai-beta": "responses=experimental",  # Fixed typo: openai_beta -> openai-beta
             }
             transformed.update(fallback_headers)
             logger.debug(
@@ -131,21 +154,18 @@ class CodexRequestTransformer:
         # If an explicit access_token is provided, inject it; otherwise, trust
         # headers prepared upstream (adapter/credential manager) without failing here.
 
-        # TODO: Disabled injection of content-type and accept headers for now
-        # it's normally set by the client
-        # if "content-type" not in [k.lower() for k in transformed]:
-        #     transformed["Content-Type"] = "application/json"
-        # if "accept" not in [k.lower() for k in transformed]:
-        #     transformed["Accept"] = "application/json"
-
-        # if "accept" not in [k.lower() for k in transformed]:
-        #     transformed["Accept"] = "application/json"
-        transformed["accept"] = "text/event-stream"
+        # Set defaults for essential headers (but NOT Accept - let backend handle it)
+        # Setting Accept: text/event-stream with stream:true in body causes 400/403 Bad Request
+        # The backend will determine the response format based on the stream parameter
+        if "content-type" not in [k.lower() for k in transformed]:
+            transformed["content-type"] = "application/json"
         # Inject session id if provided
         if session_id:
             transformed["session_id"] = session_id
+        else:
+            transformed["session_id"] = str(uuid.uuid4())
 
-        # Inject access token in Authentication header only when provided
+        # Inject access token in Authorization header only when provided
         if access_token:
             transformed["authorization"] = f"Bearer {access_token}"
 
@@ -158,6 +178,12 @@ class CodexRequestTransformer:
                 request_id=kwargs.get("request_id"),
             )
 
+            # exclude_headers
+        excluded_headers.remove("authorization")  # We may have just added this
+        transformed = {
+            k: v for k, v in transformed.items() if k.lower() not in excluded_headers
+        }
+
         # Debug logging - what headers are we returning?
         logger.debug(
             "transform_headers_result",
@@ -165,6 +191,7 @@ class CodexRequestTransformer:
             has_chatgpt_account_id="chatgpt-account-id" in transformed,
             header_count=len(transformed),
             detected_headers_used=has_detected_headers,
+            headers_keys=list(transformed.keys()),
             request_id=kwargs.get("request_id"),
         )
 
@@ -219,7 +246,7 @@ class CodexRequestTransformer:
             )
             return body
 
-        # Only inject instructions if missing or None
+        # Only inject instructions if missing or None (preserve existing instructions)
         if "instructions" not in data or data.get("instructions") is None:
             instructions = self._get_instructions()
             logger.debug(
@@ -246,6 +273,11 @@ class CodexRequestTransformer:
                 length=len(data.get("instructions", "")),
                 category="transform",
             )
+
+        # Only inject stream: true if user didn't specify (like main branch logic)
+        if "stream" not in data:
+            data["stream"] = True
+            logger.debug("injected_default_stream_true", category="transform")
 
         result = json.dumps(data).encode("utf-8")
         logger.debug(

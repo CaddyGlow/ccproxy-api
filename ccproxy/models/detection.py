@@ -225,6 +225,14 @@ class CodexCacheData(BaseModel):
             default_factory=list,
         ),
     ]
+    # Complete request JSON structure with preserved order
+    full_request_json: Annotated[
+        dict[str, Any] | None,
+        Field(
+            description="Complete JSON representation of captured request including method, path, headers, and body",
+            default=None,
+        ),
+    ]
     cached_at: Annotated[
         datetime,
         Field(

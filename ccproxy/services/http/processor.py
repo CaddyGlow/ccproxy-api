@@ -92,6 +92,9 @@ class RequestProcessor:
                 category="request",
             )
 
+            processed_headers["content-length"] = str(
+                len(processed_body) if processed_body else 0
+            )
         return processed_body, processed_headers, is_streaming
 
     async def process_response(

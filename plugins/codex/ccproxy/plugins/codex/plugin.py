@@ -418,7 +418,13 @@ class CodexFactory(BaseProviderPluginFactory):
         except ValueError:
             cli_service = None
 
-        return CodexDetectionService(settings, cli_service)
+        # Get codex-specific settings
+        try:
+            codex_settings = context.get(CodexSettings)
+        except ValueError:
+            codex_settings = None
+
+        return CodexDetectionService(settings, cli_service, codex_settings)
 
 
 # Export the factory instance

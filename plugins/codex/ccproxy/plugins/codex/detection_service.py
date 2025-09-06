@@ -25,6 +25,7 @@ logger = get_plugin_logger()
 
 
 if TYPE_CHECKING:
+    from .config import CodexSettings
     from .models import CodexCliInfo
 
 
@@ -32,7 +33,10 @@ class CodexDetectionService:
     """Service for automatically detecting Codex CLI headers at startup."""
 
     def __init__(
-        self, settings: Settings, cli_service: CLIDetectionService | None = None
+        self,
+        settings: Settings,
+        cli_service: CLIDetectionService | None = None,
+        codex_settings: "CodexSettings | None" = None,
     ) -> None:
         """Initialize Codex detection service.
 
@@ -40,8 +44,11 @@ class CodexDetectionService:
             settings: Application settings
             cli_service: Optional CLI detection service for dependency injection.
                         If None, creates its own instance.
+            codex_settings: Optional Codex plugin settings for plugin-specific configuration.
+                           If None, uses default configuration.
         """
         self.settings = settings
+        self.codex_settings = codex_settings
         self.cache_dir = get_ccproxy_cache_dir()
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self._cached_data: CodexCacheData | None = None
@@ -181,7 +188,50 @@ class CodexDetectionService:
             bag = HeaderBag.from_request(request, case_mode="preserve")
             captured_data["headers_ordered"] = list(bag.items())
             captured_data["headers"] = bag.to_dict()
-            captured_data["body"] = await request.body()
+
+            # Capture raw body
+            raw_body = await request.body()
+            captured_data["body"] = raw_body
+
+            # Build complete JSON request structure
+            full_request = {
+                "method": request.method,
+                "url": str(request.url),
+                "path": request.url.path,
+                "query_params": dict(request.query_params)
+                if request.query_params
+                else {},
+                "headers_ordered": list(bag.items()),
+                "headers": bag.to_dict(),
+            }
+
+            # Parse body as JSON if possible, otherwise store as string
+            try:
+                if raw_body:
+                    body_json = json.loads(raw_body.decode("utf-8"))
+                    full_request["body_json"] = body_json
+                    full_request["body_raw"] = raw_body.decode("utf-8")
+                else:
+                    full_request["body_json"] = None
+                    full_request["body_raw"] = ""
+            except (json.JSONDecodeError, UnicodeDecodeError) as e:
+                logger.debug("body_parsing_failed", error=str(e), category="plugin")
+                full_request["body_json"] = None
+                full_request["body_raw"] = raw_body.hex() if raw_body else ""
+                full_request["body_parse_error"] = str(e)
+
+            # Store complete request structure
+            captured_data["full_request_json"] = full_request
+
+            logger.debug(
+                "request_captured",
+                method=request.method,
+                path=request.url.path,
+                headers_count=len(list(bag.items())),
+                body_size=len(raw_body),
+                category="plugin",
+            )
+
             # Return a mock response to satisfy Codex CLI
             return Response(
                 content='{"choices": [{"message": {"content": "Test response"}}]}',
@@ -229,13 +279,33 @@ class CodexDetectionService:
             await asyncio.sleep(0.5)
 
             stdout, stderr = b"", b""
-            with tempfile.TemporaryDirectory() as temp_home:
+
+            # Determine home directory mode based on configuration
+            home_dir = os.environ.get("HOME")
+            temp_context = None
+            if (
+                self.codex_settings
+                and self.codex_settings.detection_home_mode == "temp"
+            ):
+                temp_context = tempfile.TemporaryDirectory()
+                home_dir = temp_context.__enter__()
+                logger.debug(
+                    "using_temporary_home_directory",
+                    home_dir=home_dir,
+                    category="plugin",
+                )
+            else:
+                logger.debug(
+                    "using_actual_home_directory", home_dir=home_dir, category="plugin"
+                )
+
+            try:
                 # Execute Codex CLI with proxy
                 env = {
                     **dict(os.environ),
                     "OPENAI_BASE_URL": f"http://127.0.0.1:{port}/backend-api/codex",
                     "OPENAI_API_KEY": "dummy-key-for-detection",
-                    "HOME": temp_home,
+                    "HOME": home_dir,
                 }
                 del env["OPENAI_API_KEY"]
 
@@ -263,6 +333,11 @@ class CodexDetectionService:
                 stdout = await process.stdout.read() if process.stdout else b""
                 stderr = await process.stderr.read() if process.stderr else b""
 
+            finally:
+                # Clean up temporary directory if used
+                if temp_context is not None:
+                    temp_context.__exit__(None, None, None)
+
             # Stop server
             server.should_exit = True
             await server_task
@@ -285,6 +360,7 @@ class CodexDetectionService:
                 headers=headers,
                 instructions=instructions,
                 raw_headers_ordered=captured_data.get("headers_ordered", []),
+                full_request_json=captured_data.get("full_request_json"),
             )
 
         except Exception as e:
