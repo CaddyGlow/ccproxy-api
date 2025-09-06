@@ -18,7 +18,7 @@ class RequestTracerHook(Hook):
     This hook only handles REQUEST_* events since HTTP_* events are now
     handled by the core HTTPTracerHook. This eliminates duplication and
     follows the single responsibility principle.
-    
+
     The plugin now focuses purely on request lifecycle logging without
     attempting to capture HTTP request/response bodies.
     """
@@ -117,7 +117,7 @@ class RequestTracerHook(Hook):
             request_id=request_id,
             method=method,
             url=url,
-            note="Request body logged by core HTTPTracerHook"
+            note="Request body logged by core HTTPTracerHook",
         )
 
     async def _handle_request_complete(self, context: HookContext) -> None:
@@ -140,7 +140,7 @@ class RequestTracerHook(Hook):
             request_id=request_id,
             status_code=status_code,
             duration_ms=duration_ms,
-            note="Response body logged by core HTTPTracerHook"
+            note="Response body logged by core HTTPTracerHook",
         )
 
     async def _handle_request_failed(self, context: HookContext) -> None:
@@ -172,7 +172,7 @@ class RequestTracerHook(Hook):
             provider=provider,
             method=method,
             url=url,
-            note="Request body logged by core HTTPTracerHook"
+            note="Request body logged by core HTTPTracerHook",
         )
 
     async def _handle_provider_response(self, context: HookContext) -> None:
@@ -191,7 +191,7 @@ class RequestTracerHook(Hook):
             provider=provider,
             status_code=status_code,
             is_streaming=is_streaming,
-            note="Response body logged by core HTTPTracerHook"
+            note="Response body logged by core HTTPTracerHook",
         )
 
     async def _handle_provider_error(self, context: HookContext) -> None:

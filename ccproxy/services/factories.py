@@ -79,10 +79,11 @@ class ConcreteServiceFactory:
         self._container.register_service(
             FormatDetectionService, factory=self.create_format_detector
         )
-        
+
         # Register background thread manager for hooks
         self._container.register_service(
-            BackgroundHookThreadManager, factory=self.create_background_hook_thread_manager
+            BackgroundHookThreadManager,
+            factory=self.create_background_hook_thread_manager,
         )
 
     def create_mock_handler(self) -> MockResponseHandler:

@@ -160,7 +160,7 @@ async def shutdown_hook_system(app: FastAPI) -> None:
         hook_manager = getattr(app.state, "hook_manager", None)
         if hook_manager:
             hook_manager.shutdown()
-        
+
         logger.debug("hook_system_shutdown_completed", category="lifecycle")
     except Exception as e:
         logger.error(
@@ -179,7 +179,9 @@ async def initialize_hooks_startup(app: FastAPI, settings: Settings) -> None:
     else:
         hook_registry = HookRegistry()
         service_container: ServiceContainer = app.state.service_container
-        background_thread_manager = service_container.get_background_hook_thread_manager()
+        background_thread_manager = (
+            service_container.get_background_hook_thread_manager()
+        )
         hook_manager = HookManager(hook_registry, background_thread_manager)
         app.state.hook_registry = hook_registry
         app.state.hook_manager = hook_manager

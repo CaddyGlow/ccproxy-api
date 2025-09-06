@@ -31,7 +31,10 @@ class HTTPTracerHook(Hook):
     priority = 100  # Run early to capture raw data
 
     def __init__(
-        self, json_formatter: Any = None, raw_formatter: Any = None, enabled: bool = True
+        self,
+        json_formatter: Any = None,
+        raw_formatter: Any = None,
+        enabled: bool = True,
     ) -> None:
         """Initialize the HTTP tracer hook.
 

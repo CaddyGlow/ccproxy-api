@@ -384,7 +384,9 @@ class HooksMiddleware(BaseHTTPMiddleware):
                 logger.debug(
                     "response_body_capture_debug",
                     body_type=type(body_data).__name__,
-                    body_size=len(body_data) if hasattr(body_data, '__len__') else "no_len",
+                    body_size=len(body_data)
+                    if hasattr(body_data, "__len__")
+                    else "no_len",
                     has_body_attr=hasattr(response, "body"),
                     body_truthy=bool(response.body),
                 )

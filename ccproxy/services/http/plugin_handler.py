@@ -211,7 +211,7 @@ class PluginHTTPHandler(BaseHTTPHandler):
 
             # Read response content once to avoid consumption issues
             response_content = response.content
-            
+
             # Process response through adapters and transformers
             processed_body, processed_headers = await self._processor.process_response(
                 body=response_content,

@@ -21,10 +21,10 @@ from .thread_manager import BackgroundHookThreadManager
 
 
 __all__ = [
-    "Hook", 
-    "HookContext", 
-    "HookEvent", 
-    "HookManager", 
+    "Hook",
+    "HookContext",
+    "HookEvent",
+    "HookManager",
     "HookRegistry",
     "BackgroundHookThreadManager",
 ]

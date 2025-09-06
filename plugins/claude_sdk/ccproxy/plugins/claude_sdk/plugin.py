@@ -128,6 +128,7 @@ class ClaudeSDKRuntime(ProviderPluginRuntime):
         settings = self.context.get("settings")
         if settings is None:
             from ccproxy.config.settings import Settings
+
             settings = Settings()
 
         # Skip manual setup if manifest system is enabled

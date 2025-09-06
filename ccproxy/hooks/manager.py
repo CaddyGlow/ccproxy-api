@@ -25,7 +25,11 @@ class HookManager:
     async and sync hooks by running sync hooks in a thread pool.
     """
 
-    def __init__(self, registry: HookRegistry, background_manager: BackgroundHookThreadManager | None = None):
+    def __init__(
+        self,
+        registry: HookRegistry,
+        background_manager: BackgroundHookThreadManager | None = None,
+    ):
         """Initialize the hook manager.
 
         Args:
@@ -37,7 +41,11 @@ class HookManager:
         self._logger = structlog.get_logger(__name__)
 
     async def emit(
-        self, event: HookEvent, data: dict[str, Any] | None = None, fire_and_forget: bool = True, **kwargs: Any
+        self,
+        event: HookEvent,
+        data: dict[str, Any] | None = None,
+        fire_and_forget: bool = True,
+        **kwargs: Any,
     ) -> None:
         """Emit an event to all registered hooks.
 
@@ -65,7 +73,9 @@ class HookManager:
             return
         elif fire_and_forget and not self._background_manager:
             # No background manager available, log warning and fall back to sync
-            self._logger.warning("fire_and_forget_requested_but_no_background_manager_available")
+            self._logger.warning(
+                "fire_and_forget_requested_but_no_background_manager_available"
+            )
         # Fall through to synchronous execution
 
         # Synchronous execution (legacy behavior)
@@ -96,7 +106,9 @@ class HookManager:
                 )
                 # Continue executing other hooks
 
-    async def emit_with_context(self, context: HookContext, fire_and_forget: bool = True) -> None:
+    async def emit_with_context(
+        self, context: HookContext, fire_and_forget: bool = True
+    ) -> None:
         """Emit an event using a pre-built HookContext.
 
         This is useful when you need to build the context with specific metadata
@@ -112,7 +124,9 @@ class HookManager:
             return
         elif fire_and_forget and not self._background_manager:
             # No background manager available, log warning and fall back to sync
-            self._logger.warning("fire_and_forget_requested_but_no_background_manager_available")
+            self._logger.warning(
+                "fire_and_forget_requested_but_no_background_manager_available"
+            )
         # Fall through to synchronous execution
 
         # Synchronous execution (legacy behavior)
@@ -161,10 +175,10 @@ class HookManager:
         if asyncio.iscoroutine(result):
             await result
         # If result is None, it was a sync hook and we're done
-    
+
     def shutdown(self) -> None:
         """Shutdown the background hook processing.
-        
+
         This method should be called during application shutdown to ensure
         proper cleanup of the background thread.
         """

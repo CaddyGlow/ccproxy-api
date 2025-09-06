@@ -1,7 +1,6 @@
 """HTTP client with hook support for request/response interception."""
 
 import contextlib
-import json
 from typing import Any
 
 import httpx
@@ -137,7 +136,7 @@ class HookableHTTPClient(httpx.AsyncClient):
             if self.hook_manager:
                 # Read response content FIRST before any other processing
                 response_content = response.content
-                
+
                 response_context = {
                     **request_context,  # Include request info
                     "status_code": response.status_code,
@@ -151,13 +150,20 @@ class HookableHTTPClient(httpx.AsyncClient):
                         # Try to parse the raw content as JSON
                         try:
                             import json
-                            response_context["response_body"] = json.loads(response_content.decode('utf-8'))
+
+                            response_context["response_body"] = json.loads(
+                                response_content.decode("utf-8")
+                            )
                         except Exception:
                             # If JSON parsing fails, include as text
-                            response_context["response_body"] = response_content.decode('utf-8', errors='replace')
+                            response_context["response_body"] = response_content.decode(
+                                "utf-8", errors="replace"
+                            )
                     else:
                         # For non-JSON content, include as text
-                        response_context["response_body"] = response_content.decode('utf-8', errors='replace')
+                        response_context["response_body"] = response_content.decode(
+                            "utf-8", errors="replace"
+                        )
                 except Exception:
                     # Last resort - include as bytes
                     response_context["response_body"] = response_content
@@ -176,6 +182,7 @@ class HookableHTTPClient(httpx.AsyncClient):
 
                 # Recreate response with the consumed content so it can be consumed again
                 import httpx
+
                 try:
                     recreated_response = httpx.Response(
                         status_code=response.status_code,
@@ -292,7 +299,6 @@ class HookableHTTPClient(httpx.AsyncClient):
                 json=json,
                 **kwargs,
             ) as response:
-
                 # For streaming responses, we need to collect all chunks first
                 # to provide complete response body to hooks
                 if self.hook_manager:
@@ -300,10 +306,10 @@ class HookableHTTPClient(httpx.AsyncClient):
                     response_chunks = []
                     async for chunk in response.aiter_bytes():
                         response_chunks.append(chunk)
-                    
+
                     # Combine all chunks to get complete response body
-                    response_content = b''.join(response_chunks)
-                    
+                    response_content = b"".join(response_chunks)
+
                     response_context = {
                         **request_context,  # Include request info
                         "status_code": response.status_code,
@@ -316,13 +322,19 @@ class HookableHTTPClient(httpx.AsyncClient):
                         if "application/json" in content_type:
                             # Try to parse the raw content as JSON
                             try:
-                                response_context["response_body"] = json.loads(response_content.decode('utf-8'))
+                                response_context["response_body"] = json.loads(
+                                    response_content.decode("utf-8")
+                                )
                             except Exception:
                                 # If JSON parsing fails, include as text
-                                response_context["response_body"] = response_content.decode('utf-8', errors='replace')
+                                response_context["response_body"] = (
+                                    response_content.decode("utf-8", errors="replace")
+                                )
                         else:
                             # For non-JSON content, include as text
-                            response_context["response_body"] = response_content.decode('utf-8', errors='replace')
+                            response_context["response_body"] = response_content.decode(
+                                "utf-8", errors="replace"
+                            )
                     except Exception:
                         # Last resort - include as bytes
                         response_context["response_body"] = response_content
