@@ -5,7 +5,6 @@ from collections.abc import Awaitable, Callable
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
-from structlog import get_logger
 
 from ccproxy.core.errors import (
     AuthenticationError,
@@ -25,6 +24,7 @@ from ccproxy.core.errors import (
     TransformationError,
     ValidationError,
 )
+from ccproxy.core.logging import get_logger
 
 
 logger = get_logger(__name__)

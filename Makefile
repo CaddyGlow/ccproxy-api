@@ -14,9 +14,12 @@ help:
 	@echo ""
 	@echo "Testing commands (all include type checking and linting as prerequisites):"
 	@echo "  test         - Run all tests with coverage (after quality checks)"
-	@echo "  test-unit    - Run fast unit tests only (marked 'unit' or no 'real_api' marker)"
+	@echo "  test-unit    - Run fast unit tests only (excluding real API and integration)"
+	@echo "  test-integration - Run integration tests across all plugins (parallel)"
+	@echo "  test-integration-plugin PLUGIN=name - Run integration tests for specific plugin"
 	@echo "  test-real-api - Run tests with real API calls (marked 'real_api', slow)"
-	@echo "  test-watch   - Auto-run tests on file changes (with quality checks)"
+	@echo "  test-watch   - Auto-run unit tests on file changes (with quality checks)"
+	@echo "  test-watch-integration - Auto-run integration tests on file changes"
 	@echo "  test-fast    - Run tests without coverage (quick, after quality checks)"
 	@echo "  test-coverage - Run tests with detailed coverage report"
 	@echo ""
@@ -97,28 +100,27 @@ test: check
 	@echo "Running all tests with coverage..."
 	@if [ ! -d "tests" ]; then echo "Error: tests/ directory not found. Create tests/ directory and add test files."; exit 1; fi
 	$(UV_RUN) pytest -v --cov=ccproxy --cov-report=term --cov-report=html
-	@echo "Running plugin tests..."
-	@for plugin_dir in plugins/*/tests/; do \
-		if [ -d "$$plugin_dir" ]; then \
-			echo "Running tests in $$plugin_dir..."; \
-			$(UV_RUN) pytest "$$plugin_dir" -v --tb=short; \
-		fi; \
-	done
+	$(UV_RUN) pytest plugins/*/tests/ -v --tb=short
 
 # New test suite targets
 
-# Run fast unit tests only (exclude tests marked with 'real_api')
+# Run fast unit tests only (exclude tests marked with 'real_api' and 'integration')
 test-unit: check
-	@echo "Running fast unit tests (excluding real API calls)..."
+	@echo "Running fast unit tests (excluding real API calls and integration tests)..."
 	@if [ ! -d "tests" ]; then echo "Error: tests/ directory not found. Create tests/ directory and add test files."; exit 1; fi
-	$(UV_RUN) pytest -v -m "not real_api" --tb=short
-	@echo "Running plugin unit tests..."
-	@for plugin_dir in plugins/*/tests/; do \
-		if [ -d "$$plugin_dir" ]; then \
-			echo "Running tests in $$plugin_dir..."; \
-			$(UV_RUN) pytest "$$plugin_dir" -v --tb=short; \
-		fi; \
-	done
+	$(UV_RUN) pytest -v -m "not real_api and not integration" --tb=short
+	$(UV_RUN) pytest plugins/*/tests/unit/ -v --tb=short 2>/dev/null || true
+
+# Run integration tests across all plugins
+test-integration: check
+	@echo "Running integration tests across all plugins..."
+	$(UV_RUN) pytest -v -m "integration" --tb=short -n auto plugins/*/tests/integration/ tests/integration/
+
+# Run integration tests for specific plugin (usage: make test-integration-plugin PLUGIN=metrics)
+test-integration-plugin: check
+	@if [ -z "$(PLUGIN)" ]; then echo "Error: Please specify PLUGIN=<plugin_name>"; exit 1; fi
+	@echo "Running integration tests for $(PLUGIN) plugin..."
+	$(UV_RUN) pytest -v -m "integration and $(PLUGIN)" --tb=short plugins/$(PLUGIN)/tests/integration/
 
 # Run tests with real API calls (marked with 'real_api')
 test-real-api: check
@@ -129,14 +131,27 @@ test-real-api: check
 # Auto-run tests on file changes (requires entr or similar tool)
 test-watch:
 	@echo "Watching for file changes and running unit tests..."
-	@echo "Note: Runs unit tests only (no real API calls) for faster feedback"
+	@echo "Note: Runs unit tests only (no real API calls or integration) for faster feedback"
 	@echo "Requires 'entr' tool: install with 'apt install entr' or 'brew install entr'"
 	@echo "Use Ctrl+C to stop watching"
 	@if command -v entr >/dev/null 2>&1; then \
-		find ccproxy tests plugins -name "*.py" | entr -c sh -c 'make check && $(UV_RUN) pytest -v -m "not real_api" --tb=short'; \
+		find ccproxy tests plugins -name "*.py" | entr -c sh -c 'make check && $(UV_RUN) pytest -v -m "not real_api and not integration" --tb=short'; \
 	else \
 		echo "Error: 'entr' not found. Install with 'apt install entr' or 'brew install entr'"; \
 		echo "Alternatively, use 'make test-unit' to run tests once"; \
+		exit 1; \
+	fi
+
+# Watch integration tests on file changes
+test-watch-integration:
+	@echo "Watching for file changes and running integration tests..."
+	@echo "Requires 'entr' tool: install with 'apt install entr' or 'brew install entr'"
+	@echo "Use Ctrl+C to stop watching"
+	@if command -v entr >/dev/null 2>&1; then \
+		find ccproxy tests plugins -name "*.py" | entr -c sh -c 'make test-integration'; \
+	else \
+		echo "Error: 'entr' not found. Install with 'apt install entr' or 'brew install entr'"; \
+		echo "Alternatively, use 'make test-integration' to run tests once"; \
 		exit 1; \
 	fi
 

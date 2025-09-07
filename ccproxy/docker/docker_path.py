@@ -4,7 +4,8 @@ from pathlib import Path
 from typing import Self
 
 from pydantic import BaseModel, field_validator
-from structlog import get_logger
+
+from ccproxy.core.logging import get_logger
 
 
 logger = get_logger(__name__)

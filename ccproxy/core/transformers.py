@@ -3,8 +3,7 @@
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Any, Protocol, TypeVar, runtime_checkable
 
-from structlog import get_logger
-
+from ccproxy.core.logging import get_logger
 from ccproxy.core.types import ProxyRequest, ProxyResponse, TransformContext
 
 

@@ -6,8 +6,8 @@ from typing import Any, Literal
 
 import httpx
 from pydantic import ValidationError
-from structlog import get_logger
 
+from ccproxy.core.logging import get_logger
 from ccproxy.utils.model_mapping import (
     get_claude_aliases_mapping,
     is_openai_model,

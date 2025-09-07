@@ -84,7 +84,7 @@ except ImportError:
     CollectorRegistry = _DummyCollectorRegistry  # type: ignore[misc,assignment]
 
 
-from structlog import get_logger
+from ccproxy.core.logging import get_logger
 
 
 logger = get_logger(__name__)

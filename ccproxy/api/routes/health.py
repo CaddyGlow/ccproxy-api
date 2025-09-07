@@ -13,9 +13,9 @@ from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import APIRouter, Response, status
-from structlog import get_logger
 
 from ccproxy.core import __version__
+from ccproxy.core.logging import get_logger
 
 
 router = APIRouter()

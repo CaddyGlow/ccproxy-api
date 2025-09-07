@@ -7,7 +7,7 @@ from contextlib import asynccontextmanager, contextmanager
 from pathlib import Path
 from typing import Any, TypeVar, cast
 
-from structlog import get_logger
+from ccproxy.core.logging import get_logger
 
 
 T = TypeVar("T")

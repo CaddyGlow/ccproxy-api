@@ -1,72 +1,51 @@
 import pytest
-from httpx import ASGITransport, AsyncClient
-
-from ccproxy.api.app import create_app, initialize_plugins_startup
-from ccproxy.api.bootstrap import create_service_container
-from ccproxy.config.settings import Settings
 
 
 pytestmark = [pytest.mark.integration, pytest.mark.metrics]
 
 
 @pytest.mark.asyncio
-async def test_metrics_route_available_when_metrics_plugin_enabled() -> None:
-    settings = Settings(
-        enable_plugins=True,
-        plugins={
-            "metrics": {
-                "enabled": True,
-                "metrics_endpoint_enabled": True,
-            }
-        },
-    )
-
-    service_container = create_service_container(settings)
-    app = create_app(service_container)
-    # Initialize plugins (bypassing ASGI lifespan for test environment)
-    await initialize_plugins_startup(app, settings)
-
-    transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as client:
-        resp = await client.get("/metrics")
-        assert resp.status_code == 200
-        # Prometheus exposition format usually starts with HELP/TYPE lines
-        assert b"# HELP" in resp.content or b"# TYPE" in resp.content
+async def test_metrics_route_available_when_metrics_plugin_enabled(
+    metrics_integration_client,
+) -> None:
+    """Test that metrics route is available when metrics plugin is enabled."""
+    resp = await metrics_integration_client.get("/metrics")
+    assert resp.status_code == 200
+    # Prometheus exposition format usually starts with HELP/TYPE lines
+    assert b"# HELP" in resp.content or b"# TYPE" in resp.content
 
 
 @pytest.mark.asyncio
-async def test_metrics_route_absent_when_plugins_disabled() -> None:
-    settings = Settings(enable_plugins=False)
-    service_container = create_service_container(settings)
-    app = create_app(service_container)
-    # Do not initialize plugins; verify /metrics is not mounted
-
-    transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as client:
-        resp = await client.get("/metrics")
-        # With plugins disabled, core does not mount /metrics
-        assert resp.status_code == 404
+async def test_metrics_route_absent_when_plugins_disabled(
+    disabled_plugins_client,
+) -> None:
+    """Test that metrics route is absent when plugins are disabled."""
+    resp = await disabled_plugins_client.get("/metrics")
+    # With plugins disabled, core does not mount /metrics
+    assert resp.status_code == 404
 
 
 @pytest.mark.asyncio
-async def test_metrics_health_when_plugin_enabled() -> None:
-    settings = Settings(
-        enable_plugins=True,
-        plugins={
+async def test_metrics_endpoint_with_custom_config(integration_client_factory) -> None:
+    """Test metrics endpoint with custom configuration."""
+    client = await integration_client_factory(
+        {
             "metrics": {
                 "enabled": True,
                 "metrics_endpoint_enabled": True,
+                "include_labels": True,
             }
-        },
+        }
     )
-
-    service_container = create_service_container(settings)
-    app = create_app(service_container)
-    await initialize_plugins_startup(app, settings)
-
-    transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as client:
-        resp = await client.get("/metrics/health")
+    async with client:
+        resp = await client.get("/metrics")
         assert resp.status_code == 200
-        data = resp.json()
-        assert data.get("status") in {"healthy", "disabled"}
+
+
+@pytest.mark.asyncio
+async def test_metrics_health_when_plugin_enabled(metrics_integration_client) -> None:
+    """Test metrics health endpoint when plugin is enabled."""
+    resp = await metrics_integration_client.get("/metrics/health")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data.get("status") in {"healthy", "disabled"}

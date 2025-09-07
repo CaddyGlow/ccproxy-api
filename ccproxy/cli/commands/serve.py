@@ -8,7 +8,6 @@ from typing import Annotated, Any
 import typer
 import uvicorn
 from click import get_current_context
-from structlog import get_logger
 
 from ccproxy.cli.helpers import (
     get_rich_toolkit,
@@ -20,6 +19,7 @@ from ccproxy.config.settings import (
     Settings,
 )
 from ccproxy.core._version import __version__
+from ccproxy.core.logging import get_logger
 from ccproxy.docker import (
     create_docker_adapter,
 )

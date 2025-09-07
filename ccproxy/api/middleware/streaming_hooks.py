@@ -206,7 +206,9 @@ class StreamingResponseWithHooks(StreamingResponse):
                             try:
                                 from typing import cast as _cast
 
-                                headers_dict = _cast(dict[str, str], headers_obj.to_dict())
+                                headers_dict = _cast(
+                                    dict[str, str], headers_obj.to_dict()
+                                )
                             except Exception:
                                 headers_dict = {}
                             content_type = headers_dict.get("content-type", "")

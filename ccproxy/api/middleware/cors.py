@@ -4,9 +4,9 @@ from typing import Any
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from structlog import get_logger
 
 from ccproxy.config.settings import Settings
+from ccproxy.core.logging import get_logger
 
 
 logger = get_logger(__name__)

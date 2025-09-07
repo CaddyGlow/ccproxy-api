@@ -4,7 +4,8 @@ from typing import Any
 
 from fastapi import Response
 from starlette.types import Receive, Scope, Send
-from structlog import get_logger
+
+from ccproxy.core.logging import get_logger
 
 
 logger = get_logger()

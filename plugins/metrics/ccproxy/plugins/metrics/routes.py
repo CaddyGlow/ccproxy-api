@@ -3,7 +3,8 @@
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Response
-from structlog import get_logger
+
+from ccproxy.core.logging import get_logger
 
 from .collector import PrometheusMetrics
 

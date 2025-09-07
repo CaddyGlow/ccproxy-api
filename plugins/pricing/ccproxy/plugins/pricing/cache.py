@@ -5,7 +5,8 @@ import time
 from typing import Any
 
 import httpx
-from structlog import get_logger
+
+from ccproxy.core.logging import get_logger
 
 from .config import PricingConfig
 

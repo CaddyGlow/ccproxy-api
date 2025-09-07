@@ -344,7 +344,7 @@ class TestStreamProcess:
 
     async def test_logger_output_middleware(self) -> None:
         """Test LoggerOutputMiddleware functionality."""
-        from structlog import get_logger
+        from ccproxy.core.logging import get_logger
 
         logger = get_logger("test")
         middleware = LoggerOutputMiddleware(logger)
@@ -432,8 +432,7 @@ class TestStreamProcess:
 
     def test_chained_middleware_creation(self) -> None:
         """Test creation of chained middleware."""
-        from structlog import get_logger
-
+        from ccproxy.core.logging import get_logger
         from ccproxy.docker.middleware import create_chained_docker_middleware
 
         logger = get_logger("test")

@@ -2,7 +2,7 @@
 
 from typing import Any
 
-from structlog import get_logger
+from ccproxy.core.logging import get_logger
 
 from .stream_process import OutputMiddleware, create_chained_middleware
 

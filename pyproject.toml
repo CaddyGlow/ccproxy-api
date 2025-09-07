@@ -498,3 +498,12 @@ useLibraryCodeForTypes = true
 
 [dependency-groups]
 plugins = ["ccproxy-plugin-claude-sdk"]
+test = [
+    "pytest",
+    "pytest-asyncio",
+    "pytest-cov",
+    "pytest-timeout",
+    "pytest-env",
+    "pytest-httpx",
+    "pytest-xdist",  # For parallel test execution
+]

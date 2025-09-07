@@ -5,7 +5,8 @@ from typing import Any
 
 import httpx
 from pydantic import ValidationError
-from structlog import get_logger
+
+from ccproxy.core.logging import get_logger
 
 from .cache import PricingCache
 from .config import PricingConfig

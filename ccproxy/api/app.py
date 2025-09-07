@@ -454,6 +454,9 @@ def create_app(service_container: ServiceContainer | None = None) -> FastAPI:
     if not structlog.is_configured():
         json_logs = settings.logging.format == "json"
 
+        logger.error(
+            "structlog_not_configured", category="lifecycle", settings=settings
+        )
         setup_logging(
             json_logs=json_logs,
             log_level_name=settings.logging.level,

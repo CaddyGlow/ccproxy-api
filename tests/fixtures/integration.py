@@ -1,0 +1,151 @@
+"""Fast integration test fixtures for plugin testing.
+
+Provides reusable, high-performance fixtures for testing CCProxy plugins
+with minimal startup overhead and proper isolation.
+"""
+
+from typing import Any
+from unittest.mock import AsyncMock, patch
+
+import pytest
+from fastapi import FastAPI
+from httpx import ASGITransport, AsyncClient
+
+from ccproxy.api.app import create_app, initialize_plugins_startup
+from ccproxy.api.bootstrap import create_service_container
+from ccproxy.config.settings import Settings
+from ccproxy.services.container import ServiceContainer
+
+
+@pytest.fixture(scope="session")
+def base_integration_settings() -> Settings:
+    """Base settings for integration tests with minimal overhead."""
+    return Settings(
+        enable_plugins=True,
+        # Disable expensive features for faster tests
+        logging={
+            "level": "WARNING",  # Reduce log noise
+            "enable_plugin_logging": False,
+            "verbose_api": False,
+        },
+        # Minimal server config
+        server={
+            "host": "127.0.0.1",
+            "port": 0,  # Let OS choose port
+        },
+    )
+
+
+@pytest.fixture(scope="session")
+async def base_service_container(
+    base_integration_settings: Settings,
+) -> ServiceContainer:
+    """Shared service container for integration tests."""
+    return create_service_container(base_integration_settings)
+
+
+@pytest.fixture
+async def integration_app_factory():
+    """Factory for creating FastAPI apps with plugin configurations."""
+
+    async def _create_app(plugin_configs: dict[str, dict[str, Any]]) -> FastAPI:
+        """Create app with specific plugin configuration.
+
+        Args:
+            plugin_configs: Dict mapping plugin names to their configuration
+                          e.g., {"metrics": {"enabled": True, "metrics_endpoint_enabled": True}}
+        """
+        # Set up logging manually for test environment
+        # setup_logging(json_logs=False, log_level_name="WARNING")
+
+        settings = Settings(
+            enable_plugins=True,
+            plugins=plugin_configs,
+            logging={
+                "level": "WARNING",
+                "enable_plugin_logging": False,
+                "verbose_api": False,
+            },
+        )
+
+        service_container = create_service_container(settings)
+        app = create_app(service_container)
+        await initialize_plugins_startup(app, settings)
+
+        return app
+
+    return _create_app
+
+
+@pytest.fixture
+def integration_client_factory(integration_app_factory):
+    """Factory for creating HTTP clients with plugin configurations."""
+
+    async def _create_client(plugin_configs: dict[str, dict[str, Any]]):
+        """Create HTTP client with specific plugin configuration."""
+        app = await integration_app_factory(plugin_configs)
+
+        transport = ASGITransport(app=app)
+        return AsyncClient(transport=transport, base_url="http://test")
+
+    return _create_client
+
+
+@pytest.fixture
+async def metrics_integration_client(integration_app_factory):
+    """Pre-configured client for metrics plugin integration tests."""
+    app = await integration_app_factory(
+        {
+            "metrics": {
+                "enabled": True,
+                "metrics_endpoint_enabled": True,
+            }
+        }
+    )
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        yield client
+
+
+@pytest.fixture
+async def disabled_plugins_client(integration_app_factory):
+    """Client with all plugins disabled for negative testing."""
+    app = await integration_app_factory({})
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        yield client
+
+
+# Mock fixtures for external dependencies
+@pytest.fixture
+def mock_external_apis():
+    """Mock external API calls for isolated integration tests."""
+    with (
+        patch("httpx.AsyncClient.post") as mock_post,
+        patch("httpx.AsyncClient.get") as mock_get,
+    ):
+        # Configure common mock responses
+        mock_post.return_value = AsyncMock(
+            status_code=200, json=AsyncMock(return_value={})
+        )
+        mock_get.return_value = AsyncMock(
+            status_code=200, json=AsyncMock(return_value={})
+        )
+
+        yield {
+            "post": mock_post,
+            "get": mock_get,
+        }
+
+
+@pytest.fixture
+def plugin_integration_markers():
+    """Helper for consistent test marking across plugins."""
+
+    def mark_test(plugin_name: str):
+        """Apply consistent markers to plugin integration tests."""
+        return pytest.mark.parametrize("", [()], ids=[f"{plugin_name}_integration"])
+
+    return mark_test

@@ -7,7 +7,7 @@ import subprocess
 from pathlib import Path
 from typing import cast
 
-from structlog import get_logger
+from ccproxy.core.logging import get_logger
 
 from .middleware import LoggerOutputMiddleware
 from .models import DockerUserContext

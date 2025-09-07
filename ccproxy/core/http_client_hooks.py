@@ -2,8 +2,7 @@
 
 import contextlib
 import json as jsonlib
-from collections.abc import AsyncIterator, Iterable, Sequence
-from collections.abc import Iterable as TypingIterable
+from collections.abc import AsyncIterator, Sequence
 from typing import Any, cast
 
 import httpx
@@ -53,7 +52,9 @@ class HookableHTTPClient(httpx.AsyncClient):
             if hasattr(headers, "items") and callable(headers.items):  # mapping/Headers
                 return [(str(k), str(v)) for k, v in cast(Any, headers).items()]
             # Sequence of pairs
-            return [(str(k), str(v)) for k, v in cast(Sequence[tuple[Any, Any]], headers)]
+            return [
+                (str(k), str(v)) for k, v in cast(Sequence[tuple[Any, Any]], headers)
+            ]
         except Exception:
             return []
 

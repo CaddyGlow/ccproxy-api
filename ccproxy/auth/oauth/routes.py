@@ -7,7 +7,6 @@ import httpx
 from fastapi import APIRouter, Query, Request
 from fastapi.responses import HTMLResponse
 from pydantic import ValidationError
-from structlog import get_logger
 
 from ccproxy.auth.exceptions import (
     CredentialsStorageError,
@@ -15,6 +14,7 @@ from ccproxy.auth.exceptions import (
     OAuthTokenRefreshError,
 )
 from ccproxy.auth.oauth.registry import OAuthRegistry
+from ccproxy.core.logging import get_logger
 
 
 logger = get_logger(__name__)
