@@ -325,6 +325,9 @@ python_files = ["test_*.py", "*_test.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
 
+timeout = 15
+timeout_method = "thread"
+
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 
@@ -372,10 +375,6 @@ markers = [
   "skip_ci: Tests to skip in CI environment",
   "performance: Performance and micro-benchmark oriented tests",
 ]
-
-[tool.pytest_timeout]
-timeout = 30
-timeout_method = "thread"
 
 [tool.bandit]
 exclude_dirs = ["tests", "docs", "scripts", "examples"]

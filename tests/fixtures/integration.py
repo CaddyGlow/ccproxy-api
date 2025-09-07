@@ -61,6 +61,13 @@ def integration_app_factory():
 
         setup_logging(json_logs=False, log_level_name="ERROR")
 
+        # Explicitly disable known default-on system plugins that can cause I/O
+        # side effects in isolated test environments unless requested.
+        plugin_configs = {
+            "duckdb_storage": {"enabled": False},
+            **plugin_configs,
+        }
+
         settings = Settings(
             enable_plugins=True,
             plugins=plugin_configs,
