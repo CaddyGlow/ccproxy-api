@@ -179,7 +179,7 @@ class JSONFormatter:
         )
         # Also capture ordered pairs to preserve duplicates perfectly
         try:
-            headers_pairs = list(headers.items())  # type: ignore[attr-defined]
+            headers_pairs = list(headers.items())
         except Exception:
             headers_pairs = list(headers_dict.items())
 
@@ -315,7 +315,7 @@ class JSONFormatter:
             headers.to_dict() if hasattr(headers, "to_dict") else dict(headers)
         )
         try:
-            headers_pairs = list(headers.items())  # type: ignore[attr-defined]
+            headers_pairs = list(headers.items())
         except Exception:
             headers_pairs = list(headers_dict.items())
 

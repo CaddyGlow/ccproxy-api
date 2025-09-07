@@ -70,7 +70,7 @@ class RequestProcessor:
         import inspect as _inspect
 
         if _inspect.isawaitable(processed_headers):
-            processed_headers = await processed_headers  # type: ignore[assignment]
+            processed_headers = await processed_headers
 
         # Canonicalize header names and preserve order after transformation
         # unless handler configuration explicitly requests preserving header case
@@ -426,7 +426,7 @@ class RequestProcessor:
                 headers, **kwargs
             )
             # Do not await here; caller handles awaitable results
-            return result  # type: ignore[return-value]
+            return result
         except TypeError as te:
             # Fallback to no kwargs if transformer doesn't accept them
             self.logger.debug(
@@ -435,7 +435,7 @@ class RequestProcessor:
             )
             try:
                 result = handler_config.request_transformer.transform_headers(headers)
-                return result  # type: ignore[return-value]
+                return result
             except Exception as e:
                 self.logger.warning(
                     "request_header_transform_error",

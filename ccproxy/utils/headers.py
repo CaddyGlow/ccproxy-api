@@ -148,7 +148,7 @@ class HeaderBag:
         Prefers response.raw_headers; falls back to response.headers.items().
         """
         try:
-            raw = response.raw_headers  # list[tuple[bytes, bytes]]
+            raw = getattr(response, "raw_headers", None)  # list[tuple[bytes, bytes]]
             if isinstance(raw, list):
                 pairs = ((k.decode("latin-1"), v.decode("latin-1")) for k, v in raw)
                 return cls.from_pairs(pairs, case_mode=case_mode)

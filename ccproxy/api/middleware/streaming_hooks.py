@@ -199,9 +199,20 @@ class StreamingResponseWithHooks(StreamingResponse):
                     response_text = full_response_body.decode("utf-8", errors="replace")
 
                     # Check if it looks like JSON
-                    content_type = http_response_context.get(
-                        "response_headers", {}
-                    ).get("content-type", "")
+                    headers_obj = http_response_context.get("response_headers")
+                    content_type = ""
+                    if headers_obj is not None:
+                        if hasattr(headers_obj, "to_dict"):
+                            try:
+                                from typing import cast as _cast
+
+                                headers_dict = _cast(dict[str, str], headers_obj.to_dict())
+                            except Exception:
+                                headers_dict = {}
+                            content_type = headers_dict.get("content-type", "")
+                        elif isinstance(headers_obj, dict):
+                            content_type = headers_obj.get("content-type", "")
+
                     if "application/json" in content_type:
                         try:
                             import json
@@ -220,7 +231,10 @@ class StreamingResponseWithHooks(StreamingResponse):
                     http_response_context["response_body"] = full_response_body
 
             # Emit HTTP_RESPONSE hook
-            await self.hook_manager.emit(HookEvent.HTTP_RESPONSE, http_response_context)
+            if self.hook_manager:
+                await self.hook_manager.emit(
+                    HookEvent.HTTP_RESPONSE, http_response_context
+                )
 
         except Exception:
             # Silently ignore HTTP hook emission errors

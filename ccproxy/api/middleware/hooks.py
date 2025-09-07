@@ -358,7 +358,9 @@ class HooksMiddleware(BaseHTTPMiddleware):
         try:
             # Check if body is already cached
             if hasattr(request.state, "cached_body"):
-                return request.state.cached_body
+                from typing import cast as _cast
+
+                return _cast(bytes, request.state.cached_body)
 
             # Read and cache body for future use
             body = await request.body()
@@ -396,6 +398,9 @@ class HooksMiddleware(BaseHTTPMiddleware):
                     has_body_attr=hasattr(response, "body"),
                     body_truthy=bool(response.body),
                 )
+                # Ensure return type is bytes
+                if isinstance(body_data, memoryview):
+                    return body_data.tobytes()
                 return body_data
 
             logger.debug(

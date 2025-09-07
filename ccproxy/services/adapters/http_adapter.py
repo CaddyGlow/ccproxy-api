@@ -98,7 +98,7 @@ class BaseHTTPAdapter(BaseAdapter):
         self._buffer_service = buffer_service
 
         # Store context for plugin-specific needs
-        self.context = context or {}
+        self.context: PluginContext | dict[str, Any] = context or {}
 
         # Initialize transformers (can be overridden by subclasses)
         self._request_transformer = request_transformer
@@ -185,7 +185,7 @@ class BaseHTTPAdapter(BaseAdapter):
         # Get chatgpt_account_id from user profile if available
         chatgpt_account_id = None
         try:
-            user_profile = await self._auth_manager.get_profile()
+            user_profile = await self._auth_manager.get_user_profile()
             logger.debug(
                 "auth_profile_extraction",
                 has_profile=user_profile is not None,

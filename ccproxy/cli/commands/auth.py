@@ -4,7 +4,7 @@ import asyncio
 import contextlib
 import logging
 import os
-from typing import Annotated, Any
+from typing import Annotated, Any, cast
 
 import structlog
 import typer
@@ -229,10 +229,10 @@ async def _lazy_register_oauth_provider(
             # For CLI use, we may not need full pool management
             # Return a simple wrapper or the http_client itself
             class MinimalPoolManager:
-                def __init__(self, client):
+                def __init__(self, client: Any) -> None:
                     self.client = client
 
-                def get_client(self):
+                def get_client(self) -> Any:
                     return self.client
 
             return MinimalPoolManager(self.http_client)
@@ -248,9 +248,11 @@ async def _lazy_register_oauth_provider(
             # For CLI context, we may not need full format registry functionality
             # Create a minimal registry if needed, or return None
             try:
-                from ccproxy.services.format_registry import FormatRegistry
+                from ccproxy.services.adapters.format_registry import (
+                    FormatAdapterRegistry,
+                )
 
-                return FormatRegistry()
+                return FormatAdapterRegistry()
             except ImportError:
                 # Fallback for minimal CLI operations
                 return None
@@ -263,9 +265,15 @@ async def _lazy_register_oauth_provider(
 
         if _asyncio.get_event_loop().is_running():
             # In practice, we're already in async context; just await directly
-            await plugin_registry.initialize_all(core_services)
+            from ccproxy.core.services import CoreServices
+
+            await plugin_registry.initialize_all(cast(CoreServices, core_services))
         else:  # pragma: no cover - defensive path
-            _asyncio.run(plugin_registry.initialize_all(core_services))
+            from ccproxy.core.services import CoreServices
+
+            _asyncio.run(
+                plugin_registry.initialize_all(cast(CoreServices, core_services))
+            )
     except Exception as e:
         logger.debug(
             "plugin_initialization_failed_cli",

@@ -124,7 +124,7 @@ async def initialize_plugins_startup(app: FastAPI, settings: Settings) -> None:
                     )
             return {}
 
-        def get_format_registry(self):
+        def get_format_registry(self) -> Any:
             """Get format adapter registry service instance."""
             return self._container.get_format_registry()
 
@@ -135,7 +135,11 @@ async def initialize_plugins_startup(app: FastAPI, settings: Settings) -> None:
     for _name, factory in plugin_registry.factories.items():
         factory.create_context(core_services)
 
-    await plugin_registry.initialize_all(core_services)
+    from typing import cast as _cast
+
+    from ccproxy.core.services import CoreServices as _CoreServices
+
+    await plugin_registry.initialize_all(_cast(_CoreServices, core_services))
 
     logger.info(
         "plugins_initialization_completed",

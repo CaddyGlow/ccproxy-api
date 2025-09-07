@@ -1,7 +1,10 @@
 """HTTP client with hook support for request/response interception."""
 
 import contextlib
-from typing import Any
+import json as jsonlib
+from collections.abc import AsyncIterator, Iterable, Sequence
+from collections.abc import Iterable as TypingIterable
+from typing import Any, cast
 
 import httpx
 from httpx._types import (
@@ -35,6 +38,25 @@ class HookableHTTPClient(httpx.AsyncClient):
         super().__init__(*args, **kwargs)
         self.hook_manager = hook_manager
 
+    @staticmethod
+    def _normalize_header_pairs(
+        headers: HeaderTypes | None,
+    ) -> list[tuple[str, str]]:
+        """Normalize various httpx header types into string pairs.
+
+        Accepts mapping-like objects, httpx.Headers, or sequences of pairs.
+        Ensures keys/values are converted to ``str`` and preserves order.
+        """
+        if not headers:
+            return []
+        try:
+            if hasattr(headers, "items") and callable(headers.items):  # mapping/Headers
+                return [(str(k), str(v)) for k, v in cast(Any, headers).items()]
+            # Sequence of pairs
+            return [(str(k), str(v)) for k, v in cast(Sequence[tuple[Any, Any]], headers)]
+        except Exception:
+            return []
+
     async def request(
         self,
         method: str,
@@ -60,11 +82,8 @@ class HookableHTTPClient(httpx.AsyncClient):
             "method": method,
             "url": str(url),
             "headers": HeaderBag.from_pairs(
-                headers.items() if hasattr(headers, "items") else headers or [],
-                case_mode="lower",
-            )
-            if headers
-            else HeaderBag(case_mode="lower"),
+                self._normalize_header_pairs(headers), case_mode="lower"
+            ),
         }
 
         # Try to get current request ID from RequestContext
@@ -87,16 +106,13 @@ class HookableHTTPClient(httpx.AsyncClient):
             # Handle content parameter - could be bytes, string, or other
             if isinstance(content, bytes | str):
                 try:
-                    # Try to parse as JSON if it's a string/bytes that looks like JSON
-                    import json as json_module
-
                     if isinstance(content, bytes):
                         content_str = content.decode("utf-8")
                     else:
                         content_str = content
 
                     if content_str.strip().startswith(("{", "[")):
-                        request_context["body"] = json_module.loads(content_str)
+                        request_context["body"] = jsonlib.loads(content_str)
                         request_context["is_json"] = True
                     else:
                         request_context["body"] = content
@@ -157,9 +173,7 @@ class HookableHTTPClient(httpx.AsyncClient):
                     if "application/json" in content_type:
                         # Try to parse the raw content as JSON
                         try:
-                            import json
-
-                            response_context["response_body"] = json.loads(
+                            response_context["response_body"] = jsonlib.loads(
                                 response_content.decode("utf-8")
                             )
                         except Exception:
@@ -248,7 +262,7 @@ class HookableHTTPClient(httpx.AsyncClient):
         headers: HeaderTypes | None = None,
         json: Any | None = None,
         **kwargs: Any,
-    ):
+    ) -> AsyncIterator[httpx.Response]:
         """Make a streaming HTTP request with hook emissions.
 
         This method emits HTTP hooks for streaming requests, capturing the complete
@@ -264,11 +278,8 @@ class HookableHTTPClient(httpx.AsyncClient):
             "method": method,
             "url": str(url),
             "headers": HeaderBag.from_pairs(
-                headers.items() if hasattr(headers, "items") else headers or [],
-                case_mode="lower",
-            )
-            if headers
-            else HeaderBag(case_mode="lower"),
+                self._normalize_header_pairs(headers), case_mode="lower"
+            ),
         }
 
         # Try to get current request ID from RequestContext
@@ -337,7 +348,7 @@ class HookableHTTPClient(httpx.AsyncClient):
                         if "application/json" in content_type:
                             # Try to parse the raw content as JSON
                             try:
-                                response_context["response_body"] = json.loads(
+                                response_context["response_body"] = jsonlib.loads(
                                     response_content.decode("utf-8")
                                 )
                             except Exception:

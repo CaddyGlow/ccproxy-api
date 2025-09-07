@@ -423,8 +423,8 @@ class HTTPTracerHook(Hook):
             if headers is None:
                 return []
             if hasattr(headers, "items") and callable(headers.items):
-                return list(headers.items())  # type: ignore[no-any-return]
+                return [(str(k), str(v)) for k, v in headers.items()]
             # Already a sequence of pairs
-            return list(headers)
+            return [(str(k), str(v)) for k, v in headers]
         except Exception:
             return []

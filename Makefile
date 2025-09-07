@@ -93,10 +93,17 @@ fix: format lint-fix
 	ruff check . --fix --unsafe-fixes
 
 # Run all tests with coverage (after ensuring code quality)
-test: 
+test: check
 	@echo "Running all tests with coverage..."
 	@if [ ! -d "tests" ]; then echo "Error: tests/ directory not found. Create tests/ directory and add test files."; exit 1; fi
-	$(UV_RUN) pytest tests/ -v --cov=ccproxy --cov-report=term --cov-report=html
+	$(UV_RUN) pytest -v --cov=ccproxy --cov-report=term --cov-report=html
+	@echo "Running plugin tests..."
+	@for plugin_dir in plugins/*/tests/; do \
+		if [ -d "$$plugin_dir" ]; then \
+			echo "Running tests in $$plugin_dir..."; \
+			$(UV_RUN) pytest "$$plugin_dir" -v --tb=short; \
+		fi; \
+	done
 
 # New test suite targets
 
@@ -104,13 +111,20 @@ test:
 test-unit: check
 	@echo "Running fast unit tests (excluding real API calls)..."
 	@if [ ! -d "tests" ]; then echo "Error: tests/ directory not found. Create tests/ directory and add test files."; exit 1; fi
-	$(UV_RUN) pytest tests/ -v -m "not real_api" --tb=short
+	$(UV_RUN) pytest -v -m "not real_api" --tb=short
+	@echo "Running plugin unit tests..."
+	@for plugin_dir in plugins/*/tests/; do \
+		if [ -d "$$plugin_dir" ]; then \
+			echo "Running tests in $$plugin_dir..."; \
+			$(UV_RUN) pytest "$$plugin_dir" -v --tb=short; \
+		fi; \
+	done
 
 # Run tests with real API calls (marked with 'real_api')
 test-real-api: check
 	@echo "Running tests with real API calls (slow)..."
 	@if [ ! -d "tests" ]; then echo "Error: tests/ directory not found. Create tests/ directory and add test files."; exit 1; fi
-	$(UV_RUN) pytest tests/ -v -m "real_api" --tb=short
+	$(UV_RUN) pytest -v -m "real_api" --tb=short
 
 # Auto-run tests on file changes (requires entr or similar tool)
 test-watch:
@@ -119,7 +133,7 @@ test-watch:
 	@echo "Requires 'entr' tool: install with 'apt install entr' or 'brew install entr'"
 	@echo "Use Ctrl+C to stop watching"
 	@if command -v entr >/dev/null 2>&1; then \
-		find ccproxy tests -name "*.py" | entr -c sh -c 'make check && $(UV_RUN) pytest tests/ -v -m "not real_api" --tb=short'; \
+		find ccproxy tests plugins -name "*.py" | entr -c sh -c 'make check && $(UV_RUN) pytest -v -m "not real_api" --tb=short'; \
 	else \
 		echo "Error: 'entr' not found. Install with 'apt install entr' or 'brew install entr'"; \
 		echo "Alternatively, use 'make test-unit' to run tests once"; \
@@ -130,26 +144,55 @@ test-watch:
 test-fast: check
 	@echo "Running fast tests without coverage..."
 	@if [ ! -d "tests" ]; then echo "Error: tests/ directory not found. Create tests/ directory and add test files."; exit 1; fi
-	$(UV_RUN) pytest tests/ -v --tb=short
+	$(UV_RUN) pytest -v --tb=short
+	@echo "Running plugin tests..."
+	@for plugin_dir in plugins/*/tests/; do \
+		if [ -d "$$plugin_dir" ]; then \
+			echo "Running tests in $$plugin_dir..."; \
+			$(UV_RUN) pytest "$$plugin_dir" -v --tb=short; \
+		fi; \
+	done
 
 # Run tests with detailed coverage report (HTML + terminal)
 test-coverage: check
 	@echo "Running tests with detailed coverage report..."
 	@if [ ! -d "tests" ]; then echo "Error: tests/ directory not found. Create tests/ directory and add test files."; exit 1; fi
-	$(UV_RUN) pytest tests/ -v --cov=ccproxy --cov-report=term-missing --cov-report=html
+	$(UV_RUN) pytest -v --cov=ccproxy --cov-report=term-missing --cov-report=html
+	@echo "Running plugin tests for coverage..."
+	@for plugin_dir in plugins/*/tests/; do \
+		if [ -d "$$plugin_dir" ]; then \
+			echo "Running tests in $$plugin_dir..."; \
+			$(UV_RUN) pytest "$$plugin_dir" -v --tb=short; \
+		fi; \
+	done
 	@echo "HTML coverage report generated in htmlcov/"
+
+# Run plugin tests only
+test-plugins:
+	@echo "Running plugin tests..."
+	@failed_plugins=""; \
+	for plugin_dir in plugins/*/tests/; do \
+		if [ -d "$$plugin_dir" ]; then \
+			echo "Running tests in $$plugin_dir..."; \
+			$(UV_RUN) pytest "$$plugin_dir" -v --tb=short --no-cov || failed_plugins="$$failed_plugins $$plugin_dir"; \
+		fi; \
+	done; \
+	if [ -n "$$failed_plugins" ]; then \
+		echo "Plugin tests failed in:$$failed_plugins"; \
+		exit 1; \
+	fi
 
 # Run specific test file (with quality checks)
 test-file: check
-	@echo "Running specific test file: tests/$(FILE)"
+	@echo "Running specific test file: $(FILE)"
 	@if [ ! -d "tests" ]; then echo "Error: tests/ directory not found. Create tests/ directory and add test files."; exit 1; fi
-	$(UV_RUN) pytest tests/$(FILE) -v
+	$(UV_RUN) pytest $(FILE) -v
 
 # Run tests matching a pattern (with quality checks)
 test-match: check
 	@echo "Running tests matching pattern: $(MATCH)"
 	@if [ ! -d "tests" ]; then echo "Error: tests/ directory not found. Create tests/ directory and add test files."; exit 1; fi
-	$(UV_RUN) pytest tests/ -k "$(MATCH)" -v
+	$(UV_RUN) pytest -k "$(MATCH)" -v
 
 # Code quality
 lint:

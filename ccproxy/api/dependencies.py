@@ -40,7 +40,7 @@ def get_service(service_type: type[T]) -> Callable[[Request], T]:
             raise HTTPException(
                 status_code=503, detail="Service container not initialized"
             )
-        return cast(T, container.get_service(service_type))
+        return container.get_service(service_type)
 
     return _get_service
 

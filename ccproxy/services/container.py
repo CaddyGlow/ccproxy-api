@@ -42,8 +42,8 @@ class ServiceContainer:
     def __init__(self, settings: Settings) -> None:
         """Initialize the service container."""
         self.settings = settings
-        self._services: dict[type[Any], Any] = {}
-        self._factories: dict[type[Any], Callable[[], Any]] = {}
+        self._services: dict[object, Any] = {}
+        self._factories: dict[object, Callable[[], Any]] = {}
 
         self.register_service(Settings, self.settings)
         self.register_service(ServiceContainer, self)
@@ -58,7 +58,7 @@ class ServiceContainer:
 
     def register_service(
         self,
-        service_type: type[Any],
+        service_type: object,
         instance: Any | None = None,
         factory: Callable[[], Any] | None = None,
     ) -> None:
@@ -79,11 +79,14 @@ class ServiceContainer:
                 # Best-effort name for error messages
                 type_name = getattr(service_type, "__name__", str(service_type))
                 raise ValueError(f"Service {type_name} not registered")
-        return self._services[service_type]
+        return cast(T, self._services[service_type])
 
     def get_request_tracer(self) -> IRequestTracer:
         """Get request tracer service instance."""
-        return cast(IRequestTracer, self.get_service(IRequestTracer))
+        service = self._services.get(IRequestTracer)
+        if service is None:
+            raise ValueError("Service IRequestTracer not registered")
+        return cast(IRequestTracer, service)
 
     def set_request_tracer(self, tracer: IRequestTracer) -> None:
         """Set the request tracer (called by plugin)."""
@@ -91,53 +94,51 @@ class ServiceContainer:
 
     def get_mock_handler(self) -> MockResponseHandler:
         """Get mock handler service instance."""
-        return cast(MockResponseHandler, self.get_service(MockResponseHandler))
+        return self.get_service(MockResponseHandler)
 
     def get_streaming_handler(self) -> StreamingHandler:
         """Get streaming handler service instance."""
-        return cast(StreamingHandler, self.get_service(StreamingHandler))
+        return self.get_service(StreamingHandler)
 
     def get_binary_resolver(self) -> BinaryResolver:
         """Get binary resolver service instance."""
-        return cast(BinaryResolver, self.get_service(BinaryResolver))
+        return self.get_service(BinaryResolver)
 
     def get_cli_detection_service(self) -> CLIDetectionService:
         """Get CLI detection service instance."""
-        return cast(CLIDetectionService, self.get_service(CLIDetectionService))
+        return self.get_service(CLIDetectionService)
 
     def get_proxy_config(self) -> ProxyConfiguration:
         """Get proxy configuration service instance."""
-        return cast(ProxyConfiguration, self.get_service(ProxyConfiguration))
+        return self.get_service(ProxyConfiguration)
 
     def get_http_client(self) -> httpx.AsyncClient:
         """Get container-managed HTTP client instance."""
-        return cast(httpx.AsyncClient, self.get_service(httpx.AsyncClient))
+        return self.get_service(httpx.AsyncClient)
 
     def get_pool_manager(self) -> HTTPPoolManager:
         """Get HTTP connection pool manager instance."""
-        return cast(HTTPPoolManager, self.get_service(HTTPPoolManager))
+        return self.get_service(HTTPPoolManager)
 
     def get_response_cache(self) -> ResponseCache:
         """Get response cache service instance."""
-        return cast(ResponseCache, self.get_service(ResponseCache))
+        return self.get_service(ResponseCache)
 
     def get_connection_pool_manager(self) -> ConnectionPoolManager:
         """Get connection pool manager service instance."""
-        return cast(ConnectionPoolManager, self.get_service(ConnectionPoolManager))
+        return self.get_service(ConnectionPoolManager)
 
     def get_format_registry(self) -> FormatAdapterRegistry:
         """Get format adapter registry service instance."""
-        return cast(FormatAdapterRegistry, self.get_service(FormatAdapterRegistry))
+        return self.get_service(FormatAdapterRegistry)
 
     def get_format_detector(self) -> FormatDetectionService:
         """Get format detection service instance."""
-        return cast(FormatDetectionService, self.get_service(FormatDetectionService))
+        return self.get_service(FormatDetectionService)
 
     def get_background_hook_thread_manager(self) -> BackgroundHookThreadManager:
         """Get background hook thread manager instance."""
-        return cast(
-            BackgroundHookThreadManager, self.get_service(BackgroundHookThreadManager)
-        )
+        return self.get_service(BackgroundHookThreadManager)
 
     def get_adapter_dependencies(self, metrics: Any | None = None) -> dict[str, Any]:
         """Get all services an adapter might need."""
