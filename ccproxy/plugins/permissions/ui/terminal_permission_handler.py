@@ -10,6 +10,8 @@ from typing import TYPE_CHECKING
 
 from structlog import get_logger
 
+from .. import PermissionRequest
+
 
 # During type checking, import real Textual types; at runtime, provide fallbacks if absent.
 TEXTUAL_AVAILABLE: bool
@@ -61,8 +63,6 @@ else:  # pragma: no cover - optional dependency
 
         class Timer:  # type: ignore[no-redef]
             pass
-
-from .. import PermissionRequest
 
 
 logger = get_logger(__name__)

@@ -8,6 +8,7 @@ low request rates (< 10 req/s).
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import time
 from collections.abc import Mapping, Sequence
 from datetime import datetime
@@ -488,10 +489,8 @@ class SimpleDuckDBStorage:
         self._shutdown_event.set()
 
         # Wake up background worker immediately if it's waiting on queue.get()
-        try:
+        with contextlib.suppress(Exception):
             self._write_queue.put_nowait(self._sentinel)  # type: ignore[arg-type]
-        except Exception:
-            pass
 
         # Wait for background worker to finish
         if self._background_worker_task:

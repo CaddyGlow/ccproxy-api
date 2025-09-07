@@ -6,7 +6,15 @@ import asyncio
 import contextlib
 import time
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
+
+from ccproxy.core.async_task_manager import (
+    create_fire_and_forget_task,
+    create_managed_task,
+)
+from ccproxy.core.logging import get_plugin_logger
+
+from ..models import PermissionRequest
 
 
 # During type checking, import real Textual types; at runtime, provide fallbacks if absent.
@@ -59,14 +67,6 @@ else:  # pragma: no cover - optional dependency
 
         class Timer:  # type: ignore[no-redef]
             pass
-
-from ccproxy.core.async_task_manager import (
-    create_fire_and_forget_task,
-    create_managed_task,
-)
-from ccproxy.core.logging import get_plugin_logger
-
-from ..models import PermissionRequest
 
 
 logger = get_plugin_logger()
@@ -388,7 +388,7 @@ class ConfirmationApp(App[bool]):
         # Raise KeyboardInterrupt to forward it up
         raise KeyboardInterrupt("User cancelled confirmation")
 
-    async def on_key(self, event: "Key") -> None:
+    async def on_key(self, event: Key) -> None:
         """Handle global key events, especially Ctrl+C."""
         if event.key == "ctrl+c":
             # Forward the KeyboardInterrupt

@@ -9,10 +9,6 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-
-# Mark entire module as integration tests that exercise Docker boundaries
-pytestmark = [pytest.mark.integration, pytest.mark.docker]
-
 from ccproxy.docker.adapter import DockerAdapter
 from ccproxy.docker.docker_path import DockerPath, DockerPathSet
 from ccproxy.docker.middleware import LoggerOutputMiddleware, create_logger_middleware
@@ -22,6 +18,10 @@ from ccproxy.docker.stream_process import (
     run_command,
 )
 from ccproxy.docker.validators import create_docker_error, validate_port_spec
+
+
+# Mark entire module as integration tests that exercise Docker boundaries
+pytestmark = [pytest.mark.integration, pytest.mark.docker]
 
 
 class TestDockerAdapter:

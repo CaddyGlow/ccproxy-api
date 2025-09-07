@@ -1,4 +1,8 @@
+from collections.abc import Awaitable, Callable
+from typing import Any
+
 import pytest
+from httpx import AsyncClient
 
 
 pytestmark = [pytest.mark.integration, pytest.mark.metrics]
@@ -6,7 +10,7 @@ pytestmark = [pytest.mark.integration, pytest.mark.metrics]
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_metrics_route_available_when_metrics_plugin_enabled(
-    metrics_integration_client,
+    metrics_integration_client: AsyncClient,
 ) -> None:
     """Test that metrics route is available when metrics plugin is enabled."""
     resp = await metrics_integration_client.get("/metrics")
@@ -17,7 +21,7 @@ async def test_metrics_route_available_when_metrics_plugin_enabled(
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_metrics_route_absent_when_plugins_disabled(
-    disabled_plugins_client,
+    disabled_plugins_client: AsyncClient,
 ) -> None:
     """Test that metrics route is absent when plugins are disabled."""
     resp = await disabled_plugins_client.get("/metrics")
@@ -26,7 +30,11 @@ async def test_metrics_route_absent_when_plugins_disabled(
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_metrics_endpoint_with_custom_config(integration_client_factory) -> None:
+async def test_metrics_endpoint_with_custom_config(
+    integration_client_factory: Callable[
+        [dict[str, dict[str, Any]]], Awaitable[AsyncClient]
+    ],
+) -> None:
     """Test metrics endpoint with custom configuration."""
     client = await integration_client_factory(
         {
@@ -43,7 +51,9 @@ async def test_metrics_endpoint_with_custom_config(integration_client_factory) -
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_metrics_health_when_plugin_enabled(metrics_integration_client) -> None:
+async def test_metrics_health_when_plugin_enabled(
+    metrics_integration_client: AsyncClient,
+) -> None:
     """Test metrics health endpoint when plugin is enabled."""
     resp = await metrics_integration_client.get("/metrics/health")
     assert resp.status_code == 200

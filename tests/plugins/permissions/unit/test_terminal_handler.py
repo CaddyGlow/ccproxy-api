@@ -6,13 +6,13 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
+from ccproxy.plugins.permissions.handlers.terminal import TerminalPermissionHandler
+from ccproxy.plugins.permissions.models import PermissionRequest
+
 
 pytestmark = pytest.mark.skip(
     reason="Terminal handler tests require full application context and should be moved to integration tests"
 )
-
-from ccproxy.plugins.permissions.handlers.terminal import TerminalPermissionHandler
-from ccproxy.plugins.permissions.models import PermissionRequest
 
 
 @pytest.fixture

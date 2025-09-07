@@ -2,6 +2,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 
 from ccproxy.api.app import create_app, initialize_plugins_startup
+from ccproxy.api.bootstrap import create_service_container
 from ccproxy.config.settings import Settings
 
 
@@ -17,7 +18,9 @@ async def test_plugins_status_types() -> None:
             "metrics": {"enabled": True, "metrics_endpoint_enabled": True},
         },
     )
-    app = create_app(settings)
+    # create_app expects a ServiceContainer; build it from settings
+    container = create_service_container(settings)
+    app = create_app(container)
     await initialize_plugins_startup(app, settings)
 
     transport = ASGITransport(app=app)
