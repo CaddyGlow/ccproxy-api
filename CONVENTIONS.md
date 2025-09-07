@@ -110,12 +110,16 @@ class ProviderAdapter(BaseAdapter):
 ## 9. Testing
 
 * **Framework:** `pytest` with `pytest-asyncio`
-* **Structure:** Tests in `tests/` with clear organization:
-  * `tests/unit/` - Fast, isolated unit tests
-  * `tests/integration/` - Component interaction tests
-* **Markers:** Use `@pytest.mark.unit`, `@pytest.mark.integration`
-* **Fixtures:** Share in `conftest.py`
-* **Coverage:** High coverage on critical paths (auth, API endpoints, plugins)
+* **Architecture:** Streamlined after aggressive refactoring (606 tests, was 786)
+* **Structure:** Clean separation with proper boundaries:
+  * `tests/unit/` - Fast, isolated unit tests (mock at service boundaries only)
+  * `tests/integration/` - Cross-component interaction tests
+  * `tests/performance/` - Performance benchmarks (separated)
+* **Markers:** Use `@pytest.mark.unit`, `@pytest.mark.integration`, `@pytest.mark.performance`
+* **Fixtures:** Essential fixtures only in `conftest.py` (515 lines, was 1117)
+* **Mocking:** External services only - no internal component mocking
+* **Type Safety:** All test functions must have `-> None` return type
+* **Coverage:** High coverage on critical paths with real component testing
 
 ## 10. Configuration
 

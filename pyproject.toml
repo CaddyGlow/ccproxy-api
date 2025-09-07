@@ -229,6 +229,9 @@ warn_unreachable = false
 [[tool.mypy.overrides]]
 module = "tests.*"
 ignore_errors = true
+# disallow_untyped_defs = false
+# disallow_incomplete_defs = false
+# disallow_untyped_calls = false
 
 [[tool.mypy.overrides]]
 module = ["tomli", "sse_starlette.sse", "fastapi_mcp"]
@@ -302,7 +305,6 @@ ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 minversion = "6.0"
-timeout = 30
 addopts = [
   "-ra",
   "--strict-markers",
@@ -322,8 +324,10 @@ testpaths = ["tests"]
 python_files = ["test_*.py", "*_test.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
+
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
+
 norecursedirs = [
   ".git",
   ".tox",
@@ -338,18 +342,9 @@ norecursedirs = [
   ".devenv",
   "tests_new",
 ]
-filterwarnings = [
-  "ignore::UserWarning",
-  "ignore::DeprecationWarning",
-  "ignore::PendingDeprecationWarning",
-]
 
 # Set test mode to prevent pollution of real credential files
-env = [
-  "CCPROXY_TEST_MODE=true",
-  "PYTEST_CURRENT_TEST=true",
-  "LOG_LEVEL=WARNING",
-]
+env = ["PYTEST_CURRENT_TEST=true"]
 
 # Test markers for different test categories and tiers
 markers = [
@@ -379,7 +374,7 @@ markers = [
 ]
 
 [tool.pytest_timeout]
-timeout = 300
+timeout = 30
 timeout_method = "thread"
 
 [tool.bandit]

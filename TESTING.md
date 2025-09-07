@@ -1,101 +1,119 @@
-# Simplified Testing Guide for CCProxy
+# Streamlined Testing Guide for CCProxy
 
 ## Philosophy
 
-Keep it simple. Test what matters, mock what's external, don't overthink it.
+After aggressive refactoring and architecture realignment, our testing philosophy is:
+- **Clean boundaries**: Unit tests for isolated components, integration tests for cross-component behavior
+- **Fast execution**: Unit tests run in milliseconds, mypy completes in seconds  
+- **Modern patterns**: Type-safe fixtures, clear separation of concerns
+- **Minimal mocking**: Only mock external services, test real internal behavior
 
 ## Quick Start
 
 ```bash
-# Run all tests
+# Run all tests (now 606 focused tests)
 make test
 
 # Run specific test categories
-pytest tests/unit/api/           # API endpoint tests
 pytest tests/unit/auth/          # Authentication tests
-pytest tests/integration/       # Integration tests
+pytest tests/unit/services/      # Service layer tests
+pytest tests/integration/        # Cross-component integration tests
+pytest tests/performance/        # Performance benchmarks
 
 # Run with coverage
 make test-coverage
 
-# Run with real APIs (optional, slow)
-pytest -m real_api
+# Type checking and quality (now sub-second)
+make typecheck
+make pre-commit
 ```
 
-## Test Structure
+## Streamlined Test Structure
 
-**Organized by functionality** - As the test suite grew beyond 30+ files, we moved from a flat structure to organized categories while maintaining the same testing philosophy.
+**Clean architecture after aggressive refactoring** - Removed 180+ tests and 3000+ lines of problematic code:
 
 ```
 tests/
-├── conftest.py              # Shared fixtures + backward compatibility
-├── unit/                    # Unit tests organized by component
-│   ├── api/                 # API endpoint tests
-│   │   ├── test_api.py      # Core API endpoints
+├── conftest.py              # Essential fixtures (515 lines, was 1117)
+├── unit/                    # True unit tests (mock at service boundaries)
+│   ├── api/                 # Remaining lightweight API tests
 │   │   ├── test_mcp_route.py # MCP permission routes
-│   │   ├── test_metrics_api.py # Metrics collection endpoints
+│   │   ├── test_plugins_status.py # Plugin status endpoint
 │   │   ├── test_reset_endpoint.py # Reset endpoint
-│   │   ├── test_confirmation_routes.py # Confirmation routes
-│   ├── services/            # Service layer tests
+│   │   └── test_analytics_pagination_service.py # Pagination service
+│   ├── services/            # Core service tests
 │   │   ├── test_adapters.py # OpenAI↔Anthropic conversion
 │   │   ├── test_streaming.py # Streaming functionality
-│   │   ├── test_docker.py   # Docker integration
-│   │   ├── test_confirmation_service.py # Confirmation service
-│   │   ├── test_scheduler*.py # Scheduler components
-│   │   └── test_*.py        # Other service tests
+│   │   ├── test_confirmation_service.py # Confirmation service (cleaned)
+│   │   ├── test_scheduler.py # Scheduler (simplified)
+│   │   ├── test_scheduler_tasks.py # Task management
+│   │   ├── test_claude_sdk_client.py # Claude SDK client
+│   │   └── test_pricing.py  # Token pricing
 │   ├── auth/                # Authentication tests
-│   │   └── test_auth.py     # Auth + OAuth2 together
+│   │   ├── test_auth.py     # Core auth (cleaned of HTTP testing)
+│   │   ├── test_oauth_registry.py # OAuth registry
+│   │   ├── test_authentication_error.py # Error handling
+│   │   └── test_refactored_auth.py # Refactored patterns
 │   ├── config/              # Configuration tests
-│   │   ├── test_claude_sdk_*.py # Claude SDK configuration
+│   │   ├── test_claude_sdk_options.py # Claude SDK config
+│   │   ├── test_claude_sdk_parser.py # Config parsing
+│   │   ├── test_config_precedence.py # Priority handling
 │   │   └── test_terminal_handler.py # Terminal handling
 │   ├── utils/               # Utility tests
-│   │   ├── test_duckdb_*.py # Database utilities
+│   │   ├── test_binary_resolver.py # Binary resolution
+│   │   ├── test_startup_helpers.py # Startup utilities
 │   │   └── test_version_checker.py # Version checking
-│   └── cli/                 # CLI command tests
-│       ├── test_cli_*.py    # CLI command implementations
-│       └── test_cli_confirmation_handler.py # Confirmation CLI handling
-├── integration/             # Integration tests
-│   ├── test_*_integration.py # Cross-component integration tests
-│   └── test_confirmation_integration.py # Full confirmation flows
-├── factories/               # Factory pattern implementations
+│   ├── cli/                 # CLI command tests
+│   │   ├── test_cli_config.py # CLI configuration
+│   │   ├── test_cli_serve.py # Server CLI
+│   │   └── test_cli_confirmation_handler.py # Confirmation CLI
+│   ├── test_caching.py      # Caching functionality
+│   ├── test_plugin_system.py # Plugin system (cleaned)
+│   └── test_hook_ordering.py # Hook ordering
+├── integration/             # Cross-component tests (moved from unit)
+│   ├── test_analytics_pagination.py # Full analytics flow
+│   ├── test_confirmation_integration.py # Permission flows
+│   ├── test_metrics_plugin.py # Metrics collection
+│   ├── test_plugin_format_adapters_v2.py # Format adapter system
+│   ├── test_plugins_health.py # Plugin health checks
+│   └── docker/             # Docker integration tests (moved)
+│       └── test_docker.py  # Docker functionality
+├── performance/             # Performance tests (separated)
+│   └── test_format_adapter_performance.py # Benchmarks
+├── factories/               # Simplified factories (362 lines, was 651)
 │   ├── __init__.py         # Factory exports
-│   ├── fastapi_factory.py  # FastAPI app/client factories
-│   ├── README.md           # Factory documentation
-│   └── MIGRATION_GUIDE.md  # Factory migration guide
-├── fixtures/               # Organized mock responses and utilities
-│   ├── auth/               # Authentication fixtures and utilities
+│   └── fastapi_factory.py  # Streamlined FastAPI factories
+├── fixtures/               # Essential fixtures only
 │   ├── claude_sdk/         # Claude SDK mocking
 │   ├── external_apis/      # External API mocking
-│   ├── proxy_service/      # Proxy service mocking
-│   ├── responses.json      # Legacy mock data (still works)
-│   ├── README.md           # Complete fixture documentation
-│   └── MIGRATION_GUIDE.md  # Migration strategies
-├── helpers/                # Test helper utilities
-└── .gitignore              # Excludes coverage reports
+│   └── responses.json      # Mock data
+├── helpers/                # Test utilities
+└── test_handler_config.py  # Handler configuration tests
 ```
 
 ## Writing Tests
 
-### What to Mock (External Only)
+### Clean Architecture Principles
 
-- **External APIs**: Claude API responses (using `mock_external_anthropic_api`)
-- **OAuth endpoints**: Token endpoints (using `mock_external_oauth_endpoints`)
-- **Docker subprocess calls**: Process execution mocking
-- **Nothing else**: Keep mocking minimal and focused
+**Unit Tests** (tests/unit/):
+- Mock at **service boundaries only** - never mock internal components
+- Test **pure functions and single components** in isolation
+- **No HTTP layer testing** - use service layer mocks instead
+- **No timing dependencies** - all asyncio.sleep() removed
+- **No database operations** - moved to integration tests
 
-### What NOT to Mock
+**Integration Tests** (tests/integration/):
+- Test **cross-component interactions** with minimal mocking
+- Include **HTTP client testing with FastAPI TestClient**
+- Test **background workers and async coordination**
+- Validate **configuration and feature flags end-to-end**
 
-- **Internal services**: Use dependency injection with `mock_internal_claude_sdk_service`
-- **Adapters**: Test real adapter logic
-- **Configuration**: Use test settings
-- **Middleware**: Test real middleware behavior
-- **Any internal components**: Only mock external boundaries
+### Mocking Strategy (Simplified)
 
-### New Mocking Strategy (Clear Separation)
-
-- **Internal Mocks**: `mock_internal_claude_sdk_service` - AsyncMock for dependency injection
-- **External Mocks**: `mock_external_anthropic_api` - HTTPXMock for HTTP interception
-- **OAuth Mocks**: `mock_external_oauth_endpoints` - OAuth flow simulation
+- **External APIs only**: Claude API, OAuth endpoints, Docker processes
+- **Internal services**: Use real implementations with dependency injection
+- **Configuration**: Use test settings objects, not mocks
+- **No mock explosion**: Removed 300+ redundant test fixtures
 
 ## Type Safety and Code Quality
 
@@ -123,17 +141,13 @@ tests/
 from typing import Any
 import pytest
 from fastapi.testclient import TestClient
-from pytest_httpx import HTTPXMock
 
-def test_openai_endpoint(client: TestClient, mock_claude: HTTPXMock) -> None:
-    """Test OpenAI-compatible endpoint"""
-    response = client.post("/v1/chat/completions", json={
-        "model": "claude-3-5-sonnet-20241022",
-        "messages": [{"role": "user", "content": "Hello"}]
-    })
+def test_service_endpoint(client: TestClient) -> None:
+    """Test service endpoint with proper typing."""
+    response = client.get("/api/models")
     assert response.status_code == 200
     data: dict[str, Any] = response.json()
-    assert "choices" in data
+    assert "models" in data
 ```
 
 #### Fixture with Type Annotations
@@ -146,177 +160,64 @@ from fastapi.testclient import TestClient
 
 @pytest.fixture
 def app() -> FastAPI:
-    """Create test FastAPI application"""
-    from ccproxy.main import create_app
+    """Create test FastAPI application."""
+    from ccproxy.api.app import create_app
     return create_app()
 
 @pytest.fixture
 def client(app: FastAPI) -> Generator[TestClient, None, None]:
-    """Create test client"""
+    """Create test client."""
     with TestClient(app) as test_client:
         yield test_client
 ```
 
-#### Testing with Complex Types
+## Streamlined Fixtures Architecture
 
-```python
-from typing import Any, Dict, List
-from pathlib import Path
-import pytest
+### Essential Fixtures (Simplified)
 
-def test_config_loading(tmp_path: Path) -> None:
-    """Test configuration file loading"""
-    config_file: Path = tmp_path / "config.toml"
-    config_file.write_text("port = 8080")
+After aggressive cleanup, we maintain only essential, well-typed fixtures:
 
-    from ccproxy.config.settings import Settings
-    settings: Settings = Settings(_config_file=config_file)
-    assert settings.port == 8080
-```
+#### Core FastAPI Fixtures
 
-### Quality Checks Commands
+- `fastapi_app_factory` - Creates FastAPI apps with any configuration  
+- `fastapi_client_factory` - Creates test clients (simplified, 362 lines vs 651)
+- `test_settings` - Clean test configuration
+- `isolated_environment` - Temporary directory isolation
 
-```bash
-# Type checking (MUST pass)
-make typecheck
-uv run mypy tests/
+#### Authentication (Streamlined)
 
-# Linting and formatting (MUST pass)
-make lint
-make format
-uv run ruff check tests/
-uv run ruff format tests/
+- `auth_settings` - Basic auth configuration
+- `claude_sdk_environment` - Claude SDK test environment
+- Simple auth patterns without combinatorial explosion
 
-# Run all quality checks
-make pre-commit
-```
+#### Essential Service Mocks (External Only)
 
-### Common Type Annotations for Tests
+- External API mocking only (Claude API, OAuth endpoints)
+- No internal service mocking - use real implementations
+- Removed 200+ redundant mock fixtures
 
-- `TestClient` - FastAPI test client
-- `HTTPXMock` - Mock for HTTP requests
-- `Path` - File system paths
-- `dict[str, Any]` - JSON response data
-- `Generator[T, None, None]` - Fixture generators
-- `-> None` - Test function return type
+#### Test Data
 
-### Basic Test Pattern
-
-```python
-from fastapi.testclient import TestClient
-from pytest_httpx import HTTPXMock
-
-def test_openai_endpoint(client: TestClient, mock_claude: HTTPXMock) -> None:
-    """Test OpenAI-compatible endpoint"""
-    response = client.post("/v1/chat/completions", json={
-        "model": "claude-3-5-sonnet-20241022",
-        "messages": [{"role": "user", "content": "Hello"}]
-    })
-    assert response.status_code == 200
-    assert "choices" in response.json()
-```
-
-### Testing with Auth
-
-```python
-from fastapi.testclient import TestClient
-
-def test_with_auth_token(client_with_auth: TestClient) -> None:
-    """Test endpoint requiring authentication"""
-    response = client_with_auth.post("/v1/messages",
-        json={"messages": [{"role": "user", "content": "Hi"}]},
-        headers={"Authorization": "Bearer test-token"}
-    )
-    assert response.status_code == 200
-```
-
-### Testing Streaming
-
-```python
-from fastapi.testclient import TestClient
-from pytest_httpx import HTTPXMock
-
-def test_streaming_response(client: TestClient, mock_claude_stream: HTTPXMock) -> None:
-    """Test SSE streaming"""
-    with client.stream("POST", "/v1/chat/completions",
-                      json={"stream": True, "model": "claude-3-5-sonnet-20241022",
-                           "messages": [{"role": "user", "content": "Hello"}]}) as response:
-        for line in response.iter_lines():
-            assert line.startswith("data: ")
-```
-
-## Fixtures Architecture
-
-### NEW: Factory Pattern (Recommended for New Tests)
-
-#### Factory Fixtures
-
-- `fastapi_app_factory` - Creates FastAPI apps with any configuration
-- `fastapi_client_factory` - Creates test clients with any configuration
-
-#### Authentication Modes (Composable)
-
-- `auth_mode_none` - No authentication required
-- `auth_mode_bearer_token` - Bearer token without server config
-- `auth_mode_configured_token` - Bearer token with server-configured token
-- `auth_mode_credentials` - OAuth credentials flow
-- `auth_mode_credentials_with_fallback` - Credentials with bearer fallback
-
-#### Auth Utilities
-
-- `auth_settings_factory` - Creates settings for any auth mode
-- `auth_headers_factory` - Generates headers for any auth mode
-- `invalid_auth_headers_factory` - Creates invalid headers for testing
-- `auth_test_utils` - Helper functions for auth response validation
-
-#### Service Mocks (Clear Naming)
-
-- `mock_internal_claude_sdk_service` - AsyncMock for dependency injection
-- `mock_external_anthropic_api` - HTTPXMock for HTTP interception
-- `mock_external_oauth_endpoints` - OAuth endpoint mocking
-
-#### Convenience Fixtures (Pre-configured)
-
-- `client_no_auth` - No authentication required
-- `client_bearer_auth` - Bearer token authentication
-- `client_configured_auth` - Server-configured token auth
-- `client_credentials_auth` - OAuth credentials authentication
-
-### Legacy Fixtures (Backward Compatibility)
-
-#### Core Fixtures (Still Work)
-
-- `app()` - Test FastAPI application
-- `client(app)` - Test client for API calls
-- `client_with_auth(app)` - Client with auth enabled
-
-#### Response Fixtures (Still Work)
-
-- `claude_responses()` - Standard Claude responses
-- `mock_claude_stream()` - Streaming responses
-
-#### Legacy Aliases (For Migration)
-
-- `mock_claude_service` → `mock_internal_claude_sdk_service`
-- `mock_claude` → `mock_external_anthropic_api`
-- `mock_oauth` → `mock_external_oauth_endpoints`
+- `claude_responses` - Essential Claude API responses
+- `mock_claude_stream` - Streaming response patterns
+- Removed complex test data generators
 
 ## Test Markers
 
 - `@pytest.mark.unit` - Fast unit tests (default)
-- `@pytest.mark.real_api` - Tests using real APIs (slow)
-- `@pytest.mark.docker` - Tests requiring Docker
+- `@pytest.mark.integration` - Cross-component integration tests
+- `@pytest.mark.performance` - Performance benchmarks
+- `@pytest.mark.asyncio` - Async test functions
 
 ## Best Practices
 
-1. **Keep tests focused** - One test, one behavior
-2. **Use descriptive names** - `test_what_when_expected`
-3. **Minimal setup** - Use factories and fixtures, avoid duplication
-4. **Real components** - Only mock external services (clear separation)
-5. **Fast by default** - Real API tests are optional
-6. **NEW: Use factory pattern** - For complex scenarios with multiple configurations
-7. **NEW: Use composable auth** - Mix and match auth modes as needed
-8. **NEW: Parametrized testing** - Test multiple scenarios in one test function
+1. **Clean boundaries** - Unit tests mock at service boundaries only
+2. **Fast execution** - Unit tests run in milliseconds, no timing dependencies
+3. **Type safety** - All fixtures properly typed, mypy compliant
+4. **Real components** - Test actual internal behavior, not mocked responses
+5. **Simplified factories** - Streamlined FastAPI factory (44% smaller)
+6. **Modern patterns** - @pytest.mark.asyncio, proper async fixtures
+7. **No overengineering** - Removed 180+ tests, 3000+ lines of complexity
 
 ## Common Patterns
 
@@ -336,97 +237,68 @@ def test_service_integration(fastapi_client_factory, test_settings) -> None:
     assert "models" in response.json()
 ```
 
-### NEW: Parametrized Testing (Multiple Scenarios)
+### Basic Unit Test Pattern
 
 ```python
-import pytest
-from fastapi.testclient import TestClient
+from ccproxy.utils.caching import TTLCache
 
-@pytest.mark.parametrize("auth_mode_fixture", [
-    "auth_mode_none", "auth_mode_bearer_token", "auth_mode_configured_token"
-])
-def test_endpoint_all_auth_modes(request, auth_mode_fixture, fastapi_client_factory,
-                                auth_headers_factory) -> None:
-    """Test endpoint with different authentication modes."""
-    auth_mode = request.getfixturevalue(auth_mode_fixture)
-    client = fastapi_client_factory.create_client(auth_mode=auth_mode)
-
-    headers = auth_headers_factory(auth_mode) if auth_mode else {}
-    response = client.get("/api/models", headers=headers)
-    assert response.status_code == 200
+def test_cache_basic_operations() -> None:
+    """Test cache basic operations."""
+    cache: TTLCache[str, int] = TTLCache(maxsize=10, ttl=60)
+    
+    # Test real cache behavior
+    cache["key"] = 42
+    assert cache["key"] == 42
+    assert len(cache) == 1
 ```
 
-### NEW: Composable Authentication Testing
+### Integration Test Pattern
 
 ```python
 from fastapi.testclient import TestClient
 
-def test_auth_endpoint(client_bearer_auth: TestClient, auth_headers_factory,
-                      auth_mode_bearer_token) -> None:
-    """Test endpoint with bearer token authentication."""
-    headers = auth_headers_factory(auth_mode_bearer_token)
-    response = client_bearer_auth.post("/v1/messages",
-        json={"messages": [{"role": "user", "content": "Hello"}]},
-        headers=headers
-    )
-    assert response.status_code == 200
-```
-
-### Testing Error Cases (Updated)
-
-```python
-from typing import Any
-from fastapi.testclient import TestClient
-
-def test_invalid_model_error(fastapi_client_factory,
-                           mock_internal_claude_sdk_service) -> None:
-    """Test error handling with internal service mock."""
-    # Configure mock to raise validation error
-    from ccproxy.core.errors import ValidationError
-    mock_internal_claude_sdk_service.create_completion.side_effect = \
-        ValidationError("Invalid model specified")
-
-    client = fastapi_client_factory.create_client(
-        claude_service_mock=mock_internal_claude_sdk_service
-    )
-    response = client.post("/v1/messages", json={
-        "model": "invalid-model",
-        "messages": [{"role": "user", "content": "Hello"}]
-    })
-    assert response.status_code == 400
-```
-
-### Testing Metrics Collection
-
-```python
-from typing import Any
-from fastapi.testclient import TestClient
-from pytest_httpx import HTTPXMock
-
-def test_metrics_collected(client: TestClient, mock_claude: HTTPXMock, app) -> None:
-    # Make request
-    client.post("/v1/messages", json={
+def test_full_request_flow(client: TestClient) -> None:
+    """Test complete request flow (integration test)."""
+    # This tests real HTTP layer + services + configuration
+    response = client.post("/api/v1/messages", json={
         "model": "claude-3-5-sonnet-20241022",
         "messages": [{"role": "user", "content": "Hello"}]
     })
-    # Check metrics
-    metrics: list[dict[str, Any]] = app.state.metrics_collector.get_metrics()
-    assert len(metrics) > 0
+    assert response.status_code == 200
+    data = response.json()
+    assert "content" in data
 ```
 
-### Testing with Temp Files
+### Testing with Configuration
 
 ```python
 from pathlib import Path
-import pytest
+from ccproxy.config.settings import Settings
 
 def test_config_loading(tmp_path: Path) -> None:
+    """Test configuration file loading."""
     config_file: Path = tmp_path / "config.toml"
     config_file.write_text("port = 8080")
 
-    from ccproxy.config.settings import Settings
     settings: Settings = Settings(_config_file=config_file)
-    assert settings.port == 8080
+    assert settings.server.port == 8080
+```
+
+## Quality Checks Commands
+
+```bash
+# Type checking (MUST pass) - now sub-second
+make typecheck
+uv run mypy tests/
+
+# Linting and formatting (MUST pass)
+make lint
+make format
+uv run ruff check tests/
+uv run ruff format tests/
+
+# Run all quality checks
+make pre-commit
 ```
 
 ## Running Tests
@@ -434,10 +306,11 @@ def test_config_loading(tmp_path: Path) -> None:
 ### Make Commands
 
 ```bash
-make test              # Run all tests
-make test-unit         # Fast tests only
+make test              # Run all tests (606 tests, fast)
+make test-unit         # Fast unit tests only (sub-second)
+make test-integration  # Integration tests
+make test-performance  # Performance benchmarks
 make test-coverage     # With coverage report
-make test-watch        # Auto-run on changes
 ```
 
 ### Direct pytest
@@ -448,38 +321,8 @@ pytest -k "test_auth"              # Run matching tests
 pytest --lf                        # Run last failed
 pytest -x                          # Stop on first failure
 pytest --pdb                       # Debug on failure
-```
-
-## Debugging Tests
-
-### Print Debugging
-
-```python
-from typing import Any
-from fastapi.testclient import TestClient
-import pytest
-
-def test_something(client: TestClient, capsys: pytest.CaptureFixture[str]) -> None:
-    response = client.post("/v1/messages", json={
-        "model": "claude-3-5-sonnet-20241022",
-        "messages": [{"role": "user", "content": "Hello"}]
-    })
-    data: dict[str, Any] = response.json()
-    print(f"Response: {data}")  # Will show in pytest output
-    captured = capsys.readouterr()
-```
-
-### Interactive Debugging
-
-```python
-from fastapi.testclient import TestClient
-
-def test_something(client: TestClient) -> None:
-    response = client.post("/v1/messages", json={
-        "model": "claude-3-5-sonnet-20241022",
-        "messages": [{"role": "user", "content": "Hello"}]
-    })
-    import pdb; pdb.set_trace()  # Debugger breakpoint
+pytest -m unit                     # Unit tests only
+pytest -m integration             # Integration tests only
 ```
 
 ## For New Developers
@@ -488,88 +331,17 @@ def test_something(client: TestClient) -> None:
 2. **Run tests**: `make test` to ensure everything works
 3. **Add new test**: Copy existing test pattern, modify as needed
 4. **Mock external only**: Don't mock internal components
-5. **Ask questions**: Tests should be obvious, if not, improve them
+5. **Type safety**: All test functions need proper type hints
+6. **Fast by default**: Unit tests should run in milliseconds
 
-## Factory Pattern Migration
+## Migration from Old Architecture
 
-### Quick Migration Guide
+**All existing test patterns still work** - but new tests should use the streamlined patterns:
 
-**All existing tests continue working unchanged** - Migration is optional but recommended for new tests.
+- Use `fastapi_client_factory` for flexible test clients
+- Mock at service boundaries, not HTTP layer
+- Prefer unit tests with real internal components
+- Move complex scenarios to integration tests
+- Use proper type hints on all fixtures
 
-See [`FIXTURE_MIGRATION_GUIDE.md`](./FIXTURE_MIGRATION_GUIDE.md) for comprehensive migration examples.
-
-### Key Changes Summary
-
-#### Before (Old Pattern)
-
-```python
-# Limited combinations, fixture explosion
-def test_auth(client_with_auth: TestClient) -> None:
-    response = client_with_auth.post("/v1/messages")
-```
-
-#### After (New Pattern - Recommended)
-
-```python
-# Infinite combinations, composable
-def test_auth(fastapi_client_factory, auth_mode_bearer_token,
-              auth_headers_factory) -> None:
-    client = fastapi_client_factory.create_client(auth_mode=auth_mode_bearer_token)
-    headers = auth_headers_factory(auth_mode_bearer_token)
-    response = client.post("/v1/messages", headers=headers)
-```
-
-#### Benefits of Migration
-
-- **Scalability**: Linear vs exponential fixture growth
-- **Clarity**: Clear naming (`mock_internal_claude_sdk_service` vs `mock_claude_service`)
-- **Composability**: Test any combination of features
-- **Type Safety**: Full type annotations and mypy compliance
-- **No Test Skips**: Proper configurations for all auth modes
-
-## For LLMs/AI Assistants
-
-When writing tests for this project:
-
-### Required (Unchanged)
-
-1. **MUST include proper type hints** - All test functions need `-> None` return type
-2. **MUST pass mypy and ruff checks** - Type safety and formatting are required
-3. Keep tests simple and focused
-4. Follow the naming convention: `test_what_when_expected()`
-5. Import necessary types: `TestClient`, `HTTPXMock`, `Path`, etc.
-
-### Recommended (New)
-
-6. **Use factory pattern** - For complex scenarios: `fastapi_client_factory.create_client()`
-7. **Use composable auth** - Auth modes: `auth_mode_bearer_token`, `auth_mode_none`, etc.
-8. **Use clear mock naming** - `mock_internal_claude_sdk_service`, `mock_external_anthropic_api`
-9. **Use parametrized testing** - Test multiple scenarios in one function
-10. **Prefer convenience fixtures** - `client_bearer_auth`, `client_no_auth` for simple cases
-
-### Legacy Support (Backward Compatibility)
-
-- All existing fixtures still work: `client`, `client_with_auth`, `mock_claude_service`
-- Use existing patterns in `tests/` as reference
-- Only mock external HTTP calls using `pytest_httpx`
-- Use fixtures from `conftest.py`, don't create new combinatorial ones
-
-**Type Safety Checklist:**
-
-- [ ] All test functions have `-> None` return type
-- [ ] All parameters have type hints (especially fixtures)
-- [ ] Complex variables have explicit type annotations
-- [ ] Proper imports from `typing` module
-- [ ] Code passes `make typecheck` and `make lint`
-
-**Factory Pattern Checklist:**
-
-- [ ] Use `fastapi_client_factory` for complex test scenarios
-- [ ] Use auth modes (`auth_mode_bearer_token`) instead of manual auth setup
-- [ ] Use clear service mock names (`mock_internal_claude_sdk_service`)
-- [ ] Consider parametrized testing for multiple scenarios
-- [ ] Use convenience fixtures (`client_bearer_auth`) for simple cases
-
-Remember: **Simple tests that actually test real behavior > Complex tests with lots of mocks.**
-
-**Migration is optional** - all existing tests continue working. Use new patterns for better maintainability and testing capabilities.
+The architecture has been significantly simplified while maintaining functionality and improving maintainability.
