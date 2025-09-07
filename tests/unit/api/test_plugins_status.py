@@ -13,6 +13,7 @@ pytestmark = [pytest.mark.unit, pytest.mark.api]
 async def test_plugins_status_types() -> None:
     settings = Settings(
         enable_plugins=True,
+        plugins_disable_local_discovery=False,  # Enable local plugin discovery
         plugins={
             # Enable metrics to ensure a system plugin is present
             "metrics": {"enabled": True, "metrics_endpoint_enabled": True},

@@ -70,6 +70,7 @@ def integration_app_factory():
 
         settings = Settings(
             enable_plugins=True,
+            plugins_disable_local_discovery=False,  # Enable local plugin discovery
             plugins=plugin_configs,
             logging={
                 "level": "ERROR",  # Minimal logging for speed
@@ -111,6 +112,7 @@ def metrics_integration_app():
 
     settings = Settings(
         enable_plugins=True,
+        plugins_disable_local_discovery=False,  # Enable local plugin discovery
         plugins={
             "metrics": {
                 "enabled": True,

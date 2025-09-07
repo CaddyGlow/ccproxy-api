@@ -105,8 +105,7 @@ async def codex_client():  # type: ignore[no-untyped-def]
     settings = Settings(
         enable_plugins=True,
         plugins={"codex": {"enabled": True}},
-        plugins_disable_local_discovery=False,
-        enabled_plugins=["codex"],
+        plugins_disable_local_discovery=False,  # Enable local plugin discovery
     )
     service_container = create_service_container(settings)
     app = create_app(service_container)

@@ -6,12 +6,12 @@ from unittest.mock import AsyncMock, Mock, patch
 import pytest
 
 from ccproxy.config.settings import Settings
-from ccproxy.models.responses import (
+from ccproxy.plugins.permissions.mcp import PermissionCheckRequest, check_permission
+from ccproxy.plugins.permissions.models import (
+    PermissionStatus,
     PermissionToolAllowResponse,
     PermissionToolDenyResponse,
 )
-from ccproxy.plugins.permissions.mcp import PermissionCheckRequest, check_permission
-from ccproxy.plugins.permissions.models import PermissionStatus
 from ccproxy.plugins.permissions.service import PermissionService
 
 

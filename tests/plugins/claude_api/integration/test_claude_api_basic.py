@@ -136,7 +136,7 @@ async def claude_api_client():  # type: ignore[no-untyped-def]
     settings = Settings(
         enable_plugins=True,
         plugins={"claude_api": {"enabled": True}},
-        enabled_plugins=["claude_api"],
+        plugins_disable_local_discovery=False,  # Enable local plugin discovery
     )
     service_container = create_service_container(settings)
     app = create_app(service_container)

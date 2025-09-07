@@ -4,9 +4,11 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from enum import Enum
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
+
+from ccproxy.models.requests import Usage
 
 
 class CodexCliStatus(str, Enum):
@@ -133,3 +135,41 @@ class CodexCacheData(BaseModel):
         for k, v in self.headers_ordered_pairs():
             out[k] = v
         return out
+
+
+class CodexMessage(BaseModel):
+    """Message format for Codex requests."""
+
+    role: Annotated[Literal["user", "assistant"], Field(description="Message role")]
+    content: Annotated[str, Field(description="Message content")]
+
+
+class CodexRequest(BaseModel):
+    """OpenAI Codex completion request model."""
+
+    model: Annotated[str, Field(description="Model name (e.g., gpt-5)")] = "gpt-5"
+    instructions: Annotated[
+        str | None, Field(description="System instructions for the model")
+    ] = None
+    messages: Annotated[list[CodexMessage], Field(description="Conversation messages")]
+    stream: Annotated[bool, Field(description="Whether to stream the response")] = True
+
+    model_config = ConfigDict(
+        extra="allow"
+    )  # Allow additional fields for compatibility
+
+
+class CodexResponse(BaseModel):
+    """OpenAI Codex completion response model."""
+
+    id: Annotated[str, Field(description="Response ID")]
+    model: Annotated[str, Field(description="Model used for completion")]
+    content: Annotated[str, Field(description="Generated content")]
+    finish_reason: Annotated[
+        str | None, Field(description="Reason the response finished")
+    ] = None
+    usage: Annotated[Usage | None, Field(description="Token usage information")] = None
+
+    model_config = ConfigDict(
+        extra="allow"
+    )  # Allow additional fields for compatibility

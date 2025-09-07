@@ -83,25 +83,3 @@ class Usage(BaseModel):
     cache_read_input_tokens: Annotated[
         int | None, Field(description="Number of tokens read from cache")
     ] = None
-
-
-class CodexMessage(BaseModel):
-    """Message format for Codex requests."""
-
-    role: Annotated[Literal["user", "assistant"], Field(description="Message role")]
-    content: Annotated[str, Field(description="Message content")]
-
-
-class CodexRequest(BaseModel):
-    """OpenAI Codex completion request model."""
-
-    model: Annotated[str, Field(description="Model name (e.g., gpt-5)")] = "gpt-5"
-    instructions: Annotated[
-        str | None, Field(description="System instructions for the model")
-    ] = None
-    messages: Annotated[list[CodexMessage], Field(description="Conversation messages")]
-    stream: Annotated[bool, Field(description="Whether to stream the response")] = True
-
-    model_config = ConfigDict(
-        extra="allow"
-    )  # Allow additional fields for compatibility

@@ -4,8 +4,9 @@ import asyncio
 import uuid
 from datetime import UTC, datetime
 from enum import Enum
+from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, Field, PrivateAttr
+from pydantic import BaseModel, ConfigDict, Field, PrivateAttr
 
 
 class PermissionStatus(Enum):
@@ -113,3 +114,66 @@ class PermissionEvent(BaseModel):
     resolved_at: str | None = None
     expired_at: str | None = None
     message: str | None = None
+
+
+class PermissionToolAllowResponse(BaseModel):
+    """Response model for allowed permission tool requests."""
+
+    behavior: Annotated[Literal["allow"], Field(description="Permission behavior")] = (
+        "allow"
+    )
+    updated_input: Annotated[
+        dict[str, Any],
+        Field(
+            description="Updated input parameters for the tool, or original input if unchanged",
+            alias="updatedInput",
+        ),
+    ]
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+
+class PermissionToolDenyResponse(BaseModel):
+    """Response model for denied permission tool requests."""
+
+    behavior: Annotated[Literal["deny"], Field(description="Permission behavior")] = (
+        "deny"
+    )
+    message: Annotated[
+        str,
+        Field(
+            description="Human-readable explanation of why the permission was denied"
+        ),
+    ]
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class PermissionToolPendingResponse(BaseModel):
+    """Response model for pending permission tool requests requiring user confirmation."""
+
+    behavior: Annotated[
+        Literal["pending"], Field(description="Permission behavior")
+    ] = "pending"
+    confirmation_id: Annotated[
+        str,
+        Field(
+            description="Unique identifier for the confirmation request",
+            alias="confirmationId",
+        ),
+    ]
+    message: Annotated[
+        str,
+        Field(
+            description="Instructions for retrying the request after user confirmation"
+        ),
+    ] = "User confirmation required. Please retry with the same confirmation_id."
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+
+PermissionToolResponse = (
+    PermissionToolAllowResponse
+    | PermissionToolDenyResponse
+    | PermissionToolPendingResponse
+)

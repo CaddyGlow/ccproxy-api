@@ -143,69 +143,6 @@ class APIError(BaseModel):
     )
 
 
-class PermissionToolAllowResponse(BaseModel):
-    """Response model for allowed permission tool requests."""
-
-    behavior: Annotated[Literal["allow"], Field(description="Permission behavior")] = (
-        "allow"
-    )
-    updated_input: Annotated[
-        dict[str, Any],
-        Field(
-            description="Updated input parameters for the tool, or original input if unchanged",
-            alias="updatedInput",
-        ),
-    ]
-
-    model_config = ConfigDict(extra="forbid", populate_by_name=True)
-
-
-class PermissionToolDenyResponse(BaseModel):
-    """Response model for denied permission tool requests."""
-
-    behavior: Annotated[Literal["deny"], Field(description="Permission behavior")] = (
-        "deny"
-    )
-    message: Annotated[
-        str,
-        Field(
-            description="Human-readable explanation of why the permission was denied"
-        ),
-    ]
-
-    model_config = ConfigDict(extra="forbid")
-
-
-class PermissionToolPendingResponse(BaseModel):
-    """Response model for pending permission tool requests requiring user confirmation."""
-
-    behavior: Annotated[
-        Literal["pending"], Field(description="Permission behavior")
-    ] = "pending"
-    confirmation_id: Annotated[
-        str,
-        Field(
-            description="Unique identifier for the confirmation request",
-            alias="confirmationId",
-        ),
-    ]
-    message: Annotated[
-        str,
-        Field(
-            description="Instructions for retrying the request after user confirmation"
-        ),
-    ] = "User confirmation required. Please retry with the same confirmation_id."
-
-    model_config = ConfigDict(extra="forbid", populate_by_name=True)
-
-
-PermissionToolResponse = (
-    PermissionToolAllowResponse
-    | PermissionToolDenyResponse
-    | PermissionToolPendingResponse
-)
-
-
 class RateLimitError(APIError):
     """Rate limit error."""
 
@@ -252,19 +189,3 @@ class InternalServerError(APIError):
     type: Annotated[
         Literal["internal_server_error"], Field(description="Error type")
     ] = "internal_server_error"
-
-
-class CodexResponse(BaseModel):
-    """OpenAI Codex completion response model."""
-
-    id: Annotated[str, Field(description="Response ID")]
-    model: Annotated[str, Field(description="Model used for completion")]
-    content: Annotated[str, Field(description="Generated content")]
-    finish_reason: Annotated[
-        str | None, Field(description="Reason the response finished")
-    ] = None
-    usage: Annotated[Usage | None, Field(description="Token usage information")] = None
-
-    model_config = ConfigDict(
-        extra="allow"
-    )  # Allow additional fields for compatibility

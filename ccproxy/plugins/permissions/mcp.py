@@ -11,13 +11,13 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from ccproxy.api.dependencies import SettingsDep
 from ccproxy.core.logging import get_plugin_logger
-from ccproxy.models.responses import (
+
+from .models import (
+    PermissionStatus,
     PermissionToolAllowResponse,
     PermissionToolDenyResponse,
     PermissionToolPendingResponse,
 )
-
-from .models import PermissionStatus
 from .service import get_permission_service
 
 
