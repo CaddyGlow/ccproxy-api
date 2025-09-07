@@ -63,10 +63,13 @@ class RequestProcessor:
         # Filter out internal headers that shouldn't be sent upstream
         filtered_headers = self._filter_internal_headers(headers)
 
-        # Apply request transformer
+        # Apply request transformer (supports sync or async)
         processed_headers = self._apply_request_transformer(
             filtered_headers, handler_config, **transform_kwargs
         )
+        import inspect as _inspect
+        if _inspect.isawaitable(processed_headers):
+            processed_headers = await processed_headers  # type: ignore[assignment]
 
         # Canonicalize header names and preserve order after transformation
         # unless handler configuration explicitly requests preserving header case
@@ -418,17 +421,11 @@ class RequestProcessor:
                 kwargs_keys=list(kwargs.keys()),
                 category="request",
             )
-            transformed = handler_config.request_transformer.transform_headers(
+            result = handler_config.request_transformer.transform_headers(
                 headers, **kwargs
             )
-            self.logger.debug(
-                "apply_request_transformer_success",
-                original_count=len(headers),
-                transformed_count=len(transformed) if transformed else 0,
-                has_auth="authorization" in (transformed or {}),
-                category="request",
-            )
-            return transformed if transformed else headers
+            # Do not await here; caller handles awaitable results
+            return result  # type: ignore[return-value]
         except TypeError as te:
             # Fallback to no kwargs if transformer doesn't accept them
             self.logger.debug(
@@ -436,16 +433,8 @@ class RequestProcessor:
                 error=str(te),
             )
             try:
-                transformed = handler_config.request_transformer.transform_headers(
-                    headers
-                )
-                self.logger.debug(
-                    "apply_request_transformer_success_without_kwargs",
-                    original_count=len(headers),
-                    transformed_count=len(transformed) if transformed else 0,
-                    has_auth="authorization" in (transformed or {}),
-                )
-                return transformed if transformed else headers
+                result = handler_config.request_transformer.transform_headers(headers)
+                return result  # type: ignore[return-value]
             except Exception as e:
                 self.logger.warning(
                     "request_header_transform_error",

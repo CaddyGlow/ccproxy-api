@@ -78,7 +78,7 @@ class CodexResponseTransformer:
             logger.warning(
                 "cors_settings_not_available_using_fallback", category="transform"
             )
-            # Only add CORS headers if Origin header is present in request
+            # Determine request origin if provided
             request_headers = kwargs.get("request_headers", {})
             if hasattr(request_headers, "to_dict"):
                 try:
@@ -86,17 +86,23 @@ class CodexResponseTransformer:
                 except Exception:
                     request_headers = dict(request_headers)
             request_origin = get_request_origin(request_headers)
-            # Use a secure default - localhost origins only
-            if request_origin and any(
-                origin in request_origin for origin in ["localhost", "127.0.0.1"]
-            ):
-                transformed["Access-Control-Allow-Origin"] = request_origin
-                transformed["Access-Control-Allow-Headers"] = (
-                    "Content-Type, Authorization, Accept, Origin, X-Requested-With"
-                )
-                transformed["Access-Control-Allow-Methods"] = (
-                    "GET, POST, PUT, DELETE, OPTIONS"
-                )
+
+            # Fallback policy:
+            # - If localhost origin, echo it back
+            # - Otherwise (no origin or non-localhost), set wildcard to enable dev/testing
+            allow_origin = (
+                request_origin
+                if request_origin
+                and any(o in request_origin for o in ["localhost", "127.0.0.1"])
+                else "*"
+            )
+            transformed["Access-Control-Allow-Origin"] = allow_origin
+            transformed["Access-Control-Allow-Headers"] = (
+                "Content-Type, Authorization, Accept, Origin, X-Requested-With"
+            )
+            transformed["Access-Control-Allow-Methods"] = (
+                "GET, POST, PUT, DELETE, OPTIONS"
+            )
 
         return transformed
 

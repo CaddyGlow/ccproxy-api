@@ -134,10 +134,10 @@ class BaseProviderPluginFactory(ProviderPluginFactory):
         # would override our runtime_class with ProviderPluginRuntime
         self.manifest = manifest
         self.runtime_class = self.__class__.runtime_class
-    
+
     def validate_format_adapters_with_settings(self, settings: "Settings") -> None:
         """Validate format adapter specifications with injected settings.
-        
+
         Args:
             settings: Settings instance for feature flag access
         """

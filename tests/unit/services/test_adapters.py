@@ -222,38 +222,7 @@ class TestOpenAIAdapter:
 
         assert result["tool_choice"]["type"] == "auto"
 
-    @pytest.mark.skip("Deprecated functions/function_call fields removed")
-    @pytest.mark.asyncio
-    async def test_adapt_request_functions_conversion(
-        self, adapter: OpenAIAdapter
-    ) -> None:
-        """Test conversion of deprecated OpenAI functions to tools."""
-        openai_request = {
-            "model": "gpt-4",
-            "messages": [{"role": "user", "content": "Calculate something"}],
-            "functions": [
-                {
-                    "name": "calculate",
-                    "description": "Perform calculation",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {"expression": {"type": "string"}},
-                    },
-                }
-            ],
-            "function_call": "auto",
-            "max_tokens": 100,
-        }
-
-        result = await adapter.adapt_request(openai_request)
-
-        assert "tools" in result
-        assert len(result["tools"]) == 1
-        tool = result["tools"][0]
-        assert tool["name"] == "calculate"
-        assert tool["description"] == "Perform calculation"
-
-        assert result["tool_choice"]["type"] == "auto"
+    # Removed: deprecated functions/function_call test
 
     @pytest.mark.asyncio
     async def test_adapt_request_tool_choice_specific(
@@ -765,17 +734,7 @@ class TestOpenAIAdapter:
         result = adapter._convert_tool_choice_to_anthropic({"invalid": "format"})
         assert result["type"] == "auto"
 
-    @pytest.mark.skip("_convert_function_call_to_anthropic method removed")
-    def test_function_call_edge_cases(self, adapter: OpenAIAdapter) -> None:
-        """Test edge cases in function call conversion."""
-        # Test unknown string function call
-        result = adapter._convert_function_call_to_anthropic("unknown")
-        assert result["type"] == "auto"
-
-        # Test empty dict function call
-        result = adapter._convert_function_call_to_anthropic({})
-        assert result["type"] == "tool"
-        assert result["name"] == ""
+    # Removed: deprecated _convert_function_call_to_anthropic test
 
     def test_tool_call_arguments_parsing(self, adapter: OpenAIAdapter) -> None:
         """Test parsing of tool call arguments."""

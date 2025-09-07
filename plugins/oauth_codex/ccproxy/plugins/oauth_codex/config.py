@@ -8,7 +8,7 @@ class CodexOAuthConfig(BaseModel):
 
     enabled: bool = Field(
         default=True,
-        description="Enablded the plugin",
+        description="Enable the plugin",
     )
 
     # Core OAuth endpoints and identifiers (aligns with Claude config structure)

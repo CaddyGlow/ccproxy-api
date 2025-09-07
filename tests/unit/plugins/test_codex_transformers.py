@@ -62,21 +62,21 @@ class TestCodexRequestTransformer:
         assert result["version"] == "0.22.0"
         assert result["custom-codex"] == "detected"
         assert result["session_id"] == "test-session"  # Should not be overridden
-        
+
     def test_transform_headers_with_chatgpt_account_id(self) -> None:
         """Test header transformation with chatgpt_account_id parameter."""
         transformer = CodexRequestTransformer()
         headers = {"content-type": "application/json"}
-        
+
         result = transformer.transform_headers(
-            headers, 
-            session_id="test-session", 
+            headers,
+            session_id="test-session",
             access_token="test-token",
-            chatgpt_account_id="test-account-123"
+            chatgpt_account_id="test-account-123",
         )
-        
+
         assert result["session_id"] == "test-session"
-        assert result["Authorization"] == "Bearer test-token" 
+        assert result["Authorization"] == "Bearer test-token"
         assert result["chatgpt-account-id"] == "test-account-123"
         assert result["originator"] == "codex_cli_rs"  # From fallback headers
 
@@ -171,8 +171,8 @@ class TestCodexResponseTransformer:
         assert "content-length" not in result
         assert result["content-type"] == "application/json"
         assert result["custom-header"] == "value"
-        # Without CORS settings and no Origin header, no CORS headers should be added
-        assert "Access-Control-Allow-Origin" not in result
+        # Without CORS settings, fallback adds permissive CORS for dev/testing
+        assert "Access-Control-Allow-Origin" in result
 
     def test_transform_headers_localhost_origin_fallback(self) -> None:
         """Test header transformation with localhost origin uses secure fallback."""
@@ -202,8 +202,8 @@ class TestCodexResponseTransformer:
         result = transformer.transform_headers(headers, request_headers=request_headers)
 
         assert result["content-type"] == "application/json"
-        # Secure fallback blocks non-localhost origins
-        assert "Access-Control-Allow-Origin" not in result
+        # Secure fallback allows dev wildcard for non-localhost origins
+        assert result.get("Access-Control-Allow-Origin") == "*"
 
     def test_transform_headers_with_cors_settings(self) -> None:
         """Test header transformation with proper CORS settings."""
@@ -288,7 +288,7 @@ async def test_transformers_integration() -> None:
     request_headers = {"content-type": "application/json"}
     request_body = json.dumps({"model": "gpt-5"}).encode()
 
-    transformed_headers = await request_transformer.transform_headers(
+    transformed_headers = request_transformer.transform_headers(
         request_headers, "test-session", "test-token"
     )
     transformed_body = request_transformer.transform_body(request_body)

@@ -181,7 +181,7 @@ class BaseHTTPAdapter(BaseAdapter):
 
         # Get access token directly from auth manager
         access_token = await self._auth_manager.get_access_token()
-        
+
         # Get chatgpt_account_id from user profile if available
         chatgpt_account_id = None
         try:
@@ -190,15 +190,19 @@ class BaseHTTPAdapter(BaseAdapter):
                 "auth_profile_extraction",
                 has_profile=user_profile is not None,
                 profile_type=type(user_profile).__name__ if user_profile else None,
-                has_chatgpt_account_id_attr=hasattr(user_profile, 'chatgpt_account_id') if user_profile else False,
+                has_chatgpt_account_id_attr=hasattr(user_profile, "chatgpt_account_id")
+                if user_profile
+                else False,
             )
-            
-            if user_profile and hasattr(user_profile, 'chatgpt_account_id'):
-                account_id = getattr(user_profile, 'chatgpt_account_id', None)
+
+            if user_profile and hasattr(user_profile, "chatgpt_account_id"):
+                account_id = getattr(user_profile, "chatgpt_account_id", None)
                 logger.debug(
                     "chatgpt_account_id_extraction",
                     raw_account_id=account_id,
-                    account_id_type=type(account_id).__name__ if account_id is not None else None,
+                    account_id_type=type(account_id).__name__
+                    if account_id is not None
+                    else None,
                     is_string=isinstance(account_id, str),
                     is_truthy=bool(account_id),
                 )
@@ -208,20 +212,26 @@ class BaseHTTPAdapter(BaseAdapter):
                         "chatgpt_account_id_set",
                         account_id_length=len(account_id),
                     )
-                    
+
             # Also debug the extras content to see JWT claims structure
-            if user_profile and hasattr(user_profile, 'extras'):
-                extras = getattr(user_profile, 'extras', {})
+            if user_profile and hasattr(user_profile, "extras"):
+                extras = getattr(user_profile, "extras", {})
                 auth_claims = extras.get("https://api.openai.com/auth", {})
                 logger.debug(
                     "jwt_claims_debug",
                     has_extras=bool(extras),
-                    extras_keys=list(extras.keys()) if isinstance(extras, dict) else None,
+                    extras_keys=list(extras.keys())
+                    if isinstance(extras, dict)
+                    else None,
                     has_auth_claims=bool(auth_claims),
-                    auth_claims_keys=list(auth_claims.keys()) if isinstance(auth_claims, dict) else None,
-                    raw_chatgpt_account_id=auth_claims.get("chatgpt_account_id") if isinstance(auth_claims, dict) else None,
+                    auth_claims_keys=list(auth_claims.keys())
+                    if isinstance(auth_claims, dict)
+                    else None,
+                    raw_chatgpt_account_id=auth_claims.get("chatgpt_account_id")
+                    if isinstance(auth_claims, dict)
+                    else None,
                 )
-                
+
         except Exception as e:
             logger.warning(
                 "chatgpt_account_id_extraction_failed",

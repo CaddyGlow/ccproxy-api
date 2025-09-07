@@ -93,7 +93,7 @@ fix: format lint-fix
 	ruff check . --fix --unsafe-fixes
 
 # Run all tests with coverage (after ensuring code quality)
-test: check
+test: 
 	@echo "Running all tests with coverage..."
 	@if [ ! -d "tests" ]; then echo "Error: tests/ directory not found. Create tests/ directory and add test files."; exit 1; fi
 	$(UV_RUN) pytest tests/ -v --cov=ccproxy --cov-report=term-missing

@@ -222,18 +222,19 @@ async def _lazy_register_oauth_provider(
             self.streaming_handler = container.get_streaming_handler()
             # Add http_pool_manager for plugin context (minimal implementation for CLI)
             self.http_pool_manager = self._create_minimal_pool_manager()
-        
+
         def _create_minimal_pool_manager(self) -> Any:
             """Create minimal pool manager for CLI context."""
+
             # For CLI use, we may not need full pool management
             # Return a simple wrapper or the http_client itself
             class MinimalPoolManager:
                 def __init__(self, client):
                     self.client = client
-                    
+
                 def get_client(self):
                     return self.client
-                    
+
             return MinimalPoolManager(self.http_client)
 
         def get_plugin_config(self, plugin_name: str) -> Any:
@@ -242,12 +243,13 @@ async def _lazy_register_oauth_provider(
                 if cfg:
                     return cfg.model_dump() if hasattr(cfg, "model_dump") else cfg
             return {}
-        
+
         def get_format_registry(self) -> Any:
             # For CLI context, we may not need full format registry functionality
             # Create a minimal registry if needed, or return None
             try:
                 from ccproxy.services.format_registry import FormatRegistry
+
                 return FormatRegistry()
             except ImportError:
                 # Fallback for minimal CLI operations

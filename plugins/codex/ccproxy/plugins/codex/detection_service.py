@@ -36,7 +36,7 @@ class CodexDetectionService:
         self,
         settings: Settings,
         cli_service: CLIDetectionService | None = None,
-        codex_settings: "CodexSettings | None" = None,
+        codex_settings: CodexSettings | None = None,
     ) -> None:
         """Initialize Codex detection service.
 

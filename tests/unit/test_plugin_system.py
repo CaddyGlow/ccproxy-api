@@ -193,77 +193,7 @@ async def test_plugin_registry_validation_failure():
     assert registry.get_adapter("test_plugin") is None
 
 
-@pytest.mark.asyncio
-@pytest.mark.skip(reason="PluginRegistry API has changed")
-async def test_plugin_registry_discover_empty_dir():
-    """Test discovering plugins with no plugins available."""
-    return  # Skipped - API changed
-    registry = PluginRegistry()  # type: ignore[unreachable]
-
-    # Mock CoreServices
-    mock_services = MagicMock()
-
-    # Mock PluginLoader to return no plugins
-    with patch("ccproxy.plugins.registry.PluginLoader") as mock_loader_class:
-        mock_loader = MagicMock()
-        mock_loader.load_plugins = AsyncMock(return_value=[])
-        mock_loader_class.return_value = mock_loader
-
-        await registry.discover_and_initialize(mock_services)
-
-    assert len(registry.list_plugins()) == 0
-
-
-@pytest.mark.asyncio
-@pytest.mark.skip(reason="PluginRegistry API has changed")
-async def test_plugin_registry_discover_with_plugin():
-    """Test discovering plugins with plugins available."""
-    return  # Skipped - API changed
-    registry = PluginRegistry()  # type: ignore[unreachable]
-
-    # Mock CoreServices
-    mock_services = MagicMock()
-
-    # Mock PluginLoader to return a plugin
-    with patch("ccproxy.plugins.registry.PluginLoader") as mock_loader_class:
-        mock_loader = MagicMock()
-        mock_plugin = MockPlugin()
-        mock_loader.load_plugins = AsyncMock(return_value=[mock_plugin])
-        mock_loader_class.return_value = mock_loader
-
-        await registry.discover_and_initialize(mock_services)
-
-    # Check that plugin was discovered and registered
-    assert "test_plugin" in registry.list_plugins()
-
-
-@pytest.mark.asyncio
-@pytest.mark.skip(reason="PluginRegistry API has changed")
-async def test_plugin_registry_load_invalid_plugin():
-    """Test handling invalid plugins during discovery."""
-    return  # Skipped - API changed
-    registry = PluginRegistry()  # type: ignore[unreachable]
-
-    # Mock CoreServices
-    mock_services = MagicMock()
-
-    # Create a plugin that will fail during registration
-    class BadPlugin(MockPlugin):
-        async def validate(self):
-            raise Exception("Plugin validation error")
-
-    # Mock PluginLoader to return a bad plugin
-    with patch("ccproxy.plugins.registry.PluginLoader") as mock_loader_class:
-        mock_loader = MagicMock()
-        bad_plugin = BadPlugin()
-        mock_loader.load_plugins = AsyncMock(return_value=[bad_plugin])
-        mock_loader_class.return_value = mock_loader
-
-        # Should not raise, just log error
-        await registry.discover_and_initialize(mock_services)
-
-    # No plugins should be registered
-    assert len(registry.list_plugins()) == 0
+# Skipped tests removed - deprecated PluginRegistry API
 
 
 @pytest.mark.asyncio

@@ -414,10 +414,11 @@ class CompositeAnthropicAdapter(APIAdapter):
         # Add usage if available
         if "usage" in openai_response:
             usage = openai_response["usage"]
-            anthropic_response["usage"] = {
-                "input_tokens": usage.get("prompt_tokens", 0),
-                "output_tokens": usage.get("completion_tokens", 0),
-            }
+            if isinstance(usage, dict):
+                anthropic_response["usage"] = {
+                    "input_tokens": usage.get("prompt_tokens", 0),
+                    "output_tokens": usage.get("completion_tokens", 0),
+                }
 
         # Add model and id if available
         if "model" in openai_response:
