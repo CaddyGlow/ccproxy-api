@@ -47,6 +47,3 @@ class TestBaseModels:
         assert profile.email == "test@example.com"
         assert profile.display_name == "Test User"
         assert profile.extras == {"custom": "data"}
-
-
- 

@@ -13,4 +13,3 @@ pytest_plugins = [
     # Integration-wide fixtures
     "tests.fixtures.integration",
 ]
-

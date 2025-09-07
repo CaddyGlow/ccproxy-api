@@ -53,6 +53,7 @@ def adapter_with_pricing(
     return adapter
 
 
+@pytest.mark.unit
 class TestClaudeAPIPricingIntegration:
     """Test pricing service integration in claude_api adapter."""
 

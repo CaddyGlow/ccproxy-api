@@ -9,6 +9,9 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+# Mark entire module as integration tests that exercise Docker boundaries
+pytestmark = [pytest.mark.integration, pytest.mark.docker]
+
 from ccproxy.docker.adapter import DockerAdapter
 from ccproxy.docker.docker_path import DockerPath, DockerPathSet
 from ccproxy.docker.middleware import LoggerOutputMiddleware, create_logger_middleware
@@ -89,8 +92,17 @@ class TestDockerAdapter:
             # Verify that execvp was called with Docker command
             mock_execvp.assert_called_once()
             args = mock_execvp.call_args[0]
-            assert args[0] == "docker"  # First argument should be "docker"
-            assert "test-image:latest" in args[1]  # Image should be in command
+            # Handle environments where sudo is injected for docker execution
+            if args[0] == "sudo":
+                cmd_list = args[1]
+                assert isinstance(cmd_list, list)
+                assert cmd_list[0] == "sudo"
+                assert cmd_list[1] == "docker"
+                assert any("test-image:latest" in str(x) for x in cmd_list)
+            else:
+                assert args[0] == "docker"  # First argument should be docker
+                cmd_list = args[1]
+                assert any("test-image:latest" in str(x) for x in cmd_list)
 
     async def test_build_image_success(
         self, docker_adapter_success: DockerAdapter, tmp_path: Path

@@ -6,7 +6,7 @@ Covers:
 - BaseTokenManager.get_unified_profile using Claude profile
 """
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from unittest.mock import MagicMock
 
 import pytest
@@ -195,4 +195,3 @@ class TestUnifiedProfiles:
         assert unified["display_name"] == "Test User"
         assert unified["provider"] == "claude-api"
         assert unified["extras"] == {"subscription": "pro"}
-

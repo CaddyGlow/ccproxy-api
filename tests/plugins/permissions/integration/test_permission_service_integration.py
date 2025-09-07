@@ -1,7 +1,6 @@
 """Integration tests for permission service functionality."""
 
 import asyncio
-from typing import Any
 
 import pytest
 
@@ -22,7 +21,7 @@ async def task_manager_fixture():
     await stop_task_manager()
 
 
-@pytest.mark.asyncio(loop_scope="session") 
+@pytest.mark.asyncio(loop_scope="session")
 @pytest.mark.integration
 @pytest.mark.auth
 async def test_permission_service_request_creates_request(
@@ -32,7 +31,7 @@ async def test_permission_service_request_creates_request(
     # Create a fresh service for this test
     service = PermissionService(timeout_seconds=30)
     await service.start()
-    
+
     try:
         tool_name = "bash"
         input_params = {"command": "ls -la"}
@@ -61,7 +60,7 @@ async def test_permission_service_validates_input(
     """Test input validation for permission requests."""
     service = PermissionService(timeout_seconds=30)
     await service.start()
-    
+
     try:
         # Test empty tool name
         with pytest.raises(ValueError, match="Tool name cannot be empty"):
@@ -87,7 +86,7 @@ async def test_permission_service_get_status(
     """Test getting status of permission requests."""
     service = PermissionService(timeout_seconds=30)
     await service.start()
-    
+
     try:
         request_id = await service.request_permission("bash", {"command": "test"})
 
@@ -111,7 +110,7 @@ async def test_permission_service_resolve_allowed(
     """Test resolving a permission request as allowed."""
     service = PermissionService(timeout_seconds=30)
     await service.start()
-    
+
     try:
         request_id = await service.request_permission("bash", {"command": "test"})
 
@@ -135,7 +134,7 @@ async def test_permission_service_resolve_denied(
     """Test resolving a permission request as denied."""
     service = PermissionService(timeout_seconds=30)
     await service.start()
-    
+
     try:
         request_id = await service.request_permission("bash", {"command": "test"})
 
@@ -159,7 +158,7 @@ async def test_permission_service_resolve_validation(
     """Test input validation for resolve method."""
     service = PermissionService(timeout_seconds=30)
     await service.start()
-    
+
     try:
         # Test empty request ID
         with pytest.raises(ValueError, match="Request ID cannot be empty"):
@@ -181,7 +180,7 @@ async def test_permission_service_resolve_already_resolved(
     """Test resolving an already resolved request returns False."""
     service = PermissionService(timeout_seconds=30)
     await service.start()
-    
+
     try:
         request_id = await service.request_permission("bash", {"command": "test"})
 
@@ -205,7 +204,7 @@ async def test_permission_service_concurrent_resolutions(
     """Test handling concurrent resolution attempts."""
     service = PermissionService(timeout_seconds=30)
     await service.start()
-    
+
     try:
         request_id = await service.request_permission("bash", {"command": "test"})
 
@@ -232,7 +231,7 @@ async def test_permission_service_event_subscription(
     """Test event subscription and emission."""
     service = PermissionService(timeout_seconds=30)
     await service.start()
-    
+
     try:
         # Subscribe to events
         queue = await service.subscribe_to_events()
@@ -270,7 +269,7 @@ async def test_permission_service_multiple_subscribers(
     """Test multiple event subscribers receive events."""
     service = PermissionService(timeout_seconds=30)
     await service.start()
-    
+
     try:
         # Subscribe multiple queues
         queue1 = await service.subscribe_to_events()
@@ -302,7 +301,7 @@ async def test_permission_service_wait_for_permission_timeout(
     """Test waiting for a permission that times out."""
     service = PermissionService(timeout_seconds=30)
     await service.start()
-    
+
     try:
         request_id = await service.request_permission("bash", {"command": "test"})
 
@@ -322,7 +321,7 @@ async def test_permission_service_wait_for_non_existent_request(
     """Test waiting for a non-existent request."""
     service = PermissionService(timeout_seconds=30)
     await service.start()
-    
+
     try:
         with pytest.raises(PermissionNotFoundError):
             await service.wait_for_permission("non-existent-id")
@@ -349,7 +348,7 @@ async def test_permission_service_get_pending_requests(
     """Test get_pending_requests returns only pending requests."""
     service = PermissionService(timeout_seconds=30)
     await service.start()
-    
+
     try:
         # Create multiple requests with different statuses
         request_id1 = await service.request_permission("tool1", {"param": "value1"})

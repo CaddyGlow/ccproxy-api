@@ -3,11 +3,9 @@ from typing import Any
 import pytest
 from tests.helpers.assertions import (
     assert_anthropic_response_format,
-    assert_openai_response_format,
 )
 from tests.helpers.test_data import (
     STANDARD_ANTHROPIC_REQUEST,
-    STANDARD_OPENAI_REQUEST,
 )
 
 

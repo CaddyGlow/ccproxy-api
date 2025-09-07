@@ -100,7 +100,7 @@ fix: format lint-fix
 test:
 	@echo "Running all tests with coverage..."
 	@if [ ! -d "tests" ]; then echo "Error: tests/ directory not found. Create tests/ directory and add test files."; exit 1; fi
-	$(UV_RUN) pytest -v --import-mode=importlib --cov=ccproxy --cov-report=term --cov-report=html
+	$(UV_RUN) pytest -v --import-mode=importlib --cov=ccproxy --cov-report=term #--cov-report=html
 
 # New test suite targets
 

@@ -1,7 +1,8 @@
-"""Tests for Claude SDK options handling."""
+"""Unit tests for Claude SDK options handling."""
 
 from typing import Any, cast
 
+import pytest
 from claude_code_sdk import ClaudeCodeOptions
 
 from ccproxy.config.settings import Settings
@@ -15,9 +16,10 @@ with patched_typing():
 
 
 class TestOptionsHandler:
-    """Test the OptionsHandler class."""
+    """Test cases for OptionsHandler."""
 
-    def test_create_options_without_settings(self):
+    @pytest.mark.unit
+    def test_create_options_without_settings(self) -> None:
         """Test creating options without any settings."""
         handler = OptionsHandler(settings=None)
 
@@ -28,7 +30,8 @@ class TestOptionsHandler:
         assert options.mcp_servers == {}  # ClaudeCodeOptions defaults to empty dict
         assert options.permission_prompt_tool_name is None
 
-    def test_create_options_with_default_mcp_configuration(self):
+    @pytest.mark.unit
+    def test_create_options_with_default_mcp_configuration(self) -> None:
         """Test that default MCP configuration is applied from settings."""
         # Create settings with default Claude configuration (includes MCP defaults)
         claude_settings = (
@@ -54,7 +57,8 @@ class TestOptionsHandler:
             options.permission_prompt_tool_name == "mcp__confirmation__check_permission"
         )
 
-    def test_create_options_with_custom_configuration(self):
+    @pytest.mark.unit
+    def test_create_options_with_custom_configuration(self) -> None:
         """Test that custom configuration overrides defaults."""
         # Create custom code options object with different values
         custom_code_options = ClaudeCodeOptions(
@@ -80,7 +84,8 @@ class TestOptionsHandler:
         # Should have the custom max thinking tokens
         assert options.max_thinking_tokens == 15000
 
-    def test_create_options_api_parameters_override_settings(self):
+    @pytest.mark.unit
+    def test_create_options_api_parameters_override_settings(self) -> None:
         """Test that API parameters override settings."""
         claude_settings = ClaudeSDKSettings()  # Uses defaults
         settings = Settings(claude=claude_settings)
@@ -105,7 +110,8 @@ class TestOptionsHandler:
             options.permission_prompt_tool_name == "mcp__confirmation__check_permission"
         )
 
-    def test_create_options_with_kwargs_override(self):
+    @pytest.mark.unit
+    def test_create_options_with_kwargs_override(self) -> None:
         """Test that additional kwargs are applied correctly."""
         claude_settings = ClaudeSDKSettings()
         settings = Settings(claude=claude_settings)
@@ -128,7 +134,8 @@ class TestOptionsHandler:
         mcp_servers = cast(dict[str, Any], options.mcp_servers)
         assert "confirmation" in mcp_servers
 
-    def test_create_options_preserves_all_configuration_attributes(self):
+    @pytest.mark.unit
+    def test_create_options_preserves_all_configuration_attributes(self) -> None:
         """Test that all attributes from configuration are properly copied."""
         # Create comprehensive configuration
         custom_code_options = ClaudeCodeOptions(
@@ -166,7 +173,8 @@ class TestOptionsHandler:
         assert options.cwd == "/project/root"
         assert options.append_system_prompt == "Additional context"
 
-    def test_model_parameter_always_overrides_settings(self):
+    @pytest.mark.unit
+    def test_model_parameter_always_overrides_settings(self) -> None:
         """Test that the model parameter always takes precedence over settings."""
         custom_code_options = ClaudeCodeOptions(
             model="claude-3-opus-20240229"  # Different model in settings
@@ -181,7 +189,8 @@ class TestOptionsHandler:
         # API model parameter should override settings model
         assert options.model == "claude-3-5-sonnet-20241022"
 
-    def test_get_supported_models(self):
+    @pytest.mark.unit
+    def test_get_supported_models(self) -> None:
         """Test getting supported models list."""
         models = OptionsHandler.get_supported_models()
 
@@ -190,11 +199,11 @@ class TestOptionsHandler:
         # Should include common Claude models
         assert any("claude-3" in model for model in models)
 
-    def test_validate_model(self):
+    @pytest.mark.unit
+    def test_validate_model(self) -> None:
         """Test model validation."""
         # Should work with supported models
         assert OptionsHandler.validate_model("claude-3-5-sonnet-20241022")
 
         # Should fail with unsupported models
         assert not OptionsHandler.validate_model("invalid-model")
-

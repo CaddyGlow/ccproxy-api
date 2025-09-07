@@ -1,4 +1,4 @@
-"""Tests for ClaudeSDKClient implementation.
+"""Unit tests for ClaudeSDKClient implementation.
 
 This module tests the ClaudeSDKClient class including:
 - Stateless query execution
@@ -32,8 +32,9 @@ from ccproxy.plugins.claude_sdk.config import ClaudeSDKSettings
 
 
 class TestClaudeSDKClient:
-    """Test suite for ClaudeSDKClient class."""
+    """Test cases for ClaudeSDKClient class."""
 
+    @pytest.mark.unit
     def test_init_default_values(self) -> None:
         """Test client initialization with default values."""
         config = ClaudeSDKSettings()
@@ -43,6 +44,7 @@ class TestClaudeSDKClient:
         assert client.config is config
         assert client._session_manager is None
 
+    @pytest.mark.unit
     def test_init_with_session_manager(self) -> None:
         """Test client initialization with session manager."""
         from ccproxy.plugins.claude_sdk.config import ClaudeSDKSettings
@@ -56,6 +58,7 @@ class TestClaudeSDKClient:
         assert client.config is config
         assert client._session_manager is mock_session_manager
 
+    @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_validate_health_success(self) -> None:
         """Test health validation returns True when SDK is available."""
@@ -65,6 +68,7 @@ class TestClaudeSDKClient:
 
         assert result is True
 
+    @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_validate_health_exception(self) -> None:
         """Test health validation returns False when exceptions occur."""
@@ -78,6 +82,7 @@ class TestClaudeSDKClient:
 
         assert result is True  # Health check is simple and doesn't actually fail
 
+    @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_close_cleanup(self) -> None:
         """Test client cleanup on close."""
@@ -86,6 +91,7 @@ class TestClaudeSDKClient:
         await client.close()
         # Claude SDK doesn't require explicit cleanup, so this should pass without error
 
+    @pytest.mark.unit
     def test_last_api_call_time_ms_initial(self) -> None:
         """Test getting last API call time when no calls made."""
         client: ClaudeSDKClient = ClaudeSDKClient(config=ClaudeSDKSettings())
@@ -94,6 +100,7 @@ class TestClaudeSDKClient:
 
         assert result == 0.0
 
+    @pytest.mark.unit
     def test_last_api_call_time_ms_after_call(self) -> None:
         """Test getting last API call time after setting it."""
         client: ClaudeSDKClient = ClaudeSDKClient(config=ClaudeSDKSettings())
@@ -105,8 +112,9 @@ class TestClaudeSDKClient:
 
 
 class TestClaudeSDKClientStatelessQueries:
-    """Test suite for stateless query execution."""
+    """Test cases for stateless query execution."""
 
+    @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_query_completion_stateless_success(
         self, mock_sdk_client_instance: AsyncMock
@@ -137,6 +145,7 @@ class TestClaudeSDKClientStatelessQueries:
         assert isinstance(messages[0].content[0], sdk_models.TextBlock)
         assert messages[0].content[0].text == "Hello"
 
+    @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_query_completion_cli_not_found_error(
         self, mock_sdk_client_cli_not_found: AsyncMock
@@ -164,6 +173,7 @@ class TestClaudeSDKClientStatelessQueries:
 
         assert "Claude CLI not available" in str(exc_info.value)
 
+    @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_query_completion_cli_connection_error(
         self, mock_sdk_client_cli_connection_error: AsyncMock
@@ -191,6 +201,7 @@ class TestClaudeSDKClientStatelessQueries:
 
         assert "Claude CLI not available" in str(exc_info.value)
 
+    @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_query_completion_process_error(
         self, mock_sdk_client_process_error: AsyncMock
@@ -219,6 +230,7 @@ class TestClaudeSDKClientStatelessQueries:
         assert "Claude process error" in str(exc_info.value)
         assert exc_info.value.status_code == 503
 
+    @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_query_completion_json_decode_error(
         self, mock_sdk_client_json_decode_error: AsyncMock
@@ -247,6 +259,7 @@ class TestClaudeSDKClientStatelessQueries:
         assert "Claude process error" in str(exc_info.value)
         assert exc_info.value.status_code == 503
 
+    @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_query_completion_unexpected_error(
         self, mock_sdk_client_unexpected_error: AsyncMock
@@ -275,6 +288,7 @@ class TestClaudeSDKClientStatelessQueries:
         assert "Unexpected error" in str(exc_info.value)
         assert exc_info.value.status_code == 500
 
+    @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_query_completion_unknown_message_type(self) -> None:
         """Test handling of unknown message types."""
@@ -314,6 +328,7 @@ class TestClaudeSDKClientStatelessQueries:
         # Should skip unknown message types
         assert len(messages) == 0
 
+    @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_query_completion_message_conversion_failure(self) -> None:
         """Test handling of message conversion failures."""
@@ -360,6 +375,7 @@ class TestClaudeSDKClientStatelessQueries:
         # Should skip the message that failed conversion and continue processing
         assert len(messages) == 0
 
+    @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_query_completion_multiple_message_types(self) -> None:
         """Test handling of multiple message types in sequence."""
@@ -410,6 +426,7 @@ class TestClaudeSDKClientStatelessQueries:
         assert isinstance(messages[2], sdk_models.SystemMessage)
         assert isinstance(messages[3], sdk_models.ResultMessage)
 
+    @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_query_completion_with_simple_organized_mock(
         self,
@@ -433,6 +450,7 @@ class TestClaudeSDKClientStatelessQueries:
         health_status = await mock_internal_claude_sdk_service.validate_health()
         assert health_status is True
 
+    @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_health_check_with_organized_fixture(
         self,
@@ -455,8 +473,9 @@ class TestClaudeSDKClientStatelessQueries:
 
 
 class TestClaudeSDKClientMessageConversion:
-    """Test suite for message conversion functionality."""
+    """Test cases for message conversion functionality."""
 
+    @pytest.mark.unit
     def test_convert_message_with_dict(self) -> None:
         """Test message conversion with object having __dict__."""
         client: ClaudeSDKClient = ClaudeSDKClient(config=ClaudeSDKSettings())
@@ -472,6 +491,7 @@ class TestClaudeSDKClientMessageConversion:
 
         assert isinstance(result, sdk_models.AssistantMessage)
 
+    @pytest.mark.unit
     def test_convert_message_with_dataclass(self) -> None:
         """Test message conversion with dataclass object."""
         client: ClaudeSDKClient = ClaudeSDKClient(config=ClaudeSDKSettings())
@@ -491,6 +511,7 @@ class TestClaudeSDKClientMessageConversion:
 
         assert isinstance(result, sdk_models.AssistantMessage)
 
+    @pytest.mark.unit
     def test_convert_message_with_attributes(self) -> None:
         """Test message conversion by extracting common attributes."""
         client: ClaudeSDKClient = ClaudeSDKClient(config=ClaudeSDKSettings())
@@ -514,4 +535,3 @@ class TestClaudeSDKClientMessageConversion:
 
 
 # TestClaudeSDKClientExceptions removed - exceptions moved to exceptions.py module
-

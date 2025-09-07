@@ -1,3 +1,5 @@
+"""Unit tests for AnalyticsService pagination functionality."""
+
 from __future__ import annotations
 
 import asyncio
@@ -27,17 +29,18 @@ def _mk(ts: float, rid: str) -> dict[str, object]:
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_service_pagination_asc_desc() -> None:
-    s = SimpleDuckDBStorage(":memory:")
-    await s.initialize()
+    """Test pagination with ascending and descending order."""
+    storage = SimpleDuckDBStorage(":memory:")
+    await storage.initialize()
     try:
         base = time.time()
         # Older -> Newer: t1 < t2 < t3
         t1, t2, t3 = base - 30, base - 20, base - 10
         for ts, rid in [(t1, "a"), (t2, "b"), (t3, "c")]:
-            await s.store_request(_mk(ts, rid))
+            await storage.store_request(_mk(ts, rid))
         await asyncio.sleep(0.2)
 
-        svc = AnalyticsService(s._engine)
+        svc = AnalyticsService(storage._engine)
 
         # Descending: expect c,b then a
         p1d = svc.query_logs(limit=2, order="desc")
@@ -53,5 +56,4 @@ async def test_service_pagination_asc_desc() -> None:
         p2a = svc.query_logs(limit=2, order="asc", cursor=p1a["next_cursor"])
         assert p2a["count"] == 1
     finally:
-        await s.close()
-
+        await storage.close()

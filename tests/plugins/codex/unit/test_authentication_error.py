@@ -13,7 +13,9 @@ class TestAuthenticationError:
         headers = {"Content-Type": "application/json"}
 
         # Should not inject Authorization when access_token is None
-        result = transformer.transform_headers(headers, session_id="test", access_token=None)
+        result = transformer.transform_headers(
+            headers, session_id="test", access_token=None
+        )
 
         # Should still return headers but without Authorization
         assert "Authorization" not in result
@@ -26,7 +28,9 @@ class TestAuthenticationError:
         headers = {"Content-Type": "application/json"}
 
         # Should not raise when access_token is provided
-        result = transformer.transform_headers(headers, session_id="test", access_token="valid_token_123")
+        result = transformer.transform_headers(
+            headers, session_id="test", access_token="valid_token_123"
+        )
 
         assert "Authorization" in result
         assert result["Authorization"] == "Bearer valid_token_123"

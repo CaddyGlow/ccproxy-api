@@ -18,6 +18,7 @@ from ccproxy.plugins.pricing.models import PricingData
 from ccproxy.plugins.pricing.updater import PricingUpdater
 
 
+@pytest.mark.unit
 class TestPricingConfig:
     """Test PricingConfig configuration class."""
 
@@ -31,7 +32,7 @@ class TestPricingConfig:
         )
         assert settings.download_timeout == 30
         assert settings.auto_update is True
-        assert settings.fallback_to_embedded is True
+        assert settings.fallback_to_embedded is False
         assert settings.memory_cache_ttl == 300
         assert str(settings.cache_dir).endswith("ccproxy")
 
@@ -72,6 +73,7 @@ class TestPricingConfig:
         assert settings.cache_dir.is_absolute()
 
 
+@pytest.mark.unit
 class TestPricingCache:
     """Test PricingCache with dependency injection."""
 
@@ -286,6 +288,7 @@ class TestPricingCache:
         assert isinstance(info["size_bytes"], int)
 
 
+@pytest.mark.unit
 class TestPricingLoader:
     """Test PricingLoader data conversion functionality."""
 
@@ -472,6 +475,7 @@ class TestPricingLoader:
         assert canonical == "unknown-model"
 
 
+@pytest.mark.unit
 class TestPricingUpdater:
     """Test PricingUpdater with dependency injection."""
 
@@ -482,7 +486,7 @@ class TestPricingUpdater:
             cache_dir=tmp_path / "test_cache",
             cache_ttl_hours=1,
             auto_update=True,
-            fallback_to_embedded=True,
+            fallback_to_embedded=False,  # Updated to match current default
             memory_cache_ttl=60,
         )
 
@@ -531,15 +535,13 @@ class TestPricingUpdater:
     async def test_get_current_pricing_fallback_to_embedded(
         self, updater: PricingUpdater
     ) -> None:
-        """Test fallback to embedded pricing when cache fails."""
-        # No cache file exists, should fallback to embedded
+        """Test behavior when cache fails and embedded pricing is disabled."""
+        # No cache file exists, embedded pricing is disabled by default
         with patch.object(updater.cache, "get_pricing_data", return_value=None):
             pricing_data = await updater.get_current_pricing()
 
-            assert pricing_data is not None
-            assert isinstance(pricing_data, PricingData)
-            # Should contain embedded pricing models
-            assert len(pricing_data) > 0
+            # Since embedded pricing is disabled and no cache data, should be None
+            assert pricing_data is None
 
     @pytest.mark.asyncio
     async def test_get_current_pricing_no_fallback(
@@ -573,16 +575,29 @@ class TestPricingUpdater:
         self, updater: PricingUpdater
     ) -> None:
         """Test memory cache behavior."""
+        # Create mock pricing data
+        from decimal import Decimal
+
+        from ccproxy.plugins.pricing.models import PricingData
+
+        mock_pricing_data = PricingData.from_dict(
+            {
+                "claude-3-5-sonnet-20241022": {
+                    "input": Decimal("3.00"),
+                    "output": Decimal("15.00"),
+                }
+            }
+        )
+
         # Set up cached pricing
-        embedded_pricing = updater._get_embedded_pricing()
-        updater._cached_pricing = embedded_pricing
+        updater._cached_pricing = mock_pricing_data
         updater._last_load_time = time.time()
 
         # Should return cached pricing without loading
         with patch.object(updater, "_load_pricing_data") as mock_load:
             pricing_data = await updater.get_current_pricing()
 
-            assert pricing_data is embedded_pricing
+            assert pricing_data is mock_pricing_data
             mock_load.assert_not_called()
 
     @pytest.mark.asyncio
@@ -626,24 +641,11 @@ class TestPricingUpdater:
             assert result is False
 
     def test_get_embedded_pricing(self, updater: PricingUpdater) -> None:
-        """Test embedded pricing fallback."""
+        """Test embedded pricing returns None (deprecated feature)."""
         embedded_pricing = updater._get_embedded_pricing()
 
-        assert isinstance(embedded_pricing, PricingData)
-        assert len(embedded_pricing) > 0
-
-        # Should contain standard Claude models
-        expected_models = [
-            "claude-3-5-sonnet-20241022",
-            "claude-3-5-haiku-20241022",
-            "claude-3-opus-20240229",
-        ]
-
-        for model in expected_models:
-            assert model in embedded_pricing
-            model_pricing = embedded_pricing[model]
-            assert hasattr(model_pricing, "input")
-            assert hasattr(model_pricing, "output")
+        # Embedded pricing has been removed, should return None
+        assert embedded_pricing is None
 
     @pytest.mark.asyncio
     async def test_force_refresh(self, updater: PricingUpdater) -> None:
@@ -688,12 +690,11 @@ class TestPricingUpdater:
             assert "models_loaded" in info
             assert "model_names" in info
             assert "auto_update" in info
-            assert "fallback_to_embedded" in info
             assert "has_cached_pricing" in info
 
             assert info["auto_update"] == updater.settings.auto_update
-            assert info["fallback_to_embedded"] == updater.settings.fallback_to_embedded
-            assert info["models_loaded"] > 0
+            # Note: fallback_to_embedded no longer in response
+            assert isinstance(info["models_loaded"], int)
 
     @pytest.mark.asyncio
     async def test_validate_external_source_success(
@@ -729,7 +730,7 @@ class TestPricingUpdater:
     async def test_validate_external_source_no_claude_models(
         self, updater: PricingUpdater
     ) -> None:
-        """Test external source validation with no Claude models."""
+        """Test external source validation with OpenAI models only."""
         test_data = {
             "gpt-4": {
                 "litellm_provider": "openai",
@@ -743,9 +744,11 @@ class TestPricingUpdater:
         ):
             result = await updater.validate_external_source()
 
-            assert result is False
+            # Should succeed since OpenAI models are valid with pricing_provider="all"
+            assert result is True
 
 
+@pytest.mark.integration
 class TestPricingIntegration:
     """Integration tests for the complete pricing system."""
 
@@ -757,7 +760,7 @@ class TestPricingIntegration:
             cache_dir=isolated_environment / "cache",
             cache_ttl_hours=24,
             auto_update=True,
-            fallback_to_embedded=True,
+            fallback_to_embedded=False,  # Updated to match current default
         )
 
         cache = PricingCache(settings)
@@ -811,39 +814,33 @@ class TestPricingIntegration:
             assert model_pricing.cache_write == Decimal("3.75")
             assert model_pricing.cache_read == Decimal("0.30")
 
-    def test_cost_calculator_integration(self, isolated_environment: Path) -> None:
+    @pytest.mark.asyncio
+    async def test_cost_calculator_integration(
+        self, isolated_environment: Path
+    ) -> None:
         """Test integration with cost calculator utility."""
         from ccproxy.plugins.pricing.utils import calculate_token_cost
 
-        # PricingConfig will use XDG_CACHE_HOME which is already set by isolated_environment
-        # The default cache_dir will be XDG_CACHE_HOME/ccproxy
-        settings = PricingConfig(fallback_to_embedded=True)
+        # Create test data directly since embedded pricing is removed
+        settings = PricingConfig()
         cache = PricingCache(settings)
-        updater = PricingUpdater(cache, settings)
 
         # Ensure the cache directory structure exists
         cache.cache_dir.mkdir(parents=True, exist_ok=True)
 
-        # Load embedded pricing data into cache
-        embedded_pricing = updater._get_embedded_pricing()
-        if embedded_pricing:
-            # Convert PricingData to dict format for saving
-            pricing_dict = {}
-            for model_name, model_pricing in embedded_pricing.items():
-                pricing_dict[model_name] = {
-                    "litellm_provider": "anthropic",
-                    "input_cost_per_token": float(model_pricing.input) / 1_000_000,
-                    "output_cost_per_token": float(model_pricing.output) / 1_000_000,
-                    "cache_creation_input_token_cost": float(model_pricing.cache_write)
-                    / 1_000_000,
-                    "cache_read_input_token_cost": float(model_pricing.cache_read)
-                    / 1_000_000,
-                }
-            # Save it to cache so cost_calculator can find it
-            cache.save_to_cache(pricing_dict)
+        # Create test pricing data
+        test_pricing_data = {
+            "claude-3-5-sonnet-20241022": {
+                "litellm_provider": "anthropic",
+                "input_cost_per_token": 0.000003,
+                "output_cost_per_token": 0.000015,
+            }
+        }
+        # Save test data to cache
+        cache.save_to_cache(test_pricing_data)
 
         # Test cost calculation (should find the cached data)
-        cost = calculate_token_cost(
+        cost = await calculate_token_cost(
             tokens_input=1000, tokens_output=500, model="claude-3-5-sonnet-20241022"
         )
 

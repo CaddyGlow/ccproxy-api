@@ -1,7 +1,9 @@
-"""Tests for Claude SDK XML parser module."""
+"""Unit tests for Claude SDK XML parser module."""
 
 import json
 from typing import Any
+
+import pytest
 
 from ccproxy.plugins.claude_sdk.parser import (
     parse_formatted_sdk_content,
@@ -14,8 +16,9 @@ from ccproxy.plugins.claude_sdk.parser import (
 
 
 class TestParseSystemMessageTags:
-    """Test system_message XML tag parsing."""
+    """Test cases for system_message XML tag parsing."""
 
+    @pytest.mark.unit
     def test_parse_valid_system_message(self) -> None:
         """Test parsing valid system message XML."""
         system_data = {"source": "claude_code_sdk", "text": "System message content"}
@@ -25,6 +28,7 @@ class TestParseSystemMessageTags:
 
         assert result == "[claude_code_sdk]: System message content"
 
+    @pytest.mark.unit
     def test_parse_system_message_default_source(self) -> None:
         """Test system message parsing with default source."""
         system_data = {"text": "System message content"}
@@ -34,6 +38,7 @@ class TestParseSystemMessageTags:
 
         assert result == "[claude_code_sdk]: System message content"
 
+    @pytest.mark.unit
     def test_parse_system_message_with_surrounding_text(self) -> None:
         """Test system message parsing with surrounding text."""
         system_data = {"text": "System message"}
@@ -45,6 +50,7 @@ class TestParseSystemMessageTags:
 
         assert result == "Before [claude_code_sdk]: System message After"
 
+    @pytest.mark.unit
     def test_parse_multiple_system_messages(self) -> None:
         """Test parsing multiple system messages."""
         system_data1 = {"text": "First message"}
@@ -61,6 +67,7 @@ class TestParseSystemMessageTags:
             == "[claude_code_sdk]: First message and [claude_code_sdk]: Second message"
         )
 
+    @pytest.mark.unit
     def test_parse_invalid_json_system_message(self) -> None:
         """Test system message parsing with invalid JSON."""
         xml_content = "<system_message>invalid json</system_message>"
@@ -70,6 +77,7 @@ class TestParseSystemMessageTags:
         # Should keep original when JSON parsing fails
         assert result == "<system_message>invalid json</system_message>"
 
+    @pytest.mark.unit
     def test_parse_no_system_messages(self) -> None:
         """Test parsing text without system messages."""
         text = "Regular text without any XML tags"
@@ -80,8 +88,9 @@ class TestParseSystemMessageTags:
 
 
 class TestParseToolUseSdkTags:
-    """Test tool_use_sdk XML tag parsing."""
+    """Test cases for tool_use_sdk XML tag parsing."""
 
+    @pytest.mark.unit
     def test_parse_tool_use_for_streaming(self) -> None:
         """Test tool_use parsing for streaming (no tool call collection)."""
         tool_data = {"id": "tool_123", "name": "search", "input": {"query": "test"}}
@@ -95,6 +104,7 @@ class TestParseToolUseSdkTags:
         assert result_text == expected_text
         assert tool_calls == []
 
+    @pytest.mark.unit
     def test_parse_tool_use_for_openai_adapter(self) -> None:
         """Test tool_use parsing for OpenAI adapter (collect tool calls)."""
         tool_data = {"id": "tool_123", "name": "search", "input": {"query": "test"}}
@@ -115,6 +125,7 @@ class TestParseToolUseSdkTags:
         assert tool_call.function.name == "search"
         assert tool_call.function.arguments == '{"query": "test"}'
 
+    @pytest.mark.unit
     def test_parse_multiple_tool_uses(self) -> None:
         """Test parsing multiple tool_use tags."""
         tool_data1 = {"id": "tool_1", "name": "search", "input": {"q": "test1"}}
@@ -133,6 +144,7 @@ class TestParseToolUseSdkTags:
         assert tool_calls[0].id == "tool_1"
         assert tool_calls[1].id == "tool_2"
 
+    @pytest.mark.unit
     def test_parse_tool_use_invalid_json(self) -> None:
         """Test tool_use parsing with invalid JSON."""
         xml_content = "<tool_use_sdk>invalid json</tool_use_sdk>"
@@ -145,6 +157,7 @@ class TestParseToolUseSdkTags:
         assert result_text == "<tool_use_sdk>invalid json</tool_use_sdk>"
         assert tool_calls == []
 
+    @pytest.mark.unit
     def test_parse_tool_use_empty_input(self) -> None:
         """Test tool_use parsing with empty input."""
         tool_data = {"id": "tool_123", "name": "ping", "input": {}}
@@ -158,8 +171,9 @@ class TestParseToolUseSdkTags:
 
 
 class TestParseToolResultSdkTags:
-    """Test tool_result_sdk XML tag parsing."""
+    """Test cases for tool_result_sdk XML tag parsing."""
 
+    @pytest.mark.unit
     def test_parse_tool_result_success(self) -> None:
         """Test parsing successful tool result."""
         result_data = {
@@ -176,6 +190,7 @@ class TestParseToolResultSdkTags:
         )
         assert result == expected
 
+    @pytest.mark.unit
     def test_parse_tool_result_error(self) -> None:
         """Test parsing error tool result."""
         result_data = {
@@ -190,6 +205,7 @@ class TestParseToolResultSdkTags:
         expected = "[claude_code_sdk tool_result tool_123 (ERROR)]: Search failed: invalid query"
         assert result == expected
 
+    @pytest.mark.unit
     def test_parse_tool_result_default_error_status(self) -> None:
         """Test tool result parsing with default error status."""
         result_data = {"tool_use_id": "tool_123", "content": "Result content"}
@@ -200,6 +216,7 @@ class TestParseToolResultSdkTags:
         expected = "[claude_code_sdk tool_result tool_123]: Result content"
         assert result == expected
 
+    @pytest.mark.unit
     def test_parse_tool_result_invalid_json(self) -> None:
         """Test tool result parsing with invalid JSON."""
         xml_content = "<tool_result_sdk>invalid json</tool_result_sdk>"
@@ -211,8 +228,9 @@ class TestParseToolResultSdkTags:
 
 
 class TestParseResultMessageTags:
-    """Test result_message XML tag parsing."""
+    """Test cases for result_message XML tag parsing."""
 
+    @pytest.mark.unit
     def test_parse_result_message_complete(self) -> None:
         """Test parsing complete result message."""
         result_data = {
@@ -233,6 +251,7 @@ class TestParseResultMessageTags:
         )
         assert result == expected
 
+    @pytest.mark.unit
     def test_parse_result_message_without_cost(self) -> None:
         """Test parsing result message without cost information."""
         result_data = {
@@ -251,6 +270,7 @@ class TestParseResultMessageTags:
         )
         assert result == expected
 
+    @pytest.mark.unit
     def test_parse_result_message_defaults(self) -> None:
         """Test result message parsing with default values."""
         result_data: dict[str, Any] = {}
@@ -263,8 +283,9 @@ class TestParseResultMessageTags:
 
 
 class TestParseTextTags:
-    """Test text XML tag parsing."""
+    """Test cases for text XML tag parsing."""
 
+    @pytest.mark.unit
     def test_parse_text_tags_basic(self) -> None:
         """Test basic text tag parsing."""
         xml_content = "<text>Hello, world!</text>"
@@ -273,6 +294,7 @@ class TestParseTextTags:
 
         assert result == "Hello, world!"
 
+    @pytest.mark.unit
     def test_parse_text_tags_with_newlines(self) -> None:
         """Test text tag parsing with newlines."""
         xml_content = "<text>\nHello, world!\n</text>"
@@ -281,6 +303,7 @@ class TestParseTextTags:
 
         assert result == "Hello, world!"
 
+    @pytest.mark.unit
     def test_parse_text_tags_multiline(self) -> None:
         """Test text tag parsing with multiline content."""
         xml_content = "<text>\nLine 1\nLine 2\nLine 3\n</text>"
@@ -289,6 +312,7 @@ class TestParseTextTags:
 
         assert result == "Line 1\nLine 2\nLine 3"
 
+    @pytest.mark.unit
     def test_parse_multiple_text_tags(self) -> None:
         """Test parsing multiple text tags."""
         xml_content = "Before <text>First</text> Middle <text>Second</text> After"
@@ -297,6 +321,7 @@ class TestParseTextTags:
 
         assert result == "Before First Middle Second After"
 
+    @pytest.mark.unit
     def test_parse_nested_text_content(self) -> None:
         """Test text tag parsing with nested XML-like content."""
         xml_content = "<text>Content with <inner>nested</inner> tags</text>"
@@ -307,8 +332,9 @@ class TestParseTextTags:
 
 
 class TestParseFormattedSdkContent:
-    """Test the main parsing function."""
+    """Test cases for the main parsing function."""
 
+    @pytest.mark.unit
     def test_parse_empty_content(self) -> None:
         """Test parsing empty content."""
         result_text, tool_calls = parse_formatted_sdk_content(
@@ -318,6 +344,7 @@ class TestParseFormattedSdkContent:
         assert result_text == ""
         assert tool_calls == []
 
+    @pytest.mark.unit
     def test_parse_mixed_content_streaming(self) -> None:
         """Test parsing mixed SDK content for streaming."""
         system_data = {"text": "System message"}
@@ -344,6 +371,7 @@ class TestParseFormattedSdkContent:
         assert "[claude_code_sdk result sess_1]: stop_reason=end_turn" in result_text
         assert tool_calls == []
 
+    @pytest.mark.unit
     def test_parse_mixed_content_openai_adapter(self) -> None:
         """Test parsing mixed SDK content for OpenAI adapter."""
         system_data = {"text": "System message"}
@@ -367,6 +395,7 @@ class TestParseFormattedSdkContent:
         assert len(tool_calls) == 1
         assert tool_calls[0].id == "tool_1"
 
+    @pytest.mark.unit
     def test_parse_processing_order(self) -> None:
         """Test that parsing functions are applied in correct order."""
         # Text tags should be processed last to unwrap content properly
@@ -387,6 +416,7 @@ class TestParseFormattedSdkContent:
         assert "<text>" not in result_text
         assert "</text>" not in result_text
 
+    @pytest.mark.unit
     def test_parse_real_world_example(self) -> None:
         """Test parsing a real-world example with multiple elements."""
         xml_content = (
@@ -415,4 +445,3 @@ class TestParseFormattedSdkContent:
         )
         assert "Based on the search results, here's what I found..." in result_text
         assert tool_calls == []
-

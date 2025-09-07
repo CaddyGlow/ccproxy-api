@@ -371,6 +371,7 @@ markers = [
   "sdk: SDK endpoint tests using Anthropic SDK client (requires running server)",
   "claude_api: Claude API plugin tests",
   "codex: Codex plugin tests",
+  "analytics: Analytics plugin tests",
 
   # Test quality markers
   "flaky: Tests that may be unreliable and need investigation",

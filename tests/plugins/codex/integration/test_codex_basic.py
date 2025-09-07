@@ -1,7 +1,6 @@
 from typing import Any
 
 import pytest
-
 from tests.helpers.assertions import (
     assert_codex_response_format,
     assert_openai_response_format,
