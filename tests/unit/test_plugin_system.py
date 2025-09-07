@@ -193,8 +193,6 @@ async def test_plugin_registry_validation_failure():
     assert registry.get_adapter("test_plugin") is None
 
 
-
-
 @pytest.mark.asyncio
 async def test_base_adapter_interface():
     """Test BaseAdapter interface."""

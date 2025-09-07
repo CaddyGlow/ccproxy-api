@@ -222,7 +222,6 @@ class TestOpenAIAdapter:
 
         assert result["tool_choice"]["type"] == "auto"
 
-
     @pytest.mark.asyncio
     async def test_adapt_request_tool_choice_specific(
         self, adapter: OpenAIAdapter
@@ -732,7 +731,6 @@ class TestOpenAIAdapter:
         # Test malformed dict tool choice
         result = adapter._convert_tool_choice_to_anthropic({"invalid": "format"})
         assert result["type"] == "auto"
-
 
     def test_tool_call_arguments_parsing(self, adapter: OpenAIAdapter) -> None:
         """Test parsing of tool call arguments."""

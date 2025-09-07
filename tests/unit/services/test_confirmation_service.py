@@ -224,9 +224,6 @@ class TestPermissionService:
         await started_service.unsubscribe_from_events(queue1)
         await started_service.unsubscribe_from_events(queue2)
 
-
-
-
     async def test_wait_for_permission_timeout(
         self, started_service: PermissionService
     ) -> None:
@@ -245,7 +242,6 @@ class TestPermissionService:
         """Test waiting for a non-existent request."""
         with pytest.raises(PermissionNotFoundError):
             await started_service.wait_for_permission("non-existent-id")
-
 
     async def test_get_permission_service_singleton(self) -> None:
         """Test that get_permission_service returns singleton."""
@@ -277,4 +273,3 @@ class TestPermissionService:
             assert pending[0].status == PermissionStatus.PENDING
         finally:
             await service.stop()
-

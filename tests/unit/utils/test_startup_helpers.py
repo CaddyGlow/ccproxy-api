@@ -332,4 +332,3 @@ class TestClaudeDetectionStartup:
     def mock_settings(self) -> Mock:
         """Create mock settings."""
         return Mock(spec=Settings)
-

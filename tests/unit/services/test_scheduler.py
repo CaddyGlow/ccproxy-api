@@ -13,7 +13,6 @@ from ccproxy.scheduler.errors import (
     TaskNotFoundError,
     TaskRegistrationError,
 )
-from ccproxy.scheduler.manager import start_scheduler, stop_scheduler
 from ccproxy.scheduler.registry import TaskRegistry, get_task_registry
 from ccproxy.scheduler.tasks import (
     # PushgatewayTask removed - functionality moved to metrics plugin
@@ -366,4 +365,3 @@ class TestSchedulerConfiguration:
         settings = Settings()
         assert hasattr(settings, "scheduler")
         assert isinstance(settings.scheduler, SchedulerSettings)
-
