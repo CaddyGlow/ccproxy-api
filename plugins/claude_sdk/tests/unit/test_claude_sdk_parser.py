@@ -415,3 +415,4 @@ class TestParseFormattedSdkContent:
         )
         assert "Based on the search results, here's what I found..." in result_text
         assert tool_calls == []
+

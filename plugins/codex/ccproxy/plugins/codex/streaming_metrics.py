@@ -7,12 +7,11 @@ OpenAI/Codex streaming responses.
 import json
 from typing import Any
 
-import structlog
-
+from ccproxy.core.logging import get_logger
 from ccproxy.streaming.interfaces import StreamingMetrics
 
 
-logger = structlog.get_logger(__name__)
+logger = get_logger(__name__)
 
 
 def extract_usage_from_codex_chunk(chunk_data: Any) -> dict[str, Any] | None:

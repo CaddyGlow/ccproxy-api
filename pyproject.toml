@@ -80,8 +80,8 @@ plugins-metrics = ["prometheus-client>=0.22.1"]
 plugins-ui = ["textual>=3.7.1"]
 
 [tool.coverage.run]
-source = ["ccproxy", "tests"]
-include = ["ccproxy/*", "tests/*"]
+include = ["ccproxy/*", "tests/*", "plugins/*/tests/*", "plugins/*/ccproxy/*"]
+source = ["ccproxy/*", "tests/*", "plugins/*/tests/*", "plugins/*/ccproxy/*"]
 omit = [
   "ccproxy/core/_version.py",
   "ccproxy/__main__.py",
@@ -320,7 +320,7 @@ addopts = [
   "--cov-branch",
   # "--cov-fail-under=80",
 ]
-testpaths = ["tests"]
+testpaths = ["tests", "plugins"]
 python_files = ["test_*.py", "*_test.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
@@ -499,11 +499,11 @@ useLibraryCodeForTypes = true
 [dependency-groups]
 plugins = ["ccproxy-plugin-claude-sdk"]
 test = [
-    "pytest",
-    "pytest-asyncio",
-    "pytest-cov",
-    "pytest-timeout",
-    "pytest-env",
-    "pytest-httpx",
-    "pytest-xdist",  # For parallel test execution
+  "pytest",
+  "pytest-asyncio",
+  "pytest-cov",
+  "pytest-timeout",
+  "pytest-env",
+  "pytest-httpx",
+  "pytest-xdist",   # For parallel test execution
 ]

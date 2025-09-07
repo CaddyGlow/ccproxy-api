@@ -4,12 +4,6 @@ This module provides integration-specific pytest configuration and imports
 the shared integration fixtures for all plugin integration tests.
 """
 
-# Import all integration fixtures
-pytest_plugins = [
-    "tests.fixtures.integration",
-]
-
-# Integration test configuration
 import pytest
 
 

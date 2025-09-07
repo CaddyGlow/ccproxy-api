@@ -296,3 +296,4 @@ class TestResetEndpointWithFiltering:
         assert data["total_count"] == 0
         assert data["entries"] == []
         assert data["total_pages"] == 0
+

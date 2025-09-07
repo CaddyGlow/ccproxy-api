@@ -3,7 +3,7 @@
 from decimal import Decimal
 from typing import Any
 
-import structlog
+from ccproxy.core.logging import get_logger
 
 from .cache import PricingCache
 from .config import PricingConfig
@@ -17,7 +17,7 @@ from .models import ModelPricing, PricingData
 from .updater import PricingUpdater
 
 
-logger = structlog.get_logger(__name__)
+logger = get_logger(__name__)
 
 
 class PricingService:

@@ -2,14 +2,13 @@
 
 from typing import Any
 
-import structlog
-
+from ccproxy.core.logging import get_logger
 from ccproxy.scheduler.tasks import BaseScheduledTask
 
 from .pushgateway import PushgatewayClient
 
 
-logger = structlog.get_logger(__name__)
+logger = get_logger(__name__)
 
 
 class PushgatewayTask(BaseScheduledTask):

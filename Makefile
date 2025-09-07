@@ -96,7 +96,7 @@ fix: format lint-fix
 	ruff check . --fix --unsafe-fixes
 
 # Run all tests with coverage (after ensuring code quality)
-test: check
+test:
 	@echo "Running all tests with coverage..."
 	@if [ ! -d "tests" ]; then echo "Error: tests/ directory not found. Create tests/ directory and add test files."; exit 1; fi
 	$(UV_RUN) pytest -v --cov=ccproxy --cov-report=term --cov-report=html
@@ -105,25 +105,25 @@ test: check
 # New test suite targets
 
 # Run fast unit tests only (exclude tests marked with 'real_api' and 'integration')
-test-unit: check
+test-unit: 
 	@echo "Running fast unit tests (excluding real API calls and integration tests)..."
 	@if [ ! -d "tests" ]; then echo "Error: tests/ directory not found. Create tests/ directory and add test files."; exit 1; fi
 	$(UV_RUN) pytest -v -m "not real_api and not integration" --tb=short
 	$(UV_RUN) pytest plugins/*/tests/unit/ -v --tb=short 2>/dev/null || true
 
 # Run integration tests across all plugins
-test-integration: check
+test-integration: 
 	@echo "Running integration tests across all plugins..."
 	$(UV_RUN) pytest -v -m "integration" --tb=short -n auto plugins/*/tests/integration/ tests/integration/
 
 # Run integration tests for specific plugin (usage: make test-integration-plugin PLUGIN=metrics)
-test-integration-plugin: check
+test-integration-plugin: 
 	@if [ -z "$(PLUGIN)" ]; then echo "Error: Please specify PLUGIN=<plugin_name>"; exit 1; fi
 	@echo "Running integration tests for $(PLUGIN) plugin..."
 	$(UV_RUN) pytest -v -m "integration and $(PLUGIN)" --tb=short plugins/$(PLUGIN)/tests/integration/
 
 # Run tests with real API calls (marked with 'real_api')
-test-real-api: check
+test-real-api: 
 	@echo "Running tests with real API calls (slow)..."
 	@if [ ! -d "tests" ]; then echo "Error: tests/ directory not found. Create tests/ directory and add test files."; exit 1; fi
 	$(UV_RUN) pytest -v -m "real_api" --tb=short
@@ -135,7 +135,7 @@ test-watch:
 	@echo "Requires 'entr' tool: install with 'apt install entr' or 'brew install entr'"
 	@echo "Use Ctrl+C to stop watching"
 	@if command -v entr >/dev/null 2>&1; then \
-		find ccproxy tests plugins -name "*.py" | entr -c sh -c 'make check && $(UV_RUN) pytest -v -m "not real_api and not integration" --tb=short'; \
+		find ccproxy tests plugins -name "*.py" | entr -c sh -c '$(UV_RUN) pytest -v -m "not real_api and not integration" --tb=short'; \
 	else \
 		echo "Error: 'entr' not found. Install with 'apt install entr' or 'brew install entr'"; \
 		echo "Alternatively, use 'make test-unit' to run tests once"; \

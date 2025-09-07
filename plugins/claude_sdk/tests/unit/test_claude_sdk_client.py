@@ -357,25 +357,46 @@ class TestClaudeSDKClientStatelessQueries:
             async for message in stream_handle.create_listener():
                 messages.append(message)
 
-        # Should skip failed conversions
+        # Should skip the message that failed conversion and continue processing
         assert len(messages) == 0
 
     @pytest.mark.asyncio
-    async def test_query_completion_multiple_message_types(
-        self, mock_sdk_client_streaming: AsyncMock
-    ) -> None:
-        """Test query with multiple message types."""
+    async def test_query_completion_multiple_message_types(self) -> None:
+        """Test handling of multiple message types in sequence."""
         client: ClaudeSDKClient = ClaudeSDKClient(config=ClaudeSDKSettings())
         options: ClaudeCodeOptions = ClaudeCodeOptions()
 
+        # Create a mock SDK client with multiple message types
+        mock_sdk_client = AsyncMock()
+        mock_sdk_client.connect = AsyncMock()
+        mock_sdk_client.disconnect = AsyncMock()
+        mock_sdk_client.query = AsyncMock()
+
+        # Create a proper SDKMessage for the test
+        from ccproxy.plugins.claude_sdk.models import (
+            create_result_message,
+            create_sdk_message,
+        )
+
+        result_message = create_result_message(
+            usage={"input_tokens": 10, "output_tokens": 20},
+            stop_reason="end_turn",
+            total_cost_usd=0.001,
+        )
+
+        async def multiple_messages_response() -> AsyncGenerator[Any, None]:
+            yield create_sdk_message(role="user", content="Hello")
+            yield create_sdk_message(role="assistant", content="Hi")
+            yield create_sdk_message(role="system", content="System message")
+            yield result_message
+
+        mock_sdk_client.receive_response = multiple_messages_response
+
         with patch(
             "plugins.claude_sdk.client.ImportedClaudeSDKClient",
-            return_value=mock_sdk_client_streaming,
+            return_value=mock_sdk_client,
         ):
             messages: list[Any] = []
-            # Create a proper SDKMessage for the test
-            from ccproxy.plugins.claude_sdk.models import create_sdk_message
-
             sdk_message = create_sdk_message(content="Hello")
 
             stream_handle = await client.query_completion(sdk_message, options)
@@ -493,3 +514,4 @@ class TestClaudeSDKClientMessageConversion:
 
 
 # TestClaudeSDKClientExceptions removed - exceptions moved to exceptions.py module
+

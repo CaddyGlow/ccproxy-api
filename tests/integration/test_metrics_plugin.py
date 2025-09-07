@@ -4,7 +4,7 @@ import pytest
 pytestmark = [pytest.mark.integration, pytest.mark.metrics]
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="session")
 async def test_metrics_route_available_when_metrics_plugin_enabled(
     metrics_integration_client,
 ) -> None:
@@ -15,7 +15,7 @@ async def test_metrics_route_available_when_metrics_plugin_enabled(
     assert b"# HELP" in resp.content or b"# TYPE" in resp.content
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="session")
 async def test_metrics_route_absent_when_plugins_disabled(
     disabled_plugins_client,
 ) -> None:
@@ -25,7 +25,7 @@ async def test_metrics_route_absent_when_plugins_disabled(
     assert resp.status_code == 404
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="session")
 async def test_metrics_endpoint_with_custom_config(integration_client_factory) -> None:
     """Test metrics endpoint with custom configuration."""
     client = await integration_client_factory(
@@ -42,7 +42,7 @@ async def test_metrics_endpoint_with_custom_config(integration_client_factory) -
         assert resp.status_code == 200
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="session")
 async def test_metrics_health_when_plugin_enabled(metrics_integration_client) -> None:
     """Test metrics health endpoint when plugin is enabled."""
     resp = await metrics_integration_client.get("/metrics/health")

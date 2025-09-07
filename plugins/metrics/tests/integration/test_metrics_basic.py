@@ -1,7 +1,7 @@
 import pytest
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="session")
 @pytest.mark.integration
 @pytest.mark.metrics
 async def test_metrics_endpoint_available_when_enabled(metrics_integration_client):
@@ -12,7 +12,7 @@ async def test_metrics_endpoint_available_when_enabled(metrics_integration_clien
     assert b"# HELP" in resp.content or b"# TYPE" in resp.content
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="session")
 @pytest.mark.integration
 @pytest.mark.metrics
 async def test_metrics_endpoint_absent_when_plugins_disabled(disabled_plugins_client):
@@ -22,7 +22,7 @@ async def test_metrics_endpoint_absent_when_plugins_disabled(disabled_plugins_cl
     assert resp.status_code == 404
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="session")
 @pytest.mark.integration
 @pytest.mark.metrics
 async def test_metrics_content_format(metrics_integration_client):

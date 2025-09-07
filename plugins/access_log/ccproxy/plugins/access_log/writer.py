@@ -3,10 +3,11 @@ import time
 from pathlib import Path
 
 import aiofiles
-import structlog
+
+from ccproxy.core.logging import get_logger
 
 
-logger = structlog.get_logger(__name__)
+logger = get_logger(__name__)
 
 
 class AccessLogWriter:

@@ -5,12 +5,11 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-import structlog
-
+from ccproxy.core.logging import get_logger
 from ccproxy.hooks import Hook, HookContext, HookEvent, HookManager
 
 
-logger = structlog.get_logger(__name__)
+logger = get_logger(__name__)
 
 
 class ClaudeSDKStreamingHook(Hook):

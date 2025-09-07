@@ -21,23 +21,24 @@ from ccproxy.services.container import ServiceContainer
 def base_integration_settings() -> Settings:
     """Base settings for integration tests with minimal overhead."""
     return Settings(
-        enable_plugins=True,
+        enable_plugins=False,  # Disable all plugins by default
+        plugins={},  # Empty plugin configuration
         # Disable expensive features for faster tests
         logging={
-            "level": "WARNING",  # Reduce log noise
+            "level": "ERROR",  # Minimal logging for speed
             "enable_plugin_logging": False,
             "verbose_api": False,
         },
         # Minimal server config
         server={
             "host": "127.0.0.1",
-            "port": 0,  # Let OS choose port
+            "port": 8000,  # Use standard port for tests
         },
     )
 
 
 @pytest.fixture(scope="session")
-async def base_service_container(
+def base_service_container(
     base_integration_settings: Settings,
 ) -> ServiceContainer:
     """Shared service container for integration tests."""
@@ -45,7 +46,7 @@ async def base_service_container(
 
 
 @pytest.fixture
-async def integration_app_factory():
+def integration_app_factory():
     """Factory for creating FastAPI apps with plugin configurations."""
 
     async def _create_app(plugin_configs: dict[str, dict[str, Any]]) -> FastAPI:
@@ -55,14 +56,16 @@ async def integration_app_factory():
             plugin_configs: Dict mapping plugin names to their configuration
                           e.g., {"metrics": {"enabled": True, "metrics_endpoint_enabled": True}}
         """
-        # Set up logging manually for test environment
-        # setup_logging(json_logs=False, log_level_name="WARNING")
+        # Set up logging manually for test environment - minimal logging for speed
+        from ccproxy.core.logging import setup_logging
+
+        setup_logging(json_logs=False, log_level_name="ERROR")
 
         settings = Settings(
             enable_plugins=True,
             plugins=plugin_configs,
             logging={
-                "level": "WARNING",
+                "level": "ERROR",  # Minimal logging for speed
                 "enable_plugin_logging": False,
                 "verbose_api": False,
             },
@@ -91,27 +94,70 @@ def integration_client_factory(integration_app_factory):
     return _create_client
 
 
-@pytest.fixture
-async def metrics_integration_client(integration_app_factory):
-    """Pre-configured client for metrics plugin integration tests."""
-    app = await integration_app_factory(
-        {
+@pytest.fixture(scope="session")
+def metrics_integration_app():
+    """Pre-configured app for metrics plugin integration tests - session scoped."""
+    from ccproxy.core.logging import setup_logging
+
+    # Set up logging manually for test environment - minimal logging for speed
+    setup_logging(json_logs=False, log_level_name="ERROR")
+
+    settings = Settings(
+        enable_plugins=True,
+        plugins={
             "metrics": {
                 "enabled": True,
                 "metrics_endpoint_enabled": True,
             }
-        }
+        },
+        logging={
+            "level": "ERROR",  # Minimal logging for speed
+            "enable_plugin_logging": False,
+            "verbose_api": False,
+        },
     )
+
+    service_container = create_service_container(settings)
+    # Create the app once per session
+    return create_app(service_container), settings
+
+
+@pytest.fixture
+async def metrics_integration_client(metrics_integration_app):
+    """HTTP client for metrics integration tests - uses shared app."""
+    app, settings = metrics_integration_app
+
+    # Initialize plugins async (once per test, but app is shared)
+    await initialize_plugins_startup(app, settings)
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         yield client
 
 
+@pytest.fixture(scope="session")
+def disabled_plugins_app(base_integration_settings):
+    """Pre-configured app with disabled plugins - session scoped."""
+    from ccproxy.core.logging import setup_logging
+
+    # Set up logging manually for test environment - minimal logging for speed
+    setup_logging(json_logs=False, log_level_name="ERROR")
+
+    # Use base settings which already have plugins disabled
+    settings = base_integration_settings
+    service_container = create_service_container(settings)
+
+    # Create the app once per session
+    return create_app(service_container), settings
+
+
 @pytest.fixture
-async def disabled_plugins_client(integration_app_factory):
-    """Client with all plugins disabled for negative testing."""
-    app = await integration_app_factory({})
+async def disabled_plugins_client(disabled_plugins_app):
+    """HTTP client with all plugins disabled - uses shared app."""
+    app, settings = disabled_plugins_app
+
+    # Initialize plugins async (once per test, but app is shared)
+    await initialize_plugins_startup(app, settings)
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:

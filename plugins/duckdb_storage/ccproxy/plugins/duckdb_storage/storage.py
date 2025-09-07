@@ -14,15 +14,15 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-import structlog
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import IntegrityError, OperationalError, SQLAlchemyError
 from sqlmodel import Session, SQLModel, create_engine, func
 
 from ccproxy.core.async_task_manager import create_managed_task
+from ccproxy.core.logging import get_logger
 
 
-logger = structlog.get_logger(__name__)
+logger = get_logger(__name__)
 
 
 class SimpleDuckDBStorage:

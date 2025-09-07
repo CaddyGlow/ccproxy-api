@@ -1,7 +1,6 @@
 """Hook-based request tracer implementation - simplified for REQUEST_* events only."""
 
-import structlog
-
+from ccproxy.core.logging import get_logger
 from ccproxy.hooks import Hook
 from ccproxy.hooks.base import HookContext
 from ccproxy.hooks.events import HookEvent
@@ -9,7 +8,7 @@ from ccproxy.hooks.events import HookEvent
 from .config import RequestTracerConfig
 
 
-logger = structlog.get_logger(__name__)
+logger = get_logger(__name__)
 
 
 class RequestTracerHook(Hook):

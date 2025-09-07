@@ -36,3 +36,4 @@ class TestAuthenticationError:
         assert "Authorization" in result
         assert result["Authorization"] == "Bearer valid_token_123"
         assert result["session_id"] == "test"
+

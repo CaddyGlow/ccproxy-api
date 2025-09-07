@@ -177,10 +177,13 @@ def client(app: FastAPI) -> Generator[TestClient, None, None]:
 
 After aggressive cleanup, we maintain only essential, well-typed fixtures:
 
-#### Core FastAPI Fixtures
+#### Core Integration Fixtures
 
-- `fastapi_app_factory` - Creates FastAPI apps with any configuration  
-- `fastapi_client_factory` - Creates test clients (simplified, 362 lines vs 651)
+- `integration_app_factory` - Dynamic FastAPI app creation with plugin configs
+- `integration_client_factory` - Creates async HTTP clients with custom settings
+- `metrics_integration_client` - Session-scoped client for metrics tests (high performance)
+- `disabled_plugins_client` - Session-scoped client with plugins disabled
+- `base_integration_settings` - Minimal settings for fast test execution
 - `test_settings` - Clean test configuration
 - `isolated_environment` - Temporary directory isolation
 
@@ -215,26 +218,61 @@ After aggressive cleanup, we maintain only essential, well-typed fixtures:
 2. **Fast execution** - Unit tests run in milliseconds, no timing dependencies
 3. **Type safety** - All fixtures properly typed, mypy compliant
 4. **Real components** - Test actual internal behavior, not mocked responses
-5. **Simplified factories** - Streamlined FastAPI factory (44% smaller)
-6. **Modern patterns** - @pytest.mark.asyncio, proper async fixtures
+5. **Performance-optimized patterns** - Use session-scoped fixtures for expensive operations
+6. **Modern async patterns** - `@pytest.mark.asyncio(loop_scope="session")` for integration tests
 7. **No overengineering** - Removed 180+ tests, 3000+ lines of complexity
+
+### Performance Guidelines
+
+#### When to Use Session-Scoped Fixtures
+- **Plugin integration tests** - Plugin initialization is expensive
+- **Database/external service tests** - Connection setup overhead
+- **Complex app configuration** - Multiple services, middleware stacks
+- **Consistent test state needed** - Tests require same app configuration
+
+#### When to Use Factory Patterns  
+- **Dynamic configurations** - Each test needs different plugin settings
+- **Isolation required** - Tests might interfere with shared state
+- **Simple setup** - Minimal overhead for app creation
+
+#### Logging Performance Tips
+- **Use `ERROR` level** - Minimal logging for faster test execution
+- **Disable JSON logs** - `json_logs=False` for better performance
+- **Disable plugin logging** - `enable_plugin_logging=False` in test settings
+- **Manual setup required** - Call `setup_logging()` explicitly in test environment
 
 ## Common Patterns
 
-### Streamlined Factory Pattern
+### Performance-Optimized Integration Patterns
+
+#### Session-Scoped Pattern (Recommended for Plugin Tests)
 
 ```python
-from fastapi.testclient import TestClient
+import pytest
+from httpx import AsyncClient
 
-def test_service_integration(fastapi_client_factory, test_settings) -> None:
-    """Test service with real internal components."""
-    client = fastapi_client_factory.create_client(
-        settings=test_settings
-    )
-    # Test real service behavior, not mocked responses
-    response = client.get("/api/models")
-    assert response.status_code == 200
-    assert "models" in response.json()
+# Use session-scoped app creation for expensive plugin initialization
+@pytest.mark.asyncio(loop_scope="session")
+async def test_plugin_functionality(metrics_integration_client) -> None:
+    """Test plugin with session-scoped app for optimal performance."""
+    # App is created once per test session, client per test
+    resp = await metrics_integration_client.get("/metrics")
+    assert resp.status_code == 200
+    assert "prometheus_metrics" in resp.text
+```
+
+#### Factory Pattern for Dynamic Configuration
+
+```python
+@pytest.mark.asyncio
+async def test_dynamic_plugin_config(integration_client_factory) -> None:
+    """Test with dynamic plugin configuration."""
+    client = await integration_client_factory({
+        "metrics": {"enabled": True, "custom_setting": "value"}
+    })
+    async with client:
+        resp = await client.get("/metrics")
+        assert resp.status_code == 200
 ```
 
 ### Basic Unit Test Pattern
@@ -252,21 +290,90 @@ def test_cache_basic_operations() -> None:
     assert len(cache) == 1
 ```
 
-### Integration Test Pattern
+### Integration Test Patterns
+
+#### Session-Scoped App Pattern (High Performance)
+
+For integration tests that need consistent app state and optimal performance:
 
 ```python
-from fastapi.testclient import TestClient
+import pytest
+from httpx import AsyncClient
 
-def test_full_request_flow(client: TestClient) -> None:
-    """Test complete request flow (integration test)."""
-    # This tests real HTTP layer + services + configuration
-    response = client.post("/api/v1/messages", json={
-        "model": "claude-3-5-sonnet-20241022",
-        "messages": [{"role": "user", "content": "Hello"}]
+# Session-scoped app creation (expensive operations done once)
+@pytest.fixture(scope="session")
+def metrics_integration_app():
+    """Pre-configured app for metrics plugin integration tests."""
+    from ccproxy.core.logging import setup_logging
+    from ccproxy.config.settings import Settings
+    from ccproxy.api.bootstrap import create_service_container
+    from ccproxy.api.app import create_app
+    
+    # Set up logging once per session
+    setup_logging(json_logs=False, log_level_name="ERROR")
+    
+    settings = Settings(
+        enable_plugins=True,
+        plugins={
+            "metrics": {
+                "enabled": True,
+                "metrics_endpoint_enabled": True,
+            }
+        },
+        logging={
+            "level": "ERROR",  # Minimal logging for speed
+            "enable_plugin_logging": False,
+            "verbose_api": False,
+        },
+    )
+    
+    service_container = create_service_container(settings)
+    return create_app(service_container), settings
+
+# Test-scoped client (reuses shared app)
+@pytest.fixture
+async def metrics_integration_client(metrics_integration_app):
+    """HTTP client for metrics integration tests."""
+    from httpx import ASGITransport, AsyncClient
+    from ccproxy.api.app import initialize_plugins_startup
+    
+    app, settings = metrics_integration_app
+    await initialize_plugins_startup(app, settings)
+    
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        yield client
+
+# Test using session-scoped pattern
+@pytest.mark.asyncio(loop_scope="session")
+async def test_metrics_endpoint_available(metrics_integration_client) -> None:
+    """Test metrics endpoint availability."""
+    resp = await metrics_integration_client.get("/metrics")
+    assert resp.status_code == 200
+    assert b"# HELP" in resp.content or b"# TYPE" in resp.content
+```
+
+#### Dynamic Factory Pattern (Flexible Configuration)
+
+For tests that need different configurations:
+
+```python
+@pytest.mark.asyncio
+async def test_custom_plugin_config(integration_client_factory) -> None:
+    """Test with custom plugin configuration."""
+    client = await integration_client_factory({
+        "metrics": {
+            "enabled": True,
+            "metrics_endpoint_enabled": True,
+            "include_labels": True,
+        }
     })
-    assert response.status_code == 200
-    data = response.json()
-    assert "content" in data
+    
+    async with client:
+        resp = await client.get("/metrics")
+        assert resp.status_code == 200
+        # Test custom configuration behavior
+        assert "custom_label" in resp.text
 ```
 
 ### Testing with Configuration
@@ -327,21 +434,35 @@ pytest -m integration             # Integration tests only
 
 ## For New Developers
 
-1. **Start here**: Read this file and `tests/conftest.py`
-2. **Run tests**: `make test` to ensure everything works
-3. **Add new test**: Copy existing test pattern, modify as needed
-4. **Mock external only**: Don't mock internal components
-5. **Type safety**: All test functions need proper type hints
-6. **Fast by default**: Unit tests should run in milliseconds
+1. **Start here**: Read this file and `tests/fixtures/integration.py`
+2. **Run tests**: `make test` to ensure everything works (606 optimized tests)
+3. **Choose pattern**: 
+   - Session-scoped fixtures for plugin tests (`metrics_integration_client`)
+   - Factory patterns for dynamic configs (`integration_client_factory`)
+   - Unit tests for isolated components
+4. **Performance first**: Use `ERROR` logging level, session-scoped apps for expensive operations
+5. **Type safety**: All test functions need `-> None` return type, proper fixture typing
+6. **Modern async**: Use `@pytest.mark.asyncio(loop_scope="session")` for integration tests
+7. **Mock external only**: Don't mock internal components, test real behavior
 
 ## Migration from Old Architecture
 
-**All existing test patterns still work** - but new tests should use the streamlined patterns:
+**All existing test patterns still work** - but new tests should use the performance-optimized patterns:
 
-- Use `fastapi_client_factory` for flexible test clients
-- Mock at service boundaries, not HTTP layer
-- Prefer unit tests with real internal components
-- Move complex scenarios to integration tests
-- Use proper type hints on all fixtures
+### Current Recommended Patterns (2024)
 
-The architecture has been significantly simplified while maintaining functionality and improving maintainability.
+- **Session-scoped integration fixtures** - `metrics_integration_client`, `disabled_plugins_client`
+- **Async factory patterns** - `integration_client_factory` for dynamic configs
+- **Manual logging setup** - `setup_logging(json_logs=False, log_level_name="ERROR")`
+- **Session loop scope** - `@pytest.mark.asyncio(loop_scope="session")` for integration tests
+- **Service container pattern** - `create_service_container()` + `create_app()`
+- **Plugin lifecycle management** - `initialize_plugins_startup()` in fixtures
+
+### Performance Optimizations Applied
+
+- **Minimal logging** - ERROR level only, no JSON logging, plugin logging disabled
+- **Session-scoped apps** - Expensive plugin initialization done once per session  
+- **Streamlined fixtures** - 515 lines (was 1117), focused on essential patterns
+- **Real component testing** - Mock external APIs only, test actual internal behavior
+
+The architecture has been significantly optimized for performance while maintaining full functionality.

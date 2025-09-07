@@ -7,14 +7,13 @@ import time
 from abc import ABC, abstractmethod
 from typing import Any
 
-import structlog
-
 from ccproxy.core.async_task_manager import create_managed_task
+from ccproxy.core.logging import get_logger
 
 from .service import PricingService
 
 
-logger = structlog.get_logger(__name__)
+logger = get_logger(__name__)
 
 
 class BaseScheduledTask(ABC):

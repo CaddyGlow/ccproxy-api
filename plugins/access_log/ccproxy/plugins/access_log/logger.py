@@ -7,10 +7,10 @@ module for use within the access_log plugin.
 import time
 from typing import Any
 
-import structlog
+from ccproxy.core.logging import get_logger
 
 
-logger = structlog.get_logger(__name__)
+logger = get_logger(__name__)
 
 
 async def log_request_access(

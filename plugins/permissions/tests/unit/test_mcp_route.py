@@ -50,7 +50,7 @@ class TestMCPPermissionCheck:
 
         # Patch the service getter
         with patch(
-            "plugins.permissions.mcp.get_permission_service"
+            "ccproxy.plugins.permissions.mcp.get_permission_service"
         ) as mock_get_service:
             mock_get_service.return_value = mock_permission_service
 
@@ -87,7 +87,7 @@ class TestMCPPermissionCheck:
         mock_permission_service.get_status.return_value = PermissionStatus.ALLOWED
 
         with patch(
-            "plugins.permissions.mcp.get_permission_service"
+            "ccproxy.plugins.permissions.mcp.get_permission_service"
         ) as mock_get_service:
             mock_get_service.return_value = mock_permission_service
 
@@ -118,7 +118,7 @@ class TestMCPPermissionCheck:
         mock_permission_service.get_status.return_value = PermissionStatus.DENIED
 
         with patch(
-            "plugins.permissions.mcp.get_permission_service"
+            "ccproxy.plugins.permissions.mcp.get_permission_service"
         ) as mock_get_service:
             mock_get_service.return_value = mock_permission_service
 
@@ -146,7 +146,7 @@ class TestMCPPermissionCheck:
         mock_permission_service.get_status.return_value = PermissionStatus.EXPIRED
 
         with patch(
-            "plugins.permissions.mcp.get_permission_service"
+            "ccproxy.plugins.permissions.mcp.get_permission_service"
         ) as mock_get_service:
             mock_get_service.return_value = mock_permission_service
 
@@ -176,7 +176,7 @@ class TestMCPPermissionCheck:
         )
 
         with patch(
-            "plugins.permissions.mcp.get_permission_service"
+            "ccproxy.plugins.permissions.mcp.get_permission_service"
         ) as mock_get_service:
             mock_get_service.return_value = mock_permission_service
 
@@ -204,7 +204,7 @@ class TestMCPPermissionCheck:
         mock_permission_service.wait_for_permission.side_effect = TimeoutError()
 
         with patch(
-            "plugins.permissions.mcp.get_permission_service"
+            "ccproxy.plugins.permissions.mcp.get_permission_service"
         ) as mock_get_service:
             mock_get_service.return_value = mock_permission_service
 
@@ -233,7 +233,7 @@ class TestMCPPermissionCheck:
         )
 
         with patch(
-            "plugins.permissions.mcp.get_permission_service"
+            "ccproxy.plugins.permissions.mcp.get_permission_service"
         ) as mock_get_service:
             mock_get_service.return_value = mock_permission_service
 
@@ -261,11 +261,11 @@ class TestMCPPermissionCheck:
         )
 
         with patch(
-            "plugins.permissions.mcp.get_permission_service"
+            "ccproxy.plugins.permissions.mcp.get_permission_service"
         ) as mock_get_service:
             mock_get_service.return_value = mock_permission_service
 
-            with patch("plugins.permissions.mcp.logger") as mock_logger:
+            with patch("ccproxy.plugins.permissions.mcp.logger") as mock_logger:
                 # Create request
                 request = PermissionCheckRequest(
                     tool_name="python",
@@ -305,7 +305,7 @@ class TestMCPPermissionCheck:
         )
 
         with patch(
-            "plugins.permissions.mcp.get_permission_service"
+            "ccproxy.plugins.permissions.mcp.get_permission_service"
         ) as mock_get_service:
             mock_get_service.return_value = mock_permission_service
 
@@ -342,7 +342,7 @@ class TestMCPPermissionCheck:
         )
 
         with patch(
-            "plugins.permissions.mcp.get_permission_service"
+            "ccproxy.plugins.permissions.mcp.get_permission_service"
         ) as mock_get_service:
             mock_get_service.return_value = mock_permission_service
 

@@ -2,8 +2,7 @@
 
 import time
 
-import structlog
-
+from ccproxy.core.logging import get_logger
 from ccproxy.hooks import Hook
 from ccproxy.hooks.base import HookContext
 from ccproxy.hooks.events import HookEvent
@@ -13,7 +12,7 @@ from .config import MetricsConfig
 from .pushgateway import PushgatewayClient
 
 
-logger = structlog.get_logger(__name__)
+logger = get_logger(__name__)
 
 
 class MetricsHook(Hook):

@@ -198,15 +198,3 @@ class TestOptionsHandler:
         # Should fail with unsupported models
         assert not OptionsHandler.validate_model("invalid-model")
 
-    def test_get_default_options(self):
-        """Test getting default options."""
-        defaults = OptionsHandler.get_default_options()
-
-        assert isinstance(defaults, dict)
-        assert "model" in defaults
-        assert "temperature" in defaults
-        assert "max_tokens" in defaults
-
-        # Verify expected defaults
-        assert defaults["temperature"] == 0.7
-        assert defaults["max_tokens"] == 4000

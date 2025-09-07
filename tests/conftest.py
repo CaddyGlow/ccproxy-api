@@ -48,13 +48,7 @@ async def task_manager_fixture():
     await stop_task_manager()
 
 
-# Import organized fixture modules
-pytest_plugins = [
-    "tests.fixtures.claude_sdk.internal_mocks",
-    "tests.fixtures.claude_sdk.client_mocks",
-    "tests.fixtures.external_apis.anthropic_api",
-    "tests.fixtures.external_apis.openai_codex_api",
-]
+# Plugin fixtures are declared in root-level conftest.py
 
 
 @lru_cache
