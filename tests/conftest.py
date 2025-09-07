@@ -8,7 +8,7 @@ while mocking only external services.
 import json
 import os
 import time
-from collections.abc import Callable, Generator
+from collections.abc import Generator
 
 # Override settings for testing
 from functools import lru_cache
@@ -16,7 +16,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from unittest.mock import AsyncMock, patch
 
-import httpx
 import pytest
 import structlog
 from fastapi import FastAPI, Request
@@ -30,14 +29,9 @@ from ccproxy.core.request_context import RequestContext
 
 if TYPE_CHECKING:
     from tests.factories import FastAPIAppFactory, FastAPIClientFactory
-from ccproxy.auth.manager import AuthManager
 from ccproxy.config.security import SecuritySettings
 from ccproxy.config.server import ServerSettings
 from ccproxy.config.settings import Settings
-from ccproxy.docker.adapter import DockerAdapter
-from ccproxy.docker.docker_path import DockerPath, DockerPathSet
-from ccproxy.docker.models import DockerUserContext
-from ccproxy.docker.stream_process import DefaultOutputMiddleware
 
 
 # Global fixture for task manager (needed by many async tests)
@@ -305,567 +299,33 @@ def claude_responses() -> dict[str, Any]:
     }
 
 
-@pytest.fixture
-def metrics_storage() -> Any:
-    """Create isolated in-memory metrics storage.
-
-    Returns a mock storage instance for testing.
-    """
-    return None
-
-
-# =============================================================================
-# COMPOSABLE AUTH FIXTURE HIERARCHY
-# =============================================================================
-# New composable auth fixtures that support all auth modes without skipping
-
-
+# Basic auth mode fixtures
 @pytest.fixture
 def auth_mode_none() -> dict[str, Any]:
-    """Auth mode: No authentication required.
-
-    Returns configuration for testing endpoints without authentication.
-    """
-    return {
-        "mode": "none",
-        "requires_token": False,
-        "has_configured_token": False,
-        "credentials_available": False,
-    }
+    """Auth mode: No authentication required."""
+    return {"mode": "none", "requires_token": False}
 
 
 @pytest.fixture
 def auth_mode_bearer_token() -> dict[str, Any]:
-    """Auth mode: Bearer token authentication without configured server token.
-
-    Returns configuration for testing with bearer tokens when server has no auth_token configured.
-    """
+    """Auth mode: Bearer token authentication."""
     return {
         "mode": "bearer_token",
         "requires_token": True,
-        "has_configured_token": False,
-        "credentials_available": False,
         "test_token": "test-bearer-token-12345",
     }
 
 
 @pytest.fixture
 def auth_mode_configured_token() -> dict[str, Any]:
-    """Auth mode: Bearer token with server-configured auth_token.
-
-    Returns configuration for testing with bearer tokens when server has auth_token configured.
-    """
+    """Auth mode: Bearer token with server-configured auth_token."""
     return {
         "mode": "configured_token",
         "requires_token": True,
-        "has_configured_token": True,
-        "credentials_available": False,
         "server_token": "server-configured-token-67890",
-        "test_token": "server-configured-token-67890",  # Must match server
+        "test_token": "server-configured-token-67890",
         "invalid_token": "wrong-token-12345",
     }
-
-
-@pytest.fixture
-def auth_mode_credentials() -> dict[str, Any]:
-    """Auth mode: Credentials-based authentication (OAuth flow).
-
-    Returns configuration for testing with Claude SDK credentials.
-    """
-    return {
-        "mode": "credentials",
-        "requires_token": False,
-        "has_configured_token": False,
-        "credentials_available": True,
-    }
-
-
-@pytest.fixture
-def auth_mode_credentials_with_fallback() -> dict[str, Any]:
-    """Auth mode: Credentials with bearer token fallback.
-
-    Returns configuration for testing both credentials and bearer token support.
-    """
-    return {
-        "mode": "credentials_with_fallback",
-        "requires_token": False,
-        "has_configured_token": False,
-        "credentials_available": True,
-        "test_token": "fallback-bearer-token-12345",
-    }
-
-
-# Auth Settings Factories
-@pytest.fixture
-def auth_settings_factory() -> Callable[[dict[str, Any]], Settings]:
-    """Factory for creating auth-specific settings.
-
-    Returns a function that creates Settings based on auth mode configuration.
-    """
-
-    def _create_settings(auth_config: dict[str, Any]) -> Settings:
-        # Create base test settings
-        settings = Settings(
-            server=ServerSettings(log_level="WARNING"),
-            security=SecuritySettings(auth_token=None),
-        )
-
-        if auth_config.get("has_configured_token"):
-            settings.security.auth_token = auth_config["server_token"]
-        else:
-            settings.security.auth_token = None
-
-        return settings
-
-    return _create_settings
-
-
-# Auth Headers Generators
-@pytest.fixture
-def auth_headers_factory() -> Callable[[dict[str, Any]], dict[str, str]]:
-    """Factory for creating auth headers based on auth mode.
-
-    Returns a function that creates appropriate headers for each auth mode.
-    """
-
-    def _create_headers(auth_config: dict[str, Any]) -> dict[str, str]:
-        if not auth_config.get("requires_token"):
-            return {}
-
-        token = auth_config.get("test_token")
-        if not token:
-            return {}
-
-        return {"Authorization": f"Bearer {token}"}
-
-    return _create_headers
-
-
-@pytest.fixture
-def invalid_auth_headers_factory() -> Callable[[dict[str, Any]], dict[str, str]]:
-    """Factory for creating invalid auth headers for negative testing.
-
-    Returns a function that creates headers with invalid tokens.
-    """
-
-    def _create_invalid_headers(auth_config: dict[str, Any]) -> dict[str, str]:
-        if auth_config["mode"] == "configured_token":
-            return {"Authorization": f"Bearer {auth_config['invalid_token']}"}
-        elif auth_config["mode"] in ["bearer_token", "credentials_with_fallback"]:
-            return {"Authorization": "Bearer invalid-token-99999"}
-        else:
-            return {"Authorization": "Bearer should-fail-12345"}
-
-    return _create_invalid_headers
-
-
-# Composable App Fixtures
-@pytest.fixture
-def app_factory(tmp_path: Path) -> Callable[[dict[str, Any]], FastAPI]:
-    """Factory for creating FastAPI apps with specific auth configurations.
-
-    Returns a function that creates apps based on auth mode configuration.
-    """
-
-    def _create_app(auth_config: dict[str, Any]) -> FastAPI:
-        # Create settings based on auth config
-        settings = Settings(
-            server=ServerSettings(log_level="WARNING"),
-            security=SecuritySettings(auth_token=None),
-            plugins={
-                "duckdb_storage": {
-                    "enabled": True,
-                    "database_path": str(tmp_path / "test_metrics.duckdb"),
-                    "register_app_state_alias": True,
-                },
-                "analytics": {"enabled": True},
-            },
-        )
-        if auth_config.get("has_configured_token"):
-            settings.security.auth_token = auth_config["server_token"]
-        else:
-            settings.security.auth_token = None
-
-        # Create app with settings
-        app = create_app(settings=settings)
-
-        # Override settings dependency for testing
-        from ccproxy.api.dependencies import get_cached_settings
-        from ccproxy.config.settings import get_settings as original_get_settings
-
-        app.dependency_overrides[original_get_settings] = lambda: settings
-
-        def mock_get_cached_settings_for_factory(request: Request):
-            return settings
-
-        app.dependency_overrides[get_cached_settings] = (
-            mock_get_cached_settings_for_factory
-        )
-
-        # Override auth manager if needed
-        if auth_config["mode"] != "none":
-            from fastapi.security import HTTPAuthorizationCredentials
-
-            from ccproxy.auth.dependencies import (
-                _get_auth_manager_with_settings,
-                get_auth_manager,
-            )
-
-            async def test_auth_manager(
-                credentials: HTTPAuthorizationCredentials | None = None,
-            ) -> AuthManager:
-                return await _get_auth_manager_with_settings(credentials, settings)
-
-            app.dependency_overrides[get_auth_manager] = test_auth_manager
-
-        return app
-
-    return _create_app
-
-
-@pytest.fixture
-def client_factory() -> Callable[[FastAPI], TestClient]:
-    """Factory for creating test clients from FastAPI apps.
-
-    Returns a function that creates TestClient instances.
-    """
-
-    def _create_client(app: FastAPI) -> TestClient:
-        return TestClient(app)
-
-    return _create_client
-
-
-# Specific Mode Fixtures (for convenience)
-@pytest.fixture
-def app_no_auth(
-    auth_mode_none: dict[str, Any], app_factory: Callable[[dict[str, Any]], FastAPI]
-) -> FastAPI:
-    """FastAPI app with no authentication required."""
-    return app_factory(auth_mode_none)
-
-
-@pytest.fixture
-def app_bearer_auth(
-    auth_mode_bearer_token: dict[str, Any],
-    app_factory: Callable[[dict[str, Any]], FastAPI],
-) -> FastAPI:
-    """FastAPI app with bearer token authentication (no configured token)."""
-    return app_factory(auth_mode_bearer_token)
-
-
-@pytest.fixture
-def app_configured_auth(
-    auth_mode_configured_token: dict[str, Any],
-    app_factory: Callable[[dict[str, Any]], FastAPI],
-) -> FastAPI:
-    """FastAPI app with configured auth token."""
-    return app_factory(auth_mode_configured_token)
-
-
-@pytest.fixture
-def app_credentials_auth(
-    auth_mode_credentials: dict[str, Any],
-    app_factory: Callable[[dict[str, Any]], FastAPI],
-) -> FastAPI:
-    """FastAPI app with credentials-based authentication."""
-    return app_factory(auth_mode_credentials)
-
-
-@pytest.fixture
-def client_no_auth(
-    app_no_auth: FastAPI, client_factory: Callable[[FastAPI], TestClient]
-) -> TestClient:
-    """Test client with no authentication."""
-    return client_factory(app_no_auth)
-
-
-@pytest.fixture
-def client_bearer_auth(
-    app_bearer_auth: FastAPI, client_factory: Callable[[FastAPI], TestClient]
-) -> TestClient:
-    """Test client with bearer token authentication."""
-    return client_factory(app_bearer_auth)
-
-
-@pytest.fixture
-def client_configured_auth(
-    app_configured_auth: FastAPI, client_factory: Callable[[FastAPI], TestClient]
-) -> TestClient:
-    """Test client with configured auth token."""
-    return client_factory(app_configured_auth)
-
-
-@pytest.fixture
-def client_credentials_auth(
-    app_credentials_auth: FastAPI, client_factory: Callable[[FastAPI], TestClient]
-) -> TestClient:
-    """Test client with credentials-based authentication."""
-    return client_factory(app_credentials_auth)
-
-
-# Auth Utilities
-@pytest.fixture
-def auth_test_utils() -> dict[str, Any]:
-    """Utilities for auth testing.
-
-    Returns a collection of helper functions for auth testing.
-    """
-
-    def is_auth_error(response: httpx.Response) -> bool:
-        """Check if response is an authentication error."""
-        return response.status_code == 401
-
-    def is_auth_success(response: httpx.Response) -> bool:
-        """Check if response indicates successful authentication."""
-        return response.status_code not in [401, 403]
-
-    def extract_auth_error_detail(response: httpx.Response) -> str | None:
-        """Extract authentication error detail from response."""
-        if response.status_code == 401:
-            try:
-                detail = response.json().get("detail")
-                return str(detail) if detail is not None else None
-            except Exception:
-                return response.text
-        return None
-
-    return {
-        "is_auth_error": is_auth_error,
-        "is_auth_success": is_auth_success,
-        "extract_auth_error_detail": extract_auth_error_detail,
-    }
-
-
-# OAuth Mock Utilities
-@pytest.fixture
-def oauth_flow_simulator() -> dict[str, Any]:
-    """Utilities for simulating OAuth flows in tests.
-
-    Returns functions for simulating different OAuth scenarios.
-    """
-
-    def simulate_successful_oauth() -> dict[str, str]:
-        """Simulate a successful OAuth flow."""
-        return {
-            "access_token": "oauth-access-token-12345",
-            "refresh_token": "oauth-refresh-token-67890",
-            "token_type": "Bearer",
-            "expires_in": "3600",
-        }
-
-    def simulate_oauth_error() -> dict[str, str]:
-        """Simulate an OAuth error response."""
-        return {
-            "error": "invalid_grant",
-            "error_description": "The provided authorization grant is invalid",
-        }
-
-    def simulate_token_refresh() -> dict[str, str]:
-        """Simulate a successful token refresh."""
-        return {
-            "access_token": "refreshed-access-token-99999",
-            "refresh_token": "new-refresh-token-11111",
-            "token_type": "Bearer",
-            "expires_in": "3600",
-        }
-
-    return {
-        "successful_oauth": simulate_successful_oauth,
-        "oauth_error": simulate_oauth_error,
-        "token_refresh": simulate_token_refresh,
-    }
-
-
-# Docker test fixtures
-
-
-@pytest.fixture
-def mock_docker_run_success() -> Generator[Any, None, None]:
-    """Mock asyncio.create_subprocess_exec for Docker availability check (success)."""
-    from unittest.mock import AsyncMock, patch
-
-    mock_process = AsyncMock()
-    mock_process.returncode = 0
-    mock_process.communicate.return_value = (b"Docker version 20.0.0", b"")
-    mock_process.wait.return_value = 0
-
-    with patch(
-        "asyncio.create_subprocess_exec", return_value=mock_process
-    ) as mock_subprocess:
-        yield mock_subprocess
-
-
-@pytest.fixture
-def mock_docker_run_unavailable() -> Generator[Any, None, None]:
-    """Mock asyncio.create_subprocess_exec for Docker availability check (unavailable)."""
-    from unittest.mock import patch
-
-    with patch(
-        "asyncio.create_subprocess_exec",
-        side_effect=FileNotFoundError("docker: command not found"),
-    ) as mock_subprocess:
-        yield mock_subprocess
-
-
-@pytest.fixture
-def mock_docker_popen_success() -> Generator[Any, None, None]:
-    """Mock asyncio.create_subprocess_exec for Docker command execution (success)."""
-    from unittest.mock import AsyncMock, patch
-
-    # Mock async stream reader
-    mock_stdout = AsyncMock()
-    mock_stdout.readline = AsyncMock(side_effect=[b"mock docker output\n", b""])
-
-    mock_stderr = AsyncMock()
-    mock_stderr.readline = AsyncMock(side_effect=[b""])
-
-    mock_proc = AsyncMock()
-    mock_proc.returncode = 0
-    mock_proc.wait = AsyncMock(return_value=0)
-    mock_proc.stdout = mock_stdout
-    mock_proc.stderr = mock_stderr
-    # Also support communicate() for availability checks
-    mock_proc.communicate = AsyncMock(return_value=(b"Docker version 20.0.0", b""))
-
-    with patch(
-        "asyncio.create_subprocess_exec", return_value=mock_proc
-    ) as mock_subprocess:
-        yield mock_subprocess
-
-
-@pytest.fixture
-def mock_docker_popen_failure() -> Generator[Any, None, None]:
-    """Mock asyncio.create_subprocess_exec for Docker command execution (failure)."""
-    from unittest.mock import AsyncMock, patch
-
-    # Mock async stream reader
-    mock_stdout = AsyncMock()
-    mock_stdout.readline = AsyncMock(side_effect=[b""])
-
-    mock_stderr = AsyncMock()
-    mock_stderr.readline = AsyncMock(
-        side_effect=[b"docker: error running command\n", b""]
-    )
-
-    mock_proc = AsyncMock()
-    mock_proc.returncode = 1
-    mock_proc.wait = AsyncMock(return_value=1)
-    mock_proc.stdout = mock_stdout
-    mock_proc.stderr = mock_stderr
-    # Also support communicate() for availability checks
-    mock_proc.communicate = AsyncMock(
-        return_value=(b"", b"docker: error running command\n")
-    )
-
-    with patch(
-        "asyncio.create_subprocess_exec", return_value=mock_proc
-    ) as mock_subprocess:
-        yield mock_subprocess
-
-
-@pytest.fixture
-def docker_adapter_success(
-    mock_docker_run_success: Any, mock_docker_popen_success: Any
-) -> DockerAdapter:
-    """Create a DockerAdapter with successful subprocess mocking.
-
-    Returns a DockerAdapter instance that will succeed on Docker operations.
-    """
-    from ccproxy.docker.adapter import DockerAdapter
-
-    return DockerAdapter()
-
-
-@pytest.fixture
-def docker_adapter_unavailable(mock_docker_run_unavailable: Any) -> DockerAdapter:
-    """Create a DockerAdapter with Docker unavailable mocking.
-
-    Returns a DockerAdapter instance that simulates Docker not being available.
-    """
-    from ccproxy.docker.adapter import DockerAdapter
-
-    return DockerAdapter()
-
-
-@pytest.fixture
-def docker_adapter_failure(
-    mock_docker_run_success: Any, mock_docker_popen_failure: Any
-) -> DockerAdapter:
-    """Create a DockerAdapter with Docker failure mocking.
-
-    Returns a DockerAdapter instance that simulates Docker command failures.
-    """
-    from ccproxy.docker.adapter import DockerAdapter
-
-    return DockerAdapter()
-
-
-@pytest.fixture
-def docker_path_fixture(tmp_path: Path) -> DockerPath:
-    """Create a DockerPath instance with temporary paths for testing.
-
-    Returns a DockerPath configured with test directories.
-    """
-    from ccproxy.docker.docker_path import DockerPath
-
-    host_path = tmp_path / "host_dir"
-    host_path.mkdir()
-
-    return DockerPath(
-        host_path=host_path,
-        container_path="/app/data",
-        env_definition_variable_name="DATA_PATH",
-    )
-
-
-@pytest.fixture
-def docker_path_set_fixture(tmp_path: Path) -> DockerPathSet:
-    """Create a DockerPathSet instance with temporary paths for testing.
-
-    Returns a DockerPathSet configured with test directories.
-    """
-    from ccproxy.docker.docker_path import DockerPathSet
-
-    # Create multiple test directories
-    host_dir1 = tmp_path / "host_dir1"
-    host_dir2 = tmp_path / "host_dir2"
-    host_dir1.mkdir()
-    host_dir2.mkdir()
-
-    # Create a DockerPathSet and add paths to it
-    path_set = DockerPathSet(tmp_path)
-    path_set.add("data1", "/app/data1", "host_dir1")
-    path_set.add("data2", "/app/data2", "host_dir2")
-
-    return path_set
-
-
-@pytest.fixture
-def docker_user_context() -> DockerUserContext:
-    """Create a DockerUserContext for testing.
-
-    Returns a DockerUserContext with test configuration.
-    """
-    from ccproxy.docker.models import DockerUserContext
-
-    return DockerUserContext.create_manual(
-        uid=1000,
-        gid=1000,
-        username="testuser",
-        enable_user_mapping=True,
-    )
-
-
-@pytest.fixture
-def output_middleware() -> DefaultOutputMiddleware:
-    """Create a basic OutputMiddleware for testing.
-
-    Returns a DefaultOutputMiddleware instance.
-    """
-    from ccproxy.docker.stream_process import DefaultOutputMiddleware
-
-    return DefaultOutputMiddleware()
 
 
 # Factory pattern fixtures
@@ -936,18 +396,9 @@ def client_with_unavailable_claude(
 
 
 @pytest.fixture
-def client_with_auth(app_bearer_auth: FastAPI) -> TestClient:
-    """Test client with authentication enabled."""
-    return TestClient(app_bearer_auth)
-
-
-@pytest.fixture
-def auth_headers(
-    auth_mode_bearer_token: dict[str, Any],
-    auth_headers_factory: Callable[[dict[str, Any]], dict[str, str]],
-) -> dict[str, str]:
+def auth_headers() -> dict[str, str]:
     """Auth headers for bearer token authentication."""
-    return auth_headers_factory(auth_mode_bearer_token)
+    return {"Authorization": "Bearer test-bearer-token-12345"}
 
 
 @pytest.fixture
@@ -957,78 +408,6 @@ def client(app: FastAPI) -> TestClient:
 
 
 # Codex-specific fixtures following Claude patterns
-
-
-@pytest.fixture
-def mock_openai_credentials(isolated_environment: Path) -> dict[str, Any]:
-    """Mock OpenAI credentials in current nested schema."""
-    from datetime import UTC, datetime
-
-    now = datetime.now(UTC)
-    # Create a faux JWT exp in the near future; we don't need real JWT here
-    # since most tests don't decode it, but structure should be valid for model
-    fake_access_token = "header.payload.signature"  # minimal-ish placeholder
-    return {
-        "OPENAI_API_KEY": None,
-        "tokens": {
-            "id_token": "id.header.payload",
-            "access_token": fake_access_token,
-            "refresh_token": "test-openai-refresh-token-67890",
-            "account_id": "test-account-id",
-        },
-        "last_refresh": now.isoformat(),
-        "active": True,
-    }
-
-
-@pytest.fixture
-def client_with_mock_codex(
-    test_settings: Settings,
-    mock_openai_credentials: dict[str, Any],
-    fastapi_app_factory: "FastAPIAppFactory",
-) -> Generator[TestClient, None, None]:
-    """Test client with mocked Codex service (no auth)."""
-    app = fastapi_app_factory.create_app(
-        settings=test_settings,
-        auth_enabled=False,
-    )
-
-    # Mock OpenAI credentials
-    from unittest.mock import patch
-
-    with patch(
-        "plugins.oauth_codex.manager.CodexTokenManager.load_credentials"
-    ) as mock_load:
-        from ccproxy.plugins.oauth_codex.models import OpenAICredentials
-
-        mock_load.return_value = OpenAICredentials(**mock_openai_credentials)
-
-        yield TestClient(app)
-
-
-@pytest.fixture
-def client_with_mock_codex_streaming(
-    test_settings: Settings,
-    mock_openai_credentials: dict[str, Any],
-    fastapi_app_factory: "FastAPIAppFactory",
-) -> Generator[TestClient, None, None]:
-    """Test client with mocked Codex streaming service (no auth)."""
-    app = fastapi_app_factory.create_app(
-        settings=test_settings,
-        auth_enabled=False,
-    )
-
-    # Mock OpenAI credentials
-    from unittest.mock import patch
-
-    with patch(
-        "plugins.oauth_codex.manager.CodexTokenManager.load_credentials"
-    ) as mock_load:
-        from ccproxy.plugins.oauth_codex.models import OpenAICredentials
-
-        mock_load.return_value = OpenAICredentials(**mock_openai_credentials)
-
-        yield TestClient(app)
 
 
 @pytest.fixture

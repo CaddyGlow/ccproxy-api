@@ -6,9 +6,7 @@ including token validation, credential storage, and API endpoint access control.
 
 import asyncio
 import json
-from collections.abc import Callable
 from pathlib import Path
-from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -106,148 +104,6 @@ class TestBearerTokenAuthentication:
             assert await manager.is_authenticated() is True
 
 
-# Commented out TestCredentialsAuthentication class as it references non-existent modules
-# after the plugin architecture migration. These tests need to be rewritten to work
-# with the new plugin-based authentication system.
-
-# @pytest.mark.auth
-# class TestCredentialsAuthentication:
-#     """Test credentials-based authentication mechanism."""
-#
-#     @pytest.fixture
-#     def mock_credentials_manager(self) -> AsyncMock:
-#         """Create mock credentials manager."""
-#         mock = AsyncMock(spec=CredentialsManager)
-#         return mock
-#
-#     @pytest.fixture
-#     def credentials_auth_manager(
-#         self, mock_credentials_manager: AsyncMock
-#     ) -> CredentialsAuthManager:
-#         """Create credentials auth manager with mock."""
-#         return CredentialsAuthManager(mock_credentials_manager)
-#
-#     async def test_credentials_auth_manager_get_access_token_success(
-#         self,
-#         credentials_auth_manager: CredentialsAuthManager,
-#         mock_credentials_manager: AsyncMock,
-#     ) -> None:
-#         """Test successful access token retrieval."""
-#         expected_token = "sk-test-token-123"
-#         mock_credentials_manager.get_access_token.return_value = expected_token
-#
-#         token = await credentials_auth_manager.get_access_token()
-#         assert token == expected_token
-#         mock_credentials_manager.get_access_token.assert_called_once()
-#
-#     async def test_credentials_auth_manager_get_access_token_not_found(
-#         self,
-#         credentials_auth_manager: CredentialsAuthManager,
-#         mock_credentials_manager: AsyncMock,
-#     ) -> None:
-#         """Test access token retrieval when credentials not found."""
-#         mock_credentials_manager.get_access_token.side_effect = (
-#             CredentialsNotFoundError("No credentials found")
-#         )
-#
-#         with pytest.raises(AuthenticationError, match="No credentials found"):
-#             await credentials_auth_manager.get_access_token()
-#
-#     async def test_credentials_auth_manager_get_access_token_expired(
-#         self,
-#         credentials_auth_manager: CredentialsAuthManager,
-#         mock_credentials_manager: AsyncMock,
-#     ) -> None:
-#         """Test access token retrieval when credentials expired."""
-#         mock_credentials_manager.get_access_token.side_effect = CredentialsExpiredError(
-#             "Credentials expired"
-#         )
-#
-#         with pytest.raises(AuthenticationError, match="Credentials expired"):
-#             await credentials_auth_manager.get_access_token()
-#
-#     async def test_credentials_auth_manager_get_credentials_success(
-#         self,
-#         credentials_auth_manager: CredentialsAuthManager,
-#         mock_credentials_manager: AsyncMock,
-#     ) -> None:
-#         """Test successful credentials retrieval."""
-#         oauth_token = OAuthToken(
-#             accessToken=SecretStr("sk-test-token-123"),
-#             refreshToken=SecretStr("refresh-token-456"),
-#             expiresAt=None,
-#             tokenType="Bearer",
-#             subscriptionType=None,
-#         )
-#         expected_creds = ClaudeCredentials(claudeAiOauth=oauth_token)
-#         mock_credentials_manager.get_valid_credentials.return_value = expected_creds
-#
-#         creds = await credentials_auth_manager.get_credentials()
-#         assert creds == expected_creds
-#         mock_credentials_manager.get_valid_credentials.assert_called_once()
-#
-#     async def test_credentials_auth_manager_is_authenticated_true(
-#         self,
-#         credentials_auth_manager: CredentialsAuthManager,
-#         mock_credentials_manager: AsyncMock,
-#     ) -> None:
-#         """Test authentication status when credentials are valid."""
-#         oauth_token = OAuthToken(
-#             accessToken=SecretStr("sk-test-token-123"),
-#             refreshToken=SecretStr("refresh-token-456"),
-#             expiresAt=None,
-#             tokenType="Bearer",
-#             subscriptionType=None,
-#         )
-#         mock_credentials_manager.get_valid_credentials.return_value = ClaudeCredentials(
-#             claudeAiOauth=oauth_token
-#         )
-#
-#         is_authenticated = await credentials_auth_manager.is_authenticated()
-#         assert is_authenticated is True
-#
-#     async def test_credentials_auth_manager_is_authenticated_false(
-#         self,
-#         credentials_auth_manager: CredentialsAuthManager,
-#         mock_credentials_manager: AsyncMock,
-#     ) -> None:
-#         """Test authentication status when credentials are invalid."""
-#         mock_credentials_manager.get_valid_credentials.side_effect = CredentialsError(
-#             "Invalid credentials"
-#         )
-#
-#         is_authenticated = await credentials_auth_manager.is_authenticated()
-#         assert is_authenticated is False
-#
-#     async def test_credentials_auth_manager_get_user_profile_success(
-#         self,
-#         credentials_auth_manager: CredentialsAuthManager,
-#         mock_credentials_manager: AsyncMock,
-#     ) -> None:
-#         """Test successful user profile retrieval."""
-#         account_info = AccountInfo(
-#             uuid="user-123", email="test@example.com", full_name="Test User"
-#         )
-#         expected_profile = UserProfile(account=account_info)
-#         mock_credentials_manager.fetch_user_profile.return_value = expected_profile
-#
-#         profile = await credentials_auth_manager.get_user_profile()
-#         assert profile == expected_profile
-#
-#     async def test_credentials_auth_manager_get_user_profile_error(
-#         self,
-#         credentials_auth_manager: CredentialsAuthManager,
-#         mock_credentials_manager: AsyncMock,
-#     ) -> None:
-#         """Test user profile retrieval when error occurs."""
-#         mock_credentials_manager.fetch_user_profile.side_effect = CredentialsError(
-#             "Profile error"
-#         )
-#
-#         profile = await credentials_auth_manager.get_user_profile()
-#         assert profile is None
-
-
 @pytest.mark.auth
 class TestAuthDependencies:
     """Test FastAPI authentication dependencies."""
@@ -297,75 +153,6 @@ class TestAuthDependencies:
 @pytest.mark.auth
 class TestAPIEndpointsWithAuth:
     """Test API endpoints with authentication enabled."""
-
-    def test_unauthenticated_request_with_auth_enabled(
-        self, client_configured_auth: TestClient
-    ) -> None:
-        """Test unauthenticated request when auth is enabled."""
-        # Test unauthenticated request with auth enabled
-        response = client_configured_auth.post(
-            "/api/v1/messages",
-            json={
-                "model": "claude-3-5-sonnet-20241022",
-                "messages": [{"role": "user", "content": "Hello"}],
-            },
-        )
-        # Should return 401 because request is unauthenticated
-        assert response.status_code == 401
-
-    def test_authenticated_request_with_valid_token(
-        self,
-        client_configured_auth: TestClient,
-        auth_mode_configured_token: dict[str, Any],
-        auth_headers_factory: Callable[[dict[str, Any]], dict[str, str]],
-    ) -> None:
-        """Test authenticated request with valid bearer token."""
-        headers = auth_headers_factory(auth_mode_configured_token)
-        response = client_configured_auth.post(
-            "/api/v1/messages",
-            json={
-                "model": "claude-3-5-sonnet-20241022",
-                "messages": [{"role": "user", "content": "Hello"}],
-            },
-            headers=headers,
-        )
-        # Should return 401 because auth token is valid but proxy service is not set up in test
-        assert response.status_code == 401
-
-    def test_authenticated_request_with_invalid_token(
-        self,
-        client_configured_auth: TestClient,
-        auth_mode_configured_token: dict[str, Any],
-        invalid_auth_headers_factory: Callable[[dict[str, Any]], dict[str, str]],
-    ) -> None:
-        """Test authenticated request with invalid bearer token."""
-        invalid_headers = invalid_auth_headers_factory(auth_mode_configured_token)
-        response = client_configured_auth.post(
-            "/api/v1/messages",
-            json={
-                "model": "claude-3-5-sonnet-20241022",
-                "messages": [{"role": "user", "content": "Hello"}],
-            },
-            headers=invalid_headers,
-        )
-        # Should return 401 because token is invalid
-        assert response.status_code == 401
-
-    def test_authenticated_request_with_malformed_token(
-        self, client_configured_auth: TestClient
-    ) -> None:
-        """Test authenticated request with malformed authorization header."""
-        malformed_headers = {"Authorization": "InvalidFormat token"}
-        response = client_configured_auth.post(
-            "/api/v1/messages",
-            json={
-                "model": "claude-3-5-sonnet-20241022",
-                "messages": [{"role": "user", "content": "Hello"}],
-            },
-            headers=malformed_headers,
-        )
-        # Should return 401 because token is malformed
-        assert response.status_code == 401
 
 
 @pytest.mark.auth
@@ -676,24 +463,11 @@ class TestAuthExceptions:
         assert str(error) == "OAuth authentication failed"
         assert isinstance(error, Exception)
 
-    # OAuthLoginError and OAuthCallbackError removed after plugin refactoring
-    # def test_oauth_login_error_creation(self) -> None:
-    #     """Test OAuthLoginError exception creation."""
-    #     error = OAuthLoginError("OAuth login failed")
-    #     assert str(error) == "OAuth login failed"
-    #     assert isinstance(error, OAuthError)
-
     def test_oauth_token_refresh_error_creation(self) -> None:
         """Test OAuthTokenRefreshError exception creation."""
         error = OAuthTokenRefreshError("Token refresh failed")
         assert str(error) == "Token refresh failed"
         assert isinstance(error, OAuthError)
-
-    # def test_oauth_callback_error_creation(self) -> None:
-    #     """Test OAuthCallbackError exception creation."""
-    #     error = OAuthCallbackError("OAuth callback failed")
-    #     assert str(error) == "OAuth callback failed"
-    #     assert isinstance(error, OAuthError)
 
 
 @pytest.mark.auth
@@ -769,10 +543,3 @@ class TestAsyncAuthenticationPatterns:
 
         assert exc_info.value.status_code == status.HTTP_401_UNAUTHORIZED
         assert "Test error" in str(exc_info.value.detail)
-
-
-@pytest.mark.auth
-class TestOpenAIAuthentication:
-    """Deprecated legacy OpenAI tests removed (schema updated)."""
-
-    pass

@@ -689,3 +689,41 @@ def set_command_context(cmd_id: str | None = None) -> str:
     except Exception:
         # Be defensive: never break CLI startup due to context binding
         return cmd_id or ""
+
+
+# --- Lightweight test-time bootstrap ---------------------------------------
+# Ensure structlog logs are capturable by pytest's caplog without requiring
+# full application setup. When running under pytest (PYTEST_CURRENT_TEST),
+# configure structlog to emit through stdlib logging with a simple renderer
+# and set the root level to INFO so info logs are not filtered.
+def _bootstrap_test_logging_if_needed() -> None:
+    try:
+        if os.getenv("PYTEST_CURRENT_TEST") and not structlog.is_configured():
+            # Ensure INFO-level logs are visible to caplog
+            logging.getLogger().setLevel(logging.INFO)
+
+            # Configure structlog to hand off to stdlib with extra fields so that
+            # pytest's caplog sees attributes like `record.category`.
+            structlog.configure(
+                processors=[
+                    structlog.stdlib.filter_by_level,
+                    structlog.stdlib.add_log_level,
+                    structlog.stdlib.add_logger_name,
+                    category_filter,
+                    structlog.processors.TimeStamper(fmt="iso"),
+                    structlog.processors.format_exc_info,
+                    # Pass fields as LogRecord.extra for caplog
+                    structlog.stdlib.render_to_log_kwargs,
+                ],
+                context_class=dict,
+                logger_factory=structlog.stdlib.LoggerFactory(),
+                wrapper_class=TraceBoundLoggerImpl,
+                cache_logger_on_first_use=True,
+            )
+    except Exception:
+        # Never fail test imports due to logging bootstrap
+        pass
+
+
+# Invoke test bootstrap on import if appropriate
+_bootstrap_test_logging_if_needed()

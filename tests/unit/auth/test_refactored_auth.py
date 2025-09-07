@@ -1,7 +1,7 @@
 """Tests for refactored authentication components."""
 
 from datetime import UTC, datetime, timedelta
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 from pydantic import SecretStr
@@ -122,12 +122,6 @@ class TestClaudeModels:
         assert profile.extras == api_response  # Full response preserved
 
 
-class TestOpenAIModels:
-    """Deprecated tests removed; OpenAI model has a new schema."""
-
-    pass
-
-
 class TestGenericStorage:
     """Test generic storage implementation."""
 
@@ -157,11 +151,6 @@ class TestGenericStorage:
             loaded.claude_ai_oauth.refresh_token.get_secret_value() == "refresh_token"
         )
         assert loaded.claude_ai_oauth.expires_at == 1234567890000
-
-    @pytest.mark.asyncio
-    async def test_generic_storage_save_and_load_openai(self, tmp_path):
-        """Deprecated legacy OpenAI storage test removed."""
-        pass
 
     @pytest.mark.asyncio
     async def test_generic_storage_load_nonexistent(self, tmp_path):
@@ -210,17 +199,6 @@ class TestTokenManagers:
         assert loaded is not None
         assert manager.is_expired(loaded) is False
         assert await manager.get_access_token_value() == "test_token"
-
-    @pytest.mark.asyncio
-    async def test_codex_manager_with_generic_storage(self, tmp_path):
-        """Deprecated legacy Codex manager test removed."""
-        pass
-
-    @pytest.mark.asyncio
-    @patch("jwt.decode")
-    async def test_codex_manager_profile_extraction(self, mock_decode, tmp_path):
-        """Deprecated legacy profile extraction test removed."""
-        pass
 
 
 class TestUnifiedProfiles:

@@ -60,6 +60,7 @@ class FormatAdapterRegistry:
             to_format=to_format,
             adapter_type=type(adapter).__name__,
             plugin=plugin_name,
+            category="format",
         )
 
     def get_adapter(self, from_format: str, to_format: str) -> APIAdapter | None:

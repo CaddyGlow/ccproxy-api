@@ -375,6 +375,7 @@ markers = [
   # Test quality markers
   "flaky: Tests that may be unreliable and need investigation",
   "skip_ci: Tests to skip in CI environment",
+  "performance: Performance and micro-benchmark oriented tests",
 ]
 
 [tool.pytest_timeout]

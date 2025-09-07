@@ -68,6 +68,7 @@ class RequestProcessor:
             filtered_headers, handler_config, **transform_kwargs
         )
         import inspect as _inspect
+
         if _inspect.isawaitable(processed_headers):
             processed_headers = await processed_headers  # type: ignore[assignment]
 

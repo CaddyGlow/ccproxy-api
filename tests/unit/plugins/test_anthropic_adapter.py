@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock
-
 import pytest
 
 from ccproxy.plugins.codex.composite_anthropic_adapter import (
