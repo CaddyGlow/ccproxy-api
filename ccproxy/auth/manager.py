@@ -60,14 +60,6 @@ class AuthManager(Protocol):
 
     # ==================== Provider-Generic Methods ====================
 
-    async def get_auth_headers(self) -> dict[str, str]:
-        """Get authentication headers for the request.
-
-        Returns:
-            Dictionary of headers to add to requests
-        """
-        ...
-
     async def validate_credentials(self) -> bool:
         """Validate that credentials are available and valid.
 

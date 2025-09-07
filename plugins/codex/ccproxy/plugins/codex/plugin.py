@@ -239,60 +239,10 @@ class CodexRuntime(ProviderPluginRuntime):
         return details
 
     async def _setup_format_registry(self) -> None:
-        """Format registry setup with feature flag control."""
-        settings = self.context.get("settings")
-        if settings is None:
-            from ccproxy.config.settings import Settings
-
-            settings = Settings()
-
-        # Skip manual setup if manifest system is enabled
-        if settings.features.manifest_format_adapters:
-            logger.debug(
-                "codex_format_registry_setup_skipped_using_manifest", category="format"
-            )
-            return
-
-        # Deprecation warning for double registration
-        if settings.features.deprecate_manual_format_setup:
-            logger.warning(
-                "deprecated_codex_manual_format_registry_setup",
-                message="Manual format registry setup is deprecated. Use manifest format_adapters instead.",
-                migration_guide="Update CodexFactory.format_adapters list",
-                category="format",
-            )
-
-        # Existing manual registration logic
-        try:
-            from .format_adapter import CodexFormatAdapter
-
-            if not self.context:
-                raise RuntimeError("Context not available for format registry setup")
-
-            # Get format registry from service container
-            from ccproxy.services.container import ServiceContainer
-
-            service_container = self.context.get(ServiceContainer)
-            registry = service_container.get_format_registry()
-
-            # Register plugin-specific format adapters manually
-            registry.register("openai", "response_api", CodexFormatAdapter(), "codex")
-            registry.register(
-                "anthropic", "response_api", CodexFormatAdapter(), "codex"
-            )
-
-            logger.info(
-                "codex_format_adapters_registered_manually",
-                formats=registry.list_formats(),
-                message="Registered codex format adapters manually",
-                category="format",
-            )
-
-        except Exception as e:
-            logger.error(
-                "codex_format_registry_setup_failed", error=str(e), category="format"
-            )
-            raise ValueError("Failed to register Codex format adapters") from e
+        """No-op; manifest-based format adapters are always used."""
+        logger.debug(
+            "codex_format_registry_setup_skipped_using_manifest", category="format"
+        )
 
     async def _register_streaming_metrics_hook(self) -> None:
         """Register the streaming metrics extraction hook."""

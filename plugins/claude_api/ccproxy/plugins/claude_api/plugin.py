@@ -180,67 +180,11 @@ class ClaudeAPIRuntime(ProviderPluginRuntime):
         return None
 
     async def _setup_format_registry(self) -> None:
-        """Format registry setup with feature flag control."""
-        settings = self.context.get("settings")
-        if settings is None:
-            from ccproxy.config.settings import Settings
-
-            settings = Settings()
-
-        # Skip manual setup if manifest system is enabled
-        if settings.features.manifest_format_adapters:
-            logger.debug(
-                "claude_api_format_registry_setup_skipped_using_manifest",
-                category="format",
-            )
-            return
-
-        # Deprecation warning for double registration
-        if settings.features.deprecate_manual_format_setup:
-            logger.warning(
-                "deprecated_claude_api_manual_format_registry_setup",
-                message="Manual format registry setup is deprecated. Use manifest format_adapters instead.",
-                migration_guide="Update ClaudeAPIFactory.format_adapters list",
-                category="format",
-            )
-
-        # Existing manual registration logic (or lack thereof)
-        try:
-            if not self.context:
-                raise RuntimeError("Context not available for format registry setup")
-
-            # Get format registry from service container
-            from ccproxy.services.container import ServiceContainer
-
-            service_container = self.context.get(ServiceContainer)
-            registry = service_container.get_format_registry()
-
-            # Claude API plugin now registers its own adapters manually
-            from ccproxy.adapters.anthropic.response_adapter import (
-                AnthropicResponseAPIAdapter,
-            )
-            from ccproxy.adapters.openai.adapter import OpenAIAdapter
-
-            # Register the format adapters manually
-            registry.register("openai", "anthropic", OpenAIAdapter(), "claude_api")
-            registry.register(
-                "response_api", "anthropic", AnthropicResponseAPIAdapter(), "claude_api"
-            )
-
-            logger.info(
-                "claude_api_format_adapters_registered_manually",
-                formats=registry.list_formats(),
-                message="Registered claude_api format adapters manually",
-                category="format",
-            )
-
-        except Exception as e:
-            logger.error(
-                "claude_api_format_registry_setup_failed",
-                error=str(e),
-                category="format",
-            )
-            raise ValueError("Failed to register Claude API format adapters") from e
+        """No-op; manifest-based format adapters are always used."""
+        logger.debug(
+            "claude_api_format_registry_setup_skipped_using_manifest",
+            category="format",
+        )
 
     async def _register_streaming_metrics_hook(self) -> None:
         """Register the streaming metrics extraction hook."""

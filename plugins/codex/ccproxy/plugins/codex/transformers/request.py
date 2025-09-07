@@ -167,7 +167,7 @@ class CodexRequestTransformer:
 
         # Inject access token in Authorization header only when provided
         if access_token:
-            transformed["Authorization"] = f"Bearer {access_token}"
+            transformed["authorization"] = f"Bearer {access_token}"
 
         # Inject chatgpt_account_id if provided
         if chatgpt_account_id:

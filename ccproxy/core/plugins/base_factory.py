@@ -136,13 +136,8 @@ class BaseProviderPluginFactory(ProviderPluginFactory):
         self.runtime_class = self.__class__.runtime_class
 
     def validate_format_adapters_with_settings(self, settings: "Settings") -> None:
-        """Validate format adapter specifications with injected settings.
-
-        Args:
-            settings: Settings instance for feature flag access
-        """
-        if settings.features.manifest_format_adapters:
-            self._validate_format_adapter_specs()
+        """Validate format adapter specifications (feature flags removed)."""
+        self._validate_format_adapter_specs()
 
     def _validate_class_attributes(self) -> None:
         """Validate that required class attributes are defined."""

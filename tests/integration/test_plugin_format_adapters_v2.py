@@ -36,28 +36,10 @@ class TestAdapter(APIAdapter):
 class TestPluginFormatAdapterIntegrationV2:
     """Integration tests for plugin format adapter system v2."""
 
-    @pytest.fixture
-    def settings_with_manifest_enabled(self):
-        """Settings with manifest format adapters enabled."""
-        settings = Settings()
-        settings.features.manifest_format_adapters = True
-        settings.features.deprecate_manual_format_setup = True
-        return settings
-
-    @pytest.fixture
-    def settings_with_manifest_disabled(self):
-        """Settings with manifest format adapters disabled."""
-        settings = Settings()
-        settings.features.manifest_format_adapters = False
-        settings.features.deprecate_manual_format_setup = False
-        return settings
-
     @pytest.mark.asyncio
-    async def test_feature_flag_controlled_registration(
-        self, settings_with_manifest_enabled
-    ):
-        """Test format adapters automatically registered when feature flag enabled."""
-        container = ServiceContainer(settings_with_manifest_enabled)
+    async def test_manifest_registration(self):
+        """Test format adapters are registered from manifests."""
+        container = ServiceContainer(Settings())
         plugin_registry = PluginRegistry()
 
         # Create a mock plugin factory with format adapters
@@ -129,20 +111,15 @@ class TestPluginFormatAdapterIntegrationV2:
 
         plugin_registry.register_factory(InvalidPluginFactory())
 
-        # Resolve dependencies with feature flag enabled
-        with patch.dict(os.environ, {"FEATURES__MANIFEST_FORMAT_ADAPTERS": "true"}):
-            order = plugin_registry.resolve_dependencies()
-            # Plugin should be skipped due to missing format adapter requirements
-            assert "invalid_plugin" not in order
+        # Resolve dependencies (manifest behavior always enabled)
+        order = plugin_registry.resolve_dependencies(Settings())
+        # Plugin should be skipped due to missing format adapter requirements
+        assert "invalid_plugin" not in order
 
     @pytest.mark.asyncio
-    async def test_migration_safety_with_dual_path(self):
-        """Test both manual and manifest registration work during transition."""
-        # Test with feature flag disabled - manual registration works
-        settings_manual = Settings()
-        settings_manual.features.manifest_format_adapters = False
-
-        container_manual = ServiceContainer(settings_manual)
+    async def test_manual_and_manifest_registration(self):
+        """Test both manual and manifest registration work."""
+        container_manual = ServiceContainer(Settings())
         format_registry_manual = container_manual.get_format_registry()
 
         # Manual registration should work
@@ -152,14 +129,10 @@ class TestPluginFormatAdapterIntegrationV2:
             format_registry_manual.get_adapter_if_exists("manual", "test") is not None
         )
 
-        # Test with feature flag enabled - manifest registration works
-        settings_manifest = Settings()
-        settings_manifest.features.manifest_format_adapters = True
-
-        container_manifest = ServiceContainer(settings_manifest)
+        # Manifest registration should work
+        container_manifest = ServiceContainer(Settings())
         format_registry_manifest = container_manifest.get_format_registry()
 
-        # Manifest registration should work
         spec = FormatAdapterSpec(
             from_format="manifest",
             to_format="test",
@@ -183,10 +156,7 @@ class TestPluginFormatAdapterIntegrationV2:
     @pytest.mark.asyncio
     async def test_conflict_resolution_in_real_scenario(self):
         """Test conflict resolution with realistic plugin scenarios."""
-        settings = Settings()
-        settings.features.manifest_format_adapters = True
-
-        container = ServiceContainer(settings)
+        container = ServiceContainer(Settings())
         format_registry = container.get_format_registry()
 
         # Simulate two plugins registering conflicting adapters
@@ -228,10 +198,7 @@ class TestPluginFormatAdapterIntegrationV2:
     @pytest.mark.asyncio
     async def test_performance_with_many_plugins(self):
         """Test performance with many plugins registering adapters."""
-        settings = Settings()
-        settings.features.manifest_format_adapters = True
-
-        container = ServiceContainer(settings)
+        container = ServiceContainer(Settings())
         format_registry = container.get_format_registry()
 
         # Create many plugins with adapters
@@ -268,10 +235,7 @@ class TestPluginFormatAdapterIntegrationV2:
     @pytest.mark.asyncio
     async def test_logging_and_monitoring(self, caplog):
         """Test logging output for monitoring and observability."""
-        settings = Settings()
-        settings.features.manifest_format_adapters = True
-
-        container = ServiceContainer(settings)
+        container = ServiceContainer(Settings())
         format_registry = container.get_format_registry()
 
         # Register a plugin with adapters
@@ -302,21 +266,4 @@ class TestPluginFormatAdapterIntegrationV2:
         ]
         assert len(format_logs) > 0
 
-    def test_feature_flag_configuration(self):
-        """Test feature flag configuration works correctly."""
-        # Test default values
-        settings = Settings()
-        assert settings.features.manifest_format_adapters is False
-        assert settings.features.deprecate_manual_format_setup is False
-
-        # Test environment variable override
-        with patch.dict(
-            os.environ,
-            {
-                "FEATURES__MANIFEST_FORMAT_ADAPTERS": "true",
-                "FEATURES__DEPRECATE_MANUAL_FORMAT_SETUP": "true",
-            },
-        ):
-            settings_env = Settings()
-            assert settings_env.features.manifest_format_adapters is True
-            assert settings_env.features.deprecate_manual_format_setup is True
+    # Feature flag tests removed; system always uses manifest-based adapters.

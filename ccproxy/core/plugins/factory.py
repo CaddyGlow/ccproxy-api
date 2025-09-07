@@ -483,20 +483,19 @@ class PluginRegistry:
         available = set(manifests.keys())
         skipped: dict[str, str] = {}
 
-        # NEW: Validate format adapter dependencies if feature enabled
-        if settings.features.manifest_format_adapters:
-            missing_format_adapters = self._validate_format_adapter_requirements()
-            if missing_format_adapters:
-                for plugin_name, missing in missing_format_adapters.items():
-                    logger.error(
-                        "plugin_missing_format_adapters",
-                        plugin=plugin_name,
-                        missing_adapters=missing,
-                        category="format",
-                    )
-                    # Remove plugins with missing format adapter requirements
-                    available.discard(plugin_name)
-                    skipped[plugin_name] = f"missing format adapters: {missing}"
+        # Validate format adapter dependencies (latest behavior)
+        missing_format_adapters = self._validate_format_adapter_requirements()
+        if missing_format_adapters:
+            for plugin_name, missing in missing_format_adapters.items():
+                logger.error(
+                    "plugin_missing_format_adapters",
+                    plugin=plugin_name,
+                    missing_adapters=missing,
+                    category="format",
+                )
+                # Remove plugins with missing format adapter requirements
+                available.discard(plugin_name)
+                skipped[plugin_name] = f"missing format adapters: {missing}"
 
         # Iteratively prune plugins with unsatisfied dependencies or services
         while True:
@@ -678,19 +677,18 @@ class PluginRegistry:
             "initializing_plugins", count=len(order), order=order, category="plugin"
         )
 
-        # NEW: Register format adapters from manifests in first pass
-        if settings.features.manifest_format_adapters:
-            format_registry = core_services.get_format_registry()
-            manifests = self.get_all_manifests()
-            for name, manifest in manifests.items():
-                if manifest.format_adapters:
-                    await format_registry.register_from_manifest(manifest, name)
-                    logger.debug(
-                        "plugin_format_adapters_registered_from_manifest",
-                        plugin=name,
-                        adapter_count=len(manifest.format_adapters),
-                        category="format",
-                    )
+        # Register format adapters from manifests in first pass (latest behavior)
+        format_registry = core_services.get_format_registry()
+        manifests = self.get_all_manifests()
+        for name, manifest in manifests.items():
+            if manifest.format_adapters:
+                await format_registry.register_from_manifest(manifest, name)
+                logger.debug(
+                    "plugin_format_adapters_registered_from_manifest",
+                    plugin=name,
+                    adapter_count=len(manifest.format_adapters),
+                    category="format",
+                )
 
         for name in order:
             try:
@@ -705,12 +703,9 @@ class PluginRegistry:
                 )
                 # Continue with other plugins
 
-        # NEW: Finalize format registry after plugin initialization
-        if settings.features.manifest_format_adapters:
-            format_registry = core_services.get_format_registry()
-            await format_registry.resolve_conflicts_and_finalize(
-                enable_priority_mode=True
-            )
+        # Finalize format registry after plugin initialization
+        format_registry = core_services.get_format_registry()
+        await format_registry.resolve_conflicts_and_finalize(enable_priority_mode=True)
 
     async def shutdown_all(self) -> None:
         """Shutdown all plugin runtimes in reverse initialization order."""

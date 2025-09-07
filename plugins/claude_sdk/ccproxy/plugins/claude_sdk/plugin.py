@@ -124,58 +124,11 @@ class ClaudeSDKRuntime(ProviderPluginRuntime):
         return details
 
     async def _setup_format_registry(self) -> None:
-        """Format registry setup with feature flag control."""
-        settings = self.context.get("settings")
-        if settings is None:
-            from ccproxy.config.settings import Settings
-
-            settings = Settings()
-
-        # Skip manual setup if manifest system is enabled
-        if settings.features.manifest_format_adapters:
-            logger.debug(
-                "claude_sdk_format_registry_setup_skipped_using_manifest",
-                category="format",
-            )
-            return
-
-        # Deprecation warning for double registration
-        if settings.features.deprecate_manual_format_setup:
-            logger.warning(
-                "deprecated_claude_sdk_manual_format_registry_setup",
-                message="Manual format registry setup is deprecated. Use manifest format_adapters instead.",
-                migration_guide="Update ClaudeSDKFactory.format_adapters list",
-                category="format",
-            )
-
-        # Existing manual registration logic
-        try:
-            from .format_adapter import ClaudeSDKFormatAdapter
-
-            if not self.context:
-                raise RuntimeError("Context not available for format registry setup")
-
-            # Get format registry from service container
-            service_container = self.context.get("service_container")
-            if not service_container:
-                raise RuntimeError("Service container not available")
-
-            registry = service_container.get_format_registry()
-            registry.register(
-                "openai", "anthropic", ClaudeSDKFormatAdapter(), "claude_sdk"
-            )
-
-            logger.info(
-                "claude_sdk_format_adapters_registered_manually", category="format"
-            )
-
-        except Exception as e:
-            logger.error(
-                "claude_sdk_format_registry_setup_failed",
-                error=str(e),
-                category="format",
-            )
-            raise ValueError("Failed to register Claude SDK format adapters") from e
+        """No-op; manifest-based format adapters are always used."""
+        logger.debug(
+            "claude_sdk_format_registry_setup_skipped_using_manifest",
+            category="format",
+        )
 
 
 class ClaudeSDKFactory(BaseProviderPluginFactory):

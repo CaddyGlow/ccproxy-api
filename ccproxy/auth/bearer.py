@@ -109,16 +109,6 @@ class BearerTokenAuthManager:
 
     # ==================== Provider-Generic Methods ====================
 
-    async def get_auth_headers(self) -> dict[str, str]:
-        """Get authentication headers for the request.
-
-        Returns:
-            Dictionary of headers to add to requests
-        """
-        if not self.token:
-            raise AuthenticationError("No bearer token available")
-        return {"Authorization": f"Bearer {self.token}"}
-
     async def validate_credentials(self) -> bool:
         """Validate that credentials are available and valid.
 

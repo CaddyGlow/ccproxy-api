@@ -240,9 +240,9 @@ class BaseHTTPAdapter(BaseAdapter):
             )
 
         # Build auth headers with Bearer token only if available
-        auth_headers: dict[str, str] = {}
-        if access_token:
-            auth_headers["Authorization"] = f"Bearer {access_token}"
+        # auth_headers: dict[str, str] = {}
+        # if access_token:
+        #     auth_headers["authorization"] = f"Bearer {access_token}"
 
         # Determine endpoint handling (provider-specific)
         target_url, needs_conversion = await self._resolve_endpoint(endpoint)
@@ -257,7 +257,7 @@ class BaseHTTPAdapter(BaseAdapter):
             method=method,
             target_url=target_url,
             body=body,
-            auth_headers=auth_headers,
+            auth_headers={},
             access_token=access_token,
             chatgpt_account_id=chatgpt_account_id,
             # Preserve incoming order and original casing for upstream

@@ -101,7 +101,7 @@ class LoggingSettings(BaseModel):
         description="How long to keep plugin-generated logs (in days)",
     )
 
-    # Scalable per-plugin control (based on Gemini's recommendation)
+    # Scalable per-plugin control
     plugin_overrides: dict[str, bool] = Field(
         default_factory=dict,
         description="Per-plugin enable/disable overrides. Key=plugin_name, Value=enabled. "

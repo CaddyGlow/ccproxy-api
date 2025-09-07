@@ -492,47 +492,11 @@ class ProviderPluginRuntime(BasePluginRuntime):
                 category="plugin",
             )
 
-    async def _setup_format_registry(
-        self,
-    ) -> None:
-        """Legacy format registry setup with migration safety."""
-        if self.context and "settings" in self.context:
-            settings = self.context.get(Settings)
-        else:
-            logger.warning(
-                "oauth_setup_missing_context_settings",
-                plugin=self.name,
-                category="plugin",
-            )
-            return
-
-        # Feature flag: Skip if manifest system is enabled
-        if settings.features.manifest_format_adapters:
-            logger.debug(
-                "format_registry_setup_skipped_manifest_mode_enabled",
-                plugin=self.__class__.__name__,
-                category="format",
-            )
-            return
-
-        # Deprecation warning if both systems would register same adapters
-        if settings.features.deprecate_manual_format_setup:
-            if self.manifest and self.manifest.format_adapters:
-                logger.warning(
-                    "deprecated_manual_format_registry_setup_with_manifest_declared",
-                    plugin=self.__class__.__name__,
-                    manifest_adapters=[
-                        f"{spec.from_format}->{spec.to_format}"
-                        for spec in self.manifest.format_adapters
-                    ],
-                    message="Manual _setup_format_registry() is deprecated when manifest declares format_adapters",
-                    category="format",
-                )
-
-        # Base implementation does nothing - subclasses override for manual registration
+    async def _setup_format_registry(self) -> None:
+        """No-op; manifest-based format adapters are always used."""
         logger.debug(
-            "format_registry_setup_base_implementation_noop",
-            plugin=self.name,
+            "format_registry_setup_skipped_manifest_mode_enabled",
+            plugin=self.__class__.__name__,
             category="format",
         )
 

@@ -163,10 +163,8 @@ class ConcreteServiceFactory:
         """
         settings = self._container.get_service(Settings)
 
-        # Create registry with conflict mode based on features
-        conflict_mode: Literal["fail_fast", "priority"] = (
-            "priority" if settings.features.manifest_format_adapters else "fail_fast"
-        )
+        # Always use priority mode (latest behavior)
+        conflict_mode: Literal["fail_fast", "priority"] = "priority"
         registry = FormatAdapterRegistry(conflict_mode=conflict_mode)
 
         # Pre-register core format adapters
@@ -175,7 +173,6 @@ class ConcreteServiceFactory:
         logger.debug(
             "format_registry_created",
             conflict_mode=conflict_mode,
-            enable_manifest_adapters=settings.features.manifest_format_adapters,
             category="format",
         )
 

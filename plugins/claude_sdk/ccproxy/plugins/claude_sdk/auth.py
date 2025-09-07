@@ -48,10 +48,6 @@ class NoOpAuthManager:
         """No cleanup needed."""
         pass
 
-    async def get_auth_headers(self) -> dict[str, str]:
-        """Return empty auth headers since SDK handles auth internally."""
-        return {}
-
     async def validate_credentials(self) -> bool:
         """Always return True since SDK handles auth internally."""
         return True
