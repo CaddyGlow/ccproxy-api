@@ -2,6 +2,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 
 from ccproxy.api.app import create_app, initialize_plugins_startup
+from ccproxy.api.bootstrap import create_service_container
 from ccproxy.config.settings import Settings
 
 
@@ -21,7 +22,8 @@ async def test_metrics_plugin_health_endpoint() -> None:
         },
     )
 
-    app = create_app(settings)
+    service_container = create_service_container(settings)
+    app = create_app(service_container)
     await initialize_plugins_startup(app, settings)
 
     transport = ASGITransport(app=app)
@@ -37,7 +39,8 @@ async def test_metrics_plugin_health_endpoint() -> None:
 @pytest.mark.asyncio
 async def test_unknown_plugin_health_returns_404() -> None:
     settings = Settings(enable_plugins=True)
-    app = create_app(settings)
+    service_container = create_service_container(settings)
+    app = create_app(service_container)
     await initialize_plugins_startup(app, settings)
 
     transport = ASGITransport(app=app)

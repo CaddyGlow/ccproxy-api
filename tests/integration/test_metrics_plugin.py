@@ -2,6 +2,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 
 from ccproxy.api.app import create_app, initialize_plugins_startup
+from ccproxy.api.bootstrap import create_service_container
 from ccproxy.config.settings import Settings
 
 
@@ -20,7 +21,8 @@ async def test_metrics_route_available_when_metrics_plugin_enabled() -> None:
         },
     )
 
-    app = create_app(settings)
+    service_container = create_service_container(settings)
+    app = create_app(service_container)
     # Initialize plugins (bypassing ASGI lifespan for test environment)
     await initialize_plugins_startup(app, settings)
 
@@ -35,7 +37,8 @@ async def test_metrics_route_available_when_metrics_plugin_enabled() -> None:
 @pytest.mark.asyncio
 async def test_metrics_route_absent_when_plugins_disabled() -> None:
     settings = Settings(enable_plugins=False)
-    app = create_app(settings)
+    service_container = create_service_container(settings)
+    app = create_app(service_container)
     # Do not initialize plugins; verify /metrics is not mounted
 
     transport = ASGITransport(app=app)
@@ -57,7 +60,8 @@ async def test_metrics_health_when_plugin_enabled() -> None:
         },
     )
 
-    app = create_app(settings)
+    service_container = create_service_container(settings)
+    app = create_app(service_container)
     await initialize_plugins_startup(app, settings)
 
     transport = ASGITransport(app=app)

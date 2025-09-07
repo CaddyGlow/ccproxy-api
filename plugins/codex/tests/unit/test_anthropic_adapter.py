@@ -1,4 +1,4 @@
-"""Unit tests for AnthropicMessagesAdapter."""
+"""Unit tests for CompositeAnthropicAdapter."""
 
 from __future__ import annotations
 
@@ -9,17 +9,17 @@ from ccproxy.plugins.codex.composite_anthropic_adapter import (
 )
 
 
-class TestAnthropicMessagesAdapter:
-    """Test the AnthropicMessagesAdapter format conversion logic."""
+class TestCompositeAnthropicAdapter:
+    """Test the CompositeAnthropicAdapter format conversion logic."""
 
     @pytest.fixture
     def adapter(self) -> CompositeAnthropicAdapter:
-        """Create AnthropicMessagesAdapter instance for testing."""
+        """Create CompositeAnthropicAdapter instance for testing."""
         return CompositeAnthropicAdapter()
 
     @pytest.mark.asyncio
     async def test_adapt_request_basic_conversion(
-        self, adapter: AnthropicMessagesAdapter
+        self, adapter: CompositeAnthropicAdapter
     ) -> None:
         """Test basic Anthropic Messages to Response API request conversion."""
         anthropic_request = {
@@ -41,7 +41,7 @@ class TestAnthropicMessagesAdapter:
 
     @pytest.mark.asyncio
     async def test_adapt_request_with_tools(
-        self, adapter: AnthropicMessagesAdapter
+        self, adapter: CompositeAnthropicAdapter
     ) -> None:
         """Test request conversion with tools/functions."""
         anthropic_request = {
@@ -75,7 +75,7 @@ class TestAnthropicMessagesAdapter:
 
     @pytest.mark.asyncio
     async def test_adapt_response_basic_conversion(
-        self, adapter: AnthropicMessagesAdapter
+        self, adapter: CompositeAnthropicAdapter
     ) -> None:
         """Test basic Response API to Anthropic Messages response conversion."""
         response_api_response = {
@@ -101,7 +101,7 @@ class TestAnthropicMessagesAdapter:
 
     @pytest.mark.asyncio
     async def test_adapt_response_with_tools(
-        self, adapter: AnthropicMessagesAdapter
+        self, adapter: CompositeAnthropicAdapter
     ) -> None:
         """Test response conversion with tool calls."""
         response_api_response = {
@@ -135,7 +135,7 @@ class TestAnthropicMessagesAdapter:
 
     @pytest.mark.asyncio
     async def test_adapt_response_passthrough(
-        self, adapter: AnthropicMessagesAdapter
+        self, adapter: CompositeAnthropicAdapter
     ) -> None:
         """Test response passthrough for non-Response API format."""
         anthropic_response = {
@@ -163,7 +163,7 @@ class TestAnthropicMessagesAdapter:
 
     @pytest.mark.asyncio
     async def test_convert_to_anthropic_format_with_mixed_content(
-        self, adapter: AnthropicMessagesAdapter
+        self, adapter: CompositeAnthropicAdapter
     ) -> None:
         """Test conversion to Anthropic format with both text and tool calls."""
         openai_response = {
@@ -204,7 +204,7 @@ class TestAnthropicMessagesAdapter:
 
     @pytest.mark.asyncio
     async def test_streaming_conversion(
-        self, adapter: AnthropicMessagesAdapter
+        self, adapter: CompositeAnthropicAdapter
     ) -> None:
         """Test streaming format conversion."""
 
@@ -234,7 +234,7 @@ class TestAnthropicMessagesAdapter:
         assert any(chunk.get("type") == "message_stop" for chunk in stream_result)
 
     def test_convert_to_anthropic_format_invalid_json(
-        self, adapter: AnthropicMessagesAdapter
+        self, adapter: CompositeAnthropicAdapter
     ) -> None:
         """Test handling of invalid JSON in tool arguments."""
         openai_response = {
