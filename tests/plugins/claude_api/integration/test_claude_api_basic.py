@@ -126,10 +126,11 @@ pytestmark = pytest.mark.asyncio(loop_scope="module")
 async def claude_api_client():  # type: ignore[no-untyped-def]
     # Build app and client once to avoid factory scope conflicts
     from httpx import ASGITransport, AsyncClient
-    from ccproxy.core.logging import setup_logging
-    from ccproxy.config.settings import Settings
-    from ccproxy.api.bootstrap import create_service_container
+
     from ccproxy.api.app import create_app, initialize_plugins_startup
+    from ccproxy.api.bootstrap import create_service_container
+    from ccproxy.config.settings import Settings
+    from ccproxy.core.logging import setup_logging
 
     setup_logging(json_logs=False, log_level_name="ERROR")
     settings = Settings(

@@ -1,7 +1,7 @@
 """Enhanced unit tests for format adapter registry v2.
 
 This module provides comprehensive tests for the format adapter registry
-including manifest registration, conflict resolution, and feature flag control.
+including manifest registration and conflict resolution.
 """
 
 import pytest

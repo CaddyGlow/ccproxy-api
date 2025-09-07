@@ -4,9 +4,6 @@ This module tests the end-to-end integration of the format adapter system
 with actual plugins and the service container.
 """
 
-import os
-from unittest.mock import patch
-
 import pytest
 
 from ccproxy.adapters.base import APIAdapter

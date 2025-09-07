@@ -6,7 +6,6 @@ plugin instances and their lifecycle after the application has started.
 
 from typing import Any
 
-from ccproxy.config.settings import Settings
 from ccproxy.core.logging import TraceBoundLogger, get_logger
 
 from .declaration import PluginContext, PluginManifest, PluginRuntimeProtocol

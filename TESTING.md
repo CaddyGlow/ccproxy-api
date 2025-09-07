@@ -112,7 +112,7 @@ tests/
 - Test **cross-component interactions** with minimal mocking
 - Include **HTTP client testing with FastAPI TestClient**
 - Test **background workers and async coordination**
-- Validate **configuration and feature flags end-to-end**
+- Validate configuration end-to-end
 
 ### Mocking Strategy (Simplified)
 

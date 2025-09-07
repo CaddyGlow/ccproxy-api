@@ -181,7 +181,7 @@ class FormatAdapterRegistry:
     async def resolve_conflicts_and_finalize(
         self, enable_priority_mode: bool = False
     ) -> None:
-        """Resolve conflicts and finalize registry with feature flag control."""
+        """Resolve conflicts and finalize registry."""
         if self._finalized:
             return
 

@@ -27,6 +27,13 @@ dependencies = [
   "aiohttp>=3.12.15",
   "sortedcontainers>=2.4.0",
   "aioconsole>=0.8.1",
+  # Plugin dependencies consolidated
+  "claude-code-sdk>=0.0.19",
+  "httpx-sse>=0.4.1",
+  "pyjwt>=2.10.1",
+  "openai>=1.93.0",
+  "fastapi-mcp>=0.3.7",
+  "SQLAlchemy>=2.0.0",
 ]
 
 [build-system]
@@ -44,25 +51,53 @@ source = "vcs"
 version-file = "ccproxy/core/_version.py"
 
 [tool.hatch.build.targets.wheel]
-packages = ["ccproxy", "plugins"]
-include = [
-  "ccproxy/data/*.json",
-  "plugins/**/*.py",
-  "plugins/**/*.json",
-  "plugins/**/*.toml",
-]
+packages = ["ccproxy"]
+include = ["ccproxy/data/*.json"]
 
 [tool.hatch.build.targets.sdist]
 include = [
   "ccproxy/**/*.py",
   "ccproxy/**/*.json",
   "ccproxy/static/dashboard/**",
-  "plugins/**/*.py",
-  "plugins/**/*.json",
-  "plugins/**/*.toml",
   "README.md",
   "LICENSE",
   "pyproject.toml",
+]
+
+[dependency-groups]
+plugins-claude = [
+  "claude-code-sdk>=0.0.19",
+  "httpx-sse>=0.4.1",
+  "pyjwt>=2.10.1",
+]
+plugins-codex = ["openai>=1.93.0"]
+plugins-storage = [
+  "sqlmodel>=0.0.24",
+  "SQLAlchemy>=2.0.0",
+  "duckdb-engine>=0.17.0",
+]
+plugins-mcp = ["fastapi-mcp>=0.3.7"]
+plugins-tui = ["textual>=3.7.1"]
+plugins-metrics = ["prometheus-client>=0.22.1"]
+test = [
+  "mypy",
+  "pytest",
+  "pytest-asyncio",
+  "pytest-cov",
+  "pytest-timeout",
+  "pytest-env",
+  "pytest-httpx",
+  "pytest-xdist",   # For parallel test execution
+
+]
+dev = [
+  "ruff",
+  "pre-commit",
+  "mypy",
+  "tox",
+  "bandit",
+  "types-aiofiles>=24.0.0",
+  "types-PyYAML>=6.0.12.12",
 ]
 
 [project.scripts]
@@ -71,17 +106,9 @@ ccproxy = "ccproxy.cli:main"
 ccproxy-api = "ccproxy.cli:main"
 ccproxy-perm = "ccproxy.cli.commands.permission:main"
 
-[project.optional-dependencies]
-# Plugin-focused extras to enable splitting plugin deps from core at install time.
-# Kept in root dependencies for now because plugins are bundled with the wheel.
-# These extras provide an escape hatch for future distribution changes.
-plugins-storage = ["duckdb>=1.1.0", "duckdb-engine>=0.17.0", "sqlmodel>=0.0.24"]
-plugins-metrics = ["prometheus-client>=0.22.1"]
-plugins-ui = ["textual>=3.7.1"]
-
 [tool.coverage.run]
-include = ["ccproxy/*", "tests/*", "plugins/*/ccproxy/*"]
-source = ["ccproxy/*", "tests/*", "plugins/*/ccproxy/*"]
+include = ["ccproxy/*", "tests/*"]
+source = ["ccproxy/*", "tests/*"]
 omit = [
   "ccproxy/core/_version.py",
   "ccproxy/__main__.py",
@@ -118,7 +145,6 @@ exclude_lines = [
 
 [tool.coverage.html]
 directory = "htmlcov"
-title = "CCProxy Coverage Report"
 
 [tool.coverage.xml]
 output = "coverage.xml"
@@ -127,11 +153,7 @@ output = "coverage.xml"
 target-version = "py311"
 line-length = 88
 
-# Add source paths for better import resolution
-src = ["ccproxy", "plugins", "tests"]
-
-# Extend include patterns for your monorepo
-extend-include = ["plugins/**/*.py"]
+src = ["ccproxy", "tests"]
 
 [tool.ruff.lint]
 select = [
@@ -161,7 +183,6 @@ ignore = [
 [tool.ruff.lint.flake8-tidy-imports]
 
 [tool.ruff.lint.per-file-ignores]
-"plugins/**" = ["TID251"]
 "tests/**" = ["TID251"]
 # relax on tests
 "tests/*" = [
@@ -186,14 +207,7 @@ lines-after-imports = 2
 python_version = "3.11"
 show_column_numbers = true
 follow_imports = "normal"
-exclude = [
-  "^[^/]+\\.py$",
-  "docs/",
-  "site/",
-  "tests/",
-  "examples/",
-  # "plugins/.*/ccproxy/.*",
-]
+exclude = ["^[^/]+\\.py$", "docs/", "site/", "examples/"]
 namespace_packages = true
 explicit_package_bases = true
 
@@ -289,14 +303,14 @@ warn_unused_ignores = false
 module = "tests.*"
 ignore_errors = true
 
-[[tool.mypy.overrides]]
-module = ["ccproxy.plugins.*"]
-ignore_missing_imports = true
-
-[[tool.mypy.overrides]]
-module = ["plugins.*"]
-ignore_missing_imports = true
-
+# [[tool.mypy.overrides]]
+# module = ["ccproxy.plugins.*"]
+# ignore_missing_imports = true
+#
+# [[tool.mypy.overrides]]
+# module = ["plugins.*"]
+# ignore_missing_imports = true
+#
 
 [tool.pytest.ini_options]
 minversion = "6.0"
@@ -411,33 +425,15 @@ include = ["ccproxy*"]
 [tool.uv]
 package = true
 
-# Workspace configuration for plugins
-[tool.uv.workspace]
-members = [
-  "plugins/claude_sdk",
-  "plugins/claude_api",
-  "plugins/codex",
-  "plugins/permissions",
-  "plugins/metrics",
-  "plugins/request_tracer",
-  "plugins/access_log",
-  "plugins/pricing",
-  "plugins/duckdb_storage",
-  "plugins/analytics",
-  "plugins/dashboard",
-  "plugins/oauth_claude",
-  "plugins/oauth_codex",
-]
-
 [tool.uv.sources]
-ccproxy-plugin-claude-sdk = { workspace = true }
+claude-code-sdk = { git = "https://github.com/anthropics/claude-code-sdk-python.git" }
 
 
 [tool.pyright]
 pythonVersion = "3.11"
 typeCheckingMode = "standard" # or "strict"
 
-include = ["ccproxy", "plugins", "tests"] # Include all your workspace members
+include = ["ccproxy", "tests"]
 
 # Exclude unnecessary directories
 exclude = [
@@ -461,17 +457,7 @@ exclude = [
 # venv = ".venv" # Adjust if using different name
 
 # Extra paths for import resolution
-extraPaths = [
-  ".",
-  "plugins/claude_api",
-  "plugins/claude_sdk",
-  "plugins/codex",
-  "plugins/permissions",
-  "plugins/request_tracer",
-  "plugins/duckdb_storage",
-  "plugins/analytics",
-  "plugins/dashboard",
-]
+extraPaths = ["."]
 
 # Type checking settings
 reportMissingImports = "warning"
@@ -497,15 +483,3 @@ reportUnnecessaryTypeIgnoreComment = true
 # Stub settings
 stubPath = "typings"
 useLibraryCodeForTypes = true
-
-[dependency-groups]
-plugins = ["ccproxy-plugin-claude-sdk"]
-test = [
-  "pytest",
-  "pytest-asyncio",
-  "pytest-cov",
-  "pytest-timeout",
-  "pytest-env",
-  "pytest-httpx",
-  "pytest-xdist",   # For parallel test execution
-]

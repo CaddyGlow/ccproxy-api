@@ -99,7 +99,7 @@ class PluginDiscovery:
         try:
             # Create module spec and load the module
             spec = importlib.util.spec_from_file_location(
-                f"plugins.{name}.plugin", plugin_path
+                f"ccproxy.plugins.{name}.plugin", plugin_path
             )
 
             if not spec or not spec.loader:

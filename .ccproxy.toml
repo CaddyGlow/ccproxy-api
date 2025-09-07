@@ -67,10 +67,6 @@ register_app_state_alias = true
 enabled = true
 
 # Format Adapter Registry v2 - Declarative System
-[features]
-manifest_format_adapters = true
-deprecate_manual_format_setup = true
-
 # =============================================================================
 # LEGACY MIGRATION NOTES
 # =============================================================================

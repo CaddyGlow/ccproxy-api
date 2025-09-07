@@ -472,7 +472,7 @@ class PluginRegistry:
         and continues with the rest.
 
         Args:
-            settings: Settings instance for feature flag access
+            settings: Settings instance
 
         Returns:
             List of plugin names in initialization order

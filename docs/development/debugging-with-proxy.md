@@ -7,7 +7,6 @@ This guide explains how to use HTTP proxies for debugging requests made by the C
 The CCProxy API server supports standard HTTP proxy environment variables, allowing you to intercept and debug HTTP/HTTPS traffic using tools like:
 
 - [mitmproxy](https://mitmproxy.org/)
-- [Charles Proxy](https://www.charlesproxy.com/)
 - [Fiddler](https://www.telerik.com/fiddler)
 - Corporate proxies
 

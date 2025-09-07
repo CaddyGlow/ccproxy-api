@@ -380,9 +380,7 @@ class TestAnalyticsResetEndpoint:
         for _ in range(20):  # up to ~1s
             with Session(storage_with_data._engine) as session:
                 results = session.exec(select(AccessLog)).all()
-                non_reset_results = [
-                    r for r in results if r.endpoint != "/logs/reset"
-                ]
+                non_reset_results = [r for r in results if r.endpoint != "/logs/reset"]
             if len(non_reset_results) >= 1:
                 break
             await asyncio.sleep(0.05)

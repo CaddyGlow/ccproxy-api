@@ -94,6 +94,13 @@ class ProviderAdapter(BaseAdapter):
         )
 ```
 
+### Format Adapters
+- Declarative only: plugins declare adapters in `PluginManifest.format_adapters` with an optional `priority` (lower wins).
+- Registration: core pre-registers a few built-in adapters; plugin-declared adapters are registered from manifests during startup.
+- Conflicts: resolved by priority during registry finalization; the winning adapter is selected automatically.
+- Manual setup: runtime `_setup_format_registry()` is a no-op; avoid calling `registry.register()` from plugins (tests may do so explicitly).
+- No global flags: feature flags for adapter selection were removed; manifest-based behavior is always enabled.
+
 ## 7. Error Handling
 
 * **Custom Exceptions:** Inherit from `ccproxy.core.errors.CCProxyError`
