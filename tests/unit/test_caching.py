@@ -266,7 +266,8 @@ class TestCacheIntegration:
         assert call_count == 1  # No additional calls
         assert result2 == result1
 
-    def test_mock_auth_manager_caching(self):
+    @pytest.mark.asyncio
+    async def test_mock_auth_manager_caching(self):
         """Test that auth manager methods can be cached."""
         call_count = 0
 
@@ -292,11 +293,11 @@ class TestCacheIntegration:
         auth_manager = MockAuthManager()
 
         # First call
-        result1 = asyncio.run(auth_manager.is_authenticated())
+        result1 = await auth_manager.is_authenticated()
         assert result1 is True
         assert call_count == 1
 
         # Second call - should be cached
-        result2 = asyncio.run(auth_manager.is_authenticated())
+        result2 = await auth_manager.is_authenticated()
         assert result2 is True
         assert call_count == 1  # No additional calls

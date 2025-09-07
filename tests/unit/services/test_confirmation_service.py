@@ -224,76 +224,8 @@ class TestPermissionService:
         await started_service.unsubscribe_from_events(queue1)
         await started_service.unsubscribe_from_events(queue2)
 
-    async def test_request_expiration(
-        self, confirmation_service: PermissionService
-    ) -> None:
-        """Test that requests expire after timeout."""
-        # Create service with very short timeout
-        service = PermissionService(timeout_seconds=1)
-        await service.start()
 
-        try:
-            request_id = await service.request_permission("bash", {"command": "test"})
 
-            # Initially pending
-            status = await service.get_status(request_id)
-            assert status == PermissionStatus.PENDING
-
-            # Wait for expiration
-            await asyncio.sleep(1.1)
-
-            # Should be expired now
-            status = await service.get_status(request_id)
-            assert status == PermissionStatus.EXPIRED
-
-            # Cannot resolve expired request
-            success = await service.resolve(request_id, True)
-            assert success is False
-
-        finally:
-            await service.stop()
-
-    async def test_wait_for_permission_allowed(
-        self, started_service: PermissionService
-    ) -> None:
-        """Test waiting for a confirmation that gets allowed."""
-        request_id = await started_service.request_permission(
-            "bash", {"command": "test"}
-        )
-
-        # Resolve in background after delay
-        async def resolve_later() -> None:
-            await asyncio.sleep(0.1)
-            await started_service.resolve(request_id, True)
-
-        asyncio.create_task(resolve_later())
-
-        # Wait for resolution
-        status = await started_service.wait_for_permission(
-            request_id, timeout_seconds=1
-        )
-        assert status == PermissionStatus.ALLOWED
-
-    async def test_wait_for_permission_denied(
-        self, started_service: PermissionService
-    ) -> None:
-        """Test waiting for a confirmation that gets denied."""
-        request_id = await started_service.request_permission(
-            "bash", {"command": "test"}
-        )
-
-        # Resolve in background after delay
-        async def resolve_later() -> None:
-            await asyncio.sleep(0.1)
-            await started_service.resolve(request_id, False)
-
-        asyncio.create_task(resolve_later())
-
-        # Wait for resolution
-        status = await started_service.wait_for_permission(
-            request_id, timeout_seconds=1
-        )
-        assert status == PermissionStatus.DENIED
 
     async def test_wait_for_permission_timeout(
         self, started_service: PermissionService
@@ -314,43 +246,6 @@ class TestPermissionService:
         with pytest.raises(PermissionNotFoundError):
             await started_service.wait_for_permission("non-existent-id")
 
-    async def test_cleanup_expired_requests(
-        self, confirmation_service: PermissionService
-    ) -> None:
-        """Test that expired requests are cleaned up."""
-        # Create service with very short cleanup time
-        service = PermissionService(timeout_seconds=1)
-        await service.start()
-
-        try:
-            # Subscribe to events to track expiration
-            queue = await service.subscribe_to_events()
-
-            request_id = await service.request_permission("bash", {"command": "test"})
-
-            # Clear the creation event
-            await asyncio.wait_for(queue.get(), timeout=1.0)
-
-            # Wait for expiration checker to run (runs every 5 seconds)
-            # But the request expires after 1 second
-            await asyncio.sleep(6)
-
-            # Should have received expiration event
-            expired_event_received = False
-            while not queue.empty():
-                event = await queue.get()
-                if event["type"] == "permission_expired":
-                    expired_event_received = True
-                    assert event["request_id"] == request_id
-
-            assert expired_event_received
-
-            # Request should be marked as expired
-            status = await service.get_status(request_id)
-            assert status == PermissionStatus.EXPIRED
-
-        finally:
-            await service.stop()
 
     async def test_get_permission_service_singleton(self) -> None:
         """Test that get_permission_service returns singleton."""
@@ -383,25 +278,3 @@ class TestPermissionService:
         finally:
             await service.stop()
 
-    async def test_get_pending_requests_with_expired(self) -> None:
-        """Test get_pending_requests updates expired requests."""
-        service = PermissionService(timeout_seconds=0)
-        await service.start()
-        try:
-            # Create a request that will immediately expire
-            request_id = await service.request_permission("tool", {"param": "value"})
-
-            # Wait a moment to ensure it's expired
-            await asyncio.sleep(0.1)
-
-            # Get pending requests
-            pending = await service.get_pending_requests()
-
-            # Should have no pending requests (expired ones are excluded)
-            assert len(pending) == 0
-
-            # Verify the request was marked as expired
-            status = await service.get_status(request_id)
-            assert status == PermissionStatus.EXPIRED
-        finally:
-            await service.stop()

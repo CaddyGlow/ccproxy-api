@@ -222,7 +222,6 @@ class TestOpenAIAdapter:
 
         assert result["tool_choice"]["type"] == "auto"
 
-    # Removed: deprecated functions/function_call test
 
     @pytest.mark.asyncio
     async def test_adapt_request_tool_choice_specific(
@@ -734,7 +733,6 @@ class TestOpenAIAdapter:
         result = adapter._convert_tool_choice_to_anthropic({"invalid": "format"})
         assert result["type"] == "auto"
 
-    # Removed: deprecated _convert_function_call_to_anthropic test
 
     def test_tool_call_arguments_parsing(self, adapter: OpenAIAdapter) -> None:
         """Test parsing of tool call arguments."""

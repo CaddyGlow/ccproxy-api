@@ -104,7 +104,6 @@ class FastAPIAppFactory:
         # Set log storage in app state if provided
         if log_storage is not None:
             app.state.log_storage = log_storage
-            # Also set duckdb_storage for backward compatibility with middleware
             app.state.duckdb_storage = log_storage
 
         # Set optional services to None for tests (these aren't typically needed in unit tests)

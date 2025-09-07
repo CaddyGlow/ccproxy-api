@@ -320,23 +320,20 @@ def test_streaming_response(client: TestClient, mock_claude_stream: HTTPXMock) -
 
 ## Common Patterns
 
-### NEW: Factory Pattern for Complex Scenarios
+### Streamlined Factory Pattern
 
 ```python
 from fastapi.testclient import TestClient
 
-def test_complex_scenario(fastapi_client_factory, auth_mode_bearer_token,
-                         mock_internal_claude_sdk_service) -> None:
-    """Test authenticated endpoint with mocked service."""
+def test_service_integration(fastapi_client_factory, test_settings) -> None:
+    """Test service with real internal components."""
     client = fastapi_client_factory.create_client(
-        auth_mode=auth_mode_bearer_token,
-        claude_service_mock=mock_internal_claude_sdk_service
+        settings=test_settings
     )
-    response = client.post("/v1/messages", json={
-        "model": "claude-3-5-sonnet-20241022",
-        "messages": [{"role": "user", "content": "Hello"}]
-    })
+    # Test real service behavior, not mocked responses
+    response = client.get("/api/models")
     assert response.status_code == 200
+    assert "models" in response.json()
 ```
 
 ### NEW: Parametrized Testing (Multiple Scenarios)

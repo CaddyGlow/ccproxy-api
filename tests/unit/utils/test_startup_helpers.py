@@ -333,4 +333,3 @@ class TestClaudeDetectionStartup:
         """Create mock settings."""
         return Mock(spec=Settings)
 
-    # Removed deprecated Claude detection startup tests - function no longer exists

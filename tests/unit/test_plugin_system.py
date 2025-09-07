@@ -193,7 +193,6 @@ async def test_plugin_registry_validation_failure():
     assert registry.get_adapter("test_plugin") is None
 
 
-# Skipped tests removed - deprecated PluginRegistry API
 
 
 @pytest.mark.asyncio
