@@ -80,8 +80,8 @@ plugins-metrics = ["prometheus-client>=0.22.1"]
 plugins-ui = ["textual>=3.7.1"]
 
 [tool.coverage.run]
-include = ["ccproxy/*", "tests/*", "plugins/*/tests/*", "plugins/*/ccproxy/*"]
-source = ["ccproxy/*", "tests/*", "plugins/*/tests/*", "plugins/*/ccproxy/*"]
+include = ["ccproxy/*", "tests/*", "plugins/*/ccproxy/*"]
+source = ["ccproxy/*", "tests/*", "plugins/*/ccproxy/*"]
 omit = [
   "ccproxy/core/_version.py",
   "ccproxy/__main__.py",
@@ -163,16 +163,12 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 "plugins/**" = ["TID251"]
 "tests/**" = ["TID251"]
-"scripts/**" = ["TID251"]
-
-# relax on scripts and tests
-"scripts/*" = ["T201"] # check for print statements
+# relax on tests
 "tests/*" = [
   "N802",
   "N803",
   "B023",
 ] # arg/function name should be lowercase, allow assert, does not bind loop variable
-"plugins/*/tests/*" = ["N802", "N803", "S101"] # Allow assert in plugin tests
 
 
 [tool.ruff.format]
@@ -196,7 +192,6 @@ exclude = [
   "site/",
   "tests/",
   "examples/",
-  "plugins/.*/tests/",
   # "plugins/.*/ccproxy/.*",
 ]
 namespace_packages = true
@@ -312,6 +307,7 @@ addopts = [
   "--disable-warnings",
   "--tb=short",
   "-v",
+  "--import-mode=importlib",
   "--cov=ccproxy",
   "--cov=tests",
   "--cov-report=term-missing",
@@ -320,7 +316,8 @@ addopts = [
   "--cov-branch",
   # "--cov-fail-under=80",
 ]
-testpaths = ["tests", "plugins"]
+testpaths = ["tests"]
+## Plugin tests are colocated under tests/plugins/<plugin>/
 python_files = ["test_*.py", "*_test.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
@@ -349,6 +346,9 @@ norecursedirs = [
 # Set test mode to prevent pollution of real credential files
 env = ["PYTEST_CURRENT_TEST=true"]
 
+# Use modern import mode to avoid path-based module collisions
+# import-mode = "importlib"
+
 # Test markers for different test categories and tiers
 markers = [
   # Primary test categories
@@ -369,6 +369,8 @@ markers = [
   "cli: Command-line interface tests",
   "metrics: Metrics and monitoring tests",
   "sdk: SDK endpoint tests using Anthropic SDK client (requires running server)",
+  "claude_api: Claude API plugin tests",
+  "codex: Codex plugin tests",
 
   # Test quality markers
   "flaky: Tests that may be unreliable and need investigation",

@@ -113,7 +113,9 @@ class ProviderAdapter(BaseAdapter):
 * **Architecture:** Streamlined after aggressive refactoring (606 tests, was 786)
 * **Structure:** Clean separation with proper boundaries:
   * `tests/unit/` - Fast, isolated unit tests (mock at service boundaries only)
-  * `tests/integration/` - Cross-component interaction tests
+  * `tests/integration/` - Cross-component interaction tests (core)
+  * `tests/plugins/<plugin>/unit/` - Plugin unit tests (centralized)
+  * `tests/plugins/<plugin>/integration/` - Plugin integration tests (centralized)
   * `tests/performance/` - Performance benchmarks (separated)
 * **Markers:** Use `@pytest.mark.unit`, `@pytest.mark.integration`, `@pytest.mark.performance`
 * **Fixtures:** Essential fixtures only in `conftest.py` (515 lines, was 1117)
@@ -143,6 +145,7 @@ Core tools enforced via pre-commit and CI:
 * **Linter:** `ruff check`
 * **Type Checker:** `mypy`
 * **Test Runner:** `pytest`
+* **Dev Scripts:** helper scripts under `scripts/` for local testing and debugging
 
 ## 13. Development Workflow
 
@@ -164,7 +167,9 @@ make test        # Run tests with coverage
 | | `make typecheck` | Type checking |
 | **Testing** | `make test` | Full test suite with coverage |
 | | `make test-unit` | Fast unit tests only |
-| | `make test-integration` | Integration tests |
+| | `make test-integration` | Integration tests (core + plugins) |
+| | `make test-integration-plugin PLUGIN=<name>` | Single plugin integration |
+| | `make test-plugins` | Only plugin tests |
 | **CI** | `make ci` | Full CI pipeline |
 | **Build** | `make build` | Build Python package |
 | | `make docker-build` | Build Docker image |

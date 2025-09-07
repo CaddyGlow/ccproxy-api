@@ -11,13 +11,15 @@ After aggressive refactoring and architecture realignment, our testing philosoph
 ## Quick Start
 
 ```bash
-# Run all tests (now 606 focused tests)
+# Run all tests
 make test
 
 # Run specific test categories
 pytest tests/unit/auth/          # Authentication tests
 pytest tests/unit/services/      # Service layer tests
-pytest tests/integration/        # Cross-component integration tests
+pytest tests/integration/        # Cross-component integration tests (core)
+pytest tests/plugins             # All plugin tests
+pytest tests/plugins/metrics     # Single plugin tests
 pytest tests/performance/        # Performance benchmarks
 
 # Run with coverage
@@ -88,6 +90,10 @@ tests/
 │   ├── external_apis/      # External API mocking
 │   └── responses.json      # Mock data
 ├── helpers/                # Test utilities
+├── plugins/                # Plugin tests (centralized)
+│   ├── my_plugin/
+│   │   ├── unit/          # Plugin unit tests
+│   │   └── integration/   # Plugin integration tests
 └── test_handler_config.py  # Handler configuration tests
 ```
 
@@ -408,16 +414,29 @@ uv run ruff format tests/
 make pre-commit
 ```
 
+## Dev Scripts (Optional Helpers)
+
+Convenience scripts live in `scripts/` to speed up local testing and debugging:
+
+- `scripts/debug-no-stream-all.sh`: exercise non-streaming endpoints quickly
+- `scripts/debug-stream-all.sh`: exercise streaming endpoints
+- `scripts/show_request.sh` / `scripts/last_request.sh`: inspect recent requests
+- `scripts/test_streaming_metrics_all.py`: ad-hoc streaming metrics checks
+- `scripts/run_integration_tests.py`: advanced integration runner (filters, timing)
+
+These are optional helpers for dev workflows; standard Make targets and pytest remain the primary interface.
+
 ## Running Tests
 
 ### Make Commands
 
 ```bash
-make test              # Run all tests (606 tests, fast)
-make test-unit         # Fast unit tests only (sub-second)
-make test-integration  # Integration tests
-make test-performance  # Performance benchmarks
-make test-coverage     # With coverage report
+make test                 # Run all tests with coverage
+make test-unit            # Fast unit tests only
+make test-integration     # Integration tests (core + plugins)
+make test-integration-plugin PLUGIN=metrics  # Single plugin integration
+make test-plugins         # Only plugin tests
+make test-coverage        # With coverage report
 ```
 
 ### Direct pytest
@@ -429,7 +448,11 @@ pytest --lf                        # Run last failed
 pytest -x                          # Stop on first failure
 pytest --pdb                       # Debug on failure
 pytest -m unit                     # Unit tests only
-pytest -m integration             # Integration tests only
+pytest -m integration              # Integration tests only
+pytest tests/plugins               # All plugin tests
+pytest tests/plugins/metrics -m unit  # Single plugin unit tests
+
+Note: tests run with `--import-mode=importlib` via Makefile to avoid module name clashes.
 ```
 
 ## For New Developers
@@ -464,5 +487,7 @@ pytest -m integration             # Integration tests only
 - **Session-scoped apps** - Expensive plugin initialization done once per session  
 - **Streamlined fixtures** - 515 lines (was 1117), focused on essential patterns
 - **Real component testing** - Mock external APIs only, test actual internal behavior
+
+Plugin tests are now centralized under `tests/plugins/<plugin>/{unit,integration}` instead of co-located in `plugins/<plugin>/tests`. Update any paths and imports accordingly.
 
 The architecture has been significantly optimized for performance while maintaining full functionality.

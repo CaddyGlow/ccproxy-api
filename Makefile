@@ -1,6 +1,7 @@
 .PHONY: help install dev-install clean test test-unit test-real-api test-watch test-fast test-file test-match test-coverage lint typecheck format check pre-commit ci build dashboard docker-build docker-run docs-install docs-build docs-serve docs-clean
 
-$(eval VERSION_DOCKER := $(shell uv run python3 scripts/format_version.py docker))
+# Determine Docker tag from git (fallback to 'latest')
+$(eval VERSION_DOCKER := $(shell git describe --tags --always --dirty=-dev 2>/dev/null || echo latest))
 
 # Common variables
 UV_RUN := uv run
@@ -99,8 +100,7 @@ fix: format lint-fix
 test:
 	@echo "Running all tests with coverage..."
 	@if [ ! -d "tests" ]; then echo "Error: tests/ directory not found. Create tests/ directory and add test files."; exit 1; fi
-	$(UV_RUN) pytest -v --cov=ccproxy --cov-report=term --cov-report=html
-	$(UV_RUN) pytest plugins/*/tests/ -v --tb=short
+	$(UV_RUN) pytest -v --import-mode=importlib --cov=ccproxy --cov-report=term --cov-report=html
 
 # New test suite targets
 
@@ -108,19 +108,18 @@ test:
 test-unit: 
 	@echo "Running fast unit tests (excluding real API calls and integration tests)..."
 	@if [ ! -d "tests" ]; then echo "Error: tests/ directory not found. Create tests/ directory and add test files."; exit 1; fi
-	$(UV_RUN) pytest -v -m "not real_api and not integration" --tb=short
-	$(UV_RUN) pytest plugins/*/tests/unit/ -v --tb=short 2>/dev/null || true
+	$(UV_RUN) pytest -v --import-mode=importlib -m "not real_api and not integration" --tb=short
 
 # Run integration tests across all plugins
 test-integration: 
 	@echo "Running integration tests across all plugins..."
-	$(UV_RUN) pytest -v -m "integration" --tb=short -n auto plugins/*/tests/integration/ tests/integration/
+	$(UV_RUN) pytest -v --import-mode=importlib -m "integration" --tb=short -n auto tests/
 
 # Run integration tests for specific plugin (usage: make test-integration-plugin PLUGIN=metrics)
 test-integration-plugin: 
 	@if [ -z "$(PLUGIN)" ]; then echo "Error: Please specify PLUGIN=<plugin_name>"; exit 1; fi
 	@echo "Running integration tests for $(PLUGIN) plugin..."
-	$(UV_RUN) pytest -v -m "integration and $(PLUGIN)" --tb=short plugins/$(PLUGIN)/tests/integration/
+	$(UV_RUN) pytest -v --import-mode=importlib -m "integration" --tb=short tests/plugins/$(PLUGIN)/integration/
 
 # Run tests with real API calls (marked with 'real_api')
 test-real-api: 
@@ -159,43 +158,19 @@ test-watch-integration:
 test-fast: check
 	@echo "Running fast tests without coverage..."
 	@if [ ! -d "tests" ]; then echo "Error: tests/ directory not found. Create tests/ directory and add test files."; exit 1; fi
-	$(UV_RUN) pytest -v --tb=short
-	@echo "Running plugin tests..."
-	@for plugin_dir in plugins/*/tests/; do \
-		if [ -d "$$plugin_dir" ]; then \
-			echo "Running tests in $$plugin_dir..."; \
-			$(UV_RUN) pytest "$$plugin_dir" -v --tb=short; \
-		fi; \
-	done
+	$(UV_RUN) pytest -v --import-mode=importlib --tb=short
 
 # Run tests with detailed coverage report (HTML + terminal)
 test-coverage: check
 	@echo "Running tests with detailed coverage report..."
 	@if [ ! -d "tests" ]; then echo "Error: tests/ directory not found. Create tests/ directory and add test files."; exit 1; fi
-	$(UV_RUN) pytest -v --cov=ccproxy --cov-report=term-missing --cov-report=html
-	@echo "Running plugin tests for coverage..."
-	@for plugin_dir in plugins/*/tests/; do \
-		if [ -d "$$plugin_dir" ]; then \
-			echo "Running tests in $$plugin_dir..."; \
-			$(UV_RUN) pytest "$$plugin_dir" -v --tb=short; \
-		fi; \
-	done
+	$(UV_RUN) pytest -v --import-mode=importlib --cov=ccproxy --cov-report=term-missing --cov-report=html
 	@echo "HTML coverage report generated in htmlcov/"
 
 # Run plugin tests only
 test-plugins:
-	@echo "Running plugin tests..."
-	@failed_plugins=""; \
-	for plugin_dir in plugins/*/tests/; do \
-		if [ -d "$$plugin_dir" ]; then \
-			echo "Running tests in $$plugin_dir..."; \
-			$(UV_RUN) pytest "$$plugin_dir" -v --tb=short --no-cov || failed_plugins="$$failed_plugins $$plugin_dir"; \
-		fi; \
-	done; \
-	if [ -n "$$failed_plugins" ]; then \
-		echo "Plugin tests failed in:$$failed_plugins"; \
-		exit 1; \
-	fi
+	@echo "Running plugin tests under tests/plugins..."
+	$(UV_RUN) pytest tests/plugins -v --import-mode=importlib --tb=short --no-cov
 
 # Run specific test file (with quality checks)
 test-file: check
@@ -237,8 +212,7 @@ format-check:
 check: lint typecheck format-check
 
 # Optional: verify import boundaries (core must not import plugins.*)
-check-boundaries:
-	uv run python3 scripts/check_import_boundaries.py
+# (removed) check-boundaries: no custom script; consider enforcing with ruff import rules
 
 # Pre-commit hooks (comprehensive checks + auto-fixes)
 pre-commit:
@@ -304,10 +278,10 @@ docs-install:
 	uv sync --group docs
 
 docs-build: docs-install
-	./scripts/build-docs.sh
+	uv run mkdocs build
 
 docs-serve: docs-install
-	./scripts/serve-docs.sh
+	uv run mkdocs serve
 
 docs-clean:
 	rm -rf site/
