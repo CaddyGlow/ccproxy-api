@@ -40,6 +40,8 @@ class SimpleDuckDBStorage:
         self._write_queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
         self._background_worker_task: asyncio.Task[None] | None = None
         self._shutdown_event = asyncio.Event()
+        # Sentinel to wake the background worker immediately on shutdown
+        self._sentinel: object = object()
 
     async def initialize(self) -> None:
         """Initialize the storage backend."""
@@ -177,6 +179,10 @@ class SimpleDuckDBStorage:
 
                 # Process the queued write operation synchronously
                 try:
+                    # If we receive a sentinel item, break out quickly on shutdown
+                    if data is self._sentinel:
+                        self._write_queue.task_done()
+                        break
                     success = self._store_request_sync(data)
                     if success:
                         logger.debug(
@@ -480,6 +486,12 @@ class SimpleDuckDBStorage:
         """Close the database connection and stop background worker."""
         # Signal shutdown to background worker
         self._shutdown_event.set()
+
+        # Wake up background worker immediately if it's waiting on queue.get()
+        try:
+            self._write_queue.put_nowait(self._sentinel)  # type: ignore[arg-type]
+        except Exception:
+            pass
 
         # Wait for background worker to finish
         if self._background_worker_task:

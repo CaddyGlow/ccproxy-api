@@ -37,7 +37,7 @@ class TestCodexRequestTransformer:
 
         assert "host" not in result
         assert result["session_id"] == "test-session"
-        assert result["Authorization"] == "Bearer test-token"
+        assert result["authorization"] == "Bearer test-token"
         assert result["custom-header"] == "value"
         assert result["originator"] == "codex_cli_rs"
 
@@ -76,7 +76,7 @@ class TestCodexRequestTransformer:
         )
 
         assert result["session_id"] == "test-session"
-        assert result["Authorization"] == "Bearer test-token"
+        assert result["authorization"] == "Bearer test-token"
         assert result["chatgpt-account-id"] == "test-account-123"
         assert result["originator"] == "codex_cli_rs"  # From fallback headers
 

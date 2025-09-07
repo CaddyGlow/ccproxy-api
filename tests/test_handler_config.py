@@ -42,10 +42,6 @@ class MockAuthManager(AuthManager):
         """Get mock user profile."""
         return None
 
-    async def get_auth_headers(self) -> dict[str, str]:
-        """Get mock auth headers."""
-        return {"authorization": "Bearer test-token"}
-
     async def validate_credentials(self) -> bool:
         """Mock validation always returns True."""
         return True
@@ -148,10 +144,6 @@ async def test_handler_config_with_custom_settings():
 async def test_auth_manager_interface():
     """Test AuthManager interface methods."""
     auth = MockAuthManager()
-
-    # Test get_auth_headers
-    headers = await auth.get_auth_headers()
-    assert headers == {"authorization": "Bearer test-token"}
 
     # Test validate_credentials
     is_valid = await auth.validate_credentials()
