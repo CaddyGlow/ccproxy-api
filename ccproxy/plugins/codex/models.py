@@ -1,8 +1,12 @@
-"""Codex plugin local CLI health models."""
+"""Codex plugin local CLI health models and detection models."""
 
+from __future__ import annotations
+
+from datetime import UTC, datetime
 from enum import Enum
+from typing import Annotated, Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class CodexCliStatus(str, Enum):
@@ -20,3 +24,112 @@ class CodexCliInfo(BaseModel):
     version_output: str | None = None
     error: str | None = None
     return_code: str | None = None
+
+
+class CodexHeaders(BaseModel):
+    """Pydantic model for Codex CLI headers extraction with field aliases."""
+
+    session_id: str = Field(
+        alias="session_id",
+        description="Codex session identifier",
+        default="",
+    )
+    originator: str = Field(
+        description="Codex originator identifier",
+        default="codex_cli_rs",
+    )
+    openai_beta: str = Field(
+        alias="openai-beta",
+        description="OpenAI beta features",
+        default="responses=experimental",
+    )
+    version: str = Field(
+        description="Codex CLI version",
+        default="0.21.0",
+    )
+    chatgpt_account_id: str = Field(
+        alias="chatgpt-account-id",
+        description="ChatGPT account identifier",
+        default="",
+    )
+
+    model_config = ConfigDict(extra="ignore", populate_by_name=True)
+
+    def to_headers_dict(self) -> dict[str, str]:
+        """Convert to headers dictionary for HTTP forwarding with proper case."""
+        headers = {}
+
+        # Map field names to proper HTTP header names
+        header_mapping = {
+            "session_id": "session_id",
+            "originator": "originator",
+            "openai_beta": "openai-beta",
+            "version": "version",
+            "chatgpt_account_id": "chatgpt-account-id",
+        }
+
+        for field_name, header_name in header_mapping.items():
+            value = getattr(self, field_name, None)
+            if value is not None and value != "":
+                headers[header_name] = value
+
+        return headers
+
+
+class CodexInstructionsData(BaseModel):
+    """Extracted Codex instructions information."""
+
+    instructions_field: Annotated[
+        str,
+        Field(
+            description="Complete instructions field as detected from Codex CLI, preserving exact text content"
+        ),
+    ]
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class CodexCacheData(BaseModel):
+    """Cached Codex CLI detection data with version tracking."""
+
+    codex_version: Annotated[str, Field(description="Codex CLI version")]
+    headers: Annotated[CodexHeaders, Field(description="Extracted headers")]
+    instructions: Annotated[
+        CodexInstructionsData, Field(description="Extracted instructions")
+    ]
+    # Preserve canonical-cased, ordered header pairs as captured
+    raw_headers_ordered: Annotated[
+        list[tuple[str, str]] | list[list[str]],
+        Field(
+            description="Ordered list of header pairs as captured (canonical casing)",
+            default_factory=list,
+        ),
+    ]
+    # Complete request JSON structure with preserved order
+    full_request_json: Annotated[
+        dict[str, Any] | None,
+        Field(
+            description="Complete JSON representation of captured request including method, path, headers, and body",
+            default=None,
+        ),
+    ]
+    cached_at: Annotated[
+        datetime,
+        Field(
+            description="Cache timestamp",
+            default_factory=lambda: datetime.now(UTC),
+        ),
+    ] = None  # type: ignore # Pydantic handles this via default_factory
+
+    model_config = ConfigDict(extra="forbid")
+
+    def headers_ordered_pairs(self) -> list[tuple[str, str]]:
+        """Return preserved, canonical-cased header pairs in original order."""
+        return [(str(k), str(v)) for k, v in self.raw_headers_ordered]
+
+    def headers_ordered_dict(self) -> dict[str, str]:
+        """Return headers as an ordered dict (last occurrence wins)."""
+        out: dict[str, str] = {}
+        for k, v in self.headers_ordered_pairs():
+            out[k] = v
+        return out

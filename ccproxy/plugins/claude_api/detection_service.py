@@ -14,11 +14,7 @@ from fastapi import FastAPI, Request, Response
 from ccproxy.config.discovery import get_ccproxy_cache_dir
 from ccproxy.config.settings import Settings
 from ccproxy.core.logging import get_plugin_logger
-from ccproxy.models.detection import (
-    ClaudeCacheData,
-    ClaudeCodeHeaders,
-    SystemPromptData,
-)
+from .models import ClaudeCacheData, ClaudeCodeHeaders, SystemPromptData
 from ccproxy.services.cli_detection import CLIDetectionService
 from ccproxy.utils.caching import async_ttl_cache
 from ccproxy.utils.headers import HeaderBag
