@@ -10,7 +10,6 @@ tests run without a real Docker daemon. Follows TESTING.md guidelines:
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Generator
 from unittest.mock import AsyncMock, Mock
 
 import pytest
@@ -39,7 +38,9 @@ def docker_adapter_success(monkeypatch: pytest.MonkeyPatch) -> DockerAdapter:
     # Patch run_command used by _run_with_sudo_fallback
     import ccproxy.docker.adapter as adapter_mod
 
-    async def _ok_run_command(*_: object, **__: object) -> tuple[int, list[str], list[str]]:
+    async def _ok_run_command(
+        *_: object, **__: object
+    ) -> tuple[int, list[str], list[str]]:
         return 0, ["ok"], []
 
     monkeypatch.setattr(adapter_mod, "run_command", _ok_run_command)
@@ -48,6 +49,7 @@ def docker_adapter_success(monkeypatch: pytest.MonkeyPatch) -> DockerAdapter:
     async def _ok_proc_factory(*args: object, **kwargs: object):  # noqa: ANN001
         proc = Mock()
         proc.returncode = 0
+
         # .communicate used in is_available/image_exists paths
         async def _communicate() -> tuple[bytes, bytes]:
             return b"docker 25.0.0", b""
@@ -57,18 +59,22 @@ def docker_adapter_success(monkeypatch: pytest.MonkeyPatch) -> DockerAdapter:
         proc.wait = AsyncMock(return_value=0)
         # .stdout/.stderr with readline for stream consumption
         stdout = AsyncMock()
-        stdout.readline = AsyncMock(side_effect=[b"",])
+        stdout.readline = AsyncMock(
+            side_effect=[
+                b"",
+            ]
+        )
         stderr = AsyncMock()
-        stderr.readline = AsyncMock(side_effect=[b"",])
+        stderr.readline = AsyncMock(
+            side_effect=[
+                b"",
+            ]
+        )
         proc.stdout = stdout
         proc.stderr = stderr
         return proc
 
-    import asyncio
-
-    monkeypatch.setattr(
-        adapter_mod.asyncio, "create_subprocess_exec", _ok_proc_factory
-    )
+    monkeypatch.setattr(adapter_mod.asyncio, "create_subprocess_exec", _ok_proc_factory)
 
     # Make image_exists trivially fast and deterministic
     monkeypatch.setattr(adapter, "image_exists", AsyncMock(return_value=True))
@@ -88,7 +94,9 @@ def docker_adapter_failure(monkeypatch: pytest.MonkeyPatch) -> DockerAdapter:
 
     import ccproxy.docker.adapter as adapter_mod
 
-    async def _err_run_command(*_: object, **__: object) -> tuple[int, list[str], list[str]]:
+    async def _err_run_command(
+        *_: object, **__: object
+    ) -> tuple[int, list[str], list[str]]:
         return 1, [], ["error"]
 
     monkeypatch.setattr(adapter_mod, "run_command", _err_run_command)
@@ -150,4 +158,3 @@ def docker_path_set_fixture(tmp_path: Path) -> DockerPathSet:
 def output_middleware() -> DefaultOutputMiddleware:
     """Default output middleware instance for stream processing tests."""
     return DefaultOutputMiddleware()
-

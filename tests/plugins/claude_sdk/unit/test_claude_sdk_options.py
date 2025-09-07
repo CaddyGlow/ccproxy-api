@@ -5,7 +5,6 @@ from typing import Any, cast
 import pytest
 from claude_code_sdk import ClaudeCodeOptions
 
-from ccproxy.config.settings import Settings
 from ccproxy.core.async_utils import patched_typing
 from ccproxy.plugins.claude_sdk.config import ClaudeSDKSettings
 from ccproxy.plugins.claude_sdk.options import OptionsHandler
@@ -19,27 +18,31 @@ class TestOptionsHandler:
     """Test cases for OptionsHandler."""
 
     @pytest.mark.unit
-    def test_create_options_without_settings(self) -> None:
-        """Test creating options without any settings."""
-        handler = OptionsHandler(settings=None)
+    def test_create_options_minimal_config(self) -> None:
+        """Test creating options with minimal config (uses plugin defaults)."""
+        handler = OptionsHandler(config=ClaudeSDKSettings())
 
         options = handler.create_options(model="claude-3-5-sonnet-20241022")
 
         assert options.model == "claude-3-5-sonnet-20241022"
-        # Should not have any defaults - mcp_servers will be empty dict, permission_prompt_tool_name will be None
-        assert options.mcp_servers == {}  # ClaudeCodeOptions defaults to empty dict
+        # With minimal config, no MCP servers or permission tool defaults are set
+        assert options.mcp_servers == {}
         assert options.permission_prompt_tool_name is None
 
     @pytest.mark.unit
     def test_create_options_with_default_mcp_configuration(self) -> None:
         """Test that default MCP configuration is applied from settings."""
-        # Create settings with default Claude configuration (includes MCP defaults)
-        claude_settings = (
-            ClaudeSDKSettings()
-        )  # Uses the default factory with MCP config
-        settings = Settings(claude=claude_settings)
+        # Create settings with explicit MCP defaults
+        claude_settings = ClaudeSDKSettings(
+            code_options=ClaudeCodeOptions(
+                mcp_servers={
+                    "confirmation": {"type": "sse", "url": "http://127.0.0.1:8000/mcp"}
+                },
+                permission_prompt_tool_name="mcp__confirmation__check_permission",
+            )
+        )
 
-        handler = OptionsHandler(settings=settings)
+        handler = OptionsHandler(config=claude_settings)
 
         options = handler.create_options(model="claude-3-5-sonnet-20241022")
 
@@ -68,9 +71,7 @@ class TestOptionsHandler:
         )
 
         claude_settings = ClaudeSDKSettings(code_options=custom_code_options)
-        settings = Settings(claude=claude_settings)
-
-        handler = OptionsHandler(settings=settings)
+        handler = OptionsHandler(config=claude_settings)
 
         options = handler.create_options(model="claude-3-5-sonnet-20241022")
 
@@ -87,10 +88,15 @@ class TestOptionsHandler:
     @pytest.mark.unit
     def test_create_options_api_parameters_override_settings(self) -> None:
         """Test that API parameters override settings."""
-        claude_settings = ClaudeSDKSettings()  # Uses defaults
-        settings = Settings(claude=claude_settings)
-
-        handler = OptionsHandler(settings=settings)
+        claude_settings = ClaudeSDKSettings(
+            code_options=ClaudeCodeOptions(
+                mcp_servers={
+                    "confirmation": {"type": "sse", "url": "http://127.0.0.1:8000/mcp"}
+                },
+                permission_prompt_tool_name="mcp__confirmation__check_permission",
+            )
+        )
+        handler = OptionsHandler(config=claude_settings)
 
         options = handler.create_options(
             model="claude-3-5-sonnet-20241022",
@@ -113,9 +119,15 @@ class TestOptionsHandler:
     @pytest.mark.unit
     def test_create_options_with_kwargs_override(self) -> None:
         """Test that additional kwargs are applied correctly."""
-        claude_settings = ClaudeSDKSettings()
-        settings = Settings(claude=claude_settings)
-        handler = OptionsHandler(settings=settings)
+        claude_settings = ClaudeSDKSettings(
+            code_options=ClaudeCodeOptions(
+                mcp_servers={
+                    "confirmation": {"type": "sse", "url": "http://127.0.0.1:8000/mcp"}
+                },
+                permission_prompt_tool_name="mcp__confirmation__check_permission",
+            )
+        )
+        handler = OptionsHandler(config=claude_settings)
 
         options = handler.create_options(
             model="claude-3-5-sonnet-20241022",
@@ -155,8 +167,7 @@ class TestOptionsHandler:
         )
 
         claude_settings = ClaudeSDKSettings(code_options=custom_code_options)
-        settings = Settings(claude=claude_settings)
-        handler = OptionsHandler(settings=settings)
+        handler = OptionsHandler(config=claude_settings)
 
         options = handler.create_options(model="claude-3-5-sonnet-20241022")
 
@@ -181,8 +192,7 @@ class TestOptionsHandler:
         )
 
         claude_settings = ClaudeSDKSettings(code_options=custom_code_options)
-        settings = Settings(claude=claude_settings)
-        handler = OptionsHandler(settings=settings)
+        handler = OptionsHandler(config=claude_settings)
 
         options = handler.create_options(model="claude-3-5-sonnet-20241022")
 

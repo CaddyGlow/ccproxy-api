@@ -307,7 +307,7 @@ async def test_permission_service_wait_for_permission_timeout(
 
         # Don't resolve - let it timeout
         with pytest.raises(asyncio.TimeoutError):
-            await service.wait_for_permission(request_id, timeout_seconds=1)
+            await service.wait_for_permission(request_id, timeout_seconds=0.2)
     finally:
         await service.stop()
 

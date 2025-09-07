@@ -22,7 +22,10 @@ import pytest
 from claude_code_sdk import (
     AssistantMessage,
     ClaudeCodeOptions,
+    ResultMessage,
+    SystemMessage,
     TextBlock,
+    UserMessage,
 )
 
 from ccproxy.core.errors import ClaudeProxyError, ServiceUnavailableError
@@ -124,7 +127,7 @@ class TestClaudeSDKClientStatelessQueries:
         options: ClaudeCodeOptions = ClaudeCodeOptions()
 
         with patch(
-            "plugins.claude_sdk.client.ImportedClaudeSDKClient",
+            "ccproxy.plugins.claude_sdk.client.ImportedClaudeSDKClient",
             return_value=mock_sdk_client_instance,
         ):
             messages: list[Any] = []
@@ -156,7 +159,7 @@ class TestClaudeSDKClientStatelessQueries:
 
         with (
             patch(
-                "plugins.claude_sdk.client.ImportedClaudeSDKClient",
+                "ccproxy.plugins.claude_sdk.client.ImportedClaudeSDKClient",
                 return_value=mock_sdk_client_cli_not_found,
             ),
             pytest.raises(ServiceUnavailableError) as exc_info,
@@ -184,7 +187,7 @@ class TestClaudeSDKClientStatelessQueries:
 
         with (
             patch(
-                "plugins.claude_sdk.client.ImportedClaudeSDKClient",
+                "ccproxy.plugins.claude_sdk.client.ImportedClaudeSDKClient",
                 return_value=mock_sdk_client_cli_connection_error,
             ),
             pytest.raises(ServiceUnavailableError) as exc_info,
@@ -212,7 +215,7 @@ class TestClaudeSDKClientStatelessQueries:
 
         with (
             patch(
-                "plugins.claude_sdk.client.ImportedClaudeSDKClient",
+                "ccproxy.plugins.claude_sdk.client.ImportedClaudeSDKClient",
                 return_value=mock_sdk_client_process_error,
             ),
             pytest.raises(ClaudeProxyError) as exc_info,
@@ -241,7 +244,7 @@ class TestClaudeSDKClientStatelessQueries:
 
         with (
             patch(
-                "plugins.claude_sdk.client.ImportedClaudeSDKClient",
+                "ccproxy.plugins.claude_sdk.client.ImportedClaudeSDKClient",
                 return_value=mock_sdk_client_json_decode_error,
             ),
             pytest.raises(ClaudeProxyError) as exc_info,
@@ -270,7 +273,7 @@ class TestClaudeSDKClientStatelessQueries:
 
         with (
             patch(
-                "plugins.claude_sdk.client.ImportedClaudeSDKClient",
+                "ccproxy.plugins.claude_sdk.client.ImportedClaudeSDKClient",
                 return_value=mock_sdk_client_unexpected_error,
             ),
             pytest.raises(ClaudeProxyError) as exc_info,
@@ -311,7 +314,7 @@ class TestClaudeSDKClientStatelessQueries:
         mock_sdk_client.receive_response = unknown_message_response
 
         with patch(
-            "plugins.claude_sdk.client.ImportedClaudeSDKClient",
+            "ccproxy.plugins.claude_sdk.client.ImportedClaudeSDKClient",
             return_value=mock_sdk_client,
         ):
             messages: list[Any] = []
@@ -354,7 +357,7 @@ class TestClaudeSDKClientStatelessQueries:
         # Mock the conversion to fail
         with (
             patch(
-                "plugins.claude_sdk.client.ImportedClaudeSDKClient",
+                "ccproxy.plugins.claude_sdk.client.ImportedClaudeSDKClient",
                 return_value=mock_sdk_client,
             ),
             patch.object(
@@ -389,27 +392,31 @@ class TestClaudeSDKClientStatelessQueries:
         mock_sdk_client.query = AsyncMock()
 
         # Create a proper SDKMessage for the test
-        from ccproxy.plugins.claude_sdk.models import (
-            create_result_message,
-            create_sdk_message,
-        )
+        from ccproxy.plugins.claude_sdk.models import create_sdk_message
 
-        result_message = create_result_message(
-            usage={"input_tokens": 10, "output_tokens": 20},
-            stop_reason="end_turn",
+        result_message = ResultMessage(
+            subtype="success",
+            duration_ms=1000,
+            duration_api_ms=800,
+            is_error=False,
+            num_turns=1,
+            session_id="test_session",
             total_cost_usd=0.001,
+            usage={"input_tokens": 10, "output_tokens": 20},
         )
 
         async def multiple_messages_response() -> AsyncGenerator[Any, None]:
-            yield create_sdk_message(role="user", content="Hello")
-            yield create_sdk_message(role="assistant", content="Hi")
-            yield create_sdk_message(role="system", content="System message")
+            yield UserMessage(content="Hello")
+            yield AssistantMessage(
+                content=[TextBlock(text="Hi")], model="claude-3-5-sonnet-20241022"
+            )
+            yield SystemMessage(subtype="test", data={"message": "System message"})
             yield result_message
 
         mock_sdk_client.receive_response = multiple_messages_response
 
         with patch(
-            "plugins.claude_sdk.client.ImportedClaudeSDKClient",
+            "ccproxy.plugins.claude_sdk.client.ImportedClaudeSDKClient",
             return_value=mock_sdk_client,
         ):
             messages: list[Any] = []

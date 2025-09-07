@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+
 # Mark entire module as integration tests that exercise Docker boundaries
 pytestmark = [pytest.mark.integration, pytest.mark.docker]
 
