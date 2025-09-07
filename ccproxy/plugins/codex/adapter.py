@@ -22,7 +22,7 @@ from ccproxy.config.constants import (
 from ccproxy.core.logging import get_plugin_logger
 from ccproxy.services.adapters.http_adapter import BaseHTTPAdapter
 from ccproxy.services.handler_config import HandlerConfig
-from ccproxy.services.streaming.sse_parsers import last_json_data_event
+from ccproxy.http.streaming.sse import last_json_data_event
 
 
 if TYPE_CHECKING:

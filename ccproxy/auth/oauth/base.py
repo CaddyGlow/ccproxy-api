@@ -17,7 +17,7 @@ from ccproxy.auth.exceptions import (
 )
 from ccproxy.auth.models.credentials import BaseCredentials
 from ccproxy.auth.storage.base import TokenStorage
-from ccproxy.core.http_client import HTTPClientFactory
+from ccproxy.http.client import HTTPClientFactory
 from ccproxy.core.logging import get_logger
 
 

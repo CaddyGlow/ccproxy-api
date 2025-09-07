@@ -13,7 +13,7 @@ from ccproxy.hooks import HookEvent, HookManager
 from ccproxy.hooks.base import HookContext
 from ccproxy.services.adapters.base import BaseAdapter
 from ccproxy.services.handler_config import HandlerConfig
-from ccproxy.services.http.plugin_handler import PluginHTTPHandler
+from ccproxy.http.plugin_handler import PluginHTTPHandler
 from ccproxy.services.interfaces import (
     IMetricsCollector,
     IRequestTracer,

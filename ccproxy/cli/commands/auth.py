@@ -201,7 +201,7 @@ async def _lazy_register_oauth_provider(
         container.register_service(HookManager, instance=hook_manager)
 
     # Provide core services needed by plugins at runtime
-    from ccproxy.core.http_client import HTTPClientFactory
+    from ccproxy.http.client import HTTPClientFactory
 
     class CoreServicesAdapter:
         def __init__(self) -> None:

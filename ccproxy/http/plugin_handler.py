@@ -10,8 +10,8 @@ from ccproxy.core.errors import ProxyConnectionError, ProxyTimeoutError
 from ccproxy.core.logging import get_logger
 from ccproxy.services.cache import ResponseCache
 from ccproxy.services.handler_config import HandlerConfig
-from ccproxy.services.http.base import BaseHTTPHandler
-from ccproxy.services.http.processor import RequestProcessor
+from ccproxy.http.base import BaseHTTPHandler
+from ccproxy.http.processor import RequestProcessor
 from ccproxy.services.interfaces import IRequestTracer
 from ccproxy.streaming.deferred_streaming import DeferredStreaming
 

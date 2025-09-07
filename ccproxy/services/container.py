@@ -19,7 +19,7 @@ from ccproxy.services.cache import ResponseCache
 from ccproxy.services.cli_detection import CLIDetectionService
 from ccproxy.services.config import ProxyConfiguration
 from ccproxy.services.factories import ConcreteServiceFactory
-from ccproxy.services.http.connection_pool import ConnectionPoolManager
+from ccproxy.http.connection_pool import ConnectionPoolManager
 from ccproxy.services.http_pool import HTTPPoolManager
 from ccproxy.services.interfaces import (
     IRequestTracer,

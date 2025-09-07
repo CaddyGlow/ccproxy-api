@@ -13,7 +13,7 @@ import httpx
 import structlog
 
 from ccproxy.config.settings import Settings
-from ccproxy.core.http_client import HTTPClientFactory
+from ccproxy.http.client import HTTPClientFactory
 
 
 logger = structlog.get_logger(__name__)
