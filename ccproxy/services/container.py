@@ -13,13 +13,13 @@ import structlog
 
 from ccproxy.config.settings import Settings
 from ccproxy.hooks.thread_manager import BackgroundHookThreadManager
+from ccproxy.http.connection_pool import ConnectionPoolManager
 from ccproxy.services.adapters.format_detector import FormatDetectionService
 from ccproxy.services.adapters.format_registry import FormatAdapterRegistry
 from ccproxy.services.cache import ResponseCache
 from ccproxy.services.cli_detection import CLIDetectionService
 from ccproxy.services.config import ProxyConfiguration
 from ccproxy.services.factories import ConcreteServiceFactory
-from ccproxy.http.connection_pool import ConnectionPoolManager
 from ccproxy.services.http_pool import HTTPPoolManager
 from ccproxy.services.interfaces import (
     IRequestTracer,
@@ -27,7 +27,7 @@ from ccproxy.services.interfaces import (
     NullRequestTracer,
 )
 from ccproxy.services.mocking import MockResponseHandler
-from ccproxy.services.streaming import StreamingHandler
+from ccproxy.streaming.handler import StreamingHandler
 from ccproxy.utils.binary_resolver import BinaryResolver
 
 

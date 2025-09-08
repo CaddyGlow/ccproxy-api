@@ -11,19 +11,19 @@ from starlette.responses import Response, StreamingResponse
 from ccproxy.core.logging import get_plugin_logger
 from ccproxy.hooks import HookEvent, HookManager
 from ccproxy.hooks.base import HookContext
+from ccproxy.http.plugin_handler import PluginHTTPHandler
 from ccproxy.services.adapters.base import BaseAdapter
 from ccproxy.services.handler_config import HandlerConfig
-from ccproxy.http.plugin_handler import PluginHTTPHandler
 from ccproxy.services.interfaces import (
     IMetricsCollector,
     IRequestTracer,
-    IStreamingHandler,
     NullMetricsCollector,
     NullRequestTracer,
     NullStreamingHandler,
+    StreamingMetrics,
 )
-from ccproxy.services.streaming.buffer_service import StreamingBufferService
-from ccproxy.streaming.deferred_streaming import DeferredStreaming
+from ccproxy.streaming.buffer import StreamingBufferService
+from ccproxy.streaming.deferred import DeferredStreaming
 from ccproxy.utils.headers import HeaderBag
 
 
@@ -60,7 +60,7 @@ class BaseHTTPAdapter(BaseAdapter):
         # Optional dependencies with defaults
         request_tracer: "IRequestTracer | None" = None,
         metrics: "IMetricsCollector | None" = None,
-        streaming_handler: "IStreamingHandler | None" = None,
+        streaming_handler: "StreamingMetrics | None" = None,
         request_transformer: "PluginTransformerProtocol | None" = None,
         response_transformer: "PluginTransformerProtocol | None" = None,
         hook_manager: "HookManager | None" = None,

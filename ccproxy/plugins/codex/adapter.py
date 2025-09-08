@@ -20,9 +20,9 @@ from ccproxy.config.constants import (
     OPENAI_COMPLETIONS_PATH,
 )
 from ccproxy.core.logging import get_plugin_logger
+from ccproxy.http.streaming.sse import last_json_data_event
 from ccproxy.services.adapters.http_adapter import BaseHTTPAdapter
 from ccproxy.services.handler_config import HandlerConfig
-from ccproxy.http.streaming.sse import last_json_data_event
 
 
 if TYPE_CHECKING:
@@ -32,7 +32,7 @@ if TYPE_CHECKING:
     from ccproxy.services.interfaces import (
         IMetricsCollector,
         IRequestTracer,
-        IStreamingHandler,
+        StreamingMetrics,
     )
 
     from .detection_service import CodexDetectionService
@@ -61,7 +61,7 @@ class CodexAdapter(BaseHTTPAdapter):
         # Optional dependencies
         request_tracer: "IRequestTracer | None" = None,
         metrics: "IMetricsCollector | None" = None,
-        streaming_handler: "IStreamingHandler | None" = None,
+        streaming_handler: "StreamingMetrics | None" = None,
         hook_manager: "HookManager | None" = None,
         # Format services
         format_registry: "FormatAdapterRegistry | None" = None,

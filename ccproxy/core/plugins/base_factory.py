@@ -17,10 +17,10 @@ from ccproxy.services.adapters.http_adapter import BaseHTTPAdapter
 from ccproxy.services.interfaces import (
     IMetricsCollector,
     IRequestTracer,
-    IStreamingHandler,
     NullMetricsCollector,
     NullRequestTracer,
     NullStreamingHandler,
+    StreamingMetrics,
 )
 
 from .declaration import (
@@ -190,7 +190,7 @@ class BaseProviderPluginFactory(ProviderPluginFactory):
         )
         request_tracer: IRequestTracer | None = context.get("request_tracer")
         metrics: IMetricsCollector | None = context.get("metrics")
-        streaming_handler: IStreamingHandler | None = context.get("streaming_handler")
+        streaming_handler: StreamingMetrics | None = context.get("streaming_handler")
         hook_manager = context.get("hook_manager")
 
         # Get auth and detection services that may have been created by factory

@@ -9,7 +9,7 @@ import structlog
 from ccproxy.core.request_context import RequestContext
 from ccproxy.hooks import HookManager
 from ccproxy.services.handler_config import HandlerConfig
-from ccproxy.streaming.deferred_streaming import DeferredStreaming
+from ccproxy.streaming.deferred import DeferredStreaming
 
 
 logger = structlog.get_logger(__name__)

@@ -1,6 +1,5 @@
 """Request ID middleware for generating and tracking request IDs."""
 
-import uuid
 from collections.abc import Awaitable, Callable, MutableMapping
 from datetime import UTC, datetime
 from typing import Any
@@ -9,6 +8,7 @@ from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.types import ASGIApp, Receive, Send
 
+from ccproxy.core.id_utils import generate_short_id
 from ccproxy.core.logging import get_logger
 from ccproxy.core.request_context import request_context
 
@@ -34,8 +34,9 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
         if scope["type"] == "http":
             # Generate or extract request ID
             headers_dict = dict(scope.get("headers", []))
-            request_id = headers_dict.get(b"x-request-id", b"").decode("utf-8") or str(
-                uuid.uuid4()
+            request_id = (
+                headers_dict.get(b"x-request-id", b"").decode("utf-8")
+                or generate_short_id()
             )
 
             # Store in ASGI extensions for other middleware
@@ -63,7 +64,7 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
             The HTTP response
         """
         # Generate or extract request ID
-        request_id = request.headers.get("x-request-id") or str(uuid.uuid4())
+        request_id = request.headers.get("x-request-id") or generate_short_id()
 
         # Generate datetime for consistent logging across all layers
         log_timestamp = datetime.now(UTC)

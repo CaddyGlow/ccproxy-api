@@ -34,7 +34,7 @@ if TYPE_CHECKING:
     from ccproxy.services.interfaces import (
         IMetricsCollector,
         IRequestTracer,
-        IStreamingHandler,
+        StreamingMetrics,
     )
 else:
     # Runtime import - mypy doesn't have stubs for fastapi.middleware
@@ -248,7 +248,7 @@ class PluginContext:
 
         # Observability and streaming
         self.request_tracer: IRequestTracer | None = None
-        self.streaming_handler: IStreamingHandler | None = None
+        self.streaming_handler: StreamingMetrics | None = None
         self.metrics: IMetricsCollector | None = None
 
         # Provider-specific

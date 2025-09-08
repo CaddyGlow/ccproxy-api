@@ -17,16 +17,17 @@ from .hooks import HookableHTTPClient
 from .plugin_handler import PluginHTTPHandler
 from .processor import RequestProcessor
 
+
 __all__ = [
     # Client
     "HTTPClient",
-    "HTTPClientFactory", 
+    "HTTPClientFactory",
     "HTTPXClient",
     "BaseProxyClient",
     "HookableHTTPClient",
     # Errors
     "HTTPError",
-    "HTTPTimeoutError", 
+    "HTTPTimeoutError",
     "HTTPConnectionError",
     # Services
     "RequestProcessor",

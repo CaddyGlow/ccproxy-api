@@ -20,7 +20,7 @@ if TYPE_CHECKING:
     from ccproxy.services.interfaces import (
         IMetricsCollector,
         IRequestTracer,
-        IStreamingHandler,
+        StreamingMetrics,
     )
 
     from .detection_service import ClaudeAPIDetectionService
@@ -33,7 +33,7 @@ from ccproxy.config.constants import (
 from ccproxy.core.logging import get_plugin_logger
 from ccproxy.services.adapters.http_adapter import BaseHTTPAdapter
 from ccproxy.services.handler_config import HandlerConfig
-from ccproxy.streaming.deferred_streaming import DeferredStreaming
+from ccproxy.streaming.deferred import DeferredStreaming
 
 from .transformers import ClaudeAPIRequestTransformer, ClaudeAPIResponseTransformer
 
@@ -57,7 +57,7 @@ class ClaudeAPIAdapter(BaseHTTPAdapter):
         # Optional dependencies
         request_tracer: "IRequestTracer | None" = None,
         metrics: "IMetricsCollector | None" = None,
-        streaming_handler: "IStreamingHandler | None" = None,
+        streaming_handler: "StreamingMetrics | None" = None,
         hook_manager: "HookManager | None" = None,
         # Format services
         format_registry: "FormatAdapterRegistry | None" = None,

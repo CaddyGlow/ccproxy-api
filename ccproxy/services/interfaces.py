@@ -127,7 +127,7 @@ class IMetricsCollector(Protocol):
         ...
 
 
-class IStreamingHandler(Protocol):
+class StreamingMetrics(Protocol):
     """Streaming response handler interface."""
 
     async def handle_stream(

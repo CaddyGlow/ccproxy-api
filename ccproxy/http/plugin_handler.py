@@ -8,12 +8,12 @@ from starlette.responses import Response, StreamingResponse
 
 from ccproxy.core.errors import ProxyConnectionError, ProxyTimeoutError
 from ccproxy.core.logging import get_logger
-from ccproxy.services.cache import ResponseCache
-from ccproxy.services.handler_config import HandlerConfig
 from ccproxy.http.base import BaseHTTPHandler
 from ccproxy.http.processor import RequestProcessor
+from ccproxy.services.cache import ResponseCache
+from ccproxy.services.handler_config import HandlerConfig
 from ccproxy.services.interfaces import IRequestTracer
-from ccproxy.streaming.deferred_streaming import DeferredStreaming
+from ccproxy.streaming.deferred import DeferredStreaming
 
 
 if TYPE_CHECKING:

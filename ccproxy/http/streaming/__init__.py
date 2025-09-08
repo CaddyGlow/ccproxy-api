@@ -6,6 +6,7 @@ from .sse import (
     openai_completion_parser,
 )
 
+
 __all__ = [
     "last_json_data_event",
     "openai_completion_parser",

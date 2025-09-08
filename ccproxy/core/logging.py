@@ -2,7 +2,6 @@ import logging
 import os
 import shutil
 import sys
-import uuid
 from collections.abc import MutableMapping
 from pathlib import Path
 from typing import Any, Protocol, TextIO
@@ -682,7 +681,9 @@ def set_command_context(cmd_id: str | None = None) -> str:
     """
     try:
         if not cmd_id:
-            cmd_id = str(uuid.uuid4())
+            from ccproxy.core.id_utils import generate_short_id
+
+            cmd_id = generate_short_id()
         # Bind only cmd_id to avoid colliding with per-request request_id fields
         bind_contextvars(cmd_id=cmd_id)
         return cmd_id

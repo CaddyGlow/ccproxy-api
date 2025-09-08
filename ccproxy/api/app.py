@@ -24,7 +24,7 @@ from ccproxy.core.plugins import (
     PluginRegistry,
     setup_default_middleware,
 )
-from ccproxy.core.plugins.loader import load_plugin_system
+from ccproxy.core.plugins.runtime import load_plugin_system
 from ccproxy.hooks import HookManager, HookRegistry
 from ccproxy.hooks.events import HookEvent
 from ccproxy.services.container import ServiceContainer
