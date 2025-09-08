@@ -29,8 +29,8 @@ from ccproxy.core.request_context import RequestContext
 
 if TYPE_CHECKING:
     from tests.factories import FastAPIAppFactory, FastAPIClientFactory
+from ccproxy.config.core import ServerSettings
 from ccproxy.config.security import SecuritySettings
-from ccproxy.config.server import ServerSettings
 from ccproxy.config.settings import Settings
 
 
@@ -127,7 +127,7 @@ def claude_sdk_environment(isolated_environment: Path) -> Path:
     - Claude configuration directory
     - Proper working directory setup
     """
-    # Create Claude config directory structure
+    # create claude config directory structure
     claude_config_dir = isolated_environment / ".claude"
     claude_config_dir.mkdir(exist_ok=True)
 

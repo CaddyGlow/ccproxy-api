@@ -429,7 +429,32 @@ def api(
             if disable_version_check:
                 scheduler_overrides["version_check_enabled"] = False
 
-        settings = Settings.from_config(config_path=config)
+        # NEW: Store CLI arguments in context for plugins
+        cli_context = {
+            "port": port,
+            "host": host,
+            "reload": reload,
+            "log_level": log_level,
+            "log_file": log_file,
+            "auth_token": auth_token,
+            "plugin_setting": plugin_setting,
+            "docker": docker,
+            "docker_image": docker_image,
+            "docker_env": docker_env,
+            "docker_volume": docker_volume,
+            "docker_arg": docker_arg,
+            "docker_home": docker_home,
+            "docker_workspace": docker_workspace,
+            "user_mapping_enabled": user_mapping_enabled,
+            "user_uid": user_uid,
+            "user_gid": user_gid,
+            "no_network_calls": no_network_calls,
+            "disable_version_check": disable_version_check,
+            "disable_pricing_updates": disable_pricing_updates,
+        }
+
+        # Pass CLI context to settings creation
+        settings = Settings.from_config(config_path=config, cli_context=cli_context)
 
         from ccproxy.core.logging import setup_logging
 

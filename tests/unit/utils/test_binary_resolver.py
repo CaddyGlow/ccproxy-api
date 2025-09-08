@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from ccproxy.config.binary import BinarySettings
+from ccproxy.config.runtime import BinarySettings
 from ccproxy.utils.binary_resolver import (
     BinaryResolver,
     find_binary_with_fallback,

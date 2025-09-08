@@ -2,6 +2,7 @@
 
 import json
 from abc import abstractmethod
+from collections.abc import Mapping
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
@@ -215,7 +216,7 @@ class BaseHTTPAdapter(BaseAdapter):
             raise HTTPException(status_code=503, detail="HTTP handler not initialized")
 
     @abstractmethod
-    async def _extract_provider_auth_data(self) -> dict[str, Any]:
+    async def _extract_provider_auth_data(self) -> Mapping[str, Any]:
         """Extract provider-specific authentication data including access token.
 
         Returns:
@@ -480,7 +481,7 @@ class BaseHTTPAdapter(BaseAdapter):
         method: str,
         target_url: str,
         body: bytes,
-        provider_auth_data: dict[str, Any],
+        provider_auth_data: Mapping[str, Any],
         request_headers: dict[str, str],
         handler_config: HandlerConfig,
         endpoint: str,

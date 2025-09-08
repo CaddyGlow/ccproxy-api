@@ -5,8 +5,8 @@ from typing import Any
 
 import pytest
 
-from ccproxy.config.scheduler import SchedulerSettings
 from ccproxy.config.settings import Settings
+from ccproxy.config.utils import SchedulerSettings
 from ccproxy.core.async_task_manager import start_task_manager, stop_task_manager
 from ccproxy.scheduler.core import Scheduler
 from ccproxy.scheduler.errors import (

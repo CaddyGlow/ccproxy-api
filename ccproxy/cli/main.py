@@ -16,6 +16,8 @@ from ccproxy.cli.helpers import (
 )
 from ccproxy.core._version import __version__
 from ccproxy.core.logging import bootstrap_cli_logging, get_logger, set_command_context
+from ccproxy.core.plugins.cli_discovery import discover_plugin_cli_extensions
+from ccproxy.core.plugins.declaration import CliArgumentSpec, CliCommandSpec
 
 # from plugins.permissions.handlers.cli import app as permission_handler_app
 from .commands.auth import app as auth_app
@@ -42,6 +44,104 @@ app = typer.Typer(
 
 # Logger will be configured by configuration manager
 logger = get_logger(__name__)
+
+
+def register_plugin_cli_extensions(app: typer.Typer) -> None:
+    """Register plugin CLI commands and arguments during app creation."""
+    try:
+        plugin_manifests = discover_plugin_cli_extensions()
+
+        logger.debug(
+            "plugin_cli_discovery_complete",
+            plugin_count=len(plugin_manifests),
+            plugins=[name for name, _ in plugin_manifests],
+        )
+
+        for plugin_name, manifest in plugin_manifests:
+            # Register new commands
+            for cmd_spec in manifest.cli_commands:
+                _register_plugin_command(app, plugin_name, cmd_spec)
+
+            # Extend existing commands with new arguments
+            for arg_spec in manifest.cli_arguments:
+                _extend_command_with_argument(app, plugin_name, arg_spec)
+
+    except Exception as e:
+        # Graceful degradation - CLI still works without plugin extensions
+        logger.debug("plugin_cli_extension_registration_failed", error=str(e))
+
+
+def _register_plugin_command(
+    app: typer.Typer, plugin_name: str, cmd_spec: CliCommandSpec
+) -> None:
+    """Register a single plugin command."""
+    try:
+        if cmd_spec.parent_command is None:
+            # Top-level command
+            app.command(
+                name=cmd_spec.command_name,
+                help=cmd_spec.help_text or f"Command from {plugin_name} plugin",
+            )(cmd_spec.command_function)
+            logger.debug(
+                "plugin_command_registered",
+                plugin=plugin_name,
+                command=cmd_spec.command_name,
+                type="top_level",
+            )
+        else:
+            # Subcommand - add to existing command groups
+            parent_app = _get_command_app(cmd_spec.parent_command)
+            if parent_app:
+                parent_app.command(
+                    name=cmd_spec.command_name,
+                    help=cmd_spec.help_text or f"Command from {plugin_name} plugin",
+                )(cmd_spec.command_function)
+                logger.debug(
+                    "plugin_command_registered",
+                    plugin=plugin_name,
+                    command=cmd_spec.command_name,
+                    parent=cmd_spec.parent_command,
+                    type="subcommand",
+                )
+            else:
+                logger.warning(
+                    "plugin_command_parent_not_found",
+                    plugin=plugin_name,
+                    command=cmd_spec.command_name,
+                    parent=cmd_spec.parent_command,
+                )
+    except Exception as e:
+        logger.warning(
+            "plugin_command_registration_failed",
+            plugin=plugin_name,
+            command=cmd_spec.command_name,
+            error=str(e),
+        )
+
+
+def _extend_command_with_argument(
+    app: typer.Typer, plugin_name: str, arg_spec: CliArgumentSpec
+) -> None:
+    """Extend an existing command with a new argument."""
+    # This is more complex and may require command wrapping or dynamic parameter injection
+    # For now, log the extension attempt
+    logger.debug(
+        "plugin_argument_extension_requested",
+        plugin=plugin_name,
+        target_command=arg_spec.target_command,
+        argument=arg_spec.argument_name,
+    )
+    # TODO: Implement argument injection into existing commands
+
+
+def _get_command_app(command_name: str) -> typer.Typer | None:
+    """Get the typer app for a parent command."""
+    command_apps = {
+        "auth": auth_app,
+        "config": config_app,
+        "plugins": plugins_app,
+    }
+    return command_apps.get(command_name)
 
 
 # Add global options
@@ -97,6 +197,8 @@ app.add_typer(auth_app)
 # Register plugins command
 app.add_typer(plugins_app)
 
+# NEW: Register plugin CLI extensions
+register_plugin_cli_extensions(app)
 
 # Register imported commands
 app.command(name="serve")(api)

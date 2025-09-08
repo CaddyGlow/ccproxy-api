@@ -42,7 +42,13 @@ def parse_docker_volume(
         return []
 
     # Import the validation function from config
-    from plugins.docker.config import validate_volume_format
+    # from plugins.docker.config import validate_volume_format
+    # Docker plugin not available, using basic validation
+    def validate_volume_format(volume_str: str) -> str:
+        # Basic validation - ensure it's in host:container format
+        if ":" not in volume_str:
+            raise ValueError(f"Volume must be in host:container format: {volume_str}")
+        return volume_str
 
     parsed = []
     for volume_str in value:
@@ -82,7 +88,16 @@ def validate_docker_home(
     if value is None:
         return None
 
-    from plugins.docker.config import validate_host_path
+    # from plugins.docker.config import validate_host_path
+    # Docker plugin not available, using basic validation
+    def validate_host_path(path: str) -> str:
+        from pathlib import Path
+
+        try:
+            Path(path).resolve()
+            return path
+        except Exception as e:
+            raise ValueError(f"Invalid path: {path}") from e
 
     try:
         return validate_host_path(value)
@@ -114,7 +129,16 @@ def validate_docker_workspace(
     if value is None:
         return None
 
-    from plugins.docker.config import validate_host_path
+    # from plugins.docker.config import validate_host_path
+    # Docker plugin not available, using basic validation
+    def validate_host_path(path: str) -> str:
+        from pathlib import Path
+
+        try:
+            Path(path).resolve()
+            return path
+        except Exception as e:
+            raise ValueError(f"Invalid path: {path}") from e
 
     try:
         return validate_host_path(value)

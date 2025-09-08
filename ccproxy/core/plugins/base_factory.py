@@ -21,6 +21,8 @@ from ccproxy.services.interfaces import (
 )
 
 from .declaration import (
+    CliArgumentSpec,
+    CliCommandSpec,
     FormatAdapterSpec,
     FormatPair,
     PluginContext,
@@ -82,6 +84,10 @@ class BaseProviderPluginFactory(ProviderPluginFactory):
     format_adapters: list[FormatAdapterSpec] = []
     requires_format_adapters: list[FormatPair] = []
 
+    # CLI extension declarations (populated by subclasses)
+    cli_commands: list[CliCommandSpec] = []
+    cli_arguments: list[CliArgumentSpec] = []
+
     def __init__(self) -> None:
         """Initialize factory with manifest built from class attributes."""
         # Validate required class attributes
@@ -122,6 +128,8 @@ class BaseProviderPluginFactory(ProviderPluginFactory):
             tasks=self.tasks.copy(),
             format_adapters=self.format_adapters.copy(),
             requires_format_adapters=self.requires_format_adapters.copy(),
+            cli_commands=self.cli_commands.copy(),
+            cli_arguments=self.cli_arguments.copy(),
         )
 
         # Format adapter specification validation is deferred to runtime

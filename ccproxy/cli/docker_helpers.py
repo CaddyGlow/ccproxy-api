@@ -6,8 +6,11 @@ from ccproxy.config.settings import Settings
 
 
 if TYPE_CHECKING:
-    from plugins.docker.config import DockerConfig
-    from plugins.docker.service import DockerService
+    # from plugins.docker.config import DockerConfig
+    # from plugins.docker.service import DockerService
+    # Docker plugin not available - using Any for type checking
+    from typing import Any as DockerConfig
+    from typing import Any as DockerService
 
 
 def get_docker_service() -> "DockerService | None":
@@ -40,15 +43,14 @@ def create_docker_adapter() -> Any:
         return docker_service.adapter
 
     # Fallback to importing from plugin directly
-    try:
-        from plugins.docker.service import create_docker_adapter as plugin_create
-
-        return plugin_create()
-    except ImportError as e:
-        raise RuntimeError(
-            "Docker functionality not available. "
-            "Make sure Docker plugin is installed and enabled."
-        ) from e
+    # try:
+    #     from plugins.docker.service import create_docker_adapter as plugin_create
+    #
+    #     return plugin_create()
+    # except ImportError as e:
+    raise RuntimeError(
+        "Docker functionality not available. Docker plugin is not installed."
+    )
 
 
 def get_docker_config() -> "DockerConfig | None":
@@ -78,31 +80,15 @@ def get_docker_config_with_fallback(settings: Settings) -> "DockerConfig":
         return docker_config
 
     # Fallback to creating config from legacy settings (if they exist)
-    try:
-        from plugins.docker.config import DockerConfig
-
-        # Try to access legacy settings.docker (may not exist)
-        if hasattr(settings, "docker"):
-            return DockerConfig(
-                enabled=True,
-                docker_image=settings.docker.docker_image,
-                docker_volumes=settings.docker.docker_volumes,
-                docker_environment=settings.docker.docker_environment,
-                docker_additional_args=settings.docker.docker_additional_args,
-                docker_home_directory=settings.docker.docker_home_directory,
-                docker_workspace_directory=settings.docker.docker_workspace_directory,
-                user_mapping_enabled=settings.docker.user_mapping_enabled,
-                user_uid=settings.docker.user_uid,
-                user_gid=settings.docker.user_gid,
-            )
-        else:
-            # No legacy settings, create a basic config
-            return DockerConfig()
-    except ImportError:
-        # If we can't import the plugin config, create a basic config
-        from plugins.docker.config import DockerConfig
-
-        return DockerConfig()
+    # Docker plugin not available, return None
+    # try:
+    #     from plugins.docker.config import DockerConfig
+    #     ...
+    # except ImportError:
+    #     ...
+    raise RuntimeError(
+        "Docker functionality not available. Docker plugin is not installed."
+    )
 
 
 def is_docker_available() -> bool:

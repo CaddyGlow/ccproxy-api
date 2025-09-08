@@ -100,6 +100,9 @@ class Settings(BaseSettings):
         ),
     )
 
+    # CLI context for plugin access (set dynamically)
+    cli_context: dict[str, Any] = Field(default_factory=dict, exclude=True)
+
     plugins: dict[str, dict[str, Any]] = Field(
         default_factory=dict,
         description="Plugin-specific configurations keyed by plugin name",
@@ -202,6 +205,7 @@ class Settings(BaseSettings):
     def from_config(
         cls,
         config_path: Path | str | None = None,
+        cli_context: dict[str, Any] | None = None,
         **kwargs: Any,
     ) -> "Settings":
         """Create Settings instance from configuration file."""
@@ -287,4 +291,12 @@ class Settings(BaseSettings):
         if kwargs:
             _apply_overrides(settings, kwargs)
 
+        # NEW: Store CLI context for plugin access
+        if cli_context:
+            settings.cli_context = cli_context
+
         return settings
+
+    def get_cli_context(self) -> dict[str, Any]:
+        """Get CLI context for plugin access."""
+        return self.cli_context

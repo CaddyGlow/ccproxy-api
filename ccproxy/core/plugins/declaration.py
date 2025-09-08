@@ -128,6 +128,43 @@ class AuthCommandSpec:
 
 
 @dataclass
+class CliCommandSpec:
+    """Specification for plugin CLI commands."""
+
+    command_name: str
+    command_function: Callable[..., Any]
+    help_text: str = ""
+    parent_command: str | None = None  # For subcommands like "auth login-myservice"
+
+    def __post_init__(self) -> None:
+        """Validate CLI command specification."""
+        if not self.command_name:
+            raise ValueError("command_name cannot be empty") from None
+        if not callable(self.command_function):
+            raise ValueError("command_function must be callable") from None
+
+
+@dataclass
+class CliArgumentSpec:
+    """Specification for adding arguments to existing commands."""
+
+    target_command: str  # e.g., "serve", "auth"
+    argument_name: str
+    argument_type: type = str
+    help_text: str = ""
+    default: Any = None
+    required: bool = False
+    typer_kwargs: dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        """Validate CLI argument specification."""
+        if not self.target_command:
+            raise ValueError("target_command cannot be empty") from None
+        if not self.argument_name:
+            raise ValueError("argument_name cannot be empty") from None
+
+
+@dataclass
 class PluginManifest:
     """Complete static declaration of a plugin's capabilities.
 
@@ -179,6 +216,10 @@ class PluginManifest:
     # Format adapter declarations
     format_adapters: list[FormatAdapterSpec] = field(default_factory=list)
     requires_format_adapters: list[FormatPair] = field(default_factory=list)
+
+    # CLI extensions
+    cli_commands: list[CliCommandSpec] = field(default_factory=list)
+    cli_arguments: list[CliArgumentSpec] = field(default_factory=list)
 
     def validate_dependencies(self, available_plugins: set[str]) -> list[str]:
         """Validate that all dependencies are available.
