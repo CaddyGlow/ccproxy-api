@@ -161,82 +161,41 @@ class ClaudeAPIRequestTransformer:
 
         return transformed
 
-    def _count_cache_control_blocks(self, data: dict[str, Any]) -> dict[str, int]:
-        """Count cache_control blocks in different parts of the request.
+    def _find_cache_control_blocks(self, data: dict[str, Any]) -> list[tuple[str, int, int]]:
+        """Find all cache_control blocks in the request with their locations.
 
         Returns:
-            Dictionary with counts for 'injected_system', 'user_system', and 'messages'
+            List of tuples (location_type, location_index, block_index) for each cache_control block
+            where location_type is 'system' or 'message'
         """
-        counts = {"injected_system": 0, "user_system": 0, "messages": 0}
+        blocks = []
 
-        # Count in system field
+        # Find in system field
         system = data.get("system")
-        if system:
-            if isinstance(system, str):
-                # String system prompts don't have cache_control
-                pass
-            elif isinstance(system, list):
-                # Count cache_control in system prompt blocks
-                # Find the boundary between injected and user system prompts
-                injected_system_end = 0
+        if isinstance(system, list):
+            for i, block in enumerate(system):
+                if isinstance(block, dict) and "cache_control" in block:
+                    blocks.append(("system", 0, i))
 
-                # First, identify all injected system blocks by looking for Claude Code markers
-                # and considering consecutive blocks at the beginning as injected
-                for i, block in enumerate(system):
-                    if isinstance(block, dict):
-                        text = block.get("text", "")
-                        if "Claude Code" in text or "Anthropic's official CLI" in text:
-                            injected_system_end = max(injected_system_end, i + 1)
-                        elif i == 0:
-                            # First block is always considered injected even without marker
-                            injected_system_end = max(injected_system_end, 1)
-
-                # If we found Claude Code markers, extend to include consecutive blocks
-                # This handles the case where system injection creates multiple blocks
-                if injected_system_end > 0:
-                    # Look for consecutive blocks that might be part of the injection
-                    for i in range(injected_system_end, len(system)):
-                        block = system[i]
-                        if isinstance(block, dict):
-                            # If this block has similar structure (cache_control, type, text)
-                            # and comes right after detected injection, it's likely injected too
-                            has_cache = "cache_control" in block
-                            has_type_text = (
-                                block.get("type") == "text" and "text" in block
-                            )
-                            if has_cache and has_type_text and i == injected_system_end:
-                                injected_system_end = i + 1
-                            else:
-                                break
-
-                # Count cache_control blocks based on the injected boundary
-                for i, block in enumerate(system):
-                    if isinstance(block, dict) and "cache_control" in block:
-                        if i < injected_system_end:
-                            counts["injected_system"] += 1
-                        else:
-                            counts["user_system"] += 1
-
-        # Count in messages
+        # Find in messages
         messages = data.get("messages", [])
-        for msg in messages:
+        for msg_idx, msg in enumerate(messages):
             content = msg.get("content")
             if isinstance(content, list):
-                for block in content:
+                for block_idx, block in enumerate(content):
                     if isinstance(block, dict) and "cache_control" in block:
-                        counts["messages"] += 1
+                        blocks.append(("message", msg_idx, block_idx))
 
-        return counts
+        return blocks
 
     def _limit_cache_control_blocks(
         self, data: dict[str, Any], max_blocks: int = 4
     ) -> dict[str, Any]:
         """Limit the number of cache_control blocks to comply with Anthropic's limit.
 
-        Priority order:
-        1. Injected system prompt cache_control (highest priority - Claude Code identity)
-        2. User's system prompt cache_control
-        3. User's message cache_control (lowest priority)
+        Simple algorithm: Remove cache_control from the last N blocks when exceeding the limit.
+        This preserves the first blocks (which are typically system prompts) and removes
+        from user messages at the end.
 
         Args:
             data: Request data dictionary
@@ -250,81 +209,56 @@ class ClaudeAPIRequestTransformer:
         # Deep copy to avoid modifying original
         data = copy.deepcopy(data)
 
-        # Count existing blocks
-        counts = self._count_cache_control_blocks(data)
-        total = counts["injected_system"] + counts["user_system"] + counts["messages"]
+        # Find all cache_control blocks
+        cache_blocks = self._find_cache_control_blocks(data)
+        total_blocks = len(cache_blocks)
 
-        if total <= max_blocks:
+        if total_blocks <= max_blocks:
             # No need to remove anything
             return data
 
         logger = get_plugin_logger()
         logger.warning(
             "cache_control_limit_exceeded",
-            total_blocks=total,
+            total_blocks=total_blocks,
             max_blocks=max_blocks,
-            injected=counts["injected_system"],
-            user_system=counts["user_system"],
-            messages=counts["messages"],
             category="transform",
         )
 
         # Calculate how many to remove
-        to_remove = total - max_blocks
-        removed = 0
+        to_remove = total_blocks - max_blocks
 
-        # Remove from messages first (lowest priority)
-        if to_remove > 0 and counts["messages"] > 0:
-            messages = data.get("messages", [])
-            for msg in reversed(messages):  # Remove from end first
-                if removed >= to_remove:
-                    break
-                content = msg.get("content")
-                if isinstance(content, list):
-                    for block in reversed(content):
-                        if removed >= to_remove:
-                            break
+        # Remove cache_control from the last N blocks
+        blocks_to_remove = cache_blocks[-to_remove:]
+        
+        for location_type, location_index, block_index in blocks_to_remove:
+            if location_type == "system":
+                system = data.get("system")
+                if isinstance(system, list) and block_index < len(system):
+                    block = system[block_index]
+                    if isinstance(block, dict) and "cache_control" in block:
+                        del block["cache_control"]
+                        logger.debug(
+                            "removed_cache_control",
+                            location="system",
+                            block_index=block_index,
+                            category="transform",
+                        )
+            elif location_type == "message":
+                messages = data.get("messages", [])
+                if location_index < len(messages):
+                    content = messages[location_index].get("content")
+                    if isinstance(content, list) and block_index < len(content):
+                        block = content[block_index]
                         if isinstance(block, dict) and "cache_control" in block:
                             del block["cache_control"]
-                            removed += 1
                             logger.debug(
                                 "removed_cache_control",
                                 location="message",
+                                message_index=location_index,
+                                block_index=block_index,
                                 category="transform",
                             )
-
-        # Remove from user system prompts next
-        if removed < to_remove and counts["user_system"] > 0:
-            system = data.get("system")
-            if isinstance(system, list):
-                # Find and remove cache_control from user system blocks (non-injected)
-                for block in reversed(system):
-                    if removed >= to_remove:
-                        break
-                    if isinstance(block, dict) and "cache_control" in block:
-                        text = block.get("text", "")
-                        # Skip injected prompts (highest priority)
-                        if (
-                            "Claude Code" not in text
-                            and "Anthropic's official CLI" not in text
-                        ):
-                            del block["cache_control"]
-                            removed += 1
-                            logger.debug(
-                                "removed_cache_control",
-                                location="user_system",
-                                category="transform",
-                            )
-
-        # In theory, we should never need to remove injected system cache_control
-        # but include this for completeness
-        if removed < to_remove:
-            logger.error(
-                "cannot_preserve_injected_cache_control",
-                needed_to_remove=to_remove,
-                actually_removed=removed,
-                category="transform",
-            )
 
         return data
 

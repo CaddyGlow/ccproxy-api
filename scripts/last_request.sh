@@ -27,7 +27,11 @@ if [[ -n "$REQUEST_ID" ]]; then
 else
   # Get the Nth-to-last ID (grouped by unique ID, preserving chronological order)
   # Handle both 8-char hex IDs and full UUIDs
-  ALL_IDS=$(eza -la --sort=modified "${PATH_REQ}" | sed -n -E 's/.*([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})_.*/\1/p; s/.*([a-f0-9]{8})_[^a-f0-9].*/\1/p')
+  # Extract IDs from filenames, prioritizing the file modification order
+  ALL_IDS=$(eza -la --sort=modified "${PATH_REQ}" | sed -n -E '
+    s/^.*[[:space:]]([a-f0-9]{8})_[0-9]{8}_[0-9]{6}_[0-9]{6}_[0-9]{6}_.*\..*$/\1/p
+    s/^.*[[:space:]]([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})_[0-9]{8}_[0-9]{6}_[0-9]{6}_[0-9]{6}_.*\..*$/\1/p
+  ')
   UNIQUE_IDS=$(echo "$ALL_IDS" | awk '{if(!seen[$0]++) print}')
 
   if [[ $N == -1 ]]; then
