@@ -8,21 +8,28 @@ import importlib.util
 import sys
 from importlib.metadata import entry_points
 from pathlib import Path
+from typing import Any
 
 import structlog
 
 from ccproxy.core.plugins.declaration import PluginManifest
+from ccproxy.core.plugins.discovery import PluginFilter
 from ccproxy.core.plugins.factory import PluginFactory
 
 
 logger = structlog.get_logger(__name__)
 
 
-def discover_plugin_cli_extensions() -> list[tuple[str, PluginManifest]]:
+def discover_plugin_cli_extensions(
+    settings: Any | None = None,
+) -> list[tuple[str, PluginManifest]]:
     """Lightweight discovery of plugin CLI extensions.
 
     Only loads plugin factories and manifests, no runtime initialization.
     Used during CLI app creation to register plugin commands/arguments.
+
+    Args:
+        settings: Optional settings object to filter plugins
 
     Returns:
         List of (plugin_name, manifest) tuples for plugins with CLI extensions.
@@ -51,16 +58,49 @@ def discover_plugin_cli_extensions() -> list[tuple[str, PluginManifest]]:
             unique_manifests.append((name, manifest))
             seen_names.add(name)
 
+    # Apply plugin filtering if settings provided
+    if settings is not None:
+        plugin_filter = PluginFilter(
+            enabled_plugins=getattr(settings, "enabled_plugins", None),
+            disabled_plugins=getattr(settings, "disabled_plugins", None),
+        )
+        
+        filtered_manifests = []
+        for name, manifest in unique_manifests:
+            if plugin_filter.is_enabled(name):
+                filtered_manifests.append((name, manifest))
+            else:
+                logger.debug("plugin_cli_extension_disabled", plugin=name, category="plugin")
+        
+        return filtered_manifests
+
     return unique_manifests
 
 
 def _discover_filesystem_cli_extensions() -> list[tuple[str, PluginManifest]]:
-    """Discover CLI extensions from filesystem plugins/ directory."""
+    """Discover CLI extensions from filesystem plugins/ directories."""
     manifests: list[tuple[str, PluginManifest]] = []
-    plugins_dir = Path("plugins")
 
-    if not plugins_dir.exists():
-        return manifests
+    # Check both local plugins/ and ccproxy/plugins/
+    plugins_dirs = [
+        Path("plugins"),
+        Path("ccproxy/plugins"),
+    ]
+
+    for plugins_dir in plugins_dirs:
+        if not plugins_dir.exists():
+            continue
+
+        manifests.extend(_discover_plugins_in_directory(plugins_dir))
+
+    return manifests
+
+
+def _discover_plugins_in_directory(
+    plugins_dir: Path,
+) -> list[tuple[str, PluginManifest]]:
+    """Discover CLI extensions from a specific plugins directory."""
+    manifests: list[tuple[str, PluginManifest]] = []
 
     for plugin_path in plugins_dir.iterdir():
         if not plugin_path.is_dir() or plugin_path.name.startswith("_"):
@@ -124,9 +164,16 @@ def _discover_entry_point_cli_extensions() -> list[tuple[str, PluginManifest]]:
 def _load_plugin_factory_from_file(plugin_file: Path) -> PluginFactory | None:
     """Load plugin factory from a plugin.py file."""
     try:
-        spec = importlib.util.spec_from_file_location(
-            f"plugin_{plugin_file.parent.name}", plugin_file
-        )
+        # Use proper package naming for ccproxy plugins
+        plugin_name = plugin_file.parent.name
+
+        # Check if it's in ccproxy/plugins/ structure
+        if "ccproxy/plugins" in str(plugin_file):
+            module_name = f"ccproxy.plugins.{plugin_name}.plugin"
+        else:
+            module_name = f"plugin_{plugin_name}"
+
+        spec = importlib.util.spec_from_file_location(module_name, plugin_file)
         if not spec or not spec.loader:
             return None
 

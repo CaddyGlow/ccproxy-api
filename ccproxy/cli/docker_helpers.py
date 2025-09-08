@@ -1,35 +1,17 @@
 """Docker helpers for CLI commands using plugin system."""
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from ccproxy.config.settings import Settings
 
 
 if TYPE_CHECKING:
-    # from plugins.docker.config import DockerConfig
-    # from plugins.docker.service import DockerService
-    # Docker plugin not available - using Any for type checking
-    from typing import Any as DockerConfig
-    from typing import Any as DockerService
+    from ccproxy.plugins.docker.adapter import DockerAdapter
+    from ccproxy.plugins.docker.config import DockerConfig
 
 
-def get_docker_service() -> "DockerService | None":
-    """Get Docker service from plugin registry if available.
-
-    Returns:
-        Docker service instance or None if Docker plugin not available
-    """
-    try:
-        # Try to get service container and plugin registry
-        # This is a simplified approach since the plugin registry
-        # integration is complex and may not be fully initialized during CLI usage
-        return None
-    except (ImportError, AttributeError):
-        return None
-
-
-def create_docker_adapter() -> Any:
-    """Create Docker adapter, either from plugin or fallback to direct import.
+def create_docker_adapter() -> "DockerAdapter":
+    """Create Docker adapter from the Docker plugin.
 
     Returns:
         Docker adapter instance
@@ -37,58 +19,69 @@ def create_docker_adapter() -> Any:
     Raises:
         RuntimeError: If Docker is not available
     """
-    # Try to get Docker service from plugin first
-    docker_service = get_docker_service()
-    if docker_service and docker_service.is_enabled():
-        return docker_service.adapter
+    try:
+        from ccproxy.plugins.docker.adapter import DockerAdapter
+        from ccproxy.plugins.docker.config import DockerConfig
 
-    # Fallback to importing from plugin directly
-    # try:
-    #     from plugins.docker.service import create_docker_adapter as plugin_create
-    #
-    #     return plugin_create()
-    # except ImportError as e:
-    raise RuntimeError(
-        "Docker functionality not available. Docker plugin is not installed."
-    )
+        # Create adapter with default config
+        config = DockerConfig()
+        return DockerAdapter(config=config)
 
-
-def get_docker_config() -> "DockerConfig | None":
-    """Get Docker configuration from plugin registry if available.
-
-    Returns:
-        Docker config instance or None if Docker plugin not available
-    """
-    docker_service = get_docker_service()
-    if docker_service:
-        return docker_service.config
-    return None
+    except ImportError as e:
+        raise RuntimeError(
+            f"Docker plugin not available: {e}. Docker functionality is not installed."
+        )
 
 
 def get_docker_config_with_fallback(settings: Settings) -> "DockerConfig":
-    """Get Docker configuration with fallback to settings.docker.
+    """Get Docker configuration with CLI context integration.
 
     Args:
         settings: Main application settings
 
     Returns:
-        Docker configuration
+        Docker configuration with CLI overrides applied
     """
-    # Try to get config from plugin first
-    docker_config = get_docker_config()
-    if docker_config:
-        return docker_config
+    try:
+        from ccproxy.plugins.docker.config import DockerConfig
 
-    # Fallback to creating config from legacy settings (if they exist)
-    # Docker plugin not available, return None
-    # try:
-    #     from plugins.docker.config import DockerConfig
-    #     ...
-    # except ImportError:
-    #     ...
-    raise RuntimeError(
-        "Docker functionality not available. Docker plugin is not installed."
-    )
+        # Create base config
+        config = DockerConfig()
+
+        # Apply CLI context overrides if available
+        cli_context = settings.get_cli_context()
+        if cli_context:
+            # Apply CLI overrides to config
+            if cli_context.get("docker_image"):
+                config.docker_image = cli_context["docker_image"]
+
+            if cli_context.get("docker_home"):
+                config.docker_home_directory = cli_context["docker_home"]
+
+            if cli_context.get("docker_workspace"):
+                config.docker_workspace_directory = cli_context["docker_workspace"]
+
+            if cli_context.get("docker_env"):
+                config.docker_environment.extend(cli_context["docker_env"])
+
+            if cli_context.get("docker_volume"):
+                config.docker_volumes.extend(cli_context["docker_volume"])
+
+            if cli_context.get("user_mapping_enabled") is not None:
+                config.user_mapping_enabled = cli_context["user_mapping_enabled"]
+
+            if cli_context.get("user_uid"):
+                config.user_uid = cli_context["user_uid"]
+
+            if cli_context.get("user_gid"):
+                config.user_gid = cli_context["user_gid"]
+
+        return config
+
+    except ImportError as e:
+        raise RuntimeError(
+            f"Docker plugin not available: {e}. Docker functionality is not installed."
+        )
 
 
 def is_docker_available() -> bool:

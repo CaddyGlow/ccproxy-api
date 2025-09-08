@@ -76,7 +76,7 @@ class ClaudeAPIRequestTransformer:
 
         transformed = headers.copy()
 
-        # Remove hop-by-hop headers and client auth headers
+        # Strip potentially problematic headers (aligned with main branch logic)
         excluded_headers = {
             "host",
             "connection",
@@ -88,8 +88,27 @@ class ClaudeAPIRequestTransformer:
             "proxy-authorization",
             "te",
             "trailer",
-            "x-api-key",  # Remove client's x-api-key header
-            "authorization",  # Remove client's Authorization header
+            # Additional headers from main branch that cause issues
+            "x-forwarded-for",
+            "x-forwarded-proto",
+            "x-forwarded-host",
+            "forwarded",
+            # Authentication headers to be replaced
+            "x-api-key",
+            # Compression headers to avoid decompression issues
+            "accept-encoding",
+            "content-encoding",
+            # CORS headers - should not be forwarded to upstream
+            "origin",
+            "access-control-request-method",
+            "access-control-request-headers",
+            "access-control-allow-origin",
+            "access-control-allow-methods",
+            "access-control-allow-headers",
+            "access-control-allow-credentials",
+            "access-control-max-age",
+            "access-control-expose-headers",
+            "authorization",  # Will be re-injected if access_token is provided
         }
         transformed = {
             k: v for k, v in transformed.items() if k.lower() not in excluded_headers
@@ -158,17 +177,42 @@ class ClaudeAPIRequestTransformer:
                 pass
             elif isinstance(system, list):
                 # Count cache_control in system prompt blocks
-                # The first block(s) are injected, rest are user's
-                injected_count = 0
+                # Find the boundary between injected and user system prompts
+                injected_system_end = 0
+
+                # First, identify all injected system blocks by looking for Claude Code markers
+                # and considering consecutive blocks at the beginning as injected
                 for i, block in enumerate(system):
-                    if isinstance(block, dict) and "cache_control" in block:
-                        # Check if this is the injected prompt (contains Claude Code identity)
+                    if isinstance(block, dict):
                         text = block.get("text", "")
                         if "Claude Code" in text or "Anthropic's official CLI" in text:
-                            counts["injected_system"] += 1
-                            injected_count = max(injected_count, i + 1)
-                        elif i < injected_count:
-                            # Part of injected system (multiple blocks)
+                            injected_system_end = max(injected_system_end, i + 1)
+                        elif i == 0:
+                            # First block is always considered injected even without marker
+                            injected_system_end = max(injected_system_end, 1)
+
+                # If we found Claude Code markers, extend to include consecutive blocks
+                # This handles the case where system injection creates multiple blocks
+                if injected_system_end > 0:
+                    # Look for consecutive blocks that might be part of the injection
+                    for i in range(injected_system_end, len(system)):
+                        block = system[i]
+                        if isinstance(block, dict):
+                            # If this block has similar structure (cache_control, type, text)
+                            # and comes right after detected injection, it's likely injected too
+                            has_cache = "cache_control" in block
+                            has_type_text = (
+                                block.get("type") == "text" and "text" in block
+                            )
+                            if has_cache and has_type_text and i == injected_system_end:
+                                injected_system_end = i + 1
+                            else:
+                                break
+
+                # Count cache_control blocks based on the injected boundary
+                for i, block in enumerate(system):
+                    if isinstance(block, dict) and "cache_control" in block:
+                        if i < injected_system_end:
                             counts["injected_system"] += 1
                         else:
                             counts["user_system"] += 1
@@ -350,18 +394,19 @@ class ClaudeAPIRequestTransformer:
                 mode=self.mode,
                 category="transform",
             )
-            if cached_data and cached_data.system_prompt and "system" not in data:
+            if cached_data and cached_data.system_prompt:
                 system_field = cached_data.system_prompt.system_field
 
-                # Handle different modes
+                # Get the system prompt to inject based on mode
+                detected_system = None
                 if self.mode == "minimal":
                     # In minimal mode, only inject the first system prompt
                     if isinstance(system_field, list) and len(system_field) > 0:
                         # Keep only the first element (Claude Code identification)
                         # Preserve its complete structure including cache_control
-                        data["system"] = [system_field[0]]
+                        detected_system = [system_field[0]]
                         logger.trace(
-                            "injected_minimal_system_prompt",
+                            "prepared_minimal_system_prompt",
                             version=cached_data.claude_version,
                             system_type="list",
                             system_elements=1,
@@ -377,9 +422,9 @@ class ClaudeAPIRequestTransformer:
                             if "\n" in system_field
                             else system_field
                         )
-                        data["system"] = first_line
+                        detected_system = first_line
                         logger.trace(
-                            "injected_minimal_system_prompt",
+                            "prepared_minimal_system_prompt",
                             version=cached_data.claude_version,
                             system_type="string",
                             system_length=len(first_line),
@@ -387,12 +432,12 @@ class ClaudeAPIRequestTransformer:
                         )
                     else:
                         # Fallback to full field if format is unexpected
-                        data["system"] = system_field
+                        detected_system = system_field
                 elif self.mode == "full":
                     # Full mode - inject complete system prompt
-                    data["system"] = system_field
+                    detected_system = system_field
                     logger.trace(
-                        "injected_full_system_prompt",
+                        "prepared_full_system_prompt",
                         version=cached_data.claude_version,
                         system_type=type(system_field).__name__,
                         system_length=len(str(system_field)),
@@ -401,6 +446,54 @@ class ClaudeAPIRequestTransformer:
                         else 1,
                         category="transform",
                     )
+
+                # Always inject the detected system prompt (prepend to existing if present)
+                if detected_system is not None:
+                    existing_system = data.get("system")
+
+                    if existing_system is None:
+                        # No existing system prompt, inject the detected one
+                        data["system"] = detected_system
+                        logger.debug(
+                            "injected_system_prompt_new",
+                            version=cached_data.claude_version,
+                            mode=self.mode,
+                            category="transform",
+                        )
+                    else:
+                        # Request has existing system prompt, prepend the detected one
+                        if isinstance(detected_system, str):
+                            # Detected system is a string
+                            if isinstance(existing_system, str):
+                                # Both are strings, convert to list format
+                                data["system"] = [
+                                    {"type": "text", "text": detected_system},
+                                    {"type": "text", "text": existing_system},
+                                ]
+                            elif isinstance(existing_system, list):
+                                # Detected is string, existing is list
+                                data["system"] = [
+                                    {"type": "text", "text": detected_system}
+                                ] + existing_system
+                        elif isinstance(detected_system, list):
+                            # Detected system is a list
+                            if isinstance(existing_system, str):
+                                # Detected is list, existing is string
+                                data["system"] = detected_system + [
+                                    {"type": "text", "text": existing_system}
+                                ]
+                            elif isinstance(existing_system, list):
+                                # Both are lists, concatenate (detected first)
+                                data["system"] = detected_system + existing_system
+
+                        logger.debug(
+                            "injected_system_prompt_prepended",
+                            version=cached_data.claude_version,
+                            mode=self.mode,
+                            existing_system_type=type(existing_system).__name__,
+                            detected_system_type=type(detected_system).__name__,
+                            category="transform",
+                        )
             else:
                 logger.debug(
                     "system_prompt_not_injected",
@@ -408,8 +501,6 @@ class ClaudeAPIRequestTransformer:
                     if not cached_data
                     else "no_system_prompt"
                     if not cached_data.system_prompt
-                    else "system_already_exists"
-                    if "system" in data
                     else "unknown",
                     mode=self.mode,
                     category="transform",

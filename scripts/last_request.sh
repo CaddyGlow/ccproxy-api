@@ -12,12 +12,12 @@ REQUEST_ID=""
 if [[ $# -gt 0 ]]; then
   if [[ $1 =~ ^-[0-9]+$ ]]; then
     N=$1
-  elif [[ $1 =~ ^[a-f0-9]{8}$ ]]; then
+  elif [[ $1 =~ ^[a-f0-9]{8}$ ]] || [[ $1 =~ ^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$ ]]; then
     REQUEST_ID=$1
   else
     echo "Usage: $0 [-N|request_id]"
     echo "  -N: Show the Nth-to-last request (e.g., -1 for last, -2 for second-to-last)"
-    echo "  request_id: Show the request with the given 8-char hex ID"
+    echo "  request_id: Show the request with the given 8-char hex ID or full UUID"
     exit 1
   fi
 fi
@@ -26,7 +26,8 @@ if [[ -n "$REQUEST_ID" ]]; then
   LAST_UUID="$REQUEST_ID"
 else
   # Get the Nth-to-last ID (grouped by unique ID, preserving chronological order)
-  ALL_IDS=$(eza -la --sort=modified "${PATH_REQ}" | grep -E '[a-f0-9]{8}' | sed -E 's/.*([a-f0-9]{8})_.*/\1/')
+  # Handle both 8-char hex IDs and full UUIDs
+  ALL_IDS=$(eza -la --sort=modified "${PATH_REQ}" | sed -n -E 's/.*([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})_.*/\1/p; s/.*([a-f0-9]{8})_[^a-f0-9].*/\1/p')
   UNIQUE_IDS=$(echo "$ALL_IDS" | awk '{if(!seen[$0]++) print}')
 
   if [[ $N == -1 ]]; then

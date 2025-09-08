@@ -1,5 +1,6 @@
 # Enable local plugin discovery so in-tree plugins are loaded from ./plugins
 plugins_disable_local_discovery = false
+disabled_plugins = ["docker"]
 
 # Logging configuration
 [logging]
@@ -66,10 +67,5 @@ register_app_state_alias = true
 [plugins.analytics]
 enabled = true
 
-# Format Adapter Registry v2 - Declarative System
-# =============================================================================
-# LEGACY MIGRATION NOTES
-# =============================================================================
-# HTTP tracing refactored: Core HTTPTracerHook now handles all HTTP events automatically.
-# Raw HTTP files: /tmp/ccproxy/raw/ | JSON logs: integrated into main log stream
-# Control via: LOGGING__ENABLE_PLUGIN_LOGGING=true (replaces old RAW_HTTP_ENABLED)
+[plugins.docker]
+enabled = false

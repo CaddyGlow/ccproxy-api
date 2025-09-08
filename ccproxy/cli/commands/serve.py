@@ -307,88 +307,6 @@ def api(
             rich_help_panel="Plugin Settings",
         ),
     ] = None,
-    docker: Annotated[
-        bool,
-        typer.Option(
-            "--docker",
-            "-d",
-            help="Run API server using Docker instead of local execution",
-        ),
-    ] = False,
-    docker_image: Annotated[
-        str | None,
-        typer.Option(
-            "--docker-image",
-            help="Docker image to use (overrides configuration)",
-            rich_help_panel="Docker Settings",
-        ),
-    ] = None,
-    docker_env: Annotated[
-        list[str] | None,
-        typer.Option(
-            "--docker-env",
-            "-e",
-            help="Environment variables to pass to Docker container",
-            rich_help_panel="Docker Settings",
-        ),
-    ] = None,
-    docker_volume: Annotated[
-        list[str] | None,
-        typer.Option(
-            "--docker-volume",
-            "-v",
-            help="Volume mounts for Docker container",
-            rich_help_panel="Docker Settings",
-        ),
-    ] = None,
-    docker_arg: Annotated[
-        list[str] | None,
-        typer.Option(
-            "--docker-arg",
-            help="Additional arguments to pass to docker run",
-            rich_help_panel="Docker Settings",
-        ),
-    ] = None,
-    docker_home: Annotated[
-        str | None,
-        typer.Option(
-            "--docker-home",
-            help="Override the home directory for Docker",
-            rich_help_panel="Docker Settings",
-        ),
-    ] = None,
-    docker_workspace: Annotated[
-        str | None,
-        typer.Option(
-            "--docker-workspace",
-            help="Override the workspace directory for Docker",
-            rich_help_panel="Docker Settings",
-        ),
-    ] = None,
-    user_mapping_enabled: Annotated[
-        bool | None,
-        typer.Option(
-            "--user-mapping/--no-user-mapping",
-            help="Enable user mapping for Docker",
-            rich_help_panel="Docker Settings",
-        ),
-    ] = None,
-    user_uid: Annotated[
-        int | None,
-        typer.Option(
-            "--user-uid",
-            help="User UID for Docker user mapping",
-            rich_help_panel="Docker Settings",
-        ),
-    ] = None,
-    user_gid: Annotated[
-        int | None,
-        typer.Option(
-            "--user-gid",
-            help="User GID for Docker user mapping",
-            rich_help_panel="Docker Settings",
-        ),
-    ] = None,
     no_network_calls: Annotated[
         bool,
         typer.Option(
@@ -438,16 +356,6 @@ def api(
             "log_file": log_file,
             "auth_token": auth_token,
             "plugin_setting": plugin_setting,
-            "docker": docker,
-            "docker_image": docker_image,
-            "docker_env": docker_env,
-            "docker_volume": docker_volume,
-            "docker_arg": docker_arg,
-            "docker_home": docker_home,
-            "docker_workspace": docker_workspace,
-            "user_mapping_enabled": user_mapping_enabled,
-            "user_uid": user_uid,
-            "user_gid": user_gid,
             "no_network_calls": no_network_calls,
             "disable_version_check": disable_version_check,
             "disable_pricing_updates": disable_pricing_updates,
@@ -472,31 +380,15 @@ def api(
             port=settings.server.port,
             log_level=settings.logging.level,
             log_file=settings.logging.file,
-            docker_mode=docker,
-            docker_image=get_docker_config_with_fallback(settings).docker_image
-            if docker
-            else None,
             auth_enabled=bool(settings.security.auth_token),
             duckdb_enabled=bool(
                 (settings.plugins.get("duckdb_storage") or {}).get("enabled", False)
             ),
         )
 
-        if docker:
-            _run_docker_server(
-                settings,
-                docker_image=docker_image,
-                docker_env=docker_env,
-                docker_volume=docker_volume,
-                docker_arg=docker_arg,
-                docker_home=docker_home,
-                docker_workspace=docker_workspace,
-                user_mapping_enabled=user_mapping_enabled,
-                user_uid=user_uid,
-                user_gid=user_gid,
-            )
-        else:
-            _run_local_server(settings)
+        # Docker execution is now handled by the Docker plugin
+        # Always run local server - plugins handle their own execution modes
+        _run_local_server(settings)
 
     except ConfigurationError as e:
         toolkit = get_rich_toolkit()

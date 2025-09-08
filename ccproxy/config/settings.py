@@ -100,6 +100,16 @@ class Settings(BaseSettings):
         ),
     )
 
+    enabled_plugins: list[str] | None = Field(
+        default=None,
+        description="List of explicitly enabled plugins (None = all enabled). Takes precedence over disabled_plugins.",
+    )
+
+    disabled_plugins: list[str] | None = Field(
+        default=None,
+        description="List of explicitly disabled plugins.",
+    )
+
     # CLI context for plugin access (set dynamically)
     cli_context: dict[str, Any] = Field(default_factory=dict, exclude=True)
 

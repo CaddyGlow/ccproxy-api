@@ -354,7 +354,12 @@ def setup_logging(
     Setup logging for the entire application using canonical structlog pattern.
     Returns a structlog logger instance.
     """
-    log_level = getattr(logging, log_level_name.upper(), logging.INFO)
+    # Handle custom TRACE level explicitly
+    log_level_upper = log_level_name.upper()
+    if log_level_upper == "TRACE":
+        log_level = TRACE_LEVEL
+    else:
+        log_level = getattr(logging, log_level_upper, logging.INFO)
 
     # Install rich traceback handler globally with frame limit
     # install_rich_traceback(

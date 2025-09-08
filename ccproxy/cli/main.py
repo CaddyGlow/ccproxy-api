@@ -49,7 +49,16 @@ logger = get_logger(__name__)
 def register_plugin_cli_extensions(app: typer.Typer) -> None:
     """Register plugin CLI commands and arguments during app creation."""
     try:
-        plugin_manifests = discover_plugin_cli_extensions()
+        # Load settings to apply plugin filtering
+        try:
+            from ccproxy.config.settings import Settings
+            settings = Settings.from_config()
+        except Exception as e:
+            # Graceful degradation - use no filtering if settings fail to load
+            logger.debug("settings_load_failed_for_cli_discovery", error=str(e))
+            settings = None
+            
+        plugin_manifests = discover_plugin_cli_extensions(settings)
 
         logger.debug(
             "plugin_cli_discovery_complete",
