@@ -33,7 +33,7 @@ from ccproxy.config.constants import (
 from ccproxy.core.logging import get_plugin_logger
 from ccproxy.services.adapters.http_adapter import BaseHTTPAdapter
 from ccproxy.services.handler_config import HandlerConfig
-from ccproxy.streaming.deferred import DeferredStreaming
+from ccproxy.streaming import DeferredStreaming
 
 from .transformers import ClaudeAPIRequestTransformer, ClaudeAPIResponseTransformer
 

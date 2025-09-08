@@ -178,7 +178,7 @@ class SimpleDuckDBStorage:
                 except TimeoutError:
                     continue  # Check shutdown event and continue
 
-                # Process the queued write operation synchronously
+                # We successfully got an item, so we need to mark it done
                 try:
                     # If we receive a sentinel item, break out quickly on shutdown
                     if data is self._sentinel:
@@ -204,8 +204,9 @@ class SimpleDuckDBStorage:
                         request_id=data.get("request_id"),
                         exc_info=e,
                     )
-                finally:
-                    # Always mark the task as done, regardless of success/failure
+
+                # Always mark the task as done for regular items, regardless of success/failure
+                if data is not self._sentinel:
                     self._write_queue.task_done()
 
             except asyncio.CancelledError as e:
@@ -248,9 +249,7 @@ class SimpleDuckDBStorage:
                         request_id=data.get("request_id"),
                         exc_info=e,
                     )
-                finally:
-                    # Always mark the task as done, regardless of success/failure
-                    self._write_queue.task_done()
+                # Note: No task_done() call needed for get_nowait() items
 
             except asyncio.QueueEmpty:
                 # No more items to process

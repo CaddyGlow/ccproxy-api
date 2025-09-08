@@ -24,7 +24,7 @@ from ccproxy.services.cli_detection import CLIDetectionService
 from ccproxy.services.config import ProxyConfiguration
 from ccproxy.services.http_pool import HTTPPoolManager
 from ccproxy.services.mocking import MockResponseHandler
-from ccproxy.streaming.handler import StreamingHandler
+from ccproxy.streaming import StreamingHandler
 from ccproxy.testing import RealisticMockResponseGenerator
 from ccproxy.utils.binary_resolver import BinaryResolver
 

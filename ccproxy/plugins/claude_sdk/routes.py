@@ -7,7 +7,7 @@ from starlette.responses import Response, StreamingResponse
 
 from ccproxy.api.dependencies import get_plugin_adapter
 from ccproxy.auth.conditional import ConditionalAuthDep
-from ccproxy.streaming.deferred import DeferredStreaming
+from ccproxy.streaming import DeferredStreaming
 
 
 ClaudeSDKAdapterDep = Annotated[Any, Depends(get_plugin_adapter("claude_sdk"))]

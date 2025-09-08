@@ -13,7 +13,7 @@ from ccproxy.http.processor import RequestProcessor
 from ccproxy.services.cache import ResponseCache
 from ccproxy.services.handler_config import HandlerConfig
 from ccproxy.services.interfaces import IRequestTracer
-from ccproxy.streaming.deferred import DeferredStreaming
+from ccproxy.streaming import DeferredStreaming
 
 
 if TYPE_CHECKING:

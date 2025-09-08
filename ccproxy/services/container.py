@@ -27,7 +27,7 @@ from ccproxy.services.interfaces import (
     NullRequestTracer,
 )
 from ccproxy.services.mocking import MockResponseHandler
-from ccproxy.streaming.handler import StreamingHandler
+from ccproxy.streaming import StreamingHandler
 from ccproxy.utils.binary_resolver import BinaryResolver
 
 

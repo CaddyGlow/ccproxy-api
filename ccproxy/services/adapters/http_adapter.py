@@ -22,8 +22,7 @@ from ccproxy.services.interfaces import (
     NullStreamingHandler,
     StreamingMetrics,
 )
-from ccproxy.streaming.buffer import StreamingBufferService
-from ccproxy.streaming.deferred import DeferredStreaming
+from ccproxy.streaming import DeferredStreaming, StreamingBufferService
 from ccproxy.utils.headers import HeaderBag
 
 

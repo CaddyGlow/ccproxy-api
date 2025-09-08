@@ -12,6 +12,7 @@ from ccproxy.core.request_context import RequestContext
 from ccproxy.hooks import HookManager
 from ccproxy.streaming.deferred import DeferredStreaming
 
+
 if TYPE_CHECKING:
     from ccproxy.services.handler_config import HandlerConfig
 

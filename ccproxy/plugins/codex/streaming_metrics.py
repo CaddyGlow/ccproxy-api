@@ -8,7 +8,7 @@ import json
 from typing import Any
 
 from ccproxy.core.logging import get_logger
-from ccproxy.streaming.interfaces import StreamingMetrics
+from ccproxy.streaming import StreamingMetrics
 
 
 logger = get_logger(__name__)

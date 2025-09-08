@@ -6,7 +6,7 @@ from typing import Any, Protocol, runtime_checkable
 from starlette.responses import Response, StreamingResponse
 
 from ccproxy.services.handler_config import HandlerConfig
-from ccproxy.streaming.deferred import DeferredStreaming
+from ccproxy.streaming import DeferredStreaming
 
 
 @runtime_checkable

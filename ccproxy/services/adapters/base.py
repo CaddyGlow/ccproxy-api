@@ -6,7 +6,7 @@ from typing import Any
 from fastapi import Request
 from starlette.responses import Response, StreamingResponse
 
-from ccproxy.streaming.deferred import DeferredStreaming
+from ccproxy.streaming import DeferredStreaming
 
 
 class BaseAdapter(ABC):
