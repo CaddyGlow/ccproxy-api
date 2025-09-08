@@ -6,18 +6,12 @@ from typing import Any
 from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from ccproxy.config.discovery import find_toml_config_file
 from ccproxy.core.logging import get_logger
 
-from .auth import AuthSettings
-from .binary import BinarySettings
-from .cors import CORSSettings
-from .docker_settings import DockerSettings
-from .http import HTTPSettings
-from .logging import LoggingSettings
-from .scheduler import SchedulerSettings
-from .security import SecuritySettings
-from .server import ServerSettings
+from .core import CORSSettings, HTTPSettings, LoggingSettings, ServerSettings
+from .runtime import BinarySettings, DockerSettings
+from .security import AuthSettings, SecuritySettings
+from .utils import SchedulerSettings, find_toml_config_file
 
 
 def _auth_default() -> AuthSettings:

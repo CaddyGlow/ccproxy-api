@@ -10,7 +10,7 @@ from ccproxy.core.logging import get_plugin_logger
 
 
 if TYPE_CHECKING:
-    from ccproxy.config.cors import CORSSettings
+    from ccproxy.config.core import CORSSettings
 
 
 logger = get_plugin_logger()

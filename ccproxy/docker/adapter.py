@@ -119,7 +119,7 @@ class DockerAdapter:
     # Helper to normalize input lists
     @staticmethod
     def _kv_list_to_env(items: list[str] | None) -> DockerEnv:
-        from ccproxy.config.docker_settings import validate_environment_variable
+        from ccproxy.config.runtime import validate_environment_variable
 
         env: DockerEnv = {}
         if not items:

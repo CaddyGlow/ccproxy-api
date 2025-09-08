@@ -1,9 +1,28 @@
-"""Security configuration settings."""
+"""Security and authentication configuration settings."""
 
 from typing import Any
 
-from pydantic import BaseModel, Field, SecretStr, field_validator
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator
 
+
+# === Authentication Configuration ===
+
+class AuthSettings(BaseModel):
+    """Configuration for authentication behavior and caching."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    credentials_ttl_seconds: float = Field(
+        3600.0,
+        description=(
+            "Cache duration for loaded credentials before rechecking storage. "
+            "Use nested env var AUTH__CREDENTIALS_TTL_SECONDS to override."
+        ),
+        ge=0.0,
+    )
+
+
+# === Security Configuration ===
 
 class SecuritySettings(BaseModel):
     """Security-specific configuration settings."""

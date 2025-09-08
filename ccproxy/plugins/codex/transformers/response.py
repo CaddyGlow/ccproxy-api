@@ -2,7 +2,7 @@
 
 from typing import Any
 
-from ccproxy.config.cors import CORSSettings
+from ccproxy.config.core import CORSSettings
 from ccproxy.core.logging import get_plugin_logger
 from ccproxy.utils.cors import get_cors_headers, get_request_origin
 

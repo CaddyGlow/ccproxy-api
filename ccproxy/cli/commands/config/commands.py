@@ -262,7 +262,7 @@ def config_init(
     toolkit = get_rich_toolkit()
 
     try:
-        from ccproxy.config.discovery import get_ccproxy_config_dir
+        from ccproxy.config.utils import get_ccproxy_config_dir
 
         if output_dir is None:
             output_dir = get_ccproxy_config_dir()
@@ -398,7 +398,7 @@ def generate_token(
 
         if save:
             if config_file is None:
-                from ccproxy.config.discovery import find_toml_config_file
+                from ccproxy.config.utils import find_toml_config_file
 
                 config_file = find_toml_config_file()
 

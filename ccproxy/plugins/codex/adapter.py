@@ -12,7 +12,7 @@ from fastapi import Request
 from starlette.responses import Response, StreamingResponse
 
 from ccproxy.auth.manager import AuthManager
-from ccproxy.config.constants import (
+from ccproxy.config.utils import (
     ANTHROPIC_MESSAGES_PATH,
     CODEX_API_BASE_URL,
     CODEX_RESPONSES_ENDPOINT,

@@ -25,7 +25,7 @@ if TYPE_CHECKING:
 
     from .detection_service import ClaudeAPIDetectionService
 
-from ccproxy.config.constants import (
+from ccproxy.config.utils import (
     CLAUDE_API_BASE_URL,
     CLAUDE_MESSAGES_ENDPOINT,
     OPENAI_CHAT_COMPLETIONS_PATH,

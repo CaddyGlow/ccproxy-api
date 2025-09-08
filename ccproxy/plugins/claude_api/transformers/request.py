@@ -70,14 +70,14 @@ class ClaudeAPIRequestTransformer:
             access_token_length=len(access_token) if access_token else 0,
             header_count=len(headers),
             has_x_api_key="x-api-key" in headers,
-            has_authorization="Authorization" in headers,
+            has_authorization="authorization" in headers,
             category="transform",
         )
 
         transformed = headers.copy()
 
         # Remove hop-by-hop headers and client auth headers
-        hop_by_hop = {
+        excluded_headers = {
             "host",
             "connection",
             "keep-alive",
@@ -92,7 +92,7 @@ class ClaudeAPIRequestTransformer:
             "authorization",  # Remove client's Authorization header
         }
         transformed = {
-            k: v for k, v in transformed.items() if k.lower() not in hop_by_hop
+            k: v for k, v in transformed.items() if k.lower() not in excluded_headers
         }
 
         # Inject detected headers if available
@@ -122,13 +122,19 @@ class ClaudeAPIRequestTransformer:
             raise RuntimeError("access_token parameter is required")
 
         # Inject access token in Authentication header
-        transformed["Authorization"] = f"Bearer {access_token}"
+        transformed["authorization"] = f"Bearer {access_token}"
+
+        # exclude_headers
+        excluded_headers.remove("authorization")  # We may have just added this
+        transformed = {
+            k: v for k, v in transformed.items() if k.lower() not in excluded_headers
+        }
 
         # Debug logging - what headers are we returning?
         logger.trace(
             "transform_headers_result",
             has_x_api_key="x-api-key" in transformed,
-            has_authorization="Authorization" in transformed,
+            has_authorization="authorization" in transformed,
             header_count=len(transformed),
             detected_headers_used=has_detected_headers,
             category="transform",

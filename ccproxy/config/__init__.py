@@ -1,8 +1,8 @@
 """Configuration module for Claude Proxy API Server."""
 
-from .docker_settings import DockerSettings
+from .runtime import DockerSettings
 from .settings import Settings
-from .validators import (
+from .utils import (
     ConfigValidationError,
     validate_config_dict,
     validate_cors_origins,

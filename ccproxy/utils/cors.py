@@ -6,7 +6,7 @@ import structlog
 
 
 if TYPE_CHECKING:
-    from ccproxy.config.cors import CORSSettings
+    from ccproxy.config.core import CORSSettings
 
 logger = structlog.get_logger(__name__)
 

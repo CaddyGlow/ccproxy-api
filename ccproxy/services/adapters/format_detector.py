@@ -1,6 +1,6 @@
 from typing import Any
 
-from ccproxy.config.constants import (
+from ccproxy.config.utils import (
     ANTHROPIC_MESSAGES_PATH,
     CODEX_RESPONSES_ENDPOINT,
     OPENAI_CHAT_COMPLETIONS_PATH,
