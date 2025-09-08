@@ -20,7 +20,8 @@ from starlette.middleware.base import BaseHTTPMiddleware
 if TYPE_CHECKING:
     from ccproxy.auth.oauth.registry import OAuthRegistry
     from ccproxy.config.settings import Settings
-    from ccproxy.core.plugins import OAuthClientProtocol, PluginRegistry
+    from ccproxy.core.plugins import PluginRegistry
+    from ccproxy.core.plugins.protocol import OAuthClientProtocol
     from ccproxy.hooks.base import Hook
     from ccproxy.hooks.manager import HookManager
     from ccproxy.hooks.registry import HookRegistry
@@ -33,7 +34,6 @@ if TYPE_CHECKING:
         IRequestTracer,
         StreamingMetrics,
     )
-
 
 T = TypeVar("T")
 
