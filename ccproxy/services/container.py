@@ -13,7 +13,6 @@ import structlog
 
 from ccproxy.config.settings import Settings
 from ccproxy.hooks.thread_manager import BackgroundHookThreadManager
-from ccproxy.http.connection_pool import ConnectionPoolManager
 from ccproxy.services.adapters.format_detector import FormatDetectionService
 from ccproxy.services.adapters.format_registry import FormatAdapterRegistry
 from ccproxy.services.cache import ResponseCache
@@ -124,9 +123,7 @@ class ServiceContainer:
         """Get response cache service instance."""
         return self.get_service(ResponseCache)
 
-    def get_connection_pool_manager(self) -> ConnectionPoolManager:
-        """Get connection pool manager service instance."""
-        return self.get_service(ConnectionPoolManager)
+    # ConnectionPoolManager removed; use HTTPPoolManager for pooling
 
     def get_format_registry(self) -> FormatAdapterRegistry:
         """Get format adapter registry service instance."""

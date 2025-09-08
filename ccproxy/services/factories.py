@@ -16,7 +16,6 @@ from ccproxy.config.settings import Settings
 from ccproxy.hooks import HookManager
 from ccproxy.hooks.thread_manager import BackgroundHookThreadManager
 from ccproxy.http.client import HTTPClientFactory
-from ccproxy.http.connection_pool import ConnectionPoolManager
 from ccproxy.services.adapters.format_detector import FormatDetectionService
 from ccproxy.services.adapters.format_registry import FormatAdapterRegistry
 from ccproxy.services.cache import ResponseCache
@@ -64,9 +63,6 @@ class ConcreteServiceFactory:
         )
         self._container.register_service(
             ResponseCache, factory=self.create_response_cache
-        )
-        self._container.register_service(
-            ConnectionPoolManager, factory=self.create_connection_pool_manager
         )
         self._container.register_service(
             BinaryResolver, factory=self.create_binary_resolver
@@ -145,10 +141,7 @@ class ConcreteServiceFactory:
         """Create response cache instance."""
         return ResponseCache()
 
-    def create_connection_pool_manager(self) -> ConnectionPoolManager:
-        """Create connection pool manager instance."""
-        # Use defaults from constants; tune here if settings add knobs later
-        return ConnectionPoolManager()
+    # Removed: legacy ConnectionPoolManager in favor of HTTPPoolManager only
 
     def create_binary_resolver(self) -> BinaryResolver:
         """Create a BinaryResolver from settings."""

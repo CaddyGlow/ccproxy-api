@@ -14,6 +14,7 @@ import structlog
 
 from ccproxy.config.settings import Settings
 from ccproxy.http.client import HTTPClientFactory
+from ccproxy.config.constants import HTTP_STREAMING_TIMEOUT
 
 
 logger = structlog.get_logger(__name__)
@@ -135,6 +136,32 @@ class HTTPPoolManager:
                     http2=False,  # Enable HTTP/1 for default client
                 )
             return self._shared_client
+
+    async def get_streaming_client(
+        self,
+        base_url: str | None = None,
+        *,
+        headers: dict[str, str] | None = None,
+        **kwargs: Any,
+    ) -> httpx.AsyncClient:
+        """Get or create a client optimized for streaming.
+
+        Uses a longer read timeout appropriate for SSE/streaming endpoints.
+
+        Args:
+            base_url: Optional base URL for the client
+            headers: Optional default headers
+            **kwargs: Additional client kwargs merged into configuration
+
+        Returns:
+            Configured httpx.AsyncClient instance
+        """
+        return await self.get_client(
+            base_url=base_url,
+            timeout=HTTP_STREAMING_TIMEOUT,
+            headers=headers,
+            **kwargs,
+        )
 
     def get_shared_client_sync(self) -> httpx.AsyncClient:
         """Get or create the default client synchronously.
