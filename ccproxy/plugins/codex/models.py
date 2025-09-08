@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from enum import Enum
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any, Literal, TypedDict
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -173,3 +173,15 @@ class CodexResponse(BaseModel):
     model_config = ConfigDict(
         extra="allow"
     )  # Allow additional fields for compatibility
+
+
+class CodexAuthData(TypedDict, total=False):
+    """Authentication data for Codex/OpenAI provider.
+
+    Attributes:
+        access_token: Bearer token for OpenAI API authentication
+        chatgpt_account_id: Account ID for ChatGPT session-based requests
+    """
+
+    access_token: str | None
+    chatgpt_account_id: str | None

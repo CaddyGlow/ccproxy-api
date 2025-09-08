@@ -43,6 +43,7 @@ HTTP_CLIENT_POOL_SIZE = 20  # Max connections per pool
 
 # === Configuration Validators ===
 
+
 class ConfigValidationError(Exception):
     """Configuration validation error."""
 
@@ -270,6 +271,7 @@ def validate_config_dict(config: dict[str, Any]) -> dict[str, Any]:
 
 # === Configuration Discovery ===
 
+
 def find_toml_config_file() -> Path | None:
     """Find the TOML configuration file for ccproxy.
 
@@ -361,6 +363,7 @@ def get_ccproxy_cache_dir() -> Path:
 
 
 # === Scheduler Configuration ===
+
 
 class SchedulerSettings(BaseSettings):
     """

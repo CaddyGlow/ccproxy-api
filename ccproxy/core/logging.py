@@ -636,16 +636,13 @@ def bootstrap_cli_logging(argv: list[str] | None = None) -> None:
         env_level = os.getenv("LOGGING__LEVEL")
         env_file = os.getenv("LOGGING__FILE")
         env_format = os.getenv("LOGGING__FORMAT")
-        legacy_json_env = os.getenv("CCPROXY_JSON_LOGS")
 
         # CLI overrides
         arg_level = _parse_arg_value(argv, "--log-level")
         arg_file = _parse_arg_value(argv, "--log-file")
 
         # Decide whether to bootstrap at all: only if any override present
-        any_override = any(
-            [env_level, env_file, env_format, legacy_json_env, arg_level, arg_file]
-        )
+        any_override = any([env_level, env_file, env_format, arg_level, arg_file])
         if not any_override:
             return
 

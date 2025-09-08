@@ -7,6 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator
 
 # === Authentication Configuration ===
 
+
 class AuthSettings(BaseModel):
     """Configuration for authentication behavior and caching."""
 
@@ -23,6 +24,7 @@ class AuthSettings(BaseModel):
 
 
 # === Security Configuration ===
+
 
 class SecuritySettings(BaseModel):
     """Security-specific configuration settings."""

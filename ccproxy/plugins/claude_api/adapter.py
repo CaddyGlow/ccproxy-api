@@ -5,7 +5,6 @@ from typing import TYPE_CHECKING, Any, cast
 
 
 if TYPE_CHECKING:
-    from ccproxy.services.adapters.format_detector import FormatDetectionService
     from ccproxy.services.adapters.format_registry import FormatAdapterRegistry
 
 from fastapi import HTTPException, Request
@@ -26,8 +25,10 @@ if TYPE_CHECKING:
     from .detection_service import ClaudeAPIDetectionService
 
 from ccproxy.config.utils import (
+    ANTHROPIC_MESSAGES_PATH,
     CLAUDE_API_BASE_URL,
     CLAUDE_MESSAGES_ENDPOINT,
+    CODEX_RESPONSES_ENDPOINT,
     OPENAI_CHAT_COMPLETIONS_PATH,
 )
 from ccproxy.core.logging import get_plugin_logger
@@ -35,6 +36,7 @@ from ccproxy.services.adapters.http_adapter import BaseHTTPAdapter
 from ccproxy.services.handler_config import HandlerConfig
 from ccproxy.streaming import DeferredStreaming
 
+from .models import ClaudeAPIAuthData
 from .transformers import ClaudeAPIRequestTransformer, ClaudeAPIResponseTransformer
 
 
@@ -61,7 +63,6 @@ class ClaudeAPIAdapter(BaseHTTPAdapter):
         hook_manager: "HookManager | None" = None,
         # Format services
         format_registry: "FormatAdapterRegistry | None" = None,
-        format_detector: "FormatDetectionService | None" = None,
         # Plugin-specific context
         context: "PluginContext | dict[str, Any] | None" = None,
     ) -> None:
@@ -76,7 +77,6 @@ class ClaudeAPIAdapter(BaseHTTPAdapter):
             streaming_handler: Optional streaming handler
             hook_manager: Optional hook manager for event emission
             format_registry: Format adapter registry for protocol conversions
-            format_detector: Format detection service for endpoint analysis
             context: Optional plugin context containing plugin_registry and other services
         """
         # Get injection mode from config if available
@@ -128,12 +128,10 @@ class ClaudeAPIAdapter(BaseHTTPAdapter):
 
         # Assign format services from constructor parameters
         self.format_registry = format_registry
-        self.format_detector = format_detector
 
         logger.debug(
             "format_services_loaded",
             has_registry=bool(self.format_registry),
-            has_detector=bool(self.format_detector),
         )
 
         # Current endpoint tracking for format detection
@@ -151,18 +149,14 @@ class ClaudeAPIAdapter(BaseHTTPAdapter):
         # Store current endpoint for format detection
         self._current_endpoint = endpoint
 
-        # Check for session-based endpoints
-        if "/v1/messages" in endpoint or endpoint.endswith(CLAUDE_MESSAGES_ENDPOINT):
+        # Check for session-based endpoints using constants
+        if endpoint.endswith(ANTHROPIC_MESSAGES_PATH):
             # Native Anthropic format
             return f"{CLAUDE_API_BASE_URL}{CLAUDE_MESSAGES_ENDPOINT}", False
-        elif (
-            "/chat/completions" in endpoint
-            or "/v1/chat/completions" in endpoint
-            or endpoint.endswith(OPENAI_CHAT_COMPLETIONS_PATH)
-        ):
+        elif endpoint.endswith(OPENAI_CHAT_COMPLETIONS_PATH):
             # OpenAI format - needs conversion
             return f"{CLAUDE_API_BASE_URL}{CLAUDE_MESSAGES_ENDPOINT}", True
-        elif "/responses" in endpoint or "/v1/responses" in endpoint:
+        elif CODEX_RESPONSES_ENDPOINT in endpoint:
             # Response API format - needs conversion
             return f"{CLAUDE_API_BASE_URL}{CLAUDE_MESSAGES_ENDPOINT}", True
         else:
@@ -170,6 +164,38 @@ class ClaudeAPIAdapter(BaseHTTPAdapter):
                 status_code=404,
                 detail=f"Endpoint {endpoint} not supported by Claude API plugin",
             )
+
+    def _get_format_from_endpoint(self, endpoint: str) -> str:
+        """Get source format from endpoint using constants.
+
+        Args:
+            endpoint: The endpoint path
+
+        Returns:
+            Source format string
+
+        Raises:
+            ValueError: If endpoint format cannot be determined
+        """
+        if endpoint.endswith(ANTHROPIC_MESSAGES_PATH):
+            return "anthropic"
+        elif endpoint.endswith(OPENAI_CHAT_COMPLETIONS_PATH):
+            return "openai"
+        elif CODEX_RESPONSES_ENDPOINT in endpoint:
+            return "response_api"
+        else:
+            raise ValueError(f"Unable to detect format from endpoint: {endpoint}")
+
+    async def _extract_provider_auth_data(self) -> ClaudeAPIAuthData:
+        """Extract provider-specific authentication data including access token.
+
+        Claude API uses standard bearer token auth.
+
+        Returns:
+            Typed authentication data for Claude API
+        """
+        access_token = await self._auth_manager.get_access_token()
+        return ClaudeAPIAuthData(access_token=access_token)
 
     async def _create_handler_config(
         self,
@@ -189,16 +215,14 @@ class ClaudeAPIAdapter(BaseHTTPAdapter):
         response_adapter = None
 
         if needs_conversion:
-            if not self.format_registry or not self.format_detector:
-                raise RuntimeError("Format services not available for conversion")
+            if not self.format_registry:
+                raise RuntimeError("Format registry not available for conversion")
 
             try:
-                # Detect source format from endpoint
+                # Detect source format from endpoint using constants
                 if self._current_endpoint is None:
                     raise RuntimeError("Current endpoint is not set")
-                source_format = self.format_detector.get_format_from_endpoint(
-                    self._current_endpoint
-                )
+                source_format = self._get_format_from_endpoint(self._current_endpoint)
                 target_format = (
                     "anthropic"  # Claude API always expects Anthropic format
                 )

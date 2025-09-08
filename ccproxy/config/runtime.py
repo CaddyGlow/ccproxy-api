@@ -155,6 +155,7 @@ def validate_docker_volumes(volumes: list[str]) -> list[str]:
 
 # === Binary Resolution Configuration ===
 
+
 class BinarySettings(BaseModel):
     """Binary resolution and package manager fallback settings."""
 
@@ -217,6 +218,7 @@ class BinarySettings(BaseModel):
 
 
 # === Docker Configuration ===
+
 
 class DockerSettings(BaseModel):
     """Docker configuration settings for running Claude commands in containers."""

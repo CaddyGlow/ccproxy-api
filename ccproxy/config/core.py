@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field, field_validator
 
 # === Server Configuration ===
 
+
 class ServerSettings(BaseModel):
     """Server-specific configuration settings."""
 
@@ -45,6 +46,7 @@ class ServerSettings(BaseModel):
 
 # === HTTP Configuration ===
 
+
 class HTTPSettings(BaseModel):
     """HTTP client configuration settings.
 
@@ -69,6 +71,7 @@ class HTTPSettings(BaseModel):
 
 
 # === CORS Configuration ===
+
 
 class CORSSettings(BaseModel):
     """CORS-specific configuration settings."""
@@ -212,6 +215,7 @@ class CORSSettings(BaseModel):
 
 
 # === Logging Configuration ===
+
 
 class LoggingSettings(BaseModel):
     """Centralized logging configuration - core app only."""

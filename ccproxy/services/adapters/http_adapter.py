@@ -32,8 +32,8 @@ if TYPE_CHECKING:
     from ccproxy.auth.manager import AuthManager
     from ccproxy.core.plugins import PluginContext
     from ccproxy.core.request_context import RequestContext
-    from ccproxy.services.handler_config import PluginTransformerProtocol
     from ccproxy.http.pool import HTTPPoolManager
+    from ccproxy.services.handler_config import PluginTransformerProtocol
 
 
 logger = get_plugin_logger()
@@ -178,70 +178,8 @@ class BaseHTTPAdapter(BaseAdapter):
         # Get request body and auth
         body = await request.body()
 
-        # Get access token directly from auth manager
-        access_token = await self._auth_manager.get_access_token()
-
-        # Get chatgpt_account_id from user profile if available
-        chatgpt_account_id = None
-        try:
-            user_profile = await self._auth_manager.get_user_profile()
-            logger.debug(
-                "auth_profile_extraction",
-                has_profile=user_profile is not None,
-                profile_type=type(user_profile).__name__ if user_profile else None,
-                has_chatgpt_account_id_attr=hasattr(user_profile, "chatgpt_account_id")
-                if user_profile
-                else False,
-            )
-
-            if user_profile and hasattr(user_profile, "chatgpt_account_id"):
-                account_id = getattr(user_profile, "chatgpt_account_id", None)
-                logger.debug(
-                    "chatgpt_account_id_extraction",
-                    raw_account_id=account_id,
-                    account_id_type=type(account_id).__name__
-                    if account_id is not None
-                    else None,
-                    is_string=isinstance(account_id, str),
-                    is_truthy=bool(account_id),
-                )
-                if account_id and isinstance(account_id, str):
-                    chatgpt_account_id = account_id
-                    logger.debug(
-                        "chatgpt_account_id_set",
-                        account_id_length=len(account_id),
-                    )
-
-            # Also debug the extras content to see JWT claims structure
-            if user_profile and hasattr(user_profile, "extras"):
-                extras = getattr(user_profile, "extras", {})
-                auth_claims = extras.get("https://api.openai.com/auth", {})
-                logger.debug(
-                    "jwt_claims_debug",
-                    has_extras=bool(extras),
-                    extras_keys=list(extras.keys())
-                    if isinstance(extras, dict)
-                    else None,
-                    has_auth_claims=bool(auth_claims),
-                    auth_claims_keys=list(auth_claims.keys())
-                    if isinstance(auth_claims, dict)
-                    else None,
-                    raw_chatgpt_account_id=auth_claims.get("chatgpt_account_id")
-                    if isinstance(auth_claims, dict)
-                    else None,
-                )
-
-        except Exception as e:
-            logger.warning(
-                "chatgpt_account_id_extraction_failed",
-                error=str(e),
-                error_type=type(e).__name__,
-            )
-
-        # Build auth headers with Bearer token only if available
-        # auth_headers: dict[str, str] = {}
-        # if access_token:
-        #     auth_headers["authorization"] = f"Bearer {access_token}"
+        # Extract all provider-specific auth data including access token
+        provider_auth_data = await self._extract_provider_auth_data()
 
         # Determine endpoint handling (provider-specific)
         target_url, needs_conversion = await self._resolve_endpoint(endpoint)
@@ -256,9 +194,7 @@ class BaseHTTPAdapter(BaseAdapter):
             method=method,
             target_url=target_url,
             body=body,
-            auth_headers={},
-            access_token=access_token,
-            chatgpt_account_id=chatgpt_account_id,
+            provider_auth_data=provider_auth_data,
             # Preserve incoming order and original casing for upstream
             request_headers=HeaderBag.from_request(
                 request, case_mode="preserve"
@@ -277,6 +213,16 @@ class BaseHTTPAdapter(BaseAdapter):
             )
         if not self._http_handler:
             raise HTTPException(status_code=503, detail="HTTP handler not initialized")
+
+    @abstractmethod
+    async def _extract_provider_auth_data(self) -> dict[str, Any]:
+        """Extract provider-specific authentication data including access token.
+
+        Returns:
+            Dictionary containing auth data including access_token and provider-specific fields
+            (e.g., access_token, chatgpt_account_id for OpenAI)
+        """
+        ...
 
     @abstractmethod
     async def _resolve_endpoint(self, endpoint: str) -> tuple[str, bool]:
@@ -534,9 +480,7 @@ class BaseHTTPAdapter(BaseAdapter):
         method: str,
         target_url: str,
         body: bytes,
-        auth_headers: dict[str, str],
-        access_token: str | None,
-        chatgpt_account_id: str | None,
+        provider_auth_data: dict[str, Any],
         request_headers: dict[str, str],
         handler_config: HandlerConfig,
         endpoint: str,
@@ -549,8 +493,7 @@ class BaseHTTPAdapter(BaseAdapter):
             method: HTTP method
             target_url: Target API URL
             body: Request body
-            auth_headers: Authentication headers
-            access_token: Access token if available
+            provider_auth_data: Provider-specific auth data (e.g., access_token, chatgpt_account_id)
             request_headers: Original request headers
             handler_config: Handler configuration
             endpoint: Original endpoint for logging
@@ -571,10 +514,9 @@ class BaseHTTPAdapter(BaseAdapter):
         ) = await self._http_handler.prepare_request(
             request_body=body,
             handler_config=handler_config,
-            auth_headers=auth_headers,
+            auth_headers={},  # No longer using separate auth headers
             request_headers=request_headers,
-            access_token=access_token,
-            chatgpt_account_id=chatgpt_account_id,
+            **provider_auth_data,
         )
 
         # Parse request body to extract model and other metadata

@@ -226,7 +226,6 @@ class BaseProviderPluginFactory(ProviderPluginFactory):
                     streaming_handler=streaming_handler or NullStreamingHandler(),
                     hook_manager=hook_manager,
                     format_registry=adapter_dependencies["format_registry"],
-                    format_detector=adapter_dependencies["format_detector"],
                     context=context,
                 ),
             )
@@ -259,7 +258,6 @@ class BaseProviderPluginFactory(ProviderPluginFactory):
                 "streaming_handler": streaming_handler,
                 "hook_manager": hook_manager,
                 "format_registry": adapter_dependencies["format_registry"],
-                "format_detector": adapter_dependencies["format_detector"],
                 "context": context,
             }
 

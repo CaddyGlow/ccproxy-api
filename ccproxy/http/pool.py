@@ -12,8 +12,8 @@ from urllib.parse import urlparse
 import httpx
 import structlog
 
-from ccproxy.config.utils import HTTP_STREAMING_TIMEOUT
 from ccproxy.config.settings import Settings
+from ccproxy.config.utils import HTTP_STREAMING_TIMEOUT
 from ccproxy.http.client import HTTPClientFactory
 
 

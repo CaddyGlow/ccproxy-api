@@ -5,7 +5,6 @@ from typing import TYPE_CHECKING, Any, cast
 
 if TYPE_CHECKING:
     from ccproxy.adapters.base import APIAdapter
-    from ccproxy.services.adapters.format_detector import FormatDetectionService
     from ccproxy.services.adapters.format_registry import FormatAdapterRegistry
 
 from fastapi import Request
@@ -39,6 +38,7 @@ if TYPE_CHECKING:
 
 from ccproxy.services.adapters.format_context import FormatContext
 
+from .models import CodexAuthData
 from .transformers import CodexRequestTransformer, CodexResponseTransformer
 
 
@@ -65,7 +65,6 @@ class CodexAdapter(BaseHTTPAdapter):
         hook_manager: "HookManager | None" = None,
         # Format services
         format_registry: "FormatAdapterRegistry | None" = None,
-        format_detector: "FormatDetectionService | None" = None,
         # Plugin-specific context
         context: "PluginContext | dict[str, Any] | None" = None,
     ):
@@ -80,7 +79,6 @@ class CodexAdapter(BaseHTTPAdapter):
             streaming_handler: Optional streaming handler
             hook_manager: Optional hook manager for event emission
             format_registry: Format adapter registry for protocol conversions
-            format_detector: Format detection service for endpoint analysis
             context: Optional plugin context containing plugin_registry and other services
         """
         # Initialize transformers
@@ -116,12 +114,10 @@ class CodexAdapter(BaseHTTPAdapter):
 
         # Assign format services from constructor parameters
         self.format_registry = format_registry
-        self.format_detector = format_detector
 
         logger.debug(
             "format_services_loaded",
             has_registry=bool(self.format_registry),
-            has_detector=bool(self.format_detector),
         )
 
         # Current endpoint tracking for format detection
@@ -183,6 +179,100 @@ class CodexAdapter(BaseHTTPAdapter):
                 f"No format adapter found for {source_format}->response_api"
             ) from e
 
+    def _get_format_from_endpoint(self, endpoint: str) -> str:
+        """Get source format from endpoint using constants.
+
+        Args:
+            endpoint: The endpoint path
+
+        Returns:
+            Source format string
+
+        Raises:
+            ValueError: If endpoint format cannot be determined
+        """
+        if endpoint.endswith(OPENAI_CHAT_COMPLETIONS_PATH):
+            return "openai"
+        elif endpoint.endswith(ANTHROPIC_MESSAGES_PATH):
+            return "anthropic"
+        elif CODEX_RESPONSES_ENDPOINT in endpoint:
+            return "response_api"
+        else:
+            raise ValueError(f"Unable to detect format from endpoint: {endpoint}")
+
+    async def _extract_provider_auth_data(self) -> CodexAuthData:
+        """Extract provider-specific authentication data including access token.
+
+        For Codex/OpenAI, extract access_token and chatgpt_account_id from user profile.
+
+        Returns:
+            Typed authentication data for Codex/OpenAI provider
+        """
+        # Get access token
+        access_token = await self._auth_manager.get_access_token()
+
+        # Get chatgpt_account_id
+        chatgpt_account_id = None
+        try:
+            user_profile = await self._auth_manager.get_user_profile()
+            logger.debug(
+                "auth_profile_extraction",
+                has_profile=user_profile is not None,
+                profile_type=type(user_profile).__name__ if user_profile else None,
+                has_chatgpt_account_id_attr=hasattr(user_profile, "chatgpt_account_id")
+                if user_profile
+                else False,
+            )
+
+            if user_profile and hasattr(user_profile, "chatgpt_account_id"):
+                account_id = getattr(user_profile, "chatgpt_account_id", None)
+                logger.debug(
+                    "chatgpt_account_id_extraction",
+                    raw_account_id=account_id,
+                    account_id_type=type(account_id).__name__
+                    if account_id is not None
+                    else None,
+                    is_string=isinstance(account_id, str),
+                    is_truthy=bool(account_id),
+                )
+                if account_id and isinstance(account_id, str):
+                    chatgpt_account_id = account_id
+                    logger.debug(
+                        "chatgpt_account_id_set",
+                        account_id_length=len(account_id),
+                    )
+
+            # Also debug the extras content to see JWT claims structure
+            if user_profile and hasattr(user_profile, "extras"):
+                extras = getattr(user_profile, "extras", {})
+                auth_claims = extras.get("https://api.openai.com/auth", {})
+                logger.debug(
+                    "jwt_claims_debug",
+                    has_extras=bool(extras),
+                    extras_keys=list(extras.keys())
+                    if isinstance(extras, dict)
+                    else None,
+                    has_auth_claims=bool(auth_claims),
+                    auth_claims_keys=list(auth_claims.keys())
+                    if isinstance(auth_claims, dict)
+                    else None,
+                    raw_chatgpt_account_id=auth_claims.get("chatgpt_account_id")
+                    if isinstance(auth_claims, dict)
+                    else None,
+                )
+
+        except Exception as e:
+            logger.warning(
+                "chatgpt_account_id_extraction_failed",
+                error=str(e),
+                error_type=type(e).__name__,
+            )
+
+        return CodexAuthData(
+            access_token=access_token,
+            chatgpt_account_id=chatgpt_account_id,
+        )
+
     async def _create_handler_config(
         self,
         needs_conversion: bool,
@@ -202,13 +292,9 @@ class CodexAdapter(BaseHTTPAdapter):
 
         if needs_conversion:
             try:
-                if self.format_detector is None:
-                    raise RuntimeError("Format detector is not available")
                 if self._current_endpoint is None:
                     raise RuntimeError("Current endpoint is not set")
-                source_format = self.format_detector.get_format_from_endpoint(
-                    self._current_endpoint
-                )
+                source_format = self._get_format_from_endpoint(self._current_endpoint)
                 format_adapter = self._get_format_adapter(source_format)
                 format_context = FormatContext(
                     source_format=source_format,

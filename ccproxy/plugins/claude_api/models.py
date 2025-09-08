@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from enum import Enum
-from typing import Annotated, Any
+from typing import Annotated, Any, TypedDict
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -162,3 +162,13 @@ class ClaudeCacheData(BaseModel):
         for k, v in self.headers_ordered_pairs():
             out[k] = v
         return out
+
+
+class ClaudeAPIAuthData(TypedDict, total=False):
+    """Authentication data for Claude API provider.
+
+    Attributes:
+        access_token: Bearer token for Anthropic Claude API authentication
+    """
+
+    access_token: str | None

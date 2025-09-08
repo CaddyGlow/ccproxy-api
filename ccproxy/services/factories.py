@@ -16,12 +16,11 @@ from ccproxy.config.settings import Settings
 from ccproxy.hooks import HookManager
 from ccproxy.hooks.thread_manager import BackgroundHookThreadManager
 from ccproxy.http.client import HTTPClientFactory
-from ccproxy.services.adapters.format_detector import FormatDetectionService
+from ccproxy.http.pool import HTTPPoolManager
 from ccproxy.services.adapters.format_registry import FormatAdapterRegistry
 from ccproxy.services.cache import ResponseCache
 from ccproxy.services.cli_detection import CLIDetectionService
 from ccproxy.services.config import ProxyConfiguration
-from ccproxy.http.pool import HTTPPoolManager
 from ccproxy.services.mocking import MockResponseHandler
 from ccproxy.streaming import StreamingHandler
 from ccproxy.testing import RealisticMockResponseGenerator
@@ -71,9 +70,6 @@ class ConcreteServiceFactory:
         # NEW: Register format services
         self._container.register_service(
             FormatAdapterRegistry, factory=self.create_format_registry
-        )
-        self._container.register_service(
-            FormatDetectionService, factory=self.create_format_detector
         )
 
         # Register background thread manager for hooks
@@ -191,10 +187,6 @@ class ConcreteServiceFactory:
             adapters=list(core_adapters.keys()),
             category="format",
         )
-
-    def create_format_detector(self) -> FormatDetectionService:
-        """Create format detection service."""
-        return FormatDetectionService()
 
     def create_background_hook_thread_manager(self) -> BackgroundHookThreadManager:
         """Create background hook thread manager instance."""

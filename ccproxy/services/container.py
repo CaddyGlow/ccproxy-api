@@ -13,13 +13,12 @@ import structlog
 
 from ccproxy.config.settings import Settings
 from ccproxy.hooks.thread_manager import BackgroundHookThreadManager
-from ccproxy.services.adapters.format_detector import FormatDetectionService
+from ccproxy.http.pool import HTTPPoolManager
 from ccproxy.services.adapters.format_registry import FormatAdapterRegistry
 from ccproxy.services.cache import ResponseCache
 from ccproxy.services.cli_detection import CLIDetectionService
 from ccproxy.services.config import ProxyConfiguration
 from ccproxy.services.factories import ConcreteServiceFactory
-from ccproxy.http.pool import HTTPPoolManager
 from ccproxy.services.interfaces import (
     IRequestTracer,
     NullMetricsCollector,
@@ -129,10 +128,6 @@ class ServiceContainer:
         """Get format adapter registry service instance."""
         return self.get_service(FormatAdapterRegistry)
 
-    def get_format_detector(self) -> FormatDetectionService:
-        """Get format detection service instance."""
-        return self.get_service(FormatDetectionService)
-
     def get_background_hook_thread_manager(self) -> BackgroundHookThreadManager:
         """Get background hook thread manager instance."""
         return self.get_service(BackgroundHookThreadManager)
@@ -148,7 +143,6 @@ class ServiceContainer:
             "config": self.get_proxy_config(),
             "cli_detection_service": self.get_cli_detection_service(),
             "format_registry": self.get_format_registry(),
-            "format_detector": self.get_format_detector(),
         }
 
     async def close(self) -> None:

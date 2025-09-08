@@ -46,8 +46,11 @@ class CodexFormatAdapter(APIAdapter):
         )
 
         if "messages" in request_data:
-            # Detect format type for logging
-            format_type = self._detect_request_format(request_data)
+            # Simple format detection for logging (duplicates logic is now removed)
+            if "max_tokens" in request_data:
+                format_type = "anthropic_messages"
+            else:
+                format_type = "openai_chat"
 
             # Use ResponseAdapter to convert Messages → Response API
             # This works for both OpenAI Chat Completions and Anthropic Messages
@@ -332,23 +335,3 @@ class CodexFormatAdapter(APIAdapter):
             return self._has_tool_calls_in_response(response)
 
         return False
-
-    def _detect_request_format(self, request_data: dict[str, Any]) -> str:
-        """Detect whether request is OpenAI Chat Completions or Anthropic Messages format.
-
-        Args:
-            request_data: The request data
-
-        Returns:
-            Format type: 'openai_chat' or 'anthropic_messages'
-        """
-        # Check for Anthropic-specific fields
-        if "max_tokens" in request_data:
-            return "anthropic_messages"
-
-        # Check for OpenAI-specific fields
-        if "max_completion_tokens" in request_data or "max_tokens" not in request_data:
-            return "openai_chat"
-
-        # Default to openai_chat if unclear
-        return "openai_chat"

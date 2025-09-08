@@ -11,8 +11,8 @@ from typing import Any, NamedTuple
 
 import structlog
 
-from ccproxy.config.utils import get_ccproxy_cache_dir
 from ccproxy.config.settings import Settings
+from ccproxy.config.utils import get_ccproxy_cache_dir
 from ccproxy.utils.binary_resolver import BinaryResolver, CLIInfo
 from ccproxy.utils.caching import TTLCache
 
