@@ -12,18 +12,15 @@ from typing import TYPE_CHECKING, Any, Protocol, TypeVar
 
 import httpx
 import structlog
-from fastapi import APIRouter
+from fastapi import APIRouter, FastAPI
 from pydantic import BaseModel
+from starlette.middleware.base import BaseHTTPMiddleware
 
 
 if TYPE_CHECKING:
-    from fastapi import FastAPI
-    from starlette.middleware.base import BaseHTTPMiddleware
-
     from ccproxy.auth.oauth.registry import OAuthRegistry
     from ccproxy.config.settings import Settings
-    from ccproxy.core.plugins.factory import PluginRegistry
-    from ccproxy.core.plugins.protocol import OAuthClientProtocol
+    from ccproxy.core.plugins import OAuthClientProtocol, PluginRegistry
     from ccproxy.hooks.base import Hook
     from ccproxy.hooks.manager import HookManager
     from ccproxy.hooks.registry import HookRegistry
@@ -36,9 +33,6 @@ if TYPE_CHECKING:
         IRequestTracer,
         StreamingMetrics,
     )
-else:
-    # Runtime import - mypy doesn't have stubs for fastapi.middleware
-    from starlette.middleware.base import BaseHTTPMiddleware
 
 
 T = TypeVar("T")

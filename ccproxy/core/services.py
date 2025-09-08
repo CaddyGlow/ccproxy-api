@@ -8,7 +8,7 @@ from ccproxy.config.settings import Settings
 
 
 if TYPE_CHECKING:
-    from ccproxy.core.plugins.factory import PluginRegistry
+    from ccproxy.core.plugins import PluginRegistry
     from ccproxy.scheduler.core import Scheduler
     from ccproxy.services.adapters.format_registry import FormatAdapterRegistry
     from ccproxy.services.http_pool import HTTPPoolManager

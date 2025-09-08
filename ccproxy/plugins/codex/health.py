@@ -46,7 +46,7 @@ async def codex_health_check(
             )
 
         # Standardized details models
-        from ccproxy.core.plugins.models import (
+        from ccproxy.core.plugins import (
             AuthHealth,
             CLIHealth,
             ConfigHealth,

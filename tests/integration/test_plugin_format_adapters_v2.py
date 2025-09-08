@@ -8,8 +8,7 @@ import pytest
 
 from ccproxy.adapters.base import APIAdapter
 from ccproxy.config.settings import Settings
-from ccproxy.core.plugins.declaration import FormatAdapterSpec, PluginManifest
-from ccproxy.core.plugins.factory import PluginRegistry
+from ccproxy.core.plugins import FormatAdapterSpec, PluginManifest, PluginRegistry
 from ccproxy.services.container import ServiceContainer
 
 
@@ -40,8 +39,10 @@ class TestPluginFormatAdapterIntegrationV2:
         plugin_registry = PluginRegistry()
 
         # Create a mock plugin factory with format adapters
-        from ccproxy.core.plugins.base_factory import BaseProviderPluginFactory
-        from ccproxy.core.plugins.runtime import ProviderPluginRuntime
+        from ccproxy.core.plugins import (
+            BaseProviderPluginFactory,
+            ProviderPluginRuntime,
+        )
 
         class TestPluginRuntime(ProviderPluginRuntime):
             async def _setup_format_registry(self):
@@ -94,15 +95,14 @@ class TestPluginFormatAdapterIntegrationV2:
         )
 
         # Mock factory for the invalid plugin
-        from ccproxy.core.plugins.factory import BasePluginFactory
-        from ccproxy.core.plugins.runtime import BasePluginRuntime
+        from ccproxy.core.plugins import BasePluginFactory, BasePluginRuntime
 
         class InvalidPluginFactory(BasePluginFactory):
             def __init__(self):
                 super().__init__(manifest, BasePluginRuntime)
 
             def create_context(self, core_services):
-                from ccproxy.core.plugins.declaration import PluginContext
+                from ccproxy.core.plugins import PluginContext
 
                 return PluginContext()
 

@@ -26,7 +26,7 @@ from ccproxy.services.handler_config import HandlerConfig
 
 
 if TYPE_CHECKING:
-    from ccproxy.core.plugins.declaration import PluginContext
+    from ccproxy.core.plugins import PluginContext
     from ccproxy.core.request_context import RequestContext
     from ccproxy.hooks import HookManager
     from ccproxy.services.interfaces import (

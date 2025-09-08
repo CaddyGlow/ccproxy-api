@@ -78,14 +78,14 @@ async def list_plugins(
 
     # Access v2 plugin registry from app state
     if hasattr(request.app.state, "plugin_registry"):
-        from ccproxy.core.plugins.factory import PluginRegistry
+        from ccproxy.core.plugins import PluginRegistry
 
         registry: PluginRegistry = request.app.state.plugin_registry
 
         for name in registry.list_plugins():
             factory = registry.get_factory(name)
             if factory:
-                from ccproxy.core.plugins.factory import factory_type_name
+                from ccproxy.core.plugins import factory_type_name
 
                 manifest = factory.get_manifest()
                 plugin_type = factory_type_name(factory)
@@ -123,7 +123,7 @@ async def plugin_health(
     if not hasattr(request.app.state, "plugin_registry"):
         raise HTTPException(status_code=503, detail="Plugin registry not initialized")
 
-    from ccproxy.core.plugins.factory import PluginRegistry
+    from ccproxy.core.plugins import PluginRegistry
 
     registry: PluginRegistry = request.app.state.plugin_registry
 
@@ -229,7 +229,7 @@ async def plugins_status(
     if not hasattr(request.app.state, "plugin_registry"):
         raise HTTPException(status_code=503, detail="Plugin registry not initialized")
 
-    from ccproxy.core.plugins.factory import PluginRegistry
+    from ccproxy.core.plugins import PluginRegistry
 
     registry: PluginRegistry = request.app.state.plugin_registry
 
@@ -243,7 +243,7 @@ async def plugins_status(
         runtime = registry.get_runtime(name)
 
         # Determine plugin type via factory helper
-        from ccproxy.core.plugins.factory import factory_type_name
+        from ccproxy.core.plugins import factory_type_name
 
         plugin_type = factory_type_name(factory)
 

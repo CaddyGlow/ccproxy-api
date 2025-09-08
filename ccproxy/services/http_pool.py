@@ -12,9 +12,9 @@ from urllib.parse import urlparse
 import httpx
 import structlog
 
+from ccproxy.config.constants import HTTP_STREAMING_TIMEOUT
 from ccproxy.config.settings import Settings
 from ccproxy.http.client import HTTPClientFactory
-from ccproxy.config.constants import HTTP_STREAMING_TIMEOUT
 
 
 logger = structlog.get_logger(__name__)

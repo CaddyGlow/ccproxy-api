@@ -12,6 +12,7 @@ from ccproxy.core.logging import TraceBoundLogger, get_logger
 
 from .declaration import PluginContext, PluginManifest, PluginRuntimeProtocol
 
+
 __all__ = [
     "BasePluginRuntime",
     "SystemPluginRuntime",

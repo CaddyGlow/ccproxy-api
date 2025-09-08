@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi import APIRouter
 
-from ccproxy.core.plugins.factory import PluginRegistry
+from ccproxy.core.plugins import PluginRegistry
 from ccproxy.core.plugins.protocol import HealthCheckResult
 from ccproxy.models.provider import ProviderConfig
 from ccproxy.services.adapters.base import BaseAdapter

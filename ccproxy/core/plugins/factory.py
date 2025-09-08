@@ -16,10 +16,6 @@ if TYPE_CHECKING:
     from ccproxy.config.settings import Settings
 
 from .declaration import PluginContext, PluginManifest
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:  # Avoid import cycle at runtime
-    from .runtime import BasePluginRuntime
 
 
 logger = structlog.get_logger(__name__)
@@ -169,7 +165,7 @@ class SystemPluginFactory(BasePluginFactory):
             manifest: Plugin manifest
         """
         # Local import to avoid circular dependency at module load time
-        from ccproxy.core.plugins.runtime import SystemPluginRuntime
+        from ccproxy.core.plugins import SystemPluginRuntime
 
         super().__init__(manifest, SystemPluginRuntime)
 
@@ -194,7 +190,7 @@ class ProviderPluginFactory(BasePluginFactory):
             manifest: Plugin manifest
         """
         # Local import to avoid circular dependency at module load time
-        from ccproxy.core.plugins.runtime import ProviderPluginRuntime
+        from ccproxy.core.plugins import ProviderPluginRuntime
 
         super().__init__(manifest, ProviderPluginRuntime)
 
@@ -273,7 +269,7 @@ class AuthProviderPluginFactory(BasePluginFactory):
             manifest: Plugin manifest
         """
         # Local import to avoid circular dependency at module load time
-        from ccproxy.core.plugins.runtime import AuthProviderPluginRuntime
+        from ccproxy.core.plugins import AuthProviderPluginRuntime
 
         super().__init__(manifest, AuthProviderPluginRuntime)
 

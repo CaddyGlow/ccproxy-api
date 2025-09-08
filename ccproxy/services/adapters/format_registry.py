@@ -6,7 +6,7 @@ from ccproxy.adapters.base import APIAdapter
 
 
 if TYPE_CHECKING:
-    from ccproxy.core.plugins.declaration import (
+    from ccproxy.core.plugins import (
         FormatAdapterSpec,
         PluginManifest,
     )

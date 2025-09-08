@@ -7,7 +7,7 @@ including manifest registration and conflict resolution.
 import pytest
 
 from ccproxy.adapters.base import APIAdapter
-from ccproxy.core.plugins.declaration import (
+from ccproxy.core.plugins import (
     FormatAdapterSpec,
     PluginManifest,
 )

@@ -10,7 +10,7 @@ import time
 import pytest
 
 from ccproxy.adapters.base import APIAdapter
-from ccproxy.core.plugins.declaration import FormatAdapterSpec, PluginManifest
+from ccproxy.core.plugins import FormatAdapterSpec, PluginManifest
 from ccproxy.services.adapters.format_registry import FormatAdapterRegistry
 
 

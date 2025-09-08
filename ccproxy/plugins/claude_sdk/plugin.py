@@ -4,13 +4,14 @@ from typing import Any
 
 from ccproxy.core.logging import get_plugin_logger
 from ccproxy.core.plugins import (
+    BaseProviderPluginFactory,
+    FormatAdapterSpec,
+    FormatPair,
     PluginContext,
     PluginManifest,
     ProviderPluginRuntime,
     TaskSpec,
 )
-from ccproxy.core.plugins.base_factory import BaseProviderPluginFactory
-from ccproxy.core.plugins.declaration import FormatAdapterSpec, FormatPair
 
 from .adapter import ClaudeSDKAdapter
 from .config import ClaudeSDKSettings

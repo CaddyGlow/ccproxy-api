@@ -4,12 +4,12 @@ from typing import TYPE_CHECKING, Any
 
 from ccproxy.core.logging import get_plugin_logger
 from ccproxy.core.plugins import (
+    BaseProviderPluginFactory,
+    FormatAdapterSpec,
     PluginContext,
     PluginManifest,
     ProviderPluginRuntime,
 )
-from ccproxy.core.plugins.base_factory import BaseProviderPluginFactory
-from ccproxy.core.plugins.declaration import FormatAdapterSpec
 from ccproxy.plugins.oauth_codex.manager import CodexTokenManager
 
 from .adapter import CodexAdapter

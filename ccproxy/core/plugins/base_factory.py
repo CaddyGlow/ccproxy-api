@@ -6,10 +6,7 @@ shared across all provider plugin factories, reducing code duplication by 60-70%
 
 from typing import TYPE_CHECKING, Any, cast
 
-
-if TYPE_CHECKING:
-    from ccproxy.config.settings import Settings
-
+import httpx
 from fastapi import APIRouter
 
 from ccproxy.services.adapters.base import BaseAdapter
@@ -32,15 +29,10 @@ from .declaration import (
     TaskSpec,
 )
 from .factory import ProviderPluginFactory
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:  # Avoid import cycle at runtime
-    from .runtime import ProviderPluginRuntime
 
 
 if TYPE_CHECKING:
-    import httpx
-
+    from ccproxy.config.settings import Settings
     from ccproxy.services.http_pool import HTTPPoolManager
 
 
@@ -97,7 +89,7 @@ class BaseProviderPluginFactory(ProviderPluginFactory):
 
         # Validate runtime class is a proper subclass
         # Import locally to avoid circular import during module import
-        from ccproxy.core.plugins.runtime import ProviderPluginRuntime
+        from ccproxy.core.plugins import ProviderPluginRuntime
 
         if not issubclass(self.runtime_class, ProviderPluginRuntime):
             raise TypeError(

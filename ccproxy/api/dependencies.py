@@ -77,8 +77,7 @@ def get_plugin_adapter(plugin_name: str) -> Any:
                 status_code=503, detail="Plugin registry not initialized"
             )
 
-        from ccproxy.core.plugins.factory import PluginRegistry
-        from ccproxy.core.plugins.runtime import ProviderPluginRuntime
+        from ccproxy.core.plugins import PluginRegistry, ProviderPluginRuntime
 
         registry: PluginRegistry = request.app.state.plugin_registry
         runtime = registry.get_runtime(plugin_name)

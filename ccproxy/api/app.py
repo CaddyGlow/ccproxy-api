@@ -22,9 +22,9 @@ from ccproxy.core.logging import TraceBoundLogger, get_logger, setup_logging
 from ccproxy.core.plugins import (
     MiddlewareManager,
     PluginRegistry,
+    load_plugin_system,
     setup_default_middleware,
 )
-from ccproxy.core.plugins.loader import load_plugin_system
 from ccproxy.hooks import HookManager, HookRegistry
 from ccproxy.hooks.events import HookEvent
 from ccproxy.services.container import ServiceContainer

@@ -16,7 +16,7 @@ from ccproxy.auth.oauth.registry import OAuthRegistry
 from ccproxy.cli.helpers import get_rich_toolkit
 from ccproxy.config.settings import Settings
 from ccproxy.core.logging import bootstrap_cli_logging, get_logger, setup_logging
-from ccproxy.core.plugins.loader import load_cli_plugins
+from ccproxy.core.plugins import load_cli_plugins
 from ccproxy.hooks.manager import HookManager
 from ccproxy.hooks.registry import HookRegistry
 from ccproxy.services.container import ServiceContainer
@@ -305,11 +305,11 @@ async def discover_oauth_providers(
     try:
         settings = container.get_service(Settings)
         # For discovery, we can load all plugins temporarily since we don't initialize them
-        from ccproxy.core.plugins.loader import load_plugin_system
+        from ccproxy.core.plugins import load_plugin_system
 
         registry, _ = load_plugin_system(settings)
         for name, factory in registry.factories.items():
-            from ccproxy.core.plugins.factory import AuthProviderPluginFactory
+            from ccproxy.core.plugins import AuthProviderPluginFactory
 
             if isinstance(factory, AuthProviderPluginFactory):
                 if name == "oauth_claude":
