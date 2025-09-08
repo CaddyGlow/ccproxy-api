@@ -10,7 +10,7 @@ from fastapi import Depends, Request
 
 from ccproxy.config.settings import Settings
 from ccproxy.core.logging import get_logger
-from ccproxy.hooks import HookManager
+from ccproxy.core.plugins.hooks import HookManager
 from ccproxy.services.container import ServiceContainer
 
 

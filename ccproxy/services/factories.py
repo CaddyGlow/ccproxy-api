@@ -13,8 +13,8 @@ import structlog
 
 from ccproxy.adapters.openai.adapter import OpenAIAdapter
 from ccproxy.config.settings import Settings
-from ccproxy.hooks import HookManager
-from ccproxy.hooks.thread_manager import BackgroundHookThreadManager
+from ccproxy.core.plugins.hooks import HookManager
+from ccproxy.core.plugins.hooks.thread_manager import BackgroundHookThreadManager
 from ccproxy.http.client import HTTPClientFactory
 from ccproxy.http.pool import HTTPPoolManager
 from ccproxy.services.adapters.format_registry import FormatAdapterRegistry

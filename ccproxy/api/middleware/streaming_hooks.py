@@ -13,12 +13,12 @@ from typing import TYPE_CHECKING, Any
 
 from fastapi.responses import StreamingResponse
 
-from ccproxy.hooks import HookContext, HookEvent
+from ccproxy.core.plugins.hooks import HookContext, HookEvent
 from ccproxy.utils.headers import HeaderBag
 
 
 if TYPE_CHECKING:
-    from ccproxy.hooks import HookManager
+    from ccproxy.core.plugins.hooks import HookManager
 
 
 class StreamingResponseWithHooks(StreamingResponse):

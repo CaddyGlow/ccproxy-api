@@ -3,9 +3,9 @@
 import time
 
 from ccproxy.core.logging import get_logger
-from ccproxy.hooks import Hook
-from ccproxy.hooks.base import HookContext
-from ccproxy.hooks.events import HookEvent
+from ccproxy.core.plugins.hooks import Hook
+from ccproxy.core.plugins.hooks.base import HookContext
+from ccproxy.core.plugins.hooks.events import HookEvent
 
 from .collector import PrometheusMetrics
 from .config import MetricsConfig

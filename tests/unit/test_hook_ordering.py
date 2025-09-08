@@ -6,9 +6,9 @@ from typing import Any
 
 import pytest
 
-from ccproxy.hooks import HookEvent, HookManager, HookRegistry
-from ccproxy.hooks.base import Hook, HookContext
-from ccproxy.hooks.layers import HookLayer
+from ccproxy.core.plugins.hooks import HookEvent, HookManager, HookRegistry
+from ccproxy.core.plugins.hooks.base import Hook, HookContext
+from ccproxy.core.plugins.hooks.layers import HookLayer
 
 
 class TestHook(Hook):

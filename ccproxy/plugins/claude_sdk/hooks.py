@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import Any
 
 from ccproxy.core.logging import get_logger
-from ccproxy.hooks import Hook, HookContext, HookEvent, HookManager
+from ccproxy.core.plugins.hooks import Hook, HookContext, HookEvent, HookManager
 
 
 logger = get_logger(__name__)

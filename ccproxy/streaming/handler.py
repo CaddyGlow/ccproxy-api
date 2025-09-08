@@ -8,8 +8,8 @@ from typing import TYPE_CHECKING, Any
 import httpx
 import structlog
 
+from ccproxy.core.plugins.hooks import HookManager
 from ccproxy.core.request_context import RequestContext
-from ccproxy.hooks import HookManager
 from ccproxy.streaming.deferred import DeferredStreaming
 
 

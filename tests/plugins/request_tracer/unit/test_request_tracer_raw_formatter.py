@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from ccproxy.hooks.implementations.formatters.raw import RawHTTPFormatter
+from ccproxy.core.plugins.hooks.implementations.formatters.raw import RawHTTPFormatter
 from ccproxy.plugins.request_tracer.config import RequestTracerConfig
 
 

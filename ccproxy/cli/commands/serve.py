@@ -9,6 +9,10 @@ import typer
 import uvicorn
 from click import get_current_context
 
+from ccproxy.cli.docker_helpers import (
+    create_docker_adapter,
+    get_docker_config_with_fallback,
+)
 from ccproxy.cli.helpers import (
     get_rich_toolkit,
     is_running_in_docker,
@@ -20,9 +24,6 @@ from ccproxy.config.settings import (
 )
 from ccproxy.core._version import __version__
 from ccproxy.core.logging import get_logger
-from ccproxy.docker import (
-    create_docker_adapter,
-)
 
 from ..options.security_options import validate_auth_token
 from ..options.server_options import (
@@ -103,8 +104,9 @@ def _run_docker_server(
 
     toolkit.print_title("Docker Configuration Summary", tag="config")
 
-    home_dir = docker_home or settings.docker.docker_home_directory
-    workspace_dir = docker_workspace or settings.docker.docker_workspace_directory
+    docker_config = get_docker_config_with_fallback(settings)
+    home_dir = docker_home or docker_config.docker_home_directory
+    workspace_dir = docker_workspace or docker_config.docker_workspace_directory
 
     toolkit.print("Volumes:", tag="config")
     if home_dir:
@@ -165,7 +167,7 @@ def _run_docker_server(
 
     logger.info(
         "docker_server_config",
-        configured_image=settings.docker.docker_image,
+        configured_image=docker_config.docker_image,
         effective_image=image,
     )
 
@@ -446,7 +448,9 @@ def api(
             log_level=settings.logging.level,
             log_file=settings.logging.file,
             docker_mode=docker,
-            docker_image=settings.docker.docker_image if docker else None,
+            docker_image=get_docker_config_with_fallback(settings).docker_image
+            if docker
+            else None,
             auth_enabled=bool(settings.security.auth_token),
             duckdb_enabled=bool(
                 (settings.plugins.get("duckdb_storage") or {}).get("enabled", False)
@@ -599,7 +603,8 @@ def claude(
 
         if docker:
             adapter = create_docker_adapter()
-            toolkit.print_title(f"image {settings.docker.docker_image}", tag="docker")
+            docker_config = get_docker_config_with_fallback(settings)
+            toolkit.print_title(f"image {docker_config.docker_image}", tag="docker")
             image, volumes, environment, command, user_context, _ = (
                 adapter.build_docker_run_args(
                     settings,

@@ -9,15 +9,15 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from ccproxy.docker.adapter import DockerAdapter
-from ccproxy.docker.docker_path import DockerPath, DockerPathSet
-from ccproxy.docker.middleware import LoggerOutputMiddleware, create_logger_middleware
-from ccproxy.docker.models import DockerUserContext
-from ccproxy.docker.stream_process import (
+from plugins.docker.adapter import DockerAdapter
+from plugins.docker.docker_path import DockerPath, DockerPathSet
+from plugins.docker.middleware import LoggerOutputMiddleware, create_logger_middleware
+from plugins.docker.models import DockerUserContext
+from plugins.docker.stream_process import (
     DefaultOutputMiddleware,
     run_command,
 )
-from ccproxy.docker.validators import create_docker_error, validate_port_spec
+from plugins.docker.validators import create_docker_error, validate_port_spec
 
 
 # Mark entire module as integration tests that exercise Docker boundaries

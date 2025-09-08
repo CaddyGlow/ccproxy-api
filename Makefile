@@ -105,24 +105,24 @@ test:
 # New test suite targets
 
 # Run fast unit tests only (exclude tests marked with 'real_api' and 'integration')
-test-unit: 
+test-unit:
 	@echo "Running fast unit tests (excluding real API calls and integration tests)..."
 	@if [ ! -d "tests" ]; then echo "Error: tests/ directory not found. Create tests/ directory and add test files."; exit 1; fi
 	$(UV_RUN) pytest -v --import-mode=importlib -m "not real_api and not integration" --tb=short
 
 # Run integration tests across all plugins
-test-integration: 
+test-integration:
 	@echo "Running integration tests across all plugins..."
 	$(UV_RUN) pytest -v --import-mode=importlib -m "integration" --tb=short -n auto tests/
 
 # Run integration tests for specific plugin (usage: make test-integration-plugin PLUGIN=metrics)
-test-integration-plugin: 
+test-integration-plugin:
 	@if [ -z "$(PLUGIN)" ]; then echo "Error: Please specify PLUGIN=<plugin_name>"; exit 1; fi
 	@echo "Running integration tests for $(PLUGIN) plugin..."
 	$(UV_RUN) pytest -v --import-mode=importlib -m "integration" --tb=short tests/plugins/$(PLUGIN)/integration/
 
 # Run tests with real API calls (marked with 'real_api')
-test-real-api: 
+test-real-api:
 	@echo "Running tests with real API calls (slow)..."
 	@if [ ! -d "tests" ]; then echo "Error: tests/ directory not found. Create tests/ directory and add test files."; exit 1; fi
 	$(UV_RUN) pytest -v -m "real_api" --tb=short

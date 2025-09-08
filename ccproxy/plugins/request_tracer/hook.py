@@ -1,9 +1,9 @@
 """Hook-based request tracer implementation - simplified for REQUEST_* events only."""
 
 from ccproxy.core.logging import get_logger
-from ccproxy.hooks import Hook
-from ccproxy.hooks.base import HookContext
-from ccproxy.hooks.events import HookEvent
+from ccproxy.core.plugins.hooks import Hook
+from ccproxy.core.plugins.hooks.base import HookContext
+from ccproxy.core.plugins.hooks.events import HookEvent
 
 from .config import RequestTracerConfig
 

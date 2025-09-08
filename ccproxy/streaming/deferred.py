@@ -13,8 +13,8 @@ import httpx
 import structlog
 from starlette.responses import Response, StreamingResponse
 
-from ccproxy.hooks import HookEvent, HookManager
-from ccproxy.hooks.base import HookContext
+from ccproxy.core.plugins.hooks import HookEvent, HookManager
+from ccproxy.core.plugins.hooks.base import HookContext
 
 
 if TYPE_CHECKING:

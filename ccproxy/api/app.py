@@ -25,8 +25,8 @@ from ccproxy.core.plugins import (
     load_plugin_system,
     setup_default_middleware,
 )
-from ccproxy.hooks import HookManager, HookRegistry
-from ccproxy.hooks.events import HookEvent
+from ccproxy.core.plugins.hooks import HookManager, HookRegistry
+from ccproxy.core.plugins.hooks.events import HookEvent
 from ccproxy.services.container import ServiceContainer
 from ccproxy.utils.startup_helpers import (
     check_claude_cli_startup,
@@ -192,8 +192,8 @@ async def initialize_hooks_startup(app: FastAPI, settings: Settings) -> None:
 
     # Register core HTTP tracer hook first (high priority)
     try:
-        from ccproxy.hooks.implementations import HTTPTracerHook
-        from ccproxy.hooks.implementations.formatters import (
+        from ccproxy.core.plugins.hooks.implementations import HTTPTracerHook
+        from ccproxy.core.plugins.hooks.implementations.formatters import (
             JSONFormatter,
             RawHTTPFormatter,
         )

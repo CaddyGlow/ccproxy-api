@@ -6,9 +6,9 @@ from typing import Any
 
 import structlog
 
-from ccproxy.hooks import Hook
-from ccproxy.hooks.base import HookContext
-from ccproxy.hooks.events import HookEvent
+from ccproxy.core.plugins.hooks import Hook
+from ccproxy.core.plugins.hooks.base import HookContext
+from ccproxy.core.plugins.hooks.events import HookEvent
 
 
 logger = structlog.get_logger(__name__)

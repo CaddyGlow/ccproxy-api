@@ -42,7 +42,7 @@ def parse_docker_volume(
         return []
 
     # Import the validation function from config
-    from ccproxy.config.runtime import validate_volume_format
+    from plugins.docker.config import validate_volume_format
 
     parsed = []
     for volume_str in value:
@@ -82,7 +82,7 @@ def validate_docker_home(
     if value is None:
         return None
 
-    from ccproxy.config.runtime import validate_host_path
+    from plugins.docker.config import validate_host_path
 
     try:
         return validate_host_path(value)
@@ -114,7 +114,7 @@ def validate_docker_workspace(
     if value is None:
         return None
 
-    from ccproxy.config.runtime import validate_host_path
+    from plugins.docker.config import validate_host_path
 
     try:
         return validate_host_path(value)

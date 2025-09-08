@@ -9,7 +9,7 @@ from typing import Any
 import structlog
 from structlog.contextvars import get_merged_contextvars
 
-from ccproxy.hooks.types import HookHeaders
+from ccproxy.core.plugins.hooks.types import HookHeaders
 
 
 logger = structlog.get_logger(__name__)

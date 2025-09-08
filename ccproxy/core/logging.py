@@ -654,8 +654,6 @@ def bootstrap_cli_logging(argv: list[str] | None = None) -> None:
         json_logs = False
         if env_format:
             json_logs = env_format.lower() == "json"
-        if legacy_json_env and legacy_json_env.lower() in {"1", "true", "yes", "on"}:
-            json_logs = True
 
         # Apply early setup. Safe to run again later with final settings.
         setup_logging(json_logs=json_logs, log_level_name=level, log_file=log_file)

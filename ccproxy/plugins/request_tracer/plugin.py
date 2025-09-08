@@ -8,7 +8,7 @@ from ccproxy.core.plugins import (
     SystemPluginFactory,
     SystemPluginRuntime,
 )
-from ccproxy.hooks import HookRegistry
+from ccproxy.core.plugins.hooks import HookRegistry
 
 from .config import RequestTracerConfig
 from .hook import RequestTracerHook

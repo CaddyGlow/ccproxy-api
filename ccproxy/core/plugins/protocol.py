@@ -6,8 +6,8 @@ from fastapi import APIRouter
 from pydantic import BaseModel
 from typing_extensions import TypedDict
 
+from ccproxy.core.plugins.hooks.base import Hook
 from ccproxy.core.services import CoreServices
-from ccproxy.hooks.base import Hook
 from ccproxy.models.provider import ProviderConfig
 from ccproxy.services.adapters.base import BaseAdapter
 

@@ -17,8 +17,8 @@ from ccproxy.cli.helpers import get_rich_toolkit
 from ccproxy.config.settings import Settings
 from ccproxy.core.logging import bootstrap_cli_logging, get_logger, setup_logging
 from ccproxy.core.plugins import load_cli_plugins
-from ccproxy.hooks.manager import HookManager
-from ccproxy.hooks.registry import HookRegistry
+from ccproxy.core.plugins.hooks.manager import HookManager
+from ccproxy.core.plugins.hooks.registry import HookRegistry
 from ccproxy.services.container import ServiceContainer
 
 

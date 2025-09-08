@@ -9,8 +9,8 @@ from starlette.responses import StreamingResponse
 
 from ccproxy.api.middleware.streaming_hooks import StreamingResponseWithHooks
 from ccproxy.core.logging import TraceBoundLogger, get_logger
-from ccproxy.hooks import HookEvent, HookManager
-from ccproxy.hooks.base import HookContext
+from ccproxy.core.plugins.hooks import HookEvent, HookManager
+from ccproxy.core.plugins.hooks.base import HookContext
 from ccproxy.utils.headers import HeaderBag
 
 

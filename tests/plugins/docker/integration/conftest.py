@@ -14,10 +14,10 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 
-from ccproxy.docker.adapter import DockerAdapter
-from ccproxy.docker.docker_path import DockerPath, DockerPathSet
-from ccproxy.docker.models import DockerUserContext
-from ccproxy.docker.stream_process import DefaultOutputMiddleware
+from plugins.docker.adapter import DockerAdapter
+from plugins.docker.docker_path import DockerPath, DockerPathSet
+from plugins.docker.models import DockerUserContext
+from plugins.docker.stream_process import DefaultOutputMiddleware
 
 
 @pytest.fixture
@@ -36,7 +36,7 @@ def docker_adapter_success(monkeypatch: pytest.MonkeyPatch) -> DockerAdapter:
     monkeypatch.setattr(adapter, "is_available", AsyncMock(return_value=True))
 
     # Patch run_command used by _run_with_sudo_fallback
-    import ccproxy.docker.adapter as adapter_mod
+    import plugins.docker.adapter as adapter_mod
 
     async def _ok_run_command(
         *_: object, **__: object
@@ -92,7 +92,7 @@ def docker_adapter_failure(monkeypatch: pytest.MonkeyPatch) -> DockerAdapter:
     adapter = DockerAdapter()
     monkeypatch.setattr(adapter, "is_available", AsyncMock(return_value=True))
 
-    import ccproxy.docker.adapter as adapter_mod
+    import plugins.docker.adapter as adapter_mod
 
     async def _err_run_command(
         *_: object, **__: object

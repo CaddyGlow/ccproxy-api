@@ -9,8 +9,8 @@ from fastapi import HTTPException, Request
 from starlette.responses import Response, StreamingResponse
 
 from ccproxy.core.logging import get_plugin_logger
-from ccproxy.hooks import HookEvent, HookManager
-from ccproxy.hooks.base import HookContext
+from ccproxy.core.plugins.hooks import HookEvent, HookManager
+from ccproxy.core.plugins.hooks.base import HookContext
 from ccproxy.http.plugin_handler import PluginHTTPHandler
 from ccproxy.services.adapters.base import BaseAdapter
 from ccproxy.services.handler_config import HandlerConfig

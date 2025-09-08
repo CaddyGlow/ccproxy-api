@@ -79,6 +79,9 @@ plugins-storage = [
 plugins-mcp = ["fastapi-mcp>=0.3.7"]
 plugins-tui = ["textual>=3.7.1"]
 plugins-metrics = ["prometheus-client>=0.22.1"]
+plugins-docker = [
+  # Docker plugin has no additional dependencies beyond ccproxy-api
+]
 test = [
   "mypy",
   "pytest",

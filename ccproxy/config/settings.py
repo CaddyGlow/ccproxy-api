@@ -9,7 +9,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from ccproxy.core.logging import get_logger
 
 from .core import CORSSettings, HTTPSettings, LoggingSettings, ServerSettings
-from .runtime import BinarySettings, DockerSettings
+from .runtime import BinarySettings
 from .security import AuthSettings, SecuritySettings
 from .utils import SchedulerSettings, find_toml_config_file
 
@@ -80,11 +80,6 @@ class Settings(BaseSettings):
     binary: BinarySettings = Field(
         default_factory=BinarySettings,
         description="Binary resolution and package manager fallback configuration",
-    )
-
-    docker: DockerSettings = Field(
-        default_factory=DockerSettings,
-        description="Docker configuration for running Claude commands in containers",
     )
 
     scheduler: SchedulerSettings = Field(

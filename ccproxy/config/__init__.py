@@ -1,6 +1,5 @@
 """Configuration module for Claude Proxy API Server."""
 
-from .runtime import DockerSettings
 from .settings import Settings
 from .utils import (
     ConfigValidationError,
@@ -17,7 +16,6 @@ from .utils import (
 
 __all__ = [
     "Settings",
-    "DockerSettings",
     "ConfigValidationError",
     "validate_config_dict",
     "validate_cors_origins",

@@ -255,7 +255,7 @@ class CodexRuntime(ProviderPluginRuntime):
                 )
                 return
             # Get hook registry from context
-            from ccproxy.hooks.registry import HookRegistry
+            from ccproxy.core.plugins.hooks.registry import HookRegistry
 
             try:
                 hook_registry = self.context.get(HookRegistry)

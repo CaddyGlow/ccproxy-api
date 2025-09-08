@@ -12,7 +12,7 @@ import httpx
 import structlog
 
 from ccproxy.config.settings import Settings
-from ccproxy.hooks.thread_manager import BackgroundHookThreadManager
+from ccproxy.core.plugins.hooks.thread_manager import BackgroundHookThreadManager
 from ccproxy.http.pool import HTTPPoolManager
 from ccproxy.services.adapters.format_registry import FormatAdapterRegistry
 from ccproxy.services.cache import ResponseCache

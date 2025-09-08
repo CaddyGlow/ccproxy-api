@@ -14,8 +14,8 @@ from starlette.responses import StreamingResponse
 if TYPE_CHECKING:
     from ccproxy.auth.manager import AuthManager
     from ccproxy.core.plugins import PluginContext
+    from ccproxy.core.plugins.hooks import HookManager
     from ccproxy.core.request_context import RequestContext
-    from ccproxy.hooks import HookManager
     from ccproxy.services.interfaces import (
         IMetricsCollector,
         IRequestTracer,

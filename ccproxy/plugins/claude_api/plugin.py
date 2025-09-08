@@ -24,7 +24,7 @@ from .tasks import ClaudeAPIDetectionRefreshTask
 
 # if TYPE_CHECKING:
 #     from ccproxy.config.settings import Settings
-#     from ccproxy.hooks.registry import HookRegistry
+#     from ccproxy.core.plugins.hooks.registry import HookRegistry
 #     from ccproxy.services.cli_detection import CLIDetectionService
 #     from ccproxy.services.container import ServiceContainer
 
@@ -209,7 +209,7 @@ class ClaudeAPIRuntime(ProviderPluginRuntime):
             )
 
             # Get hook registry from context
-            from ccproxy.hooks.registry import HookRegistry
+            from ccproxy.core.plugins.hooks.registry import HookRegistry
 
             try:
                 hook_registry = self.context.get(HookRegistry)
