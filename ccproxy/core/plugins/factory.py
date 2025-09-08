@@ -16,12 +16,10 @@ if TYPE_CHECKING:
     from ccproxy.config.settings import Settings
 
 from .declaration import PluginContext, PluginManifest
-from .runtime import (
-    AuthProviderPluginRuntime,
-    BasePluginRuntime,
-    ProviderPluginRuntime,
-    SystemPluginRuntime,
-)
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:  # Avoid import cycle at runtime
+    from .runtime import BasePluginRuntime
 
 
 logger = structlog.get_logger(__name__)
@@ -47,7 +45,7 @@ class PluginFactory(ABC):
         ...
 
     @abstractmethod
-    def create_runtime(self) -> BasePluginRuntime:
+    def create_runtime(self) -> Any:
         """Create a runtime instance for this plugin.
 
         Returns:
@@ -75,9 +73,7 @@ class BasePluginFactory(PluginFactory):
     runtime instances from manifests.
     """
 
-    def __init__(
-        self, manifest: PluginManifest, runtime_class: type[BasePluginRuntime]
-    ):
+    def __init__(self, manifest: PluginManifest, runtime_class: type[Any]):
         """Initialize factory with manifest and runtime class.
 
         Args:
@@ -91,7 +87,7 @@ class BasePluginFactory(PluginFactory):
         """Get the plugin manifest."""
         return self.manifest
 
-    def create_runtime(self) -> BasePluginRuntime:
+    def create_runtime(self) -> Any:
         """Create a runtime instance."""
         return self.runtime_class(self.manifest)
 
@@ -172,6 +168,9 @@ class SystemPluginFactory(BasePluginFactory):
         Args:
             manifest: Plugin manifest
         """
+        # Local import to avoid circular dependency at module load time
+        from ccproxy.core.plugins.runtime import SystemPluginRuntime
+
         super().__init__(manifest, SystemPluginRuntime)
 
         # Validate this is a system plugin
@@ -194,6 +193,9 @@ class ProviderPluginFactory(BasePluginFactory):
         Args:
             manifest: Plugin manifest
         """
+        # Local import to avoid circular dependency at module load time
+        from ccproxy.core.plugins.runtime import ProviderPluginRuntime
+
         super().__init__(manifest, ProviderPluginRuntime)
 
         # Validate this is a provider plugin
@@ -270,6 +272,9 @@ class AuthProviderPluginFactory(BasePluginFactory):
         Args:
             manifest: Plugin manifest
         """
+        # Local import to avoid circular dependency at module load time
+        from ccproxy.core.plugins.runtime import AuthProviderPluginRuntime
+
         super().__init__(manifest, AuthProviderPluginRuntime)
 
         # Validate this is marked as a provider plugin (auth providers are a type of provider)
@@ -347,7 +352,7 @@ class PluginRegistry:
     def __init__(self) -> None:
         """Initialize plugin registry."""
         self.factories: dict[str, PluginFactory] = {}
-        self.runtimes: dict[str, BasePluginRuntime] = {}
+        self.runtimes: dict[str, Any] = {}
         self.initialization_order: list[str] = []
 
         # Service management
@@ -615,7 +620,7 @@ class PluginRegistry:
         )
         return {}
 
-    async def create_runtime(self, name: str, core_services: Any) -> BasePluginRuntime:
+    async def create_runtime(self, name: str, core_services: Any) -> Any:
         """Create and initialize a plugin runtime.
 
         Args:
@@ -727,7 +732,7 @@ class PluginRegistry:
         # Clear runtimes
         self.runtimes.clear()
 
-    def get_runtime(self, name: str) -> BasePluginRuntime | None:
+    def get_runtime(self, name: str) -> Any | None:
         """Get a plugin runtime by name.
 
         Args:

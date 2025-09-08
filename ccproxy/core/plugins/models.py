@@ -57,3 +57,4 @@ class ProviderHealthDetails(BaseModel):
     cli: CLIHealth | None = Field(default=None, description="CLI health")
     auth: AuthHealth | None = Field(default=None, description="Auth health")
     config: ConfigHealth | None = Field(default=None, description="Config summary")
+

@@ -66,7 +66,7 @@ async def claude_sdk_health_check(
         status = "fail"
 
     # Standardized details
-    from ccproxy.core.plugins.health_models import (
+    from ccproxy.core.plugins.models import (
         CLIHealth,
         ConfigHealth,
         ProviderHealthDetails,

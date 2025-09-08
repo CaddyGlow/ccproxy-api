@@ -59,7 +59,7 @@ async def claude_api_health_check(
             )
 
         # Standardized details
-        from ccproxy.core.plugins.health_models import (
+        from ccproxy.core.plugins.models import (
             AuthHealth,
             CLIHealth,
             ConfigHealth,

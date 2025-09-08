@@ -1,7 +1,9 @@
 """Plugin runtime system for managing plugin instances.
 
-This module provides the runtime layer of the plugin system, managing
-plugin instances and their lifecycle after the application has started.
+This module defines runtime classes that manage plugin instances and lifecycle.
+Factory/loader utilities remain in their respective modules to avoid import
+cycles during consolidation. Import runtime classes from here, and import
+factories/loaders from their modules for now.
 """
 
 from typing import Any
@@ -9,6 +11,16 @@ from typing import Any
 from ccproxy.core.logging import TraceBoundLogger, get_logger
 
 from .declaration import PluginContext, PluginManifest, PluginRuntimeProtocol
+
+__all__ = [
+    "BasePluginRuntime",
+    "SystemPluginRuntime",
+    "AuthProviderPluginRuntime",
+    "ProviderPluginRuntime",
+    "PluginContext",
+    "PluginManifest",
+    "PluginRuntimeProtocol",
+]
 
 
 logger: TraceBoundLogger = get_logger()

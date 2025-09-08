@@ -32,7 +32,10 @@ from .declaration import (
     TaskSpec,
 )
 from .factory import ProviderPluginFactory
-from .runtime import ProviderPluginRuntime
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:  # Avoid import cycle at runtime
+    from .runtime import ProviderPluginRuntime
 
 
 if TYPE_CHECKING:
@@ -93,6 +96,9 @@ class BaseProviderPluginFactory(ProviderPluginFactory):
         self._validate_class_attributes()
 
         # Validate runtime class is a proper subclass
+        # Import locally to avoid circular import during module import
+        from ccproxy.core.plugins.runtime import ProviderPluginRuntime
+
         if not issubclass(self.runtime_class, ProviderPluginRuntime):
             raise TypeError(
                 f"runtime_class {self.runtime_class.__name__} must be a subclass of ProviderPluginRuntime"
@@ -167,9 +173,9 @@ class BaseProviderPluginFactory(ProviderPluginFactory):
                     f"must be callable"
                 ) from None
 
-    def create_runtime(self) -> ProviderPluginRuntime:
+    def create_runtime(self) -> Any:
         """Create runtime instance using the configured runtime class."""
-        return cast(ProviderPluginRuntime, self.runtime_class(self.manifest))
+        return cast(Any, self.runtime_class(self.manifest))
 
     async def create_adapter(self, context: PluginContext) -> BaseAdapter:
         """Create adapter instance with explicit dependencies.
