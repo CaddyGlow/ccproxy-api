@@ -14,10 +14,11 @@
 
 ## Plugin System Overview
 
-CCProxy uses a modern plugin system (v2) that provides a flexible, declarative architecture for extending the proxy server's functionality. The system supports two types of plugins:
+CCProxy uses a modern plugin system (v2) that provides a flexible, declarative architecture for extending the proxy server's functionality. The system supports three types of plugins:
 
 - **Provider Plugins**: Proxy requests to external AI providers (Claude API, Claude SDK, Codex)
-- **System Plugins**: Add functionality like logging, monitoring, and permissions
+- **Auth Provider Plugins**: Provide OAuth authentication without proxying requests (OAuth Claude)
+- **System Plugins**: Add functionality like logging, monitoring, analytics, and permissions
 
 For a practical, end-to-end walkthrough on creating your own plugin (types, structure, config, routes, hooks, and publishing), see the Plugin Authoring Guide: `docs/PLUGIN_AUTHORING.md`.
 
@@ -59,25 +60,38 @@ Handles plugin instances and their lifecycle after application startup.
 
 ### Provider Plugins
 
-Provider plugins proxy requests to external API providers. They implement the `ProviderPlugin` protocol and include:
+Provider plugins proxy requests to external API providers. They extend `BaseProviderPluginFactory` and `ProviderPluginRuntime` and include:
 
-- **Adapter**: Handles request/response processing
-- **Detection Service**: Detects provider capabilities
-- **Credentials Manager**: Manages authentication
-- **Transformers**: Transform requests/responses
+- **Adapter**: Handles request/response processing using HTTP delegation pattern
+- **Detection Service**: Detects provider capabilities and CLI availability
+- **Credentials Manager**: Manages authentication tokens and refresh logic
+- **Transformers**: Transform requests/responses for protocol conversion
+- **Format Adapters**: Convert between different API formats (OpenAI ↔ Anthropic)
+- **Hooks**: Provider-specific event handling (e.g., streaming metrics)
 
 Example providers: `claude_api`, `claude_sdk`, `codex`
 
+### Auth Provider Plugins
+
+Auth provider plugins provide standalone OAuth authentication without proxying requests. They extend `AuthProviderPluginFactory` and `AuthProviderPluginRuntime` and include:
+
+- **OAuth Provider**: Implements OAuth flow (authorization, callback, token refresh)
+- **Token Manager**: Manages credential storage and validation
+- **Storage**: Secure credential persistence
+- **CLI Integration**: Automatic CLI auth command registration
+
+Example: `oauth_claude`
+
 ### System Plugins
 
-System plugins add functionality without proxying to external providers. They implement the `SystemPlugin` protocol and include:
+System plugins add functionality without proxying to external providers. They extend `SystemPluginFactory` and `SystemPluginRuntime` and include:
 
-- **Middleware**: Request/response processing
-- **Routes**: Additional API endpoints
-- **Tasks**: Background scheduled tasks
-- **Hooks**: Event-based extensions
+- **Hooks**: Event-based request/response processing
+- **Routes**: Additional API endpoints for analytics, logs, etc.
+- **Services**: Shared services like analytics ingestion or pricing calculation
+- **Background Tasks**: Scheduled operations
 
-Example system plugins: `raw_http_logger`, `permissions`
+Example system plugins: `access_log`, `analytics`, `permissions`
 
 ## Core Components
 
@@ -385,87 +399,117 @@ async def shutdown_plugins_v2(app: FastAPI) -> None:
 ### Provider Plugin Example
 
 ```python
-from ccproxy.plugins import (
+from ccproxy.core.plugins import (
+    BaseProviderPluginFactory,
     PluginManifest,
-    ProviderPluginFactory,
     ProviderPluginRuntime,
-    RouteSpec
+    RouteSpec,
+    FormatAdapterSpec
 )
 
 class MyProviderRuntime(ProviderPluginRuntime):
     async def _on_initialize(self) -> None:
         """Initialize the provider."""
+        # Get configuration and services from context
+        config = self.context.get(MyProviderConfig)
+
+        # Call parent initialization
         await super()._on_initialize()
+
         # Provider-specific initialization
+        logger.info("my_provider_initialized", enabled=config.enabled)
 
-class MyProviderFactory(ProviderPluginFactory):
-    def __init__(self):
-        manifest = PluginManifest(
-            name="my_provider",
-            version="1.0.0",
-            description="My provider plugin",
-            is_provider=True,
-            config_class=MyProviderConfig,
-            routes=[
-                RouteSpec(
-                    router=my_router,
-                    prefix="/my-provider",
-                    tags=["plugin-my-provider"]
-                )
-            ]
+class MyProviderFactory(BaseProviderPluginFactory):
+    # Class-based configuration
+    plugin_name = "my_provider"
+    plugin_description = "My provider plugin with format conversion"
+    runtime_class = MyProviderRuntime
+    adapter_class = MyProviderAdapter
+    detection_service_class = MyDetectionService
+    credentials_manager_class = MyCredentialsManager
+    config_class = MyProviderConfig
+    router = my_router
+    route_prefix = "/api/my-provider"
+    dependencies = ["oauth_my_provider"]
+    optional_requires = ["pricing"]
+
+    # Declarative format adapter specification
+    format_adapters = [
+        FormatAdapterSpec(
+            from_format="openai",
+            to_format="my_format",
+            adapter_factory=lambda: MyFormatAdapter(),
+            priority=50,
+            description="OpenAI to My Provider format conversion"
         )
-        super().__init__(manifest)
+    ]
 
-    def create_runtime(self) -> MyProviderRuntime:
-        return MyProviderRuntime(self.manifest)
-
-    def create_adapter(self, context: PluginContext) -> Any:
-        return MyProviderAdapter(
-            proxy_service=context.get("proxy_service"),
-            http_client=context.get("http_client")
-        )
-
-    def create_detection_service(self, context: PluginContext) -> Any:
-        return MyDetectionService()
-
-    def create_credentials_manager(self, context: PluginContext) -> Any:
-        return MyCredentialsManager()
+    def create_detection_service(self, context: PluginContext) -> MyDetectionService:
+        settings = context.get(Settings)
+        cli_service = context.get(CLIDetectionService)
+        return MyDetectionService(settings, cli_service)
 
 # Export factory instance
 factory = MyProviderFactory()
 ```
 
-### System Plugin Example
+### System Plugin Example (Hook-based)
 
 ```python
-from ccproxy.plugins import (
-    PluginManifest,
+from ccproxy.core.plugins import (
     SystemPluginFactory,
     SystemPluginRuntime,
-    MiddlewareSpec,
-    MiddlewareLayer
+    PluginManifest,
+    RouteSpec
 )
+from ccproxy.core.plugins.hooks import HookRegistry
 
 class MySystemRuntime(SystemPluginRuntime):
+    def __init__(self, manifest: PluginManifest):
+        super().__init__(manifest)
+        self.hook = None
+        self.config = None
+
     async def _on_initialize(self) -> None:
         """Initialize the system plugin."""
-        # System-specific initialization
+        if not self.context:
+            raise RuntimeError("Context not set")
+
+        # Get configuration
+        config = self.context.get("config")
+        if not isinstance(config, MySystemConfig):
+            config = MySystemConfig()  # Use defaults
+        self.config = config
+
+        if not config.enabled:
+            return
+
+        # Create and register hook
+        self.hook = MySystemHook(config)
+
+        # Get hook registry from context
+        hook_registry = self.context.get(HookRegistry)
+        if hook_registry:
+            hook_registry.register(self.hook)
+            logger.info("my_system_hook_registered")
+
+        # Register services if needed
+        registry = self.context.get("plugin_registry")
+        if registry:
+            service = MySystemService(config)
+            registry.register_service("my_service", service, self.manifest.name)
 
 class MySystemFactory(SystemPluginFactory):
-    def __init__(self):
+    def __init__(self) -> None:
         manifest = PluginManifest(
             name="my_system",
             version="1.0.0",
-            description="My system plugin",
+            description="My system plugin with hooks and services",
             is_provider=False,
             config_class=MySystemConfig,
-            middleware=[
-                MiddlewareSpec(
-                    middleware_class=MyMiddleware,
-                    priority=MiddlewareLayer.OBSERVABILITY,
-                    kwargs={"param": "value"}
-                )
-            ]
+            provides=["my_service"],
+            dependencies=["analytics"],
+            routes=[RouteSpec(router=my_router, prefix="/my-system", tags=["my-system"])]
         )
         super().__init__(manifest)
 
@@ -474,6 +518,60 @@ class MySystemFactory(SystemPluginFactory):
 
 # Export factory instance
 factory = MySystemFactory()
+```
+
+### Auth Provider Plugin Example
+
+```python
+from ccproxy.core.plugins import (
+    AuthProviderPluginFactory,
+    AuthProviderPluginRuntime,
+    PluginManifest
+)
+
+class MyOAuthRuntime(AuthProviderPluginRuntime):
+    def __init__(self, manifest: PluginManifest):
+        super().__init__(manifest)
+        self.config = None
+
+    async def _on_initialize(self) -> None:
+        """Initialize the OAuth provider."""
+        if self.context:
+            config = self.context.get("config")
+            if not isinstance(config, MyOAuthConfig):
+                config = MyOAuthConfig()
+            self.config = config
+
+        # Call parent initialization (handles provider registration)
+        await super()._on_initialize()
+
+class MyOAuthFactory(AuthProviderPluginFactory):
+    cli_safe = True  # Safe for CLI - provides auth only
+
+    def __init__(self) -> None:
+        manifest = PluginManifest(
+            name="oauth_my_provider",
+            version="1.0.0",
+            description="My OAuth authentication provider",
+            is_provider=True,  # Auth provider
+            config_class=MyOAuthConfig,
+            dependencies=[],
+            routes=[],  # No HTTP routes needed
+            tasks=[]    # No scheduled tasks needed
+        )
+        super().__init__(manifest)
+
+    def create_runtime(self) -> MyOAuthRuntime:
+        return MyOAuthRuntime(self.manifest)
+
+    def create_auth_provider(self, context=None) -> MyOAuthProvider:
+        """Create OAuth provider instance."""
+        config = context.get("config") if context else MyOAuthConfig()
+        http_client = context.get("http_client") if context else None
+        return MyOAuthProvider(config, http_client=http_client)
+
+# Export factory instance
+factory = MyOAuthFactory()
 ```
 
 ## Configuration
@@ -574,6 +672,166 @@ class MiddlewareLayer(IntEnum):
 ```
 
 Middleware is applied in reverse order (highest priority runs first).
+
+## Advanced Plugin Features
+
+### Format Adapter System
+
+CCProxy includes a declarative format adapter system for protocol conversion between different API formats (OpenAI ↔ Anthropic ↔ Custom formats).
+
+#### Declarative Format Adapter Specification
+
+Plugins declare format adapters in their factory classes:
+
+```python
+from ccproxy.core.plugins.declaration import FormatAdapterSpec, FormatPair
+
+class MyProviderFactory(BaseProviderPluginFactory):
+    # Declarative format adapter specification
+    format_adapters = [
+        FormatAdapterSpec(
+            from_format="openai",
+            to_format="anthropic",
+            adapter_factory=lambda: MyFormatAdapter(),
+            priority=40,  # Lower number = higher priority
+            description="OpenAI to Anthropic format conversion"
+        )
+    ]
+
+    # Define format adapter dependencies
+    requires_format_adapters: list[FormatPair] = [
+        ("anthropic", "response_api"),  # Provided by core
+    ]
+```
+
+#### Format Registry Integration
+
+The system automatically handles conflicts between plugins registering the same format pairs using priority-based resolution with automatic logging.
+
+#### Migration-Safe Runtime Pattern
+
+The system supports dual-path operation during migration:
+
+```python
+async def _setup_format_registry(self) -> None:
+    """Format registry setup with feature flag control."""
+    settings = get_settings()
+
+    # Skip manual setup if manifest system is enabled
+    if settings.features.manifest_format_adapters:
+        logger.debug("using_manifest_format_adapters")
+        return
+
+    # Legacy manual registration as fallback
+    registry = self.context.get_service_container().get_format_registry()
+    registry.register("openai", "anthropic", MyFormatAdapter(), "my_plugin")
+```
+
+### Hook System
+
+CCProxy uses a comprehensive event-driven hook system for request/response lifecycle management.
+
+#### Hook Implementation
+
+```python
+from ccproxy.core.plugins.hooks import Hook, HookContext, HookEvent
+
+class MyHook(Hook):
+    name = "my_hook"
+    events = [
+        HookEvent.REQUEST_STARTED,
+        HookEvent.REQUEST_COMPLETED,
+        HookEvent.PROVIDER_STREAM_END
+    ]
+    priority = 750  # Higher number = later execution
+
+    async def __call__(self, context: HookContext) -> None:
+        """Handle hook events."""
+        if context.event == HookEvent.REQUEST_STARTED:
+            # Extract request data
+            request_id = context.data.get("request_id")
+            method = context.data.get("method")
+
+        elif context.event == HookEvent.PROVIDER_STREAM_END:
+            # Handle streaming completion with metrics
+            usage_metrics = context.data.get("usage_metrics", {})
+            tokens_input = usage_metrics.get("input_tokens", 0)
+```
+
+#### Hook Registration
+
+Hooks are registered during plugin initialization:
+
+```python
+class MySystemRuntime(SystemPluginRuntime):
+    async def _on_initialize(self) -> None:
+        # Create hook instance
+        self.hook = MyHook(self.config)
+
+        # Get hook registry from context
+        hook_registry = self.context.get(HookRegistry)
+        if hook_registry:
+            hook_registry.register(self.hook)
+```
+
+#### Available Hook Events
+
+- `REQUEST_STARTED`: Request initiated by client
+- `REQUEST_COMPLETED`: Request completed successfully
+- `REQUEST_FAILED`: Request failed with error
+- `PROVIDER_REQUEST_SENT`: Request sent to provider
+- `PROVIDER_RESPONSE_RECEIVED`: Response received from provider
+- `PROVIDER_ERROR`: Provider request failed
+- `PROVIDER_STREAM_START`: Streaming response started
+- `PROVIDER_STREAM_CHUNK`: Streaming chunk received
+- `PROVIDER_STREAM_END`: Streaming response completed
+
+### Service Registry
+
+Plugins can provide and consume services through the plugin registry:
+
+#### Providing Services
+
+```python
+class MySystemRuntime(SystemPluginRuntime):
+    async def _on_initialize(self) -> None:
+        # Create service instance
+        service = MyAnalyticsService(self.config)
+
+        # Register service
+        registry = self.context.get("plugin_registry")
+        if registry:
+            registry.register_service("my_analytics", service, self.manifest.name)
+```
+
+#### Consuming Services
+
+```python
+class MyProviderRuntime(ProviderPluginRuntime):
+    async def _on_initialize(self) -> None:
+        # Get optional service
+        registry = self.context.get("plugin_registry")
+        if registry:
+            pricing_service = registry.get_service("pricing", PricingService)
+            if pricing_service:
+                self.pricing_service = pricing_service
+```
+
+### Plugin Context
+
+The plugin context provides access to core services and components:
+
+#### Available Context Services
+
+- `settings`: Global application settings
+- `http_client`: Managed HTTP client with hooks
+- `plugin_registry`: Plugin registry for service discovery
+- `hook_registry`: Hook registry for event subscription
+- `service_container`: Core service container
+- `config`: Plugin-specific validated configuration
+- `request_tracer`: Request tracing service
+- `streaming_handler`: Streaming response handler
+- `format_registry`: Format adapter registry
 
 ## Best Practices
 

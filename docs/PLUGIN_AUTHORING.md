@@ -4,16 +4,27 @@ This guide shows how to build CCProxy plugins that integrate cleanly with the co
 
 ## Plugin Types
 
-- Auth Provider Plugin (factory: `AuthProviderPluginFactory`)
-  - Provides OAuth login/refresh and token management. Does not proxy provider requests directly.
-  - Example responsibilities: expose `/oauth/*` routes, manage credentials, emit auth hooks.
-- Provider Plugin (factory: `ProviderPluginFactory`)
-  - Proxies API calls to a provider (e.g., Anthropic, OpenAI Codex). Owns adapter, detection, and credentials.
-  - Example responsibilities: register API routes, provide services (e.g., pricing), add hooks and tasks.
-- System Plugin (factory: `SystemPluginFactory`)
-  - Adds system-wide features like metrics, logging, tracing, permissions, pricing. No external provider proxy.
+### Auth Provider Plugin (factory: `AuthProviderPluginFactory`)
+- Provides standalone OAuth authentication without proxying requests
+- **Key Components**: OAuth provider, token manager, secure storage, CLI integration
+- **Example**: `oauth_claude` - provides Claude OAuth without API proxying
+- **Pattern**: Extends `AuthProviderPluginRuntime`, registers OAuth provider in registry
+- **CLI Safe**: `cli_safe = True` (safe for CLI usage)
 
-Use `GET /plugins/status` to see each plugin’s `type` as `auth_provider`, `provider`, or `system`.
+### Provider Plugin (factory: `BaseProviderPluginFactory`)
+- Proxies API requests to external providers with full request/response lifecycle
+- **Key Components**: HTTP adapter (delegation pattern), detection service, credentials manager, transformers, format adapters, hooks
+- **Example**: `codex` - proxies OpenAI Codex API with format conversion and streaming metrics
+- **Pattern**: Class-based configuration, declarative format adapters, streaming support
+- **CLI Safe**: `cli_safe = False` (heavy provider - not for CLI)
+
+### System Plugin (factory: `SystemPluginFactory`)
+- Adds system-wide functionality using hooks and services
+- **Key Components**: Hooks for request lifecycle, services (analytics, pricing), routes for management APIs
+- **Example**: `access_log` - hook-based request logging, `analytics` - provides query/ingest services
+- **Pattern**: Hook-based architecture, service registration, background tasks
+
+Use `GET /plugins/status` to see each plugin's `type` as `auth_provider`, `provider`, or `system`, along with initialization status, dependencies, and provided services.
 
 ## Minimal Structure
 
@@ -101,43 +112,210 @@ other_plugin = "my_package.other:create_factory"
 - Prefer `httpx.ASGITransport` for tests (no server needed).
 - For timing-sensitive code, keep tests deterministic and avoid global registries.
 
-## Example Skeleton (Provider)
+## Complete Plugin Examples
+
+### Provider Plugin with Format Conversion
 
 ```python
 # plugin.py (inside plugins/my_provider)
-from ccproxy.plugins import PluginManifest, ProviderPluginRuntime, ProviderPluginFactory
-from pydantic import BaseModel
+from ccproxy.core.plugins import (
+    BaseProviderPluginFactory,
+    ProviderPluginRuntime,
+    PluginManifest,
+    FormatAdapterSpec
+)
+from pydantic import BaseModel, Field
 from fastapi import APIRouter
 
+# Configuration
 class MyProviderConfig(BaseModel):
-    enabled: bool = True
+    enabled: bool = Field(default=True)
+    base_url: str = Field(default="https://api.example.com")
+    supports_streaming: bool = Field(default=True)
 
+# Router
 router = APIRouter()
 
+@router.post("/responses")
+async def create_response(request: dict):
+    # Provider-specific endpoint
+    pass
+
+# Runtime
 class MyProviderRuntime(ProviderPluginRuntime):
     async def _on_initialize(self) -> None:
-        if self.context.get("config").enabled:
-            # Register routes, hooks, services as needed
-            pass
+        """Initialize with format adapters and hooks."""
+        config = self.context.get(MyProviderConfig)
 
-class MyProviderFactory(ProviderPluginFactory):
-    def __init__(self) -> None:
-        manifest = PluginManifest(
-            name="my_provider",
-            version="1.0.0",
-            is_provider=True,
-            config_class=MyProviderConfig,
+        # Call parent (creates adapter, detection service)
+        await super()._on_initialize()
+
+        # Register streaming metrics hook
+        if config.supports_streaming:
+            await self._register_streaming_hook()
+
+        logger.info("my_provider_initialized", enabled=config.enabled)
+
+    async def _register_streaming_hook(self) -> None:
+        """Register provider-specific streaming metrics hook."""
+        hook_registry = self.context.get(HookRegistry)
+        if hook_registry:
+            hook = MyStreamingHook()
+            hook_registry.register(hook)
+
+# Factory with class-based configuration
+class MyProviderFactory(BaseProviderPluginFactory):
+    # Declarative configuration
+    plugin_name = "my_provider"
+    plugin_description = "My provider with streaming and format conversion"
+    runtime_class = MyProviderRuntime
+    adapter_class = MyProviderAdapter
+    detection_service_class = MyDetectionService
+    credentials_manager_class = MyCredentialsManager
+    config_class = MyProviderConfig
+    router = router
+    route_prefix = "/api/my-provider"
+    dependencies = ["oauth_my_provider"]
+    optional_requires = ["pricing"]
+
+    # Format adapter specifications
+    format_adapters = [
+        FormatAdapterSpec(
+            from_format="openai",
+            to_format="my_format",
+            adapter_factory=lambda: MyFormatAdapter(),
+            priority=40,
+            description="OpenAI to My Provider conversion"
         )
-        super().__init__(manifest)
-
-    def create_context(self, core_services):
-        context = super().create_context(core_services)
-        # If you have routes:
-        # context["router"] = router
-        return context
+    ]
 
 # Export factory for discovery
 factory = MyProviderFactory()
+```
+
+### System Plugin with Hooks and Services
+
+```python
+# plugin.py (inside plugins/my_system)
+from ccproxy.core.plugins import (
+    SystemPluginFactory,
+    SystemPluginRuntime,
+    PluginManifest,
+    RouteSpec
+)
+from ccproxy.core.plugins.hooks import Hook, HookEvent, HookRegistry
+from pydantic import BaseModel, Field
+from fastapi import APIRouter
+
+# Configuration
+class MySystemConfig(BaseModel):
+    enabled: bool = Field(default=True)
+    buffer_size: int = Field(default=100)
+
+# Routes
+router = APIRouter()
+
+@router.get("/status")
+async def get_status():
+    return {"status": "active"}
+
+# Hook implementation
+class MySystemHook(Hook):
+    name = "my_system"
+    events = [HookEvent.REQUEST_STARTED, HookEvent.REQUEST_COMPLETED]
+    priority = 750
+
+    def __init__(self, config: MySystemConfig):
+        self.config = config
+        self.buffer = []
+
+    async def __call__(self, context: HookContext) -> None:
+        if context.event == HookEvent.REQUEST_STARTED:
+            # Process request start
+            self._buffer_request_data(context.data)
+        elif context.event == HookEvent.REQUEST_COMPLETED:
+            # Process completion with metrics
+            self._buffer_completion_data(context)
+
+# Service implementation
+class MySystemService:
+    def __init__(self, config: MySystemConfig):
+        self.config = config
+
+    def process_data(self, data: dict) -> dict:
+        # Service logic
+        return data
+
+# Runtime
+class MySystemRuntime(SystemPluginRuntime):
+    def __init__(self, manifest: PluginManifest):
+        super().__init__(manifest)
+        self.hook = None
+        self.service = None
+        self.config = None
+
+    async def _on_initialize(self) -> None:
+        """Initialize hooks and services."""
+        if not self.context:
+            raise RuntimeError("Context not set")
+
+        # Get configuration
+        config = self.context.get("config")
+        if not isinstance(config, MySystemConfig):
+            config = MySystemConfig()
+        self.config = config
+
+        if not config.enabled:
+            return
+
+        # Create and register hook
+        self.hook = MySystemHook(config)
+        hook_registry = self.context.get(HookRegistry)
+        if hook_registry:
+            hook_registry.register(self.hook)
+
+        # Create and register service
+        self.service = MySystemService(config)
+        plugin_registry = self.context.get("plugin_registry")
+        if plugin_registry:
+            plugin_registry.register_service(
+                "my_service", self.service, self.manifest.name
+            )
+
+        logger.info("my_system_initialized")
+
+    async def _on_shutdown(self) -> None:
+        """Cleanup resources."""
+        if self.hook:
+            # Hook cleanup
+            await self.hook.close()
+
+# Factory
+class MySystemFactory(SystemPluginFactory):
+    def __init__(self) -> None:
+        manifest = PluginManifest(
+            name="my_system",
+            version="1.0.0",
+            description="My system plugin with hooks and services",
+            is_provider=False,
+            config_class=MySystemConfig,
+            provides=["my_service"],
+            dependencies=["analytics"],
+            routes=[
+                RouteSpec(
+                    router=router,
+                    prefix="/my-system",
+                    tags=["my-system"]
+                )
+            ]
+        )
+        super().__init__(manifest)
+
+    def create_runtime(self) -> MySystemRuntime:
+        return MySystemRuntime(self.manifest)
+
+# Export factory
+factory = MySystemFactory()
 ```
 
 ## Publishing

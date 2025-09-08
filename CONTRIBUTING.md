@@ -156,28 +156,46 @@ container.register_service(MyService, instance=FakeMyService())
 This pattern keeps tests isolated and avoids cross-test state.
 ### Running Tests
 
+The CCProxy test suite uses a streamlined architecture with 606 focused tests organized by type:
+
 ```bash
-# All tests with coverage
+# All tests with coverage (recommended)
 make test
 
-# Fast unit tests only
+# Fast unit tests only - isolated components, service boundary mocking
 make test-unit
 
-# Integration tests
+# Integration tests - cross-component behavior, minimal mocking  
 make test-integration
 
-# Specific test file
-make test-file FILE=unit/api/test_api.py
+# Plugin tests - centralized plugin testing
+make test-plugins
 
-# Tests matching pattern
-make test-match MATCH="authentication"
+# Performance tests - benchmarks and load testing
+make test-performance
 
-# Watch mode (auto-run on changes)
-make test-watch
-
-# Coverage report
+# Coverage report with HTML output
 make test-coverage
+
+# Specific patterns
+make test-file FILE=unit/auth/test_auth.py
+make test-match MATCH="authentication"
+make test-watch  # Auto-run on file changes
 ```
+
+#### Test Organization
+
+- **Unit tests** (`tests/unit/`): Fast, isolated tests with mocking at service boundaries only
+- **Integration tests** (`tests/integration/`): Cross-component tests with minimal mocking
+- **Plugin tests** (`tests/plugins/`): Centralized plugin testing by plugin name
+- **Performance tests** (`tests/performance/`): Dedicated performance benchmarks
+
+#### Test Architecture Principles
+
+- **Clean boundaries**: Mock external services only, test real internal behavior
+- **Type safety**: All tests require `-> None` return annotations and proper typing
+- **Fast execution**: Unit tests run in milliseconds with no timing dependencies
+- **Modern patterns**: Session-scoped fixtures, async factory patterns, streamlined fixtures
 
 ## Plugin Development
 
@@ -219,7 +237,10 @@ make test-coverage
 
 4. **Add tests:**
    ```bash
-   tests/unit/plugins/test_your_plugin.py
+   # Plugin tests are centralized under tests/plugins/
+   tests/plugins/your_plugin/unit/test_manifest.py
+   tests/plugins/your_plugin/unit/test_adapter.py
+   tests/plugins/your_plugin/integration/test_basic.py
    ```
 
 ## Commit Message Format

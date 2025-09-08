@@ -54,7 +54,7 @@ docs/
 ├── developer-guide/            # Developer documentation
 │   ├── architecture.md        # System architecture
 │   ├── development.md         # Development setup
-│   ├── testing.md             # Testing guide
+│   ├── testing.md             # Testing guide (606 focused tests)
 │   └── contributing.md        # Contribution guidelines
 ├── deployment/                 # Deployment guides
 │   ├── docker.md              # Docker deployment

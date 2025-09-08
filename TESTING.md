@@ -289,7 +289,7 @@ from ccproxy.utils.caching import TTLCache
 def test_cache_basic_operations() -> None:
     """Test cache basic operations."""
     cache: TTLCache[str, int] = TTLCache(maxsize=10, ttl=60)
-    
+
     # Test real cache behavior
     cache["key"] = 42
     assert cache["key"] == 42
@@ -314,10 +314,10 @@ def metrics_integration_app():
     from ccproxy.config.settings import Settings
     from ccproxy.api.bootstrap import create_service_container
     from ccproxy.api.app import create_app
-    
+
     # Set up logging once per session
     setup_logging(json_logs=False, log_level_name="ERROR")
-    
+
     settings = Settings(
         enable_plugins=True,
         plugins={
@@ -332,7 +332,7 @@ def metrics_integration_app():
             "verbose_api": False,
         },
     )
-    
+
     service_container = create_service_container(settings)
     return create_app(service_container), settings
 
@@ -342,10 +342,10 @@ async def metrics_integration_client(metrics_integration_app):
     """HTTP client for metrics integration tests."""
     from httpx import ASGITransport, AsyncClient
     from ccproxy.api.app import initialize_plugins_startup
-    
+
     app, settings = metrics_integration_app
     await initialize_plugins_startup(app, settings)
-    
+
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         yield client
@@ -374,7 +374,7 @@ async def test_custom_plugin_config(integration_client_factory) -> None:
             "include_labels": True,
         }
     })
-    
+
     async with client:
         resp = await client.get("/metrics")
         assert resp.status_code == 200
@@ -459,7 +459,7 @@ Note: tests run with `--import-mode=importlib` via Makefile to avoid module name
 
 1. **Start here**: Read this file and `tests/fixtures/integration.py`
 2. **Run tests**: `make test` to ensure everything works (606 optimized tests)
-3. **Choose pattern**: 
+3. **Choose pattern**:
    - Session-scoped fixtures for plugin tests (`metrics_integration_client`)
    - Factory patterns for dynamic configs (`integration_client_factory`)
    - Unit tests for isolated components
