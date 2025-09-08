@@ -1,10 +1,14 @@
 """Handler configuration for unified request handling."""
 
-from dataclasses import dataclass
-from typing import Any, Protocol, runtime_checkable
+from __future__ import annotations
 
-from ccproxy.adapters.base import APIAdapter
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
+
 from ccproxy.services.adapters.format_context import FormatContext
+
+if TYPE_CHECKING:
+    from ccproxy.adapters.base import APIAdapter
 
 
 @runtime_checkable

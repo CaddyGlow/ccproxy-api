@@ -1,15 +1,19 @@
 """Streaming request handler for SSE and chunked responses."""
 
+from __future__ import annotations
+
 import json
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import httpx
 import structlog
 
 from ccproxy.core.request_context import RequestContext
 from ccproxy.hooks import HookManager
-from ccproxy.services.handler_config import HandlerConfig
 from ccproxy.streaming.deferred import DeferredStreaming
+
+if TYPE_CHECKING:
+    from ccproxy.services.handler_config import HandlerConfig
 
 
 logger = structlog.get_logger(__name__)
