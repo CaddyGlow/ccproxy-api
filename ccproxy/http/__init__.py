@@ -14,6 +14,7 @@ from .client import (
 )
 from .hooks import HookableHTTPClient
 from .plugin_handler import PluginHTTPHandler
+from .pool import HTTPPoolManager
 from .processor import RequestProcessor
 
 
@@ -31,6 +32,7 @@ __all__ = [
     # Services
     "RequestProcessor",
     "PluginHTTPHandler",
+    "HTTPPoolManager",
     "BaseHTTPHandler",
     # Utils
     "get_proxy_url",

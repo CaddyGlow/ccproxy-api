@@ -33,7 +33,7 @@ if TYPE_CHECKING:
     from ccproxy.core.plugins import PluginContext
     from ccproxy.core.request_context import RequestContext
     from ccproxy.services.handler_config import PluginTransformerProtocol
-    from ccproxy.services.http_pool import HTTPPoolManager
+    from ccproxy.http.pool import HTTPPoolManager
 
 
 logger = get_plugin_logger()

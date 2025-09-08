@@ -33,7 +33,7 @@ from .factory import ProviderPluginFactory
 
 if TYPE_CHECKING:
     from ccproxy.config.settings import Settings
-    from ccproxy.services.http_pool import HTTPPoolManager
+    from ccproxy.http.pool import HTTPPoolManager
 
 
 class BaseProviderPluginFactory(ProviderPluginFactory):

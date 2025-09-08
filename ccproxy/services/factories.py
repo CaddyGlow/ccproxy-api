@@ -21,7 +21,7 @@ from ccproxy.services.adapters.format_registry import FormatAdapterRegistry
 from ccproxy.services.cache import ResponseCache
 from ccproxy.services.cli_detection import CLIDetectionService
 from ccproxy.services.config import ProxyConfiguration
-from ccproxy.services.http_pool import HTTPPoolManager
+from ccproxy.http.pool import HTTPPoolManager
 from ccproxy.services.mocking import MockResponseHandler
 from ccproxy.streaming import StreamingHandler
 from ccproxy.testing import RealisticMockResponseGenerator

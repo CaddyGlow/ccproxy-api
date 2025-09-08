@@ -19,7 +19,7 @@ from ccproxy.hooks.base import HookContext
 if TYPE_CHECKING:
     from ccproxy.core.request_context import RequestContext
     from ccproxy.services.handler_config import HandlerConfig
-    from ccproxy.services.http_pool import HTTPPoolManager
+    from ccproxy.http.pool import HTTPPoolManager
     from ccproxy.services.interfaces import IRequestTracer
 
 

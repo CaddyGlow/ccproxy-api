@@ -17,7 +17,7 @@ from ccproxy.streaming import DeferredStreaming
 
 
 if TYPE_CHECKING:
-    from ccproxy.services.http_pool import HTTPPoolManager
+    from ccproxy.http.pool import HTTPPoolManager
 
 
 logger = get_logger(__name__)
