@@ -311,7 +311,6 @@ class ClaudeAPIFactory(BaseProviderPluginFactory):
     dependencies = ["oauth_claude"]
     optional_requires = ["pricing"]
 
-    # NEW: Declarative format adapter specification
     format_adapters = [
         FormatAdapterSpec(
             from_format="openai",

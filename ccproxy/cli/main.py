@@ -52,12 +52,13 @@ def register_plugin_cli_extensions(app: typer.Typer) -> None:
         # Load settings to apply plugin filtering
         try:
             from ccproxy.config.settings import Settings
+
             settings = Settings.from_config()
         except Exception as e:
             # Graceful degradation - use no filtering if settings fail to load
             logger.debug("settings_load_failed_for_cli_discovery", error=str(e))
             settings = None
-            
+
         plugin_manifests = discover_plugin_cli_extensions(settings)
 
         logger.debug(
@@ -206,7 +207,6 @@ app.add_typer(auth_app)
 # Register plugins command
 app.add_typer(plugins_app)
 
-# NEW: Register plugin CLI extensions
 register_plugin_cli_extensions(app)
 
 # Register imported commands

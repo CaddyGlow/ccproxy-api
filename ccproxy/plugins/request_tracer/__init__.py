@@ -1,4 +1,4 @@
-"""Request Tracer plugin for simplified request tracing."""
+"""Request Tracer plugin for request tracing."""
 
 from .config import RequestTracerConfig
 from .hook import RequestTracerHook

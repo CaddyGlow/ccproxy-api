@@ -1,4 +1,4 @@
-"""Handler configuration for unified request handling."""
+"""Handler configuration for request handling."""
 
 from __future__ import annotations
 
@@ -45,7 +45,7 @@ class SSEParserProtocol(Protocol):
 class HandlerConfig:
     """Processing pipeline configuration for HTTP/streaming handlers.
 
-    This simplified config only contains universal processing concerns,
+    This config only contains universal processing concerns,
     not plugin-specific parameters like session_id or access_token.
 
     Following the Parameter Object pattern, this groups related processing

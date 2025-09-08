@@ -1,4 +1,4 @@
-"""Hook-based request tracer implementation - simplified for REQUEST_* events only."""
+"""Hook-based request tracer implementation for REQUEST_* events only."""
 
 from ccproxy.core.logging import get_logger
 from ccproxy.core.plugins.hooks import Hook
@@ -51,7 +51,6 @@ class RequestTracerHook(Hook):
         logger.info(
             "request_tracer_hook_initialized",
             enabled=self.config.enabled,
-            note="Simplified - HTTP tracing handled by core HTTPTracerHook",
         )
 
     async def __call__(self, context: HookContext) -> None:

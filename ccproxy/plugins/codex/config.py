@@ -84,7 +84,6 @@ class CodexSettings(ProviderConfig):
         description="List of supported models",
     )
 
-    # NEW FORMAT CONFIGURATION
     supported_input_formats: list[str] = Field(
         default_factory=lambda: ["response_api", "openai", "anthropic"],
         description="List of supported input formats",

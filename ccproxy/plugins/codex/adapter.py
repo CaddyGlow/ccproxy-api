@@ -323,7 +323,7 @@ class CodexAdapter(BaseHTTPAdapter):
         return HandlerConfig(
             request_adapter=format_adapter,
             response_adapter=format_adapter,
-            format_context=format_context,  # NEW FIELD
+            format_context=format_context,
             request_transformer=self._request_transformer,
             response_transformer=self._response_transformer,
             supports_streaming=True,

@@ -67,7 +67,6 @@ class ConcreteServiceFactory:
             BinaryResolver, factory=self.create_binary_resolver
         )
 
-        # NEW: Register format services
         self._container.register_service(
             FormatAdapterRegistry, factory=self.create_format_registry
         )

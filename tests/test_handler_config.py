@@ -1,4 +1,4 @@
-"""Tests for HandlerConfig and unified dispatch architecture."""
+"""Tests for HandlerConfig and dispatch architecture."""
 
 from typing import Any
 
@@ -94,7 +94,7 @@ class MockTransformer:
 
 @pytest.mark.asyncio
 async def test_handler_config_creation():
-    """Test HandlerConfig can be created with simplified fields."""
+    """Test HandlerConfig can be created with basic fields."""
     context = HandlerConfig()
 
     # Check defaults

@@ -161,12 +161,14 @@ class ClaudeAPIRequestTransformer:
 
         return transformed
 
-    def _find_cache_control_blocks(self, data: dict[str, Any]) -> list[tuple[str, int, int]]:
+    def _find_cache_control_blocks(
+        self, data: dict[str, Any]
+    ) -> list[tuple[str, int, int]]:
         """Find all cache_control blocks in the request with their locations.
 
         Returns:
             List of tuples (location_type, location_index, block_index) for each cache_control block
-            where location_type is 'system' or 'message'
+            where location_type is 'system', 'message', or 'tool'
         """
         blocks = []
 
@@ -185,6 +187,12 @@ class ClaudeAPIRequestTransformer:
                 for block_idx, block in enumerate(content):
                     if isinstance(block, dict) and "cache_control" in block:
                         blocks.append(("message", msg_idx, block_idx))
+
+        # Find in tools
+        tools = data.get("tools", [])
+        for tool_idx, tool in enumerate(tools):
+            if isinstance(tool, dict) and "cache_control" in tool:
+                blocks.append(("tool", tool_idx, 0))
 
         return blocks
 
@@ -230,7 +238,7 @@ class ClaudeAPIRequestTransformer:
 
         # Remove cache_control from the last N blocks
         blocks_to_remove = cache_blocks[-to_remove:]
-        
+
         for location_type, location_index, block_index in blocks_to_remove:
             if location_type == "system":
                 system = data.get("system")
@@ -259,6 +267,18 @@ class ClaudeAPIRequestTransformer:
                                 block_index=block_index,
                                 category="transform",
                             )
+            elif location_type == "tool":
+                tools = data.get("tools", [])
+                if location_index < len(tools):
+                    tool = tools[location_index]
+                    if isinstance(tool, dict) and "cache_control" in tool:
+                        del tool["cache_control"]
+                        logger.debug(
+                            "removed_cache_control",
+                            location="tool",
+                            tool_index=location_index,
+                            category="transform",
+                        )
 
         return data
 
@@ -332,7 +352,7 @@ class ClaudeAPIRequestTransformer:
                 system_field = cached_data.system_prompt.system_field
 
                 # Get the system prompt to inject based on mode
-                detected_system = None
+                detected_system: str | list[dict[str, Any]] | None = None
                 if self.mode == "minimal":
                     # In minimal mode, only inject the first system prompt
                     if isinstance(system_field, list) and len(system_field) > 0:

@@ -64,14 +64,16 @@ def discover_plugin_cli_extensions(
             enabled_plugins=getattr(settings, "enabled_plugins", None),
             disabled_plugins=getattr(settings, "disabled_plugins", None),
         )
-        
+
         filtered_manifests = []
         for name, manifest in unique_manifests:
             if plugin_filter.is_enabled(name):
                 filtered_manifests.append((name, manifest))
             else:
-                logger.debug("plugin_cli_extension_disabled", plugin=name, category="plugin")
-        
+                logger.debug(
+                    "plugin_cli_extension_disabled", plugin=name, category="plugin"
+                )
+
         return filtered_manifests
 
     return unique_manifests

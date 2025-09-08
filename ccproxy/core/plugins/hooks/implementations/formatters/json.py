@@ -177,11 +177,6 @@ class JSONFormatter:
         headers_dict = (
             headers.to_dict() if hasattr(headers, "to_dict") else dict(headers)
         )
-        # Also capture ordered pairs to preserve duplicates perfectly
-        try:
-            headers_pairs = list(headers.items())
-        except Exception:
-            headers_pairs = list(headers_dict.items())
 
         # Log at TRACE level with redacted headers
         log_headers = (
@@ -264,7 +259,6 @@ class JSONFormatter:
                 "method": method,
                 "url": url,
                 "headers": headers_dict,  # Full headers in file
-                "headers_pairs": headers_pairs,
                 "body": body_content,
                 "type": request_type,
             }
@@ -314,10 +308,6 @@ class JSONFormatter:
         headers_dict = (
             headers.to_dict() if hasattr(headers, "to_dict") else dict(headers)
         )
-        try:
-            headers_pairs = list(headers.items())
-        except Exception:
-            headers_pairs = list(headers_dict.items())
 
         # Log at TRACE level
         if hasattr(logger, "trace"):
@@ -392,7 +382,6 @@ class JSONFormatter:
                 "request_id": request_id,
                 "status": status,
                 "headers": headers_dict,
-                "headers_pairs": headers_pairs,
                 "body": body_content,
                 "type": response_type,
             }

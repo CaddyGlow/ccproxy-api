@@ -333,7 +333,6 @@ class CodexFactory(BaseProviderPluginFactory):
     dependencies = ["oauth_codex"]
     optional_requires = ["pricing"]
 
-    # NEW: Declarative format adapter specification
     format_adapters = [
         FormatAdapterSpec(
             from_format="openai",

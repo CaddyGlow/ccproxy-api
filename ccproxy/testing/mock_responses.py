@@ -180,7 +180,7 @@ class RealisticMockResponseGenerator:
         # Convert to OpenAI format
         openai_chunks = []
         for chunk in anthropic_chunks:
-            # Use simplified conversion logic
+            # Use basic conversion logic
             if chunk.get("type") == "message_start":
                 openai_chunks.append(
                     {

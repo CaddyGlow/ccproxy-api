@@ -174,7 +174,7 @@ def _run_docker_server(
     ports = [f"{settings.server.port}:{settings.server.port}"]
 
     adapter = create_docker_adapter()
-    adapter.exec_container(
+    adapter.exec_container_legacy(
         image=image,
         volumes=volumes,
         environment=environment,
@@ -347,7 +347,6 @@ def api(
             if disable_version_check:
                 scheduler_overrides["version_check_enabled"] = False
 
-        # NEW: Store CLI arguments in context for plugins
         cli_context = {
             "port": port,
             "host": host,
@@ -549,7 +548,7 @@ def claude(
             toolkit.print(f"Executing: docker run ... {image} {cmd_str}", tag="docker")
             toolkit.print_line()
 
-            adapter.exec_container(
+            adapter.exec_container_legacy(
                 image=image,
                 volumes=volumes,
                 environment=environment,

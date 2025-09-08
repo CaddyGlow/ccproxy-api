@@ -36,7 +36,6 @@ class ClaudeSDKRuntime(ProviderPluginRuntime):
         # Call parent initialization to set up adapter, detection_service, etc.
         await super()._on_initialize()
 
-        # NEW: Setup format registry
         await self._setup_format_registry()
 
         if not self.context:
@@ -148,7 +147,6 @@ class ClaudeSDKFactory(BaseProviderPluginFactory):
     route_prefix = "/claude"
     optional_requires = ["pricing"]
 
-    # NEW: Declarative format adapter specification
     format_adapters = [
         FormatAdapterSpec(
             from_format="openai",

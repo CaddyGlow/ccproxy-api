@@ -301,7 +301,6 @@ class Settings(BaseSettings):
         if kwargs:
             _apply_overrides(settings, kwargs)
 
-        # NEW: Store CLI context for plugin access
         if cli_context:
             settings.cli_context = cli_context
 

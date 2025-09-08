@@ -5,7 +5,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from ccproxy.config.cors import CORSSettings
+from ccproxy.config.core import CORSSettings
 from ccproxy.plugins.codex.transformers.request import CodexRequestTransformer
 from ccproxy.plugins.codex.transformers.response import CodexResponseTransformer
 

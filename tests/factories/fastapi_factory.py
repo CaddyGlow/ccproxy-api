@@ -180,7 +180,7 @@ class FastAPIAppFactory:
     def _add_plugin_dependency_overrides(
         self, overrides: DependencyOverrides, claude_service_mock: MockService
     ) -> None:
-        """Add simplified plugin adapter dependency overrides for testing."""
+        """Add plugin adapter dependency overrides for testing."""
         # Simplified mock adapter for testing
         mock_adapter = AsyncMock()
         mock_adapter.handle_request = AsyncMock(return_value=None)
@@ -196,7 +196,7 @@ class FastAPIAppFactory:
         settings: Settings,
         claude_service_mock: MockService | None = None,
     ) -> None:
-        """Register plugin routes for test apps (simplified)."""
+        """Register plugin routes for test apps."""
         try:
             # Simplified plugin route registration
             self._register_claude_sdk_routes(app)

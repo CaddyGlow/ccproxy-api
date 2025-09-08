@@ -152,7 +152,7 @@ class ResponseAPIAnthropicAdapter(APIAdapter):
             logger.debug("response_api_adapter_stream_conversion_started")
 
             # For streaming, we need to handle the conversion differently
-            # This is a simplified implementation - full streaming conversion
+            # This is a basic implementation - full streaming conversion
             # would require more complex state management
             async for chunk in stream:
                 if isinstance(chunk, dict):
