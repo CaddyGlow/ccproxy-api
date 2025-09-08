@@ -151,6 +151,47 @@ class TestCacheControlDetection:
         assert ("tool", 2, 0) in blocks
         assert ("message", 0, 0) in blocks
 
+    def test_find_cache_control_blocks_in_tool_use_and_tool_result(self) -> None:
+        """Test finding cache_control blocks in tool_use and tool_result content blocks."""
+        transformer = ClaudeAPIRequestTransformer()
+        data = {
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": "Hello",
+                            "cache_control": {"type": "ephemeral"},
+                        },
+                        {
+                            "type": "tool_use",
+                            "name": "search",
+                            "input": {"query": "test"},
+                            "cache_control": {"type": "ephemeral"},
+                        },
+                    ],
+                },
+                {
+                    "role": "assistant",
+                    "content": [
+                        {
+                            "type": "tool_result",
+                            "content": "search results",
+                            "cache_control": {"type": "ephemeral"},
+                        }
+                    ],
+                },
+            ],
+        }
+
+        blocks = transformer._find_cache_control_blocks(data)
+
+        assert len(blocks) == 3
+        assert ("message", 0, 0) in blocks  # text block
+        assert ("tool_use", 0, 1) in blocks  # tool_use block
+        assert ("tool_result", 1, 0) in blocks  # tool_result block
+
 
 class TestCacheControlLimiting:
     """Test cache_control limiting functionality."""
@@ -222,7 +263,7 @@ class TestCacheControlLimiting:
         assert "cache_control" in original_data["messages"][0]["content"][0]
 
     def test_limit_cache_control_blocks_removes_from_tools(self) -> None:
-        """Test that excess cache_control blocks are removed from tools."""
+        """Test that excess cache_control blocks are removed from tools using smart algorithm."""
         transformer = ClaudeAPIRequestTransformer()
         data = {
             "tools": [
@@ -246,11 +287,18 @@ class TestCacheControlLimiting:
 
         result = transformer._limit_cache_control_blocks(data, max_blocks=2)
 
-        # Should keep first 2 blocks and remove last 2
-        assert "cache_control" in result["tools"][0]  # kept
-        assert "cache_control" in result["tools"][1]  # kept
-        assert "cache_control" not in result["tools"][2]  # removed
-        assert "cache_control" not in result["messages"][0]["content"][0]  # removed
+        # Smart algorithm should keep the 2 largest blocks by content size
+        # All tools have identical size ("tool1", "tool2", "tool3" are all 5 chars)
+        # So it should keep first 2 tools by discovery order
+        total_cache_blocks = sum(
+            [
+                1 if "cache_control" in result["tools"][0] else 0,
+                1 if "cache_control" in result["tools"][1] else 0,
+                1 if "cache_control" in result["tools"][2] else 0,
+                1 if "cache_control" in result["messages"][0]["content"][0] else 0,
+            ]
+        )
+        assert total_cache_blocks == 2  # Only 2 blocks should have cache_control
 
 
 class TestSystemPromptInjection:
@@ -298,8 +346,9 @@ class TestSystemPromptInjection:
         result = transformer.transform_body(body)
         result_data = json.loads(result.decode("utf-8"))
 
-        # Should inject only first line
-        assert result_data["system"] == "You are Claude Code."
+        # Should inject only first line (metadata cleaned from final output)
+        expected = [{"type": "text", "text": "You are Claude Code."}]
+        assert result_data["system"] == expected
 
     def test_transform_body_mode_minimal_list_system(self) -> None:
         """Test minimal mode with list system prompt preserves cache_control."""
@@ -329,7 +378,7 @@ class TestSystemPromptInjection:
         result = transformer.transform_body(body)
         result_data = json.loads(result.decode("utf-8"))
 
-        # Should inject only first element with cache_control preserved
+        # Should inject only first element with cache_control preserved (metadata cleaned from final output)
         expected = [
             {
                 "type": "text",
@@ -362,7 +411,12 @@ class TestSystemPromptInjection:
         result = transformer.transform_body(body)
         result_data = json.loads(result.decode("utf-8"))
 
-        assert result_data["system"] == full_system
+        # Should inject complete system (metadata cleaned from final output)
+        expected = [
+            {"type": "text", "text": "You are Claude Code"},
+            {"type": "text", "text": "Follow instructions"},
+        ]
+        assert result_data["system"] == expected
 
     def test_transform_body_prepends_to_existing_system(self) -> None:
         """Test system prompt prepending to existing system field."""
@@ -386,7 +440,7 @@ class TestSystemPromptInjection:
         result = transformer.transform_body(body)
         result_data = json.loads(result.decode("utf-8"))
 
-        # Should convert both to list format with detected first
+        # Should convert both to list format with detected first (metadata cleaned from final output)
         expected = [
             {"type": "text", "text": "You are Claude Code."},
             {"type": "text", "text": "You are helpful."},
@@ -451,3 +505,308 @@ class TestSystemPromptInjection:
         assert "cache_control" in content[2]  # kept
         assert "cache_control" in content[3]  # kept
         assert "cache_control" not in content[4]  # removed
+
+
+class TestSystemPromptMarking:
+    """Test system prompt marking functionality."""
+
+    def test_mark_injected_system_prompts_string_input(self) -> None:
+        """Test marking string system prompt."""
+        transformer = ClaudeAPIRequestTransformer()
+
+        result = transformer._mark_injected_system_prompts("You are Claude Code")
+
+        expected = [
+            {"type": "text", "text": "You are Claude Code", "_ccproxy_injected": True}
+        ]
+        assert result == expected
+
+    def test_mark_injected_system_prompts_list_input(self) -> None:
+        """Test marking list system prompt."""
+        transformer = ClaudeAPIRequestTransformer()
+
+        input_data = [
+            {
+                "type": "text",
+                "text": "System prompt 1",
+                "cache_control": {"type": "ephemeral"},
+            },
+            {"type": "text", "text": "System prompt 2"},
+        ]
+
+        result = transformer._mark_injected_system_prompts(input_data)
+
+        expected = [
+            {
+                "type": "text",
+                "text": "System prompt 1",
+                "cache_control": {"type": "ephemeral"},
+                "_ccproxy_injected": True,
+            },
+            {"type": "text", "text": "System prompt 2", "_ccproxy_injected": True},
+        ]
+        assert result == expected
+
+    def test_transform_body_cleans_injected_metadata_from_final_output(self) -> None:
+        """Test that transform_body removes _ccproxy_injected metadata from final output."""
+        detection_service = Mock(spec=ClaudeAPIDetectionService)
+        cache_data = ClaudeCacheData(
+            claude_version="1.0.60",
+            headers=ClaudeCodeHeaders(),
+            system_prompt=SystemPromptData(system_field="You are Claude Code"),
+        )
+        detection_service.get_cached_data.return_value = cache_data
+
+        transformer = ClaudeAPIRequestTransformer(
+            detection_service=detection_service, mode="full"
+        )
+        body_data = {"messages": [{"role": "user", "content": "Hello"}]}
+        body = json.dumps(body_data).encode("utf-8")
+
+        result = transformer.transform_body(body)
+        result_data = json.loads(result.decode("utf-8"))
+
+        # Final output should NOT contain internal metadata (cleaned for API)
+        assert "_ccproxy_injected" not in result_data["system"][0]
+        assert result_data["system"][0]["text"] == "You are Claude Code"
+
+
+class TestSmartCacheControlLimiting:
+    """Test smart cache control limiting algorithm."""
+
+    def test_smart_limiting_preserves_injected_system_prompts(self) -> None:
+        """Test that injected system prompts are always preserved."""
+        transformer = ClaudeAPIRequestTransformer()
+        data = {
+            "system": [
+                {
+                    "type": "text",
+                    "text": "Injected system prompt",
+                    "cache_control": {"type": "ephemeral"},
+                    "_ccproxy_injected": True,
+                },
+            ],
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": "User message 1",
+                            "cache_control": {"type": "ephemeral"},
+                        },
+                        {
+                            "type": "text",
+                            "text": "User message 2",
+                            "cache_control": {"type": "ephemeral"},
+                        },
+                        {
+                            "type": "text",
+                            "text": "User message 3",
+                            "cache_control": {"type": "ephemeral"},
+                        },
+                        {
+                            "type": "text",
+                            "text": "User message 4",
+                            "cache_control": {"type": "ephemeral"},
+                        },
+                    ],
+                }
+            ],
+        }
+
+        result = transformer._limit_cache_control_blocks(data, max_blocks=3)
+
+        # Injected system prompt should always be preserved
+        assert "cache_control" in result["system"][0]
+        assert result["system"][0]["_ccproxy_injected"] is True
+
+        # Should keep 2 largest user messages (by content size)
+        content = result["messages"][0]["content"]
+        cache_blocks_kept = sum(1 for block in content if "cache_control" in block)
+        assert cache_blocks_kept == 2  # Only 2 non-injected blocks kept
+
+    def test_smart_limiting_keeps_largest_blocks_by_size(self) -> None:
+        """Test that smart limiting keeps the largest blocks by content size."""
+        transformer = ClaudeAPIRequestTransformer()
+        data = {
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": "Small",  # 5 chars
+                            "cache_control": {"type": "ephemeral"},
+                        },
+                        {
+                            "type": "text",
+                            "text": "This is a much longer message with more content",  # 47 chars
+                            "cache_control": {"type": "ephemeral"},
+                        },
+                        {
+                            "type": "text",
+                            "text": "Medium length message",  # 21 chars
+                            "cache_control": {"type": "ephemeral"},
+                        },
+                        {
+                            "type": "tool_use",
+                            "name": "search",
+                            "input": {
+                                "query": "This is a very detailed search query with lots of parameters"
+                            },  # Large input
+                            "cache_control": {"type": "ephemeral"},
+                        },
+                    ],
+                }
+            ],
+        }
+
+        result = transformer._limit_cache_control_blocks(data, max_blocks=2)
+
+        # Should keep the 2 largest blocks: tool_use (largest) and long text message
+        content = result["messages"][0]["content"]
+        assert "cache_control" not in content[0]  # "Small" - removed
+        assert "cache_control" in content[1]  # Long text - kept
+        assert "cache_control" not in content[2]  # Medium - removed
+        assert "cache_control" in content[3]  # tool_use - kept (largest)
+
+    def test_smart_limiting_handles_mixed_injected_and_regular_blocks(self) -> None:
+        """Test smart limiting with mix of injected and regular blocks."""
+        transformer = ClaudeAPIRequestTransformer()
+        data = {
+            "system": [
+                {
+                    "type": "text",
+                    "text": "Injected system 1",
+                    "cache_control": {"type": "ephemeral"},
+                    "_ccproxy_injected": True,
+                },
+                {
+                    "type": "text",
+                    "text": "Injected system 2",
+                    "cache_control": {"type": "ephemeral"},
+                    "_ccproxy_injected": True,
+                },
+            ],
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": "Short message",
+                            "cache_control": {"type": "ephemeral"},
+                        },
+                        {
+                            "type": "text",
+                            "text": "This is a very long user message with extensive content that should be prioritized",
+                            "cache_control": {"type": "ephemeral"},
+                        },
+                    ],
+                }
+            ],
+        }
+
+        result = transformer._limit_cache_control_blocks(data, max_blocks=3)
+
+        # Should preserve both injected system prompts + 1 largest user message
+        assert "cache_control" in result["system"][0]  # injected - preserved
+        assert "cache_control" in result["system"][1]  # injected - preserved
+
+        content = result["messages"][0]["content"]
+        assert "cache_control" not in content[0]  # short message - removed
+        assert "cache_control" in content[1]  # long message - kept
+
+    def test_calculate_content_size_various_block_types(self) -> None:
+        """Test content size calculation for different block types."""
+        transformer = ClaudeAPIRequestTransformer()
+
+        # Test text block
+        text_block = {"type": "text", "text": "Hello world"}
+        assert transformer._calculate_content_size(text_block) == 11
+
+        # Test tool_use block
+        tool_use_block = {
+            "type": "tool_use",
+            "name": "search",
+            "input": {"query": "test"},
+        }
+        # "search" (6) + str({"query": "test"}) (17) = 23
+        assert transformer._calculate_content_size(tool_use_block) == 23
+
+        # Test tool_result block with string content
+        tool_result_block = {"type": "tool_result", "content": "Search results"}
+        assert transformer._calculate_content_size(tool_result_block) == 14
+
+    def test_clean_internal_metadata_removes_ccproxy_injected(self) -> None:
+        """Test that internal metadata is cleaned from request data."""
+        transformer = ClaudeAPIRequestTransformer()
+
+        data = {
+            "system": [
+                {
+                    "type": "text",
+                    "text": "System prompt",
+                    "cache_control": {"type": "ephemeral"},
+                    "_ccproxy_injected": True,
+                }
+            ],
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": "User message",
+                            "_ccproxy_injected": True,  # This shouldn't normally happen but test it
+                        }
+                    ],
+                }
+            ],
+            "tools": [
+                {
+                    "name": "test_tool",
+                    "_ccproxy_injected": True,  # This shouldn't normally happen but test it
+                }
+            ],
+        }
+
+        result = transformer._clean_internal_metadata(data)
+
+        # Original data should be unchanged
+        assert data["system"][0]["_ccproxy_injected"] is True
+
+        # Cleaned data should not have _ccproxy_injected
+        assert "_ccproxy_injected" not in result["system"][0]
+        assert "_ccproxy_injected" not in result["messages"][0]["content"][0]
+        assert "_ccproxy_injected" not in result["tools"][0]
+
+        # Other fields should be preserved
+        assert result["system"][0]["text"] == "System prompt"
+        assert result["system"][0]["cache_control"] == {"type": "ephemeral"}
+
+    def test_transform_body_cleans_metadata_in_final_output(self) -> None:
+        """Test that transform_body removes internal metadata from final output."""
+        detection_service = Mock(spec=ClaudeAPIDetectionService)
+        cache_data = ClaudeCacheData(
+            claude_version="1.0.60",
+            headers=ClaudeCodeHeaders(),
+            system_prompt=SystemPromptData(system_field="You are Claude Code"),
+        )
+        detection_service.get_cached_data.return_value = cache_data
+
+        transformer = ClaudeAPIRequestTransformer(
+            detection_service=detection_service, mode="full"
+        )
+        body_data = {"messages": [{"role": "user", "content": "Hello"}]}
+        body = json.dumps(body_data).encode("utf-8")
+
+        result = transformer.transform_body(body)
+        result_data = json.loads(result.decode("utf-8"))
+
+        # Final output should not contain internal metadata
+        assert "_ccproxy_injected" not in result_data["system"][0]
+
+        # But should contain the injected system prompt text
+        assert result_data["system"][0]["text"] == "You are Claude Code"
