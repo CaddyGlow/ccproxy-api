@@ -69,6 +69,7 @@ repos:
           - sse-starlette>=1.0.0
           - textual>=3.7.1
           - pyjwt>=2.10.0
+          - sortedcontainers>=2.4.0
         args: [--config-file=pyproject.toml]
         exclude: ^(docs/|examples/)
 

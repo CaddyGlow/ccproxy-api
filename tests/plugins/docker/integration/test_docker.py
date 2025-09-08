@@ -9,15 +9,18 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from plugins.docker.adapter import DockerAdapter
-from plugins.docker.docker_path import DockerPath, DockerPathSet
-from plugins.docker.middleware import LoggerOutputMiddleware, create_logger_middleware
-from plugins.docker.models import DockerUserContext
-from plugins.docker.stream_process import (
+from ccproxy.plugins.docker.adapter import DockerAdapter
+from ccproxy.plugins.docker.docker_path import DockerPath, DockerPathSet
+from ccproxy.plugins.docker.middleware import (
+    LoggerOutputMiddleware,
+    create_logger_middleware,
+)
+from ccproxy.plugins.docker.models import DockerUserContext
+from ccproxy.plugins.docker.stream_process import (
     DefaultOutputMiddleware,
     run_command,
 )
-from plugins.docker.validators import create_docker_error, validate_port_spec
+from ccproxy.plugins.docker.validators import create_docker_error, validate_port_spec
 
 
 # Mark entire module as integration tests that exercise Docker boundaries
@@ -446,7 +449,7 @@ class TestStreamProcess:
     def test_chained_middleware_creation(self) -> None:
         """Test creation of chained middleware."""
         from ccproxy.core.logging import get_logger
-        from ccproxy.docker.middleware import create_chained_docker_middleware
+        from ccproxy.plugins.docker.middleware import create_chained_docker_middleware
 
         logger = get_logger("test")
         middleware1 = LoggerOutputMiddleware(logger)
@@ -457,7 +460,7 @@ class TestStreamProcess:
 
     async def test_middleware_process_chain(self) -> None:
         """Test middleware processing chain."""
-        from ccproxy.docker.stream_process import ChainedOutputMiddleware
+        from ccproxy.plugins.docker.stream_process import ChainedOutputMiddleware
 
         middleware1 = DefaultOutputMiddleware()
         middleware2 = DefaultOutputMiddleware()
