@@ -109,6 +109,8 @@ in
       install.enable = false;
     };
   };
+
+  dotenv.disableHint = true;
   enterShell = '''';
 
   # git-hooks.hooks = {
