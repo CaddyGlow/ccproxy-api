@@ -189,13 +189,44 @@ class CopilotTokenStatus(BaseModel):
     username: str | None = Field(None, description="GitHub username")
 
 
-class CopilotUsageStats(BaseModel):
-    """Usage statistics."""
+class CopilotQuotaSnapshot(BaseModel):
+    """Quota snapshot data for a specific quota type."""
 
-    requests_total: int = Field(default=0, description="Total requests made")
-    tokens_used: int = Field(default=0, description="Total tokens consumed")
-    last_request: datetime | None = Field(None, description="Last request timestamp")
-    quota_remaining: int | None = Field(None, description="Remaining quota")
+    entitlement: int = Field(..., description="Total quota entitlement")
+    overage_count: int = Field(..., description="Number of overages")
+    overage_permitted: bool = Field(..., description="Whether overage is allowed")
+    percent_remaining: float = Field(..., description="Percentage of quota remaining")
+    quota_id: str = Field(..., description="Quota identifier")
+    quota_remaining: float = Field(..., description="Remaining quota amount")
+    remaining: int = Field(..., description="Remaining quota count")
+    unlimited: bool = Field(..., description="Whether quota is unlimited")
+    timestamp_utc: str = Field(..., description="Timestamp of last update")
+
+
+class CopilotUserInternalResponse(BaseModel):
+    """User internal response matching upstream /copilot_internal/user endpoint."""
+
+    access_type_sku: str = Field(..., description="Access type SKU")
+    analytics_tracking_id: str = Field(..., description="Analytics tracking ID")
+    assigned_date: datetime | None = Field(
+        None, description="Date when access was assigned"
+    )
+    can_signup_for_limited: bool = Field(
+        ..., description="Can sign up for limited access"
+    )
+    chat_enabled: bool = Field(..., description="Whether chat is enabled")
+    copilot_plan: str = Field(..., description="Copilot plan type")
+    organization_login_list: list[str] = Field(
+        default_factory=list, description="Organization login list"
+    )
+    organization_list: list[str] = Field(
+        default_factory=list, description="Organization list"
+    )
+    quota_reset_date: str = Field(..., description="Quota reset date")
+    quota_snapshots: dict[str, CopilotQuotaSnapshot] = Field(
+        ..., description="Current quota snapshots"
+    )
+    quota_reset_date_utc: str = Field(..., description="Quota reset date in UTC")
 
 
 # Internal Models for Plugin Communication

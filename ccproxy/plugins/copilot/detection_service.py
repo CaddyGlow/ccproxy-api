@@ -1,7 +1,6 @@
 """GitHub CLI detection service for Copilot plugin."""
 
 import asyncio
-import json
 import shutil
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any, cast
@@ -168,112 +167,6 @@ class CopilotDetectionService:
             error=None if self._cache.cli_available else "GitHub CLI not found in PATH",
         )
 
-    async def check_copilot_access(self) -> bool:
-        """Check if the authenticated user has Copilot access.
-
-        Returns:
-            True if user has Copilot access, False otherwise
-        """
-        cli_path = self.get_cli_path()
-        if not cli_path:
-            logger.debug("no_cli_for_copilot_check")
-            return False
-
-        try:
-            # Try to access Copilot API through GitHub CLI
-            result = await asyncio.create_subprocess_exec(
-                *cli_path,
-                "api",
-                "/user/copilot_business_accounts",
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            stdout, stderr = await result.communicate()
-
-            if result.returncode == 0:
-                # Parse response to check for business accounts
-                try:
-                    data = json.loads(stdout.decode())
-                    business_accounts = data.get("copilot_business_accounts", [])
-                    if business_accounts:
-                        logger.debug("copilot_business_access_confirmed")
-                        return True
-                except json.JSONDecodeError:
-                    pass
-
-            # Try individual Copilot access
-            result = await asyncio.create_subprocess_exec(
-                *cli_path,
-                "api",
-                "/user/copilot",
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            stdout, stderr = await result.communicate()
-
-            if result.returncode == 200:  # HTTP 200 OK
-                logger.debug("copilot_individual_access_confirmed")
-                return True
-
-            logger.debug(
-                "copilot_access_check_failed",
-                returncode=result.returncode,
-                stderr=stderr.decode().strip()[:200],  # First 200 chars
-            )
-            return False
-
-        except Exception as e:
-            logger.warning(
-                "copilot_access_check_error",
-                error=str(e),
-                exc_info=e,
-            )
-            return False
-
-    async def get_github_user_info(self) -> dict[str, Any] | None:
-        """Get GitHub user information via CLI.
-
-        Returns:
-            User information dict or None if unavailable
-        """
-        cli_path = self.get_cli_path()
-        if not cli_path:
-            return None
-
-        try:
-            result = await asyncio.create_subprocess_exec(
-                *cli_path,
-                "api",
-                "/user",
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            stdout, stderr = await result.communicate()
-
-            if result.returncode == 0:
-                try:
-                    user_data = json.loads(stdout.decode())
-                    logger.debug(
-                        "github_user_info_retrieved",
-                        login=user_data.get("login"),
-                        name=user_data.get("name"),
-                    )
-                    return dict(user_data)
-                except json.JSONDecodeError as e:
-                    logger.warning(
-                        "github_user_info_parse_failed",
-                        error=str(e),
-                    )
-
-        except Exception as e:
-            logger.warning(
-                "github_user_info_request_failed",
-                error=str(e),
-                exc_info=e,
-            )
-
-        return None
-
     def _is_cache_expired(self) -> bool:
         """Check if detection cache has expired.
 
@@ -337,7 +230,6 @@ class CopilotDetectionService:
                     ),
                     "username": self._cache.username if self._cache else None,
                 },
-                "copilot_access": await self.check_copilot_access(),
                 "last_check": self._cache.last_check.isoformat()
                 if self._cache
                 else None,

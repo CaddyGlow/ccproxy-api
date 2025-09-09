@@ -17,7 +17,7 @@ from .models import (
     CopilotModel,
     CopilotModelsResponse,
     CopilotTokenStatus,
-    CopilotUsageStats,
+    CopilotUserInternalResponse,
 )
 
 
@@ -217,24 +217,17 @@ async def create_embeddings(
 # Copilot-specific information endpoints
 
 
-@router.get("/usage", response_model=CopilotUsageStats)
+@router.get("/usage", response_model=CopilotUserInternalResponse)
 async def get_usage_stats() -> JSONResponse:
     """Get Copilot usage statistics."""
     try:
         logger.debug("getting_usage_stats")
 
-        # For now, return placeholder data
-        # In a full implementation, this would fetch real usage data
-        usage_stats = CopilotUsageStats(
-            requests_total=0,
-            tokens_used=0,
-            last_request=None,
-            quota_remaining=None,
-        )
-
-        return JSONResponse(
-            content=usage_stats.model_dump(),
-            headers={"X-Copilot-Provider": "ccproxy"},
+        # This endpoint requires upstream /copilot_internal/user data
+        # Return error if not available since we don't have real data
+        raise HTTPException(
+            status_code=503,
+            detail="Usage data not available - requires upstream /copilot_internal/user integration",
         )
 
     except Exception as e:
