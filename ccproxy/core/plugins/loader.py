@@ -13,10 +13,10 @@ from typing import Any
 import structlog
 
 from ccproxy.core.plugins.discovery import discover_and_load_plugins
-from ccproxy.core.plugins.factory import (
+from ccproxy.core.plugins.factories import PluginRegistry
+from ccproxy.core.plugins.interfaces import (
     AuthProviderPluginFactory,
     PluginFactory,
-    PluginRegistry,
 )
 from ccproxy.core.plugins.middleware import MiddlewareManager
 

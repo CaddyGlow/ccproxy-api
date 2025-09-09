@@ -14,7 +14,7 @@ import structlog
 
 from ccproxy.core.plugins.declaration import PluginManifest
 from ccproxy.core.plugins.discovery import PluginFilter
-from ccproxy.core.plugins.factory import PluginFactory
+from ccproxy.core.plugins.interfaces import PluginFactory
 
 
 logger = structlog.get_logger(__name__)

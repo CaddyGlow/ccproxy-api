@@ -1,6 +1,6 @@
 # Enable local plugin discovery so in-tree plugins are loaded from ./plugins
 plugins_disable_local_discovery = false
-disabled_plugins = ["docker"]
+# disabled_plugins = ["docker"]
 
 # Logging configuration
 [logging]

@@ -20,7 +20,7 @@ except Exception:  # pragma: no cover
     entry_points = None  # type: ignore
     EntryPoint = Any  # type: ignore
 
-from .factory import PluginFactory
+from .interfaces import PluginFactory
 
 
 logger = structlog.get_logger(__name__)

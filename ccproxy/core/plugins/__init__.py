@@ -4,7 +4,6 @@ This module exposes the common symbols used by plugins and app code while
 keeping imports straightforward to avoid circular dependencies.
 """
 
-from .base_factory import BaseProviderPluginFactory
 from .declaration import (
     AuthCommandSpec,
     FormatAdapterSpec,
@@ -18,11 +17,14 @@ from .declaration import (
     RouteSpec,
     TaskSpec,
 )
-from .factory import (
+from .factories import (
+    BaseProviderPluginFactory,
+    PluginRegistry,
+)
+from .interfaces import (
     AuthProviderPluginFactory,
     BasePluginFactory,
     PluginFactory,
-    PluginRegistry,
     ProviderPluginFactory,
     SystemPluginFactory,
     factory_type_name,

@@ -132,8 +132,18 @@ async def initialize_plugins_startup(app: FastAPI, settings: Settings) -> None:
 
     # Perform manifest population with access to http_pool_manager
     # This allows plugins to modify their manifests during context creation
-    for _name, factory in plugin_registry.factories.items():
-        factory.create_context(core_services)
+    for plugin_name, factory in plugin_registry.factories.items():
+        try:
+            factory.create_context(core_services)
+        except Exception as e:
+            logger.warning(
+                "plugin_context_creation_failed",
+                plugin=plugin_name,
+                error=str(e),
+                exc_info=e,
+                category="plugin",
+            )
+            # Continue with other plugins
 
     from typing import cast as _cast
 

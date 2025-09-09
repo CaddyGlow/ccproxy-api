@@ -1,345 +1,363 @@
-"""Plugin factory protocol for bridging declaration and runtime.
+"""Plugin factory implementations and registry.
 
-This module provides the factory layer that creates runtime instances
-from plugin manifests and manages the plugin lifecycle.
+This module contains all concrete factory implementations merged from
+base_factory.py and factory.py to eliminate circular dependencies.
 """
 
-from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Any, TypeVar
+import inspect
+from typing import TYPE_CHECKING, Any, cast
 
+import httpx
 import structlog
+from fastapi import APIRouter
 
 from ccproxy.core.services import CoreServices
+from ccproxy.services.adapters.base import BaseAdapter
+from ccproxy.services.adapters.http_adapter import BaseHTTPAdapter
+from ccproxy.services.interfaces import (
+    IMetricsCollector,
+    IRequestTracer,
+    NullMetricsCollector,
+    NullRequestTracer,
+    NullStreamingHandler,
+    StreamingMetrics,
+)
+
+from .declaration import (
+    CliArgumentSpec,
+    CliCommandSpec,
+    FormatAdapterSpec,
+    FormatPair,
+    PluginContext,
+    PluginManifest,
+    RouteSpec,
+    TaskSpec,
+)
+from .interfaces import (
+    AuthProviderPluginFactory,
+    PluginFactory,
+    ProviderPluginFactory,
+)
 
 
 if TYPE_CHECKING:
     from ccproxy.config.settings import Settings
-
-from .declaration import PluginContext, PluginManifest
+    from ccproxy.http.pool import HTTPPoolManager
 
 
 logger = structlog.get_logger(__name__)
 
 # Type variable for service type checking
-T = TypeVar("T")
+T = Any
 
 
-class PluginFactory(ABC):
-    """Abstract factory for creating plugin runtime instances.
+class BaseProviderPluginFactory(ProviderPluginFactory):
+    """Base factory for provider plugins that eliminates common boilerplate.
 
-    Each plugin must provide a factory that knows how to create
-    its runtime instance from its manifest.
+    This class uses class attributes for plugin configuration and implements
+    common methods that all provider factories share. Subclasses only need
+    to define class attributes and override methods that need custom behavior.
+
+    Required class attributes to be defined by subclasses:
+    - plugin_name: str
+    - plugin_description: str
+    - runtime_class: type[ProviderPluginRuntime]
+    - adapter_class: type[BaseAdapter]
+    - config_class: type[BaseSettings]
+
+    Optional class attributes with defaults:
+    - plugin_version: str = "1.0.0"
+    - detection_service_class: type | None = None
+    - credentials_manager_class: type | None = None
+    - router: APIRouter | None = None
+    - route_prefix: str = "/api"
+    - dependencies: list[str] = []
+    - optional_requires: list[str] = []
+    - tasks: list[TaskSpec] = []
     """
 
-    @abstractmethod
-    def get_manifest(self) -> PluginManifest:
-        """Get the plugin manifest with static declarations.
+    # Required class attributes (must be overridden by subclasses)
+    plugin_name: str
+    plugin_description: str
+    runtime_class: Any  # Should be type[ProviderPluginRuntime] subclass
+    adapter_class: Any  # Should be type[BaseAdapter] subclass
+    config_class: Any  # Should be type[BaseSettings] subclass
 
-        Returns:
-            Plugin manifest
-        """
-        ...
+    # Optional class attributes with defaults
+    plugin_version: str = "1.0.0"
+    detection_service_class: type | None = None
+    credentials_manager_class: type | None = None
+    router: APIRouter | None | Any = (
+        None  # Can be APIRouter instance or callable that returns APIRouter
+    )
+    route_prefix: str = "/api"
+    dependencies: list[str] = []
+    optional_requires: list[str] = []
+    tasks: list[TaskSpec] = []
 
-    @abstractmethod
-    def create_runtime(self) -> Any:
-        """Create a runtime instance for this plugin.
+    # Format adapter declarations (populated by subclasses)
+    format_adapters: list[FormatAdapterSpec] = []
+    requires_format_adapters: list[FormatPair] = []
 
-        Returns:
-            Plugin runtime instance
-        """
-        ...
+    # CLI extension declarations (populated by subclasses)
+    cli_commands: list[CliCommandSpec] = []
+    cli_arguments: list[CliArgumentSpec] = []
 
-    @abstractmethod
-    def create_context(self, core_services: Any) -> PluginContext:
-        """Create the context for plugin initialization.
+    def __init__(self) -> None:
+        """Initialize factory with manifest built from class attributes."""
+        # Validate required class attributes
+        self._validate_class_attributes()
 
-        Args:
-            core_services: Core services container
+        # Validate runtime class is a proper subclass
+        # Import locally to avoid circular import during module import
+        from .runtime import ProviderPluginRuntime
 
-        Returns:
-            Plugin context with required services
-        """
-        ...
+        if not issubclass(self.runtime_class, ProviderPluginRuntime):
+            raise TypeError(
+                f"runtime_class {self.runtime_class.__name__} must be a subclass of ProviderPluginRuntime"
+            )
 
+        # Build routes from router if provided
+        routes = []
+        if self.router is not None:
+            # Handle both router instances and router factory functions
+            router_instance = self.router
+            if callable(self.router) and not isinstance(self.router, APIRouter):
+                # Router is a factory function (not an APIRouter instance), call it to get the actual router
+                router_instance = self.router()
 
-class BasePluginFactory(PluginFactory):
-    """Base implementation of plugin factory.
-
-    This class provides common functionality for creating plugin
-    runtime instances from manifests.
-    """
-
-    def __init__(self, manifest: PluginManifest, runtime_class: type[Any]):
-        """Initialize factory with manifest and runtime class.
-
-        Args:
-            manifest: Plugin manifest
-            runtime_class: Runtime class to instantiate
-        """
-        self.manifest = manifest
-        self.runtime_class = runtime_class
-
-    def get_manifest(self) -> PluginManifest:
-        """Get the plugin manifest."""
-        return self.manifest
-
-    def create_runtime(self) -> Any:
-        """Create a runtime instance."""
-        return self.runtime_class(self.manifest)
-
-    def create_context(self, core_services: Any) -> PluginContext:
-        """Create base context for plugin initialization.
-
-        Args:
-            core_services: Core services container
-
-        Returns:
-            Plugin context with base services
-        """
-        context = PluginContext()
-
-        # Set core services
-        context.settings = core_services.settings
-        context.http_pool_manager = core_services.http_pool_manager
-        context.logger = core_services.logger.bind(plugin=self.manifest.name)
-
-        # Add explicit dependency injection services
-        if hasattr(core_services, "request_tracer"):
-            context.request_tracer = core_services.request_tracer
-        if hasattr(core_services, "streaming_handler"):
-            context.streaming_handler = core_services.streaming_handler
-        if hasattr(core_services, "metrics"):
-            context.metrics = core_services.metrics
-
-        # Add CLI detection service if available
-        if hasattr(core_services, "cli_detection_service"):
-            context.cli_detection_service = core_services.cli_detection_service
-
-        # Add scheduler if available
-        if hasattr(core_services, "scheduler"):
-            context.scheduler = core_services.scheduler
-
-        # Add plugin registry (SINGLE SOURCE for all plugin/service access)
-        if hasattr(core_services, "plugin_registry"):
-            context.plugin_registry = core_services.plugin_registry
-
-        # Add OAuth registry for auth providers if available (avoid globals)
-        if (
-            hasattr(core_services, "oauth_registry")
-            and core_services.oauth_registry is not None
-        ):
-            context.oauth_registry = core_services.oauth_registry
-
-        # Add hook registry and manager if available
-        if hasattr(core_services, "hook_registry"):
-            context.hook_registry = core_services.hook_registry
-        if hasattr(core_services, "hook_manager"):
-            context.hook_manager = core_services.hook_manager
-        if hasattr(core_services, "app"):
-            context.app = core_services.app
-
-        # Add service container if available
-        if hasattr(core_services, "_container"):
-            context.service_container = core_services._container
-
-        # Add plugin-specific config if available
-        if hasattr(core_services, "get_plugin_config"):
-            plugin_config = core_services.get_plugin_config(self.manifest.name)
-            if plugin_config and self.manifest.config_class:
-                # Validate config with plugin's config class
-                validated_config = self.manifest.config_class.model_validate(
-                    plugin_config
+            # Normalize tag naming: use kebab-case (underscores -> hyphens)
+            normalized_tag = self.plugin_name.replace("_", "-")
+            routes.append(
+                RouteSpec(
+                    router=router_instance,
+                    prefix=self.route_prefix,
+                    tags=[normalized_tag],
                 )
-                context.config = validated_config
-
-        return context
-
-
-class SystemPluginFactory(BasePluginFactory):
-    """Factory for system plugins."""
-
-    def __init__(self, manifest: PluginManifest):
-        """Initialize system plugin factory.
-
-        Args:
-            manifest: Plugin manifest
-        """
-        # Local import to avoid circular dependency at module load time
-        from ccproxy.core.plugins import SystemPluginRuntime
-
-        super().__init__(manifest, SystemPluginRuntime)
-
-        # Validate this is a system plugin
-        if manifest.is_provider:
-            raise ValueError(
-                f"Plugin {manifest.name} is marked as provider but using SystemPluginFactory"
             )
 
+        # Create manifest from class attributes
+        manifest = PluginManifest(
+            name=self.plugin_name,
+            version=self.plugin_version,
+            description=self.plugin_description,
+            is_provider=True,
+            config_class=self.config_class,
+            dependencies=self.dependencies.copy(),
+            optional_requires=self.optional_requires.copy(),
+            routes=routes,
+            tasks=self.tasks.copy(),
+            format_adapters=self.format_adapters.copy(),
+            requires_format_adapters=self.requires_format_adapters.copy(),
+            cli_commands=self.cli_commands.copy(),
+            cli_arguments=self.cli_arguments.copy(),
+        )
 
-class ProviderPluginFactory(BasePluginFactory):
-    """Factory for provider plugins.
+        # Format adapter specification validation is deferred to runtime
+        # when settings are available via dependency injection
 
-    Provider plugins require additional components like adapters
-    and detection services that must be created during initialization.
-    """
+        # Store the manifest and runtime class directly
+        # We don't call parent __init__ because ProviderPluginFactory
+        # would override our runtime_class with ProviderPluginRuntime
+        self.manifest = manifest
+        self.runtime_class = self.__class__.runtime_class
 
-    def __init__(self, manifest: PluginManifest):
-        """Initialize provider plugin factory.
+    def validate_format_adapters_with_settings(self, settings: "Settings") -> None:
+        """Validate format adapter specifications (feature flags removed)."""
+        self._validate_format_adapter_specs()
+
+    def _validate_class_attributes(self) -> None:
+        """Validate that required class attributes are defined."""
+        required_attrs = [
+            "plugin_name",
+            "plugin_description",
+            "runtime_class",
+            "adapter_class",
+            "config_class",
+        ]
+
+        for attr in required_attrs:
+            if (
+                not hasattr(self.__class__, attr)
+                or getattr(self.__class__, attr) is None
+            ):
+                raise ValueError(
+                    f"Class attribute '{attr}' must be defined in {self.__class__.__name__}"
+                )
+
+    def _validate_format_adapter_specs(self) -> None:
+        """Validate format adapter specifications."""
+        for spec in self.format_adapters:
+            if not callable(spec.adapter_factory):
+                raise ValueError(
+                    f"Invalid adapter factory for {spec.from_format} -> {spec.to_format}: "
+                    f"must be callable"
+                ) from None
+
+    def create_runtime(self) -> Any:
+        """Create runtime instance using the configured runtime class."""
+        return cast(Any, self.runtime_class(self.manifest))
+
+    async def create_adapter(self, context: PluginContext) -> BaseAdapter:
+        """Create adapter instance with explicit dependencies.
+
+        This method extracts services from context and creates the adapter
+        with explicit dependency injection. Subclasses can override this
+        method if they need custom adapter creation logic.
 
         Args:
-            manifest: Plugin manifest
+            context: Plugin context
+
+        Returns:
+            Adapter instance
         """
-        # Local import to avoid circular dependency at module load time
-        from ccproxy.core.plugins import ProviderPluginRuntime
+        # Extract services from context (one-time extraction)
+        http_pool_manager: HTTPPoolManager | None = cast(
+            "HTTPPoolManager | None", context.get("http_pool_manager")
+        )
+        request_tracer: IRequestTracer | None = context.get("request_tracer")
+        metrics: IMetricsCollector | None = context.get("metrics")
+        streaming_handler: StreamingMetrics | None = context.get("streaming_handler")
+        hook_manager = context.get("hook_manager")
 
-        super().__init__(manifest, ProviderPluginRuntime)
+        # Get auth and detection services that may have been created by factory
+        auth_manager = context.get("credentials_manager")
+        detection_service = context.get("detection_service")
 
-        # Validate this is a provider plugin
-        if not manifest.is_provider:
-            raise ValueError(
-                f"Plugin {manifest.name} is not marked as provider but using ProviderPluginFactory"
+        # Get config if available
+        config = context.get("config")
+
+        # Get all adapter dependencies from service container
+        service_container = context.get("service_container")
+        if not service_container:
+            raise RuntimeError("Service container is required for adapter services")
+
+        # Get standardized adapter dependencies
+        adapter_dependencies = service_container.get_adapter_dependencies(metrics)
+
+        # Check if this is an HTTP-based adapter
+        if issubclass(self.adapter_class, BaseHTTPAdapter):
+            # HTTP adapters require http_pool_manager
+            if not http_pool_manager:
+                raise RuntimeError(
+                    f"HTTP pool manager required for {self.adapter_class.__name__} but not available in context"
+                )
+
+            # Create HTTP adapter with explicit dependencies including format services
+            return cast(
+                BaseAdapter,
+                self.adapter_class(
+                    auth_manager=auth_manager,
+                    detection_service=detection_service,
+                    http_pool_manager=http_pool_manager,
+                    request_tracer=request_tracer or NullRequestTracer(),
+                    metrics=metrics or NullMetricsCollector(),
+                    streaming_handler=streaming_handler or NullStreamingHandler(),
+                    hook_manager=hook_manager,
+                    format_registry=adapter_dependencies["format_registry"],
+                    context=context,
+                ),
             )
+        else:
+            # Non-HTTP adapters (like ClaudeSDK) have different dependencies
+            # Build kwargs based on adapter class constructor signature
+            adapter_kwargs: dict[str, Any] = {}
+
+            # Get the adapter's __init__ signature
+            sig = inspect.signature(self.adapter_class.__init__)
+            params = sig.parameters
+
+            # For non-HTTP adapters, create http_client from pool manager if needed
+            client_for_non_http: httpx.AsyncClient | None = None
+            if http_pool_manager and "http_client" in params:
+                client_for_non_http = await http_pool_manager.get_client()
+
+            # Map available services to expected parameters
+            param_mapping = {
+                "config": config,
+                "http_client": client_for_non_http,
+                "http_pool_manager": http_pool_manager,
+                "auth_manager": auth_manager,
+                "detection_service": detection_service,
+                "session_manager": context.get("session_manager"),
+                "request_tracer": request_tracer,
+                "metrics": metrics,
+                "streaming_handler": streaming_handler,
+                "hook_manager": hook_manager,
+                "format_registry": adapter_dependencies["format_registry"],
+                "context": context,
+            }
+
+            # Add parameters that the adapter expects
+            for param_name, param in params.items():
+                if param_name in ("self", "kwargs"):
+                    continue
+                if (
+                    param_name in param_mapping
+                    and param_mapping[param_name] is not None
+                ):
+                    adapter_kwargs[param_name] = param_mapping[param_name]
+                elif (
+                    param.default is inspect.Parameter.empty
+                    and param_name not in adapter_kwargs
+                    and param_name == "config"
+                    and config is None
+                    and self.manifest.config_class
+                ):
+                    # Try to get config from manifest
+                    config = self.manifest.config_class()
+                    adapter_kwargs["config"] = config
+
+            return cast(BaseAdapter, self.adapter_class(**adapter_kwargs))
+
+    def create_detection_service(self, context: PluginContext) -> Any:
+        """Create detection service instance if class is configured.
+
+        Args:
+            context: Plugin context
+
+        Returns:
+            Detection service instance or None if no class configured
+        """
+        if self.detection_service_class is None:
+            return None
+
+        settings = context.get("settings")
+        if settings is None:
+            from ccproxy.config.settings import Settings
+
+            settings = Settings()
+
+        cli_service = context.get("cli_detection_service")
+        return self.detection_service_class(settings, cli_service)
+
+    def create_credentials_manager(self, context: PluginContext) -> Any:
+        """Create credentials manager instance if class is configured.
+
+        Args:
+            context: Plugin context
+
+        Returns:
+            Credentials manager instance or None if no class configured
+        """
+        if self.credentials_manager_class is None:
+            return None
+
+        return self.credentials_manager_class()
 
     def create_context(self, core_services: Any) -> PluginContext:
         """Create context with provider-specific components.
 
-        Args:
-            core_services: Core services container
-
-        Returns:
-            Plugin context with provider components
-        """
-        # Start with base context
-        context = super().create_context(core_services)
-
-        # Provider plugins need to create their own adapter and detection service
-        # This is typically done in the specific plugin factory implementation
-        # Here we just ensure the structure is correct
-
-        return context
-
-    @abstractmethod
-    async def create_adapter(self, context: PluginContext) -> Any:
-        """Create the adapter for this provider.
-
-        Args:
-            context: Plugin context
-
-        Returns:
-            Provider adapter instance
-        """
-        ...
-
-    @abstractmethod
-    def create_detection_service(self, context: PluginContext) -> Any:
-        """Create the detection service for this provider.
-
-        Args:
-            context: Plugin context
-
-        Returns:
-            Detection service instance or None
-        """
-        ...
-
-    @abstractmethod
-    def create_credentials_manager(self, context: PluginContext) -> Any:
-        """Create the credentials manager for this provider.
-
-        Args:
-            context: Plugin context
-
-        Returns:
-            Credentials manager instance or None
-        """
-        ...
-
-
-class AuthProviderPluginFactory(BasePluginFactory):
-    """Factory for authentication provider plugins.
-
-    Auth provider plugins provide OAuth authentication flows and token management
-    without directly proxying requests to API providers.
-    """
-
-    def __init__(self, manifest: PluginManifest):
-        """Initialize auth provider plugin factory.
-
-        Args:
-            manifest: Plugin manifest
-        """
-        # Local import to avoid circular dependency at module load time
-        from ccproxy.core.plugins import AuthProviderPluginRuntime
-
-        super().__init__(manifest, AuthProviderPluginRuntime)
-
-        # Validate this is marked as a provider plugin (auth providers are a type of provider)
-        if not manifest.is_provider:
-            raise ValueError(
-                f"Plugin {manifest.name} must be marked as provider for AuthProviderPluginFactory"
-            )
-
-    def create_context(self, core_services: Any) -> PluginContext:
-        """Create context with auth provider-specific components.
+        This method provides a hook for subclasses to customize context creation.
+        The default implementation just returns the base context.
 
         Args:
             core_services: Core services container
 
         Returns:
-            Plugin context with auth provider components
+            Plugin context
         """
-        # Start with base context
-        context = super().create_context(core_services)
-
-        # Auth provider plugins need to create their auth components
-        # This is typically done in the specific plugin factory implementation
-
-        return context
-
-    @abstractmethod
-    def create_auth_provider(self, context: PluginContext | None = None) -> Any:
-        """Create the OAuth provider for this auth plugin.
-
-        Args:
-            context: Optional plugin context for initialization
-
-        Returns:
-            OAuth provider instance implementing OAuthProviderProtocol
-        """
-        ...
-
-    def create_token_manager(self) -> Any | None:
-        """Create the token manager for this auth plugin.
-
-        Returns:
-            Token manager instance or None if not needed
-        """
-        return None
-
-    def create_storage(self) -> Any | None:
-        """Create the storage implementation for this auth plugin.
-
-        Returns:
-            Storage instance or None if using default
-        """
-        return None
-
-
-def factory_type_name(factory: PluginFactory) -> str:
-    """Return a stable type name for a plugin factory.
-
-    Returns one of: "auth_provider", "provider", "system", or "plugin" (fallback).
-    """
-    try:
-        if isinstance(factory, AuthProviderPluginFactory):
-            return "auth_provider"
-        if isinstance(factory, ProviderPluginFactory):
-            return "provider"
-        if isinstance(factory, SystemPluginFactory):
-            return "system"
-    except Exception:
-        pass
-    return "plugin"
+        return super().create_context(core_services)
 
 
 class PluginRegistry:
@@ -374,9 +392,6 @@ class PluginRegistry:
             )
         self._services[service_name] = service_instance
         self._service_providers[service_name] = provider_plugin
-        # logger.debug(
-        #     "service_registered", service=service_name, provider=provider_plugin
-        # )
 
     def get_service(
         self, service_name: str, service_type: type[T] | None = None
@@ -436,13 +451,6 @@ class PluginRegistry:
             raise ValueError(f"Plugin {manifest.name} already registered")
 
         self.factories[manifest.name] = factory
-        # logger.debug(
-        #     "plugin_factory_registered",
-        #     plugin=manifest.name,
-        #     version=manifest.version,
-        #     is_provider=manifest.is_provider,
-        #     category="plugin",
-        # )
 
     def get_factory(self, name: str) -> PluginFactory | None:
         """Get a plugin factory by name.
