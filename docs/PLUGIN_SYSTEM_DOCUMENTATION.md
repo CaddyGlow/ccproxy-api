@@ -956,7 +956,7 @@ class OAuthProviderProtocol(Protocol):
 #### 1. Create OAuth Provider
 
 ```python
-# plugins/claude_api/oauth/provider.py
+# ccproxy/plugins/claude_api/oauth/provider.py
 from ccproxy.auth.oauth.registry import OAuthProviderInfo, OAuthProviderProtocol
 
 class ClaudeOAuthProvider:
@@ -979,7 +979,7 @@ class ClaudeOAuthProvider:
 #### 2. Register in Plugin Manifest
 
 ```python
-# plugins/claude_api/plugin.py
+# ccproxy/plugins/claude_api/plugin.py
 class ClaudeAPIPlugin(PluginFactory):
     def get_manifest(self) -> PluginManifest:
         return PluginManifest(
@@ -1066,7 +1066,7 @@ ccproxy auth logout claude-api
 ### Example: Complete OAuth Provider
 
 ```python
-# plugins/codex/oauth/provider.py
+# ccproxy/plugins/codex/oauth/provider.py
 class CodexOAuthProvider:
     def __init__(self, config=None, storage=None):
         self.config = config or CodexOAuthConfig()

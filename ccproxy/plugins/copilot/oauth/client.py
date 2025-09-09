@@ -358,7 +358,7 @@ class CopilotOAuthClient:
             logger.info(
                 "profile_retrieved",
                 login=profile.login,
-                name=profile.name,
+                user_name=profile.name,
                 copilot_access=copilot_access,
                 copilot_plan=copilot_plan,
             )

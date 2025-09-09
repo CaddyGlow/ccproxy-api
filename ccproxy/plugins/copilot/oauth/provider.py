@@ -200,11 +200,12 @@ class CopilotOAuthProvider(ProfileLoggingMixin):
         profile = await self.client.get_user_profile(credentials.oauth_token)
 
         # Convert to StandardProfileFields
+        display_name = getattr(profile, "computed_display_name", None)
         return StandardProfileFields(
             account_id=profile.account_id,
             provider_type="copilot",
             email=profile.email or None,
-            display_name=profile.display_name,
+            display_name=display_name,
         )
 
     async def get_token_info(self) -> CopilotTokenInfo | None:
@@ -224,9 +225,11 @@ class CopilotOAuthProvider(ProfileLoggingMixin):
             from datetime import datetime
 
             with contextlib.suppress(ValueError):
-                copilot_expires_at = datetime.fromisoformat(
-                    credentials.copilot_token.expires_at.replace("Z", "+00:00")
-                )
+                expires_str = credentials.copilot_token.expires_at
+                # Handle both Z suffix and timezone offset formats
+                if expires_str.endswith("Z"):
+                    expires_str = expires_str[:-1] + "+00:00"
+                copilot_expires_at = datetime.fromisoformat(expires_str)
 
         # Get profile for additional info
         profile = None

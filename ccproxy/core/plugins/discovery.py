@@ -356,7 +356,7 @@ def discover_and_load_plugins(settings: Any) -> dict[str, PluginFactory]:
     Returns:
         Dictionary of loaded plugin factories
     """
-    # Get plugins directory - go up to project root then to plugins/
+    # Get plugins directory - go up to project root then to ccproxy/plugins/
     plugins_dir = Path(__file__).parent.parent.parent / "plugins"
 
     # Discover plugins

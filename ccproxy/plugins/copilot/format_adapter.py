@@ -195,18 +195,49 @@ class CopilotToOpenAIAdapter:
         )
 
         # OpenAI and Copilot response formats are compatible
-        # Just ensure proper structure
-        result = {
-            "id": openai_response.get("id"),
-            "object": openai_response.get("object", "chat.completion"),
-            "created": openai_response.get("created"),
-            "model": openai_response.get("model"),
-            "choices": openai_response.get("choices", []),
-            "usage": openai_response.get("usage"),
-        }
+        # Preserve all original fields and add any missing standard fields
+        result = dict(openai_response)  # Start with all original fields
 
-        # Clean up None values
-        result = {k: v for k, v in result.items() if v is not None}
+        # Ensure standard fields have default values if missing
+        result.setdefault("object", "chat.completion")
+
+        # For streaming chunks, extract finish_reason from choices if present
+        if result.get("object") == "chat.completion.chunk":
+            choices = result.get("choices", [])
+            if choices and len(choices) > 0:
+                finish_reason = choices[0].get("finish_reason")
+                if finish_reason:
+                    result["finish_reason"] = finish_reason
+
+        return result
+
+    async def adapt_stream_chunk(self, openai_chunk: dict[str, Any]) -> dict[str, Any]:
+        """Convert OpenAI streaming chunk to Copilot format.
+
+        Args:
+            openai_chunk: OpenAI format streaming chunk
+
+        Returns:
+            Copilot format streaming chunk
+        """
+        logger.debug(
+            "adapting_openai_stream_chunk",
+            object_type=openai_chunk.get("object"),
+        )
+
+        # OpenAI and Copilot streaming formats are compatible
+        # Preserve all original fields and add any missing standard fields
+        result = dict(openai_chunk)  # Start with all original fields
+
+        # Ensure standard fields have default values if missing
+        result.setdefault("object", "chat.completion.chunk")
+
+        # Extract finish_reason from choices if present
+        choices = result.get("choices", [])
+        if choices and len(choices) > 0:
+            finish_reason = choices[0].get("finish_reason")
+            if finish_reason:
+                result["finish_reason"] = finish_reason
 
         return result
 
@@ -263,9 +294,12 @@ class CopilotFormatAdapter:
         if from_format == to_format:
             return response
 
-        if from_format == "copilot" and to_format == "openai":
-            return await self.openai_to_copilot.adapt_response(response)
-        elif from_format == "openai" and to_format == "copilot":
+        if (
+            from_format == "copilot"
+            and to_format == "openai"
+            or from_format == "openai"
+            and to_format == "copilot"
+        ):
             return await self.copilot_to_openai.adapt_response(response)
         else:
             logger.warning(
@@ -292,7 +326,7 @@ class CopilotFormatAdapter:
             return chunk
 
         if from_format == "copilot" and to_format == "openai":
-            return await self.openai_to_copilot.adapt_stream_chunk(chunk)
+            return await self.copilot_to_openai.adapt_stream_chunk(chunk)
         elif from_format == "openai" and to_format == "copilot":
             # For now, OpenAI to Copilot streaming is the same format
             return chunk

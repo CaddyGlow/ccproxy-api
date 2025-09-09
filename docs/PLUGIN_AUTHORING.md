@@ -117,7 +117,7 @@ other_plugin = "my_package.other:create_factory"
 ### Provider Plugin with Format Conversion
 
 ```python
-# plugin.py (inside plugins/my_provider)
+# plugin.py (inside ccproxy/plugins/my_provider)
 from ccproxy.core.plugins import (
     BaseProviderPluginFactory,
     ProviderPluginRuntime,
@@ -196,7 +196,7 @@ factory = MyProviderFactory()
 ### System Plugin with Hooks and Services
 
 ```python
-# plugin.py (inside plugins/my_system)
+# plugin.py (inside ccproxy/plugins/my_system)
 from ccproxy.core.plugins import (
     SystemPluginFactory,
     SystemPluginRuntime,

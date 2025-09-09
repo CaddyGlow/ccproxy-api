@@ -316,6 +316,8 @@ async def discover_oauth_providers(
                     providers["claude-api"] = ("oauth", "Claude API OAuth")
                 elif name == "oauth_codex":
                     providers["codex"] = ("oauth", "OpenAI Codex OAuth")
+                elif name == "copilot":
+                    providers["copilot"] = ("oauth", "GitHub Copilot OAuth")
     except Exception as e:
         logger.debug("discover_oauth_providers_failed", error=str(e), exc_info=e)
     return providers

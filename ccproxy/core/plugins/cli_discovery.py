@@ -80,10 +80,10 @@ def discover_plugin_cli_extensions(
 
 
 def _discover_filesystem_cli_extensions() -> list[tuple[str, PluginManifest]]:
-    """Discover CLI extensions from filesystem plugins/ directories."""
+    """Discover CLI extensions from filesystem ccproxy/plugins/ directories."""
     manifests: list[tuple[str, PluginManifest]] = []
 
-    # Check both local plugins/ and ccproxy/plugins/
+    # Check both local ccproxy/plugins/ and ccproxy/plugins/
     plugins_dirs = [
         Path("plugins"),
         Path("ccproxy/plugins"),

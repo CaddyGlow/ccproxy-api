@@ -90,7 +90,7 @@ tests/
 │   ├── external_apis/      # External API mocking
 │   └── responses.json      # Mock data
 ├── helpers/                # Test utilities
-├── plugins/                # Plugin tests (centralized)
+├── ccproxy/plugins/                # Plugin tests (centralized)
 │   ├── my_plugin/
 │   │   ├── unit/          # Plugin unit tests
 │   │   └── integration/   # Plugin integration tests

@@ -10,6 +10,7 @@ in
 {
 
   packages = [
+    pkgs.pyright
     #   pkgs.pandoc
     #   gdk
     #   pkgs.tcl

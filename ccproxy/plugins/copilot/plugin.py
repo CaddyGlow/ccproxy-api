@@ -4,6 +4,8 @@ from typing import Any
 
 from ccproxy.core.logging import get_plugin_logger
 from ccproxy.core.plugins import (
+    AuthProviderPluginFactory,
+    AuthProviderPluginRuntime,
     BaseProviderPluginFactory,
     PluginContext,
     PluginManifest,
@@ -16,13 +18,13 @@ from .config import CopilotConfig
 from .detection_service import CopilotDetectionService
 from .format_adapter import CopilotToOpenAIAdapter, OpenAIToCopilotAdapter
 from .oauth.provider import CopilotOAuthProvider
-from .routes import create_copilot_router
+from .routes import router as copilot_router
 
 
 logger = get_plugin_logger()
 
 
-class CopilotPluginRuntime(ProviderPluginRuntime):
+class CopilotPluginRuntime(ProviderPluginRuntime, AuthProviderPluginRuntime):
     """Runtime for GitHub Copilot plugin."""
 
     def __init__(self, manifest: PluginManifest):
@@ -98,26 +100,36 @@ class CopilotPluginRuntime(ProviderPluginRuntime):
 
     async def cleanup(self) -> None:
         """Cleanup plugin resources."""
-        try:
-            if self.adapter:
+        errors = []
+
+        # Cleanup adapter
+        if self.adapter:
+            try:
                 await self.adapter.cleanup()
+            except Exception as e:
+                errors.append(f"Adapter cleanup failed: {e}")
+            finally:
                 self.adapter = None
 
-            if self.oauth_provider:
+        # Cleanup OAuth provider
+        if self.oauth_provider:
+            try:
                 await self.oauth_provider.cleanup()
+            except Exception as e:
+                errors.append(f"OAuth provider cleanup failed: {e}")
+            finally:
                 self.oauth_provider = None
 
-            logger.debug("copilot_plugin_cleanup_completed")
-
-        except Exception as e:
+        if errors:
             logger.error(
                 "copilot_plugin_cleanup_failed",
-                error=str(e),
-                exc_info=e,
+                errors=errors,
             )
+        else:
+            logger.debug("copilot_plugin_cleanup_completed")
 
 
-class CopilotPluginFactory(BaseProviderPluginFactory):
+class CopilotPluginFactory(BaseProviderPluginFactory, AuthProviderPluginFactory):
     """Factory for GitHub Copilot plugin."""
 
     cli_safe = False  # Heavy provider - not for CLI use
@@ -129,7 +141,7 @@ class CopilotPluginFactory(BaseProviderPluginFactory):
     adapter_class = CopilotAdapter
     detection_service_class = CopilotDetectionService
     config_class = CopilotConfig
-    router = create_copilot_router
+    router = copilot_router
     route_prefix = "/copilot"
     dependencies = []
     optional_requires = []
@@ -181,9 +193,6 @@ class CopilotPluginFactory(BaseProviderPluginFactory):
         # Create main adapter
         adapter = self.create_adapter(context)
         context["adapter"] = adapter
-
-        # Create router factory
-        context["router_factory"] = lambda: create_copilot_router(adapter)
 
         return context
 
@@ -245,7 +254,7 @@ class CopilotPluginFactory(BaseProviderPluginFactory):
 
         return CopilotDetectionService(settings, cli_service)
 
-    def create_adapter(self, context: PluginContext) -> CopilotAdapter:  # type: ignore[override]
+    async def create_adapter(self, context: PluginContext) -> CopilotAdapter:
         """Create main adapter instance.
 
         Args:
@@ -275,6 +284,19 @@ class CopilotPluginFactory(BaseProviderPluginFactory):
             hook_manager=hook_manager,
             http_client=http_client,
         )
+
+    def create_auth_provider(
+        self, context: PluginContext | None = None
+    ) -> CopilotOAuthProvider:
+        """Create OAuth provider instance for AuthProviderPluginFactory interface.
+
+        Args:
+            context: Plugin context containing shared resources
+
+        Returns:
+            CopilotOAuthProvider instance
+        """
+        return self.create_oauth_provider(context)
 
 
 # Export the factory instance

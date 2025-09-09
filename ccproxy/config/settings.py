@@ -178,7 +178,7 @@ class Settings(BaseSettings):
                 lines.append(f"- {old} → {new}")
             lines.append(
                 "Configure corresponding plugin settings under [plugins.*]. "
-                "See: plugins/metrics/README.md and the Plugin Config Quickstart."
+                "See: ccproxy/plugins/metrics/README.md and the Plugin Config Quickstart."
             )
             raise ValueError("\n".join(lines))
 

@@ -203,7 +203,7 @@ make test-watch  # Auto-run on file changes
 
 1. **Create plugin structure:**
    ```
-   plugins/your_plugin/
+   ccproxy/plugins/your_plugin/
    ├── __init__.py
    ├── adapter.py          # Main interface (required)
    ├── plugin.py           # Plugin declaration (required)
@@ -353,7 +353,7 @@ ccproxy-api/
 │   ├── core/          # Core utilities and interfaces
 │   ├── models/        # Pydantic models
 │   └── services/      # Business logic services
-├── plugins/           # Provider plugins
+├── ccproxy/plugins/           # Provider plugins
 │   ├── claude_api/    # Claude API plugin
 │   ├── claude_sdk/    # Claude SDK plugin
 │   ├── codex/         # OpenAI Codex plugin
