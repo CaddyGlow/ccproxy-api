@@ -328,6 +328,32 @@ class CopilotOAuthProvider(ProfileLoggingMixin):
         """Clear stored credentials."""
         await self.storage.clear_credentials()
 
+    async def save_credentials(self, credentials: CopilotCredentials) -> bool:
+        """Save credentials to storage.
+
+        Args:
+            credentials: Copilot credentials to save
+
+        Returns:
+            True if save was successful
+        """
+        try:
+            await self.storage.save_credentials(credentials)
+            logger.info(
+                "copilot_credentials_saved",
+                account_type=credentials.account_type,
+                has_oauth=bool(credentials.oauth_token),
+                has_copilot_token=bool(credentials.copilot_token),
+            )
+            return True
+        except Exception as e:
+            logger.error(
+                "copilot_credentials_save_failed",
+                error=str(e),
+                exc_info=e,
+            )
+            return False
+
     def _extract_standard_profile(self, credentials: Any) -> StandardProfileFields:
         """Extract standardized profile fields from Copilot credentials."""
         from .models import CopilotCredentials, CopilotProfileInfo

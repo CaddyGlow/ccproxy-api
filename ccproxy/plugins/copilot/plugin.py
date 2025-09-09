@@ -55,8 +55,9 @@ class CopilotPluginRuntime(ProviderPluginRuntime, AuthProviderPluginRuntime):
             self.detection_service = self.context.get("detection_service")
             self.adapter = self.context.get("adapter")
 
-        # Call parent initialization
-        await super()._on_initialize()
+        # Call parent initialization - explicitly call both parent classes
+        await ProviderPluginRuntime._on_initialize(self)
+        await AuthProviderPluginRuntime._on_initialize(self)
 
         # Initialize adapter
         if self.adapter:
@@ -185,14 +186,15 @@ class CopilotPluginFactory(BaseProviderPluginFactory, AuthProviderPluginFactory)
         # Create OAuth provider
         oauth_provider = self.create_oauth_provider(context)
         context["oauth_provider"] = oauth_provider
+        # Also set as auth_provider for AuthProviderPluginRuntime compatibility
+        context["auth_provider"] = oauth_provider
 
         # Create detection service
         detection_service = self.create_detection_service(context)
         context["detection_service"] = detection_service
 
-        # Create main adapter
-        adapter = self.create_adapter(context)
-        context["adapter"] = adapter
+        # Note: adapter creation is handled asynchronously by create_runtime
+        # in factories.py, so we don't create it here in the synchronous context creation
 
         return context
 

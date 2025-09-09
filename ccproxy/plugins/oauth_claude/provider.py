@@ -565,6 +565,7 @@ class ClaudeOAuthProvider(ProfileLoggingMixin):
             supports_manual_code=True,
             supports_device_flow=False,
             fixed_redirect_uri=None,
+            manual_redirect_uri="https://console.anthropic.com/oauth/code/callback",
         )
 
     async def cleanup(self) -> None:

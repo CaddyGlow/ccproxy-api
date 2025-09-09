@@ -119,6 +119,17 @@ class CopilotTokenResponse(BaseModel):
             return SecretStr(v)
         return v
 
+    @field_validator("expires_at", mode="before")
+    @classmethod
+    def validate_expires_at(cls, v: int | str | None) -> str | None:
+        """Convert integer Unix timestamp to ISO string format."""
+        if v is None:
+            return None
+        if isinstance(v, int):
+            # Convert Unix timestamp to ISO format string
+            return datetime.fromtimestamp(v, tz=UTC).isoformat()
+        return v
+
 
 class CopilotCredentials(BaseModel):
     """Copilot credentials containing OAuth and Copilot tokens."""

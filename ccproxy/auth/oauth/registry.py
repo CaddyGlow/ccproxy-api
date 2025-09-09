@@ -34,6 +34,8 @@ class CliAuthConfig:
     callback_path: str = "/callback"
     # Some providers want an exact redirect_uri
     fixed_redirect_uri: str | None = None
+    # Manual code flow redirect URI (defaults to OOB if not specified)
+    manual_redirect_uri: str | None = None
     supports_manual_code: bool = True
     supports_device_flow: bool = False
 

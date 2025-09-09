@@ -213,7 +213,7 @@ class TestManualCodeFlow:
         """Test successful manual flow."""
         # Setup mocks
         mock_provider.get_authorization_url.return_value = "https://example.com/auth"
-        mock_provider.exchange_manual_code.return_value = {"access_token": "test_token"}
+        mock_provider.handle_callback.return_value = {"access_token": "test_token"}
         mock_provider.save_credentials.return_value = True
 
         with patch("ccproxy.auth.oauth.flows.typer.prompt") as mock_prompt:
@@ -228,9 +228,42 @@ class TestManualCodeFlow:
                 # Verify the call includes the OOB redirect URI
                 args, kwargs = mock_provider.get_authorization_url.call_args
                 assert args[2] == "urn:ietf:wg:oauth:2.0:oob"
-                mock_provider.exchange_manual_code.assert_called_once_with(
-                    "test_authorization_code"
-                )
+                mock_provider.handle_callback.assert_called_once()
+                # Verify handle_callback was called with parsed code and state
+                callback_args = mock_provider.handle_callback.call_args[0]
+                assert callback_args[0] == "test_authorization_code"  # code
+                assert callback_args[2] is not None  # code_verifier
+                assert callback_args[3] == "urn:ietf:wg:oauth:2.0:oob"  # redirect_uri
+                mock_provider.save_credentials.assert_called_once()
+                mock_qr.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_manual_flow_with_code_state_format(
+        self, mock_provider: MagicMock
+    ) -> None:
+        """Test manual flow with Claude-style code#state format."""
+        # Setup mocks
+        mock_provider.get_authorization_url.return_value = "https://example.com/auth"
+        mock_provider.handle_callback.return_value = {"access_token": "test_token"}
+        mock_provider.save_credentials.return_value = True
+
+        with patch("ccproxy.auth.oauth.flows.typer.prompt") as mock_prompt:
+            # Simulate Claude-style code#state format
+            mock_prompt.return_value = "authorization_code_123#state_value_456"
+
+            with patch("ccproxy.auth.oauth.flows.render_qr_code") as mock_qr:
+                flow = ManualCodeFlow()
+                result = await flow.run(mock_provider)
+
+                assert result is True
+                mock_provider.get_authorization_url.assert_called_once()
+                mock_provider.handle_callback.assert_called_once()
+                # Verify handle_callback was called with parsed code and extracted state
+                callback_args = mock_provider.handle_callback.call_args[0]
+                assert callback_args[0] == "authorization_code_123"  # code (before #)
+                assert callback_args[1] == "state_value_456"  # state (after #)
+                assert callback_args[2] is not None  # code_verifier
+                assert callback_args[3] == "urn:ietf:wg:oauth:2.0:oob"  # redirect_uri
                 mock_provider.save_credentials.assert_called_once()
                 mock_qr.assert_called_once()
 

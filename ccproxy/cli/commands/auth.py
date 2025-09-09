@@ -230,6 +230,49 @@ async def _lazy_register_oauth_provider(
             self.streaming_handler = container.get_streaming_handler()
             # Add http_pool_manager for plugin context (minimal implementation for CLI)
             self.http_pool_manager = self._create_minimal_pool_manager()
+            # Create context dictionary for plugin runtime access
+            self._context = {"oauth_registry": registry}
+
+        def __getitem__(self, key: str) -> Any:
+            """Provide dictionary-like access for plugin runtime context."""
+            return self._context.get(key)
+
+        def __contains__(self, key: str) -> bool:
+            """Support 'in' operator for context access."""
+            return key in self._context
+
+        def __setattr__(self, name: str, value: Any) -> None:
+            """Support attribute assignment for plugin context."""
+            if name.startswith("_") or name in [
+                "settings",
+                "http_client",
+                "logger",
+                "cli_detection_service",
+                "plugin_registry",
+                "oauth_registry",
+                "hook_registry",
+                "hook_manager",
+                "app",
+                "request_tracer",
+                "streaming_handler",
+                "http_pool_manager",
+            ]:
+                # Allow setting of internal attributes normally
+                super().__setattr__(name, value)
+            else:
+                # Store plugin context items in the dictionary
+                if not hasattr(self, "_context"):
+                    super().__setattr__("_context", {})
+                self._context[name] = value
+
+        def __getattribute__(self, name: str) -> Any:
+            """Support attribute access for plugin context."""
+            try:
+                return super().__getattribute__(name)
+            except AttributeError:
+                if hasattr(self, "_context") and name in self._context:
+                    return self._context[name]
+                raise
 
         def _create_minimal_pool_manager(self) -> Any:
             """Create minimal pool manager for CLI context."""

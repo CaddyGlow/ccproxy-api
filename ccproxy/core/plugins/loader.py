@@ -151,6 +151,7 @@ def _resolve_auth_provider_plugin_name(provider: str) -> str | None:
         "claude": "oauth_claude",
         "claude-api": "oauth_claude",
         "claude_api": "oauth_claude",
+        "copilot": "copilot",
     }
 
     resolved = mapping.get(provider_key)

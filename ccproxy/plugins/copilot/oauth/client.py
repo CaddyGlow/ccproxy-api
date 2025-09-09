@@ -348,7 +348,7 @@ class CopilotOAuthClient:
                 account_id=str(user_data.get("id", user_data["login"])),
                 login=user_data["login"],
                 name=user_data.get("name"),
-                email=user_data.get("email"),
+                email=user_data.get("email") or "",
                 avatar_url=user_data.get("avatar_url"),
                 html_url=user_data.get("html_url"),
                 copilot_plan=copilot_plan,

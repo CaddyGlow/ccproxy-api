@@ -556,6 +556,7 @@ class CodexOAuthProvider(ProfileLoggingMixin):
             supports_manual_code=True,
             supports_device_flow=False,
             fixed_redirect_uri=None,
+            manual_redirect_uri="https://platform.openai.com/oauth/callback",
         )
 
     async def cleanup(self) -> None:

@@ -253,18 +253,32 @@ class BrowserFlow:
                     "[yellow]Callback timed out. You can enter the code manually.[/yellow]"
                 )
                 if cli_config.supports_manual_code:
-                    # Use out-of-band redirect URI for manual flow
+                    # Use provider-specific manual redirect URI or fallback to OOB
+                    manual_redirect_uri = (
+                        cli_config.manual_redirect_uri or "urn:ietf:wg:oauth:2.0:oob"
+                    )
                     manual_auth_url = await provider.get_authorization_url(
-                        state, code_verifier, "urn:ietf:wg:oauth:2.0:oob"
+                        state, code_verifier, manual_redirect_uri
                     )
                     console.print(f"[bold]Manual URL: {manual_auth_url}[/bold]")
 
                     import typer
 
-                    code = typer.prompt("Enter the authorization code")
+                    raw_code = typer.prompt("Enter the authorization code")
+
+                    # Parse the code - some providers (like Claude) return code#state format
+                    # Extract the code and state parts
+                    code_parts = raw_code.split("#")
+                    code = code_parts[0].strip()
+
+                    # If there's a state in the input (Claude format), use it instead of our generated state
+                    if len(code_parts) > 1 and code_parts[1].strip():
+                        actual_state = code_parts[1].strip()
+                    else:
+                        actual_state = state
 
                     credentials = await provider.handle_callback(
-                        code, state, code_verifier, "urn:ietf:wg:oauth:2.0:oob"
+                        code, actual_state, code_verifier, manual_redirect_uri
                     )
                     return await provider.save_credentials(credentials)
                 else:
@@ -313,16 +327,36 @@ class ManualCodeFlow:
                 .rstrip("=")
             )
 
-        # Get authorization URL without callback
+        # Get provider-specific manual redirect URI or fallback to OOB
+        manual_redirect_uri = (
+            provider.cli.manual_redirect_uri or "urn:ietf:wg:oauth:2.0:oob"
+        )
+
+        # Get authorization URL for manual entry
         auth_url = await provider.get_authorization_url(
-            state, code_verifier, "urn:ietf:wg:oauth:2.0:oob"
+            state, code_verifier, manual_redirect_uri
         )
 
         console.print(f"[bold green]Visit: {auth_url}[/bold green]")
         render_qr_code(auth_url)
 
         # Prompt for manual code entry
-        code = typer.prompt("[bold]Enter the authorization code[/bold]").strip()
+        raw_code = typer.prompt("[bold]Enter the authorization code[/bold]").strip()
 
-        credentials = await provider.exchange_manual_code(code)
+        # Parse the code - some providers (like Claude) return code#state format
+        # Extract the code and state parts
+        code_parts = raw_code.split("#")
+        code = code_parts[0].strip()
+
+        # If there's a state in the input (Claude format), use it instead of our generated state
+        if len(code_parts) > 1 and code_parts[1].strip():
+            actual_state = code_parts[1].strip()
+        else:
+            actual_state = state
+
+        # Use the provider's handle_callback method instead of exchange_manual_code
+        # to properly handle state validation
+        credentials = await provider.handle_callback(
+            code, actual_state, code_verifier, manual_redirect_uri
+        )
         return await provider.save_credentials(credentials)

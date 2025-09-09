@@ -161,6 +161,10 @@ class CopilotOAuthStorage(BaseJsonStorage[CopilotCredentials]):
         """Legacy method name for backward compatibility."""
         await self.save(credentials)
 
+    async def save_credentials(self, credentials: CopilotCredentials) -> None:
+        """Save credentials method for OAuth provider compatibility."""
+        await self.save(credentials)
+
     async def clear_credentials(self) -> None:
         """Legacy method name for backward compatibility."""
         await self.delete()
