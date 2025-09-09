@@ -6,16 +6,18 @@ from typing import TYPE_CHECKING, Annotated, Any, Literal
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 
+from ccproxy.adapters.openai.models import (
+    OpenAIChatCompletionRequest,
+    OpenAIModelInfo,
+    OpenAIModelsResponse,
+)
 from ccproxy.api.dependencies import get_plugin_adapter
 from ccproxy.core.logging import get_plugin_logger
 from ccproxy.streaming import DeferredStreaming
 
 from .models import (
-    CopilotChatRequest,
     CopilotEmbeddingRequest,
     CopilotHealthResponse,
-    CopilotModel,
-    CopilotModelsResponse,
     CopilotTokenStatus,
     CopilotUserInternalResponse,
 )
@@ -33,7 +35,7 @@ router = APIRouter(tags=["copilot"])
 # Core Copilot API endpoints
 
 
-@router.get("/v1/models", response_model=CopilotModelsResponse)
+@router.get("/v1/models", response_model=OpenAIModelsResponse)
 async def list_models(adapter: CopilotAdapterDep) -> JSONResponse:
     """List available Copilot models."""
     try:
@@ -70,8 +72,8 @@ async def list_models(adapter: CopilotAdapterDep) -> JSONResponse:
                 },
             ]
 
-        models = [CopilotModel.model_validate(model) for model in models_data]
-        response = CopilotModelsResponse(data=models)
+        models = [OpenAIModelInfo.model_validate(model) for model in models_data]
+        response = OpenAIModelsResponse(data=models)
 
         logger.info(
             "models_listed",
@@ -105,7 +107,7 @@ async def chat_completions(
         body = await request.body()
         try:
             request_data = json.loads(body) if body else {}
-            chat_request = CopilotChatRequest.model_validate(request_data)
+            chat_request = OpenAIChatCompletionRequest.model_validate(request_data)
         except json.JSONDecodeError as e:
             raise HTTPException(
                 status_code=400, detail=f"Invalid JSON: {str(e)}"

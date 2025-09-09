@@ -7,47 +7,11 @@ from uuid import uuid4
 from pydantic import BaseModel, Field
 
 
-# Request Models
+# Standard OpenAI-compatible models are imported from the centralized location
+# to avoid duplication and ensure consistency
 
 
-class CopilotMessage(BaseModel):
-    """Message in a chat completion request."""
-
-    role: Literal["system", "user", "assistant"] = Field(
-        ..., description="Role of the message sender"
-    )
-    content: str = Field(..., description="Content of the message")
-    name: str | None = Field(None, description="Name of the sender (optional)")
-
-
-class CopilotChatRequest(BaseModel):
-    """Chat completion request for Copilot API."""
-
-    messages: list[CopilotMessage] = Field(
-        ..., description="List of messages in the conversation"
-    )
-    model: str = Field(default="gpt-4", description="Model to use for completion")
-    temperature: float | None = Field(
-        None, ge=0, le=2, description="Sampling temperature"
-    )
-    max_tokens: int | None = Field(
-        None, ge=1, description="Maximum number of tokens to generate"
-    )
-    stream: bool = Field(default=False, description="Whether to stream the response")
-    stop: str | list[str] | None = Field(None, description="Stop sequences")
-    presence_penalty: float | None = Field(
-        None, ge=-2, le=2, description="Presence penalty"
-    )
-    frequency_penalty: float | None = Field(
-        None, ge=-2, le=2, description="Frequency penalty"
-    )
-    top_p: float | None = Field(
-        None, ge=0, le=1, description="Nucleus sampling parameter"
-    )
-    n: int | None = Field(None, ge=1, description="Number of completions to generate")
-    user: str | None = Field(None, description="User identifier for abuse monitoring")
-
-
+# Embedding models - keeping minimal Copilot-specific implementation
 class CopilotEmbeddingRequest(BaseModel):
     """Embedding request for Copilot API."""
 
@@ -58,100 +22,12 @@ class CopilotEmbeddingRequest(BaseModel):
     user: str | None = Field(None, description="User identifier")
 
 
-# Response Models
+# Model listing uses standard OpenAI model format
 
 
-class CopilotUsage(BaseModel):
-    """Token usage information."""
-
-    prompt_tokens: int = Field(..., description="Tokens in the prompt")
-    completion_tokens: int | None = Field(None, description="Tokens in the completion")
-    total_tokens: int = Field(..., description="Total tokens used")
-
-
-class CopilotChoice(BaseModel):
-    """A completion choice."""
-
-    index: int = Field(..., description="Choice index")
-    message: CopilotMessage = Field(..., description="Generated message")
-    finish_reason: str | None = Field(None, description="Reason for finishing")
-
-
-class CopilotChatResponse(BaseModel):
-    """Chat completion response from Copilot API."""
-
-    id: str = Field(
-        default_factory=lambda: f"chatcmpl-{uuid4().hex}", description="Response ID"
-    )
-    object: str = Field(default="chat.completion", description="Object type")
-    created: int = Field(
-        default_factory=lambda: int(datetime.now().timestamp()),
-        description="Creation timestamp",
-    )
-    model: str = Field(..., description="Model used")
-    choices: list[CopilotChoice] = Field(..., description="Generated choices")
-    usage: CopilotUsage | None = Field(None, description="Token usage")
-
-
-class CopilotStreamChoice(BaseModel):
-    """A streaming completion choice."""
-
-    index: int = Field(..., description="Choice index")
-    delta: dict[str, Any] = Field(..., description="Delta content")
-    finish_reason: str | None = Field(None, description="Reason for finishing")
-
-
-class CopilotStreamResponse(BaseModel):
-    """Streaming chat completion response chunk."""
-
-    id: str = Field(..., description="Response ID")
-    object: str = Field(default="chat.completion.chunk", description="Object type")
-    created: int = Field(..., description="Creation timestamp")
-    model: str = Field(..., description="Model used")
-    choices: list[CopilotStreamChoice] = Field(..., description="Streaming choices")
-
-
-class CopilotEmbeddingData(BaseModel):
-    """Embedding data for a single input."""
-
-    object: str = Field(default="embedding", description="Object type")
-    embedding: list[float] = Field(..., description="Embedding vector")
-    index: int = Field(..., description="Input index")
-
-
-class CopilotEmbeddingResponse(BaseModel):
-    """Embedding response from Copilot API."""
-
-    object: str = Field(default="list", description="Object type")
-    data: list[CopilotEmbeddingData] = Field(..., description="Embedding data")
-    model: str = Field(..., description="Model used")
-    usage: CopilotUsage = Field(..., description="Token usage")
-
-
-class CopilotModel(BaseModel):
-    """Available model information."""
-
-    id: str = Field(..., description="Model ID")
-    object: str = Field(default="model", description="Object type")
-    created: int = Field(
-        default_factory=lambda: int(datetime.now().timestamp()),
-        description="Creation timestamp",
-    )
-    owned_by: str = Field(default="github", description="Model owner")
-
-
-class CopilotModelsResponse(BaseModel):
-    """Response containing available models."""
-
-    object: str = Field(default="list", description="Object type")
-    data: list[CopilotModel] = Field(..., description="Available models")
-
-
-# Error Models
-
-
+# Error models use the standard OpenAI error format
 class CopilotError(BaseModel):
-    """Error response from Copilot API."""
+    """Copilot error detail."""
 
     message: str = Field(..., description="Error message")
     type: str = Field(..., description="Error type")
@@ -160,7 +36,7 @@ class CopilotError(BaseModel):
 
 
 class CopilotErrorResponse(BaseModel):
-    """Error response wrapper."""
+    """Copilot error response."""
 
     error: CopilotError = Field(..., description="Error details")
 

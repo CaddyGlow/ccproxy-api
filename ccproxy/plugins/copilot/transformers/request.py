@@ -38,25 +38,61 @@ class CopilotRequestTransformer:
         # Start with base headers
         transformed = dict(headers)
 
+        excluded_headers = {
+            "host",
+            "connection",
+            "keep-alive",
+            "transfer-encoding",
+            "content-length",
+            "upgrade",
+            "proxy-authenticate",
+            "proxy-authorization",
+            "te",
+            "trailer",
+            # Additional headers from main branch that cause issues
+            "x-forwarded-for",
+            "x-forwarded-proto",
+            "x-forwarded-host",
+            "forwarded",
+            # Authentication headers to be replaced
+            "x-api-key",
+            # Compression headers to avoid decompression issues
+            "accept-encoding",
+            "content-encoding",
+            # CORS headers - should not be forwarded to upstream
+            "origin",
+            "access-control-request-method",
+            "access-control-request-headers",
+            "access-control-allow-origin",
+            "access-control-allow-methods",
+            "access-control-allow-headers",
+            "access-control-allow-credentials",
+            "access-control-max-age",
+            "access-control-expose-headers",
+            "authorization",  # Will be re-injected if access_token is provided
+        }
+        transformed = {
+            k: v for k, v in transformed.items() if k.lower() not in excluded_headers
+        }
+
         # Add required Copilot headers
         copilot_headers = self.config.api_headers.copy()
 
         # Add authentication header if token provided
         if access_token:
-            copilot_headers["Authorization"] = f"Bearer {access_token}"
+            copilot_headers["authorization"] = f"Bearer {access_token}"
 
         # Add unique request ID
-        copilot_headers["X-Request-Id"] = str(uuid4())
+        copilot_headers["x-request-id"] = str(uuid4())
 
         # Merge headers (copilot headers take precedence)
         transformed.update(copilot_headers)
 
-        # Remove headers that might interfere
-        headers_to_remove = ["host", "content-length", "transfer-encoding"]
-        for header in headers_to_remove:
-            transformed.pop(header, None)
-            transformed.pop(header.capitalize(), None)
-            transformed.pop(header.upper(), None)
+        # Strip potentially problematic headers (aligned with main branch logic)
+        excluded_headers.remove("authorization")  # We may have just added this
+        transformed = {
+            k: v for k, v in transformed.items() if k.lower() not in excluded_headers
+        }
 
         logger.debug(
             "headers_transformed",

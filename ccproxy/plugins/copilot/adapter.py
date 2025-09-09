@@ -252,23 +252,95 @@ class CopilotAdapter(BaseHTTPAdapter):
         Args:
             request_context: Request context with usage data from processor
         """
-        # TODO: Implement pricing calculation when pricing service is integrated
-        logger.debug("copilot_cost_calculation_skipped")
+        # Check if we have usage data from the processor
+        metadata = request_context.metadata
+        tokens_input = metadata.get("tokens_input", 0)
+        tokens_output = metadata.get("tokens_output", 0)
+
+        # Skip if no usage data available
+        if not (tokens_input or tokens_output):
+            return
+
+        # Get pricing service and calculate cost
+        pricing_service = self._get_pricing_service()
+        if not pricing_service:
+            return
+
+        # Import pricing exceptions
+        from ccproxy.plugins.pricing.exceptions import (
+            ModelPricingNotFoundError,
+            PricingDataNotLoadedError,
+            PricingServiceDisabledError,
+        )
+
+        try:
+            model = metadata.get("model", "gpt-4")
+            cache_read_tokens = metadata.get("cache_read_tokens", 0)
+
+            cost_decimal = await pricing_service.calculate_cost(
+                model_name=model,
+                input_tokens=tokens_input,
+                output_tokens=tokens_output,
+                cache_read_tokens=cache_read_tokens,
+                cache_write_tokens=0,  # Copilot doesn't have cache write tokens
+            )
+            cost_usd = float(cost_decimal)
+
+            # Update context with calculated cost
+            metadata["cost_usd"] = cost_usd
+
+            logger.debug(
+                "cost_calculated",
+                model=model,
+                cost_usd=cost_usd,
+                tokens_input=tokens_input,
+                tokens_output=tokens_output,
+                cache_read_tokens=cache_read_tokens,
+                source="non_streaming",
+            )
+        except ModelPricingNotFoundError as e:
+            logger.warning(
+                "model_pricing_not_found",
+                model=model,
+                message=str(e),
+                tokens_input=tokens_input,
+                tokens_output=tokens_output,
+            )
+        except PricingDataNotLoadedError as e:
+            logger.warning(
+                "pricing_data_not_loaded",
+                model=model,
+                message=str(e),
+            )
+        except PricingServiceDisabledError as e:
+            logger.debug(
+                "pricing_service_disabled",
+                message=str(e),
+            )
+        except Exception as e:
+            logger.debug(
+                "cost_calculation_failed",
+                error=str(e),
+                model=model,
+            )
 
     async def _wrap_streaming_response(
         self, response: StreamingResponse, request_context: "RequestContext"
     ) -> StreamingResponse:
-        """Wrap streaming response for metrics and logging.
+        """Wrap streaming response to accumulate chunks and extract headers.
+
+        For Copilot, we pass through the streaming response as-is since
+        metrics extraction is handled by hooks.
 
         Args:
             response: The streaming response to wrap
             request_context: The request context to update
 
         Returns:
-            Wrapped streaming response
+            The original streaming response (pass-through)
         """
-        # For now, return response as-is
-        # TODO: Add metrics extraction and chunk accumulation
+        # For Copilot, metrics extraction is handled by hooks
+        # so we can just pass through the response
         return response
 
     async def _should_buffer_stream(

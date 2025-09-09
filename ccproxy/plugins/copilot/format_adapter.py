@@ -3,12 +3,11 @@
 from collections.abc import AsyncIterator
 from typing import Any
 
-from ccproxy.core.logging import get_plugin_logger
-
-from .models import (
-    CopilotChatRequest,
-    CopilotMessage,
+from ccproxy.adapters.openai.models import (
+    OpenAIChatCompletionRequest,
+    OpenAIMessage,
 )
+from ccproxy.core.logging import get_plugin_logger
 
 
 logger = get_plugin_logger()
@@ -32,39 +31,15 @@ class OpenAIToCopilotAdapter:
             stream=openai_request.get("stream", False),
         )
 
-        # Convert messages
-        copilot_messages = []
-        for msg in openai_request.get("messages", []):
-            copilot_msg = CopilotMessage(
-                role=msg["role"],
-                content=msg["content"],
-                name=msg.get("name"),
-            )
-            copilot_messages.append(copilot_msg.model_dump(exclude_none=True))
+        # Convert to OpenAI request object for validation
+        openai_request_obj = OpenAIChatCompletionRequest.model_validate(openai_request)
 
-        # Convert messages to proper objects
-        message_objects = [CopilotMessage(**msg) for msg in copilot_messages]
-
-        # Build Copilot request
-        copilot_request = CopilotChatRequest(
-            messages=message_objects,
-            model=openai_request.get("model", "gpt-4"),
-            temperature=openai_request.get("temperature"),
-            max_tokens=openai_request.get("max_tokens"),
-            stream=openai_request.get("stream", False),
-            stop=openai_request.get("stop"),
-            presence_penalty=openai_request.get("presence_penalty"),
-            frequency_penalty=openai_request.get("frequency_penalty"),
-            top_p=openai_request.get("top_p"),
-            n=openai_request.get("n"),
-            user=openai_request.get("user"),
-        )
-
-        result = copilot_request.model_dump(exclude_none=True)
+        # Copilot uses the same format as OpenAI, so just return the validated data
+        result = openai_request_obj.model_dump(exclude_none=True)
 
         logger.debug(
             "openai_request_adapted",
-            messages_count=len(copilot_messages),
+            messages_count=len(result.get("messages", [])),
             model=result.get("model"),
         )
 

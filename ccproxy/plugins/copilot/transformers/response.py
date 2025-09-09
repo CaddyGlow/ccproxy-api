@@ -35,34 +35,36 @@ class CopilotResponseTransformer:
         # Start with original headers
         transformed = dict(headers)
 
-        # Add CCProxy identification
-        transformed["X-Copilot-Provider"] = "ccproxy"
-        transformed["X-Provider-Plugin"] = "copilot"
-
         # Add CORS headers if configured
         if self.cors_settings:
             if "allow_origin" in self.cors_settings:
-                transformed["Access-Control-Allow-Origin"] = self.cors_settings[
+                transformed["access-control-allow-origin"] = self.cors_settings[
                     "allow_origin"
                 ]
             if "allow_methods" in self.cors_settings:
-                transformed["Access-Control-Allow-Methods"] = self.cors_settings[
+                transformed["access-control-allow-methods"] = self.cors_settings[
                     "allow_methods"
                 ]
             if "allow_headers" in self.cors_settings:
-                transformed["Access-Control-Allow-Headers"] = self.cors_settings[
+                transformed["access-control-allow-headers"] = self.cors_settings[
                     "allow_headers"
                 ]
 
         # Ensure proper content type for JSON responses
         if "content-type" not in {k.lower() for k in transformed}:
             if status_code < 400:
-                transformed["Content-Type"] = "application/json"
+                transformed["content-type"] = "application/json"
             else:
-                transformed["Content-Type"] = "application/json"  # Errors are also JSON
+                transformed["content-type"] = "application/json"  # Errors are also JSON
 
         # Remove headers that might cause issues in proxying
-        headers_to_remove = ["transfer-encoding", "connection"]
+        # Following Codex pattern - exclude headers that can cause Content-Length mismatches
+        headers_to_remove = [
+            "content-length",  # Will be recalculated by HTTP adapter
+            "transfer-encoding", 
+            "content-encoding",  # May affect body length calculation
+            "connection"
+        ]
         for header in headers_to_remove:
             for key in list(transformed.keys()):
                 if key.lower() == header:
@@ -167,7 +169,7 @@ class CopilotResponseTransformer:
 
         error_response = CopilotErrorResponse(error=copilot_error)
 
-        # Create headers
+        # Create headers (Content-Length will be calculated by HTTP adapter)
         headers = self.transform_headers(
             {"Content-Type": "application/json"},
             status_code=status_code,
@@ -195,17 +197,15 @@ class CopilotResponseTransformer:
             Headers for streaming response
         """
         headers = {
-            "Content-Type": "text/event-stream",
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-            "X-Copilot-Provider": "ccproxy",
-            "X-Provider-Plugin": "copilot",
+            "content-type": "text/event-stream",
+            "cache-control": "no-cache",
+            "connection": "keep-alive",
         }
 
         # Add CORS headers if configured
         if self.cors_settings:
             if "allow_origin" in self.cors_settings:
-                headers["Access-Control-Allow-Origin"] = self.cors_settings[
+                headers["access-control-allow-origin"] = self.cors_settings[
                     "allow_origin"
                 ]
 
