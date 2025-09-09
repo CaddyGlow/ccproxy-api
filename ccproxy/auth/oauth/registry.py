@@ -4,6 +4,8 @@ This module provides a central registry where plugins can register their OAuth
 providers at runtime, enabling dynamic discovery and management of OAuth flows.
 """
 
+from dataclasses import dataclass
+from enum import Enum
 from typing import Any, Protocol
 
 from pydantic import BaseModel
@@ -12,6 +14,28 @@ from ccproxy.core.logging import get_logger
 
 
 logger = get_logger()
+
+
+class FlowType(str, Enum):
+    """OAuth flow types for CLI authentication."""
+
+    device = "device"
+    browser = "browser"
+    manual = "manual"
+
+
+@dataclass(frozen=True)
+class CliAuthConfig:
+    """CLI authentication configuration for OAuth providers."""
+
+    preferred_flow: FlowType = FlowType.browser
+    # RFC8252 loopback; use provider-specific fixed ports where required
+    callback_port: int = 8080
+    callback_path: str = "/callback"
+    # Some providers want an exact redirect_uri
+    fixed_redirect_uri: str | None = None
+    supports_manual_code: bool = True
+    supports_device_flow: bool = False
 
 
 class OAuthProviderInfo(BaseModel):
@@ -29,6 +53,8 @@ class OAuthProviderInfo(BaseModel):
 class OAuthProviderProtocol(Protocol):
     """Protocol for OAuth provider implementations."""
 
+    # --- Existing web methods ---
+
     @property
     def provider_name(self) -> str:
         """Internal provider name (e.g., 'claude-api', 'codex')."""
@@ -45,13 +71,17 @@ class OAuthProviderProtocol(Protocol):
         ...
 
     async def get_authorization_url(
-        self, state: str, code_verifier: str | None = None
+        self,
+        state: str,
+        code_verifier: str | None = None,
+        redirect_uri: str | None = None,
     ) -> str:
         """Get the authorization URL for OAuth flow.
 
         Args:
             state: OAuth state parameter for CSRF protection
             code_verifier: PKCE code verifier (if PKCE is supported)
+            redirect_uri: Redirect URI for OAuth callback
 
         Returns:
             Authorization URL to redirect user to
@@ -59,7 +89,11 @@ class OAuthProviderProtocol(Protocol):
         ...
 
     async def handle_callback(
-        self, code: str, state: str, code_verifier: str | None = None
+        self,
+        code: str,
+        state: str,
+        code_verifier: str | None = None,
+        redirect_uri: str | None = None,
     ) -> Any:
         """Handle OAuth callback and exchange code for tokens.
 
@@ -67,6 +101,7 @@ class OAuthProviderProtocol(Protocol):
             code: Authorization code from OAuth callback
             state: State parameter for validation
             code_verifier: PKCE code verifier (if PKCE is used)
+            redirect_uri: Redirect URI used in the authorization request
 
         Returns:
             Provider-specific credentials object
@@ -124,6 +159,66 @@ class OAuthProviderProtocol(Protocol):
         """
         ...
 
+    # --- CLI-capability surface (NEW) ---
+
+    @property
+    def cli(self) -> CliAuthConfig:
+        """CLI authentication configuration for this provider.
+
+        Returns:
+            Configuration object specifying CLI flow preferences and capabilities
+        """
+        ...
+
+    # Device flow (only if cli.supports_device_flow=True)
+    async def start_device_flow(self) -> tuple[str, str, str, int]:
+        """Start OAuth device code flow.
+
+        Returns:
+            Tuple of (device_code, user_code, verification_uri, expires_in)
+
+        Raises:
+            NotImplementedError: If device flow is not supported
+        """
+        raise NotImplementedError("Device flow not supported by this provider")
+
+    async def complete_device_flow(
+        self, device_code: str, interval: int, expires_in: int
+    ) -> Any:
+        """Complete OAuth device code flow by polling for authorization.
+
+        Args:
+            device_code: Device code from start_device_flow
+            interval: Polling interval in seconds
+            expires_in: Code expiration time in seconds
+
+        Returns:
+            Provider-specific credentials object
+
+        Raises:
+            NotImplementedError: If device flow is not supported
+        """
+        raise NotImplementedError("Device flow not supported by this provider")
+
+    # Manual code (only if cli.supports_manual_code=True)
+    async def exchange_manual_code(self, code: str) -> Any:
+        """Exchange manually entered authorization code for tokens.
+
+        This method handles the case where users manually copy/paste
+        authorization codes in restricted environments.
+
+        Args:
+            code: Authorization code entered manually by user
+
+        Returns:
+            Provider-specific credentials object
+
+        Raises:
+            NotImplementedError: If manual code entry is not implemented
+        """
+        raise NotImplementedError("Manual code entry not implemented by this provider")
+
+    # Common
     async def save_credentials(
         self, credentials: Any, custom_path: Any | None = None
     ) -> bool:
@@ -304,4 +399,6 @@ __all__ = [
     "OAuthRegistry",
     "OAuthProviderInfo",
     "OAuthProviderProtocol",
+    "FlowType",
+    "CliAuthConfig",
 ]

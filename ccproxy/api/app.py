@@ -14,7 +14,7 @@ from ccproxy.api.middleware.errors import setup_error_handlers
 from ccproxy.api.routes.health import router as health_router
 from ccproxy.api.routes.plugins import router as plugins_router
 from ccproxy.auth.oauth.registry import OAuthRegistry
-from ccproxy.auth.oauth.routes import router as oauth_router
+from ccproxy.auth.oauth.router import oauth_router
 from ccproxy.config.settings import Settings
 from ccproxy.core import __version__
 from ccproxy.core.async_task_manager import start_task_manager, stop_task_manager

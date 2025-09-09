@@ -17,6 +17,9 @@ from ccproxy.core.logging import get_logger
 logger = get_logger(__name__)
 
 
+# Import CLI types from registry to avoid duplication
+
+
 class StandardProfileFields(BaseModel):
     """Standardized profile fields for consistent UI display across OAuth providers."""
 
@@ -271,6 +274,9 @@ class TokenResponse(BaseModel):
     # Additional fields that providers might include
     id_token: str | None = None  # For OpenID Connect
     account_id: str | None = None  # Provider-specific user ID
+
+
+# Import the full protocol from registry
 
 
 class OAuthProviderBase(Protocol):

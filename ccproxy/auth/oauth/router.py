@@ -19,7 +19,7 @@ from ccproxy.auth.oauth.templates import OAuthTemplates
 logger = structlog.get_logger(__name__)
 
 # Create the OAuth router
-oauth_router = APIRouter(prefix="/oauth", tags=["oauth"])
+oauth_router = APIRouter(tags=["oauth"])
 
 
 class OAuthProvidersResponse(BaseModel):

@@ -12,7 +12,7 @@ from urllib.parse import urlencode
 import httpx
 
 from ccproxy.auth.oauth.protocol import ProfileLoggingMixin, StandardProfileFields
-from ccproxy.auth.oauth.registry import OAuthProviderInfo
+from ccproxy.auth.oauth.registry import CliAuthConfig, FlowType, OAuthProviderInfo
 from ccproxy.core.logging import get_plugin_logger
 
 from .client import ClaudeOAuthClient
@@ -87,7 +87,10 @@ class ClaudeOAuthProvider(ProfileLoggingMixin):
         return False  # Claude uses PKCE-like flow without client secret
 
     async def get_authorization_url(
-        self, state: str, code_verifier: str | None = None
+        self,
+        state: str,
+        code_verifier: str | None = None,
+        redirect_uri: str | None = None,
     ) -> str:
         """Get the authorization URL for OAuth flow.
 
@@ -98,8 +101,9 @@ class ClaudeOAuthProvider(ProfileLoggingMixin):
         Returns:
             Authorization URL to redirect user to
         """
-        # Use effective redirect URI from config
-        redirect_uri = self.config.get_redirect_uri()
+        # Use provided redirect URI or fall back to config default
+        if redirect_uri is None:
+            redirect_uri = self.config.get_redirect_uri()
 
         params = {
             "code": "true",  # Required by Claude OAuth
@@ -132,7 +136,11 @@ class ClaudeOAuthProvider(ProfileLoggingMixin):
         return auth_url
 
     async def handle_callback(
-        self, code: str, state: str, code_verifier: str | None = None
+        self,
+        code: str,
+        state: str,
+        code_verifier: str | None = None,
+        redirect_uri: str | None = None,
     ) -> Any:
         """Handle OAuth callback and exchange code for tokens.
 
@@ -140,14 +148,42 @@ class ClaudeOAuthProvider(ProfileLoggingMixin):
             code: Authorization code from OAuth callback
             state: State parameter for validation
             code_verifier: PKCE code verifier (if PKCE is used)
+            redirect_uri: Redirect URI used in authorization (optional)
 
         Returns:
             Claude credentials object
         """
         # Use the client's handle_callback method which includes code exchange
-        credentials: ClaudeCredentials = await self.client.handle_callback(
-            code, state, code_verifier or ""
-        )
+        # If a specific redirect_uri was provided, create a temporary client with that URI
+        if redirect_uri and redirect_uri != self.client.redirect_uri:
+            # Create temporary config with the specific redirect URI
+            temp_config = ClaudeOAuthConfig(
+                client_id=self.config.client_id,
+                redirect_uri=redirect_uri,
+                scopes=self.config.scopes,
+                base_url=self.config.base_url,
+                authorize_url=self.config.authorize_url,
+                token_url=self.config.token_url,
+                use_pkce=self.config.use_pkce,
+            )
+
+            # Create temporary client with the correct redirect URI
+            temp_client = ClaudeOAuthClient(
+                temp_config,
+                self.storage,
+                self.http_client,
+                hook_manager=self.hook_manager,
+                detection_service=self.detection_service,
+            )
+
+            credentials = await temp_client.handle_callback(
+                code, state, code_verifier or ""
+            )
+        else:
+            # Use the regular client
+            credentials = await self.client.handle_callback(
+                code, state, code_verifier or ""
+            )
 
         # The client already saves to storage if available, but we can save again
         # to our specific storage if needed
@@ -493,6 +529,43 @@ class ClaudeOAuthProvider(ProfileLoggingMixin):
         profile_data.update(updates)
 
         return StandardProfileFields(**profile_data)
+
+    async def exchange_manual_code(self, code: str) -> Any:
+        """Exchange manual authorization code for tokens.
+
+        Args:
+            code: Authorization code from manual entry
+
+        Returns:
+            Claude credentials object
+        """
+        # For manual code flow, use OOB redirect URI and no state validation
+        credentials: ClaudeCredentials = await self.client.handle_callback(
+            code, "manual", ""
+        )
+
+        if self.storage:
+            await self.storage.save(credentials)
+
+        logger.info(
+            "claude_oauth_manual_code_exchanged",
+            has_credentials=bool(credentials),
+            category="auth",
+        )
+
+        return credentials
+
+    @property
+    def cli(self) -> CliAuthConfig:
+        """Get CLI authentication configuration for this provider."""
+        return CliAuthConfig(
+            preferred_flow=FlowType.browser,
+            callback_port=54545,
+            callback_path="/callback",
+            supports_manual_code=True,
+            supports_device_flow=False,
+            fixed_redirect_uri=None,
+        )
 
     async def cleanup(self) -> None:
         """Cleanup resources."""

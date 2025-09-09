@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Any
 import httpx
 
 from ccproxy.auth.oauth.protocol import ProfileLoggingMixin, StandardProfileFields
-from ccproxy.auth.oauth.registry import OAuthProviderInfo
+from ccproxy.auth.oauth.registry import CliAuthConfig, FlowType, OAuthProviderInfo
 from ccproxy.core.logging import get_plugin_logger
 
 from ..config import CopilotOAuthConfig
@@ -83,7 +83,10 @@ class CopilotOAuthProvider(ProfileLoggingMixin):
         return False  # GitHub Device Code Flow doesn't require client secret
 
     async def get_authorization_url(
-        self, state: str, code_verifier: str | None = None
+        self,
+        state: str,
+        code_verifier: str | None = None,
+        redirect_uri: str | None = None,
     ) -> str:
         """Get the authorization URL for GitHub Device Code Flow.
 
@@ -139,6 +142,28 @@ class CopilotOAuthProvider(ProfileLoggingMixin):
         """
         return await self.client.complete_authorization(
             device_code, interval, expires_in
+        )
+
+    async def handle_callback(
+        self,
+        code: str,
+        state: str,
+        code_verifier: str | None = None,
+        redirect_uri: str | None = None,
+    ) -> Any:
+        """Handle OAuth callback (not used in device flow).
+
+        This method is required by the CLI flow protocol but not used for
+        device code flow. Use complete_device_flow instead.
+
+        Args:
+            code: Authorization code from OAuth callback
+            state: State parameter for validation
+            code_verifier: PKCE code verifier (if PKCE is used)
+            redirect_uri: Redirect URI used in authorization (optional)
+        """
+        raise NotImplementedError(
+            "Copilot uses device code flow. Browser callback is not supported."
         )
 
     async def exchange_code(
@@ -343,6 +368,18 @@ class CopilotOAuthProvider(ProfileLoggingMixin):
 
     # OAuthProviderInfo protocol implementation
 
+    @property
+    def cli(self) -> CliAuthConfig:
+        """Get CLI authentication configuration for this provider."""
+        return CliAuthConfig(
+            preferred_flow=FlowType.device,
+            callback_port=8080,
+            callback_path="/callback",
+            supports_manual_code=False,
+            supports_device_flow=True,
+            fixed_redirect_uri=None,
+        )
+
     def get_provider_info(self) -> OAuthProviderInfo:
         """Get provider information for registry."""
         return OAuthProviderInfo(
@@ -353,4 +390,22 @@ class CopilotOAuthProvider(ProfileLoggingMixin):
             scopes=["read:user", "copilot"],
             is_available=True,
             plugin_name="copilot",
+        )
+
+    async def exchange_manual_code(self, code: str) -> Any:
+        """Exchange manual authorization code for tokens.
+
+        Note: Copilot primarily uses device code flow, but this method
+        is provided for completeness.
+
+        Args:
+            code: Authorization code from manual entry
+
+        Returns:
+            Copilot credentials object
+        """
+        # Copilot doesn't typically support manual code entry as it uses device flow
+        # This is a placeholder implementation
+        raise NotImplementedError(
+            "Copilot uses device code flow. Manual code entry is not supported."
         )

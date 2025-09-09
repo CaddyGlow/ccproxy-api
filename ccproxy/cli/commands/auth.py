@@ -12,7 +12,15 @@ from rich import box
 from rich.console import Console
 from rich.table import Table
 
-from ccproxy.auth.oauth.registry import OAuthRegistry
+from ccproxy.auth.oauth.cli_errors import (
+    AuthProviderError,
+    AuthTimedOutError,
+    AuthUserAbortedError,
+    NetworkError,
+    PortBindError,
+)
+from ccproxy.auth.oauth.flows import BrowserFlow, DeviceCodeFlow, ManualCodeFlow
+from ccproxy.auth.oauth.registry import FlowType, OAuthRegistry
 from ccproxy.cli.helpers import get_rich_toolkit
 from ccproxy.config.settings import Settings
 from ccproxy.core.logging import bootstrap_cli_logging, get_logger, setup_logging
@@ -455,7 +463,9 @@ def list_providers() -> None:
 def login_command(
     provider: Annotated[
         str,
-        typer.Argument(help="Provider to authenticate with (claude-api, codex)"),
+        typer.Argument(
+            help="Provider to authenticate with (claude-api, codex, copilot)"
+        ),
     ],
     no_browser: Annotated[
         bool,
@@ -473,18 +483,107 @@ def login_command(
     toolkit = get_rich_toolkit()
 
     provider = provider.strip().lower()
+    display_name = provider.replace("_", "-").title()
 
     toolkit.print(
-        f"[bold cyan]OAuth Login - {provider.replace('_', '-').title()}[/bold cyan]",
+        f"[bold cyan]OAuth Login - {display_name}[/bold cyan]",
         centered=True,
     )
     toolkit.print_line()
 
-    toolkit.print(
-        "CLI OAuth flow has been removed. Use provider-specific tooling or API tokens.",
-        tag="error",
-    )
-    raise typer.Exit(1)
+    try:
+        container = _get_service_container()
+        registry = OAuthRegistry()
+        oauth_provider = asyncio.run(
+            get_oauth_provider_for_name(provider, registry, container)
+        )
+
+        if not oauth_provider:
+            providers = asyncio.run(discover_oauth_providers(container))
+            available = ", ".join(providers.keys()) if providers else "none"
+            toolkit.print(
+                f"Provider '{provider}' not found. Available: {available}",
+                tag="error",
+            )
+            raise typer.Exit(1)
+
+        # Get CLI configuration from provider
+        cli_config = oauth_provider.cli
+
+        # Flow engine selection with fallback logic
+        flow_engine: ManualCodeFlow | DeviceCodeFlow | BrowserFlow
+        try:
+            if manual:
+                # Manual mode requested
+                if not cli_config.supports_manual_code:
+                    raise AuthProviderError(
+                        f"Provider '{provider}' doesn't support manual code entry"
+                    )
+                flow_engine = ManualCodeFlow()
+                success = asyncio.run(flow_engine.run(oauth_provider))
+
+            elif (
+                cli_config.preferred_flow == FlowType.device
+                and cli_config.supports_device_flow
+            ):
+                # Device flow preferred and supported
+                flow_engine = DeviceCodeFlow()
+                success = asyncio.run(flow_engine.run(oauth_provider))
+
+            else:
+                # Browser flow (default)
+                flow_engine = BrowserFlow()
+                success = asyncio.run(flow_engine.run(oauth_provider, no_browser))
+
+        except PortBindError as e:
+            # Port binding failed - offer manual fallback
+            if cli_config.supports_manual_code:
+                console.print(
+                    "[yellow]Port binding failed. Falling back to manual mode.[/yellow]"
+                )
+                flow_engine = ManualCodeFlow()
+                success = asyncio.run(flow_engine.run(oauth_provider))
+            else:
+                console.print(
+                    f"[red]Port {cli_config.callback_port} unavailable and manual mode not supported[/red]"
+                )
+                raise typer.Exit(1) from e
+
+        except AuthTimedOutError:
+            console.print("[red]Authentication timed out[/red]")
+            raise typer.Exit(1)
+
+        except AuthUserAbortedError:
+            console.print("[yellow]Authentication cancelled by user[/yellow]")
+            raise typer.Exit(1)
+
+        except AuthProviderError as e:
+            console.print(f"[red]Authentication failed: {e}[/red]")
+            raise typer.Exit(1) from e
+
+        except NetworkError as e:
+            console.print(f"[red]Network error: {e}[/red]")
+            raise typer.Exit(1) from e
+
+        if success:
+            console.print("[green]✓[/green] Authentication successful!")
+        else:
+            console.print("[red]✗[/red] Authentication failed")
+            raise typer.Exit(1)
+
+    except KeyboardInterrupt:
+        console.print("\n[yellow]Login cancelled by user.[/yellow]")
+        raise typer.Exit(2) from None
+    except ImportError as e:
+        toolkit.print(f"Plugin import error: {e}", tag="error")
+        raise typer.Exit(1) from e
+    except typer.Exit:
+        # Re-raise typer exits
+        raise
+    except Exception as e:
+        toolkit.print(f"Error during login: {e}", tag="error")
+        logger.error("login_command_error", error=str(e), exc_info=e)
+        raise typer.Exit(1) from e
 
 
 @app.command(name="status")

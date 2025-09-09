@@ -34,6 +34,7 @@ dependencies = [
   "openai>=1.93.0",
   "fastapi-mcp>=0.3.7",
   "SQLAlchemy>=2.0.0",
+  "qrcode>=8.2",
 ]
 
 [build-system]
