@@ -657,3 +657,63 @@ class TestCopilotOAuthProvider:
         assert result.provider_type == "copilot"
         assert result.email is None
         assert result.display_name == "Unknown User"
+
+    async def test_copilot_token_expiration_check(
+        self,
+        oauth_provider: CopilotOAuthProvider,
+        mock_oauth_token: CopilotOAuthToken,
+    ) -> None:
+        """Test that expired Copilot tokens are detected and refreshed."""
+        from datetime import UTC, datetime
+
+        from ccproxy.plugins.copilot.oauth.models import CopilotTokenResponse
+
+        # Create an expired Copilot token (1 hour ago)
+        expired_time = datetime.now(UTC).timestamp() - 3600
+        expired_copilot_token = CopilotTokenResponse(
+            token="expired_copilot_token",
+            expires_at=int(expired_time),
+            refresh_in=3600,
+        )
+
+        # Create credentials with expired Copilot token
+        mock_credentials = CopilotCredentials(
+            oauth_token=mock_oauth_token,
+            copilot_token=expired_copilot_token,
+            account_type="individual",
+        )
+
+        oauth_provider.storage.load_credentials.return_value = mock_credentials
+
+        # Mock the refresh to return new token
+        new_copilot_token = CopilotTokenResponse(
+            token="new_copilot_token",
+            expires_at=int(datetime.now(UTC).timestamp() + 3600),  # 1 hour from now
+            refresh_in=3600,
+        )
+        new_credentials = CopilotCredentials(
+            oauth_token=mock_oauth_token,
+            copilot_token=new_copilot_token,
+            account_type="individual",
+        )
+
+        # Verify the expired token is detected as expired
+        assert expired_copilot_token.is_expired is True
+
+        # Verify get_copilot_token returns None for expired token
+        token = await oauth_provider.get_copilot_token()
+        assert token is None
+
+        # Verify is_authenticated returns False for expired token
+        is_auth = await oauth_provider.is_authenticated()
+        assert is_auth is False
+
+        # Verify ensure_copilot_token refreshes expired token
+        with patch.object(
+            oauth_provider.client, "refresh_copilot_token", new_callable=AsyncMock
+        ) as mock_refresh:
+            mock_refresh.return_value = new_credentials
+
+            result = await oauth_provider.ensure_copilot_token()
+            assert result == "new_copilot_token"
+            mock_refresh.assert_called_once()

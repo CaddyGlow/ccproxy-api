@@ -350,7 +350,9 @@ class TestCopilotOAuthClient:
 
         assert isinstance(result, CopilotTokenResponse)
         assert result.token.get_secret_value() == "copilot-service-token"
-        assert result.expires_at == "2024-12-31T23:59:59Z"
+        # expires_at is now converted to datetime object
+        expected_dt = datetime(2024, 12, 31, 23, 59, 59, tzinfo=UTC)
+        assert result.expires_at == expected_dt
 
         mock_client.get.assert_called_once_with(
             mock_config.copilot_token_url,

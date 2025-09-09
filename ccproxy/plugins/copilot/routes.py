@@ -123,7 +123,7 @@ async def chat_completions(
         )
 
         # Delegate to adapter
-        response = await adapter.handle_request(request, "/v1/chat/completions", "POST")
+        response = await adapter.handle_request(request, "/chat/completions", "POST")
 
         # Ensure return type compatibility
         if isinstance(response, Response) and not isinstance(

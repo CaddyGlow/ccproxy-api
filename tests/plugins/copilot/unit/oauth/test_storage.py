@@ -130,7 +130,9 @@ class TestCopilotOAuthStorage:
         # Check Copilot token data
         copilot_data = data["copilot_token"]
         assert copilot_data["token"] == "copilot_test_token"
-        assert copilot_data["expires_at"] == "2024-12-31T23:59:59Z"
+        # expires_at is now serialized back to Unix timestamp
+        expected_dt = datetime(2024, 12, 31, 23, 59, 59, tzinfo=UTC)
+        assert copilot_data["expires_at"] == int(expected_dt.timestamp())
 
         # Check account type
         assert data["account_type"] == "individual"
@@ -205,7 +207,9 @@ class TestCopilotOAuthStorage:
             loaded_credentials.copilot_token.token.get_secret_value()
             == "copilot_test_token"
         )
-        assert loaded_credentials.copilot_token.expires_at == "2024-12-31T23:59:59Z"
+        # expires_at is now a datetime object
+        expected_dt = datetime(2024, 12, 31, 23, 59, 59, tzinfo=UTC)
+        assert loaded_credentials.copilot_token.expires_at == expected_dt
 
         # Check account type
         assert loaded_credentials.account_type == "individual"

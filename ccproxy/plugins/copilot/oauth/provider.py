@@ -247,14 +247,8 @@ class CopilotOAuthProvider(ProfileLoggingMixin):
         copilot_expires_at = None
 
         if credentials.copilot_token and credentials.copilot_token.expires_at:
-            from datetime import datetime
-
-            with contextlib.suppress(ValueError):
-                expires_str = credentials.copilot_token.expires_at
-                # Handle both Z suffix and timezone offset formats
-                if expires_str.endswith("Z"):
-                    expires_str = expires_str[:-1] + "+00:00"
-                copilot_expires_at = datetime.fromisoformat(expires_str)
+            # expires_at is now a datetime object, no need to parse
+            copilot_expires_at = credentials.copilot_token.expires_at
 
         # Get profile for additional info
         profile = None
@@ -283,17 +277,29 @@ class CopilotOAuthProvider(ProfileLoggingMixin):
         if credentials.oauth_token.is_expired:
             return False
 
-        # Check if we have a Copilot token
-        return credentials.copilot_token is not None
+        # Check if we have a valid (non-expired) Copilot token
+        if not credentials.copilot_token:
+            return False
+
+        # Check if Copilot token is expired
+        return not credentials.copilot_token.is_expired
 
     async def get_copilot_token(self) -> str | None:
         """Get current Copilot service token for API requests.
 
         Returns:
-            Copilot token if available and valid
+            Copilot token if available and valid, None otherwise
         """
         credentials = await self.storage.load_credentials()
         if not credentials or not credentials.copilot_token:
+            return None
+
+        # Check if token is expired
+        if credentials.copilot_token.is_expired:
+            logger.info(
+                "copilot_token_expired_in_get",
+                expires_at=credentials.copilot_token.expires_at,
+            )
             return None
 
         return credentials.copilot_token.token.get_secret_value()
@@ -314,9 +320,15 @@ class CopilotOAuthProvider(ProfileLoggingMixin):
         if credentials.oauth_token.is_expired:
             raise ValueError("OAuth token expired - re-authorization required")
 
-        # If no Copilot token or potentially expired, refresh it
-        if not credentials.copilot_token:
-            logger.info("no_copilot_token_refreshing")
+        # If no Copilot token or expired, refresh it
+        if not credentials.copilot_token or credentials.copilot_token.is_expired:
+            if not credentials.copilot_token:
+                logger.info("no_copilot_token_refreshing")
+            else:
+                logger.info(
+                    "copilot_token_expired_refreshing",
+                    expires_at=credentials.copilot_token.expires_at,
+                )
             credentials = await self.client.refresh_copilot_token(credentials)
 
         if not credentials.copilot_token:

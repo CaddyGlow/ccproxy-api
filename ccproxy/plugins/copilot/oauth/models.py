@@ -99,17 +99,85 @@ class CopilotOAuthToken(BaseModel):
         return datetime.fromtimestamp(self.created_at + self.expires_in, tz=UTC)
 
 
+class CopilotEndpoints(BaseModel):
+    """Copilot API endpoints configuration."""
+
+    api: str | None = Field(None, description="API endpoint URL")
+    origin_tracker: str | None = Field(
+        None, alias="origin-tracker", description="Origin tracker endpoint URL"
+    )
+    proxy: str | None = Field(None, description="Proxy endpoint URL")
+    telemetry: str | None = Field(None, description="Telemetry endpoint URL")
+
+
 class CopilotTokenResponse(BaseModel):
     """Copilot token exchange response."""
 
+    # Core required fields (backward compatibility)
     token: SecretStr = Field(..., description="Copilot service token")
-    expires_at: str | None = Field(None, description="Token expiration time")
+    expires_at: datetime | None = Field(None, description="Token expiration datetime")
     refresh_in: int | None = Field(None, description="Refresh interval in seconds")
+
+    # Extended optional fields from full API response
+    annotations_enabled: bool | None = Field(
+        None, description="Whether annotations are enabled"
+    )
+    blackbird_clientside_indexing: bool | None = Field(
+        None, description="Whether blackbird clientside indexing is enabled"
+    )
+    chat_enabled: bool | None = Field(None, description="Whether chat is enabled")
+    chat_jetbrains_enabled: bool | None = Field(
+        None, description="Whether JetBrains chat is enabled"
+    )
+    code_quote_enabled: bool | None = Field(
+        None, description="Whether code quote is enabled"
+    )
+    code_review_enabled: bool | None = Field(
+        None, description="Whether code review is enabled"
+    )
+    codesearch: bool | None = Field(None, description="Whether code search is enabled")
+    copilotignore_enabled: bool | None = Field(
+        None, description="Whether copilotignore is enabled"
+    )
+    endpoints: CopilotEndpoints | None = Field(
+        None, description="API endpoints configuration"
+    )
+    individual: bool | None = Field(
+        None, description="Whether this is an individual account"
+    )
+    limited_user_quotas: dict[str, Any] | None = Field(
+        None, description="Limited user quotas if any"
+    )
+    limited_user_reset_date: int | None = Field(
+        None, description="Limited user reset date if any"
+    )
+    prompt_8k: bool | None = Field(None, description="Whether 8k prompts are enabled")
+    public_suggestions: str | None = Field(
+        None, description="Public suggestions setting"
+    )
+    sku: str | None = Field(None, description="SKU identifier")
+    snippy_load_test_enabled: bool | None = Field(
+        None, description="Whether snippy load test is enabled"
+    )
+    telemetry: str | None = Field(None, description="Telemetry setting")
+    tracking_id: str | None = Field(None, description="Tracking ID")
+    vsc_electron_fetcher_v2: bool | None = Field(
+        None, description="Whether VSCode electron fetcher v2 is enabled"
+    )
+    xcode: bool | None = Field(None, description="Whether Xcode integration is enabled")
+    xcode_chat: bool | None = Field(None, description="Whether Xcode chat is enabled")
 
     @field_serializer("token")
     def serialize_secret(self, value: SecretStr) -> str:
         """Serialize SecretStr to plain string for JSON output."""
         return value.get_secret_value()
+
+    @field_serializer("expires_at")
+    def serialize_datetime(self, value: datetime | None) -> int | None:
+        """Serialize datetime back to Unix timestamp."""
+        if value is None:
+            return None
+        return int(value.timestamp())
 
     @field_validator("token", mode="before")
     @classmethod
@@ -121,14 +189,35 @@ class CopilotTokenResponse(BaseModel):
 
     @field_validator("expires_at", mode="before")
     @classmethod
-    def validate_expires_at(cls, v: int | str | None) -> str | None:
-        """Convert integer Unix timestamp to ISO string format."""
+    def validate_expires_at(cls, v: int | str | datetime | None) -> datetime | None:
+        """Convert integer Unix timestamp or ISO string to datetime object."""
         if v is None:
             return None
+        if isinstance(v, datetime):
+            return v
         if isinstance(v, int):
-            # Convert Unix timestamp to ISO format string
-            return datetime.fromtimestamp(v, tz=UTC).isoformat()
-        return v
+            # Convert Unix timestamp to datetime
+            return datetime.fromtimestamp(v, tz=UTC)
+        if isinstance(v, str):
+            # Try to parse as ISO string, fallback to Unix timestamp
+            try:
+                return datetime.fromisoformat(v.replace("Z", "+00:00"))
+            except ValueError:
+                try:
+                    return datetime.fromtimestamp(int(v), tz=UTC)
+                except ValueError:
+                    return None
+        return None
+
+    @property
+    def is_expired(self) -> bool:
+        """Check if the Copilot token is expired."""
+        if not self.expires_at:
+            # If no expiration info, assume not expired
+            return False
+
+        now = datetime.now(UTC)
+        return now >= self.expires_at
 
 
 class CopilotCredentials(BaseModel):

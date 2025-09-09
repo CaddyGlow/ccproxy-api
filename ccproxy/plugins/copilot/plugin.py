@@ -59,9 +59,8 @@ class CopilotPluginRuntime(ProviderPluginRuntime, AuthProviderPluginRuntime):
         await ProviderPluginRuntime._on_initialize(self)
         await AuthProviderPluginRuntime._on_initialize(self)
 
-        # Initialize adapter
-        if self.adapter:
-            await self.adapter.initialize()
+        # Note: BaseHTTPAdapter doesn't have an initialize() method
+        # Initialization is handled through dependency injection
 
         logger.debug(
             "copilot_plugin_initialized",
@@ -272,19 +271,59 @@ class CopilotPluginFactory(BaseProviderPluginFactory, AuthProviderPluginFactory)
         if not isinstance(config, CopilotConfig):
             config = CopilotConfig()
 
+        # Get required dependencies following BaseHTTPAdapter pattern
         oauth_provider = context.get("oauth_provider")
         detection_service = context.get("detection_service")
+        http_pool_manager = context.get("http_pool_manager")
+
+        # For Copilot, the oauth_provider serves as the auth_manager
+        # since it has the required methods (ensure_copilot_token, etc.)
+        auth_manager = oauth_provider
+
+        # Optional dependencies
+        request_tracer = context.get("request_tracer")
         metrics = context.get("metrics")
+        streaming_handler = context.get("streaming_handler")
         hook_manager = context.get("hook_manager")
-        http_client = context.get("http_client")
+
+        # Debug: Log what we actually have in the context
+        logger.debug(
+            "copilot_adapter_dependencies_debug",
+            context_keys=list(context.keys()) if context else [],
+            has_auth_manager=bool(auth_manager),
+            has_detection_service=bool(detection_service),
+            has_http_pool_manager=bool(http_pool_manager),
+            has_oauth_provider=bool(oauth_provider),
+        )
+
+        if not all(
+            [auth_manager, detection_service, http_pool_manager, oauth_provider]
+        ):
+            missing = []
+            if not auth_manager:
+                missing.append("auth_manager")
+            if not detection_service:
+                missing.append("detection_service")
+            if not http_pool_manager:
+                missing.append("http_pool_manager")
+            if not oauth_provider:
+                missing.append("oauth_provider")
+
+            raise ValueError(
+                f"Required dependencies missing for CopilotAdapter: {missing}"
+            )
 
         return CopilotAdapter(
-            config=config,
-            oauth_provider=oauth_provider,
+            auth_manager=auth_manager,
             detection_service=detection_service,
+            http_pool_manager=http_pool_manager,
+            oauth_provider=oauth_provider,
+            config=config,
+            request_tracer=request_tracer,
             metrics=metrics,
+            streaming_handler=streaming_handler,
             hook_manager=hook_manager,
-            http_client=http_client,
+            context=context,
         )
 
     def create_auth_provider(
