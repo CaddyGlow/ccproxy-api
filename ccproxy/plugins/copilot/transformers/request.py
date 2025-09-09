@@ -4,6 +4,7 @@ from typing import Any
 from uuid import uuid4
 
 from ccproxy.core.logging import get_plugin_logger
+from ccproxy.utils.headers import filter_request_headers
 
 from ..config import CopilotConfig
 
@@ -35,45 +36,8 @@ class CopilotRequestTransformer:
         Returns:
             Transformed headers
         """
-        # Start with base headers
-        transformed = dict(headers)
-
-        excluded_headers = {
-            "host",
-            "connection",
-            "keep-alive",
-            "transfer-encoding",
-            "content-length",
-            "upgrade",
-            "proxy-authenticate",
-            "proxy-authorization",
-            "te",
-            "trailer",
-            # Additional headers from main branch that cause issues
-            "x-forwarded-for",
-            "x-forwarded-proto",
-            "x-forwarded-host",
-            "forwarded",
-            # Authentication headers to be replaced
-            "x-api-key",
-            # Compression headers to avoid decompression issues
-            "accept-encoding",
-            "content-encoding",
-            # CORS headers - should not be forwarded to upstream
-            "origin",
-            "access-control-request-method",
-            "access-control-request-headers",
-            "access-control-allow-origin",
-            "access-control-allow-methods",
-            "access-control-allow-headers",
-            "access-control-allow-credentials",
-            "access-control-max-age",
-            "access-control-expose-headers",
-            "authorization",  # Will be re-injected if access_token is provided
-        }
-        transformed = {
-            k: v for k, v in transformed.items() if k.lower() not in excluded_headers
-        }
+        # Use common filter utility (don't preserve auth since we'll add our own)
+        transformed = filter_request_headers(headers, preserve_auth=False)
 
         # Add required Copilot headers
         copilot_headers = self.config.api_headers.copy()
@@ -88,17 +52,12 @@ class CopilotRequestTransformer:
         # Merge headers (copilot headers take precedence)
         transformed.update(copilot_headers)
 
-        # Strip potentially problematic headers (aligned with main branch logic)
-        excluded_headers.remove("authorization")  # We may have just added this
-        transformed = {
-            k: v for k, v in transformed.items() if k.lower() not in excluded_headers
-        }
-
         logger.debug(
             "headers_transformed",
             original_count=len(headers),
             transformed_count=len(transformed),
             has_auth=bool(access_token),
+            keys=list(transformed.keys()),
         )
 
         return transformed

@@ -5,7 +5,6 @@ from typing import Any
 
 from ccproxy.adapters.openai.models import (
     OpenAIChatCompletionRequest,
-    OpenAIMessage,
 )
 from ccproxy.core.logging import get_plugin_logger
 

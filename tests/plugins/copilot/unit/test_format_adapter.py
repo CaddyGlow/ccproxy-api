@@ -2,7 +2,6 @@
 
 import pytest
 
-from ccproxy.adapters.openai.models import OpenAIChatCompletionRequest, OpenAIMessage
 from ccproxy.plugins.copilot.format_adapter import (
     CopilotFormatAdapter,
     CopilotToOpenAIAdapter,

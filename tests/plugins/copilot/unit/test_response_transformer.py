@@ -1,7 +1,6 @@
 """Unit tests for Copilot response transformer."""
 
 import json
-from typing import Any
 
 import pytest
 
@@ -25,8 +24,7 @@ class TestCopilotResponseTransformer:
         result = transformer.transform_headers(headers)
 
         assert result["Content-Type"] == "application/json"
-        assert result["X-Copilot-Provider"] == "ccproxy"
-        assert result["X-Provider-Plugin"] == "copilot"
+        # Provider headers are not added by default to avoid Content-Length issues
 
     def test_transform_headers_removes_problematic_headers(
         self, transformer: CopilotResponseTransformer
@@ -37,13 +35,17 @@ class TestCopilotResponseTransformer:
             "Transfer-Encoding": "chunked",
             "Connection": "keep-alive",
             "Content-Length": "123",
+            "Content-Encoding": "gzip",
         }
 
         result = transformer.transform_headers(headers)
 
+        # These headers should be removed to prevent Content-Length mismatches
         assert "Transfer-Encoding" not in result
         assert "Connection" not in result
-        assert result["Content-Length"] == "123"  # Content-Length should be preserved
+        assert "Content-Length" not in result  # Will be recalculated by HTTP adapter
+        assert "Content-Encoding" not in result
+        assert result["Content-Type"] == "application/json"
 
     def test_transform_body_dict(self, transformer: CopilotResponseTransformer) -> None:
         """Test body transformation with dict input."""
@@ -53,7 +55,6 @@ class TestCopilotResponseTransformer:
 
         expected = json.dumps(body).encode("utf-8")
         assert result == expected
-        assert isinstance(result, bytes)
 
     def test_transform_body_string(
         self, transformer: CopilotResponseTransformer
@@ -63,7 +64,8 @@ class TestCopilotResponseTransformer:
 
         result = transformer.transform_body(body)
 
-        assert result == b"Hello world"
+        expected = body.encode("utf-8")
+        assert result == expected
 
     def test_transform_body_bytes(
         self, transformer: CopilotResponseTransformer
@@ -73,82 +75,60 @@ class TestCopilotResponseTransformer:
 
         result = transformer.transform_body(body)
 
-        assert result == b"Hello world"
+        assert result == body
 
-    def test_transform_body_and_headers(
+    def test_separate_body_and_header_transformation(
         self, transformer: CopilotResponseTransformer
     ) -> None:
-        """Test combined body and header transformation with content-length update."""
+        """Test body and header transformation separately."""
         body = {"message": "Hello world", "count": 42}
-        headers = {"Content-Type": "application/json"}
+        headers = {"Content-Type": "application/json", "Content-Length": "999"}
 
-        result_headers, result_body = transformer.transform_body_and_headers(
-            body, headers
-        )
-
-        # Check body is correct
+        # Test body transformation
+        result_body = transformer.transform_body(body)
         expected_body = json.dumps(body).encode("utf-8")
         assert result_body == expected_body
 
-        # Check headers include correct content-length
-        assert result_headers["Content-Length"] == str(len(result_body))
+        # Test header transformation - Content-Length should be excluded
+        result_headers = transformer.transform_headers(headers)
         assert result_headers["Content-Type"] == "application/json"
-        assert result_headers["X-Copilot-Provider"] == "ccproxy"
+        assert "Content-Length" not in result_headers  # Excluded to prevent mismatches
 
-    def test_transform_body_and_headers_preserves_existing_content_length(
+    def test_transform_error_response_basic(
         self, transformer: CopilotResponseTransformer
     ) -> None:
-        """Test that content-length is updated even when already present."""
-        body = {"short": "msg"}  # Small body
-        headers = {
-            "Content-Type": "application/json",
-            "Content-Length": "999",  # Wrong length
-        }
+        """Test error response transformation."""
+        error = ValueError("Test error")
+        status_code = 400
 
-        result_headers, result_body = transformer.transform_body_and_headers(
-            body, headers
-        )
+        headers, body = transformer.transform_error_response(error, status_code)
 
-        # Content-Length should be updated to correct value
-        actual_length = len(result_body)
-        assert result_headers["Content-Length"] == str(actual_length)
-        assert result_headers["Content-Length"] != "999"
+        # Check headers
+        assert headers["Content-Type"] == "application/json"
+        assert "Content-Length" not in headers  # Should be excluded
 
-    def test_transform_error_response_includes_content_length(
-        self, transformer: CopilotResponseTransformer
-    ) -> None:
-        """Test that error responses include correct content-length."""
-        error = ValueError("Test error message")
-
-        headers, body = transformer.transform_error_response(error, status_code=400)
-
-        # Check content-length is set correctly
-        assert "Content-Length" in headers
-        assert headers["Content-Length"] == str(len(body))
-
-        # Verify body is valid JSON
+        # Check body structure
         error_data = json.loads(body.decode("utf-8"))
         assert "error" in error_data
-        assert error_data["error"]["message"] == "Test error message"
+        assert error_data["error"]["message"] == "Test error"
+        assert error_data["error"]["type"] == "client_error"
 
     def test_transform_error_response_different_status_codes(
         self, transformer: CopilotResponseTransformer
     ) -> None:
-        """Test error response transformation with different status codes."""
-        error = RuntimeError("Internal server error")
+        """Test error response with different status codes."""
+        error = RuntimeError("Server error")
 
-        headers_500, body_500 = transformer.transform_error_response(
-            error, status_code=500
-        )
-        headers_400, body_400 = transformer.transform_error_response(
-            error, status_code=400
-        )
+        headers_500, body_500 = transformer.transform_error_response(error, 500)
+        headers_400, body_400 = transformer.transform_error_response(error, 400)
 
-        # Both should have correct content-length
-        assert headers_500["Content-Length"] == str(len(body_500))
-        assert headers_400["Content-Length"] == str(len(body_400))
+        # Check both have proper content type and no Content-Length
+        assert headers_500["Content-Type"] == "application/json"
+        assert headers_400["Content-Type"] == "application/json"
+        assert "Content-Length" not in headers_500
+        assert "Content-Length" not in headers_400
 
-        # Content should be different due to different error types
+        # Check error types differ based on status code
         error_500 = json.loads(body_500.decode("utf-8"))
         error_400 = json.loads(body_400.decode("utf-8"))
 
@@ -158,62 +138,71 @@ class TestCopilotResponseTransformer:
     def test_transform_streaming_headers(
         self, transformer: CopilotResponseTransformer
     ) -> None:
-        """Test streaming header transformation."""
+        """Test streaming headers generation."""
         result = transformer.transform_streaming_headers()
 
-        assert result["Content-Type"] == "text/event-stream"
-        assert result["Cache-Control"] == "no-cache"
-        assert result["Connection"] == "keep-alive"
-        assert result["X-Copilot-Provider"] == "ccproxy"
+        assert result["content-type"] == "text/event-stream"
+        assert result["cache-control"] == "no-cache"
+        assert result["connection"] == "keep-alive"
+
+    def test_cors_headers_integration(
+        self, transformer: CopilotResponseTransformer
+    ) -> None:
+        """Test CORS headers integration."""
+        cors_settings = {
+            "allow_origin": "https://example.com",
+            "allow_methods": "GET, POST",
+            "allow_headers": "Content-Type, Authorization",
+        }
+        transformer_with_cors = CopilotResponseTransformer(cors_settings=cors_settings)
+
+        headers = {"Content-Type": "application/json"}
+        result = transformer_with_cors.transform_headers(headers)
+
+        assert result["access-control-allow-origin"] == "https://example.com"
+        assert result["access-control-allow-methods"] == "GET, POST"
+        assert result["access-control-allow-headers"] == "Content-Type, Authorization"
 
     def test_prepare_response_context(
         self, transformer: CopilotResponseTransformer
     ) -> None:
         """Test response context preparation."""
-        body = {"data": "test"}
-        headers = {"Content-Type": "application/json"}
+        headers = {"Content-Type": "application/json", "Content-Length": "100"}
+        body = {"test": "data"}
+        status_code = 200
 
-        context = transformer.prepare_response_context(
-            body=body,
-            headers=headers,
-            status_code=200,
-            endpoint="/test",
-        )
+        context = transformer.prepare_response_context(headers, body, status_code)
 
         assert context["status_code"] == 200
-        assert context["endpoint"] == "/test"
-        assert "body" in context
-        assert "headers" in context
+        assert context["provider"] == "copilot"
+        assert "Content-Length" not in context["headers"]  # Should be excluded
+        assert context["headers"]["Content-Type"] == "application/json"
 
-    def test_cors_headers_integration(self) -> None:
-        """Test CORS headers are added when configured."""
-        cors_settings = {
-            "allow_origin": "*",
-            "allow_methods": "GET,POST,PUT,DELETE",
-            "allow_headers": "Content-Type,Authorization",
-        }
-
-        transformer = CopilotResponseTransformer(cors_settings=cors_settings)
-        headers = {"Content-Type": "application/json"}
-
-        result = transformer.transform_headers(headers)
-
-        assert result["Access-Control-Allow-Origin"] == "*"
-        assert result["Access-Control-Allow-Methods"] == "GET,POST,PUT,DELETE"
-        assert result["Access-Control-Allow-Headers"] == "Content-Type,Authorization"
+        expected_body = json.dumps(body).encode("utf-8")
+        assert context["body"] == expected_body
 
     def test_content_length_edge_cases(
         self, transformer: CopilotResponseTransformer
     ) -> None:
-        """Test content-length handling with edge cases."""
+        """Test edge cases with Content-Length handling."""
         # Empty body
-        headers, body = transformer.transform_body_and_headers({}, {})
-        assert headers["Content-Length"] == str(len(body))
-        assert headers["Content-Length"] == "2"  # Empty dict: "{}"
+        empty_body = {}
+        result_body = transformer.transform_body(empty_body)
+        expected_body = json.dumps(empty_body).encode("utf-8")
+        assert result_body == expected_body
+        assert len(result_body) == 2  # "{}" = 2 bytes
 
-        # Large body
-        large_body = {"data": "x" * 1000}
-        headers, body = transformer.transform_body_and_headers(large_body, {})
-        expected_length = len(json.dumps(large_body).encode("utf-8"))
-        assert headers["Content-Length"] == str(expected_length)
-        assert len(body) == expected_length
+        # Headers with various casing for Content-Length
+        headers = {
+            "content-length": "100",
+            "Content-Length": "200",
+            "CONTENT-LENGTH": "300",
+            "Content-Type": "application/json",
+        }
+        result_headers = transformer.transform_headers(headers)
+
+        # All variations should be removed
+        assert "content-length" not in result_headers
+        assert "Content-Length" not in result_headers
+        assert "CONTENT-LENGTH" not in result_headers
+        assert result_headers["Content-Type"] == "application/json"

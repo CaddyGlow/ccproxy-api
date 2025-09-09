@@ -1,8 +1,7 @@
 """Core API models for GitHub Copilot plugin."""
 
 from datetime import datetime
-from typing import Any, Literal
-from uuid import uuid4
+from typing import Any, Literal, TypedDict
 
 from pydantic import BaseModel, Field
 
@@ -103,6 +102,23 @@ class CopilotUserInternalResponse(BaseModel):
         ..., description="Current quota snapshots"
     )
     quota_reset_date_utc: str = Field(..., description="Quota reset date in UTC")
+
+
+# Authentication Models
+
+
+class CopilotAuthData(TypedDict, total=False):
+    """Authentication data for Copilot/GitHub provider.
+
+    This follows the same pattern as CodexAuthData for consistency.
+
+    Attributes:
+        access_token: Bearer token for GitHub Copilot API authentication
+        token_type: Token type (typically "bearer")
+    """
+
+    access_token: str | None
+    token_type: str | None
 
 
 # Internal Models for Plugin Communication

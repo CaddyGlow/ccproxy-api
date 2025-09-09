@@ -14,6 +14,7 @@ from ccproxy.services.cache import ResponseCache
 from ccproxy.services.handler_config import HandlerConfig
 from ccproxy.services.interfaces import IRequestTracer
 from ccproxy.streaming import DeferredStreaming
+from ccproxy.utils.headers import HeaderBag
 
 
 if TYPE_CHECKING:
@@ -215,7 +216,7 @@ class PluginHTTPHandler(BaseHTTPHandler):
             # Process response through adapters and transformers
             processed_body, processed_headers = await self._processor.process_response(
                 body=response_content,
-                headers=dict(response.headers),
+                headers=HeaderBag.from_httpx_response(response).to_dict(),
                 status_code=response.status_code,
                 handler_config=handler_config,
                 request_context=request_context,
@@ -282,7 +283,7 @@ class PluginHTTPHandler(BaseHTTPHandler):
             extensions["request_id"] = request_id
 
         # Trace the outgoing request if tracer is available
-        self.logger.info(
+        self.logger.trace(
             "request_tracer_check",
             has_tracer=self._request_tracer is not None,
             tracer_type=type(self._request_tracer).__name__
@@ -294,7 +295,7 @@ class PluginHTTPHandler(BaseHTTPHandler):
         )
 
         if self._request_tracer and request_id:
-            self.logger.info("calling_trace_request", request_id=request_id, url=url)
+            self.logger.trace("calling_trace_request", request_id=request_id, url=url)
             await self._request_tracer.trace_request(
                 request_id=request_id,
                 method=method,

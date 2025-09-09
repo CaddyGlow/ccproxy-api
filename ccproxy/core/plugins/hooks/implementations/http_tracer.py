@@ -118,6 +118,7 @@ class HTTPTracerHook(Hook):
             method=method,
             url=url,
             is_provider_request=is_provider_request,
+            headers=headers_pairs,
         )
 
         # Log with JSON formatter

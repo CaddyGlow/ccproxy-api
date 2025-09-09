@@ -61,9 +61,10 @@ class CopilotResponseTransformer:
         # Following Codex pattern - exclude headers that can cause Content-Length mismatches
         headers_to_remove = [
             "content-length",  # Will be recalculated by HTTP adapter
-            "transfer-encoding", 
+            "transfer-encoding",
             "content-encoding",  # May affect body length calculation
-            "connection"
+            "connection",
+            "content-length",
         ]
         for header in headers_to_remove:
             for key in list(transformed.keys()):

@@ -4,6 +4,7 @@ import json
 from typing import Any
 
 from ccproxy.core.logging import get_plugin_logger
+from ccproxy.utils.headers import filter_request_headers
 
 from ..detection_service import ClaudeAPIDetectionService
 
@@ -74,45 +75,8 @@ class ClaudeAPIRequestTransformer:
             category="transform",
         )
 
-        transformed = headers.copy()
-
-        # Strip potentially problematic headers (aligned with main branch logic)
-        excluded_headers = {
-            "host",
-            "connection",
-            "keep-alive",
-            "transfer-encoding",
-            "content-length",
-            "upgrade",
-            "proxy-authenticate",
-            "proxy-authorization",
-            "te",
-            "trailer",
-            # Additional headers from main branch that cause issues
-            "x-forwarded-for",
-            "x-forwarded-proto",
-            "x-forwarded-host",
-            "forwarded",
-            # Authentication headers to be replaced
-            "x-api-key",
-            # Compression headers to avoid decompression issues
-            "accept-encoding",
-            "content-encoding",
-            # CORS headers - should not be forwarded to upstream
-            "origin",
-            "access-control-request-method",
-            "access-control-request-headers",
-            "access-control-allow-origin",
-            "access-control-allow-methods",
-            "access-control-allow-headers",
-            "access-control-allow-credentials",
-            "access-control-max-age",
-            "access-control-expose-headers",
-            "authorization",  # Will be re-injected if access_token is provided
-        }
-        transformed = {
-            k: v for k, v in transformed.items() if k.lower() not in excluded_headers
-        }
+        # Use common filter utility (don't preserve auth since we'll add our own)
+        transformed = filter_request_headers(headers, preserve_auth=False)
 
         # Inject detected headers if available
         has_detected_headers = False
@@ -142,12 +106,6 @@ class ClaudeAPIRequestTransformer:
 
         # Inject access token in Authentication header
         transformed["authorization"] = f"Bearer {access_token}"
-
-        # exclude_headers
-        excluded_headers.remove("authorization")  # We may have just added this
-        transformed = {
-            k: v for k, v in transformed.items() if k.lower() not in excluded_headers
-        }
 
         # Debug logging - what headers are we returning?
         logger.trace(

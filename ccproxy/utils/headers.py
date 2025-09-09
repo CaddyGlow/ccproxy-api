@@ -234,3 +234,71 @@ def extract_ordered_request_headers(request: object) -> dict[str, str]:
     raw access is unavailable.
     """
     return HeaderBag.from_request(request).to_dict()
+
+
+# Common headers to exclude when forwarding requests to upstream providers
+EXCLUDED_REQUEST_HEADERS = {
+    # Connection-related headers (should not be forwarded)
+    "host",
+    "connection",
+    "keep-alive",
+    "transfer-encoding",
+    "upgrade",
+    "te",
+    "trailer",
+    # Proxy headers (should not be forwarded to upstream)
+    "proxy-authenticate",
+    "proxy-authorization",
+    "x-forwarded-for",
+    "x-forwarded-proto",
+    "x-forwarded-host",
+    "forwarded",
+    # Encoding headers (let HTTP client handle)
+    "accept-encoding",
+    "content-encoding",
+    # CORS headers (should not be forwarded to upstream)
+    "origin",
+    "access-control-request-method",
+    "access-control-request-headers",
+    "access-control-allow-origin",
+    "access-control-allow-methods",
+    "access-control-allow-headers",
+    "access-control-allow-credentials",
+    "access-control-max-age",
+    "access-control-expose-headers",
+    # Authentication headers (will be replaced by provider-specific auth)
+    "authorization",
+    "x-api-key",
+    # Content-length (will be recalculated after transformation)
+    "content-length",
+}
+
+
+def filter_request_headers(
+    headers: dict[str, str],
+    additional_excludes: set[str] | None = None,
+    preserve_auth: bool = False,
+) -> dict[str, str]:
+    """Filter out headers that should not be forwarded to upstream providers.
+
+    Args:
+        headers: Original request headers
+        additional_excludes: Additional headers to exclude (optional)
+        preserve_auth: If True, keep authorization headers
+
+    Returns:
+        Filtered headers dictionary
+    """
+    excludes = EXCLUDED_REQUEST_HEADERS.copy()
+
+    # Optionally preserve auth headers
+    if preserve_auth:
+        excludes.discard("authorization")
+        excludes.discard("x-api-key")
+
+    # Add any additional excludes
+    if additional_excludes:
+        excludes.update(additional_excludes)
+
+    # Filter headers (case-insensitive comparison)
+    return {k: v for k, v in headers.items() if k.lower() not in excludes}
