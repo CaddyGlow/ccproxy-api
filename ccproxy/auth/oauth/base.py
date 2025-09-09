@@ -280,6 +280,10 @@ class BaseOAuthClient(ABC, Generic[CredentialsT]):
     ) -> dict[str, str]:
         """Get token exchange request data.
 
+        Note: RFC 6749 Section 4.1.3 specifies that the state parameter should
+        NOT be included in token exchange requests. However, some providers
+        (like Claude) have non-standard implementations that require it.
+
         Args:
             code: Authorization code
             code_verifier: PKCE code verifier
@@ -296,9 +300,8 @@ class BaseOAuthClient(ABC, Generic[CredentialsT]):
             "code_verifier": code_verifier,
         }
 
-        # Include state if provided (some providers like Claude require it)
-        if state:
-            base_data["state"] = state
+        # RFC 6749 compliant: state parameter should be excluded
+        # Override in provider-specific clients if needed (e.g., Claude)
 
         # Allow providers to add custom parameters
         custom_data = self.get_custom_token_params()

@@ -219,24 +219,56 @@ class BrowserFlow:
                 or f"http://localhost:{cli_config.callback_port}{cli_config.callback_path}"
             )
 
-            # Get authorization URL and handle browser opening
+            # Get authorization URL
             auth_url = await provider.get_authorization_url(
                 state, code_verifier, redirect_uri
             )
 
-            if no_browser:
-                console.print(f"[bold]Visit: {auth_url}[/bold]")
-                render_qr_code(auth_url)  # Nice UX touch
-            else:
-                webbrowser.open(auth_url)
+            # Always show URL and QR code for fallback
+            console.print(f"[bold]Visit: {auth_url}[/bold]")
+            render_qr_code(auth_url)
+
+            # Try to open browser unless explicitly disabled
+            if not no_browser:
+                try:
+                    webbrowser.open(auth_url)
+                    console.print("[dim]Opening browser...[/dim]")
+                except Exception:
+                    console.print(
+                        "[yellow]Could not open browser automatically[/yellow]"
+                    )
 
             # Wait for callback with timeout and state validation
-            callback_data = await callback_server.wait_for_callback(state, timeout=300)
-            credentials = await provider.handle_callback(
-                callback_data["code"], state, code_verifier, redirect_uri
-            )
+            try:
+                callback_data = await callback_server.wait_for_callback(
+                    state, timeout=300
+                )
+                credentials = await provider.handle_callback(
+                    callback_data["code"], state, code_verifier, redirect_uri
+                )
+                return await provider.save_credentials(credentials)
+            except TimeoutError:
+                # Fallback to manual code entry if callback times out
+                console.print(
+                    "[yellow]Callback timed out. You can enter the code manually.[/yellow]"
+                )
+                if cli_config.supports_manual_code:
+                    # Use out-of-band redirect URI for manual flow
+                    manual_auth_url = await provider.get_authorization_url(
+                        state, code_verifier, "urn:ietf:wg:oauth:2.0:oob"
+                    )
+                    console.print(f"[bold]Manual URL: {manual_auth_url}[/bold]")
 
-            return await provider.save_credentials(credentials)
+                    import typer
+
+                    code = typer.prompt("Enter the authorization code")
+
+                    credentials = await provider.handle_callback(
+                        code, state, code_verifier, "urn:ietf:wg:oauth:2.0:oob"
+                    )
+                    return await provider.save_credentials(credentials)
+                else:
+                    raise
         finally:
             await callback_server.stop()
 

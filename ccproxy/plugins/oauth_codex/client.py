@@ -74,9 +74,8 @@ class CodexOAuthClient(BaseOAuthClient[OpenAICredentials]):
         Returns:
             Dictionary of custom parameters
         """
-        return {
-            "audience": self.oauth_config.audience,
-        }
+        # OpenAI does not use the audience parameter in authorization requests
+        return {}
 
     def get_custom_headers(self) -> dict[str, str]:
         """Get OpenAI-specific HTTP headers.

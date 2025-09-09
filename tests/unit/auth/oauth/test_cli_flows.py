@@ -56,7 +56,10 @@ class TestBrowserFlow:
                 "state": "test_state",
             }
 
-            with patch("ccproxy.auth.oauth.flows.webbrowser") as mock_webbrowser:
+            with (
+                patch("ccproxy.auth.oauth.flows.webbrowser") as mock_webbrowser,
+                patch("ccproxy.auth.oauth.flows.render_qr_code") as mock_qr,
+            ):
                 flow = BrowserFlow()
                 result = await flow.run(mock_provider, no_browser=False)
 
@@ -64,6 +67,7 @@ class TestBrowserFlow:
                 mock_server.start.assert_called_once()
                 mock_server.stop.assert_called_once()
                 mock_webbrowser.open.assert_called_once()
+                mock_qr.assert_called_once()  # QR code should always be shown
                 mock_provider.get_authorization_url.assert_called_once()
                 mock_provider.handle_callback.assert_called_once()
                 mock_provider.save_credentials.assert_called_once()
@@ -118,6 +122,58 @@ class TestBrowserFlow:
                 AuthProviderError, match="Required port 8080 unavailable"
             ):
                 await flow.run(mock_provider, no_browser=False)
+
+    @pytest.mark.asyncio
+    async def test_browser_flow_timeout_fallback(
+        self, mock_provider: MagicMock
+    ) -> None:
+        """Test browser flow with timeout fallback to manual code entry."""
+        # Create CLI config that supports manual code entry
+        from ccproxy.auth.oauth.registry import CliAuthConfig, FlowType
+
+        mock_provider.cli = CliAuthConfig(
+            preferred_flow=FlowType.browser,
+            callback_port=8080,
+            callback_path="/callback",
+            supports_manual_code=True,
+            supports_device_flow=False,
+        )
+        mock_provider.get_authorization_url.side_effect = [
+            "https://example.com/auth",  # First call for browser flow
+            "https://example.com/auth?redirect_uri=urn:ietf:wg:oauth:2.0:oob",  # Second call for manual flow
+        ]
+        mock_provider.handle_callback.return_value = {"access_token": "test_token"}
+        mock_provider.save_credentials.return_value = True
+
+        with patch("ccproxy.auth.oauth.flows.CLICallbackServer") as mock_server_class:
+            mock_server = AsyncMock()
+            mock_server_class.return_value = mock_server
+            # Simulate timeout on callback
+            mock_server.wait_for_callback.side_effect = TimeoutError("Timeout")
+
+            with (
+                patch("ccproxy.auth.oauth.flows.webbrowser") as mock_webbrowser,
+                patch("ccproxy.auth.oauth.flows.render_qr_code") as mock_qr,
+                patch("typer.prompt", return_value="manual_auth_code") as mock_prompt,
+            ):
+                flow = BrowserFlow()
+                result = await flow.run(mock_provider, no_browser=False)
+
+                assert result is True
+                # Should attempt browser opening
+                mock_webbrowser.open.assert_called_once()
+                mock_qr.assert_called_once()
+                # Should fall back to manual entry
+                mock_prompt.assert_called_once_with("Enter the authorization code")
+                # Should call get_authorization_url twice (browser + manual)
+                assert mock_provider.get_authorization_url.call_count == 2
+                # Should handle callback with OOB redirect URI
+                mock_provider.handle_callback.assert_called_once_with(
+                    "manual_auth_code",
+                    mock_provider.get_authorization_url.call_args_list[0][0][0],
+                    mock_provider.get_authorization_url.call_args_list[0][0][1],
+                    "urn:ietf:wg:oauth:2.0:oob",
+                )
 
 
 class TestDeviceCodeFlow:

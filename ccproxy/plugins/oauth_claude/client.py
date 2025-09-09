@@ -120,6 +120,40 @@ class ClaudeOAuthClient(BaseOAuthClient[ClaudeCredentials]):
         """
         return True
 
+    def _get_token_exchange_data(
+        self, code: str, code_verifier: str, state: str | None = None
+    ) -> dict[str, str]:
+        """Get token exchange request data for Claude.
+
+        Claude has a non-standard OAuth implementation that requires the
+        state parameter in token exchange requests, unlike RFC 6749 Section 4.1.3.
+
+        Args:
+            code: Authorization code
+            code_verifier: PKCE code verifier
+            state: OAuth state parameter (required by Claude)
+
+        Returns:
+            Dictionary of token exchange parameters
+        """
+        base_data = {
+            "grant_type": "authorization_code",
+            "code": code,
+            "redirect_uri": self.redirect_uri,
+            "client_id": self.client_id,
+            "code_verifier": code_verifier,
+        }
+
+        # Claude requires the state parameter in token exchange (non-standard)
+        if state:
+            base_data["state"] = state
+
+        # Allow for custom parameters
+        custom_data = self.get_custom_token_params()
+        base_data.update(custom_data)
+
+        return base_data
+
     async def parse_token_response(self, data: dict[str, Any]) -> ClaudeCredentials:
         """Parse Claude-specific token response.
 

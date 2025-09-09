@@ -88,12 +88,11 @@ class CodexOAuthProvider(ProfileLoggingMixin):
             Authorization URL to redirect user to
         """
         params = {
+            "response_type": "code",
             "client_id": self.config.client_id,
             "redirect_uri": redirect_uri or self.config.get_redirect_uri(),
-            "response_type": "code",
             "scope": " ".join(self.config.scopes),
             "state": state,
-            "audience": self.config.audience,
         }
 
         # Add PKCE challenge if supported and verifier provided
@@ -112,7 +111,6 @@ class CodexOAuthProvider(ProfileLoggingMixin):
             "codex_oauth_auth_url_generated",
             state=state,
             has_pkce=bool(code_verifier and self.config.use_pkce),
-            audience=self.config.audience,
             category="auth",
         )
 
@@ -554,7 +552,7 @@ class CodexOAuthProvider(ProfileLoggingMixin):
         return CliAuthConfig(
             preferred_flow=FlowType.browser,
             callback_port=1455,
-            callback_path="/callback",
+            callback_path="/auth/callback",
             supports_manual_code=True,
             supports_device_flow=False,
             fixed_redirect_uri=None,

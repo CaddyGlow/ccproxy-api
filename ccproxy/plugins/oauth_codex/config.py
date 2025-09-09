@@ -21,7 +21,7 @@ class CodexOAuthConfig(BaseModel):
         description="OAuth token endpoint URL",
     )
     authorize_url: str = Field(
-        default="https://auth.openai.com/authorize",
+        default="https://auth.openai.com/oauth/authorize",
         description="OAuth authorization endpoint URL",
     )
     profile_url: str = Field(
@@ -83,11 +83,11 @@ class CodexOAuthConfig(BaseModel):
     def get_redirect_uri(self) -> str:
         """Return redirect URI, auto-generated from callback_port when unset.
 
-        Uses the standard plugin callback path: `/callback`.
+        Uses the standard plugin callback path: `/auth/callback`.
         """
         if self.redirect_uri:
             return self.redirect_uri
-        return f"http://localhost:{self.callback_port}/callback"
+        return f"http://localhost:{self.callback_port}/auth/callback"
 
     use_pkce: bool = Field(
         default=True,
