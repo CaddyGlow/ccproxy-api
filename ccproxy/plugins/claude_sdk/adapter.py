@@ -10,8 +10,8 @@ from fastapi import HTTPException, Request
 from starlette.responses import Response, StreamingResponse
 
 from ccproxy.core.logging import get_plugin_logger
-from ccproxy.services.adapters.base import BaseAdapter
 from ccproxy.services.adapters.http_adapter import BaseHTTPAdapter
+from ccproxy.streaming import DeferredStreaming
 
 
 if TYPE_CHECKING:
@@ -129,7 +129,9 @@ class ClaudeSDKAdapter(BaseHTTPAdapter):
         """
         self._detection_service = detection_service
 
-    async def handle_request(self, request: Request) -> Response | StreamingResponse:
+    async def handle_request(
+        self, request: Request
+    ) -> Response | StreamingResponse | DeferredStreaming:
         # Ensure adapter is initialized
         await self.initialize()
 

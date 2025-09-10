@@ -685,7 +685,7 @@ class DockerAdapter(BaseAdapter, DockerAdapterProtocol):
         )
 
     async def handle_request(
-        self, request: Request, endpoint: str, method: str, **kwargs: Any
+        self, request: Request
     ) -> Response | StreamingResponse | DeferredStreaming:
         """Handle request (not used for Docker adapter)."""
         raise NotImplementedError("Docker adapter does not handle HTTP requests")

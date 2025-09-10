@@ -2,10 +2,24 @@
 
 This module provides the OpenAI adapter implementation for converting
 between OpenAI and Anthropic API formats.
+
+New organized structure:
+- adapters/: Specialized adapters for different conversions
+- models/: Organized models by API format
 """
 
+# Legacy imports for backward compatibility
 from .adapter import OpenAIAdapter
+
+# Import new specialized adapters
+from .adapters import (
+    ChatCompletionsAdapter,
+    ChatToResponsesAdapter,
+    ResponsesAdapter,
+)
 from .anthropic_response_adapter import AnthropicResponseAPIAdapter
+
+# Import from new organized structure
 from .models import (
     OpenAIChatCompletionResponse,
     OpenAIChoice,
@@ -23,10 +37,14 @@ from .streaming import OpenAISSEFormatter, OpenAIStreamProcessor
 
 
 __all__ = [
-    # Adapters
+    # Legacy adapters
     "OpenAIAdapter",
     "AnthropicResponseAPIAdapter",
-    # Models
+    # New specialized adapters
+    "ChatCompletionsAdapter",
+    "ResponsesAdapter",
+    "ChatToResponsesAdapter",
+    # Models (backward compatibility)
     "OpenAIMessage",
     "OpenAIMessageContent",
     "OpenAIResponseMessage",

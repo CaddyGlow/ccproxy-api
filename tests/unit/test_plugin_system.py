@@ -15,9 +15,7 @@ from ccproxy.services.adapters.base import BaseAdapter
 class MockAdapter(BaseAdapter):
     """Mock adapter for testing."""
 
-    async def handle_request(
-        self, request: Any, endpoint: str, method: str, **kwargs: Any
-    ) -> Any:
+    async def handle_request(self, request: Any) -> Any:
         return MagicMock()
 
     async def handle_streaming(self, request: Any, endpoint: str, **kwargs: Any) -> Any:
@@ -200,7 +198,7 @@ async def test_base_adapter_interface():
 
     # Test handle_request
     request = MagicMock()
-    response = await adapter.handle_request(request, "/test", "GET")
+    response = await adapter.handle_request(request)
     assert response is not None
 
     # Test handle_streaming

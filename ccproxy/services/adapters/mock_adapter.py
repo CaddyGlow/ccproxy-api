@@ -12,6 +12,7 @@ from starlette.responses import StreamingResponse
 from ccproxy.core.request_context import RequestContext
 from ccproxy.services.adapters.base import BaseAdapter
 from ccproxy.services.mocking.mock_handler import MockResponseHandler
+from ccproxy.streaming import DeferredStreaming
 
 
 class MockAdapter(BaseAdapter):
@@ -38,11 +39,18 @@ class MockAdapter(BaseAdapter):
         return False
 
     async def handle_request(
-        self, request: Request, endpoint: str, method: str, **kwargs: Any
-    ) -> Response:
+        self, request: Request
+    ) -> Response | StreamingResponse | DeferredStreaming:
         """Handle request using mock handler."""
         body = await request.body()
         message_type = self.mock_handler.extract_message_type(body)
+
+        # Get endpoint from context or request URL
+        endpoint = request.url.path
+        if hasattr(request.state, "context"):
+            ctx = request.state.context
+            endpoint = ctx.metadata.get("endpoint", request.url.path)
+
         is_openai = "openai" in endpoint
         model = "unknown"
         try:
@@ -60,7 +68,7 @@ class MockAdapter(BaseAdapter):
 
         # Create request context
         ctx = RequestContext(
-            request_id=kwargs.get("request_id", "mock-request"),
+            request_id="mock-request",
             start_time=time.perf_counter(),
             logger=structlog.get_logger(__name__),
         )

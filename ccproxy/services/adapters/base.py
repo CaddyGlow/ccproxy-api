@@ -14,15 +14,12 @@ class BaseAdapter(ABC):
 
     @abstractmethod
     async def handle_request(
-        self, request: Request, endpoint: str, method: str, **kwargs: Any
+        self, request: Request
     ) -> Response | StreamingResponse | DeferredStreaming:
         """Handle a provider-specific request.
 
         Args:
-            request: FastAPI request object
-            endpoint: Target endpoint path
-            method: HTTP method
-            **kwargs: Additional provider-specific arguments
+            request: FastAPI request object with endpoint and method in request.state.context
 
         Returns:
             Response, StreamingResponse, or DeferredStreaming object

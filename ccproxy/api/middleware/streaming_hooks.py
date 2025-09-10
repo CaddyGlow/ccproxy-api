@@ -15,10 +15,7 @@ from fastapi.responses import StreamingResponse
 
 from ccproxy.core.plugins.hooks import HookContext, HookEvent
 from ccproxy.utils.headers import (
-    extract_request_headers,
     extract_response_headers,
-    filter_request_headers,
-    to_canonical_headers,
 )
 
 

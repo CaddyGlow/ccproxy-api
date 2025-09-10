@@ -4,7 +4,7 @@ from collections.abc import AsyncGenerator, AsyncIterator
 from typing import Any
 
 from ccproxy.adapters.base import APIAdapter
-from ccproxy.adapters.openai.response_adapter import ResponseAdapter
+from ccproxy.adapters.openai.adapters import ChatToResponsesAdapter
 from ccproxy.core.logging import get_plugin_logger
 
 
@@ -22,7 +22,7 @@ class CodexFormatAdapter(APIAdapter):
 
     def __init__(self) -> None:
         """Initialize the format adapter."""
-        self._response_adapter = ResponseAdapter()
+        self._response_adapter = ChatToResponsesAdapter()
 
     async def adapt_request(self, request_data: dict[str, Any]) -> dict[str, Any]:
         """Convert Messages-based request to Response API format.
@@ -52,7 +52,7 @@ class CodexFormatAdapter(APIAdapter):
             else:
                 format_type = "openai_chat"
 
-            # Use ResponseAdapter to convert Messages → Response API
+            # Use ChatToResponsesAdapter to convert Messages → Response API
             # This works for both OpenAI Chat Completions and Anthropic Messages
             has_tools = bool(request_data.get("tools"))
             has_tool_choice = "tool_choice" in request_data
@@ -166,7 +166,7 @@ class CodexFormatAdapter(APIAdapter):
         import time
         from collections import defaultdict
 
-        from ccproxy.adapters.openai.models import generate_openai_response_id
+        from ccproxy.adapters.openai.models.common import generate_openai_response_id
 
         message_id = generate_openai_response_id()
         created = int(time.time())

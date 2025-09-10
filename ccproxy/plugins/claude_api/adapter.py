@@ -2,7 +2,7 @@ import json
 from typing import Any
 
 import httpx
-from starlette.responses import Response, StreamingResponse
+from starlette.responses import Response
 
 from ccproxy.core.logging import get_plugin_logger
 from ccproxy.services.adapters.http_adapter import BaseHTTPAdapter
@@ -13,7 +13,6 @@ from ccproxy.utils.headers import (
 )
 
 from .detection_service import ClaudeAPIDetectionService
-from .models import ClaudeAPIAuthData
 
 
 logger = get_plugin_logger()
@@ -53,9 +52,12 @@ class ClaudeAPIAdapter(BaseHTTPAdapter):
         if self._needs_openai_conversion(endpoint):
             body_data = await self._convert_openai_to_anthropic(body_data)
 
+        # Remove any prefixed metadata fields that shouldn't be sent to the API
+        body_data = self._remove_metadata_fields(body_data)
+
         # Filter headers
         filtered_headers = filter_request_headers(headers, preserve_auth=False)
-        filtered_headers["authorization"] = f"Bearer {access_token}"
+        filtered_headers["authorization"] = f"Bearer {access_token.get_secret_value()}"
 
         # Add CLI headers if available
         if self.detection_service:
@@ -179,6 +181,38 @@ class ClaudeAPIAdapter(BaseHTTPAdapter):
             return marked_data
 
         return system_data
+
+    def _remove_metadata_fields(self, data: dict[str, Any]) -> dict[str, Any]:
+        """Remove fields that start with '_' as they are internal metadata.
+        
+        Args:
+            data: Dictionary that may contain metadata fields
+            
+        Returns:
+            Cleaned dictionary without metadata fields
+        """
+        if not isinstance(data, dict):
+            return data
+        
+        # Create a new dict without keys starting with '_'
+        cleaned_data = {}
+        for key, value in data.items():
+            if not key.startswith("_"):
+                # Recursively clean nested dictionaries
+                if isinstance(value, dict):
+                    cleaned_data[key] = self._remove_metadata_fields(value)
+                elif isinstance(value, list):
+                    # Clean list items if they are dictionaries
+                    cleaned_data[key] = [
+                        self._remove_metadata_fields(item)
+                        if isinstance(item, dict)
+                        else item
+                        for item in value
+                    ]
+                else:
+                    cleaned_data[key] = value
+        
+        return cleaned_data
 
     def _needs_openai_conversion(self, endpoint: str) -> bool:
         return endpoint.endswith("/chat/completions")

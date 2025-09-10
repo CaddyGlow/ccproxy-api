@@ -14,7 +14,6 @@ from ccproxy.utils.headers import (
 )
 
 from .detection_service import CodexDetectionService
-from .models import CodexAuthData
 
 
 logger = get_plugin_logger()
@@ -28,7 +27,8 @@ class CodexAdapter(BaseHTTPAdapter):
         self.detection_service = detection_service
 
     async def get_target_url(self, endpoint: str) -> str:
-        return "https://chat.openai.com/backend-anon/responses"
+        # Old URL: https://chat.openai.com/backend-anon/responses (308 redirect)
+        return "https://chatgpt.com/backend-anon/responses"
 
     async def prepare_provider_request(
         self, body: bytes, headers: dict[str, str], endpoint: str
@@ -50,11 +50,14 @@ class CodexAdapter(BaseHTTPAdapter):
         if "stream" not in body_data:
             body_data["stream"] = True
 
+        # Remove any prefixed metadata fields that shouldn't be sent to the API
+        body_data = self._remove_metadata_fields(body_data)
+
         # Filter and add headers
         filtered_headers = filter_request_headers(headers, preserve_auth=False)
         filtered_headers.update(
             {
-                "authorization": f"Bearer {auth_data.access_token}",
+                "authorization": f"Bearer {auth_data.access_token.get_secret_value()}",
                 "chatgpt-account-id": auth_data.account_id,
                 "session-id": str(uuid.uuid4()),
                 "content-type": "application/json",
@@ -74,8 +77,26 @@ class CodexAdapter(BaseHTTPAdapter):
     async def process_provider_response(
         self, response: httpx.Response, endpoint: str
     ) -> Response:
+        # Check if response is JSON before parsing
+        try:
+            response_data = json.loads(response.content)
+        except json.JSONDecodeError as e:
+            logger.error(
+                "invalid_json_response",
+                status_code=response.status_code,
+                content_type=response.headers.get("content-type"),
+                content_preview=response.content[:200] if response.content else None,
+                error=str(e),
+            )
+            # For non-JSON responses (like redirects), return as-is
+            response_headers = extract_response_headers(response)
+            return Response(
+                content=response.content,
+                status_code=response.status_code,
+                headers=to_canonical_headers(response_headers),
+            )
+
         # Convert response format
-        response_data = json.loads(response.content)
         converted_data = await self._convert_codex_to_openai(response_data)
 
         response_headers = extract_response_headers(response)
@@ -89,6 +110,38 @@ class CodexAdapter(BaseHTTPAdapter):
     # Helper methods (move from transformers)
     def _needs_format_conversion(self, endpoint: str) -> bool:
         return True  # Codex always needs conversion
+
+    def _remove_metadata_fields(self, data: dict[str, Any]) -> dict[str, Any]:
+        """Remove fields that start with '_' as they are internal metadata.
+
+        Args:
+            data: Dictionary that may contain metadata fields
+
+        Returns:
+            Cleaned dictionary without metadata fields
+        """
+        if not isinstance(data, dict):
+            return data
+
+        # Create a new dict without keys starting with '_'
+        cleaned_data = {}
+        for key, value in data.items():
+            if not key.startswith("_"):
+                # Recursively clean nested dictionaries
+                if isinstance(value, dict):
+                    cleaned_data[key] = self._remove_metadata_fields(value)
+                elif isinstance(value, list):
+                    # Clean list items if they are dictionaries
+                    cleaned_data[key] = [
+                        self._remove_metadata_fields(item)
+                        if isinstance(item, dict)
+                        else item
+                        for item in value
+                    ]
+                else:
+                    cleaned_data[key] = value
+
+        return cleaned_data
 
     def _get_instructions(self) -> str:
         if self.detection_service:
@@ -108,13 +161,13 @@ class CodexAdapter(BaseHTTPAdapter):
         Returns:
             Codex Response API format request data
         """
-        from ccproxy.adapters.openai.response_adapter import ResponseAdapter
+        from ccproxy.adapters.openai.adapters import ChatToResponsesAdapter
 
         # Preserve original instructions if they exist
         original_instructions = body_data.get("instructions")
 
         try:
-            adapter = ResponseAdapter()
+            adapter = ChatToResponsesAdapter()
             response_request = adapter.chat_to_response_request(body_data)
             converted_data = response_request.model_dump()
 
@@ -147,10 +200,10 @@ class CodexAdapter(BaseHTTPAdapter):
         Returns:
             OpenAI Chat Completions format response data
         """
-        from ccproxy.adapters.openai.response_adapter import ResponseAdapter
+        from ccproxy.adapters.openai.adapters import ChatToResponsesAdapter
 
         try:
-            adapter = ResponseAdapter()
+            adapter = ChatToResponsesAdapter()
             chat_completion = adapter.response_to_chat_completion(response_data)
             return chat_completion.model_dump()
         except Exception as e:

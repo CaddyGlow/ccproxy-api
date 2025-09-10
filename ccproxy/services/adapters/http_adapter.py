@@ -1,4 +1,4 @@
-from abc import ABC, abstractmethod
+from abc import abstractmethod
 from typing import Any
 
 import httpx
@@ -25,23 +25,9 @@ class BaseHTTPAdapter(BaseAdapter):
         self.context = kwargs.get("context")
 
     async def handle_request(
-        self, request: Request, endpoint: str | None = None, method: str | None = None, **kwargs: Any
+        self, request: Request
     ) -> Response | StreamingResponse | DeferredStreaming:
-        """Handle request with compatibility for both old and new signatures.
-        
-        Supports both:
-        - New simplified pattern: handle_request(request)
-        - Old interface pattern: handle_request(request, endpoint, method, **kwargs)
-        """
-        # Handle new simplified pattern (when called from routes)
-        if endpoint is None and method is None:
-            return await self._handle_simplified_request(request)
-        
-        # Handle old interface pattern (for BaseAdapter compatibility)
-        return await self._handle_legacy_request(request, endpoint, method, **kwargs)
-
-    async def _handle_simplified_request(self, request: Request) -> Response | StreamingResponse:
-        """Simplified single parameter request handling with format chain support."""
+        """Handle request with simplified single parameter signature."""
 
         # Get context from middleware (already initialized)
         ctx = request.state.context
@@ -73,42 +59,32 @@ class BaseHTTPAdapter(BaseAdapter):
             response, ctx.metadata.get("endpoint", "/")
         )
 
-    async def _handle_legacy_request(
-        self, request: Request, endpoint: str, method: str, **kwargs: Any
-    ) -> Response | StreamingResponse | DeferredStreaming:
-        """Handle request using legacy BaseAdapter interface.
-        
-        This bridges the old interface to the new simplified implementation.
-        """
-        # Set endpoint and method in context for compatibility
-        if hasattr(request.state, 'context'):
-            ctx = request.state.context
-            ctx.metadata["endpoint"] = endpoint
-            ctx.metadata["method"] = method
-        
-        # Delegate to simplified handler
-        return await self._handle_simplified_request(request)
-
     async def handle_streaming(
         self, request: Request, endpoint: str, **kwargs: Any
     ) -> StreamingResponse | DeferredStreaming:
         """Handle a streaming request (BaseAdapter interface).
-        
+
         For HTTP adapters, streaming is handled within the main handle_request flow.
         This delegates to the main handler and ensures streaming response.
         """
-        response = await self.handle_request(request, endpoint, "POST", **kwargs)
-        
+        # Set endpoint in context for compatibility with BaseAdapter interface
+        if hasattr(request.state, "context"):
+            ctx = request.state.context
+            ctx.metadata["endpoint"] = endpoint
+
+        response = await self.handle_request(request)
+
         # Ensure we return a streaming response
-        if isinstance(response, StreamingResponse):
-            return response
-        elif isinstance(response, DeferredStreaming):
+        if isinstance(response, StreamingResponse | DeferredStreaming):
             return response
         else:
             # Convert regular response to streaming if needed
             # This shouldn't normally happen for streaming requests
-            logger.warning("non_streaming_response_for_streaming_request", 
-                         endpoint=endpoint, response_type=type(response).__name__)
+            logger.warning(
+                "non_streaming_response_for_streaming_request",
+                endpoint=endpoint,
+                response_type=type(response).__name__,
+            )
             return response  # type: ignore[return-value]
 
     async def _execute_format_chain(

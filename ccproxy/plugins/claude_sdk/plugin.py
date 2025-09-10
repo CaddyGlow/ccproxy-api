@@ -213,7 +213,7 @@ class ClaudeSDKFactory(BaseProviderPluginFactory):
             config=config, metrics=metrics, hook_manager=hook_manager
         )
 
-        return adapter  # type: ignore[return-value]
+        return adapter
 
     def create_detection_service(
         self, context: PluginContext

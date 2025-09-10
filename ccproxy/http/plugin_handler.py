@@ -14,10 +14,7 @@ from ccproxy.services.handler_config import HandlerConfig
 from ccproxy.services.interfaces import IRequestTracer
 from ccproxy.streaming import DeferredStreaming
 from ccproxy.utils.headers import (
-    extract_request_headers,
     extract_response_headers,
-    filter_request_headers,
-    to_canonical_headers,
 )
 
 

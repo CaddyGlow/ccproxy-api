@@ -326,7 +326,7 @@ class CopilotPluginFactory(BaseProviderPluginFactory, AuthProviderPluginFactory)
             hook_manager=hook_manager,
             context=context,
         )
-        return adapter  # type: ignore[return-value]
+        return adapter
 
     def create_auth_provider(
         self, context: PluginContext | None = None

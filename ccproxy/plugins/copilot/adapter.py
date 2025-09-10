@@ -1,10 +1,8 @@
-import json
 import uuid
 from collections.abc import AsyncIterator
 from typing import Any
 
 import httpx
-from fastapi import Request
 from starlette.responses import Response, StreamingResponse
 
 from ccproxy.core.logging import get_plugin_logger
@@ -16,7 +14,6 @@ from ccproxy.utils.headers import (
 )
 
 from .config import CopilotConfig
-from .models import CopilotAuthData
 from .oauth.provider import CopilotOAuthProvider
 
 
