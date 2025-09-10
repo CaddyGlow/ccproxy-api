@@ -184,16 +184,16 @@ class ClaudeAPIAdapter(BaseHTTPAdapter):
 
     def _remove_metadata_fields(self, data: dict[str, Any]) -> dict[str, Any]:
         """Remove fields that start with '_' as they are internal metadata.
-        
+
         Args:
             data: Dictionary that may contain metadata fields
-            
+
         Returns:
             Cleaned dictionary without metadata fields
         """
         if not isinstance(data, dict):
             return data
-        
+
         # Create a new dict without keys starting with '_'
         cleaned_data = {}
         for key, value in data.items():
@@ -211,7 +211,7 @@ class ClaudeAPIAdapter(BaseHTTPAdapter):
                     ]
                 else:
                     cleaned_data[key] = value
-        
+
         return cleaned_data
 
     def _needs_openai_conversion(self, endpoint: str) -> bool:

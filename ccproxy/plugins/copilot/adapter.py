@@ -30,8 +30,9 @@ class CopilotAdapter(BaseHTTPAdapter):
         self.oauth_provider = oauth_provider
         self.config = config
 
-    async def get_target_url(self, endpoint: str) -> str:
-        return "https://api.githubcopilot.com/chat/completions"
+    def _get_base_url(self) -> str:
+        """Get base URL from Copilot config."""
+        return self.config.get_base_url()
 
     async def prepare_provider_request(
         self, body: bytes, headers: dict[str, str], endpoint: str

@@ -5,4 +5,4 @@ Placeholder for future Anthropic-specific adapters:
 - messages_to_responses: Converts Messages to Response API
 """
 
-__all__ = []
+__all__: list[str] = []

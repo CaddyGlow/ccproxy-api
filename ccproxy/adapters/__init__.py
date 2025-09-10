@@ -21,7 +21,7 @@ try:
     from .openai import OpenAIAdapter
 except ImportError:
     # Fallback if old adapter doesn't exist
-    OpenAIAdapter = None
+    OpenAIAdapter = None  # type: ignore[misc, assignment]
 
 
 __all__ = [

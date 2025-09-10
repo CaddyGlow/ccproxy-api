@@ -4,7 +4,14 @@ from datetime import UTC, datetime
 from typing import Any, Literal
 
 import jwt
-from pydantic import BaseModel, Field, computed_field
+from pydantic import (
+    BaseModel,
+    Field,
+    SecretStr,
+    computed_field,
+    field_serializer,
+    field_validator,
+)
 
 from ccproxy.auth.models.base import BaseProfileInfo, BaseTokenInfo
 from ccproxy.core.logging import get_plugin_logger
@@ -16,10 +23,25 @@ logger = get_plugin_logger()
 class OpenAITokens(BaseModel):
     """Nested token structure from OpenAI OAuth."""
 
-    id_token: str = Field(..., description="OpenAI ID token (JWT)")
-    access_token: str = Field(..., description="OpenAI access token (JWT)")
-    refresh_token: str = Field(..., description="OpenAI refresh token")
+    id_token: SecretStr = Field(..., description="OpenAI ID token (JWT)")
+    access_token: SecretStr = Field(..., description="OpenAI access token (JWT)")
+    refresh_token: SecretStr = Field(..., description="OpenAI refresh token")
     account_id: str = Field(..., description="OpenAI account ID")
+
+    @field_serializer("id_token", "access_token", "refresh_token")
+    def serialize_secret(self, value: SecretStr) -> str:
+        """Serialize SecretStr to plain string for JSON output."""
+        return value.get_secret_value() if value else ""
+
+    @field_validator("id_token", "access_token", "refresh_token", mode="before")
+    @classmethod
+    def validate_tokens(cls, v: str | SecretStr | None) -> SecretStr | None:
+        """Convert string values to SecretStr."""
+        if v is None:
+            return None
+        if isinstance(v, str):
+            return SecretStr(v)
+        return v
 
 
 class OpenAICredentials(BaseModel):
@@ -36,17 +58,17 @@ class OpenAICredentials(BaseModel):
     @property
     def access_token(self) -> str:
         """Get access token from nested structure."""
-        return self.tokens.access_token
+        return self.tokens.access_token.get_secret_value()
 
     @property
     def refresh_token(self) -> str:
         """Get refresh token from nested structure."""
-        return self.tokens.refresh_token
+        return self.tokens.refresh_token.get_secret_value()
 
     @property
     def id_token(self) -> str:
         """Get ID token from nested structure."""
-        return self.tokens.id_token
+        return self.tokens.id_token.get_secret_value()
 
     @property
     def account_id(self) -> str:
@@ -59,7 +81,8 @@ class OpenAICredentials(BaseModel):
         try:
             # Decode JWT without verification to extract 'exp' claim
             decoded = jwt.decode(
-                self.tokens.access_token, options={"verify_signature": False}
+                self.tokens.access_token.get_secret_value(),
+                options={"verify_signature": False},
             )
             exp_timestamp = decoded.get("exp")
             if exp_timestamp:
@@ -89,9 +112,9 @@ class OpenAICredentials(BaseModel):
         return {
             "OPENAI_API_KEY": self.OPENAI_API_KEY,
             "tokens": {
-                "id_token": self.tokens.id_token,
-                "access_token": self.tokens.access_token,
-                "refresh_token": self.tokens.refresh_token,
+                "id_token": self.tokens.id_token.get_secret_value(),
+                "access_token": self.tokens.access_token.get_secret_value(),
+                "refresh_token": self.tokens.refresh_token.get_secret_value(),
                 "account_id": self.tokens.account_id,
             },
             "last_refresh": self.last_refresh,
@@ -120,7 +143,7 @@ class OpenAITokenWrapper(BaseTokenInfo):
     @computed_field  # type: ignore[prop-decorator]
     @property
     def access_token_value(self) -> str:
-        """Get access token (already a plain string in OpenAI)."""
+        """Get access token (now SecretStr in OpenAI)."""
         return self.credentials.access_token
 
     @property

@@ -5,6 +5,7 @@ from typing import Any
 
 import httpx
 import jwt
+from pydantic import SecretStr
 
 from ccproxy.auth.exceptions import OAuthError
 from ccproxy.auth.oauth.base import BaseOAuthClient
@@ -101,16 +102,16 @@ class CodexOAuthClient(BaseOAuthClient[OpenAICredentials]):
         """
         try:
             # Extract tokens
-            access_token = data["access_token"]
-            refresh_token = data.get("refresh_token", "")
-            id_token = data.get("id_token", "")
+            access_token: str = data["access_token"]
+            refresh_token: str = data.get("refresh_token", "")
+            id_token: str = data.get("id_token", "")
 
             # Build credentials in the current nested schema; legacy inputs are also accepted
             # by the model's validator if needed.
             tokens = OpenAITokens(
-                id_token=id_token,
-                access_token=access_token,
-                refresh_token=refresh_token or "",
+                id_token=SecretStr(id_token),
+                access_token=SecretStr(access_token),
+                refresh_token=SecretStr(refresh_token or ""),
                 account_id="",
             )
             credentials = OpenAICredentials(
