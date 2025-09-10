@@ -1,4 +1,5 @@
 from abc import abstractmethod
+from collections.abc import AsyncGenerator
 from typing import Any
 
 import httpx
@@ -43,6 +44,8 @@ class BaseHTTPAdapter(BaseAdapter):
         # Step 1: Extract request data
         body = await request.body()
         headers = extract_request_headers(request)
+        method = request.method
+        endpoint = ctx.metadata.get("endpoint", "")
 
         # Step 2: Execute format chain if specified
         if ctx.format_chain and len(ctx.format_chain) > 1:
@@ -50,22 +53,28 @@ class BaseHTTPAdapter(BaseAdapter):
 
         # Step 3: Provider-specific preparation
         prepared_body, prepared_headers = await self.prepare_provider_request(
-            body, headers, ctx.metadata.get("endpoint", "/")
+            body, headers, endpoint
         )
 
         # Step 4: Execute HTTP request
-        target_url = await self.get_target_url(ctx.metadata.get("endpoint", "/"))
+        target_url = await self.get_target_url(endpoint)
         response = await self._execute_http_request(
-            ctx.metadata.get("method", request.method),
+            method,
             target_url,
             prepared_headers,
             prepared_body,
         )
 
         # Step 5: Provider-specific response processing
-        return await self.process_provider_response(
-            response, ctx.metadata.get("endpoint", "/")
-        )
+        provider_response = await self.process_provider_response(response, endpoint)
+
+        # Step 6: Execute reverse format chain if specified
+        if ctx.format_chain and len(ctx.format_chain) > 1:
+            provider_response = await self._execute_reverse_format_chain(
+                provider_response, ctx.format_chain, ctx
+            )
+
+        return provider_response
 
     async def handle_streaming(
         self, request: Request, endpoint: str, **kwargs: Any
@@ -139,6 +148,104 @@ class BaseHTTPAdapter(BaseAdapter):
 
         # Convert back to bytes
         return json.dumps(current_data).encode()
+
+    async def _execute_reverse_format_chain(
+        self, response: Response | StreamingResponse, format_chain: list[str], ctx: Any
+    ) -> Response | StreamingResponse:
+        """Execute reverse format conversion chain on responses."""
+        import json
+
+        if not self.format_registry:
+            ctx.log_event("reverse_format_chain_skipped", reason="no_registry")
+            return response
+
+        # Handle streaming vs non-streaming responses
+        if isinstance(response, StreamingResponse):
+            return await self._convert_streaming_response(response, format_chain, ctx)
+        else:
+            return await self._convert_regular_response(response, format_chain, ctx)
+
+    async def _convert_regular_response(
+        self, response: Response, format_chain: list[str], ctx: Any
+    ) -> Response:
+        """Convert non-streaming response through reverse format chain."""
+        import json
+
+        try:
+            # Parse response body as JSON
+            if response.body:
+                body_str = (
+                    response.body.decode()
+                    if isinstance(response.body, bytes)
+                    else str(response.body)
+                )
+                response_data = json.loads(body_str)
+            else:
+                response_data = {}
+        except (json.JSONDecodeError, UnicodeDecodeError) as e:
+            ctx.log_event("reverse_format_chain_parse_failed", error=str(e))
+            return response
+
+        # Execute reverse format chain (last to first)
+        current_data = response_data
+        for i in range(len(format_chain) - 1, 0, -1):
+            from_format = format_chain[i]
+            to_format = format_chain[i - 1]
+
+            try:
+                if not self.format_registry:
+                    ctx.log_event("reverse_format_chain_no_registry")
+                    return response
+                adapter = self.format_registry.get_adapter(from_format, to_format)
+                current_data = await adapter.adapt_response(current_data)
+
+                ctx.log_event(
+                    "reverse_format_chain_step_completed",
+                    from_format=from_format,
+                    to_format=to_format,
+                    step=len(format_chain) - i,
+                )
+
+            except Exception as e:
+                ctx.log_event(
+                    "reverse_format_chain_step_failed",
+                    from_format=from_format,
+                    to_format=to_format,
+                    step=len(format_chain) - i,
+                    error=str(e),
+                )
+                # Log error but continue with original response to avoid breaking
+                ctx.log_event("reverse_format_chain_fallback_to_original")
+                return response
+
+        # Create new response with converted data
+        converted_body = json.dumps(current_data).encode()
+
+        # Ensure proper headers for JSON response
+        headers = dict(response.headers) if response.headers else {}
+        headers["content-type"] = "application/json"
+        headers["content-length"] = str(len(converted_body))
+
+        return Response(
+            content=converted_body,
+            status_code=response.status_code,
+            headers=headers,
+            media_type="application/json",
+        )
+
+    async def _convert_streaming_response(
+        self, response: StreamingResponse, format_chain: list[str], ctx: Any
+    ) -> StreamingResponse:
+        """Convert streaming response through reverse format chain."""
+        # For now, disable reverse format chain for streaming responses
+        # This complex conversion should be handled by the existing format adapter system
+        # TODO: Implement proper streaming format conversion
+        ctx.log_event(
+            "reverse_streaming_format_chain_disabled",
+            reason="complex_sse_parsing_disabled",
+            format_chain=format_chain,
+        )
+        return response
 
     @abstractmethod
     async def prepare_provider_request(

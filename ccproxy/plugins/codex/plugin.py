@@ -345,6 +345,16 @@ class CodexFactory(BaseProviderPluginFactory):
             description="OpenAI Chat Completions to Response API conversion",
         ),
         FormatAdapterSpec(
+            from_format="response_api",
+            to_format="openai",
+            adapter_factory=lambda: __import__(
+                "ccproxy.adapters.openai.adapters.chat_to_responses",
+                fromlist=["ChatToResponsesAdapter"],
+            ).ChatToResponsesAdapter(),
+            priority=50,  # Medium priority
+            description="Response API to OpenAI Chat Completions conversion",
+        ),
+        FormatAdapterSpec(
             from_format="anthropic",
             to_format="response_api",
             adapter_factory=lambda: __import__(
