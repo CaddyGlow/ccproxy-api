@@ -10,7 +10,6 @@ from ccproxy.services.adapters.http_adapter import BaseHTTPAdapter
 from ccproxy.utils.headers import (
     extract_response_headers,
     filter_request_headers,
-    to_canonical_headers,
 )
 
 from .config import CopilotConfig
@@ -26,13 +25,13 @@ class CopilotAdapter(BaseHTTPAdapter):
     def __init__(
         self, oauth_provider: CopilotOAuthProvider, config: CopilotConfig, **kwargs: Any
     ) -> None:
-        super().__init__(**kwargs)
+        super().__init__(config=config.provider, **kwargs)
         self.oauth_provider = oauth_provider
-        self.config = config
 
-    def _get_base_url(self) -> str:
-        """Get base URL from Copilot config."""
-        return self.config.get_base_url()
+        self.base_url = self.config.base_url.rstrip("/")
+
+    async def get_target_url(self, endpoint: str) -> str:
+        return f"{self.base_url}/chat/completions"
 
     async def prepare_provider_request(
         self, body: bytes, headers: dict[str, str], endpoint: str
@@ -86,7 +85,7 @@ class CopilotAdapter(BaseHTTPAdapter):
             return StreamingResponse(
                 content=stream_generator(),
                 status_code=response.status_code,
-                headers=to_canonical_headers(safe_headers),
+                headers=safe_headers,
                 media_type=content_type or "text/event-stream",
             )
         else:
@@ -94,5 +93,5 @@ class CopilotAdapter(BaseHTTPAdapter):
             return Response(
                 content=response.content,
                 status_code=response.status_code,
-                headers=to_canonical_headers(safe_headers),
+                headers=safe_headers,
             )

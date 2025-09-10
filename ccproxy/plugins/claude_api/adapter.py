@@ -9,7 +9,6 @@ from ccproxy.services.adapters.http_adapter import BaseHTTPAdapter
 from ccproxy.utils.headers import (
     extract_response_headers,
     filter_request_headers,
-    to_canonical_headers,
 )
 
 from .detection_service import ClaudeAPIDetectionService
@@ -26,9 +25,10 @@ class ClaudeAPIAdapter(BaseHTTPAdapter):
     ) -> None:
         super().__init__(**kwargs)
         self.detection_service = detection_service
+        self.base_url = self.config.base_url
 
     async def get_target_url(self, endpoint: str) -> str:
-        return "https://api.anthropic.com/v1/messages"
+        return f"{self.base_url}/v1/messages"
 
     async def prepare_provider_request(
         self, body: bytes, headers: dict[str, str], endpoint: str
@@ -48,11 +48,10 @@ class ClaudeAPIAdapter(BaseHTTPAdapter):
                     body_data, cached_data.system_prompt
                 )
 
-        # Format conversion if needed
-        if self._needs_openai_conversion(endpoint):
-            body_data = await self._convert_openai_to_anthropic(body_data)
+        # Limit cache_control blocks to comply with Anthropic's limit
+        body_data = self._limit_cache_control_blocks(body_data)
 
-        # Remove any prefixed metadata fields that shouldn't be sent to the API
+        # Remove metadata fields immediately after cache processing (format conversion handled by format chain)
         body_data = self._remove_metadata_fields(body_data)
 
         # Filter headers
@@ -72,19 +71,13 @@ class ClaudeAPIAdapter(BaseHTTPAdapter):
     async def process_provider_response(
         self, response: httpx.Response, endpoint: str
     ) -> Response:
+        # Response format conversion is now handled by format chain
         response_headers = extract_response_headers(response)
-        content = response.content
-
-        # Format conversion if needed
-        if self._needs_anthropic_conversion(endpoint):
-            response_data = json.loads(content)
-            converted_data = await self._convert_anthropic_to_openai(response_data)
-            content = json.dumps(converted_data).encode()
 
         return Response(
-            content=content,
+            content=response.content,
             status_code=response.status_code,
-            headers=to_canonical_headers(response_headers),
+            headers=response_headers,
         )
 
     # Helper methods (move from transformers)
@@ -183,89 +176,300 @@ class ClaudeAPIAdapter(BaseHTTPAdapter):
         return system_data
 
     def _remove_metadata_fields(self, data: dict[str, Any]) -> dict[str, Any]:
-        """Remove fields that start with '_' as they are internal metadata.
+        """Remove internal ccproxy metadata from request data before sending to API.
+
+        This method removes:
+        - Fields starting with '_' (internal metadata like _ccproxy_injected)
+        - Any other internal ccproxy metadata that shouldn't be sent to the API
 
         Args:
-            data: Dictionary that may contain metadata fields
+            data: Request data dictionary
 
         Returns:
-            Cleaned dictionary without metadata fields
+            Cleaned data dictionary without internal metadata
         """
-        if not isinstance(data, dict):
+        import copy
+
+        # Deep copy to avoid modifying original
+        clean_data = copy.deepcopy(data)
+
+        # Clean system field
+        system = clean_data.get("system")
+        if isinstance(system, list):
+            for block in system:
+                if isinstance(block, dict) and "_ccproxy_injected" in block:
+                    del block["_ccproxy_injected"]
+
+        # Clean messages
+        messages = clean_data.get("messages", [])
+        for message in messages:
+            content = message.get("content")
+            if isinstance(content, list):
+                for block in content:
+                    if isinstance(block, dict) and "_ccproxy_injected" in block:
+                        del block["_ccproxy_injected"]
+
+        # Clean tools (though they shouldn't have _ccproxy_injected, but be safe)
+        tools = clean_data.get("tools", [])
+        for tool in tools:
+            if isinstance(tool, dict) and "_ccproxy_injected" in tool:
+                del tool["_ccproxy_injected"]
+
+        return clean_data
+
+    def _find_cache_control_blocks(
+        self, data: dict[str, Any]
+    ) -> list[tuple[str, int, int]]:
+        """Find all cache_control blocks in the request with their locations.
+
+        Returns:
+            List of tuples (location_type, location_index, block_index) for each cache_control block
+            where location_type is 'system', 'message', 'tool', 'tool_use', or 'tool_result'
+        """
+        blocks = []
+
+        # Find in system field
+        system = data.get("system")
+        if isinstance(system, list):
+            for i, block in enumerate(system):
+                if isinstance(block, dict) and "cache_control" in block:
+                    blocks.append(("system", 0, i))
+
+        # Find in messages
+        messages = data.get("messages", [])
+        for msg_idx, msg in enumerate(messages):
+            content = msg.get("content")
+            if isinstance(content, list):
+                for block_idx, block in enumerate(content):
+                    if isinstance(block, dict) and "cache_control" in block:
+                        block_type = block.get("type")
+                        if block_type == "tool_use":
+                            blocks.append(("tool_use", msg_idx, block_idx))
+                        elif block_type == "tool_result":
+                            blocks.append(("tool_result", msg_idx, block_idx))
+                        else:
+                            blocks.append(("message", msg_idx, block_idx))
+
+        # Find in tools
+        tools = data.get("tools", [])
+        for tool_idx, tool in enumerate(tools):
+            if isinstance(tool, dict) and "cache_control" in tool:
+                blocks.append(("tool", tool_idx, 0))
+
+        return blocks
+
+    def _calculate_content_size(self, data: dict[str, Any]) -> int:
+        """Calculate the approximate content size of a block for cache prioritization.
+
+        Args:
+            data: Block data dictionary
+
+        Returns:
+            Approximate size in characters
+        """
+        size = 0
+
+        # Count text content
+        if "text" in data:
+            size += len(str(data["text"]))
+
+        # Count tool use content
+        if "name" in data:  # Tool use block
+            size += len(str(data["name"]))
+        if "input" in data:
+            size += len(str(data["input"]))
+
+        # Count tool result content
+        if "content" in data and isinstance(data["content"], str | list):
+            if isinstance(data["content"], str):
+                size += len(data["content"])
+            else:
+                # Nested content - recursively calculate
+                for sub_item in data["content"]:
+                    if isinstance(sub_item, dict):
+                        size += self._calculate_content_size(sub_item)
+                    else:
+                        size += len(str(sub_item))
+
+        # Count other string fields
+        for key, value in data.items():
+            if key not in (
+                "text",
+                "name",
+                "input",
+                "content",
+                "cache_control",
+                "_ccproxy_injected",
+                "type",
+            ):
+                size += len(str(value))
+
+        return size
+
+    def _get_block_at_location(
+        self,
+        data: dict[str, Any],
+        location_type: str,
+        location_index: int,
+        block_index: int,
+    ) -> dict[str, Any] | None:
+        """Get the block at a specific location in the data structure.
+
+        Returns:
+            Block dictionary or None if not found
+        """
+        if location_type == "system":
+            system = data.get("system")
+            if isinstance(system, list) and block_index < len(system):
+                block = system[block_index]
+                return block if isinstance(block, dict) else None
+        elif location_type in ("message", "tool_use", "tool_result"):
+            messages = data.get("messages", [])
+            if location_index < len(messages):
+                content = messages[location_index].get("content")
+                if isinstance(content, list) and block_index < len(content):
+                    block = content[block_index]
+                    return block if isinstance(block, dict) else None
+        elif location_type == "tool":
+            tools = data.get("tools", [])
+            if location_index < len(tools):
+                tool = tools[location_index]
+                return tool if isinstance(tool, dict) else None
+
+        return None
+
+    def _remove_cache_control_at_location(
+        self,
+        data: dict[str, Any],
+        location_type: str,
+        location_index: int,
+        block_index: int,
+    ) -> bool:
+        """Remove cache_control from a block at a specific location.
+
+        Returns:
+            True if cache_control was successfully removed, False otherwise
+        """
+        block = self._get_block_at_location(
+            data, location_type, location_index, block_index
+        )
+        if block and isinstance(block, dict) and "cache_control" in block:
+            del block["cache_control"]
+            return True
+        return False
+
+    def _limit_cache_control_blocks(
+        self, data: dict[str, Any], max_blocks: int = 4
+    ) -> dict[str, Any]:
+        """Limit the number of cache_control blocks using smart algorithm.
+
+        Smart algorithm:
+        1. Preserve all injected system prompts (marked with _ccproxy_injected)
+        2. Keep the 2 largest remaining blocks by content size
+        3. Remove cache_control from smaller blocks when exceeding the limit
+
+        Args:
+            data: Request data dictionary
+            max_blocks: Maximum number of cache_control blocks allowed (default: 4)
+
+        Returns:
+            Modified data dictionary with cache_control blocks limited
+        """
+        import copy
+
+        # Deep copy to avoid modifying original
+        data = copy.deepcopy(data)
+
+        # Find all cache_control blocks
+        cache_blocks = self._find_cache_control_blocks(data)
+        total_blocks = len(cache_blocks)
+
+        if total_blocks <= max_blocks:
+            # No need to remove anything
             return data
 
-        # Create a new dict without keys starting with '_'
-        cleaned_data = {}
-        for key, value in data.items():
-            if not key.startswith("_"):
-                # Recursively clean nested dictionaries
-                if isinstance(value, dict):
-                    cleaned_data[key] = self._remove_metadata_fields(value)
-                elif isinstance(value, list):
-                    # Clean list items if they are dictionaries
-                    cleaned_data[key] = [
-                        self._remove_metadata_fields(item)
-                        if isinstance(item, dict)
-                        else item
-                        for item in value
-                    ]
+        logger.warning(
+            "cache_control_limit_exceeded",
+            total_blocks=total_blocks,
+            max_blocks=max_blocks,
+            category="transform",
+        )
+
+        # Classify blocks as injected vs non-injected and calculate sizes
+        injected_blocks = []
+        non_injected_blocks = []
+
+        for location in cache_blocks:
+            location_type, location_index, block_index = location
+            block = self._get_block_at_location(
+                data, location_type, location_index, block_index
+            )
+
+            if block and isinstance(block, dict):
+                if block.get("_ccproxy_injected", False):
+                    injected_blocks.append(location)
+                    logger.debug(
+                        "found_injected_block",
+                        location_type=location_type,
+                        location_index=location_index,
+                        block_index=block_index,
+                        category="transform",
+                    )
                 else:
-                    cleaned_data[key] = value
+                    # Calculate content size for prioritization
+                    content_size = self._calculate_content_size(block)
+                    non_injected_blocks.append((location, content_size))
 
-        return cleaned_data
+        # Sort non-injected blocks by size (largest first)
+        non_injected_blocks.sort(key=lambda x: x[1], reverse=True)
 
-    def _needs_openai_conversion(self, endpoint: str) -> bool:
-        return endpoint.endswith("/chat/completions")
+        # Determine how many non-injected blocks we can keep
+        injected_count = len(injected_blocks)
+        remaining_slots = max_blocks - injected_count
 
-    async def _convert_openai_to_anthropic(
-        self, body_data: dict[str, Any]
-    ) -> dict[str, Any]:
-        """Convert OpenAI format to Anthropic format using the OpenAI adapter.
+        logger.info(
+            "cache_control_smart_limiting",
+            total_blocks=total_blocks,
+            injected_blocks=injected_count,
+            non_injected_blocks=len(non_injected_blocks),
+            remaining_slots=remaining_slots,
+            max_blocks=max_blocks,
+            category="transform",
+        )
 
-        Args:
-            body_data: OpenAI format request data
+        # Keep the largest non-injected blocks up to remaining slots
+        blocks_to_keep = set(injected_blocks)  # Always keep injected blocks
+        if remaining_slots > 0:
+            largest_blocks = non_injected_blocks[:remaining_slots]
+            blocks_to_keep.update(location for location, size in largest_blocks)
 
-        Returns:
-            Anthropic format request data
-        """
-        from ccproxy.adapters.openai.adapter import OpenAIAdapter
-
-        try:
-            adapter = OpenAIAdapter()
-            return await adapter.adapt_request(body_data)
-        except Exception as e:
-            logger.error(
-                "openai_to_anthropic_conversion_failed",
-                error=str(e),
-                error_type=type(e).__name__,
+            logger.debug(
+                "keeping_largest_blocks",
+                kept_blocks=[(loc, size) for loc, size in largest_blocks],
+                category="transform",
             )
-            # Fallback - return original data
-            return body_data
 
-    def _needs_anthropic_conversion(self, endpoint: str) -> bool:
-        return endpoint.endswith("/chat/completions")
+        # Remove cache_control from blocks not in the keep set
+        blocks_to_remove = [loc for loc in cache_blocks if loc not in blocks_to_keep]
 
-    async def _convert_anthropic_to_openai(
-        self, response_data: dict[str, Any]
-    ) -> dict[str, Any]:
-        """Convert Anthropic format to OpenAI format using the OpenAI adapter.
+        for location_type, location_index, block_index in blocks_to_remove:
+            if self._remove_cache_control_at_location(
+                data, location_type, location_index, block_index
+            ):
+                logger.debug(
+                    "removed_cache_control_smart",
+                    location=location_type,
+                    location_index=location_index,
+                    block_index=block_index,
+                    category="transform",
+                )
 
-        Args:
-            response_data: Anthropic format response data
+        logger.info(
+            "cache_control_limiting_complete",
+            blocks_removed=len(blocks_to_remove),
+            blocks_kept=len(blocks_to_keep),
+            injected_preserved=injected_count,
+            category="transform",
+        )
 
-        Returns:
-            OpenAI format response data
-        """
-        from ccproxy.adapters.openai.adapter import OpenAIAdapter
-
-        try:
-            adapter = OpenAIAdapter()
-            return await adapter.adapt_response(response_data)
-        except Exception as e:
-            logger.error(
-                "anthropic_to_openai_conversion_failed",
-                error=str(e),
-                error_type=type(e).__name__,
-            )
-            # Fallback - return original data
-            return response_data
+        return data

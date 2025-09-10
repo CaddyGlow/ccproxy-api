@@ -243,10 +243,15 @@ class BaseProviderPluginFactory(ProviderPluginFactory):
                     f"HTTP pool manager required for {self.adapter_class.__name__} but not available in context"
                 )
 
+            # Ensure config is provided for HTTP adapters
+            if config is None and self.manifest.config_class:
+                config = self.manifest.config_class()
+
             # Create HTTP adapter with explicit dependencies including format services
             return cast(
                 BaseAdapter,
                 self.adapter_class(
+                    config=config,
                     auth_manager=auth_manager,
                     detection_service=detection_service,
                     http_pool_manager=http_pool_manager,
@@ -292,21 +297,26 @@ class BaseProviderPluginFactory(ProviderPluginFactory):
             for param_name, param in params.items():
                 if param_name in ("self", "kwargs"):
                     continue
-                if (
-                    param_name in param_mapping
-                    and param_mapping[param_name] is not None
-                ):
-                    adapter_kwargs[param_name] = param_mapping[param_name]
+                if param_name in param_mapping:
+                    if param_mapping[param_name] is not None:
+                        adapter_kwargs[param_name] = param_mapping[param_name]
+                    elif (
+                        param_name == "config"
+                        and param.default is inspect.Parameter.empty
+                        and self.manifest.config_class
+                    ):
+                        # Config is None but required, create default
+                        default_config = self.manifest.config_class()
+                        adapter_kwargs["config"] = default_config
                 elif (
                     param.default is inspect.Parameter.empty
                     and param_name not in adapter_kwargs
                     and param_name == "config"
-                    and config is None
                     and self.manifest.config_class
                 ):
-                    # Try to get config from manifest
-                    config = self.manifest.config_class()
-                    adapter_kwargs["config"] = config
+                    # Config parameter is missing but required, create default
+                    default_config = self.manifest.config_class()
+                    adapter_kwargs["config"] = default_config
 
             return cast(BaseAdapter, self.adapter_class(**adapter_kwargs))
 

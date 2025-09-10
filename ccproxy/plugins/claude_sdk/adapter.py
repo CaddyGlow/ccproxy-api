@@ -57,9 +57,9 @@ class ClaudeSDKAdapter(BaseHTTPAdapter):
 
         # Initialize BaseHTTPAdapter with dummy auth_manager and http_pool_manager
         # since ClaudeSDK doesn't use external HTTP
-        super().__init__(auth_manager=None, http_pool_manager=None, **kwargs)
-
-        self.config = config
+        super().__init__(
+            config=config, auth_manager=None, http_pool_manager=None, **kwargs
+        )
         self.metrics = metrics
         self.hook_manager = hook_manager
 

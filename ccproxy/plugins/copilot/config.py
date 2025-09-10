@@ -2,10 +2,13 @@
 
 from pydantic import BaseModel, Field
 
+from ccproxy.models.provider import ProviderConfig
+
 
 class CopilotOAuthConfig(BaseModel):
     """OAuth-specific configuration for GitHub Copilot."""
 
+    "https://api.githubcopilot.com/chat/completions"
     client_id: str = Field(
         default="Iv1.b507a08c87ecfe98",
         description="GitHub Copilot OAuth client ID",
@@ -60,16 +63,26 @@ class CopilotOAuthConfig(BaseModel):
         return f"http://localhost:{self.callback_port}/callback"
 
 
-class CopilotProviderConfig(BaseModel):
+class CopilotProviderConfig(ProviderConfig):
     """Provider-specific configuration for GitHub Copilot API."""
+
+    name: str = "copilot"
+    base_url: str = "https://api.githubcopilot.com"
+    supports_streaming: bool = True
+    requires_auth: bool = True
+    auth_type: str | None = "oauth"
+
+    # Claude API specific settings
+    enabled: bool = True
+    priority: int = 5  # Higher priority than SDK-based approach
+    default_max_tokens: int = 4096
+
+    # Supported models
+    models: list[str] = []
 
     account_type: str = Field(
         default="individual",
         description="Account type: individual, business, or enterprise",
-    )
-    base_url: str | None = Field(
-        default=None,
-        description="Base URL (auto-generated from account_type if not set)",
     )
     request_timeout: int = Field(
         default=30,
@@ -90,18 +103,17 @@ class CopilotProviderConfig(BaseModel):
         le=60.0,
     )
 
-    def get_base_url(self) -> str:
-        """Get base URL based on account type."""
-        if self.base_url:
-            return self.base_url
-
-        base_urls = {
-            "individual": "https://api.githubcopilot.com",
-            "business": "https://api.business.githubcopilot.com",
-            "enterprise": "https://api.enterprise.githubcopilot.com",
-        }
-
-        return base_urls.get(self.account_type, base_urls["individual"])
+    api_headers: dict[str, str] = Field(
+        default_factory=lambda: {
+            "Content-Type": "application/json",
+            "Copilot-Integration-Id": "vscode-chat",
+            "Editor-Version": "vscode/1.85.0",
+            "Editor-Plugin-Version": "copilot-chat/0.26.7",
+            "User-Agent": "GitHubCopilotChat/0.26.7",
+            "X-GitHub-Api-Version": "2025-04-01",
+        },
+        description="Default headers for Copilot API requests",
+    )
 
 
 class CopilotConfig(BaseModel):
@@ -118,17 +130,6 @@ class CopilotConfig(BaseModel):
     provider: CopilotProviderConfig = Field(
         default_factory=CopilotProviderConfig,
         description="Provider-specific configuration",
-    )
-    api_headers: dict[str, str] = Field(
-        default_factory=lambda: {
-            "Content-Type": "application/json",
-            "Copilot-Integration-Id": "vscode-chat",
-            "Editor-Version": "vscode/1.85.0",
-            "Editor-Plugin-Version": "copilot-chat/0.26.7",
-            "User-Agent": "GitHubCopilotChat/0.26.7",
-            "X-GitHub-Api-Version": "2025-04-01",
-        },
-        description="Default headers for Copilot API requests",
     )
 
     model_config = {"extra": "forbid"}

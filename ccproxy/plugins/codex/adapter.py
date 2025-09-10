@@ -25,28 +25,32 @@ class CodexAdapter(BaseHTTPAdapter):
     def __init__(self, detection_service: CodexDetectionService, **kwargs: Any) -> None:
         super().__init__(**kwargs)
         self.detection_service = detection_service
+        self.base_url = self.config.base_url.rstrip("/")
 
     async def get_target_url(self, endpoint: str) -> str:
         # Old URL: https://chat.openai.com/backend-anon/responses (308 redirect)
-        return "https://chatgpt.com/backend-anon/responses"
+        return f"{self.base_url}/responses"
 
     async def prepare_provider_request(
         self, body: bytes, headers: dict[str, str], endpoint: str
     ) -> tuple[bytes, dict[str, str]]:
-        # Get auth
+        # Get auth credentials and profile
         auth_data = await self.auth_manager.load_credentials()
+        if not auth_data:
+            raise ValueError("No authentication credentials available")
 
-        # Parse and convert body
+        # Get profile to extract chatgpt_account_id
+        profile = await self.auth_manager.get_profile_quick()
+        chatgpt_account_id = profile.chatgpt_account_id if profile else None
+
+        # Parse body (format conversion is now handled by format chain)
         body_data = json.loads(body.decode()) if body else {}
 
-        # Format conversion
-        if self._needs_format_conversion(endpoint):
-            body_data = await self._convert_to_codex_format(body_data)
-
-        # Inject instructions (after format conversion to ensure they're preserved)
+        # Inject instructions if not present
         if "instructions" not in body_data or body_data.get("instructions") is None:
             body_data["instructions"] = self._get_instructions()
 
+        # Ensure stream is enabled (required by Codex backend)
         if "stream" not in body_data:
             body_data["stream"] = True
 
@@ -55,14 +59,16 @@ class CodexAdapter(BaseHTTPAdapter):
 
         # Filter and add headers
         filtered_headers = filter_request_headers(headers, preserve_auth=False)
-        filtered_headers.update(
-            {
-                "authorization": f"Bearer {auth_data.access_token.get_secret_value()}",
-                "chatgpt-account-id": auth_data.account_id,
-                "session-id": str(uuid.uuid4()),
-                "content-type": "application/json",
-            }
-        )
+        base_headers = {
+            "authorization": f"Bearer {auth_data.access_token}",
+            "session_id": str(uuid.uuid4()),
+            "content-type": "application/json",
+        }
+        # Add chatgpt-account-id only if available
+        if chatgpt_account_id is not None:
+            base_headers["chatgpt-account-id"] = chatgpt_account_id
+
+        filtered_headers.update(base_headers)
 
         # Add CLI headers
         if self.detection_service:
@@ -93,24 +99,19 @@ class CodexAdapter(BaseHTTPAdapter):
             return Response(
                 content=response.content,
                 status_code=response.status_code,
-                headers=to_canonical_headers(response_headers),
+                headers=response_headers,
             )
 
-        # Convert response format
-        converted_data = await self._convert_codex_to_openai(response_data)
-
+        # Response format conversion is now handled by format chain
         response_headers = extract_response_headers(response)
 
         return Response(
-            content=json.dumps(converted_data).encode(),
+            content=response.content,
             status_code=response.status_code,
             headers=to_canonical_headers(response_headers),
         )
 
-    # Helper methods (move from transformers)
-    def _needs_format_conversion(self, endpoint: str) -> bool:
-        return True  # Codex always needs conversion
-
+    # Helper methods
     def _remove_metadata_fields(self, data: dict[str, Any]) -> dict[str, Any]:
         """Remove fields that start with '_' as they are internal metadata.
 
@@ -124,7 +125,7 @@ class CodexAdapter(BaseHTTPAdapter):
             return data
 
         # Create a new dict without keys starting with '_'
-        cleaned_data = {}
+        cleaned_data: dict[str, Any] = {}
         for key, value in data.items():
             if not key.startswith("_"):
                 # Recursively clean nested dictionaries
@@ -132,12 +133,13 @@ class CodexAdapter(BaseHTTPAdapter):
                     cleaned_data[key] = self._remove_metadata_fields(value)
                 elif isinstance(value, list):
                     # Clean list items if they are dictionaries
-                    cleaned_data[key] = [
-                        self._remove_metadata_fields(item)
-                        if isinstance(item, dict)
-                        else item
-                        for item in value
-                    ]
+                    cleaned_items: list[Any] = []
+                    for item in value:
+                        if isinstance(item, dict):
+                            cleaned_items.append(self._remove_metadata_fields(item))
+                        else:
+                            cleaned_items.append(item)
+                    cleaned_data[key] = cleaned_items
                 else:
                     cleaned_data[key] = value
 
@@ -149,68 +151,3 @@ class CodexAdapter(BaseHTTPAdapter):
             if cached_data and cached_data.instructions:
                 return cached_data.instructions.instructions_field
         return "You are a coding agent..."
-
-    async def _convert_to_codex_format(
-        self, body_data: dict[str, Any]
-    ) -> dict[str, Any]:
-        """Convert OpenAI Chat Completions format to Codex Response API format.
-
-        Args:
-            body_data: OpenAI Chat Completions format request data
-
-        Returns:
-            Codex Response API format request data
-        """
-        from ccproxy.adapters.openai.adapters import ChatToResponsesAdapter
-
-        # Preserve original instructions if they exist
-        original_instructions = body_data.get("instructions")
-
-        try:
-            adapter = ChatToResponsesAdapter()
-            response_request = adapter.chat_to_response_request(body_data)
-            converted_data = response_request.model_dump()
-
-            # Ensure stream=True for Codex (always required)
-            converted_data["stream"] = True
-
-            # Restore original instructions if they existed
-            if original_instructions is not None:
-                converted_data["instructions"] = original_instructions
-
-            return converted_data
-        except Exception as e:
-            logger.error(
-                "chat_to_codex_conversion_failed",
-                error=str(e),
-                error_type=type(e).__name__,
-            )
-            # Fallback - return original data with stream=True
-            body_data["stream"] = True
-            return body_data
-
-    async def _convert_codex_to_openai(
-        self, response_data: dict[str, Any]
-    ) -> dict[str, Any]:
-        """Convert Codex Response API format to OpenAI Chat Completions format.
-
-        Args:
-            response_data: Codex Response API format response data
-
-        Returns:
-            OpenAI Chat Completions format response data
-        """
-        from ccproxy.adapters.openai.adapters import ChatToResponsesAdapter
-
-        try:
-            adapter = ChatToResponsesAdapter()
-            chat_completion = adapter.response_to_chat_completion(response_data)
-            return chat_completion.model_dump()
-        except Exception as e:
-            logger.error(
-                "codex_to_chat_conversion_failed",
-                error=str(e),
-                error_type=type(e).__name__,
-            )
-            # Fallback - return original data
-            return response_data

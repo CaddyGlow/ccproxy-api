@@ -73,8 +73,8 @@ async def codex_chat_completions(
     auth: ConditionalAuthDep,
     adapter: CodexAdapterDep,
 ) -> StreamingResponse | Response | DeferredStreaming:
-    # Set format chain for OpenAI→Codex conversion
-    request.state.context.format_chain = ["openai", "codex"]
+    # Set format chain for OpenAI→Response API conversion
+    request.state.context.format_chain = ["openai", "response_api"]
     request.state.context.metadata["endpoint"] = "/chat/completions"
     return await handle_codex_request(request, adapter, "/chat/completions")
 
@@ -86,8 +86,8 @@ async def codex_chat_completions_with_session(
     auth: ConditionalAuthDep,
     adapter: CodexAdapterDep,
 ) -> StreamingResponse | Response | DeferredStreaming:
-    # Set format chain for OpenAI→Codex conversion
-    request.state.context.format_chain = ["openai", "codex"]
+    # Set format chain for OpenAI→Response API conversion
+    request.state.context.format_chain = ["openai", "response_api"]
     request.state.context.metadata["endpoint"] = "/{session_id}/chat/completions"
     return await handle_codex_request(
         request, adapter, "/{session_id}/chat/completions", session_id
@@ -100,8 +100,8 @@ async def codex_v1_chat_completions(
     auth: ConditionalAuthDep,
     adapter: CodexAdapterDep,
 ) -> StreamingResponse | Response | DeferredStreaming:
-    # Set format chain for OpenAI→Codex conversion
-    request.state.context.format_chain = ["openai", "codex"]
+    # Set format chain for OpenAI→Response API conversion
+    request.state.context.format_chain = ["openai", "response_api"]
     request.state.context.metadata["endpoint"] = "/v1/chat/completions"
     return await handle_codex_request(request, adapter, "/chat/completions")
 
@@ -141,8 +141,8 @@ async def codex_v1_messages(
     auth: ConditionalAuthDep,
     adapter: CodexAdapterDep,
 ) -> StreamingResponse | Response | DeferredStreaming:
-    # Set format chain for Anthropic→Codex conversion
-    request.state.context.format_chain = ["anthropic", "codex"]
+    # Set format chain for Anthropic→Response API conversion
+    request.state.context.format_chain = ["anthropic", "response_api"]
     request.state.context.metadata["endpoint"] = "/v1/messages"
     return await handle_codex_request(request, adapter, "/v1/messages")
 
@@ -154,8 +154,8 @@ async def codex_v1_messages_with_session(
     auth: ConditionalAuthDep,
     adapter: CodexAdapterDep,
 ) -> StreamingResponse | Response | DeferredStreaming:
-    # Set format chain for Anthropic→Codex conversion
-    request.state.context.format_chain = ["anthropic", "codex"]
+    # Set format chain for Anthropic→Response API conversion
+    request.state.context.format_chain = ["anthropic", "response_api"]
     request.state.context.metadata["endpoint"] = "/{session_id}/v1/messages"
     return await handle_codex_request(
         request, adapter, "/{session_id}/v1/messages", session_id

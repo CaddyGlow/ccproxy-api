@@ -12,6 +12,15 @@ from ccproxy.streaming import DeferredStreaming
 class BaseAdapter(ABC):
     """Base adapter for provider-specific request handling."""
 
+    def __init__(self, config: Any, **kwargs: Any) -> None:
+        """Initialize the base adapter.
+
+        Args:
+            config: Plugin configuration
+            **kwargs: Additional keyword arguments for subclasses
+        """
+        self.config = config
+
     @abstractmethod
     async def handle_request(
         self, request: Request

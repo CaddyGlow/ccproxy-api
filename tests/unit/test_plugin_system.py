@@ -54,7 +54,8 @@ class MockPlugin:
         pass
 
     def create_adapter(self) -> BaseAdapter:
-        return MockAdapter()
+        config = self.create_config()
+        return MockAdapter(config=config)
 
     def create_config(self) -> ProviderConfig:
         return ProviderConfig(
@@ -194,7 +195,13 @@ async def test_plugin_registry_validation_failure():
 @pytest.mark.asyncio
 async def test_base_adapter_interface():
     """Test BaseAdapter interface."""
-    adapter = MockAdapter()
+    config = ProviderConfig(
+        name="test_adapter",
+        base_url="https://test.example.com",
+        supports_streaming=True,
+        requires_auth=False,
+    )
+    adapter = MockAdapter(config=config)
 
     # Test handle_request
     request = MagicMock()

@@ -338,21 +338,21 @@ class CodexFactory(BaseProviderPluginFactory):
             from_format="openai",
             to_format="response_api",
             adapter_factory=lambda: __import__(
-                "ccproxy.plugins.codex.format_adapter",
-                fromlist=["CodexFormatAdapter"],
-            ).CodexFormatAdapter(),
+                "ccproxy.adapters.openai.adapters.chat_to_responses",
+                fromlist=["ChatToResponsesAdapter"],
+            ).ChatToResponsesAdapter(),
             priority=50,  # Medium priority
-            description="OpenAI Chat Completions to Codex Response API conversion",
+            description="OpenAI Chat Completions to Response API conversion",
         ),
         FormatAdapterSpec(
             from_format="anthropic",
             to_format="response_api",
             adapter_factory=lambda: __import__(
-                "ccproxy.plugins.codex.format_adapter",
-                fromlist=["CodexFormatAdapter"],
-            ).CodexFormatAdapter(),
+                "ccproxy.adapters.openai.anthropic_response_adapter",
+                fromlist=["AnthropicResponseAPIAdapter"],
+            ).AnthropicResponseAPIAdapter(),
             priority=50,  # Medium priority
-            description="Anthropic Messages to Codex Response API conversion",
+            description="Anthropic Messages to Response API conversion",
         ),
     ]
 

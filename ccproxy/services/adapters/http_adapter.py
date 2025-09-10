@@ -6,9 +6,10 @@ from fastapi import Request
 from starlette.responses import Response, StreamingResponse
 
 from ccproxy.core.logging import get_plugin_logger
+from ccproxy.models.provider import ProviderConfig
 from ccproxy.services.adapters.base import BaseAdapter
 from ccproxy.streaming import DeferredStreaming
-from ccproxy.utils.headers import extract_request_headers, to_canonical_headers
+from ccproxy.utils.headers import extract_request_headers
 
 
 logger = get_plugin_logger()
@@ -18,10 +19,17 @@ class BaseHTTPAdapter(BaseAdapter):
     """Simplified HTTP adapter with format chain support."""
 
     def __init__(
-        self, auth_manager: Any, http_pool_manager: Any, **kwargs: Any
+        self,
+        config: ProviderConfig,
+        auth_manager: Any,
+        http_pool_manager: Any,
+        **kwargs: Any,
     ) -> None:
+        # Call parent constructor to properly initialize config
+        super().__init__(config=config, **kwargs)
         self.auth_manager = auth_manager
         self.http_pool_manager = http_pool_manager
+        self.format_registry = kwargs.get("format_registry")
         self.context = kwargs.get("context")
 
     async def handle_request(
@@ -91,11 +99,17 @@ class BaseHTTPAdapter(BaseAdapter):
         self, body: bytes, format_chain: list[str], ctx: Any
     ) -> bytes:
         """Execute format conversion chain."""
-        current_body = body
-        format_registry = self.context.get("format_registry") if self.context else None
+        import json
 
-        if not format_registry:
+        if not self.format_registry:
             ctx.log_event("format_chain_skipped", reason="no_registry")
+            return body
+
+        # Parse body as JSON for format conversion
+        try:
+            current_data = json.loads(body.decode()) if body else {}
+        except (json.JSONDecodeError, UnicodeDecodeError) as e:
+            ctx.log_event("format_chain_parse_failed", error=str(e))
             return body
 
         for i in range(len(format_chain) - 1):
@@ -103,8 +117,8 @@ class BaseHTTPAdapter(BaseAdapter):
             to_format = format_chain[i + 1]
 
             try:
-                adapter = format_registry.get_adapter(from_format, to_format)
-                current_body = await adapter.convert(current_body)
+                adapter = self.format_registry.get_adapter(from_format, to_format)
+                current_data = await adapter.adapt_request(current_data)
 
                 ctx.log_event(
                     "format_chain_step_completed",
@@ -123,7 +137,8 @@ class BaseHTTPAdapter(BaseAdapter):
                 )
                 raise
 
-        return current_body
+        # Convert back to bytes
+        return json.dumps(current_data).encode()
 
     @abstractmethod
     async def prepare_provider_request(
@@ -149,7 +164,7 @@ class BaseHTTPAdapter(BaseAdapter):
     ) -> httpx.Response:
         """Execute HTTP request."""
         # Convert to canonical headers for HTTP
-        canonical_headers = to_canonical_headers(headers)
+        canonical_headers = headers
 
         # Get HTTP client
         client = await self.http_pool_manager.get_client()
