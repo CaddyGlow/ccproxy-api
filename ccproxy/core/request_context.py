@@ -54,6 +54,7 @@ class RequestContext:
     storage: Any | None = None  # Optional DuckDB storage instance
     log_timestamp: datetime | None = None  # Datetime for consistent logging filenames
     metrics: dict[str, Any] = field(default_factory=dict)  # Request metrics storage
+    format_chain: list[str] | None = None  # Format conversion chain
 
     @property
     def duration_ms(self) -> float:

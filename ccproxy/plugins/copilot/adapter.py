@@ -1,432 +1,77 @@
-"""Copilot adapter implementation using BaseHTTPAdapter delegation pattern."""
-
-from typing import TYPE_CHECKING, Any, cast
-
+import json
+import uuid
+from typing import Any
+import httpx
 from fastapi import Request
 from starlette.responses import Response, StreamingResponse
 
-from ccproxy.core.logging import get_plugin_logger
 from ccproxy.services.adapters.http_adapter import BaseHTTPAdapter
-from ccproxy.services.handler_config import HandlerConfig
+from ccproxy.utils.headers import filter_request_headers, extract_response_headers, to_canonical_headers
+from ccproxy.core.logging import get_plugin_logger
 
 from .config import CopilotConfig
-from .detection_service import CopilotDetectionService
 from .models import CopilotAuthData
 from .oauth.provider import CopilotOAuthProvider
-from .transformers.request import CopilotRequestTransformer
-from .transformers.response import CopilotResponseTransformer
-
-
-if TYPE_CHECKING:
-    from ccproxy.core.plugins import PluginContext
-    from ccproxy.core.plugins.hooks import HookManager
-    from ccproxy.core.request_context import RequestContext
-    from ccproxy.services.interfaces import (
-        IMetricsCollector,
-        IRequestTracer,
-        StreamingMetrics,
-    )
 
 logger = get_plugin_logger()
 
-
 class CopilotAdapter(BaseHTTPAdapter):
-    """GitHub Copilot adapter implementation using BaseHTTPAdapter delegation pattern.
-
-    This adapter follows the same pattern as Codex adapter,
-    delegating actual HTTP operations to base HTTP adapter.
-    """
-
-    def __init__(
-        self,
-        # Required dependencies
-        auth_manager: Any,  # AuthManager from ccproxy.auth.manager
-        detection_service: CopilotDetectionService,
-        http_pool_manager: Any,
-        # Copilot-specific dependencies
-        oauth_provider: CopilotOAuthProvider,
-        config: CopilotConfig,
-        # Optional dependencies
-        request_tracer: "IRequestTracer | None" = None,
-        metrics: "IMetricsCollector | None" = None,
-        streaming_handler: "StreamingMetrics | None" = None,
-        hook_manager: "HookManager | None" = None,
-        # Plugin-specific context
-        context: "PluginContext | dict[str, Any] | None" = None,
-    ) -> None:
-        """Initialize the Copilot adapter with explicit dependencies.
-
-        Args:
-            auth_manager: Authentication manager for credentials
-            detection_service: GitHub CLI detection service
-            http_pool_manager: HTTP pool manager for getting clients on demand
-            oauth_provider: OAuth provider for Copilot authentication
-            config: Plugin configuration
-            request_tracer: Optional request tracer
-            metrics: Optional metrics collector
-            streaming_handler: Optional streaming handler
-            hook_manager: Optional hook manager for event emission
-            context: Optional plugin context containing plugin_registry and other services
-        """
-        # Store Copilot-specific dependencies
-        self.config = config
+    """Simplified Copilot adapter."""
+    
+    def __init__(self, oauth_provider: CopilotOAuthProvider, config: CopilotConfig, **kwargs):
+        super().__init__(**kwargs)
         self.oauth_provider = oauth_provider
-
-        # Initialize transformers
-        request_transformer = CopilotRequestTransformer(config)
-
-        # Initialize response transformer with CORS settings
-        cors_settings = None
-        # Try from context
-        if context:
-            config_obj = (
-                context.get("config")
-                if isinstance(context, dict)
-                else getattr(context, "config", None)
-            )
-            if config_obj:
-                cors_settings = getattr(config_obj, "cors", None)
-
-        response_transformer = CopilotResponseTransformer()
-
-        # Initialize base HTTP adapter with explicit dependencies
-        super().__init__(
-            auth_manager=auth_manager,
-            detection_service=detection_service,
-            http_pool_manager=http_pool_manager,
-            request_tracer=request_tracer,
-            metrics=metrics,
-            streaming_handler=streaming_handler,
-            request_transformer=request_transformer,
-            response_transformer=response_transformer,
-            hook_manager=hook_manager,
-            context=cast("PluginContext | None", context),
-        )
-
-        # Current endpoint tracking for format detection
-        self._current_endpoint: str | None = None
-
-    async def _resolve_endpoint(self, endpoint: str) -> tuple[str, bool]:
-        """Resolve the target URL and determine if format conversion is needed.
-
-        Args:
-            endpoint: The requested endpoint path
-
-        Returns:
-            Tuple of (target_url, needs_conversion)
-        """
-        # Store current endpoint for format detection
-        self._current_endpoint = endpoint
-
-        # Check if format conversion is needed
-        needs_conversion = self._needs_format_conversion(endpoint, {})
-
-        # Build target URL - Copilot API endpoint
-        # This should be derived from the endpoint or config
-        target_url = (
-            "https://api.githubcopilot.com/chat/completions"  # Default Copilot endpoint
-        )
-
-        return target_url, needs_conversion
-
-    def _needs_format_conversion(
-        self, endpoint: str, request_data: dict[str, Any]
-    ) -> bool:
-        """Determine if format conversion is needed for this request.
-
-        Args:
-            endpoint: API endpoint
-            request_data: Request data
-
-        Returns:
-            True if format conversion is needed
-        """
-        # Check if this is an OpenAI-style endpoint
-        openai_endpoints = [
-            "/chat/completions",
-            "/completions",
-            "/embeddings",
-            "/models",
-        ]
-
-        for openai_endpoint in openai_endpoints:
-            if endpoint.endswith(openai_endpoint):
-                return True
-
-        return False
-
-    async def _extract_provider_auth_data(self) -> CopilotAuthData:
-        """Extract provider-specific authentication data including access token.
-
-        For Copilot/GitHub, extract access_token from OAuth provider.
-
-        Returns:
-            Typed authentication data for Copilot/GitHub provider
-        """
-        if not self.oauth_provider:
-            raise ValueError("OAuth provider not available")
-
-        # Get access token
+        self.config = config
+    
+    async def get_target_url(self, endpoint: str) -> str:
+        return "https://api.githubcopilot.com/chat/completions"
+    
+    async def prepare_provider_request(
+        self, 
+        body: bytes, 
+        headers: dict[str, str], 
+        endpoint: str
+    ) -> tuple[bytes, dict[str, str]]:
+        
+        # Get auth token
         access_token = await self.oauth_provider.ensure_copilot_token()
-
-        return CopilotAuthData(
-            access_token=access_token,
-            token_type="bearer",
+        
+        # Filter headers
+        filtered_headers = filter_request_headers(headers, preserve_auth=False)
+        
+        # Add Copilot headers (lowercase keys)
+        copilot_headers = {}
+        for key, value in self.config.api_headers.items():
+            copilot_headers[key.lower()] = value
+        
+        copilot_headers["authorization"] = f"Bearer {access_token}"  
+        copilot_headers["x-request-id"] = str(uuid.uuid4())
+        
+        # Merge headers
+        final_headers = {}
+        final_headers.update(filtered_headers) 
+        final_headers.update(copilot_headers)
+        
+        logger.debug("copilot_request_prepared", header_count=len(final_headers))
+        
+        return body, final_headers
+    
+    async def process_provider_response(
+        self, 
+        response: httpx.Response, 
+        endpoint: str
+    ) -> Response:
+        
+        response_headers = extract_response_headers(response)
+        
+        # Filter response headers
+        safe_headers = {}
+        for key, value in response_headers.items():
+            if key not in {"connection", "transfer-encoding", "content-encoding"}:
+                safe_headers[key] = value
+        
+        return Response(
+            content=response.content,
+            status_code=response.status_code,
+            headers=to_canonical_headers(safe_headers)
         )
-
-    async def _create_handler_config(
-        self,
-        needs_conversion: bool,
-        request_context: "RequestContext | None" = None,
-    ) -> HandlerConfig:
-        """Create handler configuration based on conversion needs.
-
-        Args:
-            needs_conversion: Whether format conversion is needed
-            request_context: Request context for creating metrics collector
-
-        Returns:
-            HandlerConfig instance
-        """
-        # For now, don't use format adapters since CopilotFormatAdapter
-        # may not implement the APIAdapter interface properly
-        # TODO: Update CopilotFormatAdapter to implement APIAdapter interface
-        request_adapter = None
-        response_adapter = None
-
-        return HandlerConfig(
-            request_adapter=request_adapter,
-            response_adapter=response_adapter,
-            request_transformer=self._request_transformer,
-            response_transformer=self._response_transformer,
-            supports_streaming=True,
-            preserve_header_case=True,
-        )
-
-    async def _update_request_context(
-        self,
-        request_context: "RequestContext",
-        endpoint: str,
-        request_data: dict[str, Any],
-        is_streaming: bool,
-        needs_conversion: bool,
-    ) -> None:
-        """Update request context with provider-specific metadata.
-
-        Args:
-            request_context: Request context to update
-            endpoint: Target endpoint path
-            request_data: Parsed request data
-            is_streaming: Whether this is a streaming request
-            needs_conversion: Whether format conversion is needed
-        """
-        request_context.metadata.update(
-            {
-                "provider": "copilot",
-                "service_type": "copilot",
-                "endpoint": endpoint.rstrip("/").split("/")[-1]
-                if endpoint
-                else "completions",
-                "model": request_data.get("model", "gpt-4"),
-                "stream": is_streaming,
-                "needs_conversion": needs_conversion,
-            }
-        )
-
-    def _log_request(
-        self,
-        endpoint: str,
-        request_context: "RequestContext",
-        is_streaming: bool,
-        needs_conversion: bool,
-        target_url: str,
-    ) -> None:
-        """Log the request with provider-specific information.
-
-        Args:
-            endpoint: Target endpoint path
-            request_context: Request context with metadata
-            is_streaming: Whether this is a streaming request
-            needs_conversion: Whether format conversion is needed
-            target_url: Target API URL
-        """
-        logger.debug(
-            "plugin_request",
-            plugin="copilot",
-            endpoint=endpoint,
-            model=request_context.metadata.get("model"),
-            is_streaming=is_streaming,
-            needs_conversion=needs_conversion,
-            target_url=target_url,
-        )
-
-    async def handle_request(
-        self, request: Request, endpoint: str, method: str, **kwargs: Any
-    ) -> Response | StreamingResponse:
-        """Handle a request to the Copilot API.
-
-        Args:
-            request: FastAPI request object
-            endpoint: Target endpoint path
-            method: HTTP method
-            **kwargs: Additional arguments
-
-        Returns:
-            Response from Copilot API
-        """
-        # Delegate to parent handle_request implementation
-        return await super().handle_request(request, endpoint, method, **kwargs)
-
-    async def _calculate_cost_for_usage(
-        self, request_context: "RequestContext"
-    ) -> None:
-        """Calculate cost for usage data already extracted in processor.
-
-        Args:
-            request_context: Request context with usage data from processor
-        """
-        # Check if we have usage data from the processor
-        metadata = request_context.metadata
-        tokens_input = metadata.get("tokens_input", 0)
-        tokens_output = metadata.get("tokens_output", 0)
-
-        # Skip if no usage data available
-        if not (tokens_input or tokens_output):
-            return
-
-        # Get pricing service and calculate cost
-        pricing_service = self._get_pricing_service()
-        if not pricing_service:
-            return
-
-        # Import pricing exceptions
-        from ccproxy.plugins.pricing.exceptions import (
-            ModelPricingNotFoundError,
-            PricingDataNotLoadedError,
-            PricingServiceDisabledError,
-        )
-
-        try:
-            model = metadata.get("model", "gpt-4")
-            cache_read_tokens = metadata.get("cache_read_tokens", 0)
-
-            cost_decimal = await pricing_service.calculate_cost(
-                model_name=model,
-                input_tokens=tokens_input,
-                output_tokens=tokens_output,
-                cache_read_tokens=cache_read_tokens,
-                cache_write_tokens=0,  # Copilot doesn't have cache write tokens
-            )
-            cost_usd = float(cost_decimal)
-
-            # Update context with calculated cost
-            metadata["cost_usd"] = cost_usd
-
-            logger.debug(
-                "cost_calculated",
-                model=model,
-                cost_usd=cost_usd,
-                tokens_input=tokens_input,
-                tokens_output=tokens_output,
-                cache_read_tokens=cache_read_tokens,
-                source="non_streaming",
-            )
-        except ModelPricingNotFoundError as e:
-            logger.warning(
-                "model_pricing_not_found",
-                model=model,
-                message=str(e),
-                tokens_input=tokens_input,
-                tokens_output=tokens_output,
-            )
-        except PricingDataNotLoadedError as e:
-            logger.warning(
-                "pricing_data_not_loaded",
-                model=model,
-                message=str(e),
-            )
-        except PricingServiceDisabledError as e:
-            logger.debug(
-                "pricing_service_disabled",
-                message=str(e),
-            )
-        except Exception as e:
-            logger.debug(
-                "cost_calculation_failed",
-                error=str(e),
-                model=model,
-            )
-
-    async def handle_streaming(
-        self, request: Request, endpoint: str, **kwargs: Any
-    ) -> StreamingResponse:
-        """Handle a streaming request to the Copilot API."""
-        # Delegate to the base handler - buffer service will handle non-streaming conversion
-        result = await self.handle_request(request, endpoint, "POST", **kwargs)
-
-        # Ensure we return a streaming response
-        if not isinstance(result, StreamingResponse):
-            return StreamingResponse(
-                iter([result.body if hasattr(result, "body") else b""]),
-                media_type="text/event-stream",
-            )
-
-        return result
-
-    async def _should_buffer_stream(
-        self, request_data: dict[str, Any], is_streaming: bool
-    ) -> bool:
-        """Use configuration to determine buffering with fail-fast validation.
-
-        Args:
-            request_data: Parsed request body data
-            is_streaming: Whether the client requested streaming
-
-        Returns:
-            True if should convert to buffered streaming, False otherwise
-        """
-        # Disable buffered streaming to prevent Content-Length mismatches
-        # The buffered streaming mode modifies request body from "stream": false
-        # to "stream": true but doesn't update Content-Length header properly
-        return False
-
-    async def cleanup(self) -> None:
-        """Cleanup resources when shutting down."""
-        try:
-            # Call parent cleanup first
-            await super().cleanup()
-
-            # Copilot-specific cleanup
-            if self.oauth_provider:
-                await self.oauth_provider.cleanup()
-
-            # Clear references
-            self._current_endpoint = None
-
-            logger.debug("copilot_adapter_cleanup_completed")
-
-        except Exception as e:
-            logger.error(
-                "copilot_adapter_cleanup_failed",
-                error=str(e),
-                exc_info=e,
-            )
-
-    async def _wrap_streaming_response(
-        self, response: StreamingResponse, request_context: "RequestContext"
-    ) -> StreamingResponse:
-        """Wrap streaming response to accumulate chunks and extract headers.
-
-        For Copilot, we pass through the streaming response as-is since
-        metrics extraction is handled by hooks.
-
-        Args:
-            response: The streaming response to wrap
-            request_context: The request context to update
-
-        Returns:
-            The original streaming response (pass-through)
-        """
-        # For Copilot, metrics extraction is handled by hooks
-        # so we can just pass through the response
-        return response

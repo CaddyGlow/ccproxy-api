@@ -9,12 +9,11 @@ from starlette.responses import Response, StreamingResponse
 from ccproxy.core.errors import ProxyConnectionError, ProxyTimeoutError
 from ccproxy.core.logging import get_logger
 from ccproxy.http.base import BaseHTTPHandler
-from ccproxy.http.processor import RequestProcessor
 from ccproxy.services.cache import ResponseCache
 from ccproxy.services.handler_config import HandlerConfig
 from ccproxy.services.interfaces import IRequestTracer
 from ccproxy.streaming import DeferredStreaming
-from ccproxy.utils.headers import HeaderBag
+from ccproxy.utils.headers import extract_request_headers, extract_response_headers, to_canonical_headers, filter_request_headers
 
 
 if TYPE_CHECKING:
@@ -51,7 +50,6 @@ class PluginHTTPHandler(BaseHTTPHandler):
         self.logger = logger or get_logger(__name__)
         self._http_client = http_client
         self._http_pool_manager = http_pool_manager
-        self._processor = RequestProcessor(logger=self.logger)
         self._response_cache = response_cache
         self._request_tracer: IRequestTracer | None = request_tracer
 
@@ -216,7 +214,7 @@ class PluginHTTPHandler(BaseHTTPHandler):
             # Process response through adapters and transformers
             processed_body, processed_headers = await self._processor.process_response(
                 body=response_content,
-                headers=HeaderBag.from_httpx_response(response).to_dict(),
+                headers=extract_response_headers(response),
                 status_code=response.status_code,
                 handler_config=handler_config,
                 request_context=request_context,

@@ -17,7 +17,7 @@ from httpx._types import (
 from ccproxy.core.logging import get_logger
 from ccproxy.core.plugins.hooks.events import HookEvent
 from ccproxy.core.request_context import RequestContext
-from ccproxy.utils.headers import HeaderBag
+from ccproxy.utils.headers import extract_request_headers, extract_response_headers, to_canonical_headers, filter_request_headers
 
 
 logger = get_logger(__name__)

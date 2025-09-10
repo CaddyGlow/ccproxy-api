@@ -16,7 +16,7 @@ from ccproxy.config.utils import get_ccproxy_cache_dir
 from ccproxy.core.logging import get_plugin_logger
 from ccproxy.services.cli_detection import CLIDetectionService
 from ccproxy.utils.caching import async_ttl_cache
-from ccproxy.utils.headers import HeaderBag
+from ccproxy.utils.headers import extract_request_headers
 
 from .models import ClaudeCacheData, ClaudeCodeHeaders, SystemPromptData
 
@@ -167,10 +167,10 @@ class ClaudeAPIDetectionService:
         async def capture_handler(request: Request) -> Response:
             """Capture the Claude CLI request."""
             # Preserve order and canonical casing when capturing headers
-            bag = HeaderBag.from_request(request, case_mode="preserve")
+            headers = extract_request_headers(request)
 
-            captured_data["headers_ordered"] = list(bag.items())
-            captured_data["headers"] = bag.to_dict()
+            captured_data["headers_ordered"] = list(headers.items())
+            captured_data["headers"] = headers
             captured_data["body"] = await request.body()
             # Return a mock response to satisfy Claude CLI
             return Response(

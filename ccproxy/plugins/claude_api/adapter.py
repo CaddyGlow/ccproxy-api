@@ -1,611 +1,101 @@
-"""Claude API adapter implementation."""
-
 import json
-from typing import TYPE_CHECKING, Any, cast
+from typing import Any
+import httpx
+from starlette.responses import Response, StreamingResponse
 
-
-if TYPE_CHECKING:
-    from ccproxy.services.adapters.format_registry import FormatAdapterRegistry
-
-from fastapi import HTTPException, Request
-from starlette.responses import StreamingResponse
-
-
-if TYPE_CHECKING:
-    from ccproxy.auth.manager import AuthManager
-    from ccproxy.core.plugins import PluginContext
-    from ccproxy.core.plugins.hooks import HookManager
-    from ccproxy.core.request_context import RequestContext
-    from ccproxy.services.interfaces import (
-        IMetricsCollector,
-        IRequestTracer,
-        StreamingMetrics,
-    )
-
-    from .detection_service import ClaudeAPIDetectionService
-
-from ccproxy.config.utils import (
-    ANTHROPIC_MESSAGES_PATH,
-    CLAUDE_API_BASE_URL,
-    CLAUDE_MESSAGES_ENDPOINT,
-    CODEX_RESPONSES_ENDPOINT,
-    OPENAI_CHAT_COMPLETIONS_PATH,
-)
-from ccproxy.core.logging import get_plugin_logger
 from ccproxy.services.adapters.http_adapter import BaseHTTPAdapter
-from ccproxy.services.handler_config import HandlerConfig
-from ccproxy.streaming import DeferredStreaming
+from ccproxy.utils.headers import filter_request_headers, extract_response_headers, to_canonical_headers
+from ccproxy.core.logging import get_plugin_logger
 
 from .models import ClaudeAPIAuthData
-from .transformers import ClaudeAPIRequestTransformer, ClaudeAPIResponseTransformer
-
+from .detection_service import ClaudeAPIDetectionService
 
 logger = get_plugin_logger()
 
-
 class ClaudeAPIAdapter(BaseHTTPAdapter):
-    """Claude API adapter implementation.
-
-    This adapter provides direct access to the Anthropic Claude API
-    with support for both native Anthropic format and OpenAI-compatible format.
-    """
-
-    def __init__(
-        self,
-        # Required dependencies
-        auth_manager: "AuthManager",
-        detection_service: "ClaudeAPIDetectionService",
-        http_pool_manager: Any,
-        # Optional dependencies
-        request_tracer: "IRequestTracer | None" = None,
-        metrics: "IMetricsCollector | None" = None,
-        streaming_handler: "StreamingMetrics | None" = None,
-        hook_manager: "HookManager | None" = None,
-        # Format services
-        format_registry: "FormatAdapterRegistry | None" = None,
-        # Plugin-specific context
-        context: "PluginContext | dict[str, Any] | None" = None,
-    ) -> None:
-        """Initialize the Claude API adapter with explicit dependencies.
-
-        Args:
-            auth_manager: Authentication manager for credentials
-            detection_service: Detection service for Claude CLI detection
-            http_pool_manager: HTTP pool manager for getting clients on demand
-            request_tracer: Optional request tracer
-            metrics: Optional metrics collector
-            streaming_handler: Optional streaming handler
-            hook_manager: Optional hook manager for event emission
-            format_registry: Format adapter registry for protocol conversions
-            context: Optional plugin context containing plugin_registry and other services
-        """
-        # Get injection mode from config if available
-        injection_mode = "minimal"  # default
-        if context:
-            # Handle both dict and TypedDict formats
-            if isinstance(context, dict):
-                config = context.get("config")
-            else:
-                config = getattr(context, "config", None)
-
-            if config:
-                injection_mode = getattr(
-                    config, "system_prompt_injection_mode", "minimal"
-                )
-
-        # Initialize transformers with injection mode
-        request_transformer = ClaudeAPIRequestTransformer(
-            detection_service, mode=injection_mode
-        )
-
-        # Get CORS settings if available
-        cors_settings = None
-        # Try from context if available
-        if context:
-            config = (
-                context.get("config")
-                if isinstance(context, dict)
-                else getattr(context, "config", None)
-            )
-            if config:
-                cors_settings = getattr(config, "cors", None)
-
-        response_transformer = ClaudeAPIResponseTransformer(cors_settings)
-
-        # Initialize base HTTP adapter with explicit dependencies
-        super().__init__(
-            auth_manager=auth_manager,
-            detection_service=detection_service,
-            http_pool_manager=http_pool_manager,
-            request_tracer=request_tracer,
-            metrics=metrics,
-            streaming_handler=streaming_handler,
-            request_transformer=request_transformer,
-            response_transformer=response_transformer,
-            hook_manager=hook_manager,
-            context=cast("PluginContext | None", context),
-        )
-
-        # Assign format services from constructor parameters
-        self.format_registry = format_registry
-
-        logger.debug(
-            "format_services_loaded",
-            has_registry=bool(self.format_registry),
-        )
-
-        # Current endpoint tracking for format detection
-        self._current_endpoint: str | None = None
-
-    async def _resolve_endpoint(self, endpoint: str) -> tuple[str, bool]:
-        """Resolve the target URL and determine if format conversion is needed.
-
-        Args:
-            endpoint: The requested endpoint path
-
-        Returns:
-            Tuple of (target_url, needs_conversion)
-        """
-        # Store current endpoint for format detection
-        self._current_endpoint = endpoint
-
-        # Check for session-based endpoints using constants
-        if endpoint.endswith(ANTHROPIC_MESSAGES_PATH):
-            # Native Anthropic format
-            return f"{CLAUDE_API_BASE_URL}{CLAUDE_MESSAGES_ENDPOINT}", False
-        elif endpoint.endswith(OPENAI_CHAT_COMPLETIONS_PATH):
-            # OpenAI format - needs conversion
-            return f"{CLAUDE_API_BASE_URL}{CLAUDE_MESSAGES_ENDPOINT}", True
-        elif CODEX_RESPONSES_ENDPOINT in endpoint:
-            # Response API format - needs conversion
-            return f"{CLAUDE_API_BASE_URL}{CLAUDE_MESSAGES_ENDPOINT}", True
-        else:
-            raise HTTPException(
-                status_code=404,
-                detail=f"Endpoint {endpoint} not supported by Claude API plugin",
-            )
-
-    def _get_format_from_endpoint(self, endpoint: str) -> str:
-        """Get source format from endpoint using constants.
-
-        Args:
-            endpoint: The endpoint path
-
-        Returns:
-            Source format string
-
-        Raises:
-            ValueError: If endpoint format cannot be determined
-        """
-        if endpoint.endswith(ANTHROPIC_MESSAGES_PATH):
-            return "anthropic"
-        elif endpoint.endswith(OPENAI_CHAT_COMPLETIONS_PATH):
-            return "openai"
-        elif CODEX_RESPONSES_ENDPOINT in endpoint:
-            return "response_api"
-        else:
-            raise ValueError(f"Unable to detect format from endpoint: {endpoint}")
-
-    async def _extract_provider_auth_data(self) -> ClaudeAPIAuthData:
-        """Extract provider-specific authentication data including access token.
-
-        Claude API uses standard bearer token auth.
-
-        Returns:
-            Typed authentication data for Claude API
-        """
-        access_token = await self._auth_manager.get_access_token()
-        return ClaudeAPIAuthData(access_token=access_token)
-
-    async def _create_handler_config(
-        self,
-        needs_conversion: bool,
-        request_context: "RequestContext | None" = None,
-    ) -> HandlerConfig:
-        """Create handler configuration based on conversion needs.
-
-        Args:
-            needs_conversion: Whether format conversion is needed
-            request_context: Request context for creating metrics collector
-
-        Returns:
-            HandlerConfig instance
-        """
-        request_adapter = None
-        response_adapter = None
-
-        if needs_conversion:
-            if not self.format_registry:
-                raise RuntimeError("Format registry not available for conversion")
-
-            try:
-                # Detect source format from endpoint using constants
-                if self._current_endpoint is None:
-                    raise RuntimeError("Current endpoint is not set")
-                source_format = self._get_format_from_endpoint(self._current_endpoint)
-                target_format = (
-                    "anthropic"  # Claude API always expects Anthropic format
-                )
-
-                # Get adapters from registry
-                request_adapter = self.format_registry.get_adapter(
-                    source_format, target_format
-                )
-                response_adapter = self.format_registry.get_adapter(
-                    target_format, source_format
-                )
-
-                logger.debug(
-                    "format_adapters_loaded",
-                    source_format=source_format,
-                    target_format=target_format,
-                    has_request_adapter=bool(request_adapter),
-                    has_response_adapter=bool(response_adapter),
-                )
-
-            except Exception as e:
-                logger.error(
-                    "format_adapter_loading_failed",
-                    error=str(e),
-                    endpoint=self._current_endpoint,
-                )
-                raise RuntimeError(
-                    f"Format detection failed for endpoint {self._current_endpoint}"
-                ) from e
-
-        return HandlerConfig(
-            request_adapter=request_adapter,
-            response_adapter=response_adapter,
-            request_transformer=self._request_transformer,
-            response_transformer=self._response_transformer,
-            supports_streaming=True,
-            preserve_header_case=True,
-        )
-
-    async def _update_request_context(
-        self,
-        request_context: "RequestContext",
-        endpoint: str,
-        request_data: dict[str, Any],
-        is_streaming: bool,
-        needs_conversion: bool,
-    ) -> None:
-        """Update request context with provider-specific metadata.
-
-        Args:
-            request_context: Request context to update
-            endpoint: Target endpoint path
-            request_data: Parsed request data
-            is_streaming: Whether this is a streaming request
-            needs_conversion: Whether format conversion is needed
-        """
-        request_context.metadata.update(
-            {
-                "provider": "claude_api",
-                "service_type": "claude_api",
-                "endpoint": endpoint.rstrip("/").split("/")[-1]
-                if endpoint
-                else "messages",
-                "model": request_data.get("model", "unknown"),
-                "stream": is_streaming,
-                "needs_conversion": needs_conversion,
-            }
-        )
-
-    def _log_request(
-        self,
-        endpoint: str,
-        request_context: "RequestContext",
-        is_streaming: bool,
-        needs_conversion: bool,
-        target_url: str,
-    ) -> None:
-        """Log the request with provider-specific information.
-
-        Args:
-            endpoint: Target endpoint path
-            request_context: Request context with metadata
-            is_streaming: Whether this is a streaming request
-            needs_conversion: Whether format conversion is needed
-            target_url: Target API URL
-        """
-        logger.info(
-            "plugin_request",
-            plugin="claude_api",
-            endpoint=endpoint,
-            model=request_context.metadata.get("model"),
-            is_streaming=is_streaming,
-            needs_conversion=needs_conversion,
-            target_url=target_url,
-        )
-
-    def _get_pricing_service(self) -> Any | None:
-        """Get pricing service from plugin registry if available."""
-        try:
-            if not self.context or "plugin_registry" not in self.context:
-                return None
-
-            plugin_registry = self.context["plugin_registry"]
-
-            # Import locally to avoid circular dependency
-            from ccproxy.plugins.pricing.service import PricingService
-
-            # Get service from registry with type checking
-            return plugin_registry.get_service("pricing", PricingService)
-
-        except Exception as e:
-            logger.debug("failed_to_get_pricing_service", error=str(e))
-            return None
-
-    async def _calculate_cost_for_usage(
-        self, request_context: "RequestContext"
-    ) -> None:
-        """Calculate cost for usage data already extracted in processor.
-
-        Args:
-            request_context: Request context with usage data from processor
-        """
-        # Check if we have usage data from the processor
-        metadata = request_context.metadata
-        tokens_input = metadata.get("tokens_input", 0)
-        tokens_output = metadata.get("tokens_output", 0)
-
-        # Skip if no usage data available
-        if not (tokens_input or tokens_output):
-            return
-
-        # Get pricing service and calculate cost
-        pricing_service = self._get_pricing_service()
-        if not pricing_service:
-            return
-
-        try:
-            model = metadata.get("model", "claude-3-5-sonnet-20241022")
-            cache_read_tokens = metadata.get("cache_read_tokens", 0)
-            cache_write_tokens = metadata.get("cache_write_tokens", 0)
-
-            # Import pricing exceptions
-            from ccproxy.plugins.pricing.exceptions import (
-                ModelPricingNotFoundError,
-                PricingDataNotLoadedError,
-                PricingServiceDisabledError,
-            )
-
-            cost_decimal = await pricing_service.calculate_cost(
-                model_name=model,
-                input_tokens=tokens_input,
-                output_tokens=tokens_output,
-                cache_read_tokens=cache_read_tokens,
-                cache_write_tokens=cache_write_tokens,
-            )
-            cost_usd = float(cost_decimal)
-
-            # Update context with calculated cost
-            metadata["cost_usd"] = cost_usd
-
-            logger.debug(
-                "cost_calculated",
-                model=model,
-                cost_usd=cost_usd,
-                tokens_input=tokens_input,
-                tokens_output=tokens_output,
-                cache_read_tokens=cache_read_tokens,
-                cache_write_tokens=cache_write_tokens,
-                source="non_streaming",
-            )
-        except ModelPricingNotFoundError as e:
-            logger.warning(
-                "model_pricing_not_found",
-                model=model,
-                message=str(e),
-                tokens_input=tokens_input,
-                tokens_output=tokens_output,
-            )
-        except PricingDataNotLoadedError as e:
-            logger.warning(
-                "pricing_data_not_loaded",
-                model=model,
-                message=str(e),
-            )
-        except PricingServiceDisabledError as e:
-            logger.debug(
-                "pricing_service_disabled",
-                message=str(e),
-            )
-        except Exception as e:
-            logger.debug(
-                "cost_calculation_failed",
-                error=str(e),
-                model=metadata.get("model"),
-            )
-
-    async def _wrap_streaming_response(
-        self, response: StreamingResponse, request_context: "RequestContext"
-    ) -> StreamingResponse:
-        """Wrap streaming response to accumulate chunks and extract headers.
-
-        Args:
-            response: The streaming response to wrap
-            request_context: The request context to update
-
-        Returns:
-            Wrapped streaming response
-        """
-        from collections.abc import AsyncIterator
-
-        # Get the original iterator
-        original_iterator = response.body_iterator
-
-        # Create accumulator for chunks
-        chunks: list[bytes] = []
-        headers_extracted = False
-
-        # Note: Metrics extraction is now handled by ClaudeAPIStreamingMetricsHook
-
-        async def wrapped_iterator() -> AsyncIterator[bytes]:
-            """Wrap the stream iterator to accumulate chunks."""
-            nonlocal headers_extracted
-
-            async for chunk in original_iterator:
-                # Extract headers on first chunk (after streaming has started)
-                if not headers_extracted:
-                    headers_extracted = True
-                    if "response_headers" in request_context.metadata:
-                        response_headers = request_context.metadata["response_headers"]
-
-                        # Extract relevant headers and put them directly in metadata for access_logger
-                        headers_for_log = {}
-                        for k, v in response_headers.items():
-                            k_lower = k.lower()
-                            # Include Anthropic headers and request IDs
-                            if k_lower.startswith("anthropic-ratelimit"):
-                                # Put rate limit headers directly in metadata for access_logger
-                                request_context.metadata[k_lower] = v
-                                headers_for_log[k] = v
-                            elif k_lower == "anthropic-request-id":
-                                # Also store request ID
-                                request_context.metadata["anthropic_request_id"] = v
-                                headers_for_log[k] = v
-                            elif "request" in k_lower and "id" in k_lower:
-                                headers_for_log[k] = v
-
-                        # Also store the headers dictionary for display
-                        request_context.metadata["headers"] = headers_for_log
-
-                        logger.debug(
-                            "claude_api_headers_extracted",
-                            headers_count=len(headers_for_log),
-                            headers=headers_for_log,
-                            direct_metadata_keys=[
-                                k
-                                for k in request_context.metadata
-                                if "anthropic" in k.lower()
-                            ],
-                            category="http",
-                        )
-
-                if isinstance(chunk, str | memoryview):
-                    chunk = chunk.encode() if isinstance(chunk, str) else bytes(chunk)
-                chunks.append(chunk)
-
-                # Note: Chunk processing for metrics is handled by hooks
-
-                yield chunk
-
-            # Mark that stream processing is complete
-            request_context.metadata.update(
-                {
-                    "stream_accumulated": True,
-                    "stream_chunks_count": len(chunks),
-                }
-            )
-
-        # Create new streaming response with wrapped iterator
-        return StreamingResponse(
-            wrapped_iterator(),
+    """Simplified Claude API adapter."""
+    
+    def __init__(self, detection_service: ClaudeAPIDetectionService, **kwargs):
+        super().__init__(**kwargs)
+        self.detection_service = detection_service
+    
+    async def get_target_url(self, endpoint: str) -> str:
+        return "https://api.anthropic.com/v1/messages"
+    
+    async def prepare_provider_request(
+        self, 
+        body: bytes, 
+        headers: dict[str, str], 
+        endpoint: str
+    ) -> tuple[bytes, dict[str, str]]:
+        
+        # Get auth
+        auth_data = await self.auth_manager.get_credentials()
+        access_token = auth_data.access_token
+        
+        # Parse body
+        body_data = json.loads(body.decode()) if body else {}
+        
+        # Inject system prompt if available
+        if self.detection_service:
+            cached_data = self.detection_service.get_cached_data()
+            if cached_data and cached_data.system_prompt:
+                body_data = self._inject_system_prompt(body_data, cached_data.system_prompt)
+        
+        # Format conversion if needed
+        if self._needs_openai_conversion(endpoint):
+            body_data = await self._convert_openai_to_anthropic(body_data)
+        
+        # Filter headers  
+        filtered_headers = filter_request_headers(headers, preserve_auth=False)
+        filtered_headers["authorization"] = f"Bearer {access_token}"
+        
+        # Add CLI headers if available
+        if self.detection_service:
+            cached_data = self.detection_service.get_cached_data() 
+            if cached_data and cached_data.headers:
+                cli_headers = cached_data.headers.to_headers_dict()
+                for key, value in cli_headers.items():
+                    filtered_headers[key.lower()] = value
+        
+        return json.dumps(body_data).encode(), filtered_headers
+    
+    async def process_provider_response(
+        self, 
+        response: httpx.Response, 
+        endpoint: str
+    ) -> Response:
+        
+        response_headers = extract_response_headers(response)
+        content = response.content
+        
+        # Format conversion if needed
+        if self._needs_anthropic_conversion(endpoint):
+            response_data = json.loads(content)
+            converted_data = await self._convert_anthropic_to_openai(response_data)
+            content = json.dumps(converted_data).encode()
+        
+        return Response(
+            content=content,
             status_code=response.status_code,
-            headers=dict(response.headers) if hasattr(response, "headers") else {},
-            media_type=response.media_type,
+            headers=to_canonical_headers(response_headers)
         )
+    
+    # Helper methods (move from transformers)
+    def _inject_system_prompt(self, body_data, system_prompt):
+        # Move logic from transformer here
+        pass
+    
+    def _needs_openai_conversion(self, endpoint):
+        return endpoint.endswith("/chat/completions")
+    
+    async def _convert_openai_to_anthropic(self, body_data):
+        # Use format adapter registry or inline conversion
+        pass
 
-    async def handle_streaming(
-        self, request: Request, endpoint: str, **kwargs: Any
-    ) -> StreamingResponse | DeferredStreaming:
-        """Handle a streaming request to the Claude API.
-
-        Forces stream=true in the request body and delegates to handle_request.
-
-        Args:
-            request: FastAPI request object
-            endpoint: Target endpoint path
-            **kwargs: Additional arguments
-
-        Returns:
-            Streaming response from Claude API
-        """
-        # Modify request to force streaming
-        modified_request = await self._create_streaming_request(request)
-
-        # Delegate to handle_request
-        result = await self.handle_request(modified_request, endpoint, "POST", **kwargs)
-
-        # Return deferred or streaming response directly
-        if isinstance(result, StreamingResponse | DeferredStreaming):
-            return result
-
-        # Fallback: wrap non-streaming response
-        return StreamingResponse(
-            iter([result.body if hasattr(result, "body") else b""]),
-            media_type="text/event-stream",
-        )
-
-    async def _create_streaming_request(self, request: Request) -> Request:
-        """Create a modified request with stream=true.
-
-        Args:
-            request: Original request
-
-        Returns:
-            Modified request with stream=true
-        """
-        body = await request.body()
-
-        # Parse and modify request data
-        try:
-            request_data = json.loads(body) if body else {}
-        except json.JSONDecodeError:
-            request_data = {}
-
-        request_data["stream"] = True
-        modified_body = json.dumps(request_data).encode()
-
-        # Create modified request
-        from starlette.requests import Request as StarletteRequest
-
-        modified_scope = {**request.scope, "_body": modified_body}
-        modified_request = StarletteRequest(
-            scope=modified_scope,
-            receive=request.receive,
-        )
-        modified_request._body = modified_body
-
-        return modified_request
-
-    async def _should_buffer_stream(
-        self, request_data: dict[str, Any], is_streaming: bool
-    ) -> bool:
-        """Determine if a non-streaming request should use buffered streaming internally.
-
-        For Claude API adapter, we typically don't need buffered streaming since the
-        Claude API already handles non-streaming requests appropriately. This can be
-        overridden by subclasses or configured via plugin settings if needed.
-
-        Args:
-            request_data: Parsed request body data
-            is_streaming: Whether the original request is streaming
-
-        Returns:
-            False (Claude API doesn't use buffered streaming by default)
-        """
-        # Claude API doesn't typically need buffered streaming
-        return False
-
-    async def cleanup(self) -> None:
-        """Cleanup resources when shutting down."""
-        try:
-            # Call parent cleanup first
-            await super().cleanup()
-
-            # Claude API specific cleanup
-            self.format_registry = None
-            self.format_detector = None
-            self._current_endpoint = None
-
-            logger.debug("claude_api_adapter_cleanup_completed")
-
-        except Exception as e:
-            logger.error(
-                "claude_api_adapter_cleanup_failed",
-                error=str(e),
-                exc_info=e,
-            )
+    def _needs_anthropic_conversion(self, endpoint):
+        return endpoint.endswith("/chat/completions")
+    
+    async def _convert_anthropic_to_openai(self, response_data):
+        # Use format adapter registry or inline conversion
+        pass

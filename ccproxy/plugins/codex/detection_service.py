@@ -17,7 +17,7 @@ from ccproxy.config.utils import get_ccproxy_cache_dir
 from ccproxy.core.logging import get_plugin_logger
 from ccproxy.services.cli_detection import CLIDetectionService
 from ccproxy.utils.caching import async_ttl_cache
-from ccproxy.utils.headers import HeaderBag
+from ccproxy.utils.headers import extract_request_headers
 
 from .models import CodexCacheData, CodexHeaders, CodexInstructionsData
 
@@ -186,7 +186,7 @@ class CodexDetectionService:
         async def capture_handler(request: Request) -> Response:
             """Capture the Codex CLI request."""
             # Preserve order and original casing when capturing headers
-            bag = HeaderBag.from_request(request, case_mode="preserve")
+            bag = extract_request_headers.from_request(request, case_mode="preserve")
             captured_data["headers_ordered"] = list(bag.items())
             captured_data["headers"] = bag.to_dict()
 

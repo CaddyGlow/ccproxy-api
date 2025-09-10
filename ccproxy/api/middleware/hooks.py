@@ -11,7 +11,7 @@ from ccproxy.api.middleware.streaming_hooks import StreamingResponseWithHooks
 from ccproxy.core.logging import TraceBoundLogger, get_logger
 from ccproxy.core.plugins.hooks import HookEvent, HookManager
 from ccproxy.core.plugins.hooks.base import HookContext
-from ccproxy.utils.headers import HeaderBag
+from ccproxy.utils.headers import extract_request_headers, extract_response_headers, to_canonical_headers, filter_request_headers
 
 
 logger: TraceBoundLogger = get_logger()
@@ -94,7 +94,7 @@ class HooksMiddleware(BaseHTTPMiddleware):
                 "method": request.method,
                 "url": str(request.url),
                 # Preserve incoming order and casing using HeaderBag
-                "headers": HeaderBag.from_request(request, case_mode="lower"),
+                "headers": extract_request_headers(request),
             },
             metadata=getattr(request_context, "metadata", {}),
             request=request,
@@ -119,7 +119,7 @@ class HooksMiddleware(BaseHTTPMiddleware):
                     "request_id": request_id,
                     "method": request.method,
                     "url": str(request.url),
-                    "headers": HeaderBag.from_request(request, case_mode="lower"),
+                    "headers": extract_request_headers(request),
                     "response_status": getattr(response, "status_code", 200),
                     # Response headers preserved via HeaderBag
                     "response_headers": HeaderBag.from_starlette_response(
@@ -164,7 +164,7 @@ class HooksMiddleware(BaseHTTPMiddleware):
                 request_data = {
                     "method": request.method,
                     "url": str(request.url),
-                    "headers": HeaderBag.from_request(request, case_mode="lower"),
+                    "headers": extract_request_headers(request),
                 }
 
                 # Include RequestContext metadata if available
@@ -227,7 +227,7 @@ class HooksMiddleware(BaseHTTPMiddleware):
                     "request_id": request_id,
                     "method": request.method,
                     "url": str(request.url),
-                    "headers": HeaderBag.from_request(request, case_mode="lower"),
+                    "headers": extract_request_headers(request),
                     "duration": end_time - start_time,
                 },
                 metadata=getattr(request_context, "metadata", {}),
@@ -279,7 +279,7 @@ class HooksMiddleware(BaseHTTPMiddleware):
                 "request_id": base_context.data.get("request_id"),
                 "method": request.method,
                 "url": str(request.url),
-                "headers": HeaderBag.from_request(request, case_mode="lower"),
+                "headers": extract_request_headers(request),
                 "is_client_request": True,  # Distinguish from provider requests
             }
 
@@ -323,7 +323,7 @@ class HooksMiddleware(BaseHTTPMiddleware):
                 "request_id": base_context.data.get("request_id"),
                 "method": request.method,
                 "url": str(request.url),
-                "headers": HeaderBag.from_request(request, case_mode="lower"),
+                "headers": extract_request_headers(request),
                 "status_code": getattr(response, "status_code", 200),
                 "response_headers": dict(getattr(response, "headers", {})),
                 "is_client_response": True,  # Distinguish from provider responses

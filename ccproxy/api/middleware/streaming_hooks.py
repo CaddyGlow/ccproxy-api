@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING, Any
 from fastapi.responses import StreamingResponse
 
 from ccproxy.core.plugins.hooks import HookContext, HookEvent
-from ccproxy.utils.headers import HeaderBag
+from ccproxy.utils.headers import extract_request_headers, extract_response_headers, to_canonical_headers, filter_request_headers
 
 
 if TYPE_CHECKING:
