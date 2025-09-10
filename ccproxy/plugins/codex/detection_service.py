@@ -186,9 +186,9 @@ class CodexDetectionService:
         async def capture_handler(request: Request) -> Response:
             """Capture the Codex CLI request."""
             # Preserve order and original casing when capturing headers
-            bag = extract_request_headers.from_request(request, case_mode="preserve")
-            captured_data["headers_ordered"] = list(bag.items())
-            captured_data["headers"] = bag.to_dict()
+            headers_dict = extract_request_headers(request)
+            captured_data["headers_ordered"] = list(headers_dict.items())
+            captured_data["headers"] = headers_dict
 
             # Capture raw body
             raw_body = await request.body()
@@ -202,8 +202,8 @@ class CodexDetectionService:
                 "query_params": dict(request.query_params)
                 if request.query_params
                 else {},
-                "headers_ordered": list(bag.items()),
-                "headers": bag.to_dict(),
+                "headers_ordered": list(headers_dict.items()),
+                "headers": headers_dict,
             }
 
             # Parse body as JSON if possible, otherwise store as string
@@ -228,7 +228,7 @@ class CodexDetectionService:
                 "request_captured",
                 method=request.method,
                 path=request.url.path,
-                headers_count=len(list(bag.items())),
+                headers_count=len(headers_dict),
                 body_size=len(raw_body),
                 category="plugin",
             )

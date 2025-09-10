@@ -103,6 +103,9 @@ async def chat_completions(
 ) -> JSONResponse | StreamingResponse | DeferredStreaming:
     """Create chat completions using Copilot."""
     try:
+        # Set endpoint metadata for adapter usage (no format chain needed - direct pass-through)
+        request.state.context.metadata["endpoint"] = "/v1/chat/completions"
+
         # Parse request body
         body = await request.body()
         try:
@@ -125,7 +128,7 @@ async def chat_completions(
         )
 
         # Delegate to adapter
-        response = await adapter.handle_request(request, "/chat/completions", "POST")
+        response = await adapter.handle_request(request)
 
         # Ensure return type compatibility
         if isinstance(response, Response) and not isinstance(
@@ -164,6 +167,9 @@ async def create_embeddings(
 ) -> JSONResponse:
     """Create embeddings using Copilot."""
     try:
+        # Set endpoint metadata for adapter usage (no format chain needed - direct pass-through)
+        request.state.context.metadata["endpoint"] = "/v1/embeddings"
+
         # Parse request body
         body = await request.body()
         try:
@@ -185,7 +191,7 @@ async def create_embeddings(
         )
 
         # Delegate to adapter
-        response = await adapter.handle_request(request, "/v1/embeddings", "POST")
+        response = await adapter.handle_request(request)
 
         # Ensure return type compatibility
         if isinstance(response, Response) and not isinstance(response, JSONResponse):

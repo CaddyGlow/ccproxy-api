@@ -17,7 +17,12 @@ from httpx._types import (
 from ccproxy.core.logging import get_logger
 from ccproxy.core.plugins.hooks.events import HookEvent
 from ccproxy.core.request_context import RequestContext
-from ccproxy.utils.headers import extract_request_headers, extract_response_headers, to_canonical_headers, filter_request_headers
+from ccproxy.utils.headers import (
+    extract_request_headers,
+    extract_response_headers,
+    filter_request_headers,
+    to_canonical_headers,
+)
 
 
 logger = get_logger(__name__)
@@ -82,9 +87,7 @@ class HookableHTTPClient(httpx.AsyncClient):
         request_context: dict[str, Any] = {
             "method": method,
             "url": str(url),
-            "headers": HeaderBag.from_pairs(
-                self._normalize_header_pairs(headers), case_mode="lower"
-            ),
+            "headers": dict(self._normalize_header_pairs(headers)),
         }
 
         # Try to get current request ID from RequestContext
@@ -163,9 +166,7 @@ class HookableHTTPClient(httpx.AsyncClient):
                 response_context = {
                     **request_context,  # Include request info
                     "status_code": response.status_code,
-                    "response_headers": HeaderBag.from_httpx_response(
-                        response, case_mode="lower"
-                    ),
+                    "response_headers": extract_response_headers(response),
                 }
 
                 # Include response body from the content we just read
@@ -278,9 +279,7 @@ class HookableHTTPClient(httpx.AsyncClient):
         request_context: dict[str, Any] = {
             "method": method,
             "url": str(url),
-            "headers": HeaderBag.from_pairs(
-                self._normalize_header_pairs(headers), case_mode="lower"
-            ),
+            "headers": dict(self._normalize_header_pairs(headers)),
         }
 
         # Try to get current request ID from RequestContext
@@ -338,9 +337,7 @@ class HookableHTTPClient(httpx.AsyncClient):
                     response_context = {
                         **request_context,  # Include request info
                         "status_code": response.status_code,
-                        "response_headers": HeaderBag.from_httpx_response(
-                            response, case_mode="lower"
-                        ),
+                        "response_headers": extract_response_headers(response),
                     }
 
                     # Include response body from the content we collected

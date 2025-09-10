@@ -39,12 +39,12 @@ class ClaudeSDKRequestTransformer:
         Returns:
             Transformed headers
         """
-        # Normalize potential HeaderBag to dict view (preserves order)
-        if hasattr(headers, "to_dict"):
+        # Normalize headers to dict view (preserves order)
+        if not isinstance(headers, dict):
             try:
-                headers = headers.to_dict()
-            except Exception:
                 headers = dict(headers)
+            except Exception:
+                headers = {}
 
         # Remove any existing auth headers since SDK handles auth
         transformed = {

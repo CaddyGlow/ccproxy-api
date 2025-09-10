@@ -12,6 +12,7 @@ from ccproxy.core.plugins import (
     ProviderPluginRuntime,
     TaskSpec,
 )
+from ccproxy.services.adapters.base import BaseAdapter
 
 from .adapter import ClaudeSDKAdapter
 from .config import ClaudeSDKSettings
@@ -176,7 +177,7 @@ class ClaudeSDKFactory(BaseProviderPluginFactory):
         )
     ]
 
-    async def create_adapter(self, context: PluginContext) -> ClaudeSDKAdapter:
+    async def create_adapter(self, context: PluginContext) -> BaseAdapter:
         """Create the Claude SDK adapter.
 
         This method overrides the base implementation because Claude SDK
@@ -212,7 +213,7 @@ class ClaudeSDKFactory(BaseProviderPluginFactory):
             config=config, metrics=metrics, hook_manager=hook_manager
         )
 
-        return adapter
+        return adapter  # type: ignore[return-value]
 
     def create_detection_service(
         self, context: PluginContext

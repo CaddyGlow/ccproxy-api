@@ -173,7 +173,7 @@ class JSONFormatter:
         if not self.trace_enabled:
             return
 
-        # Normalize headers (preserve order/case if HeaderBag-like)
+        # Normalize headers (preserve order/case if dict-like)
         headers_dict = (
             headers.to_dict() if hasattr(headers, "to_dict") else dict(headers)
         )
@@ -304,7 +304,7 @@ class JSONFormatter:
 
         body_preview = self._get_body_preview(body)
 
-        # Normalize headers (preserve order/case if HeaderBag-like)
+        # Normalize headers (preserve order/case if dict-like)
         headers_dict = (
             headers.to_dict() if hasattr(headers, "to_dict") else dict(headers)
         )

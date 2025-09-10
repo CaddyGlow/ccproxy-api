@@ -23,11 +23,7 @@ async def _handle_claude_sdk_request(
 ) -> ResponseType:
     return cast(
         ResponseType,
-        await adapter.handle_request(
-            request=request,
-            endpoint=endpoint,
-            method=request.method,
-        ),
+        await adapter.handle_request(request),
     )
 
 

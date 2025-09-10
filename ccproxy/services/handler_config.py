@@ -65,7 +65,7 @@ class HandlerConfig:
     supports_streaming: bool = True
 
     # Header case preservation toggle for upstream requests
-    # When True, RequestProcessor will not canonicalize header names and will
+    # When True, the HTTP handler will not canonicalize header names and will
     # forward them with their original casing/order as produced by transformers.
     preserve_header_case: bool = False
 

@@ -46,12 +46,12 @@ class ClaudeSDKResponseTransformer:
         Returns:
             Transformed headers
         """
-        # Normalize potential HeaderBag to dict for processing
-        if hasattr(headers, "to_dict"):
+        # Normalize headers to dict for processing
+        if not isinstance(headers, dict):
             try:
-                headers = headers.to_dict()
-            except Exception:
                 headers = dict(headers)
+            except Exception:
+                headers = {}
 
         transformed = headers.copy()
 
@@ -71,11 +71,11 @@ class ClaudeSDKResponseTransformer:
             from ccproxy.utils.cors import get_cors_headers, get_request_origin
 
             request_headers = kwargs.get("request_headers", {})
-            if hasattr(request_headers, "to_dict"):
+            if not isinstance(request_headers, dict):
                 try:
-                    request_headers = request_headers.to_dict()
-                except Exception:
                     request_headers = dict(request_headers)
+                except Exception:
+                    request_headers = {}
             request_origin = get_request_origin(request_headers)
             cors_headers = get_cors_headers(
                 self.cors_settings, request_origin, request_headers
@@ -88,11 +88,11 @@ class ClaudeSDKResponseTransformer:
             )
             # Only add CORS headers if Origin header is present in request
             request_headers = kwargs.get("request_headers", {})
-            if hasattr(request_headers, "to_dict"):
+            if not isinstance(request_headers, dict):
                 try:
-                    request_headers = request_headers.to_dict()
-                except Exception:
                     request_headers = dict(request_headers)
+                except Exception:
+                    request_headers = {}
             from ccproxy.utils.cors import get_request_origin
 
             request_origin = get_request_origin(request_headers)

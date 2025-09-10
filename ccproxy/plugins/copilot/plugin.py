@@ -12,6 +12,7 @@ from ccproxy.core.plugins import (
     ProviderPluginRuntime,
 )
 from ccproxy.core.plugins.declaration import FormatAdapterSpec
+from ccproxy.services.adapters.base import BaseAdapter
 
 from .adapter import CopilotAdapter
 from .config import CopilotConfig
@@ -255,7 +256,7 @@ class CopilotPluginFactory(BaseProviderPluginFactory, AuthProviderPluginFactory)
 
         return CopilotDetectionService(settings, cli_service)
 
-    async def create_adapter(self, context: PluginContext) -> CopilotAdapter:
+    async def create_adapter(self, context: PluginContext) -> BaseAdapter:
         """Create main adapter instance.
 
         Args:
@@ -313,7 +314,7 @@ class CopilotPluginFactory(BaseProviderPluginFactory, AuthProviderPluginFactory)
                 f"Required dependencies missing for CopilotAdapter: {missing}"
             )
 
-        return CopilotAdapter(
+        adapter = CopilotAdapter(
             auth_manager=auth_manager,
             detection_service=detection_service,
             http_pool_manager=http_pool_manager,
@@ -325,6 +326,7 @@ class CopilotPluginFactory(BaseProviderPluginFactory, AuthProviderPluginFactory)
             hook_manager=hook_manager,
             context=context,
         )
+        return adapter  # type: ignore[return-value]
 
     def create_auth_provider(
         self, context: PluginContext | None = None

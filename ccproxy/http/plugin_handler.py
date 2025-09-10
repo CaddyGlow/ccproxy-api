@@ -13,7 +13,12 @@ from ccproxy.services.cache import ResponseCache
 from ccproxy.services.handler_config import HandlerConfig
 from ccproxy.services.interfaces import IRequestTracer
 from ccproxy.streaming import DeferredStreaming
-from ccproxy.utils.headers import extract_request_headers, extract_response_headers, to_canonical_headers, filter_request_headers
+from ccproxy.utils.headers import (
+    extract_request_headers,
+    extract_response_headers,
+    filter_request_headers,
+    to_canonical_headers,
+)
 
 
 if TYPE_CHECKING:
@@ -159,18 +164,11 @@ class PluginHTTPHandler(BaseHTTPHandler):
         if auth_headers:
             headers.update(auth_headers)
 
-        # Process request through adapters and transformers
-        # Pass all extra_kwargs (including access_token) to the processor
-        (
-            transformed_body,
-            processed_headers,
-            is_streaming,
-        ) = await self._processor.process_request(
-            body=request_body,
-            headers=headers,
-            handler_config=handler_config,
-            **extra_kwargs,  # This includes access_token and other plugin-specific params
-        )
+        # Process request directly (processor removed per migration plan)
+        # Simple pass-through processing with streaming detection
+        transformed_body = request_body
+        processed_headers = headers
+        is_streaming = "stream" in str(request_body) and "true" in str(request_body)
 
         return transformed_body, processed_headers, is_streaming
 
@@ -211,14 +209,10 @@ class PluginHTTPHandler(BaseHTTPHandler):
             # Read response content once to avoid consumption issues
             response_content = response.content
 
-            # Process response through adapters and transformers
-            processed_body, processed_headers = await self._processor.process_response(
-                body=response_content,
-                headers=extract_response_headers(response),
-                status_code=response.status_code,
-                handler_config=handler_config,
-                request_context=request_context,
-            )
+            # Process response directly (processor removed per migration plan)
+            # Simple pass-through processing
+            processed_body = response_content
+            processed_headers = extract_response_headers(response)
 
             result = Response(
                 content=processed_body,

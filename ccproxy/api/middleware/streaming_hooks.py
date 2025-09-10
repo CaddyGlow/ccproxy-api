@@ -14,7 +14,12 @@ from typing import TYPE_CHECKING, Any
 from fastapi.responses import StreamingResponse
 
 from ccproxy.core.plugins.hooks import HookContext, HookEvent
-from ccproxy.utils.headers import extract_request_headers, extract_response_headers, to_canonical_headers, filter_request_headers
+from ccproxy.utils.headers import (
+    extract_request_headers,
+    extract_response_headers,
+    filter_request_headers,
+    to_canonical_headers,
+)
 
 
 if TYPE_CHECKING:
@@ -185,8 +190,8 @@ class StreamingResponseWithHooks(StreamingResponse):
 
             # Add response headers if available, preserving order and case
             try:
-                http_response_context["response_headers"] = (
-                    HeaderBag.from_starlette_response(self, case_mode="lower")
+                http_response_context["response_headers"] = extract_response_headers(
+                    self
                 )
             except Exception:
                 if hasattr(self, "headers"):
@@ -201,19 +206,8 @@ class StreamingResponseWithHooks(StreamingResponse):
                     # Check if it looks like JSON
                     headers_obj = http_response_context.get("response_headers")
                     content_type = ""
-                    if headers_obj is not None:
-                        if hasattr(headers_obj, "to_dict"):
-                            try:
-                                from typing import cast as _cast
-
-                                headers_dict = _cast(
-                                    dict[str, str], headers_obj.to_dict()
-                                )
-                            except Exception:
-                                headers_dict = {}
-                            content_type = headers_dict.get("content-type", "")
-                        elif isinstance(headers_obj, dict):
-                            content_type = headers_obj.get("content-type", "")
+                    if headers_obj is not None and isinstance(headers_obj, dict):
+                        content_type = headers_obj.get("content-type", "")
 
                     if "application/json" in content_type:
                         try:

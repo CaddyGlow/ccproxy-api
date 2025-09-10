@@ -5,18 +5,17 @@ import json
 from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING, Any, cast
 
-
-if TYPE_CHECKING:
-    from ccproxy.services.interfaces import IMetricsCollector
-
 import httpx
 from fastapi import HTTPException, Request
 from starlette.responses import Response, StreamingResponse
 
 from ccproxy.core.logging import get_plugin_logger
-
-# StreamingResponseWithLogging removed - access logging now handled by hooks
 from ccproxy.services.adapters.base import BaseAdapter
+from ccproxy.services.adapters.http_adapter import BaseHTTPAdapter
+
+
+if TYPE_CHECKING:
+    from ccproxy.services.interfaces import IMetricsCollector
 
 from .auth import NoOpAuthManager
 from .config import ClaudeSDKSettings
@@ -30,7 +29,7 @@ from .transformers.response import ClaudeSDKResponseTransformer
 logger = get_plugin_logger()
 
 
-class ClaudeSDKAdapter(BaseAdapter):
+class ClaudeSDKAdapter(BaseHTTPAdapter):
     """Claude SDK adapter implementation using delegation pattern.
 
     This adapter integrates with the application request lifecycle,
@@ -44,6 +43,7 @@ class ClaudeSDKAdapter(BaseAdapter):
         session_manager: SessionManager | None = None,
         metrics: "IMetricsCollector | None" = None,
         hook_manager: Any | None = None,
+        **kwargs: Any,
     ) -> None:
         """Initialize the Claude SDK adapter with explicit dependencies.
 
@@ -54,6 +54,10 @@ class ClaudeSDKAdapter(BaseAdapter):
             hook_manager: Optional hook manager for emitting events
         """
         import uuid
+
+        # Initialize BaseHTTPAdapter with dummy auth_manager and http_pool_manager
+        # since ClaudeSDK doesn't use external HTTP
+        super().__init__(auth_manager=None, http_pool_manager=None, **kwargs)
 
         self.config = config
         self.metrics = metrics
@@ -125,11 +129,13 @@ class ClaudeSDKAdapter(BaseAdapter):
         """
         self._detection_service = detection_service
 
-    async def handle_request(
-        self, request: Request, endpoint: str, method: str, **kwargs: Any
-    ) -> Response | StreamingResponse:
+    async def handle_request(self, request: Request) -> Response | StreamingResponse:
         # Ensure adapter is initialized
         await self.initialize()
+
+        # Extract endpoint from request URL
+        endpoint = request.url.path
+        method = request.method
 
         # Parse request body
         body = await request.body()
@@ -468,7 +474,7 @@ class ClaudeSDKAdapter(BaseAdapter):
         modified_request._body = modified_body
 
         # Delegate to handle_request which will handle streaming
-        result = await self.handle_request(modified_request, endpoint, "POST", **kwargs)
+        result = await self.handle_request(modified_request)
 
         # Ensure we return a streaming response
         if not isinstance(result, StreamingResponse):
@@ -517,3 +523,39 @@ class ClaudeSDKAdapter(BaseAdapter):
     async def close(self) -> None:
         """Compatibility method - delegates to cleanup()."""
         await self.cleanup()
+
+    # BaseHTTPAdapter abstract method implementations
+    # Note: ClaudeSDK doesn't use external HTTP, so these methods are minimal implementations
+
+    async def prepare_provider_request(
+        self, body: bytes, headers: dict[str, str], endpoint: str
+    ) -> tuple[bytes, dict[str, str]]:
+        """Prepare request for ClaudeSDK (minimal implementation).
+
+        ClaudeSDK uses the local Claude SDK rather than making HTTP requests,
+        so this just passes through the body and headers.
+        """
+        return body, headers
+
+    async def process_provider_response(
+        self, response: "httpx.Response", endpoint: str
+    ) -> Response | StreamingResponse:
+        """Process response from ClaudeSDK (minimal implementation).
+
+        ClaudeSDK handles response processing in handle_request method,
+        so this should not be called in normal operation.
+        """
+        # This shouldn't be called for ClaudeSDK, but provide a fallback
+        return Response(
+            content=response.content,
+            status_code=response.status_code,
+            headers=dict(response.headers),
+        )
+
+    async def get_target_url(self, endpoint: str) -> str:
+        """Get target URL for ClaudeSDK (minimal implementation).
+
+        ClaudeSDK uses local SDK rather than HTTP URLs,
+        so this returns a placeholder URL.
+        """
+        return f"claude-sdk://local/{endpoint.lstrip('/')}"

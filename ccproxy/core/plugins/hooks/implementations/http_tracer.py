@@ -418,7 +418,7 @@ class HTTPTracerHook(Hook):
     def _normalize_header_pairs(self, headers: Any) -> list[tuple[str, str]]:
         """Normalize headers to a list of pairs preserving order and duplicates.
 
-        Accepts HeaderBag (items()), dict (items()), or any iterable of pairs.
+        Accepts dict (items()), dict-like objects, or any iterable of pairs.
         """
         try:
             if headers is None:

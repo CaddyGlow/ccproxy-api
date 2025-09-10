@@ -15,7 +15,6 @@ from .client import (
 from .hooks import HookableHTTPClient
 from .plugin_handler import PluginHTTPHandler
 from .pool import HTTPPoolManager
-from .processor import RequestProcessor
 
 
 __all__ = [
@@ -30,7 +29,6 @@ __all__ = [
     "HTTPTimeoutError",
     "HTTPConnectionError",
     # Services
-    "RequestProcessor",
     "PluginHTTPHandler",
     "HTTPPoolManager",
     "BaseHTTPHandler",

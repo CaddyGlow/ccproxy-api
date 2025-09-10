@@ -34,12 +34,7 @@ def _cast_result(result: object) -> Response | StreamingResponse | DeferredStrea
 async def _handle_adapter_request(
     request: Request, adapter: Any, endpoint: str, **kwargs: Any
 ) -> Response | StreamingResponse | DeferredStreaming:
-    result = await adapter.handle_request(
-        request=request,
-        endpoint=endpoint,
-        method=request.method,
-        **kwargs,
-    )
+    result = await adapter.handle_request(request)
     return _cast_result(result)
 
 
@@ -50,6 +45,8 @@ async def create_anthropic_message(
     adapter: ClaudeAPIAdapterDep,
 ) -> Response | StreamingResponse | DeferredStreaming:
     """Create a message using Claude AI with native Anthropic format."""
+    # Set endpoint metadata for adapter usage
+    request.state.context.metadata["endpoint"] = "/v1/messages"
     return await _handle_adapter_request(request, adapter, "/v1/messages")
 
 
@@ -60,6 +57,9 @@ async def create_openai_chat_completion(
     adapter: ClaudeAPIAdapterDep,
 ) -> Response | StreamingResponse | DeferredStreaming:
     """Create a chat completion using Claude AI with OpenAI-compatible format."""
+    # Set format chain for OpenAI→Anthropic conversion
+    request.state.context.format_chain = ["openai", "anthropic"]
+    request.state.context.metadata["endpoint"] = "/v1/chat/completions"
     return await _handle_adapter_request(request, adapter, "/v1/chat/completions")
 
 
@@ -98,6 +98,9 @@ async def claude_v1_responses(
     adapter: ClaudeAPIAdapterDep,
 ) -> StreamingResponse | Response | DeferredStreaming:
     """Response API compatible endpoint using Claude backend."""
+    # Set format chain for Codex-style responses→Anthropic conversion
+    request.state.context.format_chain = ["codex", "anthropic"]
+    request.state.context.metadata["endpoint"] = "/v1/responses"
     session_id = request.headers.get("session_id") or str(uuid.uuid4())
     return await _handle_adapter_request(
         request, adapter, "/v1/responses", session_id=session_id
@@ -112,6 +115,9 @@ async def claude_v1_responses_with_session(
     adapter: ClaudeAPIAdapterDep,
 ) -> StreamingResponse | Response | DeferredStreaming:
     """Response API with session_id using Claude backend."""
+    # Set format chain for Codex-style responses→Anthropic conversion
+    request.state.context.format_chain = ["codex", "anthropic"]
+    request.state.context.metadata["endpoint"] = "/{session_id}/v1/responses"
     return await _handle_adapter_request(
         request, adapter, "/{session_id}/v1/responses", session_id=session_id
     )

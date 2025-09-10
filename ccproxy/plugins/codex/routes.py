@@ -37,12 +37,7 @@ async def handle_codex_request(
 ) -> StreamingResponse | Response | DeferredStreaming:
     from typing import cast as _cast
 
-    result = await adapter.handle_request(
-        request=request,
-        endpoint=endpoint,
-        method=request.method,
-        session_id=session_id,
-    )
+    result = await adapter.handle_request(request)
     return _cast(StreamingResponse | Response | DeferredStreaming, result)
 
 
@@ -53,6 +48,8 @@ async def codex_responses(
     auth: ConditionalAuthDep,
     adapter: CodexAdapterDep,
 ) -> StreamingResponse | Response | DeferredStreaming:
+    # Set endpoint metadata for adapter usage (native responses format)
+    request.state.context.metadata["endpoint"] = "/responses"
     return await handle_codex_request(request, adapter, "/responses")
 
 
@@ -63,6 +60,8 @@ async def codex_responses_with_session(
     auth: ConditionalAuthDep,
     adapter: CodexAdapterDep,
 ) -> StreamingResponse | Response | DeferredStreaming:
+    # Set endpoint metadata for adapter usage (native responses format)
+    request.state.context.metadata["endpoint"] = "/{session_id}/responses"
     return await handle_codex_request(
         request, adapter, "/{session_id}/responses", session_id
     )
@@ -74,6 +73,9 @@ async def codex_chat_completions(
     auth: ConditionalAuthDep,
     adapter: CodexAdapterDep,
 ) -> StreamingResponse | Response | DeferredStreaming:
+    # Set format chain for OpenAI→Codex conversion
+    request.state.context.format_chain = ["openai", "codex"]
+    request.state.context.metadata["endpoint"] = "/chat/completions"
     return await handle_codex_request(request, adapter, "/chat/completions")
 
 
@@ -84,6 +86,9 @@ async def codex_chat_completions_with_session(
     auth: ConditionalAuthDep,
     adapter: CodexAdapterDep,
 ) -> StreamingResponse | Response | DeferredStreaming:
+    # Set format chain for OpenAI→Codex conversion
+    request.state.context.format_chain = ["openai", "codex"]
+    request.state.context.metadata["endpoint"] = "/{session_id}/chat/completions"
     return await handle_codex_request(
         request, adapter, "/{session_id}/chat/completions", session_id
     )
@@ -95,7 +100,10 @@ async def codex_v1_chat_completions(
     auth: ConditionalAuthDep,
     adapter: CodexAdapterDep,
 ) -> StreamingResponse | Response | DeferredStreaming:
-    return await codex_chat_completions(request, auth, adapter)
+    # Set format chain for OpenAI→Codex conversion
+    request.state.context.format_chain = ["openai", "codex"]
+    request.state.context.metadata["endpoint"] = "/v1/chat/completions"
+    return await handle_codex_request(request, adapter, "/chat/completions")
 
 
 @router.get("/v1/models", response_model=None)
@@ -133,6 +141,9 @@ async def codex_v1_messages(
     auth: ConditionalAuthDep,
     adapter: CodexAdapterDep,
 ) -> StreamingResponse | Response | DeferredStreaming:
+    # Set format chain for Anthropic→Codex conversion
+    request.state.context.format_chain = ["anthropic", "codex"]
+    request.state.context.metadata["endpoint"] = "/v1/messages"
     return await handle_codex_request(request, adapter, "/v1/messages")
 
 
@@ -143,6 +154,9 @@ async def codex_v1_messages_with_session(
     auth: ConditionalAuthDep,
     adapter: CodexAdapterDep,
 ) -> StreamingResponse | Response | DeferredStreaming:
+    # Set format chain for Anthropic→Codex conversion
+    request.state.context.format_chain = ["anthropic", "codex"]
+    request.state.context.metadata["endpoint"] = "/{session_id}/v1/messages"
     return await handle_codex_request(
         request, adapter, "/{session_id}/v1/messages", session_id
     )
