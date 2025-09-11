@@ -22,11 +22,15 @@ class ClaudeAPIAdapter(BaseHTTPAdapter):
     """Simplified Claude API adapter."""
 
     def __init__(
-        self, detection_service: ClaudeAPIDetectionService, **kwargs: Any
+        self,
+        detection_service: ClaudeAPIDetectionService,
+        config: Any = None,
+        **kwargs: Any,
     ) -> None:
-        super().__init__(**kwargs)
+        super().__init__(config=config, **kwargs)
         self.detection_service = detection_service
-        self.base_url = self.config.base_url
+
+        self.base_url = self.config.base_url.rstrip("/")
 
     async def get_target_url(self, endpoint: str) -> str:
         return f"{self.base_url}/v1/messages"

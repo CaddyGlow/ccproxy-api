@@ -305,7 +305,7 @@ class ClaudeAPIFactory(BaseProviderPluginFactory):
     # Provide credentials manager so HTTP adapter receives an auth manager
     credentials_manager_class = ClaudeApiTokenManager
     routers = [
-        RouterSpec(router=claude_api_router, prefix="/api"),
+        RouterSpec(router=claude_api_router, prefix="/api", tags=["claude-api"]),
     ]
     # OAuth provider is optional because the token manager can operate
     # without a globally-registered auth provider. When present, it enables
@@ -318,10 +318,11 @@ class ClaudeAPIFactory(BaseProviderPluginFactory):
             from_format="openai",
             to_format="anthropic",
             adapter_factory=lambda: __import__(
-                "ccproxy.adapters.openai.adapter", fromlist=["OpenAIAdapter"]
-            ).OpenAIAdapter(),
-            priority=60,  # Lower priority than SDK plugin
-            description="OpenAI to Anthropic format conversion for Claude API",
+                "ccproxy.adapters.openai.adapter",
+                fromlist=["OpenAIAdapter"],
+            ).OpenAIToAnthropicAdapter(),
+            priority=100,  # Lower priority than SDK plugin
+            description="OpenAI to Anthropic",
         ),
         FormatAdapterSpec(
             from_format="anthropic",
@@ -330,8 +331,8 @@ class ClaudeAPIFactory(BaseProviderPluginFactory):
                 "ccproxy.adapters.openai.anthropic_to_openai_adapter",
                 fromlist=["AnthropicToOpenAIAdapter"],
             ).AnthropicToOpenAIAdapter(),
-            priority=60,  # Lower priority than SDK plugin
-            description="Anthropic to OpenAI format conversion for Claude API",
+            priority=100,  # Lower priority than SDK plugin
+            description="Anthropic to OpenAI",
         ),
         FormatAdapterSpec(
             from_format="response_api",

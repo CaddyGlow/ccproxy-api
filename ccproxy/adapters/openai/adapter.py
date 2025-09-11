@@ -603,6 +603,29 @@ class OpenAIAdapter(APIAdapter):
             )
             raise ValueError(f"Error processing streaming response: {e}") from e
 
+    def create_stream_processor(self) -> OpenAIStreamProcessor:
+        """Create a streaming processor for SSE format conversion.
+
+        This method allows the StreamingHandler to get a stream processor
+        from the format registry for handling SSE streaming responses.
+
+        Returns:
+            OpenAIStreamProcessor configured for SSE output
+        """
+        return OpenAIStreamProcessor(
+            output_format="sse", enable_usage=True, enable_tool_calls=True
+        )
+
+    def get_stream_processor(self) -> OpenAIStreamProcessor:
+        """Get a streaming processor for SSE format conversion.
+
+        Alias for create_stream_processor for different naming conventions.
+
+        Returns:
+            OpenAIStreamProcessor configured for SSE output
+        """
+        return self.create_stream_processor()
+
     def _convert_messages_to_anthropic(
         self, openai_messages: list[Any]
     ) -> tuple[list[dict[str, Any]], str | None]:

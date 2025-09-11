@@ -9,6 +9,7 @@ from ccproxy.core.logging import get_plugin_logger
 from ccproxy.models.provider import ProviderConfig
 from ccproxy.services.adapters.base import BaseAdapter
 from ccproxy.streaming import DeferredStreaming
+from ccproxy.streaming.handler import StreamingHandler
 from ccproxy.utils.headers import extract_request_headers, filter_response_headers
 
 
@@ -23,19 +24,21 @@ class BaseHTTPAdapter(BaseAdapter):
         config: ProviderConfig,
         auth_manager: Any,
         http_pool_manager: Any,
+        streaming_handler: StreamingHandler | None = None,
         **kwargs: Any,
     ) -> None:
         # Call parent constructor to properly initialize config
         super().__init__(config=config, **kwargs)
         self.auth_manager = auth_manager
         self.http_pool_manager = http_pool_manager
+        self.streaming_handler = streaming_handler
         self.format_registry = kwargs.get("format_registry")
         self.context = kwargs.get("context")
 
     async def handle_request(
         self, request: Request
     ) -> Response | StreamingResponse | DeferredStreaming:
-        """Handle request with simplified single parameter signature."""
+        """Handle request with streaming detection and format chain support."""
 
         # Get context from middleware (already initialized)
         ctx = request.state.context
@@ -46,17 +49,33 @@ class BaseHTTPAdapter(BaseAdapter):
         method = request.method
         endpoint = ctx.metadata.get("endpoint", "")
 
-        # Step 2: Execute format chain if specified
+        # Step 2: Early streaming detection
+        if self.streaming_handler:
+            # Import here to avoid circular imports
+            from ccproxy.services.handler_config import HandlerConfig
+
+            handler_config = HandlerConfig(
+                supports_streaming=True,
+                request_transformer=None,
+                response_adapter=None,
+                format_context=None,
+            )
+
+            if await self.streaming_handler.should_stream(body, handler_config):
+                logger.debug("streaming_request_detected", endpoint=endpoint)
+                return await self.handle_streaming(request, endpoint)
+
+        # Step 3: Execute format chain if specified (non-streaming)
         if ctx.format_chain and len(ctx.format_chain) > 1:
             body = await self._execute_format_chain(
                 body, ctx.format_chain, ctx, mode="request"
             )
-        # Step 3: Provider-specific preparation
+        # Step 4: Provider-specific preparation
         prepared_body, prepared_headers = await self.prepare_provider_request(
             body, headers, endpoint
         )
 
-        # Step 4: Execute HTTP request
+        # Step 5: Execute HTTP request
         target_url = await self.get_target_url(endpoint)
         provider_response = await self._execute_http_request(
             method,
@@ -65,13 +84,13 @@ class BaseHTTPAdapter(BaseAdapter):
             prepared_body,
         )
 
-        # Step 5: Provider-specific response processing
+        # Step 6: Provider-specific response processing
         response = await self.process_provider_response(provider_response, endpoint)
 
         # filter out hop-by-hop headers
         headers = filter_response_headers(dict(provider_response.headers))
 
-        # Step 6: Format the response
+        # Step 7: Format the response
         if isinstance(response, StreamingResponse):
             return await self._convert_streaming_response(
                 response, ctx.format_chain, ctx
@@ -133,30 +152,47 @@ class BaseHTTPAdapter(BaseAdapter):
     async def handle_streaming(
         self, request: Request, endpoint: str, **kwargs: Any
     ) -> StreamingResponse | DeferredStreaming:
-        """Handle a streaming request (BaseAdapter interface).
+        """Handle a streaming request using StreamingHandler with format chain support."""
 
-        For HTTP adapters, streaming is handled within the main handle_request flow.
-        This delegates to the main handler and ensures streaming response.
-        """
-        # Set endpoint in context for compatibility with BaseAdapter interface
-        if hasattr(request.state, "context"):
-            ctx = request.state.context
-            ctx.metadata["endpoint"] = endpoint
+        if not self.streaming_handler:
+            logger.error("streaming_handler_missing")
+            # Fallback to regular request handling
+            response = await self.handle_request(request)
+            if isinstance(response, StreamingResponse | DeferredStreaming):
+                return response
+            else:
+                logger.warning("non_streaming_fallback", endpoint=endpoint)
+                return response  # type: ignore[return-value]
 
-        response = await self.handle_request(request)
+        # Get context from middleware
+        ctx = request.state.context
 
-        # Ensure we return a streaming response
-        if isinstance(response, StreamingResponse | DeferredStreaming):
-            return response
-        else:
-            # Convert regular response to streaming if needed
-            # This shouldn't normally happen for streaming requests
-            logger.warning(
-                "non_streaming_response_for_streaming_request",
-                endpoint=endpoint,
-                response_type=type(response).__name__,
-            )
-            return response  # type: ignore[return-value]
+        # Extract request data
+        body = await request.body()
+        headers = extract_request_headers(request)
+
+        # Build handler config for streaming
+        # Import here to avoid circular imports
+        from ccproxy.services.handler_config import HandlerConfig
+
+        handler_config = HandlerConfig(
+            supports_streaming=True,
+            request_transformer=None,
+            response_adapter=None,  # Will be enhanced by StreamingHandler
+            format_context=None,
+        )
+
+        # Delegate to StreamingHandler with format chain
+        return await self.streaming_handler.handle_streaming_request(
+            method=request.method,
+            url=await self.get_target_url(endpoint),
+            headers=headers,
+            body=body,
+            handler_config=handler_config,
+            request_context=ctx,
+            format_chain=ctx.format_chain,  # Pass format chain for conversion
+            client=await self.http_pool_manager.get_client(),
+        )
 
     async def _execute_format_chain(
         self, body: bytes, format_chain: list[str], ctx: Any, mode: str = "response"

@@ -349,6 +349,33 @@ class AnthropicToOpenAIAdapter(APIAdapter):
                 "error": {"type": "internal_server_error", "message": str(e)},
             }
 
+    def create_stream_processor(self) -> Any:
+        """Create a streaming processor for SSE format conversion.
+
+        This method allows the StreamingHandler to get a stream processor
+        from the format registry for handling SSE streaming responses.
+
+        Returns:
+            AnthropicStreamProcessor configured for SSE output
+        """
+        try:
+            from ccproxy.adapters.openai.streaming import AnthropicStreamProcessor
+
+            return AnthropicStreamProcessor()
+        except ImportError as e:
+            logger.debug("anthropic_stream_processor_import_failed", error=str(e))
+            return None
+
+    def get_stream_processor(self) -> Any:
+        """Get a streaming processor for SSE format conversion.
+
+        Alias for create_stream_processor for different naming conventions.
+
+        Returns:
+            AnthropicStreamProcessor configured for SSE output
+        """
+        return self.create_stream_processor()
+
     def _convert_anthropic_messages_to_openai(
         self, request: dict[str, Any]
     ) -> list[dict[str, Any]]:
