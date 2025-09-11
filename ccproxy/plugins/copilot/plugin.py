@@ -142,7 +142,7 @@ class CopilotPluginFactory(BaseProviderPluginFactory, AuthProviderPluginFactory)
                 "ccproxy.adapters.openai.adapter",
                 fromlist=["OpenAIAdapter"],
             ).OpenAIToAnthropicAdapter(),
-            priority=51,  # Lower priority than SDK plugin
+            priority=100,  # Lower priority than SDK plugin
             description="OpenAI to Anthropic",
         ),
         FormatAdapterSpec(
@@ -152,7 +152,7 @@ class CopilotPluginFactory(BaseProviderPluginFactory, AuthProviderPluginFactory)
                 "ccproxy.adapters.openai.anthropic_to_openai_adapter",
                 fromlist=["AnthropicToOpenAIAdapter"],
             ).AnthropicToOpenAIAdapter(),
-            priority=51,  # Lower priority than SDK plugin
+            priority=100,  # Lower priority than SDK plugin
             description="Anthropic to OpenAI",
         ),
         FormatAdapterSpec(

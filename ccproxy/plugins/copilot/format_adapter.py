@@ -265,23 +265,23 @@ class CopilotFormatAdapter:
         Returns:
             Adapted response
         """
-        if from_format == to_format:
-            return response
-
-        if (
-            from_format == "copilot"
-            and to_format == "openai"
-            or from_format == "openai"
-            and to_format == "copilot"
-        ):
-            return await self.copilot_to_openai.adapt_response(response)
-        else:
-            logger.warning(
-                "unsupported_format_conversion",
-                from_format=from_format,
-                to_format=to_format,
-            )
-            return response
+        # if from_format == to_format:
+        #     return response
+        #
+        # if (
+        #     from_format == "copilot"
+        #     and to_format == "openai"
+        #     or from_format == "openai"
+        #     and to_format == "copilot"
+        # ):
+        #     return await self.copilot_to_openai.adapt_response(response)
+        # else:
+        #     logger.warning(
+        #         "unsupported_format_conversion",
+        #         from_format=from_format,
+        #         to_format=to_format,
+        #     )
+        return response
 
     async def adapt_stream_chunk(
         self, chunk: dict[str, Any], from_format: str, to_format: str
