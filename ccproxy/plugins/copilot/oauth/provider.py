@@ -5,13 +5,19 @@ from typing import TYPE_CHECKING, Any
 
 import httpx
 
+from ccproxy.auth.models import credentials as credentials_type
 from ccproxy.auth.oauth.protocol import ProfileLoggingMixin, StandardProfileFields
 from ccproxy.auth.oauth.registry import CliAuthConfig, FlowType, OAuthProviderInfo
 from ccproxy.core.logging import get_plugin_logger
 
 from ..config import CopilotOAuthConfig
 from .client import CopilotOAuthClient
-from .models import CopilotCredentials, CopilotProfileInfo, CopilotTokenInfo
+from .models import (
+    CopilotCredentials,
+    CopilotProfileInfo,
+    CopilotTokenInfo,
+    CopilotTokenResponse,
+)
 from .storage import CopilotOAuthStorage
 
 
@@ -233,6 +239,13 @@ class CopilotOAuthProvider(ProfileLoggingMixin):
             display_name=display_name,
         )
 
+    async def get_copilot_token_data(self) -> CopilotTokenResponse | None:
+        credentials = await self.storage.load_credentials()
+        if not credentials:
+            return None
+
+        return credentials.copilot_token
+
     async def get_token_info(self) -> CopilotTokenInfo | None:
         """Get current token information.
 
@@ -335,6 +348,24 @@ class CopilotOAuthProvider(ProfileLoggingMixin):
             raise ValueError("Failed to obtain Copilot token")
 
         return credentials.copilot_token.token.get_secret_value()
+
+    async def ensure_oauth_token(self) -> str:
+        """Ensure we have a valid OAuth token.
+
+        Returns:
+            Valid OAuth token
+
+        Raises:
+            ValueError: If unable to get valid token
+        """
+        credentials = await self.storage.load_credentials()
+        if not credentials:
+            raise ValueError("No credentials found - authorization required")
+
+        if credentials.oauth_token.is_expired:
+            raise ValueError("OAuth token expired - re-authorization required")
+
+        return credentials.oauth_token.access_token.get_secret_value()
 
     async def logout(self) -> None:
         """Clear stored credentials."""

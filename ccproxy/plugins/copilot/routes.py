@@ -17,10 +17,13 @@ from ccproxy.api.dependencies import get_plugin_adapter
 from ccproxy.core.logging import get_plugin_logger
 from ccproxy.models.messages import MessageCreateParams, MessageResponse
 from ccproxy.models.responses import APIError
+from ccproxy.plugins.copilot.adapter import CopilotAdapter
+from ccproxy.plugins.copilot.oauth.provider import CopilotOAuthProvider
 from ccproxy.streaming import DeferredStreaming
 
 from .models import (
     CopilotEmbeddingRequest,
+    CopilotErrorResponse,
     CopilotHealthResponse,
     CopilotTokenStatus,
     CopilotUserInternalResponse,
@@ -133,7 +136,7 @@ async def create_anthropic_completion(
     return await _handle_adapter_request(request, adapter)
 
 
-@router.post("/v1/embeddings", response_model=None)
+@router.post("/v1/embeddings", response_model=CopilotEmbeddingRequest)
 async def create_embeddings(
     request: Request, adapter: CopilotAdapterDep
 ) -> JSONResponse:
@@ -198,18 +201,28 @@ async def create_embeddings(
 
 
 @router.get("/usage", response_model=CopilotUserInternalResponse)
-async def get_usage_stats() -> JSONResponse:
+async def get_usage_stats(adapter: CopilotAdapterDep) -> JSONResponse:
     """Get Copilot usage statistics."""
     try:
         logger.debug("getting_usage_stats")
 
-        # This endpoint requires upstream /copilot_internal/user data
-        # Return error if not available since we don't have real data
-        raise HTTPException(
-            status_code=503,
-            detail="Usage data not available - requires upstream /copilot_internal/user integration",
+        # Forward request to upstream GitHub API
+        response = await adapter.forward_to_github_api("/copilot_internal/user")
+
+        content = response.body
+        if isinstance(content, bytes):
+            content_data = json.loads(content.decode()) if content else {}
+        else:
+            content_data = json.loads(content) if content else {}
+
+        return JSONResponse(
+            content=content_data,
+            status_code=response.status_code,
+            headers=dict(response.headers),
         )
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(
             "usage_stats_failed",
@@ -225,56 +238,29 @@ async def get_usage_stats() -> JSONResponse:
 async def get_token_status(adapter: CopilotAdapterDep) -> JSONResponse:
     """Get current token status."""
     try:
-        logger.debug("getting_token_status")
-
         if not adapter.oauth_provider:
             raise HTTPException(status_code=503, detail="OAuth provider not available")
 
-        # Check authentication status
-        is_authenticated = await adapter.oauth_provider.is_authenticated()
-        token_info = await adapter.oauth_provider.get_token_info()
-
-        if is_authenticated and token_info:
-            profile = await adapter.oauth_provider.get_user_profile("")
-            token_status = CopilotTokenStatus(
-                valid=True,
-                expires_at=token_info.copilot_expires_at,
-                account_type=token_info.account_type,
-                copilot_access=token_info.copilot_access,
-                username=profile.display_name if profile else None,
+        try:
+            # Forward request to upstream GitHub API for token status
+            response = await adapter.forward_to_github_api(
+                "/copilot_internal/v2/token", use_oauth_token=True
             )
-        else:
-            token_status = CopilotTokenStatus(
-                valid=False,
-                expires_at=None,
-                account_type="unknown",
-                copilot_access=False,
-                username=None,
+            return response
+
+        except Exception as upstream_error:
+            logger.warning(
+                "upstream_token_status_failed_using_local",
+                error=str(upstream_error),
+                exc_info=upstream_error,
             )
-
-        logger.info(
-            "token_status_retrieved",
-            valid=token_status.valid,
-            account_type=token_status.account_type,
-            copilot_access=token_status.copilot_access,
-        )
-
-        return JSONResponse(
-            content=token_status.model_dump(),
-            headers={"X-Copilot-Provider": "ccproxy"},
-        )
-
-    except HTTPException:
-        raise
     except Exception as e:
-        logger.error(
-            "token_status_failed",
+        logger.warning(
+            "upstream_error",
             error=str(e),
             exc_info=e,
         )
-        raise HTTPException(
-            status_code=500, detail=f"Failed to get token status: {str(e)}"
-        ) from e
+        raise HTTPException(status_code=500, detail=f"upstream error: {str(e)}")
 
 
 @router.get("/health", response_model=CopilotHealthResponse)
@@ -366,66 +352,43 @@ async def health_check(adapter: CopilotAdapterDep) -> JSONResponse:
         return JSONResponse(
             content=health_response.model_dump(),
             status_code=503,
-            headers={"X-Copilot-Provider": "ccproxy"},
         )
 
 
-@router.get("/v1/models", response_model=OpenAIModelsResponse)
+@router.get("/v2/models", response_model=OpenAIModelsResponse)
 async def list_models(adapter: CopilotAdapterDep) -> JSONResponse:
     """List available Copilot models."""
     try:
-        logger.debug("listing_copilot_models")
-
-        # Load models from fallback data
-        import pathlib
-
-        fallback_path = pathlib.Path(__file__).parent / "data" / "copilot_fallback.json"
-
-        try:
-            with fallback_path.open("r") as f:
-                fallback_data = json.load(f)
-                models_data = fallback_data.get("models", [])
-        except Exception as e:
-            logger.warning(
-                "fallback_data_load_failed",
-                error=str(e),
-                exc_info=e,
-            )
-            # Provide basic model list as fallback
-            models_data = [
-                {
-                    "id": "gpt-4",
-                    "object": "model",
-                    "created": 1687882411,
-                    "owned_by": "github",
-                },
-                {
-                    "id": "gpt-3.5-turbo",
-                    "object": "model",
-                    "created": 1687882411,
-                    "owned_by": "github",
-                },
-            ]
-
-        models = [OpenAIModelInfo.model_validate(model) for model in models_data]
-        response = OpenAIModelsResponse(data=models)
-
-        logger.info(
-            "models_listed",
-            model_count=len(models),
+        # Forward request to upstream GitHub API for models
+        response = await adapter.forward_to_github_api(
+            "/copilot_internal/v2/models", use_oauth_token=True
         )
-
-        return JSONResponse(
-            content=response.model_dump(),
-            headers={"X-Copilot-Provider": "ccproxy"},
-        )
+        return response
 
     except Exception as e:
-        logger.error(
-            "models_listing_failed",
+        logger.warning(
+            "upstream_models_failed_using_fallback",
             error=str(e),
             exc_info=e,
         )
-        raise HTTPException(
-            status_code=500, detail=f"Failed to list models: {str(e)}"
-        ) from e
+        raise HTTPException(status_code=500, detail=f"Failed to list models: {str(e)}")
+
+
+@router.get("/v1/models", response_model=OpenAIModelsResponse)
+async def list_models_v1(adapter: CopilotAdapterDep) -> JSONResponse:
+    """List available Copilot models."""
+
+    try:
+        # Forward request to upstream GitHub API for models
+        response = await adapter.forward_to_github_api(
+            "/copilot_internal/v1/models", use_oauth_token=True
+        )
+        return response
+
+    except Exception as e:
+        logger.warning(
+            "upstream_error",
+            error=str(e),
+            exc_info=e,
+        )
+        raise HTTPException(status_code=500, detail=f"Failed to list models: {str(e)}")
