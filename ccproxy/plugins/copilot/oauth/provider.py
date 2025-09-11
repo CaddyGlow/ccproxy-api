@@ -5,7 +5,6 @@ from typing import TYPE_CHECKING, Any
 
 import httpx
 
-from ccproxy.auth.models import credentials as credentials_type
 from ccproxy.auth.oauth.protocol import ProfileLoggingMixin, StandardProfileFields
 from ccproxy.auth.oauth.registry import CliAuthConfig, FlowType, OAuthProviderInfo
 from ccproxy.core.logging import get_plugin_logger

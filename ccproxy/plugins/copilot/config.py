@@ -8,7 +8,7 @@ from ccproxy.models.provider import ProviderConfig
 class CopilotOAuthConfig(BaseModel):
     """OAuth-specific configuration for GitHub Copilot."""
 
-    "https://api.githubcopilot.com/chat/completions"
+    "https://api.individual.githubcopilot.com/chat/completions"
     client_id: str = Field(
         default="Iv1.b507a08c87ecfe98",
         description="GitHub Copilot OAuth client ID",

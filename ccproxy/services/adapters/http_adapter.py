@@ -120,7 +120,6 @@ class BaseHTTPAdapter(BaseAdapter):
             logger.warning(
                 "unexpected_provider_response_type", type=type(response).__name__
             )
-
         return Response(
             content=provider_response.content,
             status_code=provider_response.status_code,

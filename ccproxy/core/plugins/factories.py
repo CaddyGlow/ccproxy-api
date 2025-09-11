@@ -126,13 +126,11 @@ class BaseProviderPluginFactory(ProviderPluginFactory):
                 # Router is a factory function (not an APIRouter instance), call it to get the actual router
                 router_instance = self.router()
 
-            # Normalize tag naming: use kebab-case (underscores -> hyphens)
-            normalized_tag = self.plugin_name.replace("_", "-")
             routes.append(
                 RouteSpec(
                     router=router_instance,
                     prefix=self.route_prefix,
-                    tags=[normalized_tag],
+                    tags=router_instance.tags or [],
                 )
             )
 

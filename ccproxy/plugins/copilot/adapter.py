@@ -2,14 +2,17 @@ import uuid
 from typing import Any
 
 import httpx
+from starlette.requests import Request
 from starlette.responses import Response, StreamingResponse
 
 from ccproxy.core.logging import get_plugin_logger
 from ccproxy.services.adapters.http_adapter import BaseHTTPAdapter
 from ccproxy.streaming import DeferredStreaming
 from ccproxy.utils.headers import (
+    extract_request_headers,
     extract_response_headers,
     filter_request_headers,
+    filter_response_headers,
 )
 
 from .config import CopilotConfig
@@ -31,9 +34,7 @@ class CopilotAdapter(BaseHTTPAdapter):
         self.base_url = self.config.base_url.rstrip("/")
 
     async def get_target_url(self, endpoint: str) -> str:
-        # Both /v1/messages and /v1/chat/completions map to GitHub Copilot's /chat/completions endpoint
-        # Format conversion (Anthropic <-> OpenAI) is handled by the format adapter chain
-        return f"{self.base_url}/chat/completions"
+        return f"{self.base_url}/{endpoint.lstrip('/')}"
 
     async def prepare_provider_request(
         self, body: bytes, headers: dict[str, str], endpoint: str
@@ -147,102 +148,47 @@ class CopilotAdapter(BaseHTTPAdapter):
             handler_config=handler_config,
         )
 
-    def _needs_format_conversion(self, endpoint: str) -> bool:
-        """Check if this endpoint needs format conversion (Anthropic format requested)."""
-        return endpoint.endswith("/v1/messages")
-
-    async def forward_to_github_api(
-        self,
-        path: str,
-        method: str = "GET",
-        body: bytes | None = None,
-        extra_headers: dict[str, str] | None = None,
-        use_oauth_token: bool = True,
-    ) -> Response:
+    async def handle_request_gh_api(self, request: Request) -> Response:
         """Forward request to GitHub API with proper authentication.
 
         Args:
             path: API path (e.g., '/copilot_internal/user')
+            mode: API mode - 'api' for GitHub API with OAuth token, 'copilot' for Copilot API with Copilot token
             method: HTTP method
             body: Request body
             extra_headers: Additional headers
-            use_oauth_token: If True, use OAuth token; if False, use Copilot token
         """
-        try:
-            # Get appropriate access token
-            if use_oauth_token:
-                access_token = await self.oauth_provider.ensure_oauth_token()
-                token_type = "oauth"
-            else:
-                access_token = await self.oauth_provider.ensure_copilot_token()
-                token_type = "copilot"
+        access_token = await self.oauth_provider.ensure_oauth_token()
+        base_url = "https://api.github.com"
 
-            # Build request headers
-            headers = {
-                "authorization": f"Bearer {access_token}",
-                "user-agent": "ccproxy-copilot/1.0",
-                "accept": "application/json",
-            }
+        headers = {
+            "authorization": f"Bearer {access_token}",
+            "accept": "application/json",
+        }
+        # Get context from middleware (already initialized)
+        ctx = request.state.context
 
-            # Add extra headers if provided
-            if extra_headers:
-                headers.update(extra_headers)
+        # Step 1: Extract request data
+        body = await request.body()
+        headers = extract_request_headers(request)
+        method = request.method
+        endpoint = ctx.metadata.get("endpoint", "")
+        target_url = f"{base_url}{endpoint}"
 
-            # Determine base URL based on path and account type
-            if path.startswith("/copilot_internal"):
-                # Internal APIs always use api.github.com
-                base_url = "https://api.github.com"
-            else:
-                # Other APIs might use account-specific endpoints
-                # For now, default to main GitHub API
-                base_url = "https://api.github.com"
+        provider_response = await self._execute_http_request(
+            method,
+            target_url,
+            headers,
+            body,
+        )
 
-            # Build target URL
-            target_url = f"{base_url}{path}"
+        filtered_headers = filter_response_headers(dict(provider_response.headers))
 
-            # Get HTTP client
-            client = await self.http_pool_manager.get_client()
-
-            # Execute request
-            response = await client.request(
-                method=method,
-                url=target_url,
-                headers=headers,
-                content=body or b"",
-                timeout=30.0,
-            )
-
-            logger.debug(
-                "github_api_request_completed",
-                path=path,
-                method=method,
-                base_url=base_url,
-                token_type=token_type,
-                status_code=response.status_code,
-                response_size=len(response.content) if response.content else 0,
-            )
-
-            # Return response with filtered headers
-            from ccproxy.utils.headers import filter_response_headers
-
-            filtered_headers = filter_response_headers(dict(response.headers))
-
-            return Response(
-                content=response.content,
-                status_code=response.status_code,
-                headers=filtered_headers,
-                media_type=response.headers.get("content-type", "application/json"),
-            )
-
-        except Exception as e:
-            logger.error(
-                "github_api_request_failed",
-                path=path,
-                method=method,
-                base_url=base_url if "base_url" in locals() else "unknown",
-                token_type=token_type if "token_type" in locals() else "unknown",
-                error=str(e),
-                exc_info=e,
-            )
-            # Re-raise to let the route handle the error
-            raise
+        return Response(
+            content=provider_response.content,
+            status_code=provider_response.status_code,
+            headers=filtered_headers,
+            media_type=provider_response.headers.get(
+                "content-type", "application/json"
+            ),
+        )

@@ -18,7 +18,7 @@ from .adapter import CopilotAdapter
 from .config import CopilotConfig
 from .detection_service import CopilotDetectionService
 from .oauth.provider import CopilotOAuthProvider
-from .routes import router as copilot_router
+from .routes import router
 
 
 logger = get_plugin_logger()
@@ -121,7 +121,7 @@ class CopilotPluginFactory(BaseProviderPluginFactory, AuthProviderPluginFactory)
     adapter_class = CopilotAdapter
     detection_service_class = CopilotDetectionService
     config_class = CopilotConfig
-    router = copilot_router
+    router = router
     route_prefix = "/copilot"
     dependencies = []
     optional_requires = []
