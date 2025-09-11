@@ -1,5 +1,4 @@
 from abc import abstractmethod
-from collections.abc import AsyncGenerator
 from typing import Any
 
 import httpx
@@ -111,14 +110,14 @@ class BaseHTTPAdapter(BaseAdapter):
         import json
 
         if not self.format_registry:
-            ctx.log_event("format_chain_skipped", reason="no_registry")
+            logger.debug("format_chain_skipped", reason="no_registry")
             return body
 
         # Parse body as JSON for format conversion
         try:
             current_data = json.loads(body.decode()) if body else {}
         except (json.JSONDecodeError, UnicodeDecodeError) as e:
-            ctx.log_event("format_chain_parse_failed", error=str(e))
+            logger.debug("format_chain_parse_failed", error=str(e))
             return body
 
         for i in range(len(format_chain) - 1):
@@ -129,7 +128,7 @@ class BaseHTTPAdapter(BaseAdapter):
                 adapter = self.format_registry.get_adapter(from_format, to_format)
                 current_data = await adapter.adapt_request(current_data)
 
-                ctx.log_event(
+                logger.debug(
                     "format_chain_step_completed",
                     from_format=from_format,
                     to_format=to_format,
@@ -137,7 +136,7 @@ class BaseHTTPAdapter(BaseAdapter):
                 )
 
             except Exception as e:
-                ctx.log_event(
+                logger.debug(
                     "format_chain_step_failed",
                     from_format=from_format,
                     to_format=to_format,
@@ -153,10 +152,9 @@ class BaseHTTPAdapter(BaseAdapter):
         self, response: Response | StreamingResponse, format_chain: list[str], ctx: Any
     ) -> Response | StreamingResponse:
         """Execute reverse format conversion chain on responses."""
-        import json
 
         if not self.format_registry:
-            ctx.log_event("reverse_format_chain_skipped", reason="no_registry")
+            logger.debug("reverse_format_chain_skipped", reason="no_registry")
             return response
 
         # Handle streaming vs non-streaming responses
@@ -183,8 +181,11 @@ class BaseHTTPAdapter(BaseAdapter):
             else:
                 response_data = {}
         except (json.JSONDecodeError, UnicodeDecodeError) as e:
-            ctx.log_event("reverse_format_chain_parse_failed", error=str(e))
+            logger.debug("reverse_format_chain_parse_failed", error=str(e))
             return response
+
+        # Check if this is an error response based on status code
+        is_error_response = response.status_code >= 400
 
         # Execute reverse format chain (last to first)
         current_data = response_data
@@ -194,12 +195,47 @@ class BaseHTTPAdapter(BaseAdapter):
 
             try:
                 if not self.format_registry:
-                    ctx.log_event("reverse_format_chain_no_registry")
+                    logger.debug("reverse_format_chain_no_registry")
                     return response
                 adapter = self.format_registry.get_adapter(from_format, to_format)
-                current_data = await adapter.adapt_response(current_data)
 
-                ctx.log_event(
+                # Use adapt_error for error responses, adapt_response for success
+                if is_error_response and hasattr(adapter, "adapt_error"):
+                    # For error responses, create a standard error structure if needed
+                    if "error" not in current_data:
+                        # Convert non-standard error response to standard error format
+                        current_data = {
+                            "error": {
+                                "type": "internal_server_error"
+                                if response.status_code >= 500
+                                else "invalid_request_error",
+                                "message": f"Request failed with status {response.status_code}",
+                                "response_data": current_data,  # Preserve original response
+                            }
+                        }
+                    logger.debug(
+                        "reverse_format_chain_using_adapt_error",
+                        from_format=from_format,
+                        to_format=to_format,
+                        status_code=response.status_code,
+                    )
+                    current_data = adapter.adapt_error(current_data)
+                else:
+                    logger.debug(
+                        "reverse_format_chain_using_adapt_response",
+                        from_format=from_format,
+                        to_format=to_format,
+                        current_data=current_data,
+                    )
+                    current_data = await adapter.adapt_response(current_data)
+                    logger.debug(
+                        "reverse_format_chain_using_adapt_response",
+                        from_format=from_format,
+                        to_format=to_format,
+                        current_data=current_data,
+                    )
+
+                logger.debug(
                     "reverse_format_chain_step_completed",
                     from_format=from_format,
                     to_format=to_format,
@@ -207,7 +243,7 @@ class BaseHTTPAdapter(BaseAdapter):
                 )
 
             except Exception as e:
-                ctx.log_event(
+                logger.debug(
                     "reverse_format_chain_step_failed",
                     from_format=from_format,
                     to_format=to_format,
@@ -215,7 +251,7 @@ class BaseHTTPAdapter(BaseAdapter):
                     error=str(e),
                 )
                 # Log error but continue with original response to avoid breaking
-                ctx.log_event("reverse_format_chain_fallback_to_original")
+                logger.debug("reverse_format_chain_fallback_to_original")
                 return response
 
         # Create new response with converted data
@@ -240,7 +276,7 @@ class BaseHTTPAdapter(BaseAdapter):
         # For now, disable reverse format chain for streaming responses
         # This complex conversion should be handled by the existing format adapter system
         # TODO: Implement proper streaming format conversion
-        ctx.log_event(
+        logger.debug(
             "reverse_streaming_format_chain_disabled",
             reason="complex_sse_parsing_disabled",
             format_chain=format_chain,

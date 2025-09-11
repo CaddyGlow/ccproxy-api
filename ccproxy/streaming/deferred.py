@@ -166,6 +166,15 @@ class DeferredStreaming(StreamingResponse):
 
                     # Stream the response with optional SSE processing
                     if self.handler_config and self.handler_config.response_adapter:
+                        logger.debug(
+                            "streaming_format_adapter_detected",
+                            adapter_type=type(
+                                self.handler_config.response_adapter
+                            ).__name__,
+                            request_id=request_id,
+                            url=self.url,
+                            category="streaming_conversion",
+                        )
                         # Process SSE events with format adaptation
                         async for chunk in self._process_sse_events(
                             response, self.handler_config.response_adapter
@@ -218,6 +227,15 @@ class DeferredStreaming(StreamingResponse):
                             == "codex"
                         )
                         is_sse_format = "text/event-stream" in content_type or is_codex
+
+                        logger.debug(
+                            "streaming_no_format_adapter",
+                            content_type=content_type,
+                            is_codex=is_codex,
+                            is_sse_format=is_sse_format,
+                            request_id=request_id,
+                            category="streaming_conversion",
+                        )
 
                         if is_sse_format:
                             # Buffer and parse SSE events for metrics extraction
@@ -453,16 +471,44 @@ class DeferredStreaming(StreamingResponse):
         - Serialize adapted chunks back to SSE format
         - Optionally process converted chunks with metrics collector
         """
+        request_id = None
+        if self.request_context and hasattr(self.request_context, "request_id"):
+            request_id = self.request_context.request_id
+
+        logger.debug(
+            "sse_processing_pipeline_start",
+            adapter_type=type(adapter).__name__,
+            request_id=request_id,
+            response_status=response.status_code,
+            category="streaming_conversion",
+        )
+
         # Create streaming pipeline:
         # 1. Parse raw SSE bytes to JSON chunks
         json_stream = self._parse_sse_to_json_stream(response.aiter_bytes())
 
         # 2. Pass entire JSON stream through adapter (maintains state)
+        logger.debug(
+            "sse_adapter_stream_calling",
+            adapter_type=type(adapter).__name__,
+            request_id=request_id,
+            category="adapter_integration",
+        )
         adapted_stream = adapter.adapt_stream(json_stream)
 
         # 3. Serialize adapted chunks back to SSE format
+        chunk_count = 0
         async for sse_bytes in self._serialize_json_to_sse_stream(adapted_stream):
+            chunk_count += 1
             yield sse_bytes
+
+        logger.debug(
+            "sse_processing_pipeline_complete",
+            adapter_type=type(adapter).__name__,
+            request_id=request_id,
+            total_processed_chunks=chunk_count,
+            category="streaming_conversion",
+        )
 
     async def _parse_sse_to_json_stream(
         self, raw_stream: AsyncIterator[bytes]
@@ -520,24 +566,59 @@ class DeferredStreaming(StreamingResponse):
         from ccproxy.adapters.openai.streaming import AnthropicSSEFormatter
 
         formatter = AnthropicSSEFormatter()
+        request_id = None
+        if self.request_context and hasattr(self.request_context, "request_id"):
+            request_id = self.request_context.request_id
+
+        chunk_count = 0
+        anthropic_chunks = 0
+        openai_chunks = 0
 
         async for json_obj in json_stream:
+            chunk_count += 1
             # Check if this is Anthropic format (has "type" field)
             event_type = json_obj.get("type")
             if event_type:
+                anthropic_chunks += 1
                 # Use proper Anthropic SSE formatting with event: lines
                 if event_type == "ping":
                     sse_event = formatter.format_ping()
                 else:
                     sse_event = formatter.format_event(event_type, json_obj)
                 sse_bytes = sse_event.encode("utf-8")
+
+                logger.trace(
+                    "sse_serialization_anthropic_format",
+                    event_type=event_type,
+                    chunk_number=chunk_count,
+                    request_id=request_id,
+                    category="sse_format",
+                )
             else:
+                openai_chunks += 1
                 # Use standard OpenAI format (data: only)
                 json_str = json.dumps(json_obj, ensure_ascii=False)
                 sse_event = f"data: {json_str}\n\n"
                 sse_bytes = sse_event.encode("utf-8")
 
+                logger.trace(
+                    "sse_serialization_openai_format",
+                    chunk_number=chunk_count,
+                    has_choices=bool(json_obj.get("choices")),
+                    request_id=request_id,
+                    category="sse_format",
+                )
+
             yield sse_bytes
+
+        logger.debug(
+            "sse_serialization_complete",
+            total_chunks=chunk_count,
+            anthropic_chunks=anthropic_chunks,
+            openai_chunks=openai_chunks,
+            request_id=request_id,
+            category="sse_format",
+        )
 
         # Send final [DONE] event
         yield b"data: [DONE]\n\n"

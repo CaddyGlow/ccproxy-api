@@ -17,7 +17,6 @@ from ccproxy.services.adapters.base import BaseAdapter
 from .adapter import CopilotAdapter
 from .config import CopilotConfig
 from .detection_service import CopilotDetectionService
-from .format_adapter import CopilotToOpenAIAdapter, OpenAIToCopilotAdapter
 from .oauth.provider import CopilotOAuthProvider
 from .routes import router as copilot_router
 
@@ -73,31 +72,11 @@ class CopilotPluginRuntime(ProviderPluginRuntime, AuthProviderPluginRuntime):
         )
 
     async def _setup_format_registry(self) -> None:
-        """Format registry setup with feature flag control."""
-        from ccproxy.config import Settings
-
-        settings = Settings()
-
-        # Manual format adapter setup (placeholder for future manifest system)
-        logger.debug("setting_up_format_adapters_manually")
-
-        # Legacy manual registration as fallback
-        if self.context:
-            service_container = self.context.get("service_container")
-            if service_container:
-                registry = service_container.get_format_registry()
-
-                # Register format adapters
-                openai_to_copilot = OpenAIToCopilotAdapter()
-                copilot_to_openai = CopilotToOpenAIAdapter()
-
-                registry.register("openai", "copilot", openai_to_copilot, "copilot")
-                registry.register("copilot", "openai", copilot_to_openai, "copilot")
-
-                logger.debug(
-                    "format_adapters_registered",
-                    adapters=["openai->copilot", "copilot->openai"],
-                )
+        """Format registry setup - using core Anthropic ↔ OpenAI adapters."""
+        logger.debug(
+            "copilot_using_core_format_adapters",
+            required_adapters=["anthropic->openai"],
+        )
 
     async def cleanup(self) -> None:
         """Cleanup plugin resources."""
@@ -147,21 +126,54 @@ class CopilotPluginFactory(BaseProviderPluginFactory, AuthProviderPluginFactory)
     dependencies = []
     optional_requires = []
 
-    # Declarative format adapter specification
+    # # Define format adapter dependencies (Anthropic ↔ OpenAI provided by core)
+    # requires_format_adapters: list[FormatPair] = [
+    #     (
+    #         "anthropic",
+    #         "openai",
+    #     ),  # Provided by core OpenAI adapter for /v1/messages endpoint
+    # ]
+
     format_adapters = [
         FormatAdapterSpec(
             from_format="openai",
-            to_format="copilot",
-            adapter_factory=lambda: OpenAIToCopilotAdapter(),  # type: ignore[arg-type,return-value]
-            priority=30,  # Between core adapters and plugin-specific ones
-            description="OpenAI to GitHub Copilot format conversion",
+            to_format="anthropic",
+            adapter_factory=lambda: __import__(
+                "ccproxy.adapters.openai.adapter",
+                fromlist=["OpenAIAdapter"],
+            ).OpenAIToAnthropicAdapter(),
+            priority=51,  # Lower priority than SDK plugin
+            description="OpenAI to Anthropic",
         ),
         FormatAdapterSpec(
-            from_format="copilot",
+            from_format="anthropic",
             to_format="openai",
-            adapter_factory=lambda: CopilotToOpenAIAdapter(),  # type: ignore[arg-type,return-value]
-            priority=30,
-            description="GitHub Copilot to OpenAI format conversion",
+            adapter_factory=lambda: __import__(
+                "ccproxy.adapters.openai.anthropic_to_openai_adapter",
+                fromlist=["AnthropicToOpenAIAdapter"],
+            ).AnthropicToOpenAIAdapter(),
+            priority=51,  # Lower priority than SDK plugin
+            description="Anthropic to OpenAI",
+        ),
+        FormatAdapterSpec(
+            from_format="response_api",
+            to_format="anthropic",
+            adapter_factory=lambda: __import__(
+                "ccproxy.adapters.anthropic.response_adapter",
+                fromlist=["AnthropicResponseAPIAdapter"],
+            ).AnthropicResponseAPIAdapter(),
+            priority=50,  # Medium priority
+            description="Response API to Anthropic format conversion for Claude API",
+        ),
+        FormatAdapterSpec(
+            from_format="anthropic",
+            to_format="response_api",
+            adapter_factory=lambda: __import__(
+                "ccproxy.adapters.anthropic.response_adapter",
+                fromlist=["AnthropicResponseAPIAdapter"],
+            ).AnthropicResponseAPIAdapter(),
+            priority=50,  # Medium priority
+            description="Anthropic to Response API format conversion for Claude API",
         ),
     ]
 
@@ -287,6 +299,12 @@ class CopilotPluginFactory(BaseProviderPluginFactory, AuthProviderPluginFactory)
         streaming_handler = context.get("streaming_handler")
         hook_manager = context.get("hook_manager")
 
+        # Get format_registry from service container
+        service_container = context.get("service_container")
+        format_registry = None
+        if service_container:
+            format_registry = service_container.get_format_registry()
+
         # Debug: Log what we actually have in the context
         logger.debug(
             "copilot_adapter_dependencies_debug",
@@ -295,6 +313,7 @@ class CopilotPluginFactory(BaseProviderPluginFactory, AuthProviderPluginFactory)
             has_detection_service=bool(detection_service),
             has_http_pool_manager=bool(http_pool_manager),
             has_oauth_provider=bool(oauth_provider),
+            has_format_registry=bool(format_registry),
         )
 
         if not all(
@@ -324,6 +343,7 @@ class CopilotPluginFactory(BaseProviderPluginFactory, AuthProviderPluginFactory)
             metrics=metrics,
             streaming_handler=streaming_handler,
             hook_manager=hook_manager,
+            format_registry=format_registry,
             context=context,
         )
         return adapter

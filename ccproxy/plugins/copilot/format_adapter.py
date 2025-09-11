@@ -1,4 +1,4 @@
-"""Format adapter for OpenAI ↔ Copilot format conversion."""
+"""Format adapter for OpenAI ↔ Copilot and Anthropic ↔ Copilot format conversion."""
 
 from collections.abc import AsyncIterator
 from typing import Any

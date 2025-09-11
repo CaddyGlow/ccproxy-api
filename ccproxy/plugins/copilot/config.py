@@ -116,20 +116,10 @@ class CopilotProviderConfig(ProviderConfig):
     )
 
 
-class CopilotConfig(BaseModel):
+class CopilotConfig(CopilotProviderConfig):
     """Complete configuration for GitHub Copilot plugin."""
 
-    enabled: bool = Field(
-        default=True,
-        description="Whether the plugin is enabled",
-    )
     oauth: CopilotOAuthConfig = Field(
         default_factory=CopilotOAuthConfig,
         description="OAuth authentication configuration",
     )
-    provider: CopilotProviderConfig = Field(
-        default_factory=CopilotProviderConfig,
-        description="Provider-specific configuration",
-    )
-
-    model_config = {"extra": "forbid"}

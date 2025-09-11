@@ -16,7 +16,6 @@ from pydantic import ValidationError
 
 from ccproxy.adapters.base import APIAdapter
 from ccproxy.core.logging import get_logger
-from ccproxy.utils.model_mapping import map_model_to_claude
 
 from .models import (
     OpenAIChatCompletionRequest,
@@ -65,7 +64,7 @@ class OpenAIAdapter(APIAdapter):
             raise ValueError(f"Invalid OpenAI request format: {e}") from e
 
         # Map OpenAI model to Claude model
-        model = map_model_to_claude(openai_req.model)
+        model = openai_req.model  # map_model_to_claude(openai_req.model)
 
         # Convert messages
         messages, system_prompt = self._convert_messages_to_anthropic(
@@ -341,6 +340,15 @@ class OpenAIAdapter(APIAdapter):
         # Get logger with request context at the start of the function
         logger = get_logger(__name__)
 
+        # Check if this is an error response - use dedicated error handler
+        if "error" in response:
+            logger.debug(
+                "openai_adapter_error_response_detected",
+                error_type=response.get("error", {}).get("type"),
+                error_message=response.get("error", {}).get("message", ""),
+            )
+            return self.adapt_error(response)
+
         try:
             # Extract original model from response metadata if available
             original_model = response.get("model", "gpt-4")
@@ -535,10 +543,46 @@ class OpenAIAdapter(APIAdapter):
             output_format="dict",  # Output dict objects instead of SSE strings
         )
 
+        logger.debug(
+            "openai_adapter_stream_start",
+            processor_settings={
+                "enable_usage": True,
+                "enable_tool_calls": True,
+                "output_format": "dict",
+            },
+            message_id=processor.message_id,
+            model=processor.model,
+            category="streaming_conversion",
+        )
+
         try:
+            chunk_count = 0
             # Process the stream - now yields dict objects directly
             async for chunk in processor.process_stream(stream):
-                yield chunk  # type: ignore[misc]  # chunk is guaranteed to be dict when output_format="dict"
+                chunk_count += 1
+                # Cast chunk to dict since output_format="dict" guarantees dict objects
+                assert isinstance(chunk, dict)  # Runtime assertion for type checker
+                chunk_dict = chunk
+                logger.trace(
+                    "openai_adapter_chunk_processed",
+                    chunk_number=chunk_count,
+                    chunk_type=chunk_dict.get("object", "unknown"),
+                    has_choices=bool(chunk_dict.get("choices")),
+                    finish_reason=chunk_dict.get("choices", [{}])[0].get(
+                        "finish_reason"
+                    )
+                    if chunk_dict.get("choices")
+                    else None,
+                    category="streaming_conversion",
+                )
+                yield chunk_dict
+
+            logger.debug(
+                "openai_adapter_stream_complete",
+                total_chunks_processed=chunk_count,
+                message_id=processor.message_id,
+                category="streaming_conversion",
+            )
         except (OSError, PermissionError) as e:
             logger.error(
                 "streaming_conversion_io_failed",

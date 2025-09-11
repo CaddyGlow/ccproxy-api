@@ -33,6 +33,8 @@ from .models import (
     generate_openai_response_id,
     generate_openai_system_fingerprint,
 )
+
+# Import new directional adapters
 from .streaming import OpenAISSEFormatter, OpenAIStreamProcessor
 
 
@@ -40,7 +42,6 @@ __all__ = [
     # Legacy adapters
     "OpenAIAdapter",
     "AnthropicResponseAPIAdapter",
-    # New specialized adapters
     "ChatCompletionsAdapter",
     "ResponsesAdapter",
     "ChatToResponsesAdapter",

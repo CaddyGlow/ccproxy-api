@@ -22,7 +22,7 @@ class ChatCompletionsAdapter(BaseAPIAdapter):
     def __init__(self) -> None:
         super().__init__("chat_completions")
 
-    async def adapt_request(self, request_data: dict[str, Any]) -> dict[str, Any]:
+    async def adapt_request(self, request: dict[str, Any]) -> dict[str, Any]:
         """Adapt Chat Completions request.
 
         For pure Chat Completions, this is mostly validation and normalization.
@@ -34,10 +34,10 @@ class ChatCompletionsAdapter(BaseAPIAdapter):
             Validated Chat Completions request
         """
         # Validate using Pydantic model
-        request = OpenAIChatCompletionRequest(**request_data)
-        return request.model_dump(exclude_none=True)
+        request_validated = OpenAIChatCompletionRequest.model_validate(request)
+        return request_validated.model_dump(exclude_none=True)
 
-    async def adapt_response(self, response_data: dict[str, Any]) -> dict[str, Any]:
+    async def adapt_response(self, response: dict[str, Any]) -> dict[str, Any]:
         """Adapt Chat Completions response.
 
         For pure Chat Completions, this is mostly validation.
@@ -49,8 +49,8 @@ class ChatCompletionsAdapter(BaseAPIAdapter):
             Validated Chat Completions response
         """
         # Validate using Pydantic model
-        response = OpenAIChatCompletionResponse(**response_data)
-        return response.model_dump(exclude_none=True)
+        response_validated = OpenAIChatCompletionResponse.model_validate(response)
+        return response_validated.model_dump(exclude_none=True)
 
     def adapt_stream(
         self, stream: AsyncIterator[dict[str, Any]]

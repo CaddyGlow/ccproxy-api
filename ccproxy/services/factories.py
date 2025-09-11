@@ -176,6 +176,10 @@ class ConcreteServiceFactory:
             ("anthropic", "response_api"): AnthropicResponseAPIAdapter(),
             ("response_api", "anthropic"): AnthropicResponseAPIAdapter(),
             ("openai", "anthropic"): OpenAIAdapter(),
+            (
+                "response_api",
+                "openai",
+            ): OpenAIAdapter(),  # Missing adapter for response_api → openai
         }
 
         for format_pair, adapter in core_adapters.items():

@@ -58,6 +58,7 @@ async def create_openai_chat_completion(
     adapter: ClaudeAPIAdapterDep,
 ) -> Response | StreamingResponse | DeferredStreaming:
     """Create a chat completion using Claude AI with OpenAI-compatible format."""
+
     # Set format chain for OpenAI→Anthropic conversion
     request.state.context.format_chain = ["openai", "anthropic"]
     request.state.context.metadata["endpoint"] = "/v1/chat/completions"

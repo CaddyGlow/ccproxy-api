@@ -7,7 +7,6 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 
 from ccproxy.adapters.openai.models import (
-    OpenAIChatCompletionRequest,
     OpenAIModelInfo,
     OpenAIModelsResponse,
 )
@@ -32,133 +31,46 @@ CopilotAdapterDep = Annotated[Any, Depends(get_plugin_adapter("copilot"))]
 router = APIRouter(tags=["copilot"])
 
 
+def _cast_result(result: object) -> Response | StreamingResponse | DeferredStreaming:
+    from typing import cast as _cast
+
+    return _cast(Response | StreamingResponse | DeferredStreaming, result)
+
+
+async def _handle_adapter_request(
+    request: Request, adapter: Any, endpoint: str, **kwargs: Any
+) -> Response | StreamingResponse | DeferredStreaming:
+    result = await adapter.handle_request(request)
+    return _cast_result(result)
+
+
 # Core Copilot API endpoints
 
 
-@router.get("/v1/models", response_model=OpenAIModelsResponse)
-async def list_models(adapter: CopilotAdapterDep) -> JSONResponse:
-    """List available Copilot models."""
-    try:
-        logger.debug("listing_copilot_models")
-
-        # Load models from fallback data
-        import pathlib
-
-        fallback_path = pathlib.Path(__file__).parent / "data" / "copilot_fallback.json"
-
-        try:
-            with fallback_path.open("r") as f:
-                fallback_data = json.load(f)
-                models_data = fallback_data.get("models", [])
-        except Exception as e:
-            logger.warning(
-                "fallback_data_load_failed",
-                error=str(e),
-                exc_info=e,
-            )
-            # Provide basic model list as fallback
-            models_data = [
-                {
-                    "id": "gpt-4",
-                    "object": "model",
-                    "created": 1687882411,
-                    "owned_by": "github",
-                },
-                {
-                    "id": "gpt-3.5-turbo",
-                    "object": "model",
-                    "created": 1687882411,
-                    "owned_by": "github",
-                },
-            ]
-
-        models = [OpenAIModelInfo.model_validate(model) for model in models_data]
-        response = OpenAIModelsResponse(data=models)
-
-        logger.info(
-            "models_listed",
-            model_count=len(models),
-        )
-
-        return JSONResponse(
-            content=response.model_dump(),
-            headers={"X-Copilot-Provider": "ccproxy"},
-        )
-
-    except Exception as e:
-        logger.error(
-            "models_listing_failed",
-            error=str(e),
-            exc_info=e,
-        )
-        raise HTTPException(
-            status_code=500, detail=f"Failed to list models: {str(e)}"
-        ) from e
-
-
 @router.post("/v1/chat/completions", response_model=None)
-async def chat_completions(
+async def create_openai_chat_completion(
     request: Request,
     adapter: CopilotAdapterDep,
-) -> JSONResponse | StreamingResponse | DeferredStreaming:
-    """Create chat completions using Copilot."""
-    try:
-        # Set endpoint metadata for adapter usage (no format chain needed - direct pass-through)
-        request.state.context.metadata["endpoint"] = "/v1/chat/completions"
+) -> Response | StreamingResponse | DeferredStreaming:
+    """Create a chat completion using Copilot with OpenAI-compatible format."""
+    # No format chain needed - direct pass-through (OpenAI → OpenAI)
+    request.state.context.metadata["endpoint"] = "/v1/chat/completions"
 
-        # Parse request body
-        body = await request.body()
-        try:
-            request_data = json.loads(body) if body else {}
-            chat_request = OpenAIChatCompletionRequest.model_validate(request_data)
-        except json.JSONDecodeError as e:
-            raise HTTPException(
-                status_code=400, detail=f"Invalid JSON: {str(e)}"
-            ) from e
-        except ValueError as e:
-            raise HTTPException(
-                status_code=400, detail=f"Invalid request format: {str(e)}"
-            ) from e
+    return await _handle_adapter_request(request, adapter, "/v1/chat/completions")
 
-        logger.info(
-            "chat_completion_request",
-            model=chat_request.model,
-            messages_count=len(chat_request.messages),
-            stream=chat_request.stream,
-        )
 
-        # Delegate to adapter
-        response = await adapter.handle_request(request)
+@router.post("/v1/messages", response_model=None)
+async def create_anthropic_message(
+    request: Request,
+    adapter: CopilotAdapterDep,
+) -> Response | StreamingResponse | DeferredStreaming:
+    """Create a message using Copilot with native Anthropic format."""
+    # GitHub Copilot API uses OpenAI format natively - no format conversion needed
+    # The adapter will handle any necessary format transformations internally
+    request.state.context.metadata["endpoint"] = "/v1/messages"
+    request.state.context.format_chain = ["anthropic", "openai"]
 
-        # Ensure return type compatibility
-        if isinstance(response, Response) and not isinstance(
-            response, JSONResponse | StreamingResponse
-        ):
-            return JSONResponse(
-                content=json.loads(
-                    response.body.decode()
-                    if isinstance(response.body, bytes)
-                    else str(response.body)
-                )
-                if response.body
-                else {},
-                status_code=response.status_code,
-                headers=dict(response.headers),
-            )
-        # Type cast to satisfy mypy - we know response is one of the expected types
-        return response  # type: ignore[no-any-return]
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(
-            "chat_completion_failed",
-            error=str(e),
-            exc_info=e,
-        )
-        raise HTTPException(
-            status_code=500, detail=f"Chat completion failed: {str(e)}"
-        ) from e
+    return await _handle_adapter_request(request, adapter, "/v1/messages")
 
 
 @router.post("/v1/embeddings", response_model=None)
@@ -396,3 +308,64 @@ async def health_check(adapter: CopilotAdapterDep) -> JSONResponse:
             status_code=503,
             headers={"X-Copilot-Provider": "ccproxy"},
         )
+
+
+@router.get("/v1/models", response_model=OpenAIModelsResponse)
+async def list_models(adapter: CopilotAdapterDep) -> JSONResponse:
+    """List available Copilot models."""
+    try:
+        logger.debug("listing_copilot_models")
+
+        # Load models from fallback data
+        import pathlib
+
+        fallback_path = pathlib.Path(__file__).parent / "data" / "copilot_fallback.json"
+
+        try:
+            with fallback_path.open("r") as f:
+                fallback_data = json.load(f)
+                models_data = fallback_data.get("models", [])
+        except Exception as e:
+            logger.warning(
+                "fallback_data_load_failed",
+                error=str(e),
+                exc_info=e,
+            )
+            # Provide basic model list as fallback
+            models_data = [
+                {
+                    "id": "gpt-4",
+                    "object": "model",
+                    "created": 1687882411,
+                    "owned_by": "github",
+                },
+                {
+                    "id": "gpt-3.5-turbo",
+                    "object": "model",
+                    "created": 1687882411,
+                    "owned_by": "github",
+                },
+            ]
+
+        models = [OpenAIModelInfo.model_validate(model) for model in models_data]
+        response = OpenAIModelsResponse(data=models)
+
+        logger.info(
+            "models_listed",
+            model_count=len(models),
+        )
+
+        return JSONResponse(
+            content=response.model_dump(),
+            headers={"X-Copilot-Provider": "ccproxy"},
+        )
+
+    except Exception as e:
+        logger.error(
+            "models_listing_failed",
+            error=str(e),
+            exc_info=e,
+        )
+        raise HTTPException(
+            status_code=500, detail=f"Failed to list models: {str(e)}"
+        ) from e

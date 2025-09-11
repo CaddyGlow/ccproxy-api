@@ -46,10 +46,6 @@ class AnthropicResponseAPIAdapter(APIAdapter):
                     request["messages"]
                 )
 
-            # max_tokens → max_completion_tokens
-            if "max_tokens" in request:
-                response_api_request["max_completion_tokens"] = request["max_tokens"]
-
             # system → instructions
             if "system" in request:
                 response_api_request["instructions"] = request["system"]
@@ -63,10 +59,11 @@ class AnthropicResponseAPIAdapter(APIAdapter):
             if "temperature" in request:
                 response_api_request["temperature"] = request["temperature"]
 
+            if "max_completion_tokens" in response_api_request:
+                response_api_request.pop("max_completion_tokens")
             # Mandatory fixed field for codex
             response_api_request["model"] = "gpt-5"
             response_api_request["store"] = False
-            response_api_request.pop("max_completion_tokens")
 
             logger.debug(
                 "anthropic_to_response_api_conversion",
@@ -103,6 +100,15 @@ class AnthropicResponseAPIAdapter(APIAdapter):
             response_preview=str(response)[:500] if response else "empty",
             response_type=type(response).__name__,
         )
+
+        # Check if this is an error response - convert to Anthropic format
+        if "error" in response:
+            logger.info(
+                "anthropic_adapter_error_response_detected",
+                error_type=response.get("error", {}).get("type"),
+                error_message=response.get("error", {}).get("message", ""),
+            )
+            return self.adapt_error(response)
 
         try:
             # Extract content from Response API format
@@ -394,3 +400,41 @@ class AnthropicResponseAPIAdapter(APIAdapter):
             input_messages.append(input_message)
 
         return input_messages
+
+    def adapt_error(self, error_body: dict[str, Any]) -> dict[str, Any]:
+        """Convert Response API error format to Anthropic error format.
+
+        Args:
+            error_body: Response API error response
+
+        Returns:
+            Anthropic-formatted error response
+        """
+        # Extract error details from Response API format
+        response_api_error = error_body.get("error", {})
+        error_type = response_api_error.get("type", "internal_server_error")
+        error_message = response_api_error.get("message", "An error occurred")
+
+        # Map Response API error types to Anthropic error types
+        error_type_mapping = {
+            "invalid_request_error": "invalid_request_error",
+            "authentication_error": "authentication_error",
+            "permission_error": "permission_error",
+            "not_found_error": "not_found_error",
+            "rate_limit_error": "rate_limit_error",
+            "usage_limit_reached": "rate_limit_error",  # Map usage limit to rate limit
+            "internal_server_error": "internal_server_error",
+            "server_error": "overloaded_error",
+        }
+
+        anthropic_error_type = error_type_mapping.get(
+            error_type, "internal_server_error"
+        )
+
+        # Return Anthropic-formatted error
+        return {
+            "error": {
+                "type": anthropic_error_type,
+                "message": error_message,
+            }
+        }

@@ -62,7 +62,6 @@ class MessageCreateParams(BaseModel):
         str,
         Field(
             description="The model to use for the message",
-            pattern=r"^claude-.*",
         ),
     ]
     messages: Annotated[
@@ -147,32 +146,6 @@ class MessageCreateParams(BaseModel):
         ThinkingConfig | None,
         Field(description="Configuration for extended thinking process"),
     ] = None
-
-    @field_validator("model")
-    @classmethod
-    def validate_model(cls, v: str) -> str:
-        """Validate that the model is a supported Claude model."""
-        supported_models = {
-            "claude-opus-4-20250514",
-            "claude-sonnet-4-20250514",
-            "claude-3-7-sonnet-20250219",
-            "claude-3-5-sonnet-20241022",
-            "claude-3-5-sonnet-20240620",
-            "claude-3-5-haiku-20241022",
-            "claude-3-opus-20240229",
-            "claude-3-sonnet-20240229",
-            "claude-3-haiku-20240307",
-            "claude-3-5-sonnet",
-            "claude-3-5-haiku",
-            "claude-3-opus",
-            "claude-3-sonnet",
-            "claude-3-haiku",
-        }
-
-        if v not in supported_models and not v.startswith("claude-"):
-            raise ValueError(f"Model {v} is not supported")
-
-        return v
 
     @field_validator("messages")
     @classmethod

@@ -33,7 +33,7 @@ class AnthropicStreamProcessor:
         self.model = model
         self.formatter = AnthropicSSEFormatter()
 
-    async def process_openai_to_anthropic_stream(
+    async def process_stream(
         self, stream: AsyncIterator[dict[str, Any]]
     ) -> AsyncIterator[str]:
         """Process OpenAI-format streaming data into Anthropic SSE format.
@@ -380,8 +380,27 @@ class OpenAIStreamProcessor:
         try:
             chunk_count = 0
             processed_count = 0
+            logger.debug(
+                "openai_stream_processor_start",
+                message_id=self.message_id,
+                model=self.model,
+                output_format=self.output_format,
+                enable_usage=self.enable_usage,
+                enable_tool_calls=self.enable_tool_calls,
+                category="streaming_conversion",
+            )
+
             async for chunk in claude_stream:
                 chunk_count += 1
+                chunk_type = chunk.get("type", "unknown")
+
+                logger.trace(
+                    "openai_processor_input_chunk",
+                    chunk_number=chunk_count,
+                    chunk_type=chunk_type,
+                    category="format_detection",
+                )
+
                 async for sse_chunk in self._process_chunk(chunk):
                     processed_count += 1
                     yield sse_chunk
@@ -390,6 +409,8 @@ class OpenAIStreamProcessor:
                 "openai_stream_complete",
                 total_chunks=chunk_count,
                 processed_chunks=processed_count,
+                message_id=self.message_id,
+                category="streaming_conversion",
             )
 
             # Send final chunk
@@ -451,14 +472,29 @@ class OpenAIStreamProcessor:
             # Claude SDK format
             chunk_data = chunk.get("data", {})
             chunk_type = chunk_data.get("type")
+            format_source = "claude_sdk"
         else:
             # Standard Anthropic API format
             chunk_data = chunk
             chunk_type = chunk.get("type")
+            format_source = "anthropic_api"
+
+        logger.trace(
+            "openai_processor_chunk_conversion",
+            format_source=format_source,
+            chunk_type=chunk_type,
+            event_type=event_type,
+            category="format_detection",
+        )
 
         if chunk_type == "message_start":
             # Send initial role chunk
             if not self.role_sent:
+                logger.trace(
+                    "openai_conversion_message_start",
+                    action="sending_role_chunk",
+                    category="streaming_conversion",
+                )
                 yield self._format_chunk_output(delta={"role": "assistant"})
                 self.role_sent = True
 
@@ -548,6 +584,11 @@ class OpenAIStreamProcessor:
                 # Text content
                 text = delta.get("text", "")
                 if text:
+                    logger.trace(
+                        "openai_conversion_text_delta",
+                        text_length=len(text),
+                        category="streaming_conversion",
+                    )
                     yield self._format_chunk_output(delta={"content": text})
 
             elif delta_type == "thinking_delta" and self.thinking_block_active:
@@ -614,6 +655,12 @@ class OpenAIStreamProcessor:
             # Usage information
             usage = chunk_data.get("usage", {})
             if usage and self.enable_usage:
+                logger.trace(
+                    "openai_conversion_usage_info",
+                    input_tokens=usage.get("input_tokens", 0),
+                    output_tokens=usage.get("output_tokens", 0),
+                    category="streaming_conversion",
+                )
                 self.usage_info = {
                     "prompt_tokens": usage.get("input_tokens", 0),
                     "completion_tokens": usage.get("output_tokens", 0),
