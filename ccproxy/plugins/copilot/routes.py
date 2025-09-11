@@ -7,12 +7,16 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 
 from ccproxy.adapters.openai.models import (
+    OpenAIChatCompletionResponse,
+    OpenAIErrorResponse,
     OpenAIModelInfo,
     OpenAIModelsResponse,
 )
+from ccproxy.adapters.openai.models.chat_completions import OpenAIChatCompletionRequest
 from ccproxy.api.dependencies import get_plugin_adapter
 from ccproxy.core.logging import get_plugin_logger
-from ccproxy.models.messages import MessageCreateParams
+from ccproxy.models.messages import MessageCreateParams, MessageResponse
+from ccproxy.models.responses import APIError
 from ccproxy.streaming import DeferredStreaming
 
 from .models import (
@@ -49,9 +53,13 @@ async def _handle_adapter_request(
 # Core Copilot API endpoints
 
 
-@router.post("/v1/chat/completions", response_model=None)
+@router.post(
+    "/v1/chat/completions",
+    response_model=OpenAIChatCompletionResponse | OpenAIErrorResponse,
+)
 async def create_openai_chat_completion(
     request: Request,
+    _: OpenAIChatCompletionRequest,
     adapter: CopilotAdapterDep,
 ) -> Response | StreamingResponse | DeferredStreaming:
     """Create a chat completion using Copilot with OpenAI-compatible format."""
@@ -59,10 +67,10 @@ async def create_openai_chat_completion(
     return await _handle_adapter_request(request, adapter)
 
 
-@router.post("/v1/messages", response_model=None)
+@router.post("/v1/messages", response_model=MessageResponse | APIError)
 async def create_anthropic_message(
     request: Request,
-    body: MessageCreateParams,
+    _: MessageCreateParams,
     adapter: CopilotAdapterDep,
 ) -> Response | StreamingResponse | DeferredStreaming:
     """Create a message using Copilot with native Anthropic format."""
@@ -71,9 +79,13 @@ async def create_anthropic_message(
     return await _handle_adapter_request(request, adapter)
 
 
-@router.post("/v1/engines/codegen/completions", response_model=None)
+@router.post(
+    "/v1/engines/codegen/completions",
+    response_model=OpenAIChatCompletionResponse | OpenAIErrorResponse,
+)
 async def create_openai_codgen_completion(
     request: Request,
+    _: OpenAIChatCompletionRequest,
     adapter: CopilotAdapterDep,
 ) -> Response | StreamingResponse | DeferredStreaming:
     """Create a completion using Copilot with OpenAI-compatible format."""
@@ -81,10 +93,10 @@ async def create_openai_codgen_completion(
     return await _handle_adapter_request(request, adapter)
 
 
-@router.post("/v1/engines/codegen/messsage", response_model=None)
+@router.post("/v1/engines/codegen/messsage", response_model=MessageResponse | APIError)
 async def create_anthropic_codegen_completion(
     request: Request,
-    body: MessageCreateParams,
+    _: MessageCreateParams,
     adapter: CopilotAdapterDep,
 ) -> Response | StreamingResponse | DeferredStreaming:
     """Create a completion using Copilot with OpenAI-compatible format."""
@@ -93,9 +105,13 @@ async def create_anthropic_codegen_completion(
     return await _handle_adapter_request(request, adapter)
 
 
-@router.post("/v1/engines/copilot-codex/completions", response_model=None)
+@router.post(
+    "/v1/engines/copilot-codex/completions",
+    response_model=OpenAIChatCompletionResponse | OpenAIErrorResponse,
+)
 async def create_openai_completion(
     request: Request,
+    _: OpenAIChatCompletionRequest,
     adapter: CopilotAdapterDep,
 ) -> Response | StreamingResponse | DeferredStreaming:
     """Create a chat completion using Copilot with OpenAI-compatible format."""
@@ -103,10 +119,12 @@ async def create_openai_completion(
     return await _handle_adapter_request(request, adapter)
 
 
-@router.post("/v1/engines/copilot-codex/messages", response_model=None)
+@router.post(
+    "/v1/engines/copilot-codex/messages", response_model=MessageResponse | APIError
+)
 async def create_anthropic_completion(
     request: Request,
-    body: MessageCreateParams,
+    _: MessageCreateParams,
     adapter: CopilotAdapterDep,
 ) -> Response | StreamingResponse | DeferredStreaming:
     """Create a chat completion using Copilot with OpenAI-compatible format."""
