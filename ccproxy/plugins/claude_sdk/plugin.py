@@ -12,6 +12,7 @@ from ccproxy.core.plugins import (
     ProviderPluginRuntime,
     TaskSpec,
 )
+from ccproxy.core.plugins.declaration import RouterSpec
 from ccproxy.services.adapters.base import BaseAdapter
 
 from .adapter import ClaudeSDKAdapter
@@ -144,8 +145,9 @@ class ClaudeSDKFactory(BaseProviderPluginFactory):
     adapter_class = ClaudeSDKAdapter
     detection_service_class = ClaudeSDKDetectionService
     config_class = ClaudeSDKSettings
-    router = router
-    route_prefix = "/claude"
+    routers = [
+        RouterSpec(router=router, prefix="/claude"),
+    ]
     optional_requires = ["pricing"]
 
     format_adapters = [

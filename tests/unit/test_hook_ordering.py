@@ -206,7 +206,7 @@ class TestHookOrdering:
         registry.register(hook3)
 
         # Get summary
-        summary = registry.get_hooks_summary()
+        summary = registry.list()
 
         # Verify summary structure
         assert HookEvent.REQUEST_STARTED.value in summary

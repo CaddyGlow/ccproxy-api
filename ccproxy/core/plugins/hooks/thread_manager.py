@@ -160,7 +160,7 @@ class BackgroundHookThreadManager:
             registry: Hook registry to get hooks from
         """
         try:
-            hooks = registry.get_hooks(task.context.event)
+            hooks = registry.get(task.context.event)
             if not hooks:
                 return
 

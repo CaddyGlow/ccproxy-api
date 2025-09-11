@@ -13,7 +13,7 @@ from ccproxy.scheduler.errors import (
     TaskNotFoundError,
     TaskRegistrationError,
 )
-from ccproxy.scheduler.registry import TaskRegistry, get_task_registry
+from ccproxy.scheduler.registry import TaskRegistry
 from ccproxy.scheduler.tasks import (
     # PushgatewayTask removed - functionality moved to metrics plugin
     # StatsPrintingTask removed - functionality moved to metrics plugin
@@ -49,14 +49,15 @@ class TestSchedulerCore:
     @pytest.fixture
     def scheduler(self) -> Generator[Scheduler, None, None]:
         """Create a test scheduler instance."""
-        registry = get_task_registry()
-        registry.clear()  # Clear any existing registrations
+        registry = TaskRegistry()
+        registry.clear()  # ensure clean
 
         # Register mock task for testing (neutral name, not tied to core plugins)
         registry.register("custom_task", MockScheduledTask)
         # registry.register("stats_printing", StatsPrintingTask)  # removed
 
         scheduler = Scheduler(
+            task_registry=registry,
             max_concurrent_tasks=5,
             graceful_shutdown_timeout=1.0,
         )
@@ -204,8 +205,8 @@ class TestTaskRegistry:
         """Test successful task registration."""
         registry.register("test_task", MockScheduledTask)
 
-        assert registry.is_registered("test_task")
-        assert "test_task" in registry.list_tasks()
+        assert registry.has("test_task")
+        assert "test_task" in registry.list()
         task_class = registry.get("test_task")
         assert task_class is MockScheduledTask
 
@@ -232,10 +233,10 @@ class TestTaskRegistry:
     def test_unregister_task_success(self, registry: TaskRegistry) -> None:
         """Test successful task unregistration."""
         registry.register("temp_task", MockScheduledTask)
-        assert registry.is_registered("temp_task")
+        assert registry.has("temp_task")
 
         registry.unregister("temp_task")
-        assert not registry.is_registered("temp_task")
+        assert not registry.has("temp_task")
 
     def test_unregister_nonexistent_task_error(self, registry: TaskRegistry) -> None:
         """Test unregistering non-existent task raises error."""
@@ -252,7 +253,7 @@ class TestTaskRegistry:
         registry.register("task1", MockScheduledTask)
         registry.register("task2", MockScheduledTask)  # Changed from StatsPrintingTask
 
-        info = registry.get_registry_info()
+        info = registry.info()
         assert info["total_tasks"] == 2
         assert set(info["registered_tasks"]) == {"task1", "task2"}
         assert info["task_classes"]["task1"] == "MockScheduledTask"
@@ -264,10 +265,10 @@ class TestTaskRegistry:
         """Test clearing the registry."""
         registry.register("task1", MockScheduledTask)
         registry.register("task2", MockScheduledTask)  # Changed from StatsPrintingTask
-        assert len(registry.list_tasks()) == 2
+        assert len(registry.list()) == 2
 
         registry.clear()
-        assert len(registry.list_tasks()) == 0
+        assert len(registry.list()) == 0
 
 
 class TestScheduledTasks:

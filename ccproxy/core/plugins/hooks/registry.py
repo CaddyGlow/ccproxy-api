@@ -102,11 +102,11 @@ class HookRegistry:
         if hook in self._registration_order:
             del self._registration_order[hook]
 
-    def get_hooks(self, event: HookEvent) -> list[Hook]:
+    def get(self, event: HookEvent) -> list[Hook]:
         """Get all hooks for an event in priority order"""
         return list(self._hooks.get(event, []))
 
-    def get_hooks_summary(self) -> dict[str, list[dict[str, Any]]]:
+    def list(self) -> dict[str, list[dict[str, Any]]]:
         """Get summary of all registered hooks organized by event.
 
         Returns:
@@ -123,3 +123,17 @@ class HookRegistry:
                 for hook in hooks
             ]
         return summary
+
+    def has(self, event: HookEvent) -> bool:
+        """Check if any hook is registered for the event."""
+        hooks = self._hooks.get(event)
+        return bool(hooks and len(hooks) > 0)
+
+    def clear(self) -> None:
+        """Clear all registered hooks and reset ordering (testing or shutdown)."""
+        self._hooks.clear()
+        self._registration_order.clear()
+        self._next_order = 0
+
+
+# Module-level accessor intentionally omitted.

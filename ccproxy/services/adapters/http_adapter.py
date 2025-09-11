@@ -180,7 +180,7 @@ class BaseHTTPAdapter(BaseAdapter):
             to_format = format_chain[i + 1]
 
             try:
-                adapter = self.format_registry.get_adapter(from_format, to_format)
+                adapter = self.format_registry.get(from_format, to_format)
                 if not adapter:
                     raise ValueError(
                         f"No adapter found for {from_format} -> {to_format}"

@@ -299,10 +299,6 @@ class BaseScheduledTask(ABC):
         }
 
 
-# PushgatewayTask removed - functionality moved to metrics plugin
-# StatsPrintingTask removed - functionality moved to metrics plugin
-
-
 class PoolStatsTask(BaseScheduledTask):
     """Task for displaying pool statistics periodically."""
 

@@ -31,56 +31,63 @@ if TYPE_CHECKING:
 logger = get_plugin_logger()
 
 CopilotAdapterDep = Annotated[Any, Depends(get_plugin_adapter("copilot"))]
-router = APIRouter(tags=["copilot"])
+
+APIResponse = Response | StreamingResponse | DeferredStreaming
+
+# V1 API Router - OpenAI/Anthropic compatible endpoints
+router_v1 = APIRouter()
+
+# GitHub Copilot specific router - usage, token, health endpoints
+router_github = APIRouter()
 
 
-def _cast_result(result: object) -> Response | StreamingResponse | DeferredStreaming:
+def _cast_result(result: object) -> APIResponse:
     from typing import cast as _cast
 
-    return _cast(Response | StreamingResponse | DeferredStreaming, result)
+    return _cast(APIResponse, result)
 
 
 async def _handle_adapter_request(
     request: Request,
     adapter: Any,
-) -> Response | StreamingResponse | DeferredStreaming:
+) -> APIResponse:
     result = await adapter.handle_request(request)
     return _cast_result(result)
 
 
-@router.post(
-    "/v1/chat/completions",
+@router_v1.post(
+    "/chat/completions",
     response_model=OpenAIChatCompletionResponse | OpenAIErrorResponse,
 )
 async def create_openai_chat_completion(
     request: Request,
     _: OpenAIChatCompletionRequest,
     adapter: CopilotAdapterDep,
-) -> Response | StreamingResponse | DeferredStreaming:
+) -> APIResponse:
     """Create a chat completion using Copilot with OpenAI-compatible format."""
     request.state.context.metadata["endpoint"] = "/chat/completions"
     return await _handle_adapter_request(request, adapter)
 
 
-@router.post("/v1/messages", response_model=MessageResponse | APIError)
+@router_v1.post("/messages", response_model=MessageResponse | APIError)
 async def create_anthropic_message(
     request: Request,
     _: MessageCreateParams,
     adapter: CopilotAdapterDep,
-) -> Response | StreamingResponse | DeferredStreaming:
+) -> APIResponse:
     """Create a message using Copilot with native Anthropic format."""
     request.state.context.metadata["endpoint"] = "/chat/completions"
     request.state.context.format_chain = ["anthropic", "openai"]
     return await _handle_adapter_request(request, adapter)
 
 
-@router.post("/v1/embeddings", response_model=CopilotEmbeddingRequest)
+@router_v1.post("/embeddings", response_model=CopilotEmbeddingRequest)
 async def create_embeddings(request: Request, adapter: CopilotAdapterDep) -> Response:
     request.state.context.metadata["endpoint"] = "/embeddings"
     return await _handle_adapter_request(request, adapter)
 
 
-@router.get("/v1/models", response_model=OpenAIModelsResponse)
+@router_v1.get("/models", response_model=OpenAIModelsResponse)
 async def list_models_v1(request: Request, adapter: CopilotAdapterDep) -> Response:
     """List available Copilot models."""
     # Forward request to upstream Copilot API
@@ -88,25 +95,29 @@ async def list_models_v1(request: Request, adapter: CopilotAdapterDep) -> Respon
     return await _handle_adapter_request(request, adapter)
 
 
-@router.get("/usage", response_model=CopilotUserInternalResponse)
-async def get_usage_stats(adapter: CopilotAdapterDep, request: Request) -> JSONResponse:
+@router_github.get("/usage", response_model=CopilotUserInternalResponse)
+async def get_usage_stats(adapter: CopilotAdapterDep, request: Request) -> Response:
     """Get Copilot usage statistics."""
     request.state.context.metadata["endpoint"] = "/copilot_internal/user"
     request.state.context.metadata["method"] = "get"
-    return await adapter.handle_request_gh_api(request)
+    result = await adapter.handle_request_gh_api(request)
+    from typing import cast
+
+    return cast(Response, result)
 
 
-@router.get("/token", response_model=CopilotTokenStatus)
-async def get_token_status(
-    adapter: CopilotAdapterDep, request: Request
-) -> JSONResponse:
+@router_github.get("/token", response_model=CopilotTokenStatus)
+async def get_token_status(adapter: CopilotAdapterDep, request: Request) -> Response:
     """Get Copilot usage statistics."""
     request.state.context.metadata["endpoint"] = "/copilot_internal/v2/token"
     request.state.context.metadata["method"] = "get"
-    return await adapter.handle_request_gh_api(request)
+    result = await adapter.handle_request_gh_api(request)
+    from typing import cast
+
+    return cast(Response, result)
 
 
-@router.get("/health", response_model=CopilotHealthResponse)
+@router_github.get("/health", response_model=CopilotHealthResponse)
 async def health_check(adapter: CopilotAdapterDep) -> JSONResponse:
     """Check Copilot plugin health."""
     try:

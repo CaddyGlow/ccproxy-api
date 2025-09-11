@@ -100,9 +100,7 @@ class CopilotAdapter(BaseHTTPAdapter):
         if needs_conversion and self.format_registry:
             try:
                 # Get the response adapter (openai -> anthropic) for streaming conversion
-                response_adapter = self.format_registry.get_adapter(
-                    "openai", "anthropic"
-                )
+                response_adapter = self.format_registry.get("openai", "anthropic")
 
                 logger.debug(
                     "copilot_format_adapter_loaded",
@@ -192,3 +190,7 @@ class CopilotAdapter(BaseHTTPAdapter):
                 "content-type", "application/json"
             ),
         )
+
+    def _needs_format_conversion(self, endpoint: str) -> bool:
+        """Decide if format conversion is needed for a given endpoint."""
+        return False

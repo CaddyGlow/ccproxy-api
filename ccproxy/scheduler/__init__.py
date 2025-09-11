@@ -17,22 +17,14 @@ Key components:
 """
 
 from .core import Scheduler
-from .registry import TaskRegistry, register_task
-from .tasks import (
-    BaseScheduledTask,
-    # PushgatewayTask removed - functionality moved to metrics plugin
-    # StatsPrintingTask removed - functionality moved to metrics plugin
-)
+from .registry import TaskRegistry
+from .tasks import BaseScheduledTask
 
 
-# Task registration is now handled in manager.py during scheduler startup
-# to avoid side effects during module imports (e.g., CLI help display)
+"""Public scheduler API exports."""
 
 __all__ = [
     "Scheduler",
     "TaskRegistry",
-    "register_task",
     "BaseScheduledTask",
-    # "PushgatewayTask",  # removed - functionality moved to metrics plugin
-    # "StatsPrintingTask",  # removed - functionality moved to metrics plugin
 ]

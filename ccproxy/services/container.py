@@ -12,8 +12,10 @@ import httpx
 import structlog
 
 from ccproxy.config.settings import Settings
+from ccproxy.core.plugins.hooks.registry import HookRegistry
 from ccproxy.core.plugins.hooks.thread_manager import BackgroundHookThreadManager
 from ccproxy.http.pool import HTTPPoolManager
+from ccproxy.scheduler.registry import TaskRegistry
 from ccproxy.services.adapters.format_registry import FormatAdapterRegistry
 from ccproxy.services.cache import ResponseCache
 from ccproxy.services.cli_detection import CLIDetectionService
@@ -122,11 +124,26 @@ class ServiceContainer:
         """Get response cache service instance."""
         return self.get_service(ResponseCache)
 
-    # ConnectionPoolManager removed; use HTTPPoolManager for pooling
+    # Use HTTPPoolManager for pooling
 
     def get_format_registry(self) -> FormatAdapterRegistry:
         """Get format adapter registry service instance."""
         return self.get_service(FormatAdapterRegistry)
+
+    def get_oauth_registry(self) -> Any:
+        """Get OAuth provider registry instance."""
+        # Import lazily to avoid circular imports through auth package
+        from ccproxy.auth.oauth.registry import OAuthRegistry
+
+        return self.get_service(OAuthRegistry)
+
+    def get_hook_registry(self) -> HookRegistry:
+        """Get hook registry instance."""
+        return self.get_service(HookRegistry)
+
+    def get_task_registry(self) -> TaskRegistry:
+        """Get scheduled task registry instance."""
+        return self.get_service(TaskRegistry)
 
     def get_background_hook_thread_manager(self) -> BackgroundHookThreadManager:
         """Get background hook thread manager instance."""

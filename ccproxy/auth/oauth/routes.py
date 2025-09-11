@@ -396,7 +396,7 @@ async def _exchange_code_for_tokens(
                 "oauth_registry_not_available", operation="exchange_code_for_tokens"
             )
             return False
-        oauth_provider = registry.get_provider("claude-api")
+        oauth_provider = registry.get("claude-api")
         if not oauth_provider:
             logger.error("claude_oauth_provider_not_found", category="auth")
             return False

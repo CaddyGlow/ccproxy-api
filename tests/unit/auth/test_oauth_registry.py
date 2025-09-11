@@ -73,36 +73,36 @@ class TestOAuthRegistry:
 
     def test_register_provider(self, registry, mock_provider):
         """Test provider registration."""
-        registry.register_provider(mock_provider)
+        registry.register(mock_provider)
 
-        providers = registry.list_providers()
+        providers = registry.list()
         assert "test-provider" in providers
         assert providers["test-provider"].display_name == "Test test-provider"
 
     def test_get_provider(self, registry, mock_provider):
         """Test getting a registered provider."""
-        registry.register_provider(mock_provider)
+        registry.register(mock_provider)
 
-        provider = registry.get_provider("test-provider")
+        provider = registry.get("test-provider")
         assert provider is not None
         assert provider.provider_name == "test-provider"
 
     def test_get_nonexistent_provider(self, registry):
         """Test getting a non-existent provider."""
-        provider = registry.get_provider("nonexistent")
+        provider = registry.get("nonexistent")
         assert provider is None
 
     def test_unregister_provider(self, registry, mock_provider):
         """Test unregistering a provider."""
-        registry.register_provider(mock_provider)
-        assert "test-provider" in registry.list_providers()
+        registry.register(mock_provider)
+        assert "test-provider" in registry.list()
 
-        registry.unregister_provider("test-provider")
-        assert "test-provider" not in registry.list_providers()
+        registry.unregister("test-provider")
+        assert "test-provider" not in registry.list()
 
     def test_register_duplicate_provider(self, registry, mock_provider):
         """Test registering a duplicate provider raises an error."""
-        registry.register_provider(mock_provider)
+        registry.register(mock_provider)
 
         # Create a new provider with the same name
         new_provider = MockOAuthProvider("test-provider")
@@ -110,11 +110,11 @@ class TestOAuthRegistry:
 
         # Should raise ValueError for duplicate registration
         with pytest.raises(ValueError, match="already registered"):
-            registry.register_provider(new_provider)
+            registry.register(new_provider)
 
     def test_list_providers_empty(self, registry):
         """Test listing providers when registry is empty."""
-        providers = registry.list_providers()
+        providers = registry.list()
         assert providers == {}
 
     def test_list_multiple_providers(self, registry):
@@ -123,11 +123,11 @@ class TestOAuthRegistry:
         provider2 = MockOAuthProvider("provider2")
         provider3 = MockOAuthProvider("provider3")
 
-        registry.register_provider(provider1)
-        registry.register_provider(provider2)
-        registry.register_provider(provider3)
+        registry.register(provider1)
+        registry.register(provider2)
+        registry.register(provider3)
 
-        providers = registry.list_providers()
+        providers = registry.list()
         assert len(providers) == 3
         assert "provider1" in providers
         assert "provider2" in providers
@@ -136,9 +136,9 @@ class TestOAuthRegistry:
     @pytest.mark.asyncio
     async def test_provider_authorization_url(self, registry, mock_provider):
         """Test getting authorization URL through registry."""
-        registry.register_provider(mock_provider)
+        registry.register(mock_provider)
 
-        provider = registry.get_provider("test-provider")
+        provider = registry.get("test-provider")
         assert provider is not None
 
         url = await provider.get_authorization_url("test_state", "test_verifier")
@@ -148,9 +148,9 @@ class TestOAuthRegistry:
     @pytest.mark.asyncio
     async def test_provider_callback(self, registry, mock_provider):
         """Test handling callback through registry."""
-        registry.register_provider(mock_provider)
+        registry.register(mock_provider)
 
-        provider = registry.get_provider("test-provider")
+        provider = registry.get("test-provider")
         assert provider is not None
 
         result = await provider.handle_callback(

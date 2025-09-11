@@ -10,6 +10,7 @@ from ccproxy.core.plugins import (
     PluginManifest,
     ProviderPluginRuntime,
 )
+from ccproxy.core.plugins.declaration import RouterSpec
 from ccproxy.plugins.oauth_codex.manager import CodexTokenManager
 
 from .adapter import CodexAdapter
@@ -328,8 +329,9 @@ class CodexFactory(BaseProviderPluginFactory):
     config_class = CodexSettings
     # Provide credentials manager so HTTP adapter receives an auth manager
     credentials_manager_class = CodexTokenManager
-    router = codex_router
-    route_prefix = "/api/codex"
+    routers = [
+        RouterSpec(router=codex_router, prefix="/api/codex"),
+    ]
     dependencies = ["oauth_codex"]
     optional_requires = ["pricing"]
 

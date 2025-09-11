@@ -213,8 +213,7 @@ async def plugin_health(
             details={"type": "plugin", "active": True},
         )
 
-
-# Reload and re-discover endpoints removed; v2 loads plugins at startup only
+        # Endpoints are loaded at startup only
 
 
 @router.get("/status", response_model=PluginStatusResponse)

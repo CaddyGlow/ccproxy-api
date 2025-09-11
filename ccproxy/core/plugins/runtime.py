@@ -271,7 +271,7 @@ class AuthProviderPluginRuntime(BasePluginRuntime):
                     category="plugin",
                 )
                 return
-            registry.register_provider(self.auth_provider)
+            registry.register(self.auth_provider)
 
             logger.debug(
                 "oauth_provider_registered",
@@ -330,7 +330,7 @@ class AuthProviderPluginRuntime(BasePluginRuntime):
                     category="plugin",
                 )
                 return
-            registry.unregister_provider(self.auth_provider.provider_name)
+            registry.unregister(self.auth_provider.provider_name)
 
             logger.debug(
                 "oauth_provider_unregistered",
@@ -361,7 +361,7 @@ class AuthProviderPluginRuntime(BasePluginRuntime):
                 if self.context and "oauth_registry" in self.context:
                     registry = self.context["oauth_registry"]
                 is_registered = (
-                    registry.has_provider(self.auth_provider.provider_name)
+                    registry.has(self.auth_provider.provider_name)
                     if registry is not None
                     else False
                 )
@@ -422,7 +422,7 @@ class ProviderPluginRuntime(BasePluginRuntime):
         if self.manifest.oauth_provider_factory:
             await self._register_oauth_provider()
 
-        # Set up format registry with migration safety
+        # Set up format registry
         await self._setup_format_registry()
 
     async def _register_oauth_provider(self) -> None:
@@ -447,7 +447,7 @@ class ProviderPluginRuntime(BasePluginRuntime):
                 )
                 return
 
-            registry.register_provider(oauth_provider)
+            registry.register(oauth_provider)
 
             logger.trace(
                 "oauth_provider_registered",
@@ -487,7 +487,7 @@ class ProviderPluginRuntime(BasePluginRuntime):
                 )
                 return
 
-            registry.unregister_provider(provider_name)
+            registry.unregister(provider_name)
 
             logger.trace(
                 "oauth_provider_unregistered",

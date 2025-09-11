@@ -79,7 +79,7 @@ class HookManager:
         # Fall through to synchronous execution
 
         # Synchronous execution (legacy behavior)
-        hooks = self._registry.get_hooks(event)
+        hooks = self._registry.get(event)
         if not hooks:
             return
 
@@ -130,7 +130,7 @@ class HookManager:
         # Fall through to synchronous execution
 
         # Synchronous execution (legacy behavior)
-        hooks = self._registry.get_hooks(context.event)
+        hooks = self._registry.get(context.event)
         if not hooks:
             return
 

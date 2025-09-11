@@ -30,6 +30,7 @@ from .declaration import (
     FormatPair,
     PluginContext,
     PluginManifest,
+    RouterSpec,
     RouteSpec,
     TaskSpec,
 )
@@ -87,10 +88,7 @@ class BaseProviderPluginFactory(ProviderPluginFactory):
     plugin_version: str = "1.0.0"
     detection_service_class: type | None = None
     credentials_manager_class: type | None = None
-    router: APIRouter | None | Any = (
-        None  # Can be APIRouter instance or callable that returns APIRouter
-    )
-    route_prefix: str = "/api"
+    routers: list[RouterSpec] = []
     dependencies: list[str] = []
     optional_requires: list[str] = []
     tasks: list[TaskSpec] = []
@@ -117,20 +115,23 @@ class BaseProviderPluginFactory(ProviderPluginFactory):
                 f"runtime_class {self.runtime_class.__name__} must be a subclass of ProviderPluginRuntime"
             )
 
-        # Build routes from router if provided
+        # Build routes from routers list
         routes = []
-        if self.router is not None:
+        for router_spec in self.routers:
             # Handle both router instances and router factory functions
-            router_instance = self.router
-            if callable(self.router) and not isinstance(self.router, APIRouter):
-                # Router is a factory function (not an APIRouter instance), call it to get the actual router
-                router_instance = self.router()
+            router_instance = router_spec.router
+            if callable(router_spec.router) and not isinstance(
+                router_spec.router, APIRouter
+            ):
+                # Router is a factory function, call it to get the actual router
+                router_instance = router_spec.router()
 
             routes.append(
                 RouteSpec(
-                    router=router_instance,
-                    prefix=self.route_prefix,
-                    tags=router_instance.tags or [],
+                    router=cast(APIRouter, router_instance),
+                    prefix=router_spec.prefix,
+                    tags=router_spec.tags or [],
+                    dependencies=router_spec.dependencies,
                 )
             )
 

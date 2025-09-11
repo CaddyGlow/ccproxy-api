@@ -343,7 +343,7 @@ async def _lazy_register_oauth_provider(
         return key
 
     try:
-        return registry.get_provider(_norm(provider))
+        return registry.get(_norm(provider))
     except Exception:
         return None
 
@@ -1014,7 +1014,7 @@ async def get_oauth_provider_for_name(
     container: ServiceContainer,
 ) -> Any:
     """Get OAuth provider instance for the specified provider name."""
-    existing = registry.get_provider(provider)
+    existing = registry.get(provider)
     if existing:
         return existing
 

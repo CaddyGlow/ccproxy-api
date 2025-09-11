@@ -11,7 +11,7 @@ from .errors import (
     TaskNotFoundError,
     TaskRegistrationError,
 )
-from .registry import TaskRegistry, get_task_registry
+from .registry import TaskRegistry
 from .tasks import BaseScheduledTask
 
 
@@ -31,9 +31,9 @@ class Scheduler:
 
     def __init__(
         self,
+        task_registry: TaskRegistry,
         max_concurrent_tasks: int = 10,
         graceful_shutdown_timeout: float = 30.0,
-        task_registry: TaskRegistry | None = None,
     ):
         """
         Initialize the scheduler.
@@ -41,11 +41,11 @@ class Scheduler:
         Args:
             max_concurrent_tasks: Maximum number of tasks to run concurrently
             graceful_shutdown_timeout: Timeout for graceful shutdown in seconds
-            task_registry: Task registry instance (uses global if None)
+            task_registry: Task registry instance (required)
         """
         self.max_concurrent_tasks = max_concurrent_tasks
         self.graceful_shutdown_timeout = graceful_shutdown_timeout
-        self.task_registry = task_registry or get_task_registry()
+        self.task_registry = task_registry
 
         self._running = False
         self._tasks: dict[str, BaseScheduledTask] = {}
@@ -63,7 +63,7 @@ class Scheduler:
         logger.debug(
             "scheduler_starting",
             max_concurrent_tasks=self.max_concurrent_tasks,
-            registered_tasks=self.task_registry.list_tasks(),
+            registered_tasks=self.task_registry.list(),
         )
 
         try:
@@ -154,7 +154,7 @@ class Scheduler:
         if task_name in self._tasks:
             raise SchedulerError(f"Task '{task_name}' already exists")
 
-        if not self.task_registry.is_registered(task_type):
+        if not self.task_registry.has(task_type):
             raise TaskRegistrationError(f"Task type '{task_type}' is not registered")
 
         try:
@@ -291,7 +291,7 @@ class Scheduler:
             "graceful_shutdown_timeout": self.graceful_shutdown_timeout,
             "task_names": list(self._tasks.keys()),
             "running_task_names": running_tasks,
-            "registered_task_types": self.task_registry.list_tasks(),
+            "registered_task_types": self.task_registry.list(),
         }
 
     @property
@@ -305,35 +305,4 @@ class Scheduler:
         return len(self._tasks)
 
 
-# Global scheduler instance
-_global_scheduler: Scheduler | None = None
-
-
-async def get_scheduler() -> Scheduler:
-    """
-    Get or create the global scheduler instance.
-
-    Returns:
-        Global Scheduler instance
-    """
-    global _global_scheduler
-
-    if _global_scheduler is None:
-        _global_scheduler = Scheduler()
-
-    return _global_scheduler
-
-
-async def start_scheduler() -> None:
-    """Start the global scheduler."""
-    scheduler = await get_scheduler()
-    await scheduler.start()
-
-
-async def stop_scheduler() -> None:
-    """Stop the global scheduler."""
-    global _global_scheduler
-
-    if _global_scheduler:
-        await _global_scheduler.stop()
-        _global_scheduler = None
+# Global scheduler helpers omitted.

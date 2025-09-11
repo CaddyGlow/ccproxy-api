@@ -12,6 +12,7 @@ from ccproxy.core.plugins import (
     ProviderPluginRuntime,
     TaskSpec,
 )
+from ccproxy.core.plugins.declaration import RouterSpec
 from ccproxy.plugins.oauth_claude.manager import ClaudeApiTokenManager
 
 from .adapter import ClaudeAPIAdapter
@@ -303,8 +304,9 @@ class ClaudeAPIFactory(BaseProviderPluginFactory):
     config_class = ClaudeAPISettings
     # Provide credentials manager so HTTP adapter receives an auth manager
     credentials_manager_class = ClaudeApiTokenManager
-    router = claude_api_router
-    route_prefix = "/api"
+    routers = [
+        RouterSpec(router=claude_api_router, prefix="/api"),
+    ]
     # OAuth provider is optional because the token manager can operate
     # without a globally-registered auth provider. When present, it enables
     # first-class OAuth flows in the UI.

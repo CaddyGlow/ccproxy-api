@@ -411,7 +411,7 @@ class SchedulerSettings(BaseSettings):
         description="Whether to force pricing refresh immediately on startup",
     )
 
-    # Pushgateway settings removed - functionality moved to metrics plugin
+    # Pushgateway settings are handled by the metrics plugin
     # The metrics plugin now manages its own pushgateway configuration
 
     stats_printing_enabled: bool = Field(

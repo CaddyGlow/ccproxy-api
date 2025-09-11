@@ -161,7 +161,7 @@ class PluginHTTPHandler(BaseHTTPHandler):
         if auth_headers:
             headers.update(auth_headers)
 
-        # Process request directly (processor removed per migration plan)
+        # Process request directly
         # Simple pass-through processing with streaming detection
         transformed_body = request_body
         processed_headers = headers
@@ -206,7 +206,7 @@ class PluginHTTPHandler(BaseHTTPHandler):
             # Read response content once to avoid consumption issues
             response_content = response.content
 
-            # Process response directly (processor removed per migration plan)
+            # Process response directly
             # Simple pass-through processing
             processed_body = response_content
             processed_headers = extract_response_headers(response)

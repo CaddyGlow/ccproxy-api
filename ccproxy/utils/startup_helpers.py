@@ -16,10 +16,10 @@ from ccproxy.scheduler.errors import SchedulerError
 from ccproxy.scheduler.manager import start_scheduler, stop_scheduler
 
 
-# Note: DuckDB storage initialization has moved to the duckdb_storage plugin.
+# DuckDB storage initialization is handled by the duckdb_storage plugin.
 
 
-# Note: get_permission_service is imported locally to avoid circular imports
+# get_permission_service is imported locally to avoid circular imports
 
 if TYPE_CHECKING:
     from ccproxy.config.settings import Settings
@@ -80,8 +80,6 @@ async def check_version_updates_startup(app: FastAPI, settings: Settings) -> Non
 async def check_claude_cli_startup(app: FastAPI, settings: Settings) -> None:
     """Check Claude CLI availability at startup.
 
-    Note: The plugin will handle Claude CLI detection and validation.
-
     Args:
         app: FastAPI application instance
         settings: Application settings
@@ -90,9 +88,7 @@ async def check_claude_cli_startup(app: FastAPI, settings: Settings) -> None:
     pass
 
 
-# DuckDB storage startup/shutdown removed; handled by plugin
-
-# Removed deprecated DuckDB storage startup/shutdown helpers.
+# DuckDB storage startup/shutdown handled by plugin
 
 
 async def setup_scheduler_startup(app: FastAPI, settings: Settings) -> None:
@@ -103,7 +99,9 @@ async def setup_scheduler_startup(app: FastAPI, settings: Settings) -> None:
         settings: Application settings
     """
     try:
-        scheduler = await start_scheduler(settings)
+        # Use DI container to resolve registry and dependencies
+        container = app.state.service_container
+        scheduler = await start_scheduler(settings, container)
         app.state.scheduler = scheduler
         logger.debug("scheduler_initialized")
 

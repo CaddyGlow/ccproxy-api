@@ -260,7 +260,7 @@ class OAuthRegistry:
         self._provider_info_cache: dict[str, OAuthProviderInfo] = {}
         logger.debug("oauth_registry_initialized", category="auth")
 
-    def register_provider(self, provider: OAuthProviderProtocol) -> None:
+    def register(self, provider: OAuthProviderProtocol) -> None:
         """Register an OAuth provider from a plugin.
 
         Args:
@@ -297,7 +297,7 @@ class OAuthRegistry:
                 category="auth",
             )
 
-    def unregister_provider(self, provider_name: str) -> None:
+    def unregister(self, provider_name: str) -> None:
         """Unregister an OAuth provider.
 
         Args:
@@ -311,7 +311,7 @@ class OAuthRegistry:
                 "oauth_provider_unregistered", provider=provider_name, category="auth"
             )
 
-    def get_provider(self, provider_name: str) -> OAuthProviderProtocol | None:
+    def get(self, provider_name: str) -> OAuthProviderProtocol | None:
         """Get a registered OAuth provider by name.
 
         Args:
@@ -322,7 +322,7 @@ class OAuthRegistry:
         """
         return self._providers.get(provider_name)
 
-    def list_providers(self) -> dict[str, OAuthProviderInfo]:
+    def list(self) -> dict[str, OAuthProviderInfo]:
         """List all registered OAuth providers.
 
         Returns:
@@ -348,7 +348,7 @@ class OAuthRegistry:
 
         return result
 
-    def has_provider(self, provider_name: str) -> bool:
+    def has(self, provider_name: str) -> bool:
         """Check if a provider is registered.
 
         Args:
@@ -359,7 +359,7 @@ class OAuthRegistry:
         """
         return provider_name in self._providers
 
-    def get_provider_info(self, provider_name: str) -> OAuthProviderInfo | None:
+    def get_info(self, provider_name: str) -> OAuthProviderInfo | None:
         """Get information about a specific provider.
 
         Args:
@@ -368,7 +368,7 @@ class OAuthRegistry:
         Returns:
             Provider information or None if not found
         """
-        provider = self.get_provider(provider_name)
+        provider = self.get(provider_name)
         if not provider:
             return None
 
@@ -395,6 +395,8 @@ class OAuthRegistry:
         self._providers.clear()
         self._provider_info_cache.clear()
         logger.info("oauth_registry_cleared", category="auth")
+
+    # --- Backward-compatible method aliases ---
 
 
 __all__ = [

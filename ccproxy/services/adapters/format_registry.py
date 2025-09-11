@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+import builtins
 from typing import TYPE_CHECKING, Literal
 
 import structlog
@@ -15,7 +18,7 @@ logger = structlog.get_logger(__name__)
 
 
 class FormatAdapterRegistry:
-    """Registry for managing format adapters with production-safe migration."""
+    """Registry for managing format adapters."""
 
     def __init__(
         self, conflict_mode: Literal["fail_fast", "priority"] = "fail_fast"
@@ -63,7 +66,7 @@ class FormatAdapterRegistry:
             category="format",
         )
 
-    def get_adapter(self, from_format: str, to_format: str) -> APIAdapter | None:
+    def get(self, from_format: str, to_format: str) -> APIAdapter | None:
         """Get adapter for format conversion with fail-fast validation."""
         if not from_format or not to_format:
             raise ValueError("Format names cannot be empty")
@@ -89,9 +92,7 @@ class FormatAdapterRegistry:
 
         return adapter
 
-    def get_adapter_if_exists(
-        self, from_format: str, to_format: str
-    ) -> APIAdapter | None:
+    def get_if_exists(self, from_format: str, to_format: str) -> APIAdapter | None:
         """Get adapter if it exists, return None if not found (no exception).
 
         This method allows plugins to check for existing adapters without failing
@@ -110,7 +111,7 @@ class FormatAdapterRegistry:
         key = (from_format, to_format)
         return self._adapters.get(key)
 
-    def list_formats(self) -> list[str]:
+    def list(self) -> list[str]:
         """List all supported format combinations."""
         return [f"{from_fmt}->{to_fmt}" for from_fmt, to_fmt in self._adapters]
 
@@ -118,7 +119,7 @@ class FormatAdapterRegistry:
         """Get list of plugins that have registered adapters."""
         return self._registered_plugins.copy()
 
-    def clear_registry(self) -> None:
+    def clear(self) -> None:
         """Clear registry - for testing only."""
         self._adapters.clear()
         self._registered_plugins.clear()
@@ -127,7 +128,7 @@ class FormatAdapterRegistry:
         self._finalized = False
 
     async def register_from_manifest(
-        self, manifest: "PluginManifest", plugin_name: str
+        self, manifest: PluginManifest, plugin_name: str
     ) -> None:
         """Register format adapters from plugin manifest."""
         if self._finalized:
@@ -164,8 +165,8 @@ class FormatAdapterRegistry:
         self._registered_plugins.add(plugin_name)
 
     def validate_requirements(
-        self, manifests: dict[str, "PluginManifest"]
-    ) -> dict[str, list[tuple[str, str]]]:
+        self, manifests: dict[str, PluginManifest]
+    ) -> dict[str, builtins.list[tuple[str, str]]]:
         """Validate format adapter requirements across all manifests."""
         # Get all available adapters (including core pre-registered ones)
         available = set(self._adapters.keys()) | set(self._adapter_specs.keys())

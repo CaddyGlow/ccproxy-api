@@ -88,6 +88,16 @@ class MiddlewareSpec:
 
 
 @dataclass
+class RouterSpec:
+    """Specification for individual routers in a plugin."""
+
+    router: APIRouter | Callable[[], APIRouter]
+    prefix: str
+    tags: list[str] = field(default_factory=list)
+    dependencies: list[Any] = field(default_factory=list)
+
+
+@dataclass
 class RouteSpec:
     """Specification for plugin routes."""
 

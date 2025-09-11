@@ -2,10 +2,12 @@
 
 from collections.abc import AsyncGenerator, Awaitable, Callable
 from contextlib import asynccontextmanager
+from enum import Enum
 from typing import Any
 
 import structlog
 from fastapi import FastAPI
+from fastapi.routing import APIRouter
 from typing_extensions import TypedDict
 
 from ccproxy.api.bootstrap import create_service_container
@@ -13,7 +15,6 @@ from ccproxy.api.middleware.cors import setup_cors_middleware
 from ccproxy.api.middleware.errors import setup_error_handlers
 from ccproxy.api.routes.health import router as health_router
 from ccproxy.api.routes.plugins import router as plugins_router
-from ccproxy.auth.oauth.registry import OAuthRegistry
 from ccproxy.auth.oauth.router import oauth_router
 from ccproxy.config.settings import Settings
 from ccproxy.core import __version__
@@ -25,7 +26,7 @@ from ccproxy.core.plugins import (
     load_plugin_system,
     setup_default_middleware,
 )
-from ccproxy.core.plugins.hooks import HookManager, HookRegistry
+from ccproxy.core.plugins.hooks import HookManager
 from ccproxy.core.plugins.hooks.events import HookEvent
 from ccproxy.services.container import ServiceContainer
 from ccproxy.utils.startup_helpers import (
@@ -37,6 +38,45 @@ from ccproxy.utils.startup_helpers import (
 
 
 logger: TraceBoundLogger = get_logger()
+
+
+def merge_router_tags(
+    router: APIRouter,
+    spec_tags: list[str] | None = None,
+    default_tags: list[str] | None = None,
+) -> list[str | Enum] | None:
+    """Merge router tags with spec tags, removing duplicates while preserving order.
+
+    Args:
+        router: FastAPI router instance
+        spec_tags: Tags from route specification
+        default_tags: Fallback tags if no other tags exist
+
+    Returns:
+        Deduplicated list of tags, or None if no tags
+    """
+    router_tags: list[str | Enum] = list(router.tags) if router.tags else []
+    spec_tags_list: list[str | Enum] = list(spec_tags) if spec_tags else []
+    default_tags_list: list[str | Enum] = list(default_tags) if default_tags else []
+
+    # Only use defaults if no other tags exist
+    if not router_tags and not spec_tags_list and default_tags_list:
+        return default_tags_list
+
+    # Merge all non-default tags and deduplicate
+    all_tags: list[str | Enum] = router_tags + spec_tags_list
+    if not all_tags:
+        return None
+
+    # Deduplicate by string value while preserving order
+    unique: list[str | Enum] = []
+    seen: set[str] = set()
+    for t in all_tags:
+        s = str(t)
+        if s not in seen:
+            seen.add(s)
+            unique.append(t)
+    return unique
 
 
 class LifecycleComponent(TypedDict):
@@ -86,7 +126,7 @@ async def initialize_plugins_startup(app: FastAPI, settings: Settings) -> None:
     plugin_registry: PluginRegistry = app.state.plugin_registry
     service_container: ServiceContainer = app.state.service_container
 
-    hook_registry = HookRegistry()
+    hook_registry = service_container.get_hook_registry()
     background_thread_manager = service_container.get_background_hook_thread_manager()
     hook_manager = HookManager(hook_registry, background_thread_manager)
     app.state.hook_registry = hook_registry
@@ -191,8 +231,8 @@ async def initialize_hooks_startup(app: FastAPI, settings: Settings) -> None:
         hook_manager = app.state.hook_manager
         logger.debug("hook_system_already_created", category="lifecycle")
     else:
-        hook_registry = HookRegistry()
         service_container: ServiceContainer = app.state.service_container
+        hook_registry = service_container.get_hook_registry()
         background_thread_manager = (
             service_container.get_background_hook_thread_manager()
         )
@@ -482,7 +522,7 @@ def create_app(service_container: ServiceContainer | None = None) -> FastAPI:
 
     app.state.service_container = service_container
 
-    app.state.oauth_registry = OAuthRegistry()
+    app.state.oauth_registry = service_container.get_oauth_registry()
 
     plugin_registry = PluginRegistry()
     middleware_manager = MiddlewareManager()
@@ -541,10 +581,17 @@ def create_app(service_container: ServiceContainer | None = None) -> FastAPI:
             manifest = factory.get_manifest()
             for route_spec in manifest.routes:
                 default_tag = name.replace("_", "-")
+                # Merge router tags with spec tags, removing duplicates
+                merged_tags = merge_router_tags(
+                    route_spec.router,
+                    spec_tags=route_spec.tags,
+                    default_tags=[default_tag],
+                )
+
                 app.include_router(
                     route_spec.router,
                     prefix=route_spec.prefix,
-                    tags=list(route_spec.tags) if route_spec.tags else [default_tag],
+                    tags=merged_tags,
                     dependencies=route_spec.dependencies,
                 )
                 logger.debug(
@@ -566,12 +613,22 @@ def create_app(service_container: ServiceContainer | None = None) -> FastAPI:
 
     middleware_manager.apply_to_app(app)
 
-    app.include_router(health_router, tags=["health"])
+    # Core router registrations with tag merging
+    app.include_router(
+        health_router, tags=merge_router_tags(health_router, default_tags=["health"])
+    )
 
-    app.include_router(oauth_router, prefix="/oauth", tags=["oauth"])
+    app.include_router(
+        oauth_router,
+        prefix="/oauth",
+        tags=merge_router_tags(oauth_router, default_tags=["oauth"]),
+    )
 
     if settings.enable_plugins:
-        app.include_router(plugins_router, tags=["plugins"])
+        app.include_router(
+            plugins_router,
+            tags=merge_router_tags(plugins_router, default_tags=["plugins"]),
+        )
 
     return app
 

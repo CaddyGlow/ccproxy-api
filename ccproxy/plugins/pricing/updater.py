@@ -190,7 +190,7 @@ class PricingUpdater:
             else:
                 logger.warning("external_pricing_validation_failed")
 
-        # Deprecated embedded fallback removed; keep for typing compatibility
+        # Embedded fallback kept for typing compatibility
         logger.error("pricing_unavailable_no_fallback")
         return None
 

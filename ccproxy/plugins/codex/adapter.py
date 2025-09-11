@@ -229,9 +229,7 @@ class CodexAdapter(BaseHTTPAdapter):
             try:
                 # Determine the format conversion direction based on endpoint
                 from_format, to_format = self._get_response_format_conversion(endpoint)
-                response_adapter = self.format_registry.get_adapter(
-                    from_format, to_format
-                )
+                response_adapter = self.format_registry.get(from_format, to_format)
 
                 logger.debug(
                     "codex_format_adapter_loaded",
@@ -463,7 +461,7 @@ class CodexAdapter(BaseHTTPAdapter):
             if self._needs_format_conversion(endpoint):
                 from_format, to_format = self._get_response_format_conversion(endpoint)
                 if self.format_registry:
-                    adapter = self.format_registry.get_adapter(from_format, to_format)
+                    adapter = self.format_registry.get(from_format, to_format)
                     consolidated_response = await adapter.adapt_response(
                         consolidated_response
                     )

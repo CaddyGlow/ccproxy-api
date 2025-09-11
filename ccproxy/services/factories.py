@@ -6,7 +6,7 @@ create and configure service instances according to their interfaces.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 import httpx
 import structlog
@@ -14,9 +14,11 @@ import structlog
 from ccproxy.adapters.openai.adapter import OpenAIAdapter
 from ccproxy.config.settings import Settings
 from ccproxy.core.plugins.hooks import HookManager
+from ccproxy.core.plugins.hooks.registry import HookRegistry
 from ccproxy.core.plugins.hooks.thread_manager import BackgroundHookThreadManager
 from ccproxy.http.client import HTTPClientFactory
 from ccproxy.http.pool import HTTPPoolManager
+from ccproxy.scheduler.registry import TaskRegistry
 from ccproxy.services.adapters.format_registry import FormatAdapterRegistry
 from ccproxy.services.cache import ResponseCache
 from ccproxy.services.cli_detection import CLIDetectionService
@@ -69,6 +71,20 @@ class ConcreteServiceFactory:
 
         self._container.register_service(
             FormatAdapterRegistry, factory=self.create_format_registry
+        )
+
+        # Registries
+        self._container.register_service(
+            HookRegistry, factory=self.create_hook_registry
+        )
+        # Delay import of OAuthRegistry to avoid circular import via auth package
+        from ccproxy.auth.oauth import registry as oauth_registry_module
+
+        self._container.register_service(
+            oauth_registry_module.OAuthRegistry, factory=self.create_oauth_registry
+        )
+        self._container.register_service(
+            TaskRegistry, factory=self.create_task_registry
         )
 
         # Register background thread manager for hooks
@@ -136,7 +152,7 @@ class ConcreteServiceFactory:
         """Create response cache instance."""
         return ResponseCache()
 
-    # Removed: legacy ConnectionPoolManager in favor of HTTPPoolManager only
+    # ConnectionPoolManager is no longer used; HTTPPoolManager only
 
     def create_binary_resolver(self) -> BinaryResolver:
         """Create a BinaryResolver from settings."""
@@ -165,6 +181,20 @@ class ConcreteServiceFactory:
         )
 
         return registry
+
+    def create_hook_registry(self) -> HookRegistry:
+        """Create a HookRegistry instance."""
+        return HookRegistry()
+
+    def create_oauth_registry(self) -> Any:
+        """Create an OAuthRegistry instance (imported lazily to avoid cycles)."""
+        from ccproxy.auth.oauth.registry import OAuthRegistry
+
+        return OAuthRegistry()
+
+    def create_task_registry(self) -> TaskRegistry:
+        """Create a TaskRegistry instance."""
+        return TaskRegistry()
 
     def _register_core_format_adapters(self, registry: FormatAdapterRegistry) -> None:
         """Pre-register core format adapters with high priority."""

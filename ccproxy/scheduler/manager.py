@@ -3,16 +3,12 @@
 import structlog
 
 from ccproxy.config.settings import Settings
+from ccproxy.services.container import ServiceContainer
 
 from .core import Scheduler
 from .errors import SchedulerError, TaskRegistrationError
-from .registry import register_task
-from .tasks import (
-    PoolStatsTask,
-    # PushgatewayTask removed - functionality moved to metrics plugin
-    # StatsPrintingTask removed - functionality moved to metrics plugin
-    VersionUpdateCheckTask,
-)
+from .registry import TaskRegistry
+from .tasks import PoolStatsTask, VersionUpdateCheckTask
 
 
 logger = structlog.get_logger(__name__)
@@ -45,24 +41,19 @@ async def setup_scheduler_tasks(scheduler: Scheduler, settings: Settings) -> Non
         ),
     )
 
-    # Pushgateway task is fully owned by the metrics plugin; no core references remain
-
-    # Stats printing task removed - functionality moved to metrics plugin
-    # The metrics plugin now handles stats collection and reporting
     if (
         hasattr(scheduler_config, "stats_printing_enabled")
         and scheduler_config.stats_printing_enabled
     ):
         logger.debug(
             "stats_printing_task_skipped",
-            message="Stats printing functionality has been moved to the metrics plugin",
+            message="Stats printing is handled by plugin",
         )
 
-    # Pricing cache update task is now handled by the pricing plugin
     if scheduler_config.pricing_update_enabled:
         logger.debug(
             "pricing_update_task_handled_by_plugin",
-            message="Pricing updates are now managed by the pricing plugin",
+            message="Pricing updates managed by plugin",
             interval_hours=scheduler_config.pricing_update_interval_hours,
         )
 
@@ -100,25 +91,20 @@ async def setup_scheduler_tasks(scheduler: Scheduler, settings: Settings) -> Non
             )
 
 
-def _register_default_tasks(settings: Settings) -> None:
+def _register_default_tasks(registry: TaskRegistry, settings: Settings) -> None:
     """Register default task types in the global registry based on configuration."""
-    from .registry import get_task_registry
-
-    registry = get_task_registry()
-
-    # Pushgateway task removed - functionality moved to metrics plugin
-    # The metrics plugin now registers its own task types
-
-    # Stats printing task removed - functionality moved to metrics plugin
+    # Registry is provided by DI
 
     # Always register core tasks (not metrics-related)
-    if not registry.is_registered("version_update_check"):
-        register_task("version_update_check", VersionUpdateCheckTask)
-    if not registry.is_registered("pool_stats"):
-        register_task("pool_stats", PoolStatsTask)
+    if not registry.has("version_update_check"):
+        registry.register("version_update_check", VersionUpdateCheckTask)
+    if not registry.has("pool_stats"):
+        registry.register("pool_stats", PoolStatsTask)
 
 
-async def start_scheduler(settings: Settings) -> Scheduler | None:
+async def start_scheduler(
+    settings: Settings, container: ServiceContainer
+) -> Scheduler | None:
     """
     Start the scheduler with configured tasks.
 
@@ -133,13 +119,15 @@ async def start_scheduler(settings: Settings) -> Scheduler | None:
             logger.info("scheduler_disabled")
             return None
 
-        # Register task types (only when actually starting scheduler)
-        _register_default_tasks(settings)
+        # Resolve registry from DI and register task types
+        registry = container.get_task_registry()
+        _register_default_tasks(registry, settings)
 
         # Create scheduler with settings
         scheduler = Scheduler(
             max_concurrent_tasks=settings.scheduler.max_concurrent_tasks,
             graceful_shutdown_timeout=settings.scheduler.graceful_shutdown_timeout,
+            task_registry=registry,
         )
 
         # Start the scheduler

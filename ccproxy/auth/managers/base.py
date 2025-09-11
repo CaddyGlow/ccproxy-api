@@ -195,7 +195,7 @@ class BaseTokenManager(ABC, Generic[CredentialsT]):
 
         return True
 
-    # Compatibility helpers removed; subclasses should implement protocol methods
+    # Subclasses should implement protocol methods
 
     @abstractmethod
     async def refresh_token(self, oauth_client: Any) -> CredentialsT | None:

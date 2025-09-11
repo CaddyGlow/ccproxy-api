@@ -11,14 +11,14 @@ from ccproxy.core.plugins import (
     PluginManifest,
     ProviderPluginRuntime,
 )
-from ccproxy.core.plugins.declaration import FormatAdapterSpec
+from ccproxy.core.plugins.declaration import FormatAdapterSpec, RouterSpec
 from ccproxy.services.adapters.base import BaseAdapter
 
 from .adapter import CopilotAdapter
 from .config import CopilotConfig
 from .detection_service import CopilotDetectionService
 from .oauth.provider import CopilotOAuthProvider
-from .routes import router
+from .routes import router_github, router_v1
 
 
 logger = get_plugin_logger()
@@ -121,8 +121,10 @@ class CopilotPluginFactory(BaseProviderPluginFactory, AuthProviderPluginFactory)
     adapter_class = CopilotAdapter
     detection_service_class = CopilotDetectionService
     config_class = CopilotConfig
-    router = router
-    route_prefix = "/copilot"
+    routers = [
+        RouterSpec(router=router_v1, prefix="/copilot/v1", tags=["copilot-api-v1"]),
+        RouterSpec(router=router_github, prefix="/copilot", tags=["copilot-github"]),
+    ]
     dependencies = []
     optional_requires = []
 

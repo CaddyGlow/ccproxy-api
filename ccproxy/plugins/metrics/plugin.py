@@ -97,16 +97,14 @@ class MetricsRuntime(SystemPluginRuntime):
                 if scheduler:
                     try:
                         # Register the task type if not already registered
-                        from ccproxy.scheduler.registry import (
-                            get_task_registry,
-                            register_task,
-                        )
-
                         from .tasks import PushgatewayTask
 
-                        registry = get_task_registry()
-                        if not registry.is_registered(self.pushgateway_task_name):
-                            register_task(self.pushgateway_task_name, PushgatewayTask)
+                        # Use scheduler's registry (DI), avoiding globals
+                        registry = scheduler.task_registry
+                        if not registry.has(self.pushgateway_task_name):
+                            registry.register(
+                                self.pushgateway_task_name, PushgatewayTask
+                            )
 
                         # Add task instance to scheduler
                         await scheduler.add_task(

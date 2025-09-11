@@ -109,9 +109,7 @@ class ClaudeAPIAdapter(BaseHTTPAdapter):
         if needs_conversion and self.format_registry:
             try:
                 # Get the response adapter (anthropic -> openai) for streaming conversion
-                response_adapter = self.format_registry.get_adapter(
-                    "anthropic", "openai"
-                )
+                response_adapter = self.format_registry.get("anthropic", "openai")
 
                 logger.debug(
                     "claude_api_format_adapter_loaded",

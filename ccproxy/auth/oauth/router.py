@@ -19,7 +19,7 @@ from ccproxy.auth.oauth.templates import OAuthTemplates
 logger = structlog.get_logger(__name__)
 
 # Create the OAuth router
-oauth_router = APIRouter(tags=["oauth"])
+oauth_router = APIRouter()
 
 
 class OAuthProvidersResponse(BaseModel):
@@ -55,7 +55,7 @@ async def list_oauth_providers(request: Request) -> OAuthProvidersResponse:
     registry = getattr(request.app.state, "oauth_registry", None)
     if registry is None:
         raise HTTPException(status_code=503, detail="OAuth registry not initialized")
-    providers = registry.list_providers()
+    providers = registry.list()
 
     logger.info("oauth_providers_listed", count=len(providers), category="auth")
 
@@ -89,7 +89,7 @@ async def initiate_oauth_login(
     registry = getattr(request.app.state, "oauth_registry", None)
     if registry is None:
         raise HTTPException(status_code=503, detail="OAuth registry not initialized")
-    oauth_provider = registry.get_provider(provider)
+    oauth_provider = registry.get(provider)
 
     if not oauth_provider:
         logger.error("oauth_provider_not_found", provider=provider, category="auth")
@@ -247,7 +247,7 @@ async def handle_oauth_callback(
     registry = getattr(request.app.state, "oauth_registry", None)
     if registry is None:
         raise HTTPException(status_code=503, detail="OAuth registry not initialized")
-    oauth_provider = registry.get_provider(provider)
+    oauth_provider = registry.get(provider)
 
     if not oauth_provider:
         logger.error("oauth_provider_not_found", provider=provider, category="auth")
@@ -316,7 +316,7 @@ async def refresh_oauth_token(
     registry = getattr(request.app.state, "oauth_registry", None)
     if registry is None:
         raise HTTPException(status_code=503, detail="OAuth registry not initialized")
-    oauth_provider = registry.get_provider(provider)
+    oauth_provider = registry.get(provider)
 
     if not oauth_provider:
         logger.error("oauth_provider_not_found", provider=provider, category="auth")
@@ -367,7 +367,7 @@ async def revoke_oauth_token(
     registry = getattr(request.app.state, "oauth_registry", None)
     if registry is None:
         raise HTTPException(status_code=503, detail="OAuth registry not initialized")
-    oauth_provider = registry.get_provider(provider)
+    oauth_provider = registry.get(provider)
 
     if not oauth_provider:
         logger.error("oauth_provider_not_found", provider=provider, category="auth")
