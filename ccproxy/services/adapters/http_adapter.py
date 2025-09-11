@@ -35,6 +35,12 @@ class BaseHTTPAdapter(BaseAdapter):
         self.format_registry = kwargs.get("format_registry")
         self.context = kwargs.get("context")
 
+        logger.debug(
+            "base_http_adapter_initialized",
+            has_streaming_handler=streaming_handler is not None,
+            has_format_registry=self.format_registry is not None,
+        )
+
     async def handle_request(
         self, request: Request
     ) -> Response | StreamingResponse | DeferredStreaming:
@@ -61,9 +67,19 @@ class BaseHTTPAdapter(BaseAdapter):
                 format_context=None,
             )
 
-            if await self.streaming_handler.should_stream(body, handler_config):
+            logger.debug(
+                "checking_should_stream", endpoint=endpoint, has_streaming_handler=True
+            )
+            # Detect via body flag or Accept header
+            body_wants_stream = await self.streaming_handler.should_stream(
+                body, handler_config
+            )
+            header_wants_stream = self.streaming_handler.should_stream_response(headers)
+            if body_wants_stream or header_wants_stream:
                 logger.debug("streaming_request_detected", endpoint=endpoint)
                 return await self.handle_streaming(request, endpoint)
+            else:
+                logger.debug("not_streaming_request", endpoint=endpoint)
 
         # Step 3: Execute format chain if specified (non-streaming)
         if ctx.format_chain and len(ctx.format_chain) > 1:
@@ -154,6 +170,8 @@ class BaseHTTPAdapter(BaseAdapter):
     ) -> StreamingResponse | DeferredStreaming:
         """Handle a streaming request using StreamingHandler with format chain support."""
 
+        logger.debug("handle_streaming_called", endpoint=endpoint)
+
         if not self.streaming_handler:
             logger.error("streaming_handler_missing")
             # Fallback to regular request handling
@@ -171,27 +189,62 @@ class BaseHTTPAdapter(BaseAdapter):
         body = await request.body()
         headers = extract_request_headers(request)
 
-        # Build handler config for streaming
+        # Step 1: Provider-specific preparation (add auth headers, etc.)
+        prepared_body, prepared_headers = await self.prepare_provider_request(
+            body, headers, endpoint
+        )
+
+        # Get format adapter for streaming if format chain exists
+        streaming_format_adapter = None
+        if ctx.format_chain and len(ctx.format_chain) > 1 and self.format_registry:
+            # For response conversion, reverse the format chain
+            # format_chain = ["openai", "anthropic"] -> response: anthropic -> openai
+            from_format = ctx.format_chain[-1]  # Last format (anthropic)
+            to_format = ctx.format_chain[0]  # First format (openai)
+            streaming_format_adapter = self.format_registry.get_if_exists(
+                from_format, to_format
+            )
+
+            logger.debug(
+                "streaming_adapter_lookup",
+                format_chain=ctx.format_chain,
+                from_format=from_format,
+                to_format=to_format,
+                adapter_found=streaming_format_adapter is not None,
+                adapter_type=type(streaming_format_adapter).__name__
+                if streaming_format_adapter
+                else None,
+            )
+
+        # Build handler config for streaming with format adapter
         # Import here to avoid circular imports
         from ccproxy.services.handler_config import HandlerConfig
 
         handler_config = HandlerConfig(
             supports_streaming=True,
             request_transformer=None,
-            response_adapter=None,  # Will be enhanced by StreamingHandler
+            response_adapter=streaming_format_adapter,  # Pass streaming format adapter
             format_context=None,
         )
 
-        # Delegate to StreamingHandler with format chain
+        # Get target URL for proper client pool management
+        target_url = await self.get_target_url(endpoint)
+
+        # Get HTTP client from pool manager with base URL for hook integration
+        from urllib.parse import urlparse
+
+        parsed_url = urlparse(target_url)
+        base_url = f"{parsed_url.scheme}://{parsed_url.netloc}"
+
+        # Delegate to StreamingHandler - no format chain needed since adapter is in config
         return await self.streaming_handler.handle_streaming_request(
             method=request.method,
-            url=await self.get_target_url(endpoint),
-            headers=headers,
-            body=body,
+            url=target_url,
+            headers=prepared_headers,  # Use prepared headers with auth
+            body=prepared_body,  # Use prepared body
             handler_config=handler_config,
             request_context=ctx,
-            format_chain=ctx.format_chain,  # Pass format chain for conversion
-            client=await self.http_pool_manager.get_client(),
+            client=await self.http_pool_manager.get_client(base_url=base_url),
         )
 
     async def _execute_format_chain(

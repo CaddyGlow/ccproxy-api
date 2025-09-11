@@ -66,85 +66,22 @@ class CopilotAdapter(BaseHTTPAdapter):
         self, response: httpx.Response, endpoint: str
     ) -> Response | StreamingResponse | DeferredStreaming:
         """Process provider response with format conversion support."""
+        # Streaming detection and handling is centralized in BaseHTTPAdapter.
+        # Always return a plain Response for non-streaming flows.
         response_headers = extract_response_headers(response)
-
-        # Check if this is a streaming response
-        content_type = response_headers.get("content-type", "")
-        is_streaming = (
-            "text/event-stream" in content_type or "stream" in content_type.lower()
-        )
-
-        if is_streaming:
-            logger.debug(
-                "copilot_streaming_response_detected",
-                content_type=content_type,
-                endpoint=endpoint,
-                category="streaming_conversion",
-            )
-
         return Response(
             content=response.content,
             status_code=response.status_code,
             headers=response_headers,
+            media_type=response.headers.get("content-type"),
         )
 
     async def _create_streaming_response(
         self, response: httpx.Response, endpoint: str
     ) -> DeferredStreaming:
-        """Create streaming response with format conversion support."""
-
-        # Check if format conversion is needed based on endpoint
-        needs_conversion = self._needs_format_conversion(endpoint)
-        response_adapter = None
-
-        if needs_conversion and self.format_registry:
-            try:
-                # Get the response adapter (openai -> anthropic) for streaming conversion
-                response_adapter = self.format_registry.get("openai", "anthropic")
-
-                logger.debug(
-                    "copilot_format_adapter_loaded",
-                    endpoint=endpoint,
-                    has_response_adapter=bool(response_adapter),
-                    category="streaming_conversion",
-                )
-            except Exception as e:
-                logger.warning(
-                    "copilot_format_adapter_loading_failed",
-                    error=str(e),
-                    endpoint=endpoint,
-                    category="streaming_conversion",
-                )
-
-        # Get HTTP client from pool manager
-        client = await self.http_pool_manager.get_client()
-
-        # Create minimal HandlerConfig only for format conversion
-        handler_config = None
-        if response_adapter:
-            from ccproxy.services.handler_config import HandlerConfig
-
-            handler_config = HandlerConfig(
-                response_adapter=response_adapter,
-                supports_streaming=True,
-            )
-            logger.debug(
-                "copilot_minimal_handler_config_created",
-                endpoint=endpoint,
-                from_format="openai",
-                to_format="anthropic",
-                category="streaming_conversion",
-            )
-
-        # Create DeferredStreaming with minimal handler config for format conversion
-        return DeferredStreaming(
-            method="POST",
-            url=str(response.url),
-            headers=dict(response.request.headers),
-            body=response.request.content,
-            client=client,
-            handler_config=handler_config,
-        )
+        # Deprecated: streaming is centrally handled by BaseHTTPAdapter/StreamingHandler
+        # Kept for compatibility; not used.
+        raise NotImplementedError
 
     async def handle_request_gh_api(self, request: Request) -> Response:
         """Forward request to GitHub API with proper authentication.
@@ -192,5 +129,5 @@ class CopilotAdapter(BaseHTTPAdapter):
         )
 
     def _needs_format_conversion(self, endpoint: str) -> bool:
-        """Decide if format conversion is needed for a given endpoint."""
+        # Deprecated: conversion handled via format chain in BaseHTTPAdapter
         return False

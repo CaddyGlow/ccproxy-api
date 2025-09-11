@@ -76,93 +76,35 @@ class ClaudeAPIAdapter(BaseHTTPAdapter):
     async def process_provider_response(
         self, response: httpx.Response, endpoint: str
     ) -> Response | StreamingResponse:
-        """Process provider response with streaming and format conversion support."""
+        """Return a plain Response; streaming handled upstream by BaseHTTPAdapter.
+
+        The BaseHTTPAdapter is responsible for detecting streaming and delegating
+        to the shared StreamingHandler. For non-streaming responses, adapters
+        should return a simple Starlette Response.
+        """
         response_headers = extract_response_headers(response)
-
-        # Check if this is a streaming response
-        content_type = response_headers.get("content-type", "")
-        is_streaming = "text/event-stream" in content_type
-
-        if is_streaming:
-            logger.debug(
-                "claude_api_streaming_response_detected",
-                content_type=content_type,
-                endpoint=endpoint,
-                category="streaming_conversion",
-            )
-
-            # Create DeferredStreaming with format conversion if needed
-            return await self._create_streaming_response(response, endpoint)
-        else:
-            # Non-streaming response
-            return Response(
-                content=response.content,
-                status_code=response.status_code,
-                headers=response_headers,
-            )
+        return Response(
+            content=response.content,
+            status_code=response.status_code,
+            headers=response_headers,
+            media_type=response.headers.get("content-type"),
+        )
 
     async def _create_streaming_response(
         self, response: httpx.Response, endpoint: str
     ) -> DeferredStreaming:
-        """Create streaming response with format conversion support (new architecture)."""
+        """Create streaming response with format conversion support."""
+        # Deprecated: streaming is centrally handled by BaseHTTPAdapter/StreamingHandler
+        # Kept for compatibility; not used.
+        raise NotImplementedError
 
-        # Check if format conversion is needed based on endpoint
-        needs_conversion = self._needs_format_conversion(endpoint)
-        response_adapter = None
-
-        if needs_conversion and self.format_registry:
-            try:
-                # Get the response adapter (anthropic -> openai) for streaming conversion
-                response_adapter = self.format_registry.get("anthropic", "openai")
-
-                logger.debug(
-                    "claude_api_format_adapter_loaded",
-                    endpoint=endpoint,
-                    has_response_adapter=bool(response_adapter),
-                    category="streaming_conversion",
-                )
-            except Exception as e:
-                logger.warning(
-                    "claude_api_format_adapter_loading_failed",
-                    error=str(e),
-                    endpoint=endpoint,
-                    category="streaming_conversion",
-                )
-
-        # Get HTTP client from pool manager (new architecture)
-        client = await self.http_pool_manager.get_client()
-
-        # NEW ARCHITECTURE: Create minimal HandlerConfig only for format conversion
-        # This avoids the full delegation pattern while preserving format conversion
-        handler_config = None
-        if response_adapter:
-            from ccproxy.services.handler_config import HandlerConfig
-
-            handler_config = HandlerConfig(
-                response_adapter=response_adapter,
-                supports_streaming=True,
-            )
-            logger.debug(
-                "claude_api_minimal_handler_config_created",
-                endpoint=endpoint,
-                from_format="anthropic",
-                to_format="openai",
-                category="streaming_conversion",
-            )
-
-        # Create DeferredStreaming with minimal handler config for format conversion
-        return DeferredStreaming(
-            method="POST",
-            url=str(response.url),
-            headers=dict(response.request.headers),
-            body=response.request.content,
-            client=client,
-            handler_config=handler_config,
-        )
+    def _get_response_format_conversion(self, endpoint: str) -> tuple[str, str]:
+        """Deprecated: conversion direction decided by format chain upstream."""
+        return ("anthropic", "anthropic")
 
     def _needs_format_conversion(self, endpoint: str) -> bool:
-        """Check if this endpoint needs format conversion (OpenAI format requested)."""
-        return endpoint.endswith("/chat/completions")
+        """Deprecated: format conversion handled via format chain in BaseHTTPAdapter."""
+        return False
 
     # Helper methods (move from transformers)
     def _inject_system_prompt(
