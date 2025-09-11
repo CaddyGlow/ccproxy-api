@@ -80,5 +80,17 @@ class ResponsesAdapter(BaseAPIAdapter):
             # For pure Response API, pass through events
             yield event
 
+    async def adapt_error(self, error: dict[str, Any]) -> dict[str, Any]:
+        """Convert error format - pass through for Response API.
+
+        Args:
+            error: Error response
+
+        Returns:
+            Pass-through error response
+        """
+        # For pure Response API, pass through errors
+        return error
+
 
 __all__ = ["ResponsesAdapter"]

@@ -238,3 +238,40 @@ class ResponseAPIAnthropicAdapter(APIAdapter):
                 openai_request[field] = response_api_request[field]
 
         return openai_request
+
+    async def adapt_error(self, error: dict[str, Any]) -> dict[str, Any]:
+        """Convert error format from OpenAI to Response API.
+
+        Args:
+            error: OpenAI error response
+
+        Returns:
+            Response API error response
+        """
+        # Extract error details from OpenAI format
+        openai_error = error.get("error", {})
+        error_type = openai_error.get("type", "internal_server_error")
+        error_message = openai_error.get("message", "An error occurred")
+
+        # Map OpenAI error types to Response API error types
+        error_type_mapping = {
+            "invalid_request_error": "invalid_request_error",
+            "authentication_error": "authentication_error",
+            "permission_error": "permission_error",
+            "not_found_error": "not_found_error",
+            "rate_limit_error": "rate_limit_error",
+            "internal_server_error": "internal_server_error",
+            "server_error": "internal_server_error",
+        }
+
+        response_api_error_type = error_type_mapping.get(
+            error_type, "internal_server_error"
+        )
+
+        # Return Response API error format
+        return {
+            "error": {
+                "type": response_api_error_type,
+                "message": error_message,
+            }
+        }

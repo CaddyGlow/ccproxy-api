@@ -108,7 +108,7 @@ class AnthropicResponseAPIAdapter(APIAdapter):
                 error_type=response.get("error", {}).get("type"),
                 error_message=response.get("error", {}).get("message", ""),
             )
-            return self.adapt_error(response)
+            return await self.adapt_error(response)
 
         try:
             # Extract content from Response API format
@@ -401,7 +401,7 @@ class AnthropicResponseAPIAdapter(APIAdapter):
 
         return input_messages
 
-    def adapt_error(self, error_body: dict[str, Any]) -> dict[str, Any]:
+    async def adapt_error(self, error_body: dict[str, Any]) -> dict[str, Any]:
         """Convert Response API error format to Anthropic error format.
 
         Args:

@@ -61,6 +61,21 @@ class APIAdapter(ABC):
         # Subclasses must override this method
         ...
 
+    @abstractmethod
+    async def adapt_error(self, error: dict[str, Any]) -> dict[str, Any]:
+        """Convert an error response from one API format to another.
+
+        Args:
+            error: The error response data to convert
+
+        Returns:
+            The converted error response data
+
+        Raises:
+            ValueError: If the error format is invalid or unsupported
+        """
+        pass
+
 
 class BaseAPIAdapter(APIAdapter):
     """Base implementation with common functionality."""

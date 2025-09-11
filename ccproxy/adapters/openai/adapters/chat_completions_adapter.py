@@ -10,7 +10,7 @@ from collections.abc import AsyncGenerator, AsyncIterator
 from typing import Any
 
 from ccproxy.adapters.base import BaseAPIAdapter
-from ccproxy.adapters.openai.models.chat_completions import (
+from ccproxy.adapters.openai.models import (
     OpenAIChatCompletionRequest,
     OpenAIChatCompletionResponse,
 )
@@ -35,7 +35,8 @@ class ChatCompletionsAdapter(BaseAPIAdapter):
         """
         # Validate using Pydantic model
         request_validated = OpenAIChatCompletionRequest.model_validate(request)
-        return request_validated.model_dump(exclude_none=True)
+        result = request_validated.model_dump(exclude_none=True)
+        return dict(result)
 
     async def adapt_response(self, response: dict[str, Any]) -> dict[str, Any]:
         """Adapt Chat Completions response.
@@ -50,7 +51,8 @@ class ChatCompletionsAdapter(BaseAPIAdapter):
         """
         # Validate using Pydantic model
         response_validated = OpenAIChatCompletionResponse.model_validate(response)
-        return response_validated.model_dump(exclude_none=True)
+        result = response_validated.model_dump(exclude_none=True)
+        return dict(result)
 
     def adapt_stream(
         self, stream: AsyncIterator[dict[str, Any]]
@@ -74,6 +76,18 @@ class ChatCompletionsAdapter(BaseAPIAdapter):
         async for chunk in stream:
             # For pure Chat Completions, pass through chunks
             yield chunk
+
+    async def adapt_error(self, error: dict[str, Any]) -> dict[str, Any]:
+        """Convert error format - pass through for Chat Completions.
+
+        Args:
+            error: Error response
+
+        Returns:
+            Pass-through error response
+        """
+        # For pure Chat Completions, pass through errors
+        return error
 
 
 __all__ = ["ChatCompletionsAdapter"]

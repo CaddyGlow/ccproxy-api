@@ -208,7 +208,7 @@ class TestAnthropicToOpenAIAdapter:
         assert tool_block["name"] == "get_weather"
         assert tool_block["input"]["location"] == "San Francisco"
 
-    def test_adapt_error(self) -> None:
+    async def test_adapt_error(self) -> None:
         """Test OpenAI to Anthropic error conversion."""
         adapter = AnthropicToOpenAIAdapter()
 
@@ -220,7 +220,7 @@ class TestAnthropicToOpenAIAdapter:
             }
         }
 
-        result = adapter.adapt_error(openai_error)
+        result = await adapter.adapt_error(openai_error)
 
         assert "error" in result
         assert result["error"]["type"] == "invalid_request_error"

@@ -68,9 +68,10 @@ class ChatToResponsesAdapter(BaseAPIAdapter):
         Returns:
             Chat Completions formatted response
         """
-        return self.response_to_chat_completion(response_data).model_dump(
+        result = self.response_to_chat_completion(response_data).model_dump(
             exclude_none=True
         )
+        return dict(result)
 
     def adapt_stream(
         self, stream: AsyncIterator[dict[str, Any]]
@@ -496,6 +497,42 @@ class ChatToResponsesAdapter(BaseAPIAdapter):
             completion_tokens=response_usage.get("output_tokens", 0),
             total_tokens=response_usage.get("total_tokens", 0),
         )
+
+    async def adapt_error(self, error: dict[str, Any]) -> dict[str, Any]:
+        """Convert Response API error format to Chat Completions error format.
+
+        Args:
+            error: Response API error response
+
+        Returns:
+            Chat Completions error response
+        """
+        # Extract error details from Response API format
+        response_error = error.get("error", {})
+        error_type = response_error.get("type", "internal_server_error")
+        error_message = response_error.get("message", "An error occurred")
+
+        # Map Response API error types to OpenAI error types
+        error_type_mapping = {
+            "invalid_request_error": "invalid_request_error",
+            "authentication_error": "invalid_request_error",
+            "permission_error": "invalid_request_error",
+            "not_found_error": "invalid_request_error",
+            "rate_limit_error": "rate_limit_error",
+            "internal_server_error": "internal_server_error",
+            "overloaded_error": "server_error",
+        }
+
+        openai_error_type = error_type_mapping.get(error_type, "invalid_request_error")
+
+        # Return OpenAI Chat Completions error format
+        return {
+            "error": {
+                "message": error_message,
+                "type": openai_error_type,
+                "code": error_type,
+            }
+        }
 
 
 __all__ = ["ChatToResponsesAdapter"]

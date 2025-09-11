@@ -1,4 +1,3 @@
-import json
 import uuid
 from typing import Any
 
@@ -82,69 +81,11 @@ class CopilotAdapter(BaseHTTPAdapter):
                 category="streaming_conversion",
             )
 
-            # Create DeferredStreaming with format conversion if needed
-            return await self._create_streaming_response(response, endpoint)
-        else:
-            # Non-streaming response - handle format conversion manually if needed
-            if self._needs_format_conversion(endpoint) and self.format_registry:
-                try:
-                    # Get the response adapter (openai -> anthropic) for format conversion
-                    response_adapter = self.format_registry.get_adapter(
-                        "openai", "anthropic"
-                    )
-
-                    logger.debug(
-                        "copilot_format_adapter_retrieved",
-                        endpoint=endpoint,
-                        adapter_class=type(response_adapter).__name__
-                        if response_adapter
-                        else None,
-                        adapter_module=getattr(
-                            type(response_adapter), "__module__", None
-                        )
-                        if response_adapter
-                        else None,
-                    )
-
-                    if response_adapter:
-                        # Parse the OpenAI response
-                        response_data = response.json()
-
-                        # Convert to Anthropic format
-                        converted_response = await response_adapter.adapt_response(
-                            response_data
-                        )
-
-                        logger.debug(
-                            "copilot_response_converted",
-                            endpoint=endpoint,
-                            from_format="openai",
-                            to_format="anthropic",
-                            original_content_length=len(response.content),
-                            converted_content_length=len(str(converted_response)),
-                            converted_response_preview=str(converted_response)[:200],
-                        )
-
-                        return Response(
-                            content=json.dumps(converted_response),
-                            status_code=response.status_code,
-                            headers=response_headers,
-                        )
-
-                except Exception as e:
-                    logger.error(
-                        "copilot_format_conversion_failed",
-                        endpoint=endpoint,
-                        error=str(e),
-                        category="format_conversion",
-                    )
-                    # Fall back to original response if conversion fails
-
-            return Response(
-                content=response.content,
-                status_code=response.status_code,
-                headers=response_headers,
-            )
+        return Response(
+            content=response.content,
+            status_code=response.status_code,
+            headers=response_headers,
+        )
 
     async def _create_streaming_response(
         self, response: httpx.Response, endpoint: str

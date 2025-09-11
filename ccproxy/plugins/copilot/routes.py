@@ -38,7 +38,8 @@ def _cast_result(result: object) -> Response | StreamingResponse | DeferredStrea
 
 
 async def _handle_adapter_request(
-    request: Request, adapter: Any, endpoint: str, **kwargs: Any
+    request: Request,
+    adapter: Any,
 ) -> Response | StreamingResponse | DeferredStreaming:
     result = await adapter.handle_request(request)
     return _cast_result(result)
@@ -53,10 +54,8 @@ async def create_openai_chat_completion(
     adapter: CopilotAdapterDep,
 ) -> Response | StreamingResponse | DeferredStreaming:
     """Create a chat completion using Copilot with OpenAI-compatible format."""
-    # No format chain needed - direct pass-through (OpenAI → OpenAI)
     request.state.context.metadata["endpoint"] = "/v1/chat/completions"
-
-    return await _handle_adapter_request(request, adapter, "/v1/chat/completions")
+    return await _handle_adapter_request(request, adapter)
 
 
 @router.post("/v1/messages", response_model=None)
@@ -65,12 +64,51 @@ async def create_anthropic_message(
     adapter: CopilotAdapterDep,
 ) -> Response | StreamingResponse | DeferredStreaming:
     """Create a message using Copilot with native Anthropic format."""
-    # GitHub Copilot API uses OpenAI format natively - no format conversion needed
-    # The adapter will handle any necessary format transformations internally
     request.state.context.metadata["endpoint"] = "/v1/messages"
     request.state.context.format_chain = ["anthropic", "openai"]
+    return await _handle_adapter_request(request, adapter)
 
-    return await _handle_adapter_request(request, adapter, "/v1/messages")
+
+@router.post("/v1/engines/codegen/completions", response_model=None)
+async def create_openai_codgen_completion(
+    request: Request,
+    adapter: CopilotAdapterDep,
+) -> Response | StreamingResponse | DeferredStreaming:
+    """Create a completion using Copilot with OpenAI-compatible format."""
+    request.state.context.metadata["endpoint"] = "/v1/engines/codegen/completions"
+    return await _handle_adapter_request(request, adapter)
+
+
+@router.post("/v1/engines/codegen/messsage", response_model=None)
+async def create_anthropic_codegen_completion(
+    request: Request,
+    adapter: CopilotAdapterDep,
+) -> Response | StreamingResponse | DeferredStreaming:
+    """Create a completion using Copilot with OpenAI-compatible format."""
+    request.state.context.metadata["endpoint"] = "/v1/engines/codegen/completions"
+    request.state.context.format_chain = ["anthropic", "openai"]
+    return await _handle_adapter_request(request, adapter)
+
+
+@router.post("/v1/engines/copilot-codex/completions", response_model=None)
+async def create_openai_completion(
+    request: Request,
+    adapter: CopilotAdapterDep,
+) -> Response | StreamingResponse | DeferredStreaming:
+    """Create a chat completion using Copilot with OpenAI-compatible format."""
+    request.state.context.metadata["endpoint"] = "/v1/engines/copilot-codex/completions"
+    return await _handle_adapter_request(request, adapter)
+
+
+@router.post("/v1/engines/copilot-codex/messages", response_model=None)
+async def create_anthropic_completion(
+    request: Request,
+    adapter: CopilotAdapterDep,
+) -> Response | StreamingResponse | DeferredStreaming:
+    """Create a chat completion using Copilot with OpenAI-compatible format."""
+    request.state.context.metadata["endpoint"] = "/v1/engines/copilot-codex/completions"
+    request.state.context.format_chain = ["anthropic", "openai"]
+    return await _handle_adapter_request(request, adapter)
 
 
 @router.post("/v1/embeddings", response_model=None)

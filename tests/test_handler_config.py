@@ -75,6 +75,10 @@ class MockAdapter(APIAdapter):
         async for chunk in stream:
             yield {"adapted": True, **chunk}
 
+    async def adapt_error(self, error: dict[str, Any]) -> dict[str, Any]:
+        """Mock error adaptation."""
+        return {"adapted": True, **error}
+
 
 class MockTransformer:
     """Mock transformer that implements the protocol."""

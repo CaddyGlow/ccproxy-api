@@ -594,3 +594,25 @@ class CompositeAnthropicAdapter(APIAdapter):
             sse_event = f"event: {event_type}\ndata: {json_str}\n\n"
             sse_bytes = sse_event.encode("utf-8")
             yield sse_bytes
+
+    async def adapt_error(self, error: dict[str, Any]) -> dict[str, Any]:
+        """Convert error format for Anthropic composite adapter.
+
+        Args:
+            error: Error response
+
+        Returns:
+            Anthropic-formatted error response
+        """
+        # Extract error details
+        error_dict = error.get("error", {})
+        error_type = error_dict.get("type", "internal_server_error")
+        error_message = error_dict.get("message", "An error occurred")
+
+        # Return Anthropic error format
+        return {
+            "error": {
+                "type": error_type,
+                "message": error_message,
+            }
+        }

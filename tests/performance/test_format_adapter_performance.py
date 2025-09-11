@@ -32,6 +32,9 @@ class BenchmarkAdapter(APIAdapter):
 
         return benchmark_stream()
 
+    async def adapt_error(self, error):
+        return {"benchmark": self.name}
+
 
 @pytest.mark.performance
 class TestFormatAdapterPerformance:

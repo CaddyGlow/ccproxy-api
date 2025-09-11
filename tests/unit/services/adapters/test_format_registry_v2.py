@@ -29,6 +29,9 @@ class MockAPIAdapter(APIAdapter):
 
         return mock_stream()
 
+    async def adapt_error(self, error):
+        return {"adapted": "error"}
+
 
 class TestFormatAdapterRegistryV2:
     """Enhanced tests for format adapter registry v2."""

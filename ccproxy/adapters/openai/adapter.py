@@ -347,7 +347,7 @@ class OpenAIAdapter(APIAdapter):
                 error_type=response.get("error", {}).get("type"),
                 error_message=response.get("error", {}).get("message", ""),
             )
-            return self.adapt_error(response)
+            return await self.adapt_error(response)
 
         try:
             # Extract original model from response metadata if available
@@ -393,7 +393,8 @@ class OpenAIAdapter(APIAdapter):
                 operation="adapt_response",
                 choice=choice,
             )
-            return openai_response.model_dump()
+            result = openai_response.model_dump()
+            return dict(result)
 
         except ValidationError as e:
             raise ValueError(f"Invalid Anthropic response format: {e}") from e
@@ -1005,7 +1006,8 @@ class OpenAIAdapter(APIAdapter):
             Chat Completions formatted response as dict
         """
         chat_response = self.response_adapter.response_to_chat_completion(response_data)
-        return chat_response.model_dump()
+        result = chat_response.model_dump()
+        return dict(result)
 
     async def adapt_response_stream_to_chat(
         self, response_stream: AsyncIterator[bytes]
@@ -1023,7 +1025,7 @@ class OpenAIAdapter(APIAdapter):
         ):
             yield chunk
 
-    def adapt_error(self, error_body: dict[str, Any]) -> dict[str, Any]:
+    async def adapt_error(self, error_body: dict[str, Any]) -> dict[str, Any]:
         """Convert Anthropic error format to OpenAI error format.
 
         Args:

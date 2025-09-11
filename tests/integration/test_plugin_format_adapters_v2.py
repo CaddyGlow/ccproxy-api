@@ -27,6 +27,9 @@ class TestAdapter(APIAdapter):
 
         return test_stream()
 
+    async def adapt_error(self, error):
+        return {"test": "error"}
+
 
 @pytest.mark.integration
 class TestPluginFormatAdapterIntegrationV2:
@@ -226,8 +229,8 @@ class TestPluginFormatAdapterIntegrationV2:
         assert registration_time < 1.0  # Should register 50 plugins in under 1 second
         assert finalization_time < 2.0  # Should finalize in under 2 seconds
 
-        # Verify all adapters are available
-        assert len(format_registry._adapters) == 50
+        # Verify all adapters are available (50 test + 4 core adapters)
+        assert len(format_registry._adapters) == 54
 
     @pytest.mark.asyncio
     async def test_logging_and_monitoring(self, caplog):

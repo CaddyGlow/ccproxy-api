@@ -1,5 +1,5 @@
 from abc import abstractmethod
-from typing import Any
+from typing import Any, cast
 
 import httpx
 from fastapi import Request
@@ -48,7 +48,9 @@ class BaseHTTPAdapter(BaseAdapter):
 
         # Step 2: Execute format chain if specified
         if ctx.format_chain and len(ctx.format_chain) > 1:
-            body = await self._execute_format_chain(body, ctx.format_chain, ctx)
+            body = await self._execute_format_chain(
+                body, ctx.format_chain, ctx, mode="request"
+            )
 
         # Step 3: Provider-specific preparation
         prepared_body, prepared_headers = await self.prepare_provider_request(
@@ -57,7 +59,7 @@ class BaseHTTPAdapter(BaseAdapter):
 
         # Step 4: Execute HTTP request
         target_url = await self.get_target_url(endpoint)
-        response = await self._execute_http_request(
+        provider_response = await self._execute_http_request(
             method,
             target_url,
             prepared_headers,
@@ -65,15 +67,57 @@ class BaseHTTPAdapter(BaseAdapter):
         )
 
         # Step 5: Provider-specific response processing
-        provider_response = await self.process_provider_response(response, endpoint)
+        response = await self.process_provider_response(provider_response, endpoint)
 
-        # Step 6: Execute reverse format chain if specified
-        if ctx.format_chain and len(ctx.format_chain) > 1:
-            provider_response = await self._execute_reverse_format_chain(
-                provider_response, ctx.format_chain, ctx
+        # Step 6: Format the response
+        if isinstance(response, StreamingResponse):
+            return await self._convert_streaming_response(
+                response, ctx.format_chain, ctx
             )
-
-        return provider_response
+        elif isinstance(response, Response):
+            if ctx.format_chain and len(ctx.format_chain) > 1:
+                if provider_response.status_code >= 400:
+                    # Error response; use error format chain if specified
+                    body_response = await self._execute_format_chain(
+                        cast(bytes, response.body),
+                        ctx.format_chain,
+                        ctx,
+                        mode="error",
+                    )
+                    return Response(
+                        content=body_response,
+                        status_code=provider_response.status_code,
+                        headers=dict(provider_response.headers),
+                        media_type=provider_response.headers.get(
+                            "content-type", "application/json"
+                        ),
+                    )
+                else:
+                    body_response = await self._execute_format_chain(
+                        cast(bytes, response.body),
+                        ctx.format_chain,
+                        ctx,
+                        mode="response",
+                    )
+                    return Response(
+                        content=body_response,
+                        status_code=provider_response.status_code,
+                        headers=dict(provider_response.headers),
+                        media_type=provider_response.headers.get(
+                            "content-type", "application/json"
+                        ),
+                    )
+            else:
+                logger.debug("format_chain_skipped", reason="no forward chain")
+                return response
+        else:
+            logger.warning(
+                "unexpected_provider_response_type", type=type(response).__name__
+            )
+            return response
+            # raise ValueError(
+            #     "process_provider_response must return httpx.Response for non-streaming",
+            # )
 
     async def handle_streaming(
         self, request: Request, endpoint: str, **kwargs: Any
@@ -104,7 +148,7 @@ class BaseHTTPAdapter(BaseAdapter):
             return response  # type: ignore[return-value]
 
     async def _execute_format_chain(
-        self, body: bytes, format_chain: list[str], ctx: Any
+        self, body: bytes, format_chain: list[str], ctx: Any, mode: str = "response"
     ) -> bytes:
         """Execute format conversion chain."""
         import json
@@ -126,12 +170,24 @@ class BaseHTTPAdapter(BaseAdapter):
 
             try:
                 adapter = self.format_registry.get_adapter(from_format, to_format)
-                current_data = await adapter.adapt_request(current_data)
+                if not adapter:
+                    raise ValueError(
+                        f"No adapter found for {from_format} -> {to_format}"
+                    )
+                if mode == "request":
+                    current_data = await adapter.adapt_request(current_data)
+                elif mode == "response":
+                    current_data = await adapter.adapt_response(current_data)
+                elif mode == "error":
+                    current_data = await adapter.adapt_error(current_data)
+                else:
+                    raise ValueError(f"Invalid mode for format chain: {mode}")
 
                 logger.debug(
                     "format_chain_step_completed",
                     from_format=from_format,
                     to_format=to_format,
+                    mode=mode,
                     step=i + 1,
                 )
 
@@ -148,126 +204,20 @@ class BaseHTTPAdapter(BaseAdapter):
         # Convert back to bytes
         return json.dumps(current_data).encode()
 
-    async def _execute_reverse_format_chain(
-        self, response: Response | StreamingResponse, format_chain: list[str], ctx: Any
-    ) -> Response | StreamingResponse:
-        """Execute reverse format conversion chain on responses."""
-
-        if not self.format_registry:
-            logger.debug("reverse_format_chain_skipped", reason="no_registry")
-            return response
-
-        # Handle streaming vs non-streaming responses
-        if isinstance(response, StreamingResponse):
-            return await self._convert_streaming_response(response, format_chain, ctx)
-        else:
-            return await self._convert_regular_response(response, format_chain, ctx)
-
-    async def _convert_regular_response(
-        self, response: Response, format_chain: list[str], ctx: Any
-    ) -> Response:
-        """Convert non-streaming response through reverse format chain."""
-        import json
-
-        try:
-            # Parse response body as JSON
-            if response.body:
-                body_str = (
-                    response.body.decode()
-                    if isinstance(response.body, bytes)
-                    else str(response.body)
-                )
-                response_data = json.loads(body_str)
-            else:
-                response_data = {}
-        except (json.JSONDecodeError, UnicodeDecodeError) as e:
-            logger.debug("reverse_format_chain_parse_failed", error=str(e))
-            return response
-
-        # Check if this is an error response based on status code
-        is_error_response = response.status_code >= 400
-
-        # Execute reverse format chain (last to first)
-        current_data = response_data
-        for i in range(len(format_chain) - 1, 0, -1):
-            from_format = format_chain[i]
-            to_format = format_chain[i - 1]
-
-            try:
-                if not self.format_registry:
-                    logger.debug("reverse_format_chain_no_registry")
-                    return response
-                adapter = self.format_registry.get_adapter(from_format, to_format)
-
-                # Use adapt_error for error responses, adapt_response for success
-                if is_error_response and hasattr(adapter, "adapt_error"):
-                    # For error responses, create a standard error structure if needed
-                    if "error" not in current_data:
-                        # Convert non-standard error response to standard error format
-                        current_data = {
-                            "error": {
-                                "type": "internal_server_error"
-                                if response.status_code >= 500
-                                else "invalid_request_error",
-                                "message": f"Request failed with status {response.status_code}",
-                                "response_data": current_data,  # Preserve original response
-                            }
-                        }
-                    logger.debug(
-                        "reverse_format_chain_using_adapt_error",
-                        from_format=from_format,
-                        to_format=to_format,
-                        status_code=response.status_code,
-                    )
-                    current_data = adapter.adapt_error(current_data)
-                else:
-                    logger.debug(
-                        "reverse_format_chain_using_adapt_response",
-                        from_format=from_format,
-                        to_format=to_format,
-                        current_data=current_data,
-                    )
-                    current_data = await adapter.adapt_response(current_data)
-                    logger.debug(
-                        "reverse_format_chain_using_adapt_response",
-                        from_format=from_format,
-                        to_format=to_format,
-                        current_data=current_data,
-                    )
-
-                logger.debug(
-                    "reverse_format_chain_step_completed",
-                    from_format=from_format,
-                    to_format=to_format,
-                    step=len(format_chain) - i,
-                )
-
-            except Exception as e:
-                logger.debug(
-                    "reverse_format_chain_step_failed",
-                    from_format=from_format,
-                    to_format=to_format,
-                    step=len(format_chain) - i,
-                    error=str(e),
-                )
-                # Log error but continue with original response to avoid breaking
-                logger.debug("reverse_format_chain_fallback_to_original")
-                return response
-
-        # Create new response with converted data
-        converted_body = json.dumps(current_data).encode()
-
-        # Ensure proper headers for JSON response
-        headers = dict(response.headers) if response.headers else {}
-        headers["content-type"] = "application/json"
-        headers["content-length"] = str(len(converted_body))
-
-        return Response(
-            content=converted_body,
-            status_code=response.status_code,
-            headers=headers,
-            media_type="application/json",
-        )
+    # async def _execute_reverse_format_chain(
+    #     self, response: Response | StreamingResponse, format_chain: list[str], ctx: Any
+    # ) -> Response | StreamingResponse:
+    #     """Execute reverse format conversion chain on responses."""
+    #
+    #     if not self.format_registry:
+    #         logger.debug("reverse_format_chain_skipped", reason="no_registry")
+    #         return response
+    #
+    #     # Handle streaming vs non-streaming responses
+    #     if isinstance(response, StreamingResponse):
+    #         return await self._convert_streaming_response(response, format_chain, ctx)
+    #     else:
+    #         return await self._convert_regular_response(response, format_chain, ctx)
 
     async def _convert_streaming_response(
         self, response: StreamingResponse, format_chain: list[str], ctx: Any

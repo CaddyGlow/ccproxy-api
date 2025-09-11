@@ -9,18 +9,8 @@ New organized structure:
 """
 
 # Legacy imports for backward compatibility
-from .adapter import OpenAIAdapter
-
-# Import new specialized adapters
-from .adapters import (
-    ChatCompletionsAdapter,
-    ChatToResponsesAdapter,
-    ResponsesAdapter,
-)
-from .anthropic_response_adapter import AnthropicResponseAPIAdapter
-
-# Import from new organized structure
-from .models import (
+# Import from new organized structure - using models package
+from ccproxy.adapters.openai.models import (
     OpenAIChatCompletionResponse,
     OpenAIChoice,
     OpenAIMessage,
@@ -34,14 +24,31 @@ from .models import (
     generate_openai_system_fingerprint,
 )
 
+from .adapter import OpenAIAdapter
+
+# Import new specialized adapters
+from .adapters import (
+    ChatCompletionsAdapter,
+    ChatToResponsesAdapter,
+    ResponsesAdapter,
+)
+from .anthropic_response_adapter import AnthropicResponseAPIAdapter
+from .anthropic_to_openai_adapter import AnthropicToOpenAIAdapter
+
 # Import new directional adapters
 from .streaming import OpenAISSEFormatter, OpenAIStreamProcessor
+
+
+# Create directional aliases for clarity
+OpenAIToAnthropicAdapter = OpenAIAdapter  # OpenAI → Anthropic (existing functionality)
 
 
 __all__ = [
     # Legacy adapters
     "OpenAIAdapter",
     "AnthropicResponseAPIAdapter",
+    "AnthropicToOpenAIAdapter",
+    "OpenAIToAnthropicAdapter",  # Alias for OpenAIAdapter
     "ChatCompletionsAdapter",
     "ResponsesAdapter",
     "ChatToResponsesAdapter",

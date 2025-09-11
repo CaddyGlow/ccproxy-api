@@ -101,7 +101,7 @@ class AnthropicToOpenAIAdapter(APIAdapter):
                 error_type=response.get("error", {}).get("type"),
                 error_message=response.get("error", {}).get("message", ""),
             )
-            return self.adapt_error(response)
+            return await self.adapt_error(response)
 
         try:
             # Extract original model from response
@@ -155,7 +155,7 @@ class AnthropicToOpenAIAdapter(APIAdapter):
             )
             raise ValueError(f"Invalid OpenAI response format: {e}") from e
 
-    def adapt_error(self, error_response: dict[str, Any]) -> dict[str, Any]:
+    async def adapt_error(self, error_response: dict[str, Any]) -> dict[str, Any]:
         """Convert OpenAI error format to Anthropic error format.
 
         Args:

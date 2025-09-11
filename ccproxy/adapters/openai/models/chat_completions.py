@@ -1,14 +1,20 @@
-"""OpenAI Chat Completions API models."""
+"""OpenAI-specific models for the OpenAI adapter.
+
+This module contains OpenAI-specific data models used by the OpenAI adapter
+for handling format transformations and streaming.
+"""
 
 from __future__ import annotations
 
+import json
+import uuid
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from ccproxy.models.types import ModalityType, ReasoningEffort
 
-from .common import OpenAILogprobs, OpenAIToolCall, OpenAIUsage
+from .common import OpenAIUsage
 
 
 class OpenAIMessageContent(BaseModel):
@@ -62,6 +68,27 @@ class OpenAIStreamOptions(BaseModel):
     """OpenAI stream options."""
 
     include_usage: bool = False
+
+
+class OpenAILogprobs(BaseModel):
+    """OpenAI log probabilities."""
+
+    content: list[dict[str, Any]] | None = None
+
+
+class OpenAIFunctionCall(BaseModel):
+    """OpenAI function call."""
+
+    name: str
+    arguments: str
+
+
+class OpenAIToolCall(BaseModel):
+    """OpenAI tool call."""
+
+    id: str
+    type: Literal["function"] = "function"
+    function: OpenAIFunctionCall
 
 
 class OpenAIResponseMessage(BaseModel):
@@ -321,6 +348,34 @@ class OpenAIErrorResponse(BaseModel):
     error: OpenAIErrorDetail
 
 
+def generate_openai_response_id() -> str:
+    """Generate an OpenAI-compatible response ID."""
+    return f"chatcmpl-{uuid.uuid4().hex[:29]}"
+
+
+def generate_openai_system_fingerprint() -> str:
+    """Generate an OpenAI-compatible system fingerprint."""
+    return f"fp_{uuid.uuid4().hex[:8]}"
+
+
+def format_openai_tool_call(tool_use: dict[str, Any]) -> OpenAIToolCall:
+    """Convert Anthropic tool use to OpenAI tool call format."""
+    tool_input = tool_use.get("input", {})
+    if isinstance(tool_input, dict):
+        arguments_str = json.dumps(tool_input)
+    else:
+        arguments_str = str(tool_input)
+
+    return OpenAIToolCall(
+        id=tool_use.get("id", ""),
+        type="function",
+        function=OpenAIFunctionCall(
+            name=tool_use.get("name", ""),
+            arguments=arguments_str,
+        ),
+    )
+
+
 __all__ = [
     "OpenAIMessageContent",
     "OpenAIMessage",
@@ -329,9 +384,11 @@ __all__ = [
     "OpenAIToolChoice",
     "OpenAIResponseFormat",
     "OpenAIStreamOptions",
+    "OpenAILogprobs",
+    "OpenAIFunctionCall",
+    "OpenAIToolCall",
     "OpenAIResponseMessage",
     "OpenAIChoice",
-    "OpenAIChatCompletionRequest",
     "OpenAIChatCompletionResponse",
     "OpenAIStreamingDelta",
     "OpenAIStreamingChoice",
@@ -340,4 +397,7 @@ __all__ = [
     "OpenAIModelsResponse",
     "OpenAIErrorDetail",
     "OpenAIErrorResponse",
+    "generate_openai_response_id",
+    "generate_openai_system_fingerprint",
+    "format_openai_tool_call",
 ]
