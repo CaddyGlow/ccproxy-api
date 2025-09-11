@@ -106,6 +106,37 @@ def filter_request_headers(
     return filtered
 
 
+def filter_response_headers(
+    headers: dict[str, str],
+    additional_excludes: set[str] | None = None,
+) -> dict[str, str]:
+    """Filter response headers, ensuring lowercase keys in result."""
+    excludes = {
+        # Hop-by-hop headers
+        "connection",
+        "keep-alive",
+        "proxy-authenticate",
+        "proxy-authorization",
+        "te",
+        "trailer",
+        "transfer-encoding",
+        "upgrade",
+        # Other headers to exclude
+        "content-encoding",
+        "content-length",
+    }
+
+    if additional_excludes:
+        excludes.update(additional_excludes)
+
+    filtered = {}
+    for key, value in headers.items():
+        if key.lower() not in excludes:
+            filtered[key.lower()] = value
+
+    return filtered
+
+
 # Keep existing EXCLUDED_REQUEST_HEADERS constant
 EXCLUDED_REQUEST_HEADERS = {
     # Connection-related headers

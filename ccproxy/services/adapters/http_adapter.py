@@ -9,7 +9,7 @@ from ccproxy.core.logging import get_plugin_logger
 from ccproxy.models.provider import ProviderConfig
 from ccproxy.services.adapters.base import BaseAdapter
 from ccproxy.streaming import DeferredStreaming
-from ccproxy.utils.headers import extract_request_headers
+from ccproxy.utils.headers import extract_request_headers, filter_response_headers
 
 
 logger = get_plugin_logger()
@@ -51,7 +51,6 @@ class BaseHTTPAdapter(BaseAdapter):
             body = await self._execute_format_chain(
                 body, ctx.format_chain, ctx, mode="request"
             )
-
         # Step 3: Provider-specific preparation
         prepared_body, prepared_headers = await self.prepare_provider_request(
             body, headers, endpoint
@@ -69,6 +68,9 @@ class BaseHTTPAdapter(BaseAdapter):
         # Step 5: Provider-specific response processing
         response = await self.process_provider_response(provider_response, endpoint)
 
+        # filter out hop-by-hop headers
+        headers = filter_response_headers(dict(provider_response.headers))
+
         # Step 6: Format the response
         if isinstance(response, StreamingResponse):
             return await self._convert_streaming_response(
@@ -84,10 +86,12 @@ class BaseHTTPAdapter(BaseAdapter):
                         ctx,
                         mode="error",
                     )
+                    if "content-length" in response.headers:
+                        response.headers["content-length"] = str(len(body_response))
                     return Response(
                         content=body_response,
                         status_code=provider_response.status_code,
-                        headers=dict(provider_response.headers),
+                        headers=headers,
                         media_type=provider_response.headers.get(
                             "content-type", "application/json"
                         ),
@@ -99,10 +103,12 @@ class BaseHTTPAdapter(BaseAdapter):
                         ctx,
                         mode="response",
                     )
+                    if "content-length" in response.headers:
+                        response.headers["content-length"] = str(len(body_response))
                     return Response(
                         content=body_response,
                         status_code=provider_response.status_code,
-                        headers=dict(provider_response.headers),
+                        headers=headers,
                         media_type=provider_response.headers.get(
                             "content-type", "application/json"
                         ),
@@ -114,10 +120,16 @@ class BaseHTTPAdapter(BaseAdapter):
             logger.warning(
                 "unexpected_provider_response_type", type=type(response).__name__
             )
-            return response
-            # raise ValueError(
-            #     "process_provider_response must return httpx.Response for non-streaming",
-            # )
+
+        return Response(
+            content=provider_response.content,
+            status_code=provider_response.status_code,
+            headers=headers,
+            media_type=headers.get("content-type", "application/json"),
+        )
+        # raise ValueError(
+        #     "process_provider_response must return httpx.Response for non-streaming",
+        # )
 
     async def handle_streaming(
         self, request: Request, endpoint: str, **kwargs: Any

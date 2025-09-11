@@ -12,6 +12,7 @@ from ccproxy.adapters.openai.models import (
 )
 from ccproxy.api.dependencies import get_plugin_adapter
 from ccproxy.core.logging import get_plugin_logger
+from ccproxy.models.messages import MessageCreateParams
 from ccproxy.streaming import DeferredStreaming
 
 from .models import (
@@ -61,6 +62,7 @@ async def create_openai_chat_completion(
 @router.post("/v1/messages", response_model=None)
 async def create_anthropic_message(
     request: Request,
+    body: MessageCreateParams,
     adapter: CopilotAdapterDep,
 ) -> Response | StreamingResponse | DeferredStreaming:
     """Create a message using Copilot with native Anthropic format."""
@@ -82,6 +84,7 @@ async def create_openai_codgen_completion(
 @router.post("/v1/engines/codegen/messsage", response_model=None)
 async def create_anthropic_codegen_completion(
     request: Request,
+    body: MessageCreateParams,
     adapter: CopilotAdapterDep,
 ) -> Response | StreamingResponse | DeferredStreaming:
     """Create a completion using Copilot with OpenAI-compatible format."""
@@ -103,6 +106,7 @@ async def create_openai_completion(
 @router.post("/v1/engines/copilot-codex/messages", response_model=None)
 async def create_anthropic_completion(
     request: Request,
+    body: MessageCreateParams,
     adapter: CopilotAdapterDep,
 ) -> Response | StreamingResponse | DeferredStreaming:
     """Create a chat completion using Copilot with OpenAI-compatible format."""
