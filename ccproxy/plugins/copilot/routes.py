@@ -62,10 +62,10 @@ async def _handle_adapter_request(
     return _cast_result(result)
 
 
-def _get_request_body(request: Request):
+def _get_request_body(request: Request) -> Any:
     """Hidden dependency to get raw body."""
 
-    async def _inner():
+    async def _inner() -> Any:
         return await request.json()
 
     return _inner
@@ -80,7 +80,7 @@ async def create_openai_chat_completion(
     request: Request,
     adapter: CopilotAdapterDep,
     _: OpenAIChatCompletionRequest = Body(..., include_in_schema=True),
-    body: dict = Depends(_get_request_body, use_cache=False),
+    body: dict[str, Any] = Depends(_get_request_body, use_cache=False),
 ) -> OpenAIChatCompletionResponse | OpenAIResponse:
     """Create a chat completion using Copilot with OpenAI-compatible format."""
     request.state.context.metadata["endpoint"] = "/chat/completions"
@@ -114,7 +114,9 @@ async def create_embeddings(
 
 
 @router_v1.get("/models", response_model=OpenAIModelsResponse)
-async def list_models_v1(request: Request, adapter: CopilotAdapterDep) -> Response:
+async def list_models_v1(
+    request: Request, adapter: CopilotAdapterDep
+) -> OpenAIResponse:
     """List available Copilot models."""
     # Forward request to upstream Copilot API
     request.state.context.metadata["endpoint"] = "/models"

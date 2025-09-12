@@ -21,8 +21,6 @@ from .registry import TaskRegistry
 from .tasks import BaseScheduledTask
 
 
-"""Public scheduler API exports."""
-
 __all__ = [
     "Scheduler",
     "TaskRegistry",

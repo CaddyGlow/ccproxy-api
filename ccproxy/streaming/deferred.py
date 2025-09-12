@@ -135,11 +135,8 @@ class DeferredStreaming(StreamingResponse):
                                     format_context=self.handler_config.format_context,
                                 )
                         except Exception:
-                            # If we can't rebuild dataclass (frozen, etc.), set directly
-                            try:
-                                self.handler_config.response_adapter = result  # type: ignore[attr-defined]
-                            except Exception:
-                                pass
+                            # If we can't rebuild dataclass (frozen, etc.), skip updating
+                            pass
                 except Exception as e:
                     logger.debug(
                         "on_headers_hook_failed",
@@ -206,7 +203,9 @@ class DeferredStreaming(StreamingResponse):
                         )
 
                 # Local helper to adapt and emit an error SSE event (single chunk)
-                async def _emit_error_sse(error_obj: dict[str, Any]) -> None:
+                async def _emit_error_sse(
+                    error_obj: dict[str, Any],
+                ) -> AsyncGenerator[bytes, None]:
                     adapted: dict[str, Any] | None = None
                     try:
                         if self.handler_config and self.handler_config.response_adapter:
@@ -525,14 +524,15 @@ class DeferredStreaming(StreamingResponse):
                         error=str(e),
                         exc_info=e,
                     )
-                    await _emit_error_sse(
+                    async for error_chunk in _emit_error_sse(
                         {
                             "error": {
                                 "type": "timeout_error",
                                 "message": "Request timeout",
                             }
                         }
-                    )
+                    ):
+                        yield error_chunk
                 except httpx.ConnectError as e:
                     logger.error(
                         "streaming_connect_error",
@@ -540,26 +540,28 @@ class DeferredStreaming(StreamingResponse):
                         error=str(e),
                         exc_info=e,
                     )
-                    await _emit_error_sse(
+                    async for error_chunk in _emit_error_sse(
                         {
                             "error": {
                                 "type": "connection_error",
                                 "message": "Connection failed",
                             }
                         }
-                    )
+                    ):
+                        yield error_chunk
                 except httpx.HTTPError as e:
                     logger.error(
                         "streaming_http_error", url=self.url, error=str(e), exc_info=e
                     )
-                    await _emit_error_sse(
+                    async for error_chunk in _emit_error_sse(
                         {
                             "error": {
                                 "type": "http_error",
                                 "message": f"HTTP error: {str(e)}",
                             }
                         }
-                    )
+                    ):
+                        yield error_chunk
                 except Exception as e:
                     logger.error(
                         "streaming_request_unexpected_error",
@@ -567,9 +569,10 @@ class DeferredStreaming(StreamingResponse):
                         error=str(e),
                         exc_info=e,
                     )
-                    await _emit_error_sse(
+                    async for error_chunk in _emit_error_sse(
                         {"error": {"type": "internal_server_error", "message": str(e)}}
-                    )
+                    ):
+                        yield error_chunk
 
             # Create the actual streaming response with headers
             # Access logging now handled by hooks

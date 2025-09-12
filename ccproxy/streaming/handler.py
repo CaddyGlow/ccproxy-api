@@ -3,18 +3,15 @@
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 import httpx
 import structlog
 
 from ccproxy.core.plugins.hooks import HookManager
 from ccproxy.core.request_context import RequestContext
+from ccproxy.services.handler_config import HandlerConfig
 from ccproxy.streaming.deferred import DeferredStreaming
-
-
-if TYPE_CHECKING:
-    from ccproxy.services.handler_config import HandlerConfig
 
 
 logger = structlog.get_logger(__name__)
@@ -35,22 +32,20 @@ class StreamingHandler:
         self.hook_manager = hook_manager
 
     def should_stream_response(self, headers: dict[str, str]) -> bool:
-        """Check Accept header for streaming indicators.
+        """Detect streaming via Content-Type header only (SSE).
 
-        - Looks for 'text/event-stream' in Accept header
-        - Also checks for generic 'stream' indicator
-        - Case-insensitive comparison
+        - Returns True if Content-Type contains 'text/event-stream'
+        - Case-insensitive check
         """
-        # Case-insensitive access for Accept header
-        accept_header = ""
+        content_type = ""
         try:
-            accept_header = next(
-                (v for k, v in headers.items() if k.lower() == "accept"),
+            content_type = next(
+                (v for k, v in headers.items() if k.lower() == "content-type"),
                 "",
             ).lower()
         except Exception:
-            accept_header = headers.get("accept", "").lower()
-        return "text/event-stream" in accept_header or "stream" in accept_header
+            content_type = str(headers.get("content-type", "")).lower()
+        return "text/event-stream" in content_type
 
     async def should_stream(
         self, request_body: bytes, handler_config: HandlerConfig

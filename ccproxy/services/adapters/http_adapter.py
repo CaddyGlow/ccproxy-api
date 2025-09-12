@@ -55,31 +55,53 @@ class BaseHTTPAdapter(BaseAdapter):
         method = request.method
         endpoint = ctx.metadata.get("endpoint", "")
 
+        # Extra debug breadcrumbs to confirm code path and detection inputs
+        logger.debug(
+            "http_adapter_handle_request_entry",
+            endpoint=endpoint,
+            method=method,
+            content_type=headers.get("content-type"),
+            has_streaming_handler=bool(self.streaming_handler),
+            category="stream_detection",
+        )
+
         # Step 2: Early streaming detection
         if self.streaming_handler:
-            # Import here to avoid circular imports
-            from ccproxy.services.handler_config import HandlerConfig
-
-            handler_config = HandlerConfig(
-                supports_streaming=True,
-                request_transformer=None,
-                response_adapter=None,
-                format_context=None,
-            )
-
             logger.debug(
-                "checking_should_stream", endpoint=endpoint, has_streaming_handler=True
+                "checking_should_stream",
+                endpoint=endpoint,
+                has_streaming_handler=True,
+                content_type=headers.get("content-type"),
+                category="stream_detection",
             )
-            # Detect via body flag or Accept header
-            body_wants_stream = await self.streaming_handler.should_stream(
-                body, handler_config
-            )
+            # Detect streaming via headers only (Content-Type: text/event-stream)
+            body_wants_stream = False  # ignore body flag per current policy
             header_wants_stream = self.streaming_handler.should_stream_response(headers)
+            logger.debug(
+                "should_stream_results",
+                body_wants_stream=body_wants_stream,
+                header_wants_stream=header_wants_stream,
+                endpoint=endpoint,
+                category="stream_detection",
+            )
             if body_wants_stream or header_wants_stream:
-                logger.debug("streaming_request_detected", endpoint=endpoint)
+                logger.debug(
+                    "streaming_request_detected",
+                    endpoint=endpoint,
+                    detected_via=(
+                        "content_type_sse"
+                        if header_wants_stream
+                        else "body_stream_flag"
+                    ),
+                    category="stream_detection",
+                )
                 return await self.handle_streaming(request, endpoint)
             else:
-                logger.debug("not_streaming_request", endpoint=endpoint)
+                logger.debug(
+                    "not_streaming_request",
+                    endpoint=endpoint,
+                    category="stream_detection",
+                )
 
         # Step 3: Execute format chain if specified (non-streaming)
         if ctx.format_chain and len(ctx.format_chain) > 1:

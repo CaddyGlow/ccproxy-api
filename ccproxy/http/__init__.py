@@ -13,7 +13,6 @@ from .client import (
     get_ssl_context,
 )
 from .hooks import HookableHTTPClient
-from .plugin_handler import PluginHTTPHandler
 from .pool import HTTPPoolManager
 
 
@@ -29,7 +28,6 @@ __all__ = [
     "HTTPTimeoutError",
     "HTTPConnectionError",
     # Services
-    "PluginHTTPHandler",
     "HTTPPoolManager",
     "BaseHTTPHandler",
     # Utils
