@@ -17,9 +17,9 @@ from claude_code_sdk import (
     ToolUseBlock,
 )
 
+from ccproxy.adapters.anthropic.models.messages import MessageResponse, TextContentBlock
+from ccproxy.adapters.anthropic.models.requests import Usage
 from ccproxy.core.errors import ClaudeProxyError
-from ccproxy.models.messages import MessageResponse, TextContentBlock
-from ccproxy.models.requests import Usage
 
 
 @pytest.fixture

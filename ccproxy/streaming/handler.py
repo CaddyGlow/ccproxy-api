@@ -78,6 +78,7 @@ class StreamingHandler:
         body: bytes,
         handler_config: HandlerConfig,
         request_context: RequestContext,
+        on_headers: Any | None = None,
         client_config: dict[str, Any] | None = None,
         client: httpx.AsyncClient | None = None,
     ) -> DeferredStreaming:
@@ -118,5 +119,6 @@ class StreamingHandler:
             handler_config=handler_config,  # Contains format adapter if needed
             request_context=request_context,
             hook_manager=self.hook_manager,
+            on_headers=on_headers,
             close_client_on_finish=owns_client,
         )

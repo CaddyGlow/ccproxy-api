@@ -48,7 +48,8 @@ async def codex_responses(
     auth: ConditionalAuthDep,
     adapter: CodexAdapterDep,
 ) -> StreamingResponse | Response | DeferredStreaming:
-    # Set endpoint metadata for adapter usage (native responses format)
+    # Set format chain for native responses format
+    request.state.context.format_chain = ["response_api"]
     request.state.context.metadata["endpoint"] = "/responses"
     return await handle_codex_request(request, adapter, "/responses")
 
@@ -60,7 +61,8 @@ async def codex_responses_with_session(
     auth: ConditionalAuthDep,
     adapter: CodexAdapterDep,
 ) -> StreamingResponse | Response | DeferredStreaming:
-    # Set endpoint metadata for adapter usage (native responses format)
+    # Set format chain for native responses format
+    request.state.context.format_chain = ["response_api"]
     request.state.context.metadata["endpoint"] = "/{session_id}/responses"
     return await handle_codex_request(
         request, adapter, "/{session_id}/responses", session_id

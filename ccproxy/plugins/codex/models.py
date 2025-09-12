@@ -8,7 +8,7 @@ from typing import Annotated, Any, Literal, TypedDict
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from ccproxy.models.requests import Usage
+from ccproxy.adapters.anthropic.models.requests import Usage
 
 
 class CodexCliStatus(str, Enum):

@@ -1,24 +1,30 @@
-"""API routes for GitHub Copilot plugin."""
+"CopilotEmbeddingRequestAPI routes for GitHub Copilot plugin."
 
 from typing import TYPE_CHECKING, Annotated, Any, Literal
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Body, Depends, Request
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 
+from ccproxy.adapters.anthropic.models.messages import (
+    MessageCreateParams,
+    MessageResponse,
+)
 from ccproxy.adapters.openai.models import (
     OpenAIChatCompletionResponse,
     OpenAIErrorResponse,
     OpenAIModelsResponse,
 )
 from ccproxy.adapters.openai.models.chat_completions import OpenAIChatCompletionRequest
+from ccproxy.adapters.openai.models.embedding import (
+    OpenAIEmbedding,
+    OpenAIEmbeddingResponse,
+)
+from ccproxy.api.decorators import base_format
 from ccproxy.api.dependencies import get_plugin_adapter
 from ccproxy.core.logging import get_plugin_logger
-from ccproxy.models.messages import MessageCreateParams, MessageResponse
-from ccproxy.models.responses import APIError
 from ccproxy.streaming import DeferredStreaming
 
 from .models import (
-    CopilotEmbeddingRequest,
     CopilotHealthResponse,
     CopilotTokenStatus,
     CopilotUserInternalResponse,
@@ -33,6 +39,7 @@ logger = get_plugin_logger()
 CopilotAdapterDep = Annotated[Any, Depends(get_plugin_adapter("copilot"))]
 
 APIResponse = Response | StreamingResponse | DeferredStreaming
+OpenAIResponse = APIResponse | OpenAIErrorResponse
 
 # V1 API Router - OpenAI/Anthropic compatible endpoints
 router_v1 = APIRouter()
@@ -41,7 +48,7 @@ router_v1 = APIRouter()
 router_github = APIRouter()
 
 
-def _cast_result(result: object) -> APIResponse:
+def _cast_result(result: object) -> OpenAIResponse:
     from typing import cast as _cast
 
     return _cast(APIResponse, result)
@@ -50,39 +57,58 @@ def _cast_result(result: object) -> APIResponse:
 async def _handle_adapter_request(
     request: Request,
     adapter: Any,
-) -> APIResponse:
+) -> OpenAIResponse:
     result = await adapter.handle_request(request)
     return _cast_result(result)
 
 
+def _get_request_body(request: Request):
+    """Hidden dependency to get raw body."""
+
+    async def _inner():
+        return await request.json()
+
+    return _inner
+
+
 @router_v1.post(
     "/chat/completions",
-    response_model=OpenAIChatCompletionResponse | OpenAIErrorResponse,
+    response_model=OpenAIChatCompletionResponse,
 )
+@base_format("openai")
 async def create_openai_chat_completion(
     request: Request,
-    _: OpenAIChatCompletionRequest,
     adapter: CopilotAdapterDep,
-) -> APIResponse:
+    _: OpenAIChatCompletionRequest = Body(..., include_in_schema=True),
+    body: dict = Depends(_get_request_body, use_cache=False),
+) -> OpenAIChatCompletionResponse | OpenAIResponse:
     """Create a chat completion using Copilot with OpenAI-compatible format."""
     request.state.context.metadata["endpoint"] = "/chat/completions"
     return await _handle_adapter_request(request, adapter)
 
 
-@router_v1.post("/messages", response_model=MessageResponse | APIError)
+@router_v1.post(
+    "/messages",
+    response_model=MessageResponse,
+)
+@base_format("anthropic")
 async def create_anthropic_message(
     request: Request,
     _: MessageCreateParams,
     adapter: CopilotAdapterDep,
-) -> APIResponse:
+) -> MessageResponse | OpenAIResponse:
     """Create a message using Copilot with native Anthropic format."""
     request.state.context.metadata["endpoint"] = "/chat/completions"
-    request.state.context.format_chain = ["anthropic", "openai"]
     return await _handle_adapter_request(request, adapter)
 
 
-@router_v1.post("/embeddings", response_model=CopilotEmbeddingRequest)
-async def create_embeddings(request: Request, adapter: CopilotAdapterDep) -> Response:
+@router_v1.post(
+    "/embeddings",
+    response_model=OpenAIEmbeddingResponse,
+)
+async def create_embeddings(
+    request: Request, _: OpenAIEmbedding, adapter: CopilotAdapterDep
+) -> OpenAIEmbeddingResponse | OpenAIResponse:
     request.state.context.metadata["endpoint"] = "/embeddings"
     return await _handle_adapter_request(request, adapter)
 

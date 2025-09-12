@@ -6,10 +6,10 @@ import json
 import uuid
 from typing import Any, Literal
 
-from pydantic import BaseModel
+from .base import OpenAIBaseModel
 
 
-class OpenAIUsage(BaseModel):
+class OpenAIUsage(OpenAIBaseModel):
     """OpenAI usage information."""
 
     prompt_tokens: int
@@ -19,20 +19,20 @@ class OpenAIUsage(BaseModel):
     completion_tokens_details: dict[str, Any] | None = None
 
 
-class OpenAILogprobs(BaseModel):
+class OpenAILogprobs(OpenAIBaseModel):
     """OpenAI log probabilities."""
 
     content: list[dict[str, Any]] | None = None
 
 
-class OpenAIFunctionCall(BaseModel):
+class OpenAIFunctionCall(OpenAIBaseModel):
     """OpenAI function call."""
 
     name: str
     arguments: str
 
 
-class OpenAIToolCall(BaseModel):
+class OpenAIToolCall(OpenAIBaseModel):
     """OpenAI tool call."""
 
     id: str
@@ -40,7 +40,7 @@ class OpenAIToolCall(BaseModel):
     function: OpenAIFunctionCall
 
 
-class ResponseUsage(BaseModel):
+class ResponseUsage(OpenAIBaseModel):
     """Usage statistics in Response API."""
 
     input_tokens: int

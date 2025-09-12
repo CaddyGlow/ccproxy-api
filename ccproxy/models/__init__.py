@@ -1,55 +1,57 @@
-"""Pydantic models for Claude Proxy API Server."""
+"""Pydantic models for Claude Proxy API Server.
 
-from .messages import (
-    MessageContentBlock,
-    MessageCreateParams,
-    MessageResponse,
-    MetadataParams,
-    SystemMessage,
-    ThinkingConfig,
-    ToolChoiceParams,
-)
-from .requests import (
-    ImageContent,
-    Message,
-    MessageContent,
-    TextContent,
-    ToolDefinition,
-    Usage,
-)
-from .responses import (
+This package now re-exports Anthropic models from ccproxy.adapters.anthropic.models
+for backward compatibility, while keeping provider-agnostic models here.
+"""
+
+from ccproxy.adapters.anthropic.models import (
     APIError,
     AuthenticationError,
     ChatCompletionResponse,
     Choice,
+    ContentBlockType,
     ErrorResponse,
+    ErrorType,
+    ImageContent,
+    ImageSourceType,
     InternalServerError,
     InvalidRequestError,
+    Message,
+    MessageContent,
+    MessageCreateParams,
+    MessageResponse,
+    MessageRole,
+    MetadataParams,
+    ModalityType,
     NotFoundError,
+    OpenAIFinishReason,
     OverloadedError,
+    PermissionBehavior,
     RateLimitError,
     ResponseContent,
-    StreamingChatCompletionResponse,
-    StreamingChoice,
-    TextResponse,
-    ToolCall,
-    ToolUse,
-)
-from .types import (
-    ContentBlockType,
-    ErrorType,
-    ImageSourceType,
-    MessageRole,
-    ModalityType,
-    OpenAIFinishReason,
-    PermissionBehavior,
     ResponseFormatType,
     ServiceTier,
     StopReason,
     StreamEventType,
+    StreamingChatCompletionResponse,
+    StreamingChoice,
+    SystemMessage,
+    TextContent,
+    TextResponse,
+    ThinkingConfig,
+    ToolCall,
+    ToolChoiceParams,
     ToolChoiceType,
+    ToolDefinition,
     ToolType,
+    ToolUse,
+    Usage,
 )
+from ccproxy.adapters.anthropic.models import (
+    CCProxyContentBlock as MessageContentBlock,
+)
+
+from .provider import ProviderConfig
 
 
 __all__ = [
@@ -99,4 +101,6 @@ __all__ = [
     "TextResponse",
     "ToolCall",
     "ToolUse",
+    # Provider models
+    "ProviderConfig",
 ]

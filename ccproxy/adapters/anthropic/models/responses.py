@@ -2,12 +2,13 @@
 
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import ConfigDict, Field
 
+from .base import AnthropicBaseModel
 from .requests import Usage
 
 
-class ToolCall(BaseModel):
+class ToolCall(AnthropicBaseModel):
     """Tool call made by the model."""
 
     id: Annotated[str, Field(description="Unique identifier for the tool call")]
@@ -20,7 +21,7 @@ class ToolCall(BaseModel):
     ]
 
 
-class ToolUse(BaseModel):
+class ToolUse(AnthropicBaseModel):
     """Tool use content block."""
 
     type: Annotated[Literal["tool_use"], Field(description="Content type")] = "tool_use"
@@ -29,7 +30,7 @@ class ToolUse(BaseModel):
     input: Annotated[dict[str, Any], Field(description="Input parameters for the tool")]
 
 
-class TextResponse(BaseModel):
+class TextResponse(AnthropicBaseModel):
     """Text response content block."""
 
     type: Annotated[Literal["text"], Field(description="Content type")] = "text"
@@ -39,7 +40,7 @@ class TextResponse(BaseModel):
 ResponseContent = TextResponse | ToolUse
 
 
-class Choice(BaseModel):
+class Choice(AnthropicBaseModel):
     """Individual choice in a non-streaming response."""
 
     index: Annotated[int, Field(description="Index of the choice")]
@@ -48,10 +49,10 @@ class Choice(BaseModel):
         str | None, Field(description="Reason why the model stopped generating")
     ] = None
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="allow")
 
 
-class StreamingChoice(BaseModel):
+class StreamingChoice(AnthropicBaseModel):
     """Individual choice in a streaming response."""
 
     index: Annotated[int, Field(description="Index of the choice")]
@@ -62,10 +63,10 @@ class StreamingChoice(BaseModel):
         str | None, Field(description="Reason why the model stopped generating")
     ] = None
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="allow")
 
 
-class ChatCompletionResponse(BaseModel):
+class ChatCompletionResponse(AnthropicBaseModel):
     """Response model for Claude chat completions compatible with Anthropic's API."""
 
     id: Annotated[str, Field(description="Unique identifier for the response")]
@@ -87,10 +88,10 @@ class ChatCompletionResponse(BaseModel):
     ] = None
     usage: Annotated[Usage, Field(description="Token usage information")]
 
-    model_config = ConfigDict(extra="forbid", validate_assignment=True)
+    model_config = ConfigDict(extra="allow", validate_assignment=True)
 
 
-class StreamingChatCompletionResponse(BaseModel):
+class StreamingChatCompletionResponse(AnthropicBaseModel):
     """Streaming response model for Claude chat completions."""
 
     id: Annotated[str, Field(description="Unique identifier for the response")]
@@ -118,10 +119,10 @@ class StreamingChatCompletionResponse(BaseModel):
     ] = None
     usage: Annotated[Usage | None, Field(description="Token usage information")] = None
 
-    model_config = ConfigDict(extra="forbid", validate_assignment=True)
+    model_config = ConfigDict(extra="allow", validate_assignment=True)
 
 
-class ErrorResponse(BaseModel):
+class ErrorResponse(AnthropicBaseModel):
     """Error response model."""
 
     type: Annotated[Literal["error"], Field(description="Response type")] = "error"
@@ -129,17 +130,17 @@ class ErrorResponse(BaseModel):
         dict[str, Any], Field(description="Error details including type and message")
     ]
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="allow")
 
 
-class APIError(BaseModel):
+class APIError(AnthropicBaseModel):
     """API error details."""
 
     type: Annotated[str, Field(description="Error type")]
     message: Annotated[str, Field(description="Error message")]
 
     model_config = ConfigDict(
-        extra="forbid", validate_by_alias=True, validate_by_name=True
+        extra="allow", validate_by_alias=True, validate_by_name=True
     )
 
 

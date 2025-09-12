@@ -6,6 +6,11 @@ from typing import TYPE_CHECKING, Annotated, Any
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import Response, StreamingResponse
 
+from ccproxy.adapters.anthropic.models.messages import (
+    MessageCreateParams,
+    MessageResponse,
+)
+from ccproxy.adapters.anthropic.models.responses import APIError
 from ccproxy.adapters.openai.models import (
     OpenAIChatCompletionResponse,
     OpenAIErrorResponse,
@@ -15,8 +20,6 @@ from ccproxy.adapters.openai.models.chat_completions import OpenAIChatCompletion
 from ccproxy.api.dependencies import get_plugin_adapter
 from ccproxy.auth.conditional import ConditionalAuthDep
 from ccproxy.core.logging import get_plugin_logger
-from ccproxy.models.messages import MessageCreateParams, MessageResponse
-from ccproxy.models.responses import APIError
 from ccproxy.streaming import DeferredStreaming
 
 
@@ -62,6 +65,7 @@ async def create_anthropic_message(
     adapter: ClaudeAPIAdapterDep,
 ) -> APIResponse:
     """Create a message using Claude AI with native Anthropic format."""
+    request.state.context.format_chain = ["anthropic"]
     request.state.context.metadata["endpoint"] = "/v1/messages"
     return await _handle_adapter_request(request, adapter)
 

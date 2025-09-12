@@ -17,9 +17,9 @@ from claude_code_sdk import ToolResultBlock as SDKToolResultBlock
 from claude_code_sdk import ToolUseBlock as SDKToolUseBlock
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from ccproxy.models.messages import MessageContentBlock
-from ccproxy.models.requests import Usage
-from ccproxy.models.types import StopReason
+from ccproxy.adapters.anthropic.models.messages import MessageContentBlock
+from ccproxy.adapters.anthropic.models.requests import Usage
+from ccproxy.adapters.anthropic.models.types import StopReason
 
 
 # Type variables for generic functions

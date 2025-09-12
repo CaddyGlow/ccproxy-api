@@ -8,22 +8,21 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel
-
+from .base import OpenAIBaseModel
 from .common import ResponseUsage
 
 
 # Request Models
 
 
-class ResponseFunction(BaseModel):
+class ResponseFunction(OpenAIBaseModel):
     """Function definition in tool call."""
 
     name: str
     arguments: str  # JSON string
 
 
-class ResponseToolCall(BaseModel):
+class ResponseToolCall(OpenAIBaseModel):
     """Tool call in Response API format."""
 
     type: Literal["tool_call"]
@@ -31,7 +30,7 @@ class ResponseToolCall(BaseModel):
     function: ResponseFunction
 
 
-class ResponseMessageContent(BaseModel):
+class ResponseMessageContent(OpenAIBaseModel):
     """Content block in a Response API message with function calling support."""
 
     type: Literal["input_text", "output_text", "tool_call"]
@@ -41,7 +40,7 @@ class ResponseMessageContent(BaseModel):
     function: ResponseFunction | None = None
 
 
-class ResponseMessage(BaseModel):
+class ResponseMessage(OpenAIBaseModel):
     """Message in Response API format."""
 
     type: Literal["message"]
@@ -50,7 +49,7 @@ class ResponseMessage(BaseModel):
     content: list[ResponseMessageContent]
 
 
-class ResponseToolFunction(BaseModel):
+class ResponseToolFunction(OpenAIBaseModel):
     """Function definition in tool for requests."""
 
     name: str
@@ -58,28 +57,28 @@ class ResponseToolFunction(BaseModel):
     parameters: dict[str, Any]
 
 
-class ResponseTool(BaseModel):
+class ResponseTool(OpenAIBaseModel):
     """Tool definition for Response API."""
 
     type: Literal["function"]
     function: ResponseToolFunction
 
 
-class ResponseToolChoice(BaseModel):
+class ResponseToolChoice(OpenAIBaseModel):
     """Tool choice object format for Response API."""
 
     type: Literal["function"]
     function: dict[str, str]  # {"name": "function_name"}
 
 
-class ResponseReasoning(BaseModel):
+class ResponseReasoning(OpenAIBaseModel):
     """Reasoning configuration for Response API."""
 
     effort: Literal["low", "medium", "high"] = "medium"
     summary: Literal["auto", "none"] | None = "auto"
 
 
-class ResponseRequest(BaseModel):
+class ResponseRequest(OpenAIBaseModel):
     """OpenAI Response API request format with function calling support."""
 
     model: str
@@ -102,7 +101,7 @@ class ResponseRequest(BaseModel):
 # Response Models
 
 
-class ResponseOutput(BaseModel):
+class ResponseOutput(OpenAIBaseModel):
     """Output content in Response API."""
 
     id: str
@@ -112,7 +111,7 @@ class ResponseOutput(BaseModel):
     role: Literal["assistant"]
 
 
-class ResponseReasoningContent(BaseModel):
+class ResponseReasoningContent(OpenAIBaseModel):
     """Reasoning content in response."""
 
     effort: Literal["low", "medium", "high"]
@@ -120,7 +119,7 @@ class ResponseReasoningContent(BaseModel):
     encrypted_content: str | None = None
 
 
-class ResponseData(BaseModel):
+class ResponseData(OpenAIBaseModel):
     """Complete response data structure."""
 
     id: str
@@ -153,7 +152,7 @@ class ResponseData(BaseModel):
     metadata: dict[str, Any] | None = None
 
 
-class ResponseCompleted(BaseModel):
+class ResponseCompleted(OpenAIBaseModel):
     """Complete response from Response API."""
 
     type: Literal["response.completed"]
@@ -164,7 +163,7 @@ class ResponseCompleted(BaseModel):
 # Streaming Models
 
 
-class StreamingDelta(BaseModel):
+class StreamingDelta(OpenAIBaseModel):
     """Delta content in streaming response with function calling."""
 
     content: str | None = None
@@ -175,7 +174,7 @@ class StreamingDelta(BaseModel):
     tool_calls: list[dict[str, Any]] | None = None
 
 
-class StreamingChoice(BaseModel):
+class StreamingChoice(OpenAIBaseModel):
     """Choice in streaming response."""
 
     index: int
@@ -185,7 +184,7 @@ class StreamingChoice(BaseModel):
     )
 
 
-class StreamingChunk(BaseModel):
+class StreamingChunk(OpenAIBaseModel):
     """Streaming chunk from Response API."""
 
     id: str
@@ -197,7 +196,7 @@ class StreamingChunk(BaseModel):
     system_fingerprint: str | None = None
 
 
-class StreamingEvent(BaseModel):
+class StreamingEvent(OpenAIBaseModel):
     """Server-sent event wrapper for streaming with function calling support."""
 
     event: (
@@ -221,14 +220,14 @@ class StreamingEvent(BaseModel):
 # Utility Models for Function Calling
 
 
-class FunctionCallDelta(BaseModel):
+class FunctionCallDelta(OpenAIBaseModel):
     """Delta for streaming function call arguments."""
 
     name: str | None = None
     arguments: str | None = None  # Partial JSON string
 
 
-class ToolCallState(BaseModel):
+class ToolCallState(OpenAIBaseModel):
     """State tracking for streaming tool calls."""
 
     id: str

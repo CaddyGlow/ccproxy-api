@@ -201,9 +201,6 @@ class HookableHTTPClient(httpx.AsyncClient):
                         status_code=response.status_code,
                     )
 
-                # Recreate response with the consumed content so it can be consumed again
-                import httpx
-
                 try:
                     recreated_response = httpx.Response(
                         status_code=response.status_code,

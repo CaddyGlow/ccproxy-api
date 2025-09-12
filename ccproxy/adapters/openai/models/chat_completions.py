@@ -10,14 +10,15 @@ import json
 import uuid
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import ConfigDict, Field, field_validator
 
-from ccproxy.models.types import ModalityType, ReasoningEffort
+from ccproxy.adapters.anthropic.models.types import ModalityType, ReasoningEffort
 
+from .base import OpenAIBaseModel
 from .common import OpenAIUsage
 
 
-class OpenAIMessageContent(BaseModel):
+class OpenAIMessageContent(OpenAIBaseModel):
     """OpenAI message content block."""
 
     type: Literal["text", "image_url"]
@@ -25,7 +26,7 @@ class OpenAIMessageContent(BaseModel):
     image_url: dict[str, Any] | None = None
 
 
-class OpenAIMessage(BaseModel):
+class OpenAIMessage(OpenAIBaseModel):
     """OpenAI message model."""
 
     role: Literal["system", "user", "assistant", "tool", "developer"]
@@ -35,7 +36,7 @@ class OpenAIMessage(BaseModel):
     tool_call_id: str | None = None
 
 
-class OpenAIFunction(BaseModel):
+class OpenAIFunction(OpenAIBaseModel):
     """OpenAI function definition."""
 
     name: str
@@ -43,47 +44,47 @@ class OpenAIFunction(BaseModel):
     parameters: dict[str, Any] = Field(default_factory=dict)
 
 
-class OpenAITool(BaseModel):
+class OpenAITool(OpenAIBaseModel):
     """OpenAI tool definition."""
 
     type: Literal["function"] = "function"
     function: OpenAIFunction
 
 
-class OpenAIToolChoice(BaseModel):
+class OpenAIToolChoice(OpenAIBaseModel):
     """OpenAI tool choice specification."""
 
     type: Literal["function"]
     function: dict[str, str]
 
 
-class OpenAIResponseFormat(BaseModel):
+class OpenAIResponseFormat(OpenAIBaseModel):
     """OpenAI response format specification."""
 
     type: Literal["text", "json_object", "json_schema"] = "text"
     json_schema: dict[str, Any] | None = None
 
 
-class OpenAIStreamOptions(BaseModel):
+class OpenAIStreamOptions(OpenAIBaseModel):
     """OpenAI stream options."""
 
     include_usage: bool = False
 
 
-class OpenAILogprobs(BaseModel):
+class OpenAILogprobs(OpenAIBaseModel):
     """OpenAI log probabilities."""
 
     content: list[dict[str, Any]] | None = None
 
 
-class OpenAIFunctionCall(BaseModel):
+class OpenAIFunctionCall(OpenAIBaseModel):
     """OpenAI function call."""
 
     name: str
     arguments: str
 
 
-class OpenAIToolCall(BaseModel):
+class OpenAIToolCall(OpenAIBaseModel):
     """OpenAI tool call."""
 
     id: str
@@ -91,7 +92,7 @@ class OpenAIToolCall(BaseModel):
     function: OpenAIFunctionCall
 
 
-class OpenAIResponseMessage(BaseModel):
+class OpenAIResponseMessage(OpenAIBaseModel):
     """OpenAI response message."""
 
     role: Literal["assistant"]
@@ -100,7 +101,7 @@ class OpenAIResponseMessage(BaseModel):
     refusal: str | None = None
 
 
-class OpenAIChoice(BaseModel):
+class OpenAIChoice(OpenAIBaseModel):
     """OpenAI choice in response."""
 
     index: int
@@ -109,7 +110,7 @@ class OpenAIChoice(BaseModel):
     logprobs: OpenAILogprobs | None = None
 
 
-class OpenAIChatCompletionRequest(BaseModel):
+class OpenAIChatCompletionRequest(OpenAIBaseModel):
     """OpenAI-compatible chat completion request model."""
 
     model: str = Field(..., description="ID of the model to use")
@@ -232,7 +233,7 @@ class OpenAIChatCompletionRequest(BaseModel):
         None, description="Audio input/output configuration for multimodal models"
     )
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="allow")
 
     @field_validator("model")
     @classmethod
@@ -270,7 +271,7 @@ class OpenAIChatCompletionRequest(BaseModel):
         return v
 
 
-class OpenAIChatCompletionResponse(BaseModel):
+class OpenAIChatCompletionResponse(OpenAIBaseModel):
     """OpenAI chat completion response."""
 
     id: str
@@ -281,10 +282,10 @@ class OpenAIChatCompletionResponse(BaseModel):
     usage: OpenAIUsage | None = None
     system_fingerprint: str | None = None
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="allow")
 
 
-class OpenAIStreamingDelta(BaseModel):
+class OpenAIStreamingDelta(OpenAIBaseModel):
     """OpenAI streaming delta."""
 
     role: Literal["assistant"] | None = None
@@ -292,7 +293,7 @@ class OpenAIStreamingDelta(BaseModel):
     tool_calls: list[dict[str, Any]] | None = None
 
 
-class OpenAIStreamingChoice(BaseModel):
+class OpenAIStreamingChoice(OpenAIBaseModel):
     """OpenAI streaming choice."""
 
     index: int
@@ -303,7 +304,7 @@ class OpenAIStreamingChoice(BaseModel):
     logprobs: OpenAILogprobs | None = None
 
 
-class OpenAIStreamingChatCompletionResponse(BaseModel):
+class OpenAIStreamingChatCompletionResponse(OpenAIBaseModel):
     """OpenAI streaming chat completion response."""
 
     id: str
@@ -314,10 +315,10 @@ class OpenAIStreamingChatCompletionResponse(BaseModel):
     usage: OpenAIUsage | None = None
     system_fingerprint: str | None = None
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="allow")
 
 
-class OpenAIModelInfo(BaseModel):
+class OpenAIModelInfo(OpenAIBaseModel):
     """OpenAI model information."""
 
     id: str
@@ -326,14 +327,14 @@ class OpenAIModelInfo(BaseModel):
     owned_by: str
 
 
-class OpenAIModelsResponse(BaseModel):
+class OpenAIModelsResponse(OpenAIBaseModel):
     """OpenAI models list response."""
 
     object: Literal["list"] = "list"
     data: list[OpenAIModelInfo]
 
 
-class OpenAIErrorDetail(BaseModel):
+class OpenAIErrorDetail(OpenAIBaseModel):
     """OpenAI error detail."""
 
     message: str
@@ -342,7 +343,7 @@ class OpenAIErrorDetail(BaseModel):
     code: str | None = None
 
 
-class OpenAIErrorResponse(BaseModel):
+class OpenAIErrorResponse(OpenAIBaseModel):
     """OpenAI error response."""
 
     error: OpenAIErrorDetail

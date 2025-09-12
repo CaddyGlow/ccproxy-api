@@ -41,6 +41,7 @@ class DeferredStreaming(StreamingResponse):
         request_context: "RequestContext | None" = None,
         hook_manager: HookManager | None = None,
         close_client_on_finish: bool = False,
+        on_headers: Any | None = None,
     ):
         """Store request details to execute later.
 
@@ -66,6 +67,7 @@ class DeferredStreaming(StreamingResponse):
         self.request_context = request_context
         self.hook_manager = hook_manager
         self._close_client_on_finish = close_client_on_finish
+        self.on_headers = on_headers
 
         # Create an async generator for the streaming content
         async def generate_content() -> AsyncGenerator[bytes, None]:
@@ -98,6 +100,52 @@ class DeferredStreaming(StreamingResponse):
         ) as response:
             # Get all headers from upstream
             upstream_headers = dict(response.headers)
+
+            # Invoke on_headers hook (allows choosing adapter/behavior based on upstream)
+            if callable(self.on_headers):
+                try:
+                    result = self.on_headers(upstream_headers, self.request_context)
+                    if hasattr(result, "__await__"):
+                        result = await result  # support async
+                    # If hook returns a new response adapter, set it
+                    if result is not None and self.handler_config is not None:
+                        try:
+                            # If result is a tuple (adapter, media_type), unpack
+                            if isinstance(result, tuple):
+                                adapter, media_type = result
+                                self.handler_config = type(self.handler_config)(
+                                    supports_streaming=self.handler_config.supports_streaming,
+                                    request_transformer=self.handler_config.request_transformer,
+                                    response_adapter=adapter,
+                                    response_transformer=self.handler_config.response_transformer,
+                                    preserve_header_case=self.handler_config.preserve_header_case,
+                                    sse_parser=self.handler_config.sse_parser,
+                                    format_context=self.handler_config.format_context,
+                                )
+                                if media_type:
+                                    self.media_type = media_type
+                            else:
+                                self.handler_config = type(self.handler_config)(
+                                    supports_streaming=self.handler_config.supports_streaming,
+                                    request_transformer=self.handler_config.request_transformer,
+                                    response_adapter=result,
+                                    response_transformer=self.handler_config.response_transformer,
+                                    preserve_header_case=self.handler_config.preserve_header_case,
+                                    sse_parser=self.handler_config.sse_parser,
+                                    format_context=self.handler_config.format_context,
+                                )
+                        except Exception:
+                            # If we can't rebuild dataclass (frozen, etc.), set directly
+                            try:
+                                self.handler_config.response_adapter = result  # type: ignore[attr-defined]
+                            except Exception:
+                                pass
+                except Exception as e:
+                    logger.debug(
+                        "on_headers_hook_failed",
+                        error=str(e),
+                        category="streaming_headers",
+                    )
 
             # Store headers in request context
             if self.request_context and hasattr(self.request_context, "metadata"):
@@ -157,11 +205,82 @@ class DeferredStreaming(StreamingResponse):
                             category="hooks",
                         )
 
+                # Local helper to adapt and emit an error SSE event (single chunk)
+                async def _emit_error_sse(error_obj: dict[str, Any]) -> None:
+                    adapted: dict[str, Any] | None = None
+                    try:
+                        if self.handler_config and self.handler_config.response_adapter:
+                            adapted = (
+                                await self.handler_config.response_adapter.adapt_error(
+                                    error_obj
+                                )
+                            )
+                        else:
+                            adapted = error_obj
+                    except Exception as e:
+                        logger.debug(
+                            "streaming_error_adaptation_failed",
+                            error=str(e),
+                            category="streaming_conversion",
+                        )
+                        adapted = error_obj
+
+                    async def _single() -> AsyncIterator[dict[str, Any]]:
+                        yield adapted or error_obj
+
+                    async for sse_bytes in self._serialize_json_to_sse_stream(
+                        _single(), include_done=False
+                    ):
+                        yield sse_bytes
+
                 try:
                     # Check for error status
                     if response.status_code >= 400:
-                        error_body = await response.aread()
-                        yield error_body
+                        # Read full error body once
+                        raw_error = await response.aread()
+                        adapted_error: dict[str, Any] | None = None
+
+                        # Try JSON parse; otherwise wrap as message
+                        try:
+                            parsed_error = json.loads(
+                                raw_error.decode("utf-8", errors="replace")
+                            )
+                        except json.JSONDecodeError:
+                            parsed_error = {
+                                "error": {
+                                    "message": raw_error.decode(
+                                        "utf-8", errors="replace"
+                                    )
+                                }
+                            }
+
+                        # If we have a response adapter, adapt the error into target format
+                        try:
+                            if (
+                                self.handler_config
+                                and self.handler_config.response_adapter
+                            ):
+                                adapted_error = await self.handler_config.response_adapter.adapt_error(
+                                    parsed_error
+                                )
+                            else:
+                                adapted_error = parsed_error
+                        except Exception as e:
+                            logger.debug(
+                                "streaming_error_adaptation_failed",
+                                error=str(e),
+                                category="streaming_conversion",
+                            )
+                            adapted_error = parsed_error
+
+                        # Serialize adapted error as a single SSE event (no [DONE])
+                        async def one_error_event() -> AsyncIterator[dict[str, Any]]:
+                            yield adapted_error or parsed_error
+
+                        async for sse_bytes in self._serialize_json_to_sse_stream(
+                            one_error_event(), include_done=False
+                        ):
+                            yield sse_bytes
                         return
 
                     # Stream the response with optional SSE processing
@@ -406,8 +525,14 @@ class DeferredStreaming(StreamingResponse):
                         error=str(e),
                         exc_info=e,
                     )
-                    error_msg = json.dumps({"error": "Request timeout"}).encode()
-                    yield error_msg
+                    await _emit_error_sse(
+                        {
+                            "error": {
+                                "type": "timeout_error",
+                                "message": "Request timeout",
+                            }
+                        }
+                    )
                 except httpx.ConnectError as e:
                     logger.error(
                         "streaming_connect_error",
@@ -415,14 +540,26 @@ class DeferredStreaming(StreamingResponse):
                         error=str(e),
                         exc_info=e,
                     )
-                    error_msg = json.dumps({"error": "Connection failed"}).encode()
-                    yield error_msg
+                    await _emit_error_sse(
+                        {
+                            "error": {
+                                "type": "connection_error",
+                                "message": "Connection failed",
+                            }
+                        }
+                    )
                 except httpx.HTTPError as e:
                     logger.error(
                         "streaming_http_error", url=self.url, error=str(e), exc_info=e
                     )
-                    error_msg = json.dumps({"error": f"HTTP error: {str(e)}"}).encode()
-                    yield error_msg
+                    await _emit_error_sse(
+                        {
+                            "error": {
+                                "type": "http_error",
+                                "message": f"HTTP error: {str(e)}",
+                            }
+                        }
+                    )
                 except Exception as e:
                     logger.error(
                         "streaming_request_unexpected_error",
@@ -430,8 +567,9 @@ class DeferredStreaming(StreamingResponse):
                         error=str(e),
                         exc_info=e,
                     )
-                    error_msg = json.dumps({"error": str(e)}).encode()
-                    yield error_msg
+                    await _emit_error_sse(
+                        {"error": {"type": "internal_server_error", "message": str(e)}}
+                    )
 
             # Create the actual streaming response with headers
             # Access logging now handled by hooks
@@ -552,7 +690,7 @@ class DeferredStreaming(StreamingResponse):
                         continue
 
     async def _serialize_json_to_sse_stream(
-        self, json_stream: AsyncIterator[dict[str, Any]]
+        self, json_stream: AsyncIterator[dict[str, Any]], include_done: bool = True
     ) -> AsyncGenerator[bytes, None]:
         """Serialize JSON chunks back to SSE format.
 
@@ -620,5 +758,6 @@ class DeferredStreaming(StreamingResponse):
             category="sse_format",
         )
 
-        # Send final [DONE] event
-        yield b"data: [DONE]\n\n"
+        # Optionally send final [DONE] event (suppress for errors)
+        if include_done:
+            yield b"data: [DONE]\n\n"

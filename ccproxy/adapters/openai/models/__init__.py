@@ -7,6 +7,7 @@ This package contains all OpenAI-related models organized by API format:
 """
 
 # Re-export main models for backward compatibility
+from .base import OpenAIBaseModel
 from .chat_completions import (
     OpenAIChatCompletionRequest,
     OpenAIChatCompletionResponse,
@@ -61,6 +62,8 @@ from .responses import (
 
 
 __all__ = [
+    # Base model
+    "OpenAIBaseModel",
     # Chat Completions API
     "OpenAIMessageContent",
     "OpenAIMessage",

@@ -1,11 +1,14 @@
 """Error handling middleware for CCProxy API Server."""
 
 from collections.abc import Awaitable, Callable
+from typing import Any
 
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from ccproxy.adapters.anthropic.models.responses import APIError as AnthropicAPIError
 from ccproxy.core.errors import (
     AuthenticationError,
     ClaudeProxyError,
@@ -28,6 +31,95 @@ from ccproxy.core.logging import get_logger
 
 
 logger = get_logger(__name__)
+
+
+def _detect_format_from_path(path: str) -> str | None:
+    """Detect the expected format from the request path.
+
+    Args:
+        path: Request URL path
+
+    Returns:
+        Detected format or None if cannot determine
+    """
+    if "/chat/completions" in path:
+        return "openai"
+    elif "/messages" in path:
+        return "anthropic"
+    elif "/responses" in path:
+        return "response_api"
+    return None
+
+
+def _get_format_aware_error_content(
+    error_type: str, message: str, status_code: int, base_format: str | None
+) -> dict[str, Any]:
+    """Create format-aware error response content using proper models.
+
+    Args:
+        error_type: Type of error for logging
+        message: Error message
+        status_code: HTTP status code
+        base_format: Base format from format_chain[0] (e.g., "openai", "anthropic")
+
+    Returns:
+        Formatted error response content using proper models
+    """
+    # Default CCProxy format
+    default_content = {
+        "error": {
+            "type": error_type,
+            "message": message,
+        }
+    }
+
+    try:
+        if base_format == "openai":
+            # Use OpenAI error model
+            from ccproxy.adapters.openai.models.chat_completions import (
+                OpenAIErrorDetail,
+                OpenAIErrorResponse,
+            )
+
+            error_detail = OpenAIErrorDetail(
+                message=message, type=error_type, code=str(status_code)
+            )
+            error_response = OpenAIErrorResponse(error=error_detail)
+            return error_response.model_dump()
+
+        elif base_format == "anthropic":
+            # Use Anthropic error model
+            api_error = AnthropicAPIError(type=error_type, message=message)
+            # Anthropic error format has 'type': 'error' at top level
+            return {"type": "error", "error": api_error.model_dump()}
+
+        elif base_format == "response_api":
+            # Use OpenAI-style error for Response API (same format but different context)
+            from ccproxy.adapters.openai.models.chat_completions import (
+                OpenAIErrorDetail,
+                OpenAIErrorResponse,
+            )
+
+            error_detail = OpenAIErrorDetail(
+                message=message,
+                type=error_type,
+                code=error_type,  # Use error_type as code for Response API
+            )
+            error_response = OpenAIErrorResponse(error=error_detail)
+            return error_response.model_dump()
+
+    except Exception as e:
+        # Log the error but don't fail - fallback to default format
+        logger.warning(
+            "format_aware_error_creation_failed",
+            base_format=base_format,
+            error_type=error_type,
+            fallback_reason=str(e),
+            category="middleware",
+        )
+
+    # Fallback to default format
+    return default_content
 
 
 def setup_error_handlers(app: FastAPI) -> None:
@@ -132,15 +224,38 @@ def setup_error_handlers(app: FastAPI) -> None:
         if request_id:
             headers["x-request-id"] = request_id
 
-        # Return JSON response
+        # Detect format from request context for format-aware error responses
+        base_format = None
+        try:
+            if hasattr(request.state, "context") and hasattr(
+                request.state.context, "format_chain"
+            ):
+                format_chain = request.state.context.format_chain
+                if format_chain and len(format_chain) > 0:
+                    base_format = format_chain[
+                        0
+                    ]  # First format is the client's expected format
+                    logger.debug(
+                        "format_aware_error_detected",
+                        base_format=base_format,
+                        format_chain=format_chain,
+                        category="middleware",
+                    )
+        except Exception as e:
+            logger.debug("format_detection_failed", error=str(e), category="middleware")
+
+        # Get format-aware error content
+        error_content = _get_format_aware_error_content(
+            error_type=error_type,
+            message=str(exc),
+            status_code=status_code,
+            base_format=base_format,
+        )
+
+        # Return JSON response with format-aware content
         return JSONResponse(
             status_code=status_code,
-            content={
-                "error": {
-                    "type": error_type,
-                    "message": str(exc),
-                }
-            },
+            content=error_content,
             headers=headers,
         )
 
@@ -167,6 +282,72 @@ def setup_error_handlers(app: FastAPI) -> None:
 
         # Register the handler
         app.exception_handler(exc_class)(make_handler(status, err_type, include_client))
+
+    # FastAPI validation errors
+    @app.exception_handler(RequestValidationError)
+    async def validation_exception_handler(
+        request: Request, exc: RequestValidationError
+    ) -> JSONResponse:
+        """Handle FastAPI request validation errors with format awareness."""
+        # Get request ID from request state or headers
+        request_id = getattr(request.state, "request_id", None) or request.headers.get(
+            "x-request-id"
+        )
+
+        # Try to get format from request context (set by middleware)
+        base_format = None
+        try:
+            if hasattr(request.state, "context") and hasattr(
+                request.state.context, "format_chain"
+            ):
+                format_chain = request.state.context.format_chain
+                if format_chain and len(format_chain) > 0:
+                    base_format = format_chain[0]
+        except Exception:
+            pass  # Fallback to path detection if needed
+
+        # Fallback: detect format from path if context isn't available
+        if base_format is None:
+            base_format = _detect_format_from_path(str(request.url.path))
+
+        # Create a readable error message from validation errors
+        error_details = []
+        for error in exc.errors():
+            loc = " -> ".join(str(x) for x in error["loc"])
+            error_details.append(f"{loc}: {error['msg']}")
+
+        error_message = "; ".join(error_details)
+
+        # Log the validation error
+        logger.warning(
+            "Request validation error",
+            error_type="validation_error",
+            error_message=error_message,
+            status_code=422,
+            request_method=request.method,
+            request_url=str(request.url.path),
+            base_format=base_format,
+            category="middleware",
+        )
+
+        # Prepare headers with x-request-id if available
+        headers = {}
+        if request_id:
+            headers["x-request-id"] = request_id
+
+        # Get format-aware error content
+        error_content = _get_format_aware_error_content(
+            error_type="validation_error",
+            message=error_message,
+            status_code=422,
+            base_format=base_format,
+        )
+
+        return JSONResponse(
+            status_code=422,
+            content=error_content,
+            headers=headers,
+        )
 
     # Standard HTTP exceptions
     @app.exception_handler(HTTPException)
@@ -235,15 +416,37 @@ def setup_error_handlers(app: FastAPI) -> None:
         if request_id:
             headers["x-request-id"] = request_id
 
-        # TODO: Add when in prod hide details in response
+        # Detect format from request context for format-aware error responses
+        base_format = None
+        try:
+            if hasattr(request.state, "context") and hasattr(
+                request.state.context, "format_chain"
+            ):
+                format_chain = request.state.context.format_chain
+                if format_chain and len(format_chain) > 0:
+                    base_format = format_chain[0]
+        except Exception:
+            pass  # Ignore format detection errors
+
+        # Determine error type for format-aware response
+        if exc.status_code == 404:
+            error_type = "not_found"
+        elif exc.status_code == 401:
+            error_type = "authentication_error"
+        else:
+            error_type = "http_error"
+
+        # Get format-aware error content
+        error_content = _get_format_aware_error_content(
+            error_type=error_type,
+            message=exc.detail,
+            status_code=exc.status_code,
+            base_format=base_format,
+        )
+
         return JSONResponse(
             status_code=exc.status_code,
-            content={
-                "error": {
-                    "type": "http_error",
-                    "message": exc.detail,
-                }
-            },
+            content=error_content,
             headers=headers,
         )
 
@@ -298,14 +501,35 @@ def setup_error_handlers(app: FastAPI) -> None:
         if request_id:
             headers["x-request-id"] = request_id
 
+        # Detect format from request context for format-aware error responses
+        base_format = None
+        try:
+            if hasattr(request.state, "context") and hasattr(
+                request.state.context, "format_chain"
+            ):
+                format_chain = request.state.context.format_chain
+                if format_chain and len(format_chain) > 0:
+                    base_format = format_chain[0]
+        except Exception:
+            pass  # Ignore format detection errors
+
+        # Determine error type for format-aware response
+        if exc.status_code == 404:
+            error_type = "not_found"
+        else:
+            error_type = "http_error"
+
+        # Get format-aware error content
+        error_content = _get_format_aware_error_content(
+            error_type=error_type,
+            message=exc.detail,
+            status_code=exc.status_code,
+            base_format=base_format,
+        )
+
         return JSONResponse(
             status_code=exc.status_code,
-            content={
-                "error": {
-                    "type": "http_error",
-                    "message": exc.detail,
-                }
-            },
+            content=error_content,
             headers=headers,
         )
 
@@ -351,14 +575,29 @@ def setup_error_handlers(app: FastAPI) -> None:
         if request_id:
             headers["x-request-id"] = request_id
 
+        # Detect format from request context for format-aware error responses
+        base_format = None
+        try:
+            if hasattr(request.state, "context") and hasattr(
+                request.state.context, "format_chain"
+            ):
+                format_chain = request.state.context.format_chain
+                if format_chain and len(format_chain) > 0:
+                    base_format = format_chain[0]
+        except Exception:
+            pass  # Ignore format detection errors
+
+        # Get format-aware error content for internal server error
+        error_content = _get_format_aware_error_content(
+            error_type="internal_server_error",
+            message="An internal server error occurred",
+            status_code=500,
+            base_format=base_format,
+        )
+
         return JSONResponse(
             status_code=500,
-            content={
-                "error": {
-                    "type": "internal_server_error",
-                    "message": "An internal server error occurred",
-                }
-            },
+            content=error_content,
             headers=headers,
         )
 

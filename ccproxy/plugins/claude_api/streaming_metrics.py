@@ -6,7 +6,7 @@ Anthropic streaming responses.
 
 from typing import Any
 
-from ccproxy.models.types import UsageData
+from ccproxy.adapters.anthropic.models.types import UsageData
 
 
 def extract_usage_from_streaming_chunk(chunk_data: Any) -> UsageData | None:

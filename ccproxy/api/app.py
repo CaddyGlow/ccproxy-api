@@ -609,6 +609,11 @@ def create_app(service_container: ServiceContainer | None = None) -> FastAPI:
     setup_cors_middleware(app, settings)
     setup_error_handlers(app)
 
+    # Add format chain middleware
+    from ccproxy.api.middleware.format_chain import FormatChainMiddleware
+
+    app.add_middleware(FormatChainMiddleware)
+
     setup_default_middleware(middleware_manager)
 
     middleware_manager.apply_to_app(app)
