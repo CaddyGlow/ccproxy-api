@@ -33,7 +33,7 @@ from .adapters import (
     ResponsesAdapter,
 )
 from .anthropic_response_adapter import AnthropicResponseAPIAdapter
-from .anthropic_to_openai_adapter import AnthropicToOpenAIAdapter
+from .anthropic_to_openai_adapter import OpenAIToAnthropicAdapter
 
 # Import new directional adapters
 from .streaming import OpenAISSEFormatter, OpenAIStreamProcessor
@@ -47,7 +47,7 @@ __all__ = [
     # Legacy adapters
     "OpenAIAdapter",
     "AnthropicResponseAPIAdapter",
-    "AnthropicToOpenAIAdapter",
+    "OpenAIToAnthropicAdapter",
     "OpenAIToAnthropicAdapter",  # Alias for OpenAIAdapter
     "ChatCompletionsAdapter",
     "ResponsesAdapter",

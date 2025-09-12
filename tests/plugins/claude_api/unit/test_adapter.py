@@ -43,8 +43,12 @@ class TestClaudeAPIAdapter:
         mock_http_pool_manager,
     ) -> ClaudeAPIAdapter:
         """Create ClaudeAPIAdapter instance."""
+        from ccproxy.plugins.claude_api.config import ClaudeAPISettings
+
+        config = ClaudeAPISettings()
         return ClaudeAPIAdapter(
             detection_service=mock_detection_service,
+            config=config,
             auth_manager=mock_auth_manager,
             http_pool_manager=mock_http_pool_manager,
         )
@@ -289,3 +293,60 @@ class TestClaudeAPIAdapter:
         """Test Anthropic conversion detection."""
         assert adapter._needs_anthropic_conversion("/v1/chat/completions") is True
         assert adapter._needs_anthropic_conversion("/v1/messages") is False
+
+    def test_system_prompt_injection_modes(self) -> None:
+        """Test different system prompt injection modes."""
+        from ccproxy.plugins.claude_api.config import ClaudeAPISettings
+
+        # Test data
+        system_prompts = [
+            {"type": "text", "text": "First prompt"},
+            {"type": "text", "text": "Second prompt"},
+            {"type": "text", "text": "Third prompt"},
+        ]
+
+        body_data = {"messages": [{"role": "user", "content": "Hello"}]}
+
+        # Test none mode
+        config_none = ClaudeAPISettings(system_prompt_injection_mode="none")
+        adapter = ClaudeAPIAdapter(
+            detection_service=Mock(),
+            config=config_none,
+            auth_manager=Mock(),
+            http_pool_manager=Mock(),
+        )
+        result = adapter._inject_system_prompt(
+            body_data.copy(), system_prompts, mode="none"
+        )
+        assert "system" not in result
+
+        # Test minimal mode
+        config_minimal = ClaudeAPISettings(system_prompt_injection_mode="minimal")
+        adapter = ClaudeAPIAdapter(
+            detection_service=Mock(),
+            config=config_minimal,
+            auth_manager=Mock(),
+            http_pool_manager=Mock(),
+        )
+        result = adapter._inject_system_prompt(
+            body_data.copy(), system_prompts, mode="minimal"
+        )
+        assert "system" in result
+        assert len(result["system"]) == 1
+        assert result["system"][0]["text"] == "First prompt"
+        assert result["system"][0]["_ccproxy_injected"] is True
+
+        # Test full mode
+        config_full = ClaudeAPISettings(system_prompt_injection_mode="full")
+        adapter = ClaudeAPIAdapter(
+            detection_service=Mock(),
+            config=config_full,
+            auth_manager=Mock(),
+            http_pool_manager=Mock(),
+        )
+        result = adapter._inject_system_prompt(
+            body_data.copy(), system_prompts, mode="full"
+        )
+        assert "system" in result
+        assert len(result["system"]) == 3
+        assert all(block["_ccproxy_injected"] is True for block in result["system"])

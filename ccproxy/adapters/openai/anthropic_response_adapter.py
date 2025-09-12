@@ -25,7 +25,7 @@ class AnthropicResponseAPIAdapter(APIAdapter):
     """Direct adapter for Anthropic Messages ↔ OpenAI Response API conversion."""
 
     async def adapt_request(self, request: dict[str, Any]) -> dict[str, Any]:
-        """Convert Anthropic Messages request to OpenAI Response API format.
+        """Convert between Anthropic Messages and OpenAI Response API formats.
 
         Args:
             request: Anthropic Messages API request
@@ -34,7 +34,53 @@ class AnthropicResponseAPIAdapter(APIAdapter):
             OpenAI Response API formatted request
         """
         try:
-            response_api_request = {}
+            # Dual-direction support: detect input shape by keys
+            # If request has 'input' (Response API), convert to Anthropic
+            if "input" in request and isinstance(request["input"], list):
+                anthropic_request: dict[str, Any] = {}
+
+                # Model
+                if "model" in request:
+                    anthropic_request["model"] = request["model"]
+
+                # input -> messages (convert content blocks)
+                anthropic_request["messages"] = self._convert_input_to_messages(
+                    request["input"]
+                )
+
+                # instructions -> system
+                if "instructions" in request:
+                    anthropic_request["system"] = request["instructions"]
+
+                # Tools passthrough
+                for field in ["tools", "tool_choice", "parallel_tool_calls"]:
+                    if field in request:
+                        anthropic_request[field] = request[field]
+
+                # max tokens mapping with sensible default (Anthropic requires it)
+                max_tokens_val = (
+                    request.get("max_tokens")
+                    or request.get("max_output_tokens")
+                    or request.get("max_completion_tokens")
+                    or 4096
+                )
+                anthropic_request["max_tokens"] = max_tokens_val
+
+                # stream flag passthrough
+                if "stream" in request:
+                    anthropic_request["stream"] = request["stream"]
+
+                logger.debug(
+                    "response_api_to_anthropic_request_conversion",
+                    original_keys=list(request.keys()),
+                    converted_keys=list(anthropic_request.keys()),
+                    message_count=len(anthropic_request.get("messages", [])),
+                )
+
+                return anthropic_request
+
+            # Otherwise treat request as Anthropic -> Response API
+            response_api_request: dict[str, Any] = {}
 
             # Direct field mappings
             if "model" in request:
@@ -335,6 +381,12 @@ class AnthropicResponseAPIAdapter(APIAdapter):
             async for chunk in stream:
                 # Handle Response API streaming events
                 event_type = chunk.get("type")
+                logger.trace(
+                    "stream_chunk_received",
+                    event_type=event_type,
+                    keys=list(chunk.keys()),
+                    category="streaming",
+                )
 
                 # Capture provider lifecycle/metadata events to enrich outgoing payloads
                 if isinstance(event_type, str) and event_type.startswith("response."):
@@ -382,6 +434,12 @@ class AnthropicResponseAPIAdapter(APIAdapter):
                                     "input_tokens": usage_input_tokens,
                                     "output_tokens": 0,
                                 }
+                            logger.trace(
+                                "emit_message_start",
+                                id=msg.get("id"),
+                                model=msg.get("model"),
+                                category="streaming",
+                            )
                             yield {
                                 "type": "message_start",
                                 "message": msg
@@ -395,6 +453,9 @@ class AnthropicResponseAPIAdapter(APIAdapter):
                             message_started = True
                         else:
                             # Keep-alive ping while waiting for first delta
+                            logger.trace(
+                                "emit_ping_waiting_for_delta", category="streaming"
+                            )
                             yield {"type": "ping"}
                         continue
 
@@ -436,6 +497,11 @@ class AnthropicResponseAPIAdapter(APIAdapter):
 
                     delta_text = chunk.get("delta", "")
                     if delta_text:
+                        logger.trace(
+                            "emit_text_delta",
+                            size=len(delta_text or ""),
+                            category="streaming",
+                        )
                         yield {
                             "type": "content_block_delta",
                             "index": content_block_index,
@@ -444,11 +510,13 @@ class AnthropicResponseAPIAdapter(APIAdapter):
                         delta_count += 1
                         if delta_count % PING_INTERVAL == 0:
                             # Periodic ping to keep connections lively and match client expectations
+                            logger.trace("emit_ping_periodic", category="streaming")
                             yield {"type": "ping"}
 
                 elif event_type == "response.done":
                     # End of streaming
                     if message_started:
+                        logger.trace("emit_message_stop_sequence", category="streaming")
                         yield {
                             "type": "content_block_stop",
                             "index": content_block_index,
@@ -508,13 +576,41 @@ class AnthropicResponseAPIAdapter(APIAdapter):
             # Add type field that Response API expects
             input_message["type"] = "message"
 
-            # Add optional id if present
-            if "id" in message:
-                input_message["id"] = message["id"]
+            # Do NOT carry over extraneous fields like 'id' to keep target schema clean
 
             input_messages.append(input_message)
 
         return input_messages
+
+    def _convert_input_to_messages(
+        self, input_messages: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
+        """Convert Response API input list to Anthropic messages.
+
+        Maps content types:
+        - {type: "input_text", text: "..."} -> {type: "text", text: "..."}
+        - {type: "text", text: "..."} -> {type: "text", text: "..."}
+        Leaves unknown types as-is to avoid data loss.
+        """
+        messages: list[dict[str, Any]] = []
+
+        for item in input_messages:
+            role = item.get("role", "user")
+            content_list = item.get("content", [])
+            converted_content: list[dict[str, Any]] = []
+            for block in content_list or []:
+                btype = block.get("type")
+                if btype == "input_text" or btype == "text":
+                    converted_content.append(
+                        {"type": "text", "text": block.get("text", "")}
+                    )
+                # Drop unknown block types to avoid extra fields in target schema
+
+            # Anthropic request messages should only include role and content
+            msg = {"role": role, "content": converted_content}
+            messages.append(msg)
+
+        return messages
 
     async def adapt_error(self, error: dict[str, Any]) -> dict[str, Any]:
         """Convert Response API error format to Anthropic error format.

@@ -19,7 +19,8 @@ from ccproxy.adapters.openai.models.embedding import (
     OpenAIEmbedding,
     OpenAIEmbeddingResponse,
 )
-from ccproxy.api.decorators import base_format
+from ccproxy.adapters.openai.models.responses import ResponseRequest
+from ccproxy.api.decorators import base_format, format_chain
 from ccproxy.api.dependencies import get_plugin_adapter
 from ccproxy.core.logging import get_plugin_logger
 from ccproxy.streaming import DeferredStreaming
@@ -91,13 +92,57 @@ async def create_openai_chat_completion(
     "/messages",
     response_model=MessageResponse,
 )
-@base_format("anthropic")
+@format_chain(
+    ["anthropic", "openai"]
+)  # Client expects Anthropic, provider speaks OpenAI
 async def create_anthropic_message(
     request: Request,
     _: MessageCreateParams,
     adapter: CopilotAdapterDep,
 ) -> MessageResponse | OpenAIResponse:
     """Create a message using Copilot with native Anthropic format."""
+    request.state.context.metadata["endpoint"] = "/chat/completions"
+    return await _handle_adapter_request(request, adapter)
+
+
+@format_chain(
+    ["response_api", "anthropic", "openai"]
+)  # Request: Response API -> Anthropic -> OpenAI
+@router_v1.post(
+    "/responses",
+    response_model=MessageResponse,
+)
+async def create_responses_message(
+    request: Request,
+    _: ResponseRequest,
+    adapter: CopilotAdapterDep,
+) -> MessageResponse | OpenAIResponse:
+    """Create a message using Response API with OpenAI provider.
+
+    Request conversion: Response API -> Anthropic -> OpenAI.
+    Response conversion: OpenAI -> Anthropic.
+    """
+    # Ensure format chain is present in context even if decorator injection is bypassed
+    if not getattr(request.state, "context", None) or not getattr(
+        request.state.context, "format_chain", None
+    ):
+        # Lazily create minimal context if missing (mirrors middleware behavior)
+        import time
+        import uuid
+
+        from ccproxy.core.request_context import RequestContext
+
+        if not getattr(request.state, "context", None):
+            request.state.context = RequestContext(
+                request_id=str(uuid.uuid4()),
+                start_time=time.perf_counter(),
+                logger=get_plugin_logger(),
+            )
+        request.state.context.format_chain = [
+            "response_api",
+            "anthropic",
+            "openai",
+        ]
     request.state.context.metadata["endpoint"] = "/chat/completions"
     return await _handle_adapter_request(request, adapter)
 

@@ -347,16 +347,6 @@ class CodexFactory(BaseProviderPluginFactory):
             description="OpenAI Chat Completions to Response API conversion",
         ),
         FormatAdapterSpec(
-            from_format="response_api",
-            to_format="openai",
-            adapter_factory=lambda: __import__(
-                "ccproxy.adapters.openai.adapters.chat_to_responses",
-                fromlist=["ChatToResponsesAdapter"],
-            ).ChatToResponsesAdapter(),
-            priority=50,  # Medium priority
-            description="Response API to OpenAI Chat Completions conversion",
-        ),
-        FormatAdapterSpec(
             from_format="anthropic",
             to_format="response_api",
             adapter_factory=lambda: __import__(
@@ -365,17 +355,6 @@ class CodexFactory(BaseProviderPluginFactory):
             ).AnthropicResponseAPIAdapter(),
             priority=50,  # Medium priority
             description="Anthropic Messages to Response API conversion",
-        ),
-        # Response API → Anthropic using the direct adapter (supports streaming)
-        FormatAdapterSpec(
-            from_format="response_api",
-            to_format="anthropic",
-            adapter_factory=lambda: __import__(
-                "ccproxy.adapters.openai.anthropic_response_adapter",
-                fromlist=["AnthropicResponseAPIAdapter"],
-            ).AnthropicResponseAPIAdapter(),
-            priority=50,
-            description="Response API to Anthropic Messages conversion (direct adapter)",
         ),
     ]
 

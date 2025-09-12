@@ -138,16 +138,6 @@ class CopilotPluginFactory(BaseProviderPluginFactory, AuthProviderPluginFactory)
 
     format_adapters = [
         FormatAdapterSpec(
-            from_format="openai",
-            to_format="anthropic",
-            adapter_factory=lambda: __import__(
-                "ccproxy.adapters.openai.adapter",
-                fromlist=["OpenAIAdapter"],
-            ).OpenAIToAnthropicAdapter(),
-            priority=100,  # Lower priority than SDK plugin
-            description="OpenAI to Anthropic",
-        ),
-        FormatAdapterSpec(
             from_format="anthropic",
             to_format="openai",
             adapter_factory=lambda: __import__(
@@ -166,16 +156,6 @@ class CopilotPluginFactory(BaseProviderPluginFactory, AuthProviderPluginFactory)
             ).AnthropicResponseAPIAdapter(),
             priority=50,  # Medium priority
             description="Response API to Anthropic format conversion for Claude API",
-        ),
-        FormatAdapterSpec(
-            from_format="anthropic",
-            to_format="response_api",
-            adapter_factory=lambda: __import__(
-                "ccproxy.adapters.anthropic.response_adapter",
-                fromlist=["AnthropicResponseAPIAdapter"],
-            ).AnthropicResponseAPIAdapter(),
-            priority=50,  # Medium priority
-            description="Anthropic to Response API format conversion for Claude API",
         ),
     ]
 

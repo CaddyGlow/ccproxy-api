@@ -12,6 +12,7 @@ from ccproxy.utils.headers import (
     filter_request_headers,
 )
 
+from .config import ClaudeAPISettings
 from .detection_service import ClaudeAPIDetectionService
 
 
@@ -24,7 +25,7 @@ class ClaudeAPIAdapter(BaseHTTPAdapter):
     def __init__(
         self,
         detection_service: ClaudeAPIDetectionService,
-        config: Any = None,
+        config: ClaudeAPISettings,
         **kwargs: Any,
     ) -> None:
         super().__init__(config=config, **kwargs)
@@ -45,12 +46,16 @@ class ClaudeAPIAdapter(BaseHTTPAdapter):
         # Parse body
         body_data = json.loads(body.decode()) if body else {}
 
-        # Inject system prompt if available
-        if self.detection_service:
+        # Inject system prompt based on config mode
+        if (
+            self.detection_service
+            and self.config.system_prompt_injection_mode != "none"
+        ):
             cached_data = self.detection_service.get_cached_data()
             if cached_data and cached_data.system_prompt:
+                inject_mode = self.config.system_prompt_injection_mode
                 body_data = self._inject_system_prompt(
-                    body_data, cached_data.system_prompt
+                    body_data, cached_data.system_prompt, mode=inject_mode
                 )
 
         # Limit cache_control blocks to comply with Anthropic's limit
@@ -108,13 +113,14 @@ class ClaudeAPIAdapter(BaseHTTPAdapter):
 
     # Helper methods (move from transformers)
     def _inject_system_prompt(
-        self, body_data: dict[str, Any], system_prompt: Any
+        self, body_data: dict[str, Any], system_prompt: Any, mode: str = "full"
     ) -> dict[str, Any]:
         """Inject system prompt from Claude CLI detection.
 
         Args:
             body_data: The request body data dict
             system_prompt: System prompt data from detection service
+            mode: Injection mode - "full" (all prompts), "minimal" (first prompt only), or "none"
 
         Returns:
             Modified body data with system prompt injected
@@ -131,6 +137,17 @@ class ClaudeAPIAdapter(BaseHTTPAdapter):
 
         if not system_field:
             return body_data
+
+        # Apply injection mode filtering
+        if mode == "minimal":
+            # Only inject the first system prompt block
+            if isinstance(system_field, list) and len(system_field) > 0:
+                system_field = [system_field[0]]
+            # If it's a string, keep as-is (already minimal)
+        elif mode == "none":
+            # Should not reach here due to earlier check, but handle gracefully
+            return body_data
+        # For "full" mode, use system_field as-is
 
         # Mark the detected system prompt as injected for preservation
         marked_system = self._mark_injected_system_prompts(system_field)

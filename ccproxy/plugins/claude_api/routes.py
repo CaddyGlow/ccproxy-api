@@ -17,6 +17,7 @@ from ccproxy.adapters.openai.models import (
     OpenAIModelsResponse,
 )
 from ccproxy.adapters.openai.models.chat_completions import OpenAIChatCompletionRequest
+from ccproxy.api.decorators import base_format, format_chain
 from ccproxy.api.dependencies import get_plugin_adapter
 from ccproxy.auth.conditional import ConditionalAuthDep
 from ccproxy.core.logging import get_plugin_logger
@@ -36,13 +37,6 @@ APIResponse = Response | StreamingResponse | DeferredStreaming
 router = APIRouter()
 
 
-def claude_api_path_transformer(path: str) -> str:
-    """Transform stripped paths for Claude API."""
-    if path in ("/v1/chat/completions", "/v1/responses", "/responses"):
-        return "/v1/messages"
-    return path
-
-
 def _cast_result(result: object) -> APIResponse:
     from typing import cast as _cast
 
@@ -58,6 +52,7 @@ async def _handle_adapter_request(
 
 
 @router.post("/v1/messages", response_model=MessageResponse | APIError)
+@base_format("anthropic")
 async def create_anthropic_message(
     request: Request,
     _: MessageCreateParams,
@@ -74,6 +69,8 @@ async def create_anthropic_message(
     "/v1/chat/completions",
     response_model=OpenAIChatCompletionResponse | OpenAIErrorResponse,
 )
+@base_format("openai")
+@format_chain(["openai", "anthropic"])
 async def create_openai_chat_completion(
     request: Request,
     _: OpenAIChatCompletionRequest,
@@ -82,7 +79,7 @@ async def create_openai_chat_completion(
 ) -> APIResponse:
     """Create a chat completion using Claude AI with OpenAI-compatible format."""
     request.state.context.format_chain = ["openai", "anthropic"]
-    request.state.context.metadata["endpoint"] = "/v1/chat/completions"
+    request.state.context.metadata["endpoint"] = "/v1/messages"
     return await _handle_adapter_request(request, adapter)
 
 
@@ -114,20 +111,25 @@ async def list_models(
     return {"object": "list", "data": models}
 
 
-@router.post("/v1/responses", response_model=MessageResponse | APIError)
+@router.post("/v1/responses", response_model=None)
+@format_chain(
+    ["response_api", "anthropic"]
+)  # Client expects Response API, provider is Anthropic
 async def claude_v1_responses(
     request: Request,
     auth: ConditionalAuthDep,
     adapter: ClaudeAPIAdapterDep,
 ) -> APIResponse:
     """Response API compatible endpoint using Claude backend."""
+    # Ensure format chain is present for request/response conversion
     request.state.context.format_chain = ["response_api", "anthropic"]
-    request.state.context.metadata["endpoint"] = "/v1/responses"
+    request.state.context.metadata["endpoint"] = "/v1/messages"
     session_id = request.headers.get("session_id") or str(uuid.uuid4())
     return await _handle_adapter_request(request, adapter)
 
 
-@router.post("/{session_id}/v1/responses", response_model=MessageResponse | APIError)
+@router.post("/{session_id}/v1/responses", response_model=None)
+@format_chain(["response_api", "anthropic"])  # Client expects Response API
 async def claude_v1_responses_with_session(
     session_id: str,
     request: Request,
@@ -135,6 +137,7 @@ async def claude_v1_responses_with_session(
     adapter: ClaudeAPIAdapterDep,
 ) -> APIResponse:
     """Response API with session_id using Claude backend."""
+    # Ensure format chain is present for request/response conversion
     request.state.context.format_chain = ["response_api", "anthropic"]
-    request.state.context.metadata["endpoint"] = "/{session_id}/v1/responses"
+    request.state.context.metadata["endpoint"] = "/v1/messages"
     return await _handle_adapter_request(request, adapter)

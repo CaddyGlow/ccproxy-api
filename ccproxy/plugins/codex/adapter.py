@@ -59,6 +59,13 @@ class CodexAdapter(BaseHTTPAdapter):
             wants_stream = bool(data.get("stream", False))
         except Exception:  # Malformed/missing JSON -> assume non-streaming
             wants_stream = False
+        logger.trace(
+            "codex_adapter_request_intent",
+            wants_stream=wants_stream,
+            endpoint=endpoint,
+            format_chain=getattr(ctx, "format_chain", []),
+            category="streaming",
+        )
 
         # Explicitly set service_type for downstream helpers
         with contextlib.suppress(Exception):
@@ -66,6 +73,11 @@ class CodexAdapter(BaseHTTPAdapter):
 
         # If client wants streaming, delegate to streaming handler directly
         if wants_stream and self.streaming_handler:
+            logger.trace(
+                "codex_adapter_delegating_streaming",
+                endpoint=endpoint,
+                category="streaming",
+            )
             return await self.handle_streaming(request, endpoint)
 
         # Otherwise, buffer the upstream streaming response into a standard one
@@ -73,13 +85,38 @@ class CodexAdapter(BaseHTTPAdapter):
             # 1) Prepare provider request (adds auth, sets stream=true, etc.)
             # Apply request format conversion if specified
             if ctx.format_chain and len(ctx.format_chain) > 1:
-                with contextlib.suppress(Exception):
+                try:
                     body = await self._execute_format_chain(
                         body, ctx.format_chain, ctx, mode="request"
+                    )
+                except Exception as e:
+                    from starlette.responses import JSONResponse
+
+                    logger.error(
+                        "codex_format_chain_request_failed",
+                        error=str(e),
+                        exc_info=e,
+                        category="transform",
+                    )
+                    return JSONResponse(
+                        status_code=400,
+                        content={
+                            "error": {
+                                "type": "invalid_request_error",
+                                "message": "Failed to convert request using format chain",
+                                "details": str(e),
+                            }
+                        },
                     )
 
             prepared_body, prepared_headers = await self.prepare_provider_request(
                 body, headers, endpoint
+            )
+            logger.trace(
+                "codex_adapter_prepared_provider_request",
+                header_keys=list(prepared_headers.keys()),
+                body_size=len(prepared_body or b""),
+                category="http",
             )
 
             # 2) Build handler config (optionally with streaming format adapter)
@@ -128,13 +165,39 @@ class CodexAdapter(BaseHTTPAdapter):
                 request_context=ctx,
                 provider_name="codex",
             )
+            logger.trace(
+                "codex_adapter_buffered_response_ready",
+                status_code=buffered_response.status_code,
+                category="streaming",
+            )
 
             # 4) Apply reverse format chain on buffered body if needed
             if ctx.format_chain and len(ctx.format_chain) > 1:
                 mode = "error" if buffered_response.status_code >= 400 else "response"
-                converted_body = await self._execute_format_chain(
-                    buffered_response.body, ctx.format_chain, ctx, mode=mode
-                )
+                try:
+                    converted_body = await self._execute_format_chain(
+                        buffered_response.body, ctx.format_chain, ctx, mode=mode
+                    )
+                except Exception as e:
+                    logger.error(
+                        "codex_format_chain_response_failed",
+                        error=str(e),
+                        mode=mode,
+                        exc_info=e,
+                        category="transform",
+                    )
+                    from starlette.responses import JSONResponse
+
+                    return JSONResponse(
+                        status_code=502,
+                        content={
+                            "error": {
+                                "type": "server_error",
+                                "message": "Failed to convert provider response using format chain",
+                                "details": str(e),
+                            }
+                        },
+                    )
 
                 # Filter headers and rebuild response without content-length
                 headers_out = filter_response_headers(dict(buffered_response.headers))
@@ -261,9 +324,28 @@ class CodexAdapter(BaseHTTPAdapter):
 
         # Apply request format conversion if a chain is defined
         if ctx.format_chain and len(ctx.format_chain) > 1:
-            with contextlib.suppress(Exception):
+            try:
                 body = await self._execute_format_chain(
                     body, ctx.format_chain, ctx, mode="request"
+                )
+            except Exception as e:
+                from starlette.responses import JSONResponse
+
+                logger.error(
+                    "codex_format_chain_request_failed",
+                    error=str(e),
+                    exc_info=e,
+                    category="transform",
+                )
+                return JSONResponse(
+                    status_code=400,
+                    content={
+                        "error": {
+                            "type": "invalid_request_error",
+                            "message": "Failed to convert request using format chain",
+                            "details": str(e),
+                        }
+                    },
                 )
 
         # Provider-specific preparation (adds auth, sets stream=true)

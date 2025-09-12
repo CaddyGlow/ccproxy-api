@@ -325,16 +325,6 @@ class ClaudeAPIFactory(BaseProviderPluginFactory):
             description="OpenAI to Anthropic",
         ),
         FormatAdapterSpec(
-            from_format="anthropic",
-            to_format="openai",
-            adapter_factory=lambda: __import__(
-                "ccproxy.adapters.openai.adapter",
-                fromlist=["OpenAIAdapter"],
-            ).OpenAIAdapter(),
-            priority=100,  # Lower priority than SDK plugin
-            description="Anthropic to OpenAI",
-        ),
-        FormatAdapterSpec(
             from_format="response_api",
             to_format="anthropic",
             adapter_factory=lambda: __import__(
@@ -343,16 +333,6 @@ class ClaudeAPIFactory(BaseProviderPluginFactory):
             ).AnthropicResponseAPIAdapter(),
             priority=50,  # Medium priority
             description="Response API to Anthropic format conversion for Claude API",
-        ),
-        FormatAdapterSpec(
-            from_format="anthropic",
-            to_format="response_api",
-            adapter_factory=lambda: __import__(
-                "ccproxy.adapters.anthropic.response_adapter",
-                fromlist=["AnthropicResponseAPIAdapter"],
-            ).AnthropicResponseAPIAdapter(),
-            priority=50,  # Medium priority
-            description="Anthropic to Response API format conversion for Claude API",
         ),
     ]
 

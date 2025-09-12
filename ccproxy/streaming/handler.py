@@ -32,19 +32,17 @@ class StreamingHandler:
         self.hook_manager = hook_manager
 
     def should_stream_response(self, headers: dict[str, str]) -> bool:
-        """Detect streaming via Content-Type header only (SSE).
+        """Detect streaming intent from request headers.
 
-        - Returns True if Content-Type contains 'text/event-stream'
-        - Case-insensitive check
+        - Prefer client `Accept: text/event-stream`
+        - Fallback to provider-style `Content-Type: text/event-stream` (rare for requests)
+        - Case-insensitive checks
         """
-        content_type = ""
-        try:
-            content_type = next(
-                (v for k, v in headers.items() if k.lower() == "content-type"),
-                "",
-            ).lower()
-        except Exception:
-            content_type = str(headers.get("content-type", "")).lower()
+        accept = str(headers.get("accept", "")).lower()
+        if "text/event-stream" in accept:
+            return True
+
+        content_type = str(headers.get("content-type", "")).lower()
         return "text/event-stream" in content_type
 
     async def should_stream(

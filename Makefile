@@ -256,7 +256,7 @@ docker-compose-down:
 
 # Development server
 dev:
-	LOGGING__LEVEL=debug \
+	LOGGING__LEVEL=trace \
 		LOGGING__FILE=/tmp/ccproxy/ccproxy.log \
 		LOGGING__VERBOSE_API=true \
 		LOGGING__ENABLE_PLUGIN_LOGGING=true \

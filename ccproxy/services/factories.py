@@ -200,12 +200,19 @@ class ConcreteServiceFactory:
         """Pre-register core format adapters with high priority."""
         from ccproxy.adapters.openai import AnthropicResponseAPIAdapter
         from ccproxy.adapters.openai.adapter import OpenAIAdapter
+        from ccproxy.adapters.openai.anthropic_to_openai_adapter import (
+            OpenAIToAnthropicAdapter,
+        )
 
         # Core adapters that are always available
         core_adapters = {
             ("anthropic", "response_api"): AnthropicResponseAPIAdapter(),
             ("response_api", "anthropic"): AnthropicResponseAPIAdapter(),
             ("openai", "anthropic"): OpenAIAdapter(),
+            # For routes where the client expects Anthropic but provider speaks OpenAI
+            # (e.g., Copilot /v1/messages), use OpenAIToAnthropicAdapter for
+            # anthropic -> openai (request) and openai -> anthropic (stream/response).
+            ("anthropic", "openai"): OpenAIToAnthropicAdapter(),
             (
                 "response_api",
                 "openai",

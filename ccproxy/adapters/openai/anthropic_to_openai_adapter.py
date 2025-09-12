@@ -13,7 +13,7 @@ from ccproxy.core.logging import get_logger
 logger = get_logger(__name__)
 
 
-class AnthropicToOpenAIAdapter(APIAdapter):
+class OpenAIToAnthropicAdapter(APIAdapter):
     """Converts Anthropic format responses to OpenAI format - unidirectional."""
 
     def __init__(self) -> None:

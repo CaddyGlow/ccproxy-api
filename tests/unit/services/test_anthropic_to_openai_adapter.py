@@ -1,4 +1,4 @@
-"""Unit tests for AnthropicToOpenAIAdapter.
+"""Unit tests for OpenAIToAnthropicAdapter.
 
 Following TESTING.md guidelines:
 - Fast unit tests with proper type annotations
@@ -11,20 +11,20 @@ from typing import Any
 
 import pytest
 
-from ccproxy.adapters.openai.anthropic_to_openai_adapter import AnthropicToOpenAIAdapter
+from ccproxy.adapters.openai.anthropic_to_openai_adapter import OpenAIToAnthropicAdapter
 
 
-class TestAnthropicToOpenAIAdapter:
-    """Test AnthropicToOpenAIAdapter conversion methods."""
+class TestOpenAIToAnthropicAdapter:
+    """Test OpenAIToAnthropicAdapter conversion methods."""
 
     def test_init(self) -> None:
         """Test adapter initialization."""
-        adapter = AnthropicToOpenAIAdapter()
+        adapter = OpenAIToAnthropicAdapter()
         assert adapter is not None
 
     async def test_adapt_request_basic(self) -> None:
         """Test basic Anthropic to OpenAI request conversion."""
-        adapter = AnthropicToOpenAIAdapter()
+        adapter = OpenAIToAnthropicAdapter()
 
         anthropic_request: dict[str, Any] = {
             "model": "claude-3-5-sonnet-20241022",
@@ -45,7 +45,7 @@ class TestAnthropicToOpenAIAdapter:
 
     async def test_adapt_request_with_tools(self) -> None:
         """Test Anthropic to OpenAI request conversion with tools."""
-        adapter = AnthropicToOpenAIAdapter()
+        adapter = OpenAIToAnthropicAdapter()
 
         anthropic_request: dict[str, Any] = {
             "model": "claude-3-5-sonnet-20241022",
@@ -75,7 +75,7 @@ class TestAnthropicToOpenAIAdapter:
 
     async def test_adapt_request_with_content_blocks(self) -> None:
         """Test Anthropic to OpenAI request conversion with content blocks."""
-        adapter = AnthropicToOpenAIAdapter()
+        adapter = OpenAIToAnthropicAdapter()
 
         anthropic_request: dict[str, Any] = {
             "model": "claude-3-5-sonnet-20241022",
@@ -107,7 +107,7 @@ class TestAnthropicToOpenAIAdapter:
 
     async def test_adapt_request_with_tool_results(self) -> None:
         """Test Anthropic to OpenAI request conversion with tool results."""
-        adapter = AnthropicToOpenAIAdapter()
+        adapter = OpenAIToAnthropicAdapter()
 
         anthropic_request: dict[str, Any] = {
             "model": "claude-3-5-sonnet-20241022",
@@ -136,7 +136,7 @@ class TestAnthropicToOpenAIAdapter:
 
     async def test_adapt_response_basic(self) -> None:
         """Test basic OpenAI to Anthropic response conversion."""
-        adapter = AnthropicToOpenAIAdapter()
+        adapter = OpenAIToAnthropicAdapter()
 
         openai_response: dict[str, Any] = {
             "id": "chatcmpl-123",
@@ -171,7 +171,7 @@ class TestAnthropicToOpenAIAdapter:
 
     async def test_adapt_response_with_tool_calls(self) -> None:
         """Test OpenAI to Anthropic response conversion with tool calls."""
-        adapter = AnthropicToOpenAIAdapter()
+        adapter = OpenAIToAnthropicAdapter()
 
         openai_response: dict[str, Any] = {
             "id": "chatcmpl-123",
@@ -210,7 +210,7 @@ class TestAnthropicToOpenAIAdapter:
 
     async def test_adapt_error(self) -> None:
         """Test OpenAI to Anthropic error conversion."""
-        adapter = AnthropicToOpenAIAdapter()
+        adapter = OpenAIToAnthropicAdapter()
 
         openai_error: dict[str, Any] = {
             "error": {
@@ -228,7 +228,7 @@ class TestAnthropicToOpenAIAdapter:
 
     def test_convert_anthropic_tools_to_openai(self) -> None:
         """Test Anthropic tools to OpenAI format conversion."""
-        adapter = AnthropicToOpenAIAdapter()
+        adapter = OpenAIToAnthropicAdapter()
 
         anthropic_tools = [
             {
@@ -252,7 +252,7 @@ class TestAnthropicToOpenAIAdapter:
 
     def test_convert_anthropic_tool_choice_to_openai(self) -> None:
         """Test Anthropic tool_choice to OpenAI format conversion."""
-        adapter = AnthropicToOpenAIAdapter()
+        adapter = OpenAIToAnthropicAdapter()
 
         # Test auto
         result = adapter._convert_anthropic_tool_choice_to_openai({"type": "auto"})
@@ -272,7 +272,7 @@ class TestAnthropicToOpenAIAdapter:
 
     def test_convert_openai_finish_reason(self) -> None:
         """Test OpenAI finish_reason to Anthropic stop_reason conversion."""
-        adapter = AnthropicToOpenAIAdapter()
+        adapter = OpenAIToAnthropicAdapter()
 
         assert adapter._convert_openai_finish_reason("stop") == "end_turn"
         assert adapter._convert_openai_finish_reason("length") == "max_tokens"
@@ -284,7 +284,7 @@ class TestAnthropicToOpenAIAdapter:
 
     def test_convert_openai_usage(self) -> None:
         """Test OpenAI usage to Anthropic format conversion."""
-        adapter = AnthropicToOpenAIAdapter()
+        adapter = OpenAIToAnthropicAdapter()
 
         openai_usage = {
             "prompt_tokens": 100,
@@ -300,7 +300,7 @@ class TestAnthropicToOpenAIAdapter:
 
     async def test_adapt_request_invalid_format(self) -> None:
         """Test adapt_request with invalid format raises ValueError."""
-        adapter = AnthropicToOpenAIAdapter()
+        adapter = OpenAIToAnthropicAdapter()
 
         # Invalid request that should cause an error
         invalid_request = "not a dict"
@@ -310,7 +310,7 @@ class TestAnthropicToOpenAIAdapter:
 
     async def test_adapt_response_invalid_format(self) -> None:
         """Test adapt_response with invalid format raises ValueError."""
-        adapter = AnthropicToOpenAIAdapter()
+        adapter = OpenAIToAnthropicAdapter()
 
         # Invalid response that should cause an error
         invalid_response = "not a dict"
@@ -320,7 +320,7 @@ class TestAnthropicToOpenAIAdapter:
 
     def test_handle_metadata(self) -> None:
         """Test metadata handling in request conversion."""
-        adapter = AnthropicToOpenAIAdapter()
+        adapter = OpenAIToAnthropicAdapter()
 
         request = {"metadata": {"user_id": "user123", "other_field": "ignored"}}
         openai_request: dict[str, Any] = {}

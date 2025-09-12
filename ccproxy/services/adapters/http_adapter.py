@@ -1,3 +1,4 @@
+import contextlib
 from abc import abstractmethod
 from typing import Any, cast
 
@@ -74,8 +75,15 @@ class BaseHTTPAdapter(BaseAdapter):
                 content_type=headers.get("content-type"),
                 category="stream_detection",
             )
-            # Detect streaming via headers only (Content-Type: text/event-stream)
-            body_wants_stream = False  # ignore body flag per current policy
+            # Detect streaming via Accept header and/or body flag stream:true
+            body_wants_stream = False
+            try:
+                import json as _json
+
+                parsed = _json.loads(body.decode()) if body else {}
+                body_wants_stream = bool(parsed.get("stream", False))
+            except Exception:
+                body_wants_stream = False
             header_wants_stream = self.streaming_handler.should_stream_response(headers)
             logger.debug(
                 "should_stream_results",
@@ -105,13 +113,63 @@ class BaseHTTPAdapter(BaseAdapter):
 
         # Step 3: Execute format chain if specified (non-streaming)
         if ctx.format_chain and len(ctx.format_chain) > 1:
-            body = await self._execute_format_chain(
-                body, ctx.format_chain, ctx, mode="request"
-            )
+            try:
+                body = await self._execute_format_chain(
+                    body, ctx.format_chain, ctx, mode="request"
+                )
+            except Exception as e:
+                # Treat format conversion failures as fatal to avoid silent corruption
+                logger.error(
+                    "format_chain_request_failed",
+                    error=str(e),
+                    endpoint=endpoint,
+                    exc_info=e,
+                    category="transform",
+                )
+                from starlette.responses import JSONResponse
+
+                return JSONResponse(
+                    status_code=400,
+                    content={
+                        "error": {
+                            "type": "invalid_request_error",
+                            "message": "Failed to convert request using format chain",
+                            "details": str(e),
+                        }
+                    },
+                )
+            try:
+                import json as _json
+
+                preview_len = len(body or b"")
+                parsed = _json.loads(body.decode()) if body else {}
+                logger.trace(
+                    "format_chain_request_converted",
+                    from_format=ctx.format_chain[0],
+                    to_format=ctx.format_chain[-1],
+                    keys=list(parsed.keys())
+                    if isinstance(parsed, dict)
+                    else "non_dict",
+                    size_bytes=preview_len,
+                    category="transform",
+                )
+            except Exception:
+                logger.trace(
+                    "format_chain_request_conversion_preview_failed",
+                    category="transform",
+                )
         # Step 4: Provider-specific preparation
         prepared_body, prepared_headers = await self.prepare_provider_request(
             body, headers, endpoint
         )
+        with contextlib.suppress(Exception):
+            logger.trace(
+                "provider_request_prepared",
+                endpoint=endpoint,
+                header_keys=list(prepared_headers.keys()),
+                body_size=len(prepared_body or b""),
+                category="http",
+            )
 
         # Step 5: Execute HTTP request
         target_url = await self.get_target_url(endpoint)
@@ -120,6 +178,14 @@ class BaseHTTPAdapter(BaseAdapter):
             target_url,
             prepared_headers,
             prepared_body,
+        )
+        logger.trace(
+            "provider_response_received",
+            status_code=getattr(provider_response, "status_code", None),
+            content_type=getattr(provider_response, "headers", {}).get(
+                "content-type", None
+            ),
+            category="http",
         )
 
         # Step 6: Provider-specific response processing
@@ -284,12 +350,17 @@ class BaseHTTPAdapter(BaseAdapter):
             current_data = json.loads(body.decode()) if body else {}
         except (json.JSONDecodeError, UnicodeDecodeError) as e:
             logger.debug("format_chain_parse_failed", error=str(e))
-            return body
+            raise ValueError(
+                f"Format chain requires JSON body but parsing failed: {str(e)}"
+            )
 
-        for i in range(len(format_chain) - 1):
-            from_format = format_chain[i]
-            to_format = format_chain[i + 1]
+        # Always apply chain left→right; adapters are responsible for
+        # adapting request, response, and error in the same (declared) direction.
+        pairs: list[tuple[str, str]] = [
+            (format_chain[i], format_chain[i + 1]) for i in range(len(format_chain) - 1)
+        ]
 
+        for step_index, (from_format, to_format) in enumerate(pairs, start=1):
             try:
                 adapter = self.format_registry.get(from_format, to_format)
                 if not adapter:
@@ -310,7 +381,7 @@ class BaseHTTPAdapter(BaseAdapter):
                     from_format=from_format,
                     to_format=to_format,
                     mode=mode,
-                    step=i + 1,
+                    step=step_index,
                 )
 
             except Exception as e:
