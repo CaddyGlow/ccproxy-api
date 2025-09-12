@@ -366,6 +366,17 @@ class CodexFactory(BaseProviderPluginFactory):
             priority=50,  # Medium priority
             description="Anthropic Messages to Response API conversion",
         ),
+        # Response API → Anthropic using the direct adapter (supports streaming)
+        FormatAdapterSpec(
+            from_format="response_api",
+            to_format="anthropic",
+            adapter_factory=lambda: __import__(
+                "ccproxy.adapters.openai.anthropic_response_adapter",
+                fromlist=["AnthropicResponseAPIAdapter"],
+            ).AnthropicResponseAPIAdapter(),
+            priority=50,
+            description="Response API to Anthropic Messages conversion (direct adapter)",
+        ),
     ]
 
     def create_detection_service(self, context: PluginContext) -> CodexDetectionService:

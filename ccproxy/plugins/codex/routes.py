@@ -1,5 +1,6 @@
 """Codex plugin routes."""
 
+import contextlib
 from typing import TYPE_CHECKING, Annotated, Any
 
 from fastapi import APIRouter, Depends, Request
@@ -36,6 +37,10 @@ async def handle_codex_request(
     session_id: str | None = None,
 ) -> StreamingResponse | Response | DeferredStreaming:
     from typing import cast as _cast
+
+    # Mark service type for downstream streaming helpers/metrics
+    with contextlib.suppress(Exception):
+        request.state.context.metadata.setdefault("service_type", "codex")
 
     result = await adapter.handle_request(request)
     return _cast(StreamingResponse | Response | DeferredStreaming, result)

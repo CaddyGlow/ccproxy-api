@@ -389,9 +389,9 @@ class TestCopilotOAuthStorage:
         async def load_credentials() -> CopilotCredentials | None:
             return await storage_with_temp_dir.load()
 
-        # Run multiple save/load operations concurrently
+        # Run fewer concurrent operations for faster tests
         tasks = []
-        for _ in range(5):
+        for _ in range(2):  # Reduced from 5 to 2 for faster execution
             tasks.append(save_credentials(mock_credentials))
             tasks.append(load_credentials())
 

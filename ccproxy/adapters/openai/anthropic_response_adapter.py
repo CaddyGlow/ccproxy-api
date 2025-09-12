@@ -320,16 +320,88 @@ class AnthropicResponseAPIAdapter(APIAdapter):
             message_started = False
             content_block_index = 0
 
+            # Track provider metadata to enrich Anthropic events
+            response_id: str | None = None
+            response_model: str | None = None
+            usage_input_tokens: int | None = None
+            usage_output_tokens: int | None = None
+            usage_cache_read: int | None = None
+            usage_cache_write: int | None = None
+
+            # Lightweight heartbeat: emit ping every few deltas to satisfy clients
+            delta_count = 0
+            PING_INTERVAL = 3
+
             async for chunk in stream:
                 # Handle Response API streaming events
                 event_type = chunk.get("type")
 
+                # Capture provider lifecycle/metadata events to enrich outgoing payloads
+                if isinstance(event_type, str) and event_type.startswith("response."):
+                    # Many providers wrap details under a "response" object
+                    resp = chunk.get("response")
+                    if isinstance(resp, dict):
+                        # Response ID and model if present
+                        response_id = resp.get("id") or response_id
+                        response_model = resp.get("model") or response_model
+                        # Usage details (map to Anthropic-style fields when finishing)
+                        usage = resp.get("usage")
+                        if isinstance(usage, dict):
+                            usage_input_tokens = usage.get(
+                                "prompt_tokens", usage_input_tokens
+                            )
+                            usage_output_tokens = usage.get(
+                                "completion_tokens", usage_output_tokens
+                            )
+                            # Some providers expose cache stats under different keys; be defensive
+                            usage_cache_read = (
+                                usage.get("cache_read_input_tokens")
+                                or usage.get("cache_read_tokens")
+                                or usage_cache_read
+                            )
+                            usage_cache_write = (
+                                usage.get("cache_creation_input_tokens")
+                                or usage.get("cache_write_tokens")
+                                or usage_cache_write
+                            )
+
+                    # Don't emit provider lifecycle events to clients
+                    # Continue to next chunk to avoid falling through
+                    if event_type not in (
+                        "response.output_text.delta",
+                        "response.done",
+                    ):
+                        # However, some providers use "response.completed" instead of "response.done".
+                        if event_type == "response.completed":
+                            # Normalize to done to trigger finish logic below
+                            event_type = "response.done"
+                        else:
+                            continue
+
                 if event_type == "response.output_text.delta":
                     # Text delta from Response API
                     if not message_started:
+                        # Enrich message_start with id/model/usage if known
+                        msg: dict[str, Any] = {
+                            "id": response_id or "msg_generated",
+                            "type": "message",
+                            "role": "assistant",
+                            "content": [],
+                        }
+                        if response_model:
+                            msg["model"] = response_model
+                        # Initial usage (input tokens if known)
+                        usage_obj: dict[str, Any] | None = None
+                        if usage_input_tokens is not None:
+                            usage_obj = {
+                                "input_tokens": usage_input_tokens,
+                                "output_tokens": 0,
+                            }
+
                         yield {
                             "type": "message_start",
-                            "message": {"role": "assistant", "content": []},
+                            "message": msg
+                            | ({"usage": usage_obj} if usage_obj else {}),
                         }
                         yield {
                             "type": "content_block_start",
@@ -345,6 +417,10 @@ class AnthropicResponseAPIAdapter(APIAdapter):
                             "index": content_block_index,
                             "delta": {"type": "text_delta", "text": delta_text},
                         }
+                        delta_count += 1
+                        if delta_count % PING_INTERVAL == 0:
+                            # Periodic ping to keep connections lively and match client expectations
+                            yield {"type": "ping"}
 
                 elif event_type == "response.done":
                     # End of streaming
@@ -353,10 +429,25 @@ class AnthropicResponseAPIAdapter(APIAdapter):
                             "type": "content_block_stop",
                             "index": content_block_index,
                         }
-                        yield {
+                        # Include final usage if we captured any
+                        msg_delta: dict[str, Any] = {
                             "type": "message_delta",
-                            "delta": {"stop_reason": "end_turn"},
+                            "delta": {"stop_reason": "end_turn", "stop_sequence": None},
                         }
+                        usage_final: dict[str, Any] = {}
+                        if usage_input_tokens is not None:
+                            usage_final["input_tokens"] = usage_input_tokens
+                        if usage_output_tokens is not None:
+                            usage_final["output_tokens"] = usage_output_tokens
+                        if usage_cache_write is not None:
+                            usage_final["cache_creation_input_tokens"] = (
+                                usage_cache_write
+                            )
+                        if usage_cache_read is not None:
+                            usage_final["cache_read_input_tokens"] = usage_cache_read
+                        if usage_final:
+                            msg_delta["usage"] = usage_final
+                        yield msg_delta
                         yield {"type": "message_stop"}
 
                 # For other chunk types, pass through or convert as needed

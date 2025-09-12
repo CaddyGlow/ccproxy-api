@@ -98,8 +98,8 @@ class TestAnalyticsQueryCursor:
         for entry in logs:
             await storage.store_request(entry)
 
-        # Let background worker flush
-        await asyncio.sleep(0.2)
+        # Let background worker flush (optimized for tests)
+        await asyncio.sleep(0.01)
 
         # First page: newest first, limit 2
         r1 = client.get("/logs/query", params={"limit": 2, "order": "desc"})

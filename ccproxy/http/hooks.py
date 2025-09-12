@@ -317,47 +317,19 @@ class HookableHTTPClient(httpx.AsyncClient):
                 json=json,
                 **kwargs,
             ) as response:
-                # For streaming responses, we need to collect all chunks first
-                # to provide complete response body to hooks
+                # True streaming mode: do NOT pre-consume the upstream stream.
+                # Emit a lightweight HTTP_RESPONSE hook with headers/status only,
+                # then yield the original streaming response so downstream can
+                # process bytes incrementally (no buffering).
                 if self.hook_manager:
-                    # Read all chunks from the stream to build complete response body
-                    response_chunks = []
-                    async for chunk in response.aiter_bytes():
-                        response_chunks.append(chunk)
-
-                    # Combine all chunks to get complete response body
-                    response_content = b"".join(response_chunks)
-
-                    response_context = {
-                        **request_context,  # Include request info
-                        "status_code": response.status_code,
-                        "response_headers": extract_response_headers(response),
-                    }
-
-                    # Include response body from the content we collected
                     try:
-                        content_type = response.headers.get("content-type", "")
-                        if "application/json" in content_type:
-                            # Try to parse the raw content as JSON
-                            try:
-                                response_context["response_body"] = jsonlib.loads(
-                                    response_content.decode("utf-8")
-                                )
-                            except Exception:
-                                # If JSON parsing fails, include as text
-                                response_context["response_body"] = (
-                                    response_content.decode("utf-8", errors="replace")
-                                )
-                        else:
-                            # For non-JSON content, include as text
-                            response_context["response_body"] = response_content.decode(
-                                "utf-8", errors="replace"
-                            )
-                    except Exception:
-                        # Last resort - include as bytes
-                        response_context["response_body"] = response_content
-
-                    try:
+                        response_context = {
+                            **request_context,
+                            "status_code": response.status_code,
+                            "response_headers": extract_response_headers(response),
+                            # Indicate streaming; omit body to avoid buffering
+                            "streaming": True,
+                        }
                         await self.hook_manager.emit(
                             HookEvent.HTTP_RESPONSE,
                             response_context,
@@ -369,22 +341,7 @@ class HookableHTTPClient(httpx.AsyncClient):
                             status_code=response.status_code,
                         )
 
-                    # Create a new response with the collected content for consumers
-                    # This allows the StreamingBufferService to work with the complete response
-                    try:
-                        recreated_response = httpx.Response(
-                            status_code=response.status_code,
-                            headers=response.headers,
-                            content=response_content,
-                            request=response.request,
-                        )
-                        yield recreated_response
-                        return
-                    except Exception:
-                        # If recreation fails, yield original (may have empty body)
-                        logger.debug("streaming_response_recreation_failed")
-
-                # If no hook manager, just yield original response
+                # Yield the original streaming response (no pre-buffering)
                 yield response
 
         except Exception as error:

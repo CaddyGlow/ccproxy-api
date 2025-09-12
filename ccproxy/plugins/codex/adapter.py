@@ -1,19 +1,20 @@
+import contextlib
 import json
-import time
 import uuid
 from typing import Any
 
 import httpx
+from fastapi import Request
 from starlette.responses import Response, StreamingResponse
 
 from ccproxy.core.logging import get_plugin_logger
-from ccproxy.core.request_context import RequestContext
 from ccproxy.services.adapters.http_adapter import BaseHTTPAdapter
-from ccproxy.streaming import DeferredStreaming
+from ccproxy.streaming import DeferredStreaming, StreamingBufferService
 from ccproxy.utils.headers import (
+    extract_request_headers,
     extract_response_headers,
     filter_request_headers,
-    to_canonical_headers,
+    filter_response_headers,
 )
 
 from .detection_service import CodexDetectionService
@@ -25,10 +26,132 @@ logger = get_plugin_logger()
 class CodexAdapter(BaseHTTPAdapter):
     """Simplified Codex adapter."""
 
-    def __init__(self, detection_service: CodexDetectionService, **kwargs: Any) -> None:
-        super().__init__(**kwargs)
+    def __init__(
+        self,
+        detection_service: CodexDetectionService,
+        config: Any = None,
+        **kwargs: Any,
+    ) -> None:
+        super().__init__(config=config, **kwargs)
         self.detection_service = detection_service
         self.base_url = self.config.base_url.rstrip("/")
+
+    async def handle_request(
+        self, request: Request
+    ) -> Response | StreamingResponse | DeferredStreaming:
+        """Handle request with Codex-specific streaming behavior.
+
+        Codex upstream only supports streaming. If the client requests a non-streaming
+        response, we internally stream and buffer it, then return a standard Response.
+        """
+        # Context + request info
+        ctx = request.state.context
+        endpoint = ctx.metadata.get("endpoint", "")
+        body = await request.body()
+        headers = extract_request_headers(request)
+
+        # Determine client streaming intent from body flag (fallback to False)
+        wants_stream = False
+        try:
+            import json as _json
+
+            data = _json.loads(body.decode()) if body else {}
+            wants_stream = bool(data.get("stream", False))
+        except Exception:  # Malformed/missing JSON -> assume non-streaming
+            wants_stream = False
+
+        # Explicitly set service_type for downstream helpers
+        with contextlib.suppress(Exception):
+            ctx.metadata.setdefault("service_type", "codex")
+
+        # If client wants streaming, delegate to streaming handler directly
+        if wants_stream and self.streaming_handler:
+            return await self.handle_streaming(request, endpoint)
+
+        # Otherwise, buffer the upstream streaming response into a standard one
+        if getattr(self.config, "buffer_non_streaming", True):
+            # 1) Prepare provider request (adds auth, sets stream=true, etc.)
+            # Apply request format conversion if specified
+            if ctx.format_chain and len(ctx.format_chain) > 1:
+                with contextlib.suppress(Exception):
+                    body = await self._execute_format_chain(
+                        body, ctx.format_chain, ctx, mode="request"
+                    )
+
+            prepared_body, prepared_headers = await self.prepare_provider_request(
+                body, headers, endpoint
+            )
+
+            # 2) Build handler config (optionally with streaming format adapter)
+            streaming_format_adapter = None
+            if ctx.format_chain and len(ctx.format_chain) > 1 and self.format_registry:
+                from_format = ctx.format_chain[-1]
+                to_format = ctx.format_chain[0]
+                try:
+                    streaming_format_adapter = self.format_registry.get_if_exists(
+                        from_format, to_format
+                    )
+                except Exception:
+                    streaming_format_adapter = None
+
+            from ccproxy.services.handler_config import HandlerConfig
+
+            handler_config = HandlerConfig(
+                supports_streaming=True,
+                request_transformer=None,
+                response_adapter=streaming_format_adapter,
+                format_context=None,
+            )
+
+            # 3) Use StreamingBufferService to convert upstream stream -> regular response
+            target_url = await self.get_target_url(endpoint)
+            # Try to use a client with base_url for better hook integration
+            http_client = await self.http_pool_manager.get_client()
+            hook_manager = (
+                getattr(self.streaming_handler, "hook_manager", None)
+                if self.streaming_handler
+                else None
+            )
+            buffer_service = StreamingBufferService(
+                http_client=http_client,
+                request_tracer=None,
+                hook_manager=hook_manager,
+                http_pool_manager=self.http_pool_manager,
+            )
+
+            buffered_response = await buffer_service.handle_buffered_streaming_request(
+                method=request.method,
+                url=target_url,
+                headers=prepared_headers,
+                body=prepared_body,
+                handler_config=handler_config,
+                request_context=ctx,
+                provider_name="codex",
+            )
+
+            # 4) Apply reverse format chain on buffered body if needed
+            if ctx.format_chain and len(ctx.format_chain) > 1:
+                mode = "error" if buffered_response.status_code >= 400 else "response"
+                converted_body = await self._execute_format_chain(
+                    buffered_response.body, ctx.format_chain, ctx, mode=mode
+                )
+
+                # Filter headers and rebuild response without content-length
+                headers_out = filter_response_headers(dict(buffered_response.headers))
+                if "content-length" in headers_out:
+                    del headers_out["content-length"]
+                return Response(
+                    content=converted_body,
+                    status_code=buffered_response.status_code,
+                    headers=headers_out,
+                    media_type="application/json",
+                )
+
+            # No conversion needed; return buffered response as-is
+            return buffered_response
+
+        # Fallback: no buffering requested, use base non-streaming flow
+        return await super().handle_request(request)
 
     async def get_target_url(self, endpoint: str) -> str:
         # Old URL: https://chat.openai.com/backend-anon/responses (308 redirect)
@@ -53,19 +176,9 @@ class CodexAdapter(BaseHTTPAdapter):
         if "instructions" not in body_data or body_data.get("instructions") is None:
             body_data["instructions"] = self._get_instructions()
 
-        # Store user's original streaming preference
-        user_requested_streaming = body_data.get("stream", True)
-
         # Codex backend requires stream=true, always override
         body_data["stream"] = True
         body_data["store"] = False
-
-        # Store original preference temporarily for response handling
-        # Since we don't have access to request context here, store it on the adapter instance
-        if not hasattr(self, "_user_streaming_preferences"):
-            self._user_streaming_preferences = {}
-        # Use a simple key since we don't have request ID access here
-        self._user_streaming_preferences["current"] = user_requested_streaming
 
         # Remove any prefixed metadata fields that shouldn't be sent to the API
         body_data = self._remove_metadata_fields(body_data)
@@ -94,214 +207,107 @@ class CodexAdapter(BaseHTTPAdapter):
         return json.dumps(body_data).encode(), filtered_headers
 
     async def process_provider_response(
-        self, response: httpx.Response, endpoint: str, ctx: Any = None
-    ) -> Response | StreamingResponse | DeferredStreaming:
-        """Process provider response with streaming support and format conversion."""
-        logger.debug(
-            "codex_processing_provider_response",
-            endpoint=endpoint,
+        self, response: httpx.Response, endpoint: str
+    ) -> Response | StreamingResponse:
+        """Return a plain Response; streaming handled upstream by BaseHTTPAdapter.
+
+        The BaseHTTPAdapter is responsible for detecting streaming and delegating
+        to the shared StreamingHandler. For non-streaming responses, adapters
+        should return a simple Starlette Response.
+        """
+        response_headers = extract_response_headers(response)
+        return Response(
+            content=response.content,
             status_code=response.status_code,
-            content_type=response.headers.get("content-type"),
-            category="response_processing",
+            headers=response_headers,
+            media_type=response.headers.get("content-type"),
         )
-
-        # Check if this is a streaming response
-        content_type = response.headers.get("content-type", "")
-        backend_is_streaming = (
-            "text/event-stream" in content_type or "stream" in content_type.lower()
-        )
-
-        # Check if user originally requested streaming
-        user_requested_streaming = True  # Default to streaming
-        if (
-            hasattr(self, "_user_streaming_preferences")
-            and "current" in self._user_streaming_preferences
-        ):
-            user_requested_streaming = self._user_streaming_preferences["current"]
-            logger.debug(
-                "codex_retrieved_user_streaming_preference",
-                user_requested_streaming=user_requested_streaming,
-                category="streaming_conversion",
-            )
-
-        if backend_is_streaming and user_requested_streaming:
-            logger.debug(
-                "codex_streaming_response_for_streaming_request",
-                endpoint=endpoint,
-                content_type=content_type,
-                category="streaming_conversion",
-            )
-            # User wants streaming, backend provides streaming
-            return await self._create_streaming_response(response, endpoint)
-        elif backend_is_streaming and not user_requested_streaming:
-            logger.debug(
-                "codex_converting_stream_to_non_streaming",
-                endpoint=endpoint,
-                content_type=content_type,
-                user_requested_streaming=user_requested_streaming,
-                category="streaming_conversion",
-            )
-            # User wants non-streaming, but backend returned streaming
-            # Use the existing StreamingBufferService to convert stream to JSON
-            from ccproxy.streaming.buffer import StreamingBufferService
-
-            # Create buffer service instance
-            buffer_service = StreamingBufferService(
-                http_client=await self.http_pool_manager.get_client(),
-                http_pool_manager=self.http_pool_manager,
-            )
-
-            # Create minimal handler config for the buffer service
-            from ccproxy.services.handler_config import HandlerConfig
-
-            handler_config = HandlerConfig(supports_streaming=True)
-
-            # Get the original request details from the response
-            original_request = response.request
-
-            # Create a proper RequestContext instance
-            request_context = RequestContext(
-                request_id="codex-buffer",
-                start_time=time.perf_counter(),
-                logger=logger,
-                metadata={},
-                metrics={},
-            )
-
-            # Use the buffer service to convert the stream to non-streaming response
-            return await buffer_service.handle_buffered_streaming_request(
-                method=original_request.method,
-                url=str(original_request.url),
-                headers=dict(original_request.headers),
-                body=original_request.content,
-                handler_config=handler_config,
-                request_context=request_context,
-                provider_name="codex",
-            )
-        else:
-            # Non-streaming response - handle as before
-            logger.debug(
-                "codex_non_streaming_response",
-                endpoint=endpoint,
-                category="response_processing",
-            )
-
-            # Check if response is JSON before parsing
-            try:
-                response_data = json.loads(response.content)
-            except json.JSONDecodeError as e:
-                logger.error(
-                    "invalid_json_response",
-                    status_code=response.status_code,
-                    content_type=response.headers.get("content-type"),
-                    content_preview=response.content[:200]
-                    if response.content
-                    else None,
-                    error=str(e),
-                )
-                # For non-JSON responses (like redirects), return as-is
-                response_headers = extract_response_headers(response)
-                return Response(
-                    content=response.content,
-                    status_code=response.status_code,
-                    headers=response_headers,
-                )
-
-            # Response format conversion is now handled by format chain
-            response_headers = extract_response_headers(response)
-
-            return Response(
-                content=response.content,
-                status_code=response.status_code,
-                headers=to_canonical_headers(response_headers),
-            )
 
     async def _create_streaming_response(
         self, response: httpx.Response, endpoint: str
     ) -> DeferredStreaming:
-        """Create streaming response with format conversion support (new architecture)."""
-
-        # Check if format conversion is needed based on endpoint
-        needs_conversion = self._needs_format_conversion(endpoint)
-        response_adapter = None
-
-        if needs_conversion and self.format_registry:
-            try:
-                # Determine the format conversion direction based on endpoint
-                from_format, to_format = self._get_response_format_conversion(endpoint)
-                response_adapter = self.format_registry.get(from_format, to_format)
-
-                logger.debug(
-                    "codex_format_adapter_loaded",
-                    endpoint=endpoint,
-                    from_format=from_format,
-                    to_format=to_format,
-                    has_response_adapter=bool(response_adapter),
-                    category="streaming_conversion",
-                )
-            except Exception as e:
-                logger.warning(
-                    "codex_format_adapter_loading_failed",
-                    error=str(e),
-                    endpoint=endpoint,
-                    category="streaming_conversion",
-                )
-
-        # Get HTTP client from pool manager (new architecture)
-        client = await self.http_pool_manager.get_client()
-
-        # NEW ARCHITECTURE: Create minimal HandlerConfig only for format conversion
-        # This avoids the full delegation pattern while preserving format conversion
-        handler_config = None
-        if response_adapter:
-            from ccproxy.services.handler_config import HandlerConfig
-
-            handler_config = HandlerConfig(
-                response_adapter=response_adapter,
-                supports_streaming=True,
-            )
-            from_format, to_format = self._get_response_format_conversion(endpoint)
-            logger.debug(
-                "codex_minimal_handler_config_created",
-                endpoint=endpoint,
-                from_format=from_format,
-                to_format=to_format,
-                category="streaming_conversion",
-            )
-
-        # Create DeferredStreaming with minimal handler config for format conversion
-        return DeferredStreaming(
-            method="POST",
-            url=str(response.url),
-            headers=dict(response.request.headers),
-            body=response.request.content,
-            client=client,
-            handler_config=handler_config,
-        )
+        """Create streaming response with format conversion support."""
+        # Deprecated: streaming is centrally handled by BaseHTTPAdapter/StreamingHandler
+        # Kept for compatibility; not used.
+        raise NotImplementedError
 
     def _needs_format_conversion(self, endpoint: str) -> bool:
-        """Check if this endpoint needs format conversion."""
-        # Both OpenAI and Anthropic format endpoints need conversion
-        return (
-            endpoint.endswith("/chat/completions")
-            or endpoint.endswith("/v1/chat/completions")
-            or endpoint.endswith("/messages")
-            or endpoint.endswith("/v1/messages")
-        )
+        """Deprecated: format conversion handled via format chain in BaseHTTPAdapter."""
+        return False
 
     def _get_response_format_conversion(self, endpoint: str) -> tuple[str, str]:
-        """Get the response format conversion direction based on endpoint."""
-        if endpoint.endswith("/messages") or endpoint.endswith("/v1/messages"):
-            # Anthropic format endpoints: response_api -> anthropic
-            return ("response_api", "anthropic")
-        elif endpoint.endswith("/chat/completions") or endpoint.endswith(
-            "/v1/chat/completions"
-        ):
-            # OpenAI format endpoints: response_api -> openai
-            return ("response_api", "openai")
-        else:
-            # Default fallback (shouldn't happen if _needs_format_conversion is correct)
-            return ("response_api", "openai")
+        """Deprecated: conversion direction decided by format chain upstream."""
+        return ("response_api", "openai")
+
+    async def handle_streaming(
+        self, request: Request, endpoint: str, **kwargs: Any
+    ) -> StreamingResponse | DeferredStreaming:
+        """Handle streaming with request conversion for Codex.
+
+        Applies request format conversion (e.g., anthropic->response_api) before
+        preparing the provider request, then delegates to StreamingHandler with
+        a streaming response adapter for reverse conversion as needed.
+        """
+        if not self.streaming_handler:
+            # Fallback to base behavior
+            return await super().handle_streaming(request, endpoint, **kwargs)
+
+        # Get context
+        ctx = request.state.context
+
+        # Extract body and headers
+        body = await request.body()
+        headers = extract_request_headers(request)
+
+        # Apply request format conversion if a chain is defined
+        if ctx.format_chain and len(ctx.format_chain) > 1:
+            with contextlib.suppress(Exception):
+                body = await self._execute_format_chain(
+                    body, ctx.format_chain, ctx, mode="request"
+                )
+
+        # Provider-specific preparation (adds auth, sets stream=true)
+        prepared_body, prepared_headers = await self.prepare_provider_request(
+            body, headers, endpoint
+        )
+
+        # Get format adapter for streaming reverse conversion
+        streaming_format_adapter = None
+        if ctx.format_chain and len(ctx.format_chain) > 1 and self.format_registry:
+            from_format = ctx.format_chain[-1]
+            to_format = ctx.format_chain[0]
+            try:
+                streaming_format_adapter = self.format_registry.get_if_exists(
+                    from_format, to_format
+                )
+            except Exception:
+                streaming_format_adapter = None
+
+        from ccproxy.services.handler_config import HandlerConfig
+
+        handler_config = HandlerConfig(
+            supports_streaming=True,
+            request_transformer=None,
+            response_adapter=streaming_format_adapter,
+            format_context=None,
+        )
+
+        target_url = await self.get_target_url(endpoint)
+
+        from urllib.parse import urlparse
+
+        parsed_url = urlparse(target_url)
+        base_url = f"{parsed_url.scheme}://{parsed_url.netloc}"
+
+        return await self.streaming_handler.handle_streaming_request(
+            method=request.method,
+            url=target_url,
+            headers=prepared_headers,
+            body=prepared_body,
+            handler_config=handler_config,
+            request_context=ctx,
+            client=await self.http_pool_manager.get_client(base_url=base_url),
+        )
 
     # Helper methods
     def _remove_metadata_fields(self, data: dict[str, Any]) -> dict[str, Any]:
@@ -376,125 +382,3 @@ class CodexAdapter(BaseHTTPAdapter):
                 "message": "An error occurred processing the request",
             }
         }
-
-    async def _convert_stream_to_json(
-        self, response: httpx.Response, endpoint: str
-    ) -> Response:
-        """Convert a streaming response to a single JSON response.
-
-        This is used when the user requests non-streaming but the backend
-        returns a stream (which is required by Codex).
-        """
-        import json
-
-        from starlette.responses import Response as StarletteResponse
-
-        logger.debug(
-            "codex_collecting_stream_for_json_conversion",
-            endpoint=endpoint,
-            category="streaming_conversion",
-        )
-
-        try:
-            # Collect all streaming chunks
-            collected_content = []
-            accumulated_text = ""
-
-            async for line in response.aiter_lines():
-                if line.startswith("data: "):
-                    data_part = line[6:]  # Remove "data: " prefix
-                    if data_part.strip() == "[DONE]":
-                        break
-
-                    try:
-                        chunk_data = json.loads(data_part)
-                        collected_content.append(chunk_data)
-
-                        # For Response API format, accumulate text content
-                        if "response" in chunk_data:
-                            response_data = chunk_data["response"]
-                            if "output" in response_data:
-                                for output_item in response_data["output"]:
-                                    if output_item.get("type") == "message":
-                                        for content_block in output_item.get(
-                                            "content", []
-                                        ):
-                                            if content_block.get("type") == "text":
-                                                accumulated_text += content_block.get(
-                                                    "text", ""
-                                                )
-
-                    except json.JSONDecodeError:
-                        continue
-
-            # Create a consolidated response in the expected format
-            if self._needs_format_conversion(endpoint):
-                # For OpenAI format endpoints
-                consolidated_response = {
-                    "id": f"resp_{collected_content[0]['response']['id'] if collected_content and 'response' in collected_content[0] else 'unknown'}",
-                    "object": "chat.completion",
-                    "created": int(
-                        collected_content[0]["response"]["created_at"]
-                        if collected_content and "response" in collected_content[0]
-                        else 0
-                    ),
-                    "model": "gpt-5",
-                    "choices": [
-                        {
-                            "index": 0,
-                            "message": {
-                                "role": "assistant",
-                                "content": accumulated_text,
-                            },
-                            "finish_reason": "stop",
-                        }
-                    ],
-                }
-            else:
-                # For Anthropic format endpoints
-                consolidated_response = {
-                    "content": [{"type": "text", "text": accumulated_text}],
-                    "stop_reason": "end_turn",
-                }
-
-            # Apply format conversion if needed
-            if self._needs_format_conversion(endpoint):
-                from_format, to_format = self._get_response_format_conversion(endpoint)
-                if self.format_registry:
-                    adapter = self.format_registry.get(from_format, to_format)
-                    consolidated_response = await adapter.adapt_response(
-                        consolidated_response
-                    )
-
-            # Return as regular JSON response
-            response_headers = extract_response_headers(response)
-            response_headers["content-type"] = "application/json"
-
-            return StarletteResponse(
-                content=json.dumps(consolidated_response),
-                status_code=response.status_code,
-                headers=response_headers,
-                media_type="application/json",
-            )
-
-        except Exception as e:
-            logger.error(
-                "codex_stream_to_json_conversion_failed",
-                endpoint=endpoint,
-                error=str(e),
-                category="streaming_conversion",
-            )
-            # Fallback to error response
-            return StarletteResponse(
-                content=json.dumps(
-                    {
-                        "error": {
-                            "type": "internal_server_error",
-                            "message": "Failed to process streaming response",
-                        }
-                    }
-                ),
-                status_code=500,
-                headers={"content-type": "application/json"},
-                media_type="application/json",
-            )

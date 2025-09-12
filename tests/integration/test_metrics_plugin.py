@@ -1,6 +1,3 @@
-from collections.abc import Awaitable, Callable
-from typing import Any
-
 import pytest
 from httpx import AsyncClient
 
@@ -31,23 +28,11 @@ async def test_metrics_route_absent_when_plugins_disabled(
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_metrics_endpoint_with_custom_config(
-    integration_client_factory: Callable[
-        [dict[str, dict[str, Any]]], Awaitable[AsyncClient]
-    ],
+    metrics_custom_integration_client: AsyncClient,
 ) -> None:
     """Test metrics endpoint with custom configuration."""
-    client = await integration_client_factory(
-        {
-            "metrics": {
-                "enabled": True,
-                "metrics_endpoint_enabled": True,
-                "include_labels": True,
-            }
-        }
-    )
-    async with client:
-        resp = await client.get("/metrics")
-        assert resp.status_code == 200
+    resp = await metrics_custom_integration_client.get("/metrics")
+    assert resp.status_code == 200
 
 
 @pytest.mark.asyncio(loop_scope="session")

@@ -152,12 +152,17 @@ class DeferredStreaming(StreamingResponse):
             for key in ["content-length", "transfer-encoding", "connection"]:
                 upstream_headers.pop(key, None)
 
-            # Add streaming-specific headers
+            # Add headers; for errors, preserve provider content-type
+            is_error_status = response.status_code >= 400
+            content_type_header = (
+                response.headers.get("content-type") if is_error_status else None
+            )
             final_headers: dict[str, str] = {
                 **upstream_headers,
                 "Cache-Control": "no-cache",
                 "X-Accel-Buffering": "no",  # Disable nginx buffering
-                "Content-Type": self.media_type or "text/event-stream",
+                "Content-Type": content_type_header
+                or (self.media_type or "text/event-stream"),
             }
             if request_id:
                 final_headers["X-Request-ID"] = request_id
@@ -235,51 +240,9 @@ class DeferredStreaming(StreamingResponse):
                 try:
                     # Check for error status
                     if response.status_code >= 400:
-                        # Read full error body once
+                        # Forward provider error body as-is (no SSE wrapping)
                         raw_error = await response.aread()
-                        adapted_error: dict[str, Any] | None = None
-
-                        # Try JSON parse; otherwise wrap as message
-                        try:
-                            parsed_error = json.loads(
-                                raw_error.decode("utf-8", errors="replace")
-                            )
-                        except json.JSONDecodeError:
-                            parsed_error = {
-                                "error": {
-                                    "message": raw_error.decode(
-                                        "utf-8", errors="replace"
-                                    )
-                                }
-                            }
-
-                        # If we have a response adapter, adapt the error into target format
-                        try:
-                            if (
-                                self.handler_config
-                                and self.handler_config.response_adapter
-                            ):
-                                adapted_error = await self.handler_config.response_adapter.adapt_error(
-                                    parsed_error
-                                )
-                            else:
-                                adapted_error = parsed_error
-                        except Exception as e:
-                            logger.debug(
-                                "streaming_error_adaptation_failed",
-                                error=str(e),
-                                category="streaming_conversion",
-                            )
-                            adapted_error = parsed_error
-
-                        # Serialize adapted error as a single SSE event (no [DONE])
-                        async def one_error_event() -> AsyncIterator[dict[str, Any]]:
-                            yield adapted_error or parsed_error
-
-                        async for sse_bytes in self._serialize_json_to_sse_stream(
-                            one_error_event(), include_done=False
-                        ):
-                            yield sse_bytes
+                        yield raw_error
                         return
 
                     # Stream the response with optional SSE processing
@@ -680,6 +643,11 @@ class DeferredStreaming(StreamingResponse):
                 data_lines = [
                     line[6:] for line in event_lines if line.startswith("data: ")
                 ]
+                # Capture event type if present
+                event_type = None
+                for line in event_lines:
+                    if line.startswith("event:"):
+                        event_type = line[6:].strip()
 
                 if data_lines:
                     data = "".join(data_lines)
@@ -688,6 +656,13 @@ class DeferredStreaming(StreamingResponse):
 
                     try:
                         json_obj = json.loads(data)
+                        # Preserve event type for downstream adapters (if missing)
+                        if (
+                            event_type
+                            and isinstance(json_obj, dict)
+                            and "type" not in json_obj
+                        ):
+                            json_obj["type"] = event_type
                         yield json_obj
                     except json.JSONDecodeError:
                         continue
@@ -719,6 +694,11 @@ class DeferredStreaming(StreamingResponse):
             chunk_count += 1
             # Check if this is Anthropic format (has "type" field)
             event_type = json_obj.get("type")
+            # Skip provider-internal response API events when converting to client SSE
+            # (e.g., response.created, response.in_progress, response.completed)
+            if isinstance(event_type, str) and event_type.startswith("response."):
+                # These are provider lifecycle events; clients expect only target API events
+                continue
             if event_type:
                 anthropic_chunks += 1
                 # Use proper Anthropic SSE formatting with event: lines

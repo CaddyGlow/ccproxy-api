@@ -28,6 +28,10 @@ class TestCodexAdapter:
         auth_data.access_token = "test-token"
         auth_data.account_id = "account-123"
         auth_manager.load_credentials = AsyncMock(return_value=auth_data)
+
+        profile = Mock()
+        profile.chatgpt_account_id = "test-account-123"
+        auth_manager.get_profile_quick = AsyncMock(return_value=profile)
         return auth_manager
 
     @pytest.fixture
@@ -36,15 +40,24 @@ class TestCodexAdapter:
         return Mock()
 
     @pytest.fixture
+    def mock_config(self):
+        """Create mock config."""
+        config = Mock()
+        config.base_url = "https://chat.openai.com/backend-anon"
+        return config
+
+    @pytest.fixture
     def adapter(
         self,
         mock_detection_service: CodexDetectionService,
         mock_auth_manager,
         mock_http_pool_manager,
+        mock_config,
     ) -> CodexAdapter:
         """Create CodexAdapter instance."""
         return CodexAdapter(
             detection_service=mock_detection_service,
+            config=mock_config,
             auth_manager=mock_auth_manager,
             http_pool_manager=mock_http_pool_manager,
         )
@@ -72,17 +85,17 @@ class TestCodexAdapter:
             body, headers, "/responses"
         )
 
-        # Body should be converted to Codex format
+        # Body should preserve original format but add Codex-specific fields
         result_data = json.loads(result_body.decode())
-        assert "input" in result_data  # Codex uses 'input' instead of 'messages'
+        assert "messages" in result_data  # Original format preserved
         assert result_data["stream"] is True  # Always set to True for Codex
         assert "instructions" in result_data
 
         # Headers should be filtered and enhanced
         assert result_headers["content-type"] == "application/json"
         assert result_headers["authorization"] == "Bearer test-token"
-        assert result_headers["chatgpt-account-id"] == "account-123"
-        assert "session-id" in result_headers
+        assert result_headers["chatgpt-account-id"] == "test-account-123"
+        assert "session_id" in result_headers
 
     @pytest.mark.asyncio
     async def test_prepare_provider_request_with_instructions(
@@ -99,8 +112,12 @@ class TestCodexAdapter:
         cached_data.headers = None
         mock_detection_service.get_cached_data.return_value = cached_data
 
+        mock_config = Mock()
+        mock_config.base_url = "https://chat.openai.com/backend-anon"
+
         adapter = CodexAdapter(
             detection_service=mock_detection_service,
+            config=mock_config,
             auth_manager=mock_auth_manager,
             http_pool_manager=mock_http_pool_manager,
         )
@@ -185,12 +202,11 @@ class TestCodexAdapter:
         result = await adapter.process_provider_response(mock_response, "/responses")
 
         assert result.status_code == 200
-        # Should convert from Codex to OpenAI format
+        # Adapter now returns response as-is; format conversion handled upstream
         result_data = json.loads(result.body)
-        # The exact conversion depends on the ResponseAdapter implementation
-        # Just verify the structure changed appropriately
-        assert "choices" in result_data or result_data != codex_response
-        assert "Content-Type" in result.headers
+        # Should return original Codex response unchanged
+        assert result_data == codex_response
+        assert result.headers.get("content-type") == "application/json"
 
     @pytest.mark.asyncio
     async def test_cli_headers_injection(
@@ -210,8 +226,12 @@ class TestCodexAdapter:
         cached_data.instructions = None
         mock_detection_service.get_cached_data.return_value = cached_data
 
+        mock_config = Mock()
+        mock_config.base_url = "https://chat.openai.com/backend-anon"
+
         adapter = CodexAdapter(
             detection_service=mock_detection_service,
+            config=mock_config,
             auth_manager=mock_auth_manager,
             http_pool_manager=mock_http_pool_manager,
         )
@@ -230,9 +250,9 @@ class TestCodexAdapter:
 
     def test_needs_format_conversion(self, adapter: CodexAdapter) -> None:
         """Test format conversion detection."""
-        # Codex always needs format conversion
-        assert adapter._needs_format_conversion("/responses") is True
-        assert adapter._needs_format_conversion("/chat/completions") is True
+        # Format conversion now handled by format chain, adapter always returns False
+        assert adapter._needs_format_conversion("/responses") is False
+        assert adapter._needs_format_conversion("/chat/completions") is False
 
     def test_get_instructions_default(self, adapter: CodexAdapter) -> None:
         """Test default instructions when no detection service data."""
@@ -251,8 +271,12 @@ class TestCodexAdapter:
         cached_data.instructions.instructions_field = "Custom instructions"
         mock_detection_service.get_cached_data.return_value = cached_data
 
+        mock_config = Mock()
+        mock_config.base_url = "https://chat.openai.com/backend-anon"
+
         adapter = CodexAdapter(
             detection_service=mock_detection_service,
+            config=mock_config,
             auth_manager=mock_auth_manager,
             http_pool_manager=mock_http_pool_manager,
         )
@@ -277,4 +301,4 @@ class TestCodexAdapter:
 
         # Verify auth headers are set
         assert result_headers["authorization"] == "Bearer test-token"
-        assert result_headers["chatgpt-account-id"] == "account-123"
+        assert result_headers["chatgpt-account-id"] == "test-account-123"

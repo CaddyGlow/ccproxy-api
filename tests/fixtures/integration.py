@@ -145,6 +145,48 @@ async def metrics_integration_client(metrics_integration_app):
 
 
 @pytest.fixture(scope="session")
+def metrics_custom_integration_app():
+    """Pre-configured app for metrics plugin integration tests with custom config - session scoped."""
+    from ccproxy.core.logging import setup_logging
+
+    # Set up logging once per session - minimal logging for speed
+    setup_logging(json_logs=False, log_level_name="ERROR")
+
+    settings = Settings(
+        enable_plugins=True,
+        plugins_disable_local_discovery=False,  # Enable local plugin discovery
+        plugins={
+            "metrics": {
+                "enabled": True,
+                "metrics_endpoint_enabled": True,
+                "include_labels": True,
+            }
+        },
+        logging={
+            "level": "ERROR",  # Minimal logging for speed
+            "enable_plugin_logging": False,
+            "verbose_api": False,
+        },
+    )
+
+    service_container = create_service_container(settings)
+    return create_app(service_container), settings
+
+
+@pytest.fixture
+async def metrics_custom_integration_client(metrics_custom_integration_app):
+    """HTTP client for metrics integration tests with custom configuration - uses shared app."""
+    app, settings = metrics_custom_integration_app
+
+    # Initialize plugins async (once per test, but app is shared)
+    await initialize_plugins_startup(app, settings)
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        yield client
+
+
+@pytest.fixture(scope="session")
 def disabled_plugins_app(base_integration_settings):
     """Pre-configured app with disabled plugins - session scoped."""
     from ccproxy.core.logging import setup_logging

@@ -376,6 +376,31 @@ class StreamingBufferService:
             request_context=request_context,
         )
 
+        # Attempt to extract usage tokens from collected SSE and merge into parsed data
+        try:
+            usage = self._extract_usage_from_chunks(chunks)
+            if usage and isinstance(parsed_data, dict):
+                # Only inject if missing or zero values
+                existing = parsed_data.get("usage") or {}
+
+                def _is_zero(v: Any) -> bool:
+                    try:
+                        return int(v) == 0
+                    except Exception:
+                        return False
+
+                if not existing or (
+                    _is_zero(existing.get("input_tokens", 0))
+                    and _is_zero(existing.get("output_tokens", 0))
+                ):
+                    parsed_data["usage"] = usage
+        except Exception as e:
+            logger.debug(
+                "usage_extraction_failed",
+                error=str(e),
+                request_id=getattr(request_context, "request_id", None),
+            )
+
         return parsed_data, status_code, response_headers
 
     async def _parse_collected_stream(
@@ -500,6 +525,75 @@ class StreamingBufferService:
                     continue
 
         return last_json_data
+
+    def _extract_usage_from_chunks(self, chunks: list[bytes]) -> dict[str, int] | None:
+        """Extract token usage from SSE chunks and normalize to Response API shape.
+
+        Tries to find the last JSON object containing a "usage" field and returns a
+        dict with keys: input_tokens, output_tokens, total_tokens.
+        """
+        last_usage: dict[str, Any] | None = None
+        for chunk in chunks:
+            try:
+                text = chunk.decode("utf-8", errors="ignore")
+            except Exception:
+                continue
+            for part in text.split("\n\n"):
+                for line in part.splitlines():
+                    line = line.strip()
+                    if not line.startswith("data: "):
+                        continue
+                    data_str = line[6:].strip()
+                    if data_str == "[DONE]":
+                        continue
+                    try:
+                        obj = json.loads(data_str)
+                    except json.JSONDecodeError:
+                        continue
+                    # Accept direct usage at top-level or nested
+                    usage_obj = None
+                    if isinstance(obj, dict) and "usage" in obj:
+                        usage_obj = obj["usage"]
+                    elif (
+                        isinstance(obj, dict)
+                        and "response" in obj
+                        and isinstance(obj["response"], dict)
+                    ):
+                        # Some formats nest usage under response
+                        usage_obj = obj["response"].get("usage")
+                    if isinstance(usage_obj, dict):
+                        last_usage = usage_obj
+
+        if not isinstance(last_usage, dict):
+            return None
+
+        # Normalize keys
+        input_tokens = None
+        output_tokens = None
+        total_tokens = None
+
+        if "input_tokens" in last_usage or "output_tokens" in last_usage:
+            input_tokens = int(last_usage.get("input_tokens", 0) or 0)
+            output_tokens = int(last_usage.get("output_tokens", 0) or 0)
+            total_tokens = int(
+                last_usage.get("total_tokens", input_tokens + output_tokens)
+            )
+        elif "prompt_tokens" in last_usage or "completion_tokens" in last_usage:
+            # Map OpenAI-style to Response API style
+            input_tokens = int(last_usage.get("prompt_tokens", 0) or 0)
+            output_tokens = int(last_usage.get("completion_tokens", 0) or 0)
+            total_tokens = int(
+                last_usage.get("total_tokens", input_tokens + output_tokens)
+            )
+        else:
+            return None
+
+        return {
+            "input_tokens": input_tokens or 0,
+            "output_tokens": output_tokens or 0,
+            "total_tokens": total_tokens
+            or ((input_tokens or 0) + (output_tokens or 0)),
+        }
 
     async def _build_non_streaming_response(
         self,

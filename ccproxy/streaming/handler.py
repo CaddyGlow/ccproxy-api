@@ -110,7 +110,7 @@ class StreamingHandler:
             headers=headers,
             body=body,
             client=client,
-            media_type="text/event-stream",
+            media_type="text/event-stream; charset=utf-8",
             handler_config=handler_config,  # Contains format adapter if needed
             request_context=request_context,
             hook_manager=self.hook_manager,
