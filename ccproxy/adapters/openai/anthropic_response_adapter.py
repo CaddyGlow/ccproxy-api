@@ -365,29 +365,53 @@ class AnthropicResponseAPIAdapter(APIAdapter):
                                 or usage_cache_write
                             )
 
-                    # Don't emit provider lifecycle events to clients
-                    # Continue to next chunk to avoid falling through
+                    msg: dict[str, Any] = {
+                        "id": response_id or "msg_generated",
+                        "type": "message",
+                        "role": "assistant",
+                        "content": [],
+                    }
+                    # Translate lifecycle events to early client-visible events
+                    if event_type in ("response.created", "response.in_progress"):
+                        if not message_started:
+                            if response_model:
+                                msg["model"] = response_model
+                            initial_usage: dict[str, Any] | None = None
+                            if usage_input_tokens is not None:
+                                initial_usage = {
+                                    "input_tokens": usage_input_tokens,
+                                    "output_tokens": 0,
+                                }
+                            yield {
+                                "type": "message_start",
+                                "message": msg
+                                | ({"usage": initial_usage} if initial_usage else {}),
+                            }
+                            yield {
+                                "type": "content_block_start",
+                                "index": content_block_index,
+                                "content_block": {"type": "text", "text": ""},
+                            }
+                            message_started = True
+                        else:
+                            # Keep-alive ping while waiting for first delta
+                            yield {"type": "ping"}
+                        continue
+
+                    # Normalize alternate completion event naming
+                    if event_type == "response.completed":
+                        event_type = "response.done"
+                    # Skip other provider lifecycle events
                     if event_type not in (
                         "response.output_text.delta",
                         "response.done",
                     ):
-                        # However, some providers use "response.completed" instead of "response.done".
-                        if event_type == "response.completed":
-                            # Normalize to done to trigger finish logic below
-                            event_type = "response.done"
-                        else:
-                            continue
+                        continue
 
                 if event_type == "response.output_text.delta":
                     # Text delta from Response API
                     if not message_started:
                         # Enrich message_start with id/model/usage if known
-                        msg: dict[str, Any] = {
-                            "id": response_id or "msg_generated",
-                            "type": "message",
-                            "role": "assistant",
-                            "content": [],
-                        }
                         if response_model:
                             msg["model"] = response_model
                         # Initial usage (input tokens if known)
@@ -492,7 +516,7 @@ class AnthropicResponseAPIAdapter(APIAdapter):
 
         return input_messages
 
-    async def adapt_error(self, error_body: dict[str, Any]) -> dict[str, Any]:
+    async def adapt_error(self, error: dict[str, Any]) -> dict[str, Any]:
         """Convert Response API error format to Anthropic error format.
 
         Args:
@@ -502,7 +526,7 @@ class AnthropicResponseAPIAdapter(APIAdapter):
             Anthropic-formatted error response
         """
         # Extract error details from Response API format
-        response_api_error = error_body.get("error", {})
+        response_api_error = error.get("error", {})
         error_type = response_api_error.get("type", "internal_server_error")
         error_message = response_api_error.get("message", "An error occurred")
 
