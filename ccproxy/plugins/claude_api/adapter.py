@@ -39,9 +39,10 @@ class ClaudeAPIAdapter(BaseHTTPAdapter):
     async def prepare_provider_request(
         self, body: bytes, headers: dict[str, str], endpoint: str
     ) -> tuple[bytes, dict[str, str]]:
-        # Get auth
-        auth_data = await self.auth_manager.load_credentials()
-        access_token = auth_data.claude_ai_oauth.access_token
+        # Get a valid access token (auto-refreshes if expired)
+        token_value = await self.auth_manager.get_access_token()
+        if not token_value:
+            raise ValueError("No valid OAuth access token available for Claude API")
 
         # Parse body
         body_data = json.loads(body.decode()) if body else {}
@@ -64,17 +65,28 @@ class ClaudeAPIAdapter(BaseHTTPAdapter):
         # Remove metadata fields immediately after cache processing (format conversion handled by format chain)
         body_data = self._remove_metadata_fields(body_data)
 
-        # Filter headers
+        # Filter headers and enforce OAuth Authorization
         filtered_headers = filter_request_headers(headers, preserve_auth=False)
-        filtered_headers["authorization"] = f"Bearer {access_token.get_secret_value()}"
+        # Always set Authorization from OAuth-managed access token
+        filtered_headers["authorization"] = f"Bearer {token_value}"
 
-        # Add CLI headers if available
+        # Add CLI headers if available, but never allow overriding auth
         if self.detection_service:
             cached_data = self.detection_service.get_cached_data()
             if cached_data and cached_data.headers:
                 cli_headers = cached_data.headers.to_headers_dict()
+                # Do not allow CLI to override sensitive auth headers
+                blocked_overrides = {"authorization", "x-api-key"}
                 for key, value in cli_headers.items():
-                    filtered_headers[key.lower()] = value
+                    lk = key.lower()
+                    if lk in blocked_overrides:
+                        logger.debug(
+                            "cli_header_override_blocked",
+                            header=lk,
+                            reason="preserve_oauth_auth_header",
+                        )
+                        continue
+                    filtered_headers[lk] = value
 
         return json.dumps(body_data).encode(), filtered_headers
 

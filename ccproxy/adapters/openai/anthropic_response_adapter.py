@@ -156,6 +156,50 @@ class AnthropicResponseAPIAdapter(APIAdapter):
             )
             return await self.adapt_error(response)
 
+        # Heuristic: if response looks like Anthropic (message with content blocks),
+        # convert to OpenAI Response API shape instead of the legacy reverse path.
+        try:
+            if (
+                isinstance(response, dict)
+                and isinstance(response.get("content"), list)
+                and (response.get("type") in (None, "message"))
+            ):
+                content_blocks = response.get("content", []) or []
+                role = response.get("role", "assistant")
+                model = response.get("model")
+                resp_id = response.get("id")
+                stop_reason = response.get("stop_reason")
+
+                output_item = {
+                    "type": "message",
+                    "role": role,
+                    "content": content_blocks,
+                }
+                result: dict[str, Any] = {
+                    "id": resp_id or "resp_generated",
+                    "model": model,
+                    "output": [output_item],
+                }
+                if stop_reason is not None:
+                    result["stop_reason"] = stop_reason
+
+                usage = response.get("usage")
+                if isinstance(usage, dict):
+                    result["usage"] = {
+                        "prompt_tokens": usage.get("input_tokens", 0),
+                        "completion_tokens": usage.get("output_tokens", 0),
+                    }
+
+                logger.debug(
+                    "anthropic_to_response_api_conversion",
+                    converted_keys=list(result.keys()),
+                    has_output=bool(result.get("output")),
+                )
+                return result
+        except Exception:
+            # Fall through to legacy path
+            pass
+
         try:
             # Extract content from Response API format
             content_blocks = []
@@ -378,6 +422,11 @@ class AnthropicResponseAPIAdapter(APIAdapter):
             delta_count = 0
             PING_INTERVAL = 3
 
+            # Track Anthropic→Response API direction state
+            anth_id: str | None = None
+            anth_model: str | None = None
+            done_emitted = False
+
             async for chunk in stream:
                 # Handle Response API streaming events
                 event_type = chunk.get("type")
@@ -543,8 +592,86 @@ class AnthropicResponseAPIAdapter(APIAdapter):
                         yield {"type": "message_stop"}
 
                 # For other chunk types, pass through or convert as needed
+                elif event_type in {
+                    "message_start",
+                    "content_block_start",
+                    "content_block_delta",
+                    "content_block_stop",
+                    "message_delta",
+                    "message_stop",
+                }:
+                    # Convert Anthropic events to Response API events
+                    if event_type == "message_start":
+                        message_started = True
+                        msg = (
+                            chunk.get("message", {})
+                            if isinstance(chunk.get("message"), dict)
+                            else {}
+                        )
+                        anth_id = msg.get("id") or anth_id or "resp_generated"
+                        anth_model = msg.get("model") or anth_model
+                        resp_obj: dict[str, Any] = {"id": anth_id}
+                        if anth_model:
+                            resp_obj["model"] = anth_model
+                        yield {"type": "response.created", "response": resp_obj}
+                        done_emitted = False
+                        continue
+
+                    if event_type == "content_block_delta":
+                        delta = (
+                            chunk.get("delta", {})
+                            if isinstance(chunk.get("delta"), dict)
+                            else {}
+                        )
+                        if delta.get("type") == "text_delta" and "text" in delta:
+                            yield {
+                                "type": "response.output_text.delta",
+                                "delta": delta.get("text", ""),
+                            }
+                            delta_count += 1
+                            if delta_count % PING_INTERVAL == 0:
+                                yield {
+                                    "type": "response.in_progress",
+                                    "response": {"id": anth_id or "resp_generated"},
+                                }
+                        continue
+
+                    if event_type == "message_delta":
+                        d = (
+                            chunk.get("delta", {})
+                            if isinstance(chunk.get("delta"), dict)
+                            else {}
+                        )
+                        usage = d.get("usage") if isinstance(d, dict) else None
+                        resp_done: dict[str, Any] = {"id": anth_id or "resp_generated"}
+                        if anth_model:
+                            resp_done["model"] = anth_model
+                        if isinstance(usage, dict):
+                            resp_done["usage"] = {
+                                "prompt_tokens": usage.get("input_tokens", 0),
+                                "completion_tokens": usage.get("output_tokens", 0),
+                            }
+                        yield {"type": "response.done", "response": resp_done}
+                        done_emitted = True
+                        continue
+
+                    if event_type == "message_stop":
+                        if not done_emitted:
+                            yield {
+                                "type": "response.done",
+                                "response": {
+                                    "id": anth_id or "resp_generated",
+                                    **({"model": anth_model} if anth_model else {}),
+                                },
+                            }
+                            done_emitted = True
+                        continue
+
+                    # content_block_start/stop have no direct mapping; skip
+                    continue
+
                 elif isinstance(chunk, dict):
-                    # Generic streaming chunk conversion
+                    # Generic passthrough for unknown chunks
                     yield chunk
 
             logger.debug("anthropic_response_api_stream_conversion_completed")
@@ -567,7 +694,7 @@ class AnthropicResponseAPIAdapter(APIAdapter):
         input_messages = []
 
         for message in messages:
-            # Direct copy - the structure is the same
+            # Direct copy with content block type normalization for Response API
             input_message = {
                 "role": message.get("role", "user"),
                 "content": message.get("content", []),
@@ -575,6 +702,22 @@ class AnthropicResponseAPIAdapter(APIAdapter):
 
             # Add type field that Response API expects
             input_message["type"] = "message"
+
+            # Normalize content block types to Response API expectations
+            content = input_message.get("content") or []
+            normalized_content: list[dict[str, Any]] = []
+            for block in content:
+                if not isinstance(block, dict):
+                    continue
+                btype = block.get("type")
+                if btype == "text":
+                    normalized_content.append(
+                        {"type": "input_text", "text": block.get("text", "")}
+                    )
+                else:
+                    # Preserve unknown blocks (tool_use, etc.) as-is
+                    normalized_content.append(block)
+            input_message["content"] = normalized_content
 
             # Do NOT carry over extraneous fields like 'id' to keep target schema clean
 

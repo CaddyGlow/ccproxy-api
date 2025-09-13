@@ -277,7 +277,54 @@ class BaseHTTPAdapter(BaseAdapter):
         body = await request.body()
         headers = extract_request_headers(request)
 
-        # Step 1: Provider-specific preparation (add auth headers, etc.)
+        # Step 1: Execute request-side format chain if specified (streaming)
+        if ctx.format_chain and len(ctx.format_chain) > 1:
+            try:
+                body = await self._execute_format_chain(
+                    body, ctx.format_chain, ctx, mode="request"
+                )
+                try:
+                    import json as _json
+
+                    preview_len = len(body or b"")
+                    parsed = _json.loads(body.decode()) if body else {}
+                    logger.trace(
+                        "format_chain_stream_request_converted",
+                        from_format=ctx.format_chain[0],
+                        to_format=ctx.format_chain[-1],
+                        keys=list(parsed.keys())
+                        if isinstance(parsed, dict)
+                        else "non_dict",
+                        size_bytes=preview_len,
+                        category="transform",
+                    )
+                except Exception:
+                    logger.trace(
+                        "format_chain_stream_request_conversion_preview_failed",
+                        category="transform",
+                    )
+            except Exception as e:
+                logger.error(
+                    "format_chain_stream_request_failed",
+                    error=str(e),
+                    endpoint=endpoint,
+                    exc_info=e,
+                    category="transform",
+                )
+                from starlette.responses import JSONResponse
+
+                return JSONResponse(
+                    status_code=400,
+                    content={
+                        "error": {
+                            "type": "invalid_request_error",
+                            "message": "Failed to convert streaming request using format chain",
+                            "details": str(e),
+                        }
+                    },
+                )
+
+        # Step 2: Provider-specific preparation (add auth headers, etc.)
         prepared_body, prepared_headers = await self.prepare_provider_request(
             body, headers, endpoint
         )

@@ -101,6 +101,23 @@ async def create_anthropic_message(
     adapter: CopilotAdapterDep,
 ) -> MessageResponse | OpenAIResponse:
     """Create a message using Copilot with native Anthropic format."""
+    # Ensure format chain present for request/response conversion
+    if not getattr(request.state, "context", None) or not getattr(
+        request.state.context, "format_chain", None
+    ):
+        import time
+        import uuid
+
+        from ccproxy.core.request_context import RequestContext
+
+        if not getattr(request.state, "context", None):
+            request.state.context = RequestContext(
+                request_id=str(uuid.uuid4()),
+                start_time=time.perf_counter(),
+                logger=get_plugin_logger(),
+            )
+        request.state.context.format_chain = ["anthropic", "openai"]
+
     request.state.context.metadata["endpoint"] = "/chat/completions"
     return await _handle_adapter_request(request, adapter)
 

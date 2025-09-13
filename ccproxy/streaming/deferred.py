@@ -692,13 +692,8 @@ class DeferredStreaming(StreamingResponse):
 
         async for json_obj in json_stream:
             chunk_count += 1
-            # Check if this is Anthropic format (has "type" field)
+            # Check if this is Anthropic or Response API style format (has "type" field)
             event_type = json_obj.get("type")
-            # Skip provider-internal response API events when converting to client SSE
-            # (e.g., response.created, response.in_progress, response.completed)
-            if isinstance(event_type, str) and event_type.startswith("response."):
-                # These are provider lifecycle events; clients expect only target API events
-                continue
             if event_type:
                 anthropic_chunks += 1
                 # Use proper Anthropic SSE formatting with event: lines
