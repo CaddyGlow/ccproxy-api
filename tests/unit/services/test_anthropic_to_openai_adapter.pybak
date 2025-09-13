@@ -1,0 +1,331 @@
+"""Unit tests for AnthropicToOpenAIAdapter.
+
+Following TESTING.md guidelines:
+- Fast unit tests with proper type annotations
+- Mock at service boundaries only
+- Test real internal behavior
+- Use essential fixtures from conftest.py
+"""
+
+from typing import Any
+
+import pytest
+
+from ccproxy.adapters.openai.anthropic_to_openai_adapter import OpenAIToAnthropicAdapter
+
+
+class TestAnthropicToOpenAIAdapter:
+    """Test AnthropicToOpenAIAdapter conversion methods."""
+
+    def test_init(self) -> None:
+        """Test adapter initialization."""
+        adapter = OpenAIToAnthropicAdapter()
+        assert adapter is not None
+
+    async def test_adapt_request_basic(self) -> None:
+        """Test basic Anthropic to OpenAI request conversion."""
+        adapter = OpenAIToAnthropicAdapter()
+
+        anthropic_request: dict[str, Any] = {
+            "model": "claude-3-5-sonnet-20241022",
+            "max_tokens": 1000,
+            "system": "You are a helpful assistant",
+            "messages": [{"role": "user", "content": "Hello"}],
+        }
+
+        result = await adapter.adapt_request(anthropic_request)
+
+        assert result["model"] == "claude-3-5-sonnet-20241022"
+        assert result["max_tokens"] == 1000
+        assert len(result["messages"]) == 2
+        assert result["messages"][0]["role"] == "system"
+        assert result["messages"][0]["content"] == "You are a helpful assistant"
+        assert result["messages"][1]["role"] == "user"
+        assert result["messages"][1]["content"] == "Hello"
+
+    async def test_adapt_request_with_tools(self) -> None:
+        """Test Anthropic to OpenAI request conversion with tools."""
+        adapter = OpenAIToAnthropicAdapter()
+
+        anthropic_request: dict[str, Any] = {
+            "model": "claude-3-5-sonnet-20241022",
+            "max_tokens": 1000,
+            "messages": [{"role": "user", "content": "What's the weather?"}],
+            "tools": [
+                {
+                    "name": "get_weather",
+                    "description": "Get weather information",
+                    "input_schema": {
+                        "type": "object",
+                        "properties": {"location": {"type": "string"}},
+                    },
+                }
+            ],
+            "tool_choice": {"type": "auto"},
+        }
+
+        result = await adapter.adapt_request(anthropic_request)
+
+        assert "tools" in result
+        assert len(result["tools"]) == 1
+        assert result["tools"][0]["type"] == "function"
+        assert result["tools"][0]["function"]["name"] == "get_weather"
+        assert result["tools"][0]["function"]["parameters"]["type"] == "object"
+        assert result["tool_choice"] == "auto"
+
+    async def test_adapt_request_with_content_blocks(self) -> None:
+        """Test Anthropic to OpenAI request conversion with content blocks."""
+        adapter = OpenAIToAnthropicAdapter()
+
+        anthropic_request: dict[str, Any] = {
+            "model": "claude-3-5-sonnet-20241022",
+            "max_tokens": 1000,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": "Hello"},
+                        {
+                            "type": "thinking",
+                            "thinking": "I should respond politely",
+                            "signature": "test",
+                        },
+                    ],
+                }
+            ],
+        }
+
+        result = await adapter.adapt_request(anthropic_request)
+
+        assert len(result["messages"]) == 1
+        user_message = result["messages"][0]
+        assert user_message["role"] == "user"
+        expected_content = (
+            'Hello\n\n<thinking signature="test">I should respond politely</thinking>'
+        )
+        assert user_message["content"] == expected_content
+
+    async def test_adapt_request_with_tool_results(self) -> None:
+        """Test Anthropic to OpenAI request conversion with tool results."""
+        adapter = OpenAIToAnthropicAdapter()
+
+        anthropic_request: dict[str, Any] = {
+            "model": "claude-3-5-sonnet-20241022",
+            "max_tokens": 1000,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "tool_result",
+                            "tool_use_id": "call_123",
+                            "content": "Weather is sunny",
+                        }
+                    ],
+                }
+            ],
+        }
+
+        result = await adapter.adapt_request(anthropic_request)
+
+        assert len(result["messages"]) == 1
+        tool_message = result["messages"][0]
+        assert tool_message["role"] == "tool"
+        assert tool_message["tool_call_id"] == "call_123"
+        assert tool_message["content"] == "Weather is sunny"
+
+    async def test_adapt_response_basic(self) -> None:
+        """Test basic OpenAI to Anthropic response conversion."""
+        adapter = OpenAIToAnthropicAdapter()
+
+        openai_response: dict[str, Any] = {
+            "id": "chatcmpl-123",
+            "object": "chat.completion",
+            "created": 1677652288,
+            "model": "gpt-4",
+            "choices": [
+                {
+                    "index": 0,
+                    "message": {
+                        "role": "assistant",
+                        "content": "Hello! How can I help you?",
+                    },
+                    "finish_reason": "stop",
+                }
+            ],
+            "usage": {"prompt_tokens": 56, "completion_tokens": 31, "total_tokens": 87},
+        }
+
+        result = await adapter.adapt_response(openai_response)
+
+        assert result["type"] == "message"
+        assert result["role"] == "assistant"
+        assert result["model"] == "gpt-4"
+        assert result["id"] == "chatcmpl-123"
+        assert result["stop_reason"] == "end_turn"
+        assert len(result["content"]) == 1
+        assert result["content"][0]["type"] == "text"
+        assert result["content"][0]["text"] == "Hello! How can I help you?"
+        assert result["usage"]["input_tokens"] == 56
+        assert result["usage"]["output_tokens"] == 31
+
+    async def test_adapt_response_with_tool_calls(self) -> None:
+        """Test OpenAI to Anthropic response conversion with tool calls."""
+        adapter = OpenAIToAnthropicAdapter()
+
+        openai_response: dict[str, Any] = {
+            "id": "chatcmpl-123",
+            "model": "gpt-4",
+            "choices": [
+                {
+                    "index": 0,
+                    "message": {
+                        "role": "assistant",
+                        "content": None,
+                        "tool_calls": [
+                            {
+                                "id": "call_123",
+                                "type": "function",
+                                "function": {
+                                    "name": "get_weather",
+                                    "arguments": '{"location": "San Francisco"}',
+                                },
+                            }
+                        ],
+                    },
+                    "finish_reason": "tool_calls",
+                }
+            ],
+        }
+
+        result = await adapter.adapt_response(openai_response)
+
+        assert result["stop_reason"] == "tool_use"
+        assert len(result["content"]) == 1
+        tool_block = result["content"][0]
+        assert tool_block["type"] == "tool_use"
+        assert tool_block["id"] == "call_123"
+        assert tool_block["name"] == "get_weather"
+        assert tool_block["input"]["location"] == "San Francisco"
+
+    async def test_adapt_error(self) -> None:
+        """Test OpenAI to Anthropic error conversion."""
+        adapter = OpenAIToAnthropicAdapter()
+
+        openai_error: dict[str, Any] = {
+            "error": {
+                "message": "Invalid request",
+                "type": "invalid_request_error",
+                "code": "invalid_request",
+            }
+        }
+
+        result = await adapter.adapt_error(openai_error)
+
+        assert "error" in result
+        assert result["error"]["type"] == "invalid_request_error"
+        assert result["error"]["message"] == "Invalid request"
+
+    def test_convert_anthropic_tools_to_openai(self) -> None:
+        """Test Anthropic tools to OpenAI format conversion."""
+        adapter = OpenAIToAnthropicAdapter()
+
+        anthropic_tools = [
+            {
+                "name": "get_weather",
+                "description": "Get weather information",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {"location": {"type": "string"}},
+                },
+            }
+        ]
+
+        result = adapter._convert_anthropic_tools_to_openai(anthropic_tools)
+
+        assert len(result) == 1
+        tool = result[0]
+        assert tool["type"] == "function"
+        assert tool["function"]["name"] == "get_weather"
+        assert tool["function"]["description"] == "Get weather information"
+        assert tool["function"]["parameters"]["type"] == "object"
+
+    def test_convert_anthropic_tool_choice_to_openai(self) -> None:
+        """Test Anthropic tool_choice to OpenAI format conversion."""
+        adapter = OpenAIToAnthropicAdapter()
+
+        # Test auto
+        result = adapter._convert_anthropic_tool_choice_to_openai({"type": "auto"})
+        assert result == "auto"
+
+        # Test any -> required
+        result = adapter._convert_anthropic_tool_choice_to_openai({"type": "any"})
+        assert result == "required"
+
+        # Test specific tool
+        result = adapter._convert_anthropic_tool_choice_to_openai(
+            {"type": "tool", "name": "get_weather"}
+        )
+        assert isinstance(result, dict)
+        assert result["type"] == "function"
+        assert result["function"]["name"] == "get_weather"
+
+    def test_convert_openai_finish_reason(self) -> None:
+        """Test OpenAI finish_reason to Anthropic stop_reason conversion."""
+        adapter = OpenAIToAnthropicAdapter()
+
+        assert adapter._convert_openai_finish_reason("stop") == "end_turn"
+        assert adapter._convert_openai_finish_reason("length") == "max_tokens"
+        assert adapter._convert_openai_finish_reason("tool_calls") == "tool_use"
+        assert (
+            adapter._convert_openai_finish_reason("content_filter") == "stop_sequence"
+        )
+        assert adapter._convert_openai_finish_reason(None) == "end_turn"
+
+    def test_convert_openai_usage(self) -> None:
+        """Test OpenAI usage to Anthropic format conversion."""
+        adapter = OpenAIToAnthropicAdapter()
+
+        openai_usage = {
+            "prompt_tokens": 100,
+            "completion_tokens": 50,
+            "total_tokens": 150,
+        }
+
+        result = adapter._convert_openai_usage(openai_usage)
+
+        assert result["input_tokens"] == 100
+        assert result["output_tokens"] == 50
+        assert "total_tokens" not in result
+
+    async def test_adapt_request_invalid_format(self) -> None:
+        """Test adapt_request with invalid format raises ValueError."""
+        adapter = OpenAIToAnthropicAdapter()
+
+        # Invalid request that should cause an error
+        invalid_request = "not a dict"
+
+        with pytest.raises(ValueError, match="Invalid Anthropic request format"):
+            await adapter.adapt_request(invalid_request)  # type: ignore[arg-type]
+
+    async def test_adapt_response_invalid_format(self) -> None:
+        """Test adapt_response with invalid format raises ValueError."""
+        adapter = OpenAIToAnthropicAdapter()
+
+        # Invalid response that should cause an error
+        invalid_response = "not a dict"
+
+        with pytest.raises(ValueError, match="Invalid OpenAI response format"):
+            await adapter.adapt_response(invalid_response)  # type: ignore[arg-type]
+
+    def test_handle_metadata(self) -> None:
+        """Test metadata handling in request conversion."""
+        adapter = OpenAIToAnthropicAdapter()
+
+        request = {"metadata": {"user_id": "user123", "other_field": "ignored"}}
+        openai_request: dict[str, Any] = {}
+
+        adapter._handle_metadata(request, openai_request)
+
+        assert openai_request["user"] == "user123"
+        assert "other_field" not in openai_request
