@@ -1,3 +1,5 @@
+[![MseeP.ai Security Assessment Badge](https://mseep.net/pr/caddyglow-ccproxy-api-badge.png)](https://mseep.ai/app/caddyglow-ccproxy-api)
+
 # CCProxy API Server
 
 `ccproxy` is a local reverse proxy server that provides unified access to multiple AI providers through a single interface. It supports both Anthropic Claude and OpenAI Codex backends, allowing you to use your existing subscriptions without separate API key billing.
