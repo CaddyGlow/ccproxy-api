@@ -203,21 +203,20 @@ class ConcreteServiceFactory:
         from ccproxy.adapters.openai.anthropic_to_openai_adapter import (
             OpenAIToAnthropicAdapter,
         )
-        from ccproxy.adapters.openai.response_api_to_openai_adapter import (
-            ResponseAPIToOpenAIAdapter,
-        )
 
         # Core adapters that are always available
         core_adapters = {
             ("anthropic", "response_api"): AnthropicResponseAPIAdapter(),
             ("response_api", "anthropic"): AnthropicResponseAPIAdapter(),
-            # OpenAI ↔ Anthropic conversions
-            # - Requests:    openai → anthropic via OpenAIAdapter.adapt_request
-            # - Responses:   anthropic → openai via OpenAIAdapter.adapt_response/adapt_stream
             ("openai", "anthropic"): OpenAIAdapter(),
+            # For routes where the client expects Anthropic but provider speaks OpenAI
+            # (e.g., Copilot /v1/messages), use AnthropicToOpenAIAdapter for
+            # anthropic -> openai (request) and openai -> anthropic (stream/response).
             ("anthropic", "openai"): OpenAIToAnthropicAdapter(),
-            # Response API → OpenAI for clients expecting OpenAI shape
-            ("response_api", "openai"): ResponseAPIToOpenAIAdapter(),
+            (
+                "response_api",
+                "openai",
+            ): OpenAIAdapter(),  # Missing adapter for response_api → openai
         }
 
         for format_pair, adapter in core_adapters.items():

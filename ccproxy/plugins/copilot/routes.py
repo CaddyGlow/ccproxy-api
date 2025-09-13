@@ -20,7 +20,7 @@ from ccproxy.adapters.openai.models.embedding import (
     OpenAIEmbeddingResponse,
 )
 from ccproxy.adapters.openai.models.responses import ResponseRequest
-from ccproxy.api.decorators import base_format, format_chain
+from ccproxy.api.decorators import format_chain
 from ccproxy.api.dependencies import get_plugin_adapter
 from ccproxy.core.logging import get_plugin_logger
 from ccproxy.streaming import DeferredStreaming
@@ -76,7 +76,7 @@ def _get_request_body(request: Request) -> Any:
     "/chat/completions",
     response_model=OpenAIChatCompletionResponse,
 )
-@base_format("openai")
+@format_chain(["openai_raw", "openai"])  # Normalize Copilot -> OpenAI
 async def create_openai_chat_completion(
     request: Request,
     adapter: CopilotAdapterDep,
@@ -122,9 +122,7 @@ async def create_anthropic_message(
     return await _handle_adapter_request(request, adapter)
 
 
-@format_chain(
-    ["response_api", "anthropic", "openai"]
-)  # Request: Response API -> Anthropic -> OpenAI
+@format_chain(["response_api", "openai"])  # Single-hop flow: Response API -> OpenAI
 @router_v1.post(
     "/responses",
     response_model=MessageResponse,
@@ -157,7 +155,6 @@ async def create_responses_message(
             )
         request.state.context.format_chain = [
             "response_api",
-            "anthropic",
             "openai",
         ]
     request.state.context.metadata["endpoint"] = "/chat/completions"

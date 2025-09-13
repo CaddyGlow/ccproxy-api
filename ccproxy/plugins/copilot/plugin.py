@@ -137,14 +137,26 @@ class CopilotPluginFactory(BaseProviderPluginFactory, AuthProviderPluginFactory)
     # ]
 
     format_adapters = [
+        # Normalize provider's raw OpenAI-like stream to canonical OpenAI
+        # Use an alias format name to pass registry validation
+        FormatAdapterSpec(
+            from_format="openai_raw",
+            to_format="openai",
+            adapter_factory=lambda: __import__(
+                "ccproxy.adapters.openai.adapters.chat_completions_adapter",
+                fromlist=["ChatCompletionsAdapter"],
+            ).ChatCompletionsAdapter(),
+            priority=90,
+            description="Normalize Copilot OpenAI streaming to canonical OpenAI",
+        ),
         FormatAdapterSpec(
             from_format="anthropic",
             to_format="openai",
             adapter_factory=lambda: __import__(
-                "ccproxy.adapters.openai.adapter",
-                fromlist=["OpenAIAdapter"],
-            ).OpenAIAdapter(),
-            priority=100,  # Lower priority than SDK plugin
+                "ccproxy.adapters.openai.anthropic_to_openai_adapter",
+                fromlist=["OpenAIToAnthropicAdapter"],
+            ).OpenAIToAnthropicAdapter(),
+            priority=100,
             description="Anthropic to OpenAI",
         ),
         FormatAdapterSpec(

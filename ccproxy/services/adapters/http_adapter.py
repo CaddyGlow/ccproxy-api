@@ -333,7 +333,7 @@ class BaseHTTPAdapter(BaseAdapter):
         # Important: Do NOT reverse the chain. Adapters are defined for the
         # declared flow and handle response/streaming internally.
         streaming_format_adapter = None
-        if ctx.format_chain and len(ctx.format_chain) > 1 and self.format_registry:
+        if ctx.format_chain and self.format_registry:
             from_format = ctx.format_chain[0]
             to_format = ctx.format_chain[-1]
             streaming_format_adapter = self.format_registry.get_if_exists(

@@ -39,16 +39,11 @@ from .anthropic_to_openai_adapter import OpenAIToAnthropicAdapter
 from .streaming import OpenAISSEFormatter, OpenAIStreamProcessor
 
 
-# Create directional aliases for clarity
-OpenAIToAnthropicAdapter = OpenAIAdapter  # OpenAI → Anthropic (existing functionality)
-
-
 __all__ = [
     # Legacy adapters
     "OpenAIAdapter",
     "AnthropicResponseAPIAdapter",
     "OpenAIToAnthropicAdapter",
-    "OpenAIToAnthropicAdapter",  # Alias for OpenAIAdapter
     "ChatCompletionsAdapter",
     "ResponsesAdapter",
     "ChatToResponsesAdapter",
