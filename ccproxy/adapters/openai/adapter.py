@@ -15,6 +15,7 @@ from typing import Any, Literal, cast
 from pydantic import ValidationError
 
 from ccproxy.adapters.base import APIAdapter
+from ccproxy.core.interfaces import StreamingConfigurable
 from ccproxy.core.logging import get_logger
 
 from .models import (
@@ -34,13 +35,22 @@ from .streaming import OpenAIStreamProcessor
 logger = get_logger(__name__)
 
 
-class OpenAIAdapter(APIAdapter):
+class OpenAIAdapter(APIAdapter, StreamingConfigurable):
     """OpenAI API adapter for converting between OpenAI and Anthropic formats."""
 
-    def __init__(self, include_sdk_content_as_xml: bool = False) -> None:
+    def __init__(
+        self,
+        include_sdk_content_as_xml: bool = False,
+        openai_thinking_xml: bool | None = None,
+    ) -> None:
         """Initialize the OpenAI adapter."""
         self.include_sdk_content_as_xml = include_sdk_content_as_xml
+        self._openai_thinking_xml = openai_thinking_xml
         self.response_adapter = ResponseAdapter()
+
+    # StreamingConfigurable
+    def configure_streaming(self, *, openai_thinking_xml: bool | None = None) -> None:
+        self._openai_thinking_xml = openai_thinking_xml
 
     async def adapt_request(self, request: dict[str, Any]) -> dict[str, Any]:
         """Convert OpenAI request format to Anthropic format.
@@ -542,6 +552,7 @@ class OpenAIAdapter(APIAdapter):
             enable_usage=True,
             enable_tool_calls=True,
             output_format="dict",  # Output dict objects instead of SSE strings
+            enable_thinking_serialization=self._openai_thinking_xml,
         )
 
         logger.debug(
@@ -613,7 +624,10 @@ class OpenAIAdapter(APIAdapter):
             OpenAIStreamProcessor configured for SSE output
         """
         return OpenAIStreamProcessor(
-            output_format="sse", enable_usage=True, enable_tool_calls=True
+            output_format="sse",
+            enable_usage=True,
+            enable_tool_calls=True,
+            enable_thinking_serialization=self._openai_thinking_xml,
         )
 
     def get_stream_processor(self) -> OpenAIStreamProcessor:

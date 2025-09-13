@@ -4,6 +4,8 @@ from abc import ABC, abstractmethod
 from collections.abc import AsyncGenerator, AsyncIterator
 from typing import Any
 
+from ccproxy.core.interfaces import StreamingConfigurable
+
 
 class APIAdapter(ABC):
     """Abstract base class for API format adapters.
@@ -77,17 +79,23 @@ class APIAdapter(ABC):
         pass
 
 
-class BaseAPIAdapter(APIAdapter):
+class BaseAPIAdapter(APIAdapter, StreamingConfigurable):
     """Base implementation with common functionality."""
 
     def __init__(self, name: str):
         self.name = name
+        # Optional streaming flags that subclasses may use
+        self._openai_thinking_xml: bool | None = None
 
     def __str__(self) -> str:
         return f"{self.__class__.__name__}({self.name})"
 
     def __repr__(self) -> str:
         return self.__str__()
+
+    # StreamingConfigurable
+    def configure_streaming(self, *, openai_thinking_xml: bool | None = None) -> None:
+        self._openai_thinking_xml = openai_thinking_xml
 
 
 __all__ = ["APIAdapter", "BaseAPIAdapter"]

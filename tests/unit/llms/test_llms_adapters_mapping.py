@@ -2,24 +2,46 @@ import pytest
 
 from ccproxy.llms.anthropic.models import (
     CreateMessageRequest as AnthropicCreateMessageRequest,
+)
+from ccproxy.llms.anthropic.models import (
     MessageResponse as AnthropicMessageResponse,
+)
+from ccproxy.llms.anthropic.models import (
     TextBlock as AnthropicTextBlock,
+)
+from ccproxy.llms.anthropic.models import (
+    ThinkingBlock as AnthropicThinkingBlock,
+)
+from ccproxy.llms.anthropic.models import (
     Usage as AnthropicUsage,
 )
 from ccproxy.llms.openai.models import (
     ChatCompletionRequest as OpenAIChatRequest,
+)
+from ccproxy.llms.openai.models import (
     ChatCompletionResponse as OpenAIChatResponse,
-    ResponseObject as OpenAIResponseObject,
-    ResponseRequest as OpenAIResponseRequest,
-    MessageOutput as OpenAIResponseMessage,
-    OutputTextContent as OpenAIOutputTextContent,
-    ResponseUsage as OpenAIResponseUsage,
+)
+from ccproxy.llms.openai.models import (
     InputTokensDetails as OpenAIInputTokensDetails,
+)
+from ccproxy.llms.openai.models import (
+    MessageOutput as OpenAIResponseMessage,
+)
+from ccproxy.llms.openai.models import (
+    OutputTextContent as OpenAIOutputTextContent,
+)
+from ccproxy.llms.openai.models import (
     OutputTokensDetails as OpenAIOutputTokensDetails,
 )
-
-
-import pytest_asyncio
+from ccproxy.llms.openai.models import (
+    ResponseObject as OpenAIResponseObject,
+)
+from ccproxy.llms.openai.models import (
+    ResponseRequest as OpenAIResponseRequest,
+)
+from ccproxy.llms.openai.models import (
+    ResponseUsage as OpenAIResponseUsage,
+)
 
 
 @pytest.mark.asyncio
@@ -79,6 +101,89 @@ async def test_anthropic_response_to_openai_chat_response():
     assert openai_resp.usage.prompt_tokens == 10
     assert openai_resp.usage.completion_tokens == 5
     assert openai_resp.usage.total_tokens == 15
+
+
+@pytest.mark.asyncio
+async def test_thinking_block_serialization_in_response():
+    from ccproxy.llms.adapters.anthropic_messages_to_openai_chatcompletions import (
+        AnthropicMessagesToOpenAIChatAdapter,
+    )
+
+    anthropic_resp = AnthropicMessageResponse(
+        id="msg_think",
+        role="assistant",
+        model="claude-3",
+        content=[
+            AnthropicThinkingBlock(
+                type="thinking", thinking="chain of thought", signature="sig123"
+            ),
+            AnthropicTextBlock(type="text", text=" Final answer."),
+        ],
+        stop_reason="end_turn",
+        stop_sequence=None,
+        usage=AnthropicUsage(input_tokens=5, output_tokens=7),
+    )
+
+    adapter = AnthropicMessagesToOpenAIChatAdapter()
+    out = await adapter.adapt_response(anthropic_resp.model_dump())
+    openai_resp = OpenAIChatResponse.model_validate(out)
+    content = openai_resp.choices[0].message.content or ""
+    assert '<thinking signature="sig123">chain of thought</thinking>' in content
+    assert content.endswith(" Final answer.")
+
+
+@pytest.mark.asyncio
+async def test_openai_responses_to_anthropic_with_thinking_and_tool_use():
+    from ccproxy.llms.adapters.openai_responses_to_anthropic_responses import (
+        OpenAIResponsesToAnthropicAdapter,
+    )
+
+    # Compose a ResponseObject-like dict
+    resp = {
+        "id": "res_2",
+        "model": "gpt-4o",
+        "output": [
+            {
+                "type": "message",
+                "id": "m2",
+                "status": "completed",
+                "role": "assistant",
+                "content": [
+                    {
+                        "type": "output_text",
+                        "text": '<thinking signature="s1">think</thinking> Answer with data.',
+                    },
+                    {
+                        "type": "tool_use",
+                        "id": "call_1",
+                        "name": "fetch",
+                        "arguments": {"url": "https://example.com"},
+                    },
+                ],
+            }
+        ],
+        "status": "completed",
+        "parallel_tool_calls": False,
+        "usage": {
+            "input_tokens": 3,
+            "input_tokens_details": {"cached_tokens": 0},
+            "output_tokens": 7,
+            "output_tokens_details": {"reasoning_tokens": 0},
+            "total_tokens": 10,
+        },
+    }
+
+    adapter = OpenAIResponsesToAnthropicAdapter()
+    out = await adapter.adapt_response(resp)
+    # Validate as Anthropic message response
+    anth = AnthropicMessageResponse.model_validate(out)
+    # Expect ThinkingBlock then TextBlock then ToolUseBlock
+    assert anth.content[0].type == "thinking"
+    assert getattr(anth.content[0], "signature", "") == "s1"
+    assert anth.content[1].type == "text"
+    assert "Answer with data." in getattr(anth.content[1], "text", "")
+    assert anth.content[2].type == "tool_use"
+    assert getattr(anth.content[2], "name", "") == "fetch"
 
 
 @pytest.mark.asyncio
@@ -142,3 +247,194 @@ async def test_openai_response_to_openai_chat_response():
     assert chat.model == "gpt-4o"
     assert chat.choices[0].message.content == "Hello!"
     assert chat.usage.total_tokens == 16
+
+
+@pytest.mark.asyncio
+async def test_openai_responses_request_to_anthropic_messages():
+    from ccproxy.llms.adapters.openai_responses_request_to_anthropic_messages import (
+        OpenAIResponsesRequestToAnthropicMessagesAdapter,
+    )
+
+    req = OpenAIResponseRequest(
+        model="gpt-4o",
+        input=[
+            {
+                "type": "message",
+                "role": "user",
+                "content": [{"type": "input_text", "text": "Hello"}],
+            }
+        ],
+        max_output_tokens=300,
+        tools=[
+            {
+                "type": "function",
+                "function": {
+                    "name": "search",
+                    "description": "web search",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {"q": {"type": "string"}},
+                    },
+                },
+            }
+        ],
+        tool_choice="auto",
+        parallel_tool_calls=True,
+        stream=True,
+    )
+
+    adapter = OpenAIResponsesRequestToAnthropicMessagesAdapter()
+    out = await adapter.adapt_request(req.model_dump())
+    anth = AnthropicCreateMessageRequest.model_validate(out)
+
+    assert anth.model == "gpt-4o"
+    assert anth.max_tokens == 300
+    assert anth.stream is True
+    assert anth.messages[0].role == "user"
+    assert anth.messages[0].content == "Hello"
+    assert anth.tools and anth.tools[0].name == "search"
+    assert anth.tool_choice and anth.tool_choice.type == "auto"
+
+
+@pytest.mark.asyncio
+async def test_thinking_request_defaults_and_effort_mapping():
+    from ccproxy.llms.adapters.openai_chatcompletions_to_anthropic_messages import (
+        OpenAIChatToAnthropicMessagesAdapter,
+    )
+
+    # o3 model should default to thinking=enabled with 10000 budget
+    req1 = OpenAIChatRequest(
+        model="o3-large",
+        messages=[{"role": "user", "content": "Hello"}],
+    )
+    adapter = OpenAIChatToAnthropicMessagesAdapter()
+    out1 = await adapter.adapt_request(req1.model_dump())
+    anth_req1 = AnthropicCreateMessageRequest.model_validate(out1)
+    assert anth_req1.thinking is not None
+    assert anth_req1.thinking.type == "enabled"
+    assert getattr(anth_req1.thinking, "budget_tokens", 0) == 10000
+    assert anth_req1.max_tokens > 10000
+    assert anth_req1.temperature == 1.0
+
+    # explicit reasoning_effort=medium should map to 5000 and adjust max_tokens
+    req2 = OpenAIChatRequest(
+        model="gpt-4o",
+        messages=[{"role": "user", "content": "Hi"}],
+        reasoning_effort="medium",
+        max_completion_tokens=3000,
+    )
+    out2 = await adapter.adapt_request(req2.model_dump())
+    anth_req2 = AnthropicCreateMessageRequest.model_validate(out2)
+    assert anth_req2.thinking is not None
+    assert getattr(anth_req2.thinking, "budget_tokens", 0) == 5000
+    assert anth_req2.max_tokens > 5000
+    assert anth_req2.temperature == 1.0
+
+
+@pytest.mark.asyncio
+async def test_openai_chat_to_anthropic_images_data_url():
+    from ccproxy.llms.adapters.openai_chatcompletions_to_anthropic_messages import (
+        OpenAIChatToAnthropicMessagesAdapter,
+    )
+
+    data_url = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAA..."
+    req = OpenAIChatRequest(
+        model="gpt-4o",
+        messages=[
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": "caption"},
+                    {"type": "image_url", "image_url": {"url": data_url}},
+                ],
+            }
+        ],
+    )
+    adapter = OpenAIChatToAnthropicMessagesAdapter()
+    out = await adapter.adapt_request(req.model_dump())
+    anth = AnthropicCreateMessageRequest.model_validate(out)
+    assert isinstance(anth.messages[0].content, list)
+    # Expect first text block then an image block with base64 source
+    assert anth.messages[0].content[0].type == "text"
+    assert anth.messages[0].content[1].type == "image"
+    assert anth.messages[0].content[1].source.type == "base64"
+
+
+@pytest.mark.asyncio
+async def test_openai_chat_tools_and_tool_choice_mapping():
+    from ccproxy.llms.adapters.openai_chatcompletions_to_anthropic_messages import (
+        OpenAIChatToAnthropicMessagesAdapter,
+    )
+
+    req = OpenAIChatRequest(
+        model="gpt-4o",
+        messages=[{"role": "user", "content": "hi"}],
+        tools=[
+            {
+                "type": "function",
+                "function": {
+                    "name": "search",
+                    "description": "web search",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {"q": {"type": "string"}},
+                    },
+                },
+            }
+        ],
+        tool_choice={"type": "function", "function": {"name": "search"}},
+        parallel_tool_calls=False,
+    )
+
+    adapter = OpenAIChatToAnthropicMessagesAdapter()
+    out = await adapter.adapt_request(req.model_dump())
+    anth = AnthropicCreateMessageRequest.model_validate(out)
+
+    assert anth.tools is not None and len(anth.tools) == 1
+    tool = anth.tools[0]
+    assert tool.type == "custom"
+    assert tool.name == "search"
+    assert tool.description == "web search"
+    assert isinstance(tool.input_schema, dict)
+
+    assert anth.tool_choice is not None
+    assert anth.tool_choice.type == "tool"
+    assert getattr(anth.tool_choice, "name", "") == "search"
+    # parallel_tool_calls=False -> disable_parallel_tool_use=True
+    assert getattr(anth.tool_choice, "disable_parallel_tool_use", False) is True
+
+
+@pytest.mark.asyncio
+async def test_response_format_json_object_injects_system():
+    from ccproxy.llms.adapters.openai_chatcompletions_to_anthropic_messages import (
+        OpenAIChatToAnthropicMessagesAdapter,
+    )
+
+    req = OpenAIChatRequest(
+        model="gpt-4o",
+        messages=[{"role": "user", "content": "hi"}],
+        response_format={"type": "json_object"},
+    )
+    out = await OpenAIChatToAnthropicMessagesAdapter().adapt_request(req.model_dump())
+    anth = AnthropicCreateMessageRequest.model_validate(out)
+    assert isinstance(anth.system, str)
+    assert "Respond ONLY with a valid JSON object" in anth.system
+
+
+@pytest.mark.asyncio
+async def test_response_format_json_schema_injects_system_with_schema():
+    from ccproxy.llms.adapters.openai_chatcompletions_to_anthropic_messages import (
+        OpenAIChatToAnthropicMessagesAdapter,
+    )
+
+    schema = {"type": "object", "properties": {"a": {"type": "number"}}}
+    req = OpenAIChatRequest(
+        model="gpt-4o",
+        messages=[{"role": "user", "content": "hi"}],
+        response_format={"type": "json_schema", "json_schema": schema},
+    )
+    out = await OpenAIChatToAnthropicMessagesAdapter().adapt_request(req.model_dump())
+    anth = AnthropicCreateMessageRequest.model_validate(out)
+    assert isinstance(anth.system, str)
+    assert "strictly conforms to this JSON Schema" in anth.system
+    assert '"properties":' in anth.system

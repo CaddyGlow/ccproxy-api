@@ -227,13 +227,9 @@ class Usage(BaseModel):
 
 # --- Tool Definitions ---
 class Tool(BaseModel):
-    """Definition of a custom tool the model can use.
+    """Definition of a custom tool the model can use."""
 
-    Note: We include a discriminating `type` field for Pydantic union support.
-    Anthropic's wire format may not require this for custom tools; adapters can
-    drop it when serializing requests if needed.
-    """
-
+    # Discriminator field for union matching
     type: Literal["custom"] = Field("custom", alias="type")
     name: str = Field(
         ..., min_length=1, max_length=128, pattern=r"^[a-zA-Z0-9_-]{1,128}$"
@@ -252,10 +248,7 @@ class WebSearchTool(BaseModel):
 # Add other specific built-in tool models here as needed
 AnyTool = Annotated[
     Tool | WebSearchTool,  # Union of all tool types
-    Field(
-        discriminator="type",
-        default_factory=lambda: locals().get("type", "custom"),
-    ),
+    Field(discriminator="type"),
 ]
 
 # --- Supporting models for CreateMessageRequest ---

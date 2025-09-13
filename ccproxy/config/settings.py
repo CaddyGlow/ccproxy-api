@@ -309,3 +309,15 @@ class Settings(BaseSettings):
     def get_cli_context(self) -> dict[str, Any]:
         """Get CLI context for plugin access."""
         return self.cli_context
+
+    class LLMSettings(BaseModel):
+        """LLM-specific feature toggles and defaults."""
+
+        openai_thinking_xml: bool = Field(
+            default=True, description="Serialize thinking as XML in OpenAI streams"
+        )
+
+    llm: LLMSettings = Field(
+        default_factory=LLMSettings,
+        description="Large Language Model (LLM) settings",
+    )

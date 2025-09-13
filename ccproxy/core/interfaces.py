@@ -21,6 +21,8 @@ __all__ = [
     "TokenStorage",
     # Metrics interfaces
     "MetricExporter",
+    # Streaming configuration protocol
+    "StreamingConfigurable",
 ]
 
 
@@ -180,11 +182,19 @@ class MetricExporter(ABC):
         """
         pass
 
-    @abstractmethod
-    async def health_check(self) -> bool:
-        """Check if the metrics export system is healthy.
 
-        Returns:
-            True if the system is healthy, False otherwise
+@runtime_checkable
+class StreamingConfigurable(Protocol):
+    """Protocol for adapters that accept streaming-related configuration.
+
+    Implementers can use this to receive DI-injected toggles such as whether
+    to serialize thinking content as XML in OpenAI streams.
+    """
+
+    def configure_streaming(self, *, openai_thinking_xml: bool | None = None) -> None:
+        """Apply streaming flags.
+
+        Args:
+            openai_thinking_xml: Enable/disable thinking-as-XML in OpenAI streams
         """
-        pass
+        ...

@@ -8,13 +8,17 @@ from ccproxy.llms.openai.models import ResponseRequest
 
 
 class OpenAIChatToOpenAIResponsesAdapter(BaseAPIAdapter):
-    """Map OpenAI Chat Completions request to OpenAI Responses request.
+    """OpenAI Chat → OpenAI Responses request adapter (minimal).
 
-    Strategy:
+    Implemented
     - model: passthrough
-    - max_completion_tokens/max_tokens -> max_output_tokens
-    - messages: map last user message into a single input message
-    This is a pragmatic, minimal mapping for parity in simple cases.
+    - max_completion_tokens/max_tokens → `max_output_tokens`
+    - messages: maps the last `user` message text to a single Responses `input` message
+
+    TODO
+    - Map all conversation turns to multi-item `input` if needed
+    - Map richer contents (images, tools) to Responses-supported forms
+    - Pass through response_format as-is if present on Chat (hybrid flows)
     """
 
     def __init__(self) -> None:
@@ -30,7 +34,9 @@ class OpenAIChatToOpenAIResponsesAdapter(BaseAPIAdapter):
             if msg.get("role") == "user":
                 content = msg.get("content")
                 if isinstance(content, list):
-                    texts = [part.get("text") for part in content if isinstance(part, dict)]
+                    texts = [
+                        part.get("text") for part in content if isinstance(part, dict)
+                    ]
                     user_text = " ".join([t for t in texts if t])
                 else:
                     user_text = content

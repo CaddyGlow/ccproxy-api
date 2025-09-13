@@ -72,3 +72,6 @@ class IStreamingMetricsCollector(Protocol):
             Dictionary with provider-specific metrics (tokens, costs, etc.)
         """
         ...
+
+
+# Moved StreamingConfigurable to ccproxy.core.interfaces to avoid circular imports

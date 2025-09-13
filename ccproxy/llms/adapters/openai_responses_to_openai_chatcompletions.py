@@ -8,7 +8,16 @@ from ccproxy.llms.openai.models import ChatCompletionResponse
 
 
 class OpenAIResponsesToOpenAIChatAdapter(BaseAPIAdapter):
-    """Map OpenAI Responses result to Chat Completions response."""
+    """OpenAI Responses → OpenAI Chat (result) adapter.
+
+    Implemented
+    - Extracts first `message` output and concatenates `output_text` parts to Chat `content`
+    - Maps usage (input/output/total tokens)
+
+    TODO
+    - Map structured content (function/tool events) to Chat tool_calls where present
+    - Consider end-state fields (refusal, status variants) if needed
+    """
 
     def __init__(self) -> None:
         super().__init__(name="openai_responses_to_openai_chat")

@@ -96,7 +96,12 @@ class ConcreteServiceFactory:
     def create_mock_handler(self) -> MockResponseHandler:
         """Create mock handler instance."""
         mock_generator = RealisticMockResponseGenerator()
-        openai_adapter = OpenAIAdapter()
+        settings = self._container.get_service(Settings)
+        openai_adapter = OpenAIAdapter(
+            openai_thinking_xml=getattr(
+                getattr(settings, "llm", object()), "openai_thinking_xml", True
+            )
+        )
 
         handler = MockResponseHandler(
             mock_generator=mock_generator,
@@ -172,7 +177,7 @@ class ConcreteServiceFactory:
         registry = FormatAdapterRegistry(conflict_mode=conflict_mode)
 
         # Pre-register core format adapters
-        self._register_core_format_adapters(registry)
+        self._register_core_format_adapters(registry, settings)
 
         logger.debug(
             "format_registry_created",
@@ -196,7 +201,9 @@ class ConcreteServiceFactory:
         """Create a TaskRegistry instance."""
         return TaskRegistry()
 
-    def _register_core_format_adapters(self, registry: FormatAdapterRegistry) -> None:
+    def _register_core_format_adapters(
+        self, registry: FormatAdapterRegistry, settings: Settings | None = None
+    ) -> None:
         """Pre-register core format adapters with high priority."""
         from ccproxy.adapters.openai import AnthropicResponseAPIAdapter
         from ccproxy.adapters.openai.adapter import OpenAIAdapter
@@ -208,13 +215,19 @@ class ConcreteServiceFactory:
         )
 
         # Core adapters that are always available
+        thinking_xml = True
+        if settings is not None:
+            thinking_xml = getattr(
+                getattr(settings, "llm", object()), "openai_thinking_xml", True
+            )
+
         core_adapters = {
             ("anthropic", "response_api"): AnthropicResponseAPIAdapter(),
             ("response_api", "anthropic"): AnthropicResponseAPIAdapter(),
             # OpenAI ↔ Anthropic conversions
             # - Requests:    openai → anthropic via OpenAIAdapter.adapt_request
             # - Responses:   anthropic → openai via OpenAIAdapter.adapt_response/adapt_stream
-            ("openai", "anthropic"): OpenAIAdapter(),
+            ("openai", "anthropic"): OpenAIAdapter(openai_thinking_xml=thinking_xml),
             ("anthropic", "openai"): OpenAIToAnthropicAdapter(),
             # Response API → OpenAI for clients expecting OpenAI shape
             ("response_api", "openai"): ResponseAPIToOpenAIAdapter(),

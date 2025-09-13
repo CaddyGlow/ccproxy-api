@@ -49,4 +49,3 @@ __all__ = [
     "OPENAI_TO_ANTHROPIC_STOP_REASON",
     "DEFAULT_MAX_TOKENS",
 ]
-

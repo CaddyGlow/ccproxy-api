@@ -7,6 +7,7 @@ streaming responses.
 from __future__ import annotations
 
 import json
+import os
 import time
 from collections.abc import AsyncIterator
 from typing import Any, Literal
@@ -333,6 +334,7 @@ class OpenAIStreamProcessor:
         created: int | None = None,
         enable_usage: bool = True,
         enable_tool_calls: bool = True,
+        enable_thinking_serialization: bool | None = None,
         output_format: Literal["sse", "dict"] = "sse",
     ):
         """Initialize the stream processor.
@@ -351,6 +353,35 @@ class OpenAIStreamProcessor:
         self.enable_usage = enable_usage
         self.enable_tool_calls = enable_tool_calls
         self.output_format = output_format
+        if enable_thinking_serialization is None:
+            # Prefer service Settings.llm.openai_thinking_xml if available
+            setting_val: bool | None = None
+            try:
+                from ccproxy.config.settings import Settings
+
+                cfg = Settings.from_config()
+                setting_val = bool(
+                    getattr(getattr(cfg, "llm", {}), "openai_thinking_xml", True)
+                )
+            except Exception:
+                setting_val = None
+
+            if setting_val is not None:
+                self.enable_thinking_serialization = setting_val
+            else:
+                # Fallback to env-based toggle
+                env_val = (
+                    os.getenv("LLM__OPENAI_THINKING_XML")
+                    or os.getenv("OPENAI_STREAM_ENABLE_THINKING_SERIALIZATION", "true")
+                ).lower()
+                self.enable_thinking_serialization = env_val not in (
+                    "0",
+                    "false",
+                    "no",
+                    "off",
+                )
+        else:
+            self.enable_thinking_serialization = enable_thinking_serialization
         self.formatter = OpenAISSEFormatter()
 
         # State tracking
@@ -388,6 +419,7 @@ class OpenAIStreamProcessor:
                 enable_usage=self.enable_usage,
                 enable_tool_calls=self.enable_tool_calls,
                 category="streaming_conversion",
+                enable_thinking_serialization=self.enable_thinking_serialization,
             )
 
             async for chunk in claude_stream:
@@ -620,8 +652,14 @@ class OpenAIStreamProcessor:
                 self.thinking_block_active = False
                 if self.current_thinking_text:
                     # Format thinking block with signature
-                    thinking_content = f'<thinking signature="{self.current_thinking_signature}">{self.current_thinking_text}</thinking>'
-                    yield self._format_chunk_output(delta={"content": thinking_content})
+                    if self.enable_thinking_serialization:
+                        thinking_content = (
+                            f'<thinking signature="{self.current_thinking_signature}">'  # type: ignore[str-bytes-safe]
+                            f"{self.current_thinking_text}</thinking>"
+                        )
+                        yield self._format_chunk_output(
+                            delta={"content": thinking_content}
+                        )
                 # Reset thinking state
                 self.current_thinking_text = ""
                 self.current_thinking_signature = None
