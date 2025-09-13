@@ -330,12 +330,12 @@ class BaseHTTPAdapter(BaseAdapter):
         )
 
         # Get format adapter for streaming if format chain exists
+        # Important: Do NOT reverse the chain. Adapters are defined for the
+        # declared flow and handle response/streaming internally.
         streaming_format_adapter = None
         if ctx.format_chain and len(ctx.format_chain) > 1 and self.format_registry:
-            # For response conversion, reverse the format chain
-            # format_chain = ["openai", "anthropic"] -> response: anthropic -> openai
-            from_format = ctx.format_chain[-1]  # Last format (anthropic)
-            to_format = ctx.format_chain[0]  # First format (openai)
+            from_format = ctx.format_chain[0]
+            to_format = ctx.format_chain[-1]
             streaming_format_adapter = self.format_registry.get_if_exists(
                 from_format, to_format
             )

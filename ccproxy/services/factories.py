@@ -200,6 +200,9 @@ class ConcreteServiceFactory:
         """Pre-register core format adapters with high priority."""
         from ccproxy.adapters.openai import AnthropicResponseAPIAdapter
         from ccproxy.adapters.openai.adapter import OpenAIAdapter
+        from ccproxy.adapters.openai.response_api_to_openai_adapter import (
+            ResponseAPIToOpenAIAdapter,
+        )
 
         # Core adapters that are always available
         core_adapters = {
@@ -211,7 +214,7 @@ class ConcreteServiceFactory:
             ("openai", "anthropic"): OpenAIAdapter(),
             ("anthropic", "openai"): OpenAIAdapter(),
             # Response API → OpenAI for clients expecting OpenAI shape
-            ("response_api", "openai"): OpenAIAdapter(),
+            ("response_api", "openai"): ResponseAPIToOpenAIAdapter(),
         }
 
         for format_pair, adapter in core_adapters.items():
