@@ -4,7 +4,7 @@ import re
 from collections.abc import AsyncGenerator, AsyncIterator
 from typing import Any
 
-from pydantic import BaseModel, Field, TypeAdapter
+from pydantic import BaseModel, TypeAdapter
 
 from ccproxy.llms.adapters.base import BaseAPIAdapter
 from ccproxy.llms.anthropic import models as anthropic_models
@@ -114,8 +114,14 @@ class OpenAIResponsesToAnthropicAdapter(
         """Convert ResponseObject to AnthropicMessageResponse using typed models."""
         from ccproxy.llms.anthropic.models import (
             TextBlock as AnthropicTextBlock,
+        )
+        from ccproxy.llms.anthropic.models import (
             ThinkingBlock as AnthropicThinkingBlock,
+        )
+        from ccproxy.llms.anthropic.models import (
             ToolUseBlock as AnthropicToolUseBlock,
+        )
+        from ccproxy.llms.anthropic.models import (
             Usage as AnthropicUsage,
         )
 

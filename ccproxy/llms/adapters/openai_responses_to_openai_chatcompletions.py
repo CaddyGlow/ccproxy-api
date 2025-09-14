@@ -37,7 +37,9 @@ class OpenAIResponsesToOpenAIChatAdapter(
         super().__init__(name="openai_responses_to_openai_chat")
 
     # Minimal implementations for abstract methods - delegate to dict-based logic
-    def _dict_to_request_model(self, request: dict[str, Any]) -> openai_models.ChatCompletionRequest:
+    def _dict_to_request_model(
+        self, request: dict[str, Any]
+    ) -> openai_models.ChatCompletionRequest:
         return openai_models.ChatCompletionRequest.model_validate(request)
 
     def _dict_to_response_model(self, response: dict[str, Any]) -> ResponseObject:

@@ -75,7 +75,9 @@ async def test_anthropic_response_to_openai_chat_response():
 
 
 @pytest.mark.asyncio
-async def test_thinking_block_serialization_in_response():
+async def test_thinking_block_serialization_in_response(monkeypatch):
+    monkeypatch.setenv("LLM__OPENAI_THINKING_XML", "true")
+
     from ccproxy.llms.adapters.anthropic_messages_to_openai_chatcompletions import (
         AnthropicMessagesToOpenAIChatAdapter,
     )
