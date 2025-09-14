@@ -52,27 +52,27 @@ class AnthropicMessagesToOpenAIResponsesAdapter(
         super().__init__(name="anthropic_messages_to_openai_responses")
 
     # Strongly-typed methods
-    async def adapt_request_typed(self, request: BaseModel) -> BaseModel:
+    async def adapt_request(self, request: BaseModel) -> BaseModel:
         """Convert Anthropic CreateMessageRequest to OpenAI ResponseRequest."""
         if not isinstance(request, anthropic_models.CreateMessageRequest):
             raise ValueError(f"Expected CreateMessageRequest, got {type(request)}")
 
-        return await self._convert_request_typed(request)
+        return await self._convert_request(request)
 
-    async def adapt_response_typed(self, response: BaseModel) -> BaseModel:
+    async def adapt_response(self, response: BaseModel) -> BaseModel:
         """Convert Anthropic MessageResponse to OpenAI ResponseObject."""
         if not isinstance(response, anthropic_models.MessageResponse):
             raise ValueError(f"Expected MessageResponse, got {type(response)}")
 
-        return await self._convert_response_typed(response)
+        return await self._convert_response(response)
 
-    def adapt_stream_typed(
+    def adapt_stream(
         self, stream: AsyncIterator[anthropic_models.MessageStreamEvent]
     ) -> AsyncGenerator[ResponseStreamEvent, None]:
         """Convert Anthropic MessageStreamEvent stream to OpenAI Response stream events."""
-        return self._convert_stream_typed(stream)
+        return self._convert_stream(stream)
 
-    async def _convert_stream_typed(
+    async def _convert_stream(
         self, stream: AsyncIterator[anthropic_models.MessageStreamEvent]
     ) -> AsyncGenerator[ResponseStreamEvent, None]:
         item_id = "msg_stream"
@@ -203,12 +203,12 @@ class AnthropicMessagesToOpenAIResponsesAdapter(
                 )
                 break
 
-    async def adapt_error_typed(self, error: BaseModel) -> BaseModel:
+    async def adapt_error(self, error: BaseModel) -> BaseModel:
         """Convert error response - pass through for now."""
         return error
 
     # Implementation methods
-    async def _convert_request_typed(
+    async def _convert_request(
         self, request: anthropic_models.CreateMessageRequest
     ) -> openai_models.ResponseRequest:
         """Convert Anthropic CreateMessageRequest to OpenAI ResponseRequest using typed models."""
@@ -311,7 +311,7 @@ class AnthropicMessagesToOpenAIResponsesAdapter(
         # Validate
         return openai_models.ResponseRequest.model_validate(payload_data)
 
-    async def _convert_response_typed(
+    async def _convert_response(
         self, response: anthropic_models.MessageResponse
     ) -> openai_models.ResponseObject:
         """Convert Anthropic MessageResponse to OpenAI ResponseObject using typed models."""

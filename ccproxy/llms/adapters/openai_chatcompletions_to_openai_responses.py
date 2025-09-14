@@ -37,21 +37,21 @@ class OpenAIChatToOpenAIResponsesAdapter(
         super().__init__(name="openai_chat_to_openai_responses")
 
     # Typed methods - delegate to dict implementation for now
-    async def adapt_request_typed(self, request: BaseModel) -> BaseModel:
+    async def adapt_request(self, request: BaseModel) -> BaseModel:
         if not isinstance(request, ChatCompletionRequest):
             raise ValueError(f"Expected ChatCompletionRequest, got {type(request)}")
-        return await self._convert_request_typed(request)
+        return await self._convert_request(request)
 
-    async def adapt_response_typed(self, response: BaseModel) -> BaseModel:
+    async def adapt_response(self, response: BaseModel) -> BaseModel:
         # Delegate to Responses -> Chat adapter for converting results
         from ccproxy.llms.adapters.openai_responses_to_openai_chatcompletions import (
             OpenAIResponsesToOpenAIChatAdapter,
         )
 
         reverse_adapter = OpenAIResponsesToOpenAIChatAdapter()
-        return await reverse_adapter.adapt_response_typed(response)
+        return await reverse_adapter.adapt_response(response)
 
-    def adapt_stream_typed(
+    def adapt_stream(
         self, stream: AsyncIterator[BaseModel]
     ) -> AsyncGenerator[BaseModel, None]:
         # Delegate streaming conversion as well
@@ -59,12 +59,12 @@ class OpenAIChatToOpenAIResponsesAdapter(
             OpenAIResponsesToOpenAIChatAdapter,
         )
 
-        return OpenAIResponsesToOpenAIChatAdapter().adapt_stream_typed(stream)  # type: ignore[arg-type]
+        return OpenAIResponsesToOpenAIChatAdapter().adapt_stream(stream)  # type: ignore[arg-type]
 
-    async def adapt_error_typed(self, error: BaseModel) -> BaseModel:
+    async def adapt_error(self, error: BaseModel) -> BaseModel:
         return error  # Pass through
 
-    async def _convert_request_typed(
+    async def _convert_request(
         self, request: ChatCompletionRequest
     ) -> ResponseRequest:
         """Convert ChatCompletionRequest to ResponseRequest using typed models."""

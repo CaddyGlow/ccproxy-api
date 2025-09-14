@@ -59,16 +59,16 @@ class OpenAIChatToAnthropicMessagesAdapter(
         super().__init__(name="openai_chat_to_anthropic_messages")
 
     # New strongly-typed methods
-    async def adapt_request_typed(
+    async def adapt_request(
         self, request: ChatCompletionRequest
     ) -> CreateMessageRequest:
         """Convert OpenAI ChatCompletionRequest to Anthropic CreateMessageRequest."""
         if not isinstance(request, ChatCompletionRequest):
             raise ValueError(f"Expected ChatCompletionRequest, got {type(request)}")
 
-        return await self._convert_request_typed(request)
+        return await self._convert_request(request)
 
-    async def adapt_response_typed(self, response: MessageResponse) -> BaseModel:
+    async def adapt_response(self, response: MessageResponse) -> BaseModel:
         """Convert Anthropic MessageResponse to OpenAI ChatCompletionResponse."""
         if not isinstance(response, MessageResponse):
             raise ValueError(f"Expected MessageResponse, got {type(response)}")
@@ -79,15 +79,15 @@ class OpenAIChatToAnthropicMessagesAdapter(
         )
 
         reverse_adapter = AnthropicMessagesToOpenAIChatAdapter()
-        return await reverse_adapter.adapt_response_typed(response)
+        return await reverse_adapter.adapt_response(response)
 
-    def adapt_stream_typed(
+    def adapt_stream(
         self, stream: AsyncIterator[MessageStreamEvent]
     ) -> AsyncGenerator[ChatCompletionChunk, None]:
         """Convert Anthropic MessageStreamEvent stream to OpenAI ChatCompletionChunk stream."""
-        return self._convert_stream_typed(stream)
+        return self._convert_stream(stream)
 
-    def _convert_stream_typed(
+    def _convert_stream(
         self, stream: AsyncIterator[MessageStreamEvent]
     ) -> AsyncGenerator[ChatCompletionChunk, None]:
         """Convert Anthropic stream to OpenAI stream using typed models."""
@@ -158,11 +158,11 @@ class OpenAIChatToAnthropicMessagesAdapter(
 
         return generator()
 
-    async def adapt_error_typed(self, error: BaseModel) -> BaseModel:
+    async def adapt_error(self, error: BaseModel) -> BaseModel:
         """Convert error response - pass through for now."""
         return error
 
-    async def _convert_request_typed(
+    async def _convert_request(
         self, request: ChatCompletionRequest
     ) -> CreateMessageRequest:
         """Convert OpenAI ChatCompletionRequest to Anthropic CreateMessageRequest using typed models."""

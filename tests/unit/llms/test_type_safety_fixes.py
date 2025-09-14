@@ -184,7 +184,7 @@ class TestAdapterTypeSafety:
         adapter = AnthropicMessagesToOpenAIResponsesAdapter()
 
         # This should not raise union-attr errors anymore
-        result = await adapter.adapt_request_typed(anthropic_request)
+        result = await adapter.adapt_request(anthropic_request)
 
         # Verify the conversion worked
         assert hasattr(result, "input")
@@ -223,7 +223,7 @@ class TestAdapterTypeSafety:
         adapter = AnthropicMessagesToOpenAIChatAdapter()
 
         # This should handle the mixed content types safely
-        result = await adapter.adapt_request_typed(anthropic_request)
+        result = await adapter.adapt_request(anthropic_request)
 
         # Verify conversion worked
         assert hasattr(result, "messages")

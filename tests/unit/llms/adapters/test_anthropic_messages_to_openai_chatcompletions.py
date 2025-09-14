@@ -24,7 +24,7 @@ class TestAnthropicToOpenAIChatCompletionsAdapter:
         )
 
         # Act
-        openai_request = await adapter.adapt_request_typed(anthropic_request)
+        openai_request = await adapter.adapt_request(anthropic_request)
 
         # Assert
         assert openai_request.model == "claude-3-opus-20240229"
@@ -46,7 +46,7 @@ class TestAnthropicToOpenAIChatCompletionsAdapter:
         )
 
         # Act
-        openai_request = await adapter.adapt_request_typed(anthropic_request)
+        openai_request = await adapter.adapt_request(anthropic_request)
 
         # Assert
         assert len(openai_request.messages) == 2
@@ -85,7 +85,7 @@ class TestAnthropicToOpenAIChatCompletionsAdapter:
         )
 
         # Act
-        openai_request = await adapter.adapt_request_typed(anthropic_request)
+        openai_request = await adapter.adapt_request(anthropic_request)
 
         # Assert
         assert len(openai_request.tools) == 1
@@ -111,7 +111,7 @@ class TestAnthropicToOpenAIChatCompletionsAdapter:
                 disable_parallel_tool_use=True,
             ),
         )
-        openai_request = await adapter.adapt_request_typed(anthropic_request)
+        openai_request = await adapter.adapt_request(anthropic_request)
         assert openai_request.tool_choice["type"] == "function"
         assert openai_request.tool_choice["function"]["name"] == "search"
         assert openai_request.parallel_tool_calls is False
@@ -140,7 +140,7 @@ class TestAnthropicToOpenAIChatCompletionsAdapter:
             ],
             max_tokens=200,
         )
-        openai_request = await adapter.adapt_request_typed(anthropic_request)
+        openai_request = await adapter.adapt_request(anthropic_request)
         parts = openai_request.messages[0].content
         assert parts[0]["type"] == "text"
         assert parts[1]["type"] == "image_url"
@@ -181,7 +181,7 @@ class TestAnthropicToOpenAIChatCompletionsAdapter:
         )
 
         # Act
-        openai_request = await adapter.adapt_request_typed(anthropic_request)
+        openai_request = await adapter.adapt_request(anthropic_request)
 
         # Assert
         messages = openai_request.messages
@@ -231,7 +231,7 @@ class TestAnthropicToOpenAIChatCompletionsAdapter:
             yield anthropic_models.MessageStopEvent(type="message_stop")
 
         # Act
-        stream = adapter.adapt_stream_typed(anthropic_stream())
+        stream = adapter.adapt_stream(anthropic_stream())
         chunks = [chunk async for chunk in stream]
 
         # Assert
@@ -268,7 +268,7 @@ class TestAnthropicToOpenAIChatCompletionsAdapter:
         )
 
         # Act
-        openai_error = await adapter.adapt_error_typed(anthropic_error)
+        openai_error = await adapter.adapt_error(anthropic_error)
 
         # Assert
         error_detail = openai_error.error

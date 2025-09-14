@@ -35,7 +35,7 @@ class OpenAIResponsesToOpenAIChatAdapter(
     def __init__(self) -> None:
         super().__init__(name="openai_responses_to_openai_chat")
 
-    async def adapt_request_typed(self, request: BaseModel) -> BaseModel:
+    async def adapt_request(self, request: BaseModel) -> BaseModel:
         """Convert request using typed models - delegate to OpenAI Chat to Responses adapter."""
         from ccproxy.llms.adapters.openai_chatcompletions_to_openai_responses import (
             OpenAIChatToOpenAIResponsesAdapter,
@@ -43,16 +43,16 @@ class OpenAIResponsesToOpenAIChatAdapter(
 
         # Use the dedicated adapter for the reverse transformation
         adapter = OpenAIChatToOpenAIResponsesAdapter()
-        return await adapter.adapt_request_typed(request)
+        return await adapter.adapt_request(request)
 
-    async def adapt_response_typed(self, response: BaseModel) -> ChatCompletionResponse:
+    async def adapt_response(self, response: BaseModel) -> ChatCompletionResponse:
         """Convert ResponseObject to ChatCompletionResponse using typed models."""
         if not isinstance(response, ResponseObject):
             raise ValueError(f"Expected ResponseObject, got {type(response)}")
 
-        return await self._convert_response_typed(response)
+        return await self._convert_response(response)
 
-    async def _convert_response_typed(
+    async def _convert_response(
         self, response: ResponseObject
     ) -> ChatCompletionResponse:
         """Convert ResponseObject to ChatCompletionResponse using typed models."""
@@ -98,13 +98,13 @@ class OpenAIResponsesToOpenAIChatAdapter(
             ),
         )
 
-    def adapt_stream_typed(
+    def adapt_stream(
         self, stream: AsyncIterator[openai_models.AnyStreamEvent]
     ) -> AsyncGenerator[ChatCompletionChunk, None]:
         """Convert OpenAI Response stream to OpenAI ChatCompletionChunk stream."""
-        return self._convert_stream_typed(stream)
+        return self._convert_stream(stream)
 
-    async def _convert_stream_typed(
+    async def _convert_stream(
         self, stream: AsyncIterator[openai_models.AnyStreamEvent]
     ) -> AsyncGenerator[ChatCompletionChunk, None]:
         model_id = ""
@@ -164,7 +164,7 @@ class OpenAIResponsesToOpenAIChatAdapter(
                 )
                 break
 
-    async def adapt_error_typed(self, error: BaseModel) -> BaseModel:
+    async def adapt_error(self, error: BaseModel) -> BaseModel:
         """Convert error using typed models - passthrough since both formats are OpenAI."""
         from ccproxy.llms.openai.models import ErrorDetail, ErrorResponse
 

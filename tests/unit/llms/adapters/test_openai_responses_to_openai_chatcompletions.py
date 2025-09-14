@@ -22,7 +22,7 @@ async def test_openai_responses_to_openai_chat_adapter_adapt_request_delegates()
         messages=[{"role": "user", "content": "hi"}],
         max_completion_tokens=128,
     )
-    out = await OpenAIResponsesToOpenAIChatAdapter().adapt_request_typed(chat_req)
+    out = await OpenAIResponsesToOpenAIChatAdapter().adapt_request(chat_req)
     resp_req = OpenAIResponseRequest.model_validate(out.model_dump())
     assert resp_req.model == "gpt-4o"
     assert resp_req.max_output_tokens == 128
@@ -90,7 +90,7 @@ async def test_openai_responses_to_openai_chat_adapter_adapt_stream_minimal() ->
 
     adapter = OpenAIResponsesToOpenAIChatAdapter()
     chunks = []
-    async for c in adapter.adapt_stream_typed(gen()):
+    async for c in adapter.adapt_stream(gen()):
         chunks.append(c)
 
     assert chunks[0].choices[0].delta.content == "Hello"

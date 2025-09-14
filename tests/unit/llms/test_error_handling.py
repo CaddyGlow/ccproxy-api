@@ -108,7 +108,7 @@ class TestAdapterErrorHandling:
         # Empty request should raise ValidationError for missing required fields
         with pytest.raises(ValidationError) as exc_info:
             empty_request = OpenAIChatRequest()
-            await adapter.adapt_request_typed(empty_request)
+            await adapter.adapt_request(empty_request)
 
         # Should have validation errors for missing required fields
         errors = exc_info.value.errors()
@@ -136,7 +136,7 @@ class TestAdapterErrorHandling:
         )
 
         # Should not crash, but handle gracefully
-        result = await adapter.adapt_request_typed(malformed_request)
+        result = await adapter.adapt_request(malformed_request)
         assert isinstance(result, AnthropicCreateMessageRequest)
         assert result.model == "gpt-4o"
 
@@ -152,7 +152,7 @@ class TestAdapterErrorHandling:
         # Should raise ValidationError for missing required fields
         with pytest.raises(ValidationError) as exc_info:
             incomplete_request = AnthropicCreateMessageRequest(model="claude-sonnet")
-            await adapter.adapt_request_typed(incomplete_request)
+            await adapter.adapt_request(incomplete_request)
 
         errors = exc_info.value.errors()
         field_names = {tuple(e["loc"])[0] for e in errors if e.get("loc")}
@@ -170,7 +170,7 @@ class TestAdapterErrorHandling:
         # Should raise ValidationError for missing required fields
         with pytest.raises(ValidationError):
             invalid_response = AnthropicMessageResponse(id="msg_123")
-            await adapter.adapt_response_typed(invalid_response)
+            await adapter.adapt_response(invalid_response)
 
     @pytest.mark.asyncio
     async def test_adapter_stream_processes_valid_events(self) -> None:
@@ -215,7 +215,7 @@ class TestAdapterErrorHandling:
 
         # Should process valid events
         results = []
-        async for event in adapter.adapt_stream_typed(valid_event_stream()):
+        async for event in adapter.adapt_stream(valid_event_stream()):
             results.append(event)
 
         # Should have processed all events and produced OpenAI format

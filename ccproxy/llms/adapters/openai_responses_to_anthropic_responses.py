@@ -47,7 +47,7 @@ class OpenAIResponsesToAnthropicAdapter(
     def __init__(self) -> None:
         super().__init__(name="openai_responses_to_anthropic")
 
-    async def adapt_request_typed(self, request: BaseModel) -> BaseModel:
+    async def adapt_request(self, request: BaseModel) -> BaseModel:
         """Convert request using typed models - delegate to ResponsesRequest to Anthropic adapter."""
         from ccproxy.llms.adapters.openai_responses_request_to_anthropic_messages import (
             OpenAIResponsesRequestToAnthropicMessagesAdapter,
@@ -55,18 +55,18 @@ class OpenAIResponsesToAnthropicAdapter(
 
         # Use the dedicated adapter for the transformation
         adapter = OpenAIResponsesRequestToAnthropicMessagesAdapter()
-        return await adapter.adapt_request_typed(request)
+        return await adapter.adapt_request(request)
 
-    async def adapt_response_typed(
+    async def adapt_response(
         self, response: BaseModel
     ) -> AnthropicMessageResponse:
         """Convert ResponseObject to AnthropicMessageResponse using typed models."""
         if not isinstance(response, openai_models.ResponseObject):
             raise ValueError(f"Expected ResponseObject, got {type(response)}")
 
-        return await self._convert_response_typed(response)
+        return await self._convert_response(response)
 
-    async def _convert_response_typed(
+    async def _convert_response(
         self, response: openai_models.ResponseObject
     ) -> AnthropicMessageResponse:
         """Convert ResponseObject to AnthropicMessageResponse using typed models."""
@@ -260,14 +260,14 @@ class OpenAIResponsesToAnthropicAdapter(
             usage=anthropic_usage,
         )
 
-    def adapt_stream_typed(
+    def adapt_stream(
         self,
         stream: AsyncIterator[openai_models.AnyStreamEvent],
     ) -> AsyncGenerator[anthropic_models.MessageStreamEvent, None]:
         """Convert OpenAI Response stream to Anthropic MessageStreamEvent stream."""
-        return self._convert_stream_typed(stream)
+        return self._convert_stream(stream)
 
-    async def _convert_stream_typed(
+    async def _convert_stream(
         self,
         stream: AsyncIterator[openai_models.AnyStreamEvent],
     ) -> AsyncGenerator[anthropic_models.MessageStreamEvent, None]:
@@ -420,7 +420,7 @@ class OpenAIResponsesToAnthropicAdapter(
                 yield anthropic_models.MessageStopEvent(type="message_stop")
                 break
 
-    async def adapt_error_typed(self, error: BaseModel) -> BaseModel:
+    async def adapt_error(self, error: BaseModel) -> BaseModel:
         """Convert OpenAI error to Anthropic error format using typed models."""
         from ccproxy.llms.anthropic.models import (
             APIError,

@@ -70,7 +70,7 @@ async def test_anthropic_to_openai_responses_request_mapping():
     )
 
     adapter = AnthropicMessagesToOpenAIResponsesAdapter()
-    out = await adapter.adapt_request_typed(anth_req)
+    out = await adapter.adapt_request(anth_req)
     req = OpenAIResponseRequest.model_validate(out)
 
     assert req.model == "claude-sonnet"
@@ -113,7 +113,7 @@ async def test_anthropic_to_openai_responses_response_mapping_thinking_and_tool_
     )
 
     adapter = AnthropicMessagesToOpenAIResponsesAdapter()
-    out = await adapter.adapt_response_typed(anth_resp)
+    out = await adapter.adapt_response(anth_resp)
     resp = OpenAIResponseObject.model_validate(out)
 
     assert resp.id == "msg_abc"
@@ -171,7 +171,7 @@ async def test_anthropic_to_openai_responses_stream_mapping():
         yield anthropic_models.MessageStopEvent(type="message_stop")
 
     adapter = AnthropicMessagesToOpenAIResponsesAdapter()
-    stream = adapter.adapt_stream_typed(anthropic_stream())
+    stream = adapter.adapt_stream(anthropic_stream())
     chunks = [chunk async for chunk in stream]
 
     assert len(chunks) == 6

@@ -62,7 +62,7 @@ async def test_anthropic_response_to_openai_chat_response():
     )
 
     adapter = AnthropicMessagesToOpenAIChatAdapter()
-    out = await adapter.adapt_response_typed(anthropic_resp)
+    out = await adapter.adapt_response(anthropic_resp)
 
     openai_resp = OpenAIChatResponse.model_validate(out)
     assert openai_resp.id == "msg_123"
@@ -98,7 +98,7 @@ async def test_thinking_block_serialization_in_response(monkeypatch):
     )
 
     adapter = AnthropicMessagesToOpenAIChatAdapter()
-    out = await adapter.adapt_response_typed(anthropic_resp)
+    out = await adapter.adapt_response(anthropic_resp)
     openai_resp = OpenAIChatResponse.model_validate(out)
     content = openai_resp.choices[0].message.content or ""
     assert '<thinking signature="sig123">chain of thought</thinking>' in content
@@ -150,7 +150,7 @@ async def test_openai_responses_to_anthropic_with_thinking_and_tool_use():
 
     adapter = OpenAIResponsesToAnthropicAdapter()
     resp_obj = OpenAIResponseObject.model_validate(resp)
-    out = await adapter.adapt_response_typed(resp_obj)
+    out = await adapter.adapt_response(resp_obj)
     # Validate as Anthropic message response
     anth = AnthropicMessageResponse.model_validate(out)
     # Expect ThinkingBlock then TextBlock then ToolUseBlock
@@ -177,7 +177,7 @@ async def test_openai_chat_to_openai_response_request():
         max_completion_tokens=256,
     )
     adapter = OpenAIChatToOpenAIResponsesAdapter()
-    out = await adapter.adapt_request_typed(req)
+    out = await adapter.adapt_request(req)
     openai_resp_req = OpenAIResponseRequest.model_validate(out)
     assert openai_resp_req.model == "gpt-4o"
     # We map last user message into a single input message
@@ -206,7 +206,7 @@ async def test_openai_chat_to_openai_responses_structured_outputs_json_schema():
         messages=[{"role": "user", "content": "hi"}],
         response_format={"type": "json_schema", "json_schema": schema},
     )
-    out = await OpenAIChatToOpenAIResponsesAdapter().adapt_request_typed(req)
+    out = await OpenAIChatToOpenAIResponsesAdapter().adapt_request(req)
     resp_req = OpenAIResponseRequest.model_validate(out)
     assert (
         resp_req.text and resp_req.text.get("format", {}).get("type") == "json_schema"
@@ -249,7 +249,7 @@ async def test_openai_response_to_openai_chat_response():
     )
 
     adapter = OpenAIResponsesToOpenAIChatAdapter()
-    out = await adapter.adapt_response_typed(resp)
+    out = await adapter.adapt_response(resp)
     chat = OpenAIChatResponse.model_validate(out)
     assert chat.id == "res_1"
     assert chat.model == "gpt-4o"
@@ -296,7 +296,7 @@ async def test_openai_responses_to_anthropic_maps_reasoning_to_thinking():
 
     adapter = OpenAIResponsesToAnthropicAdapter()
     resp_obj = OpenAIResponseObject.model_validate(resp)
-    out = await adapter.adapt_response_typed(resp_obj)
+    out = await adapter.adapt_response(resp_obj)
     # Validate as Anthropic message response; expect thinking block parsed from reasoning tokens
     anth = AnthropicMessageResponse.model_validate(out)
     assert anth.content and len(anth.content) > 0
@@ -347,7 +347,7 @@ async def test_openai_responses_request_to_anthropic_messages():
     )
 
     adapter = OpenAIResponsesRequestToAnthropicMessagesAdapter()
-    out = await adapter.adapt_request_typed(req)
+    out = await adapter.adapt_request(req)
     anth = AnthropicCreateMessageRequest.model_validate(out)
 
     assert anth.model == "gpt-4o"
@@ -390,7 +390,7 @@ async def test_openai_responses_request_to_anthropic_messages_text_format_inject
         },
     )
 
-    out = await OpenAIResponsesRequestToAnthropicMessagesAdapter().adapt_request_typed(
+    out = await OpenAIResponsesRequestToAnthropicMessagesAdapter().adapt_request(
         req
     )
     anth = AnthropicCreateMessageRequest.model_validate(out)
@@ -419,7 +419,7 @@ async def test_openai_responses_request_instructions_to_system_passthrough():
         instructions="You are helpful",
     )
 
-    out = await OpenAIResponsesRequestToAnthropicMessagesAdapter().adapt_request_typed(
+    out = await OpenAIResponsesRequestToAnthropicMessagesAdapter().adapt_request(
         req
     )
     anth = AnthropicCreateMessageRequest.model_validate(out)
@@ -444,7 +444,7 @@ async def test_openai_responses_request_to_anthropic_messages_text_format_json_o
         text={"format": {"type": "json_object"}},
     )
 
-    out = await OpenAIResponsesRequestToAnthropicMessagesAdapter().adapt_request_typed(
+    out = await OpenAIResponsesRequestToAnthropicMessagesAdapter().adapt_request(
         req
     )
     anth = AnthropicCreateMessageRequest.model_validate(out)
@@ -464,7 +464,7 @@ async def test_openai_responses_request_reasoning_to_anthropic_thinking():
         reasoning={"effort": "medium"},
         max_output_tokens=3000,
     )
-    out = await OpenAIResponsesRequestToAnthropicMessagesAdapter().adapt_request_typed(
+    out = await OpenAIResponsesRequestToAnthropicMessagesAdapter().adapt_request(
         req
     )
     anth = AnthropicCreateMessageRequest.model_validate(out)
@@ -544,7 +544,7 @@ async def test_openai_responses_request_stream_maps_refusal_done_event():
 
     adapter = OpenAIResponsesRequestToAnthropicMessagesAdapter()
     out_events = []
-    async for ev in adapter.adapt_stream_typed(gen()):
+    async for ev in adapter.adapt_stream(gen()):
         out_events.append(ev)
 
     assert any(

@@ -22,7 +22,7 @@ class APIAdapter(ABC, Generic[RequestType, ResponseType, StreamEventType]):
     """
 
     @abstractmethod
-    async def adapt_request_typed(self, request: RequestType) -> BaseModel:
+    async def adapt_request(self, request: RequestType) -> BaseModel:
         """Convert a request using strongly-typed Pydantic models.
 
         Args:
@@ -37,7 +37,7 @@ class APIAdapter(ABC, Generic[RequestType, ResponseType, StreamEventType]):
         pass
 
     @abstractmethod
-    async def adapt_response_typed(self, response: ResponseType) -> BaseModel:
+    async def adapt_response(self, response: ResponseType) -> BaseModel:
         """Convert a response using strongly-typed Pydantic models.
 
         Args:
@@ -52,7 +52,7 @@ class APIAdapter(ABC, Generic[RequestType, ResponseType, StreamEventType]):
         pass
 
     @abstractmethod
-    def adapt_stream_typed(
+    def adapt_stream(
         self, stream: AsyncIterator[StreamEventType]
     ) -> AsyncGenerator[BaseModel, None]:
         """Convert a streaming response using strongly-typed Pydantic models.
@@ -71,7 +71,7 @@ class APIAdapter(ABC, Generic[RequestType, ResponseType, StreamEventType]):
         ...
 
     @abstractmethod
-    async def adapt_error_typed(self, error: BaseModel) -> BaseModel:
+    async def adapt_error(self, error: BaseModel) -> BaseModel:
         """Convert an error response using strongly-typed Pydantic models.
 
         Args:
@@ -113,17 +113,17 @@ class BaseAPIAdapter(
 
     # Strongly-typed interface - subclasses implement these
     @abstractmethod
-    async def adapt_request_typed(self, request: RequestType) -> BaseModel:
+    async def adapt_request(self, request: RequestType) -> BaseModel:
         """Convert a request using strongly-typed Pydantic models."""
         pass
 
     @abstractmethod
-    async def adapt_response_typed(self, response: ResponseType) -> BaseModel:
+    async def adapt_response(self, response: ResponseType) -> BaseModel:
         """Convert a response using strongly-typed Pydantic models."""
         pass
 
     @abstractmethod
-    def adapt_stream_typed(
+    def adapt_stream(
         self, stream: AsyncIterator[StreamEventType]
     ) -> AsyncGenerator[BaseModel, None]:
         """Convert a streaming response using strongly-typed Pydantic models."""
@@ -132,7 +132,7 @@ class BaseAPIAdapter(
         ...
 
     @abstractmethod
-    async def adapt_error_typed(self, error: BaseModel) -> BaseModel:
+    async def adapt_error(self, error: BaseModel) -> BaseModel:
         """Convert an error response using strongly-typed Pydantic models."""
         pass
 

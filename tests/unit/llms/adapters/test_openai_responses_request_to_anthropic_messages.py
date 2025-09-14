@@ -58,7 +58,7 @@ async def test_openai_responses_request_to_anthropic_messages_adapt_response_del
         stop_sequence=None,
         usage=AnthropicUsage(input_tokens=1, output_tokens=2),
     )
-    out = await OpenAIResponsesRequestToAnthropicMessagesAdapter().adapt_response_typed(
+    out = await OpenAIResponsesRequestToAnthropicMessagesAdapter().adapt_response(
         anth
     )
     OpenAIResponseObject.model_validate(out)
@@ -108,10 +108,10 @@ async def test_openai_responses_request_to_anthropic_messages_adapt_stream_minim
 
     adapter = OpenAIResponsesRequestToAnthropicMessagesAdapter()
     res_events = []
-    async for ev in adapter.adapt_stream_typed(gen()):
+    async for ev in adapter.adapt_stream(gen()):
         res_events.append(ev)
 
-    # The _typed function returns ResponseStreamEvent objects, not dictionaries
+    # The  function returns ResponseStreamEvent objects, not dictionaries
     from ccproxy.llms.openai.models import (
         ResponseCompletedEvent,
         ResponseOutputTextDeltaEvent,
@@ -173,7 +173,7 @@ async def test_openai_responses_request_basic_mapping() -> None:
     )
 
     adapter = OpenAIResponsesRequestToAnthropicMessagesAdapter()
-    out = await adapter.adapt_request_typed(req)
+    out = await adapter.adapt_request(req)
     anth = AnthropicCreateMessageRequest.model_validate(out)
 
     assert anth.model == "gpt-4o"
@@ -200,7 +200,7 @@ async def test_complex_input_parameter_handling() -> None:
         input="Hello world",
         max_output_tokens=100,
     )
-    out_string = await adapter.adapt_request_typed(req_string)
+    out_string = await adapter.adapt_request(req_string)
     anth_string = AnthropicCreateMessageRequest.model_validate(out_string)
     assert anth_string.messages[0].content == "Hello world"
 
@@ -226,7 +226,7 @@ async def test_complex_input_parameter_handling() -> None:
             },
         ],
     )
-    out_mixed = await adapter.adapt_request_typed(req_mixed)
+    out_mixed = await adapter.adapt_request(req_mixed)
     anth_mixed = AnthropicCreateMessageRequest.model_validate(out_mixed)
     assert anth_mixed.system == "You are helpful"
     assert len(anth_mixed.messages) == 1
@@ -289,7 +289,7 @@ async def test_tools_array_processing() -> None:
         parallel_tool_calls=False,
     )
 
-    out_tools = await adapter.adapt_request_typed(req_tools)
+    out_tools = await adapter.adapt_request(req_tools)
     anth_tools = AnthropicCreateMessageRequest.model_validate(out_tools)
 
     assert len(anth_tools.tools) == 2
@@ -315,7 +315,7 @@ async def test_instructions_field_mapping() -> None:
         input="Hello",
         instructions="You are a helpful AI assistant. Be concise.",
     )
-    out_instructions = await adapter.adapt_request_typed(req_instructions)
+    out_instructions = await adapter.adapt_request(req_instructions)
     anth_instructions = AnthropicCreateMessageRequest.model_validate(out_instructions)
     assert anth_instructions.system == "You are a helpful AI assistant. Be concise."
 
@@ -326,7 +326,7 @@ async def test_instructions_field_mapping() -> None:
         instructions="You are helpful",
         text={"format": {"type": "json_object"}},
     )
-    out_both = await adapter.adapt_request_typed(req_both)
+    out_both = await adapter.adapt_request(req_both)
     anth_both = AnthropicCreateMessageRequest.model_validate(out_both)
     # System should contain both instructions and format instruction
     assert "You are helpful" in anth_both.system
@@ -361,7 +361,7 @@ async def test_text_format_injection_comprehensive() -> None:
             }
         },
     )
-    out_schema = await adapter.adapt_request_typed(req_schema)
+    out_schema = await adapter.adapt_request(req_schema)
     anth_schema = AnthropicCreateMessageRequest.model_validate(out_schema)
     assert isinstance(anth_schema.system, str)
     assert (
@@ -377,7 +377,7 @@ async def test_text_format_injection_comprehensive() -> None:
         input="Generate JSON",
         text={"format": {"type": "json_object"}},
     )
-    out_json = await adapter.adapt_request_typed(req_json)
+    out_json = await adapter.adapt_request(req_json)
     anth_json = AnthropicCreateMessageRequest.model_validate(out_json)
     assert (
         anth_json.system
@@ -401,7 +401,7 @@ async def test_reasoning_parameter_integration() -> None:
         reasoning={"effort": "medium"},
         max_output_tokens=3000,
     )
-    out_reasoning = await adapter.adapt_request_typed(req_reasoning)
+    out_reasoning = await adapter.adapt_request(req_reasoning)
     anth_reasoning = AnthropicCreateMessageRequest.model_validate(out_reasoning)
 
     assert anth_reasoning.thinking is not None
@@ -416,7 +416,7 @@ async def test_reasoning_parameter_integration() -> None:
         reasoning={"effort": "high"},
         max_output_tokens=1000,
     )
-    out_high = await adapter.adapt_request_typed(req_high)
+    out_high = await adapter.adapt_request(req_high)
     anth_high = AnthropicCreateMessageRequest.model_validate(out_high)
     assert getattr(anth_high.thinking, "budget_tokens", 0) == 10000
 
@@ -497,7 +497,7 @@ async def test_complex_nested_request_structures() -> None:
         stream=False,
     )
 
-    out_comprehensive = await adapter.adapt_request_typed(comprehensive_req)
+    out_comprehensive = await adapter.adapt_request(comprehensive_req)
     anth_comprehensive = AnthropicCreateMessageRequest.model_validate(out_comprehensive)
 
     # Verify all aspects are properly mapped
@@ -531,7 +531,7 @@ async def test_edge_case_input_variations() -> None:
         input=[],
         max_output_tokens=100,
     )
-    out_empty = await adapter.adapt_request_typed(req_empty)
+    out_empty = await adapter.adapt_request(req_empty)
     anth_empty = AnthropicCreateMessageRequest.model_validate(out_empty)
     assert len(anth_empty.messages) == 0
 
@@ -547,7 +547,7 @@ async def test_edge_case_input_variations() -> None:
         ],
         max_output_tokens=100,
     )
-    out_system_only = await adapter.adapt_request_typed(req_system_only)
+    out_system_only = await adapter.adapt_request(req_system_only)
     anth_system_only = AnthropicCreateMessageRequest.model_validate(out_system_only)
     assert anth_system_only.system == "System only"
     assert len(anth_system_only.messages) == 0

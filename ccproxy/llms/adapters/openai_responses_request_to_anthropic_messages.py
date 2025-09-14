@@ -53,14 +53,14 @@ class OpenAIResponsesRequestToAnthropicMessagesAdapter(
         super().__init__(name="openai_responses_request_to_anthropic_messages")
 
     # New strongly-typed methods
-    async def adapt_request_typed(self, request: BaseModel) -> BaseModel:
+    async def adapt_request(self, request: BaseModel) -> BaseModel:
         """Convert OpenAI ResponseRequest to Anthropic CreateMessageRequest."""
         if not isinstance(request, ResponseRequest):
             raise ValueError(f"Expected ResponseRequest, got {type(request)}")
 
-        return await self._convert_request_typed(request)
+        return await self._convert_request(request)
 
-    async def adapt_response_typed(self, response: BaseModel) -> BaseModel:
+    async def adapt_response(self, response: BaseModel) -> BaseModel:
         """Convert Anthropic MessageResponse to OpenAI ResponseObject."""
         if not isinstance(response, MessageResponse):
             raise ValueError(f"Expected MessageResponse, got {type(response)}")
@@ -71,15 +71,15 @@ class OpenAIResponsesRequestToAnthropicMessagesAdapter(
         )
 
         reverse_adapter = AnthropicMessagesToOpenAIResponsesAdapter()
-        return await reverse_adapter.adapt_response_typed(response)
+        return await reverse_adapter.adapt_response(response)
 
-    def adapt_stream_typed(
+    def adapt_stream(
         self, stream: AsyncIterator[MessageStreamEvent]
     ) -> AsyncGenerator[ResponseStreamEvent, None]:
         """Convert Anthropic MessageStreamEvent stream to OpenAI Response stream events."""
-        return self._convert_stream_typed(stream)
+        return self._convert_stream(stream)
 
-    def _convert_stream_typed(
+    def _convert_stream(
         self, stream: AsyncIterator[MessageStreamEvent]
     ) -> AsyncGenerator[ResponseStreamEvent, None]:
         # This implementation is based on AnthropicMessagesToOpenAIResponsesAdapter
@@ -214,12 +214,12 @@ class OpenAIResponsesRequestToAnthropicMessagesAdapter(
 
         return generator()
 
-    async def adapt_error_typed(self, error: BaseModel) -> BaseModel:
+    async def adapt_error(self, error: BaseModel) -> BaseModel:
         """Convert error response - pass through for now."""
         return error
 
     # Implementation methods
-    async def _convert_request_typed(
+    async def _convert_request(
         self, request: ResponseRequest
     ) -> CreateMessageRequest:
         """Convert OpenAI ResponseRequest to Anthropic CreateMessageRequest using typed models."""

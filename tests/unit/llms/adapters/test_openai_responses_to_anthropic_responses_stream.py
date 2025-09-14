@@ -72,7 +72,7 @@ async def test_openai_responses_stream_function_call_arguments_to_anthropic_tool
 
     adapter = OpenAIResponsesToAnthropicAdapter()
     out = []
-    async for ev in adapter.adapt_stream_typed(gen()):
+    async for ev in adapter.adapt_stream(gen()):
         out.append(ev)
 
     assert any(
@@ -164,7 +164,7 @@ async def test_openai_responses_stream_reasoning_summary_to_anthropic_thinking()
 
     adapter = OpenAIResponsesToAnthropicAdapter()
     out = []
-    async for ev in adapter.adapt_stream_typed(gen()):
+    async for ev in adapter.adapt_stream(gen()):
         out.append(ev)
 
     thinking_block_start = next(
@@ -297,7 +297,7 @@ async def test_multiple_tool_calls_streaming() -> None:
 
     adapter = OpenAIResponsesToAnthropicAdapter()
     out = []
-    async for ev in adapter.adapt_stream_typed(gen()):
+    async for ev in adapter.adapt_stream(gen()):
         out.append(ev)
 
     # Should have two tool_use content blocks
@@ -373,7 +373,7 @@ async def test_streaming_error_handling() -> None:
 
     adapter = OpenAIResponsesToAnthropicAdapter()
     out = []
-    async for ev in adapter.adapt_stream_typed(gen()):
+    async for ev in adapter.adapt_stream(gen()):
         out.append(ev)
 
     # Should handle error gracefully
@@ -508,7 +508,7 @@ async def test_tool_call_with_reasoning_streaming() -> None:
 
     adapter = OpenAIResponsesToAnthropicAdapter()
     out = []
-    async for ev in adapter.adapt_stream_typed(gen()):
+    async for ev in adapter.adapt_stream(gen()):
         out.append(ev)
 
     # Should have thinking block, then tool use block, then text block
@@ -598,7 +598,7 @@ async def test_streaming_with_incomplete_tool_calls() -> None:
 
     adapter = OpenAIResponsesToAnthropicAdapter()
     out = []
-    async for ev in adapter.adapt_stream_typed(gen()):
+    async for ev in adapter.adapt_stream(gen()):
         out.append(ev)
 
     # Should handle incomplete tool call gracefully
@@ -754,7 +754,7 @@ async def test_complex_streaming_scenario() -> None:
 
     adapter = OpenAIResponsesToAnthropicAdapter()
     out = []
-    async for ev in adapter.adapt_stream_typed(gen()):
+    async for ev in adapter.adapt_stream(gen()):
         out.append(ev)
 
     # Verify message structure
