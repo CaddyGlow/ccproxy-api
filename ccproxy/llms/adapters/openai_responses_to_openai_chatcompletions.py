@@ -1,9 +1,8 @@
 from __future__ import annotations
 
 from collections.abc import AsyncGenerator, AsyncIterator
-from typing import Any
 
-from pydantic import BaseModel, TypeAdapter
+from pydantic import BaseModel
 
 from ccproxy.llms.adapters.base import BaseAPIAdapter
 from ccproxy.llms.openai import models as openai_models
@@ -35,32 +34,6 @@ class OpenAIResponsesToOpenAIChatAdapter(
 
     def __init__(self) -> None:
         super().__init__(name="openai_responses_to_openai_chat")
-
-    # Minimal implementations for abstract methods - delegate to dict-based logic
-    def _dict_to_request_model(
-        self, request: dict[str, Any]
-    ) -> openai_models.ChatCompletionRequest:
-        return openai_models.ChatCompletionRequest.model_validate(request)
-
-    def _dict_to_response_model(self, response: dict[str, Any]) -> ResponseObject:
-        return ResponseObject.model_validate(response)
-
-    def _dict_to_error_model(self, error: dict[str, Any]) -> BaseModel:
-        return BaseModel.model_validate(error)
-
-    def _dict_stream_to_typed_stream(
-        self, stream: AsyncIterator[dict[str, Any]]
-    ) -> AsyncIterator[openai_models.AnyStreamEvent]:
-        event_adapter = TypeAdapter(openai_models.AnyStreamEvent)
-
-        async def generator() -> AsyncIterator[openai_models.AnyStreamEvent]:
-            async for item in stream:
-                try:
-                    yield event_adapter.validate_python(item)
-                except Exception:
-                    continue
-
-        return generator()
 
     async def adapt_request_typed(self, request: BaseModel) -> BaseModel:
         """Convert request using typed models - delegate to OpenAI Chat to Responses adapter."""
@@ -192,23 +165,41 @@ class OpenAIResponsesToOpenAIChatAdapter(
                 break
 
     async def adapt_error_typed(self, error: BaseModel) -> BaseModel:
-        """Convert error using typed models - passthrough for now."""
-        return error
+        """Convert error using typed models - passthrough since both formats are OpenAI."""
+        from ccproxy.llms.openai.models import ErrorDetail, ErrorResponse
 
-    async def adapt_request(self, request: dict[str, Any]) -> dict[str, Any]:
-        """Legacy dict interface - delegates to typed implementation."""
-        typed_request = self._dict_to_request_model(request)
-        typed_result = await self.adapt_request_typed(typed_request)
-        return typed_result.model_dump()
+        # If it's already a proper OpenAI ErrorResponse, return as-is
+        if isinstance(error, ErrorResponse):
+            return error
 
-    async def adapt_response(self, response: dict[str, Any]) -> dict[str, Any]:
-        """Legacy dict interface - delegates to typed implementation."""
-        typed_response = self._dict_to_response_model(response)
-        typed_result = await self.adapt_response_typed(typed_response)
-        return typed_result.model_dump()
+        # Try to create a proper ErrorResponse from malformed input
+        if hasattr(error, "error") and hasattr(error.error, "message"):
+            # Extract details from nested error structure
+            nested_error = error.error
+            return ErrorResponse(
+                error=ErrorDetail(
+                    message=nested_error.message,
+                    code=getattr(nested_error, "code", None),
+                    param=getattr(nested_error, "param", None),
+                    type=getattr(nested_error, "type", None),
+                )
+            )
 
-    async def adapt_error(self, error: dict[str, Any]) -> dict[str, Any]:
-        """Legacy dict interface - delegates to typed implementation."""
-        typed_error = self._dict_to_error_model(error)
-        typed_result = await self.adapt_error_typed(typed_error)
-        return typed_result.model_dump()
+        # Fallback for unknown error formats - create generic ErrorResponse
+        error_message = "Unknown error occurred"
+        if hasattr(error, "message"):
+            error_message = error.message
+        elif hasattr(error, "model_dump"):
+            # Try to extract any available message from model dump
+            error_dict = error.model_dump()
+            if isinstance(error_dict, dict):
+                error_message = error_dict.get("message", str(error_dict))
+
+        return ErrorResponse(
+            error=ErrorDetail(
+                message=error_message,
+                code=None,
+                param=None,
+                type="api_error",
+            )
+        )

@@ -4,7 +4,6 @@ from ccproxy.llms.adapters.anthropic_messages_to_openai_chatcompletions import (
     AnthropicToOpenAIChatCompletionsAdapter,
 )
 from ccproxy.llms.anthropic import models as anthropic_models
-from ccproxy.llms.openai import models as openai_models
 
 
 @pytest.fixture

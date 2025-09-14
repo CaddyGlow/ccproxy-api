@@ -4,8 +4,6 @@ This module tests error handling scenarios that were previously missing
 from the test coverage.
 """
 
-from typing import Any
-
 import pytest
 from pydantic import ValidationError
 

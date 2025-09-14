@@ -4,7 +4,7 @@ import re
 from collections.abc import AsyncGenerator, AsyncIterator
 from typing import Any
 
-from pydantic import BaseModel, TypeAdapter
+from pydantic import BaseModel
 
 from ccproxy.llms.adapters.base import BaseAPIAdapter
 from ccproxy.llms.anthropic import models as anthropic_models
@@ -46,48 +46,6 @@ class OpenAIResponsesToAnthropicAdapter(
 
     def __init__(self) -> None:
         super().__init__(name="openai_responses_to_anthropic")
-
-    # Minimal implementations for abstract methods - delegate to dict-based logic
-    def _dict_to_request_model(self, request: dict[str, Any]) -> BaseModel:
-        # This adapter delegates request handling to another adapter,
-        # so we create a simple BaseModel subclass from the dict
-        class DynamicRequestModel(BaseModel):
-            pass
-
-        # Add fields dynamically
-        for k, v in request.items():
-            setattr(DynamicRequestModel, k, v)
-        return DynamicRequestModel()
-
-    def _dict_to_response_model(
-        self, response: dict[str, Any]
-    ) -> openai_models.ResponseObject:
-        return openai_models.ResponseObject.model_validate(response)
-
-    def _dict_to_error_model(self, error: dict[str, Any]) -> BaseModel:
-        # Create a simple BaseModel subclass from the error dict
-        class DynamicErrorModel(BaseModel):
-            pass
-
-        # Add fields dynamically
-        for k, v in error.items():
-            setattr(DynamicErrorModel, k, v)
-        return DynamicErrorModel()
-
-    def _dict_stream_to_typed_stream(
-        self,
-        stream: AsyncIterator[dict[str, Any]],
-    ) -> AsyncIterator[openai_models.AnyStreamEvent]:
-        event_adapter = TypeAdapter(openai_models.AnyStreamEvent)
-
-        async def generator() -> AsyncIterator[openai_models.AnyStreamEvent]:
-            async for item in stream:
-                try:
-                    yield event_adapter.validate_python(item)
-                except Exception:
-                    continue
-
-        return generator()
 
     async def adapt_request_typed(self, request: BaseModel) -> BaseModel:
         """Convert request using typed models - delegate to ResponsesRequest to Anthropic adapter."""
@@ -463,23 +421,66 @@ class OpenAIResponsesToAnthropicAdapter(
                 break
 
     async def adapt_error_typed(self, error: BaseModel) -> BaseModel:
-        """Convert error using typed models - passthrough for now."""
-        return error
+        """Convert OpenAI error to Anthropic error format using typed models."""
+        from ccproxy.llms.anthropic.models import (
+            APIError,
+            ErrorType,
+            InvalidRequestError,
+            RateLimitError,
+        )
+        from ccproxy.llms.anthropic.models import (
+            ErrorResponse as AnthropicErrorResponse,
+        )
+        from ccproxy.llms.openai.models import ErrorResponse as OpenAIErrorResponse
 
-    async def adapt_request(self, request: dict[str, Any]) -> dict[str, Any]:
-        """Legacy dict interface - delegates to typed implementation."""
-        typed_request = self._dict_to_request_model(request)
-        typed_result = await self.adapt_request_typed(typed_request)
-        return typed_result.model_dump()
+        # Error type mapping from OpenAI to Anthropic
+        error_type_mapping = {
+            "invalid_request_error": "invalid_request_error",
+            "authentication_error": "invalid_request_error",
+            "permission_error": "invalid_request_error",
+            "not_found_error": "invalid_request_error",
+            "rate_limit_error": "rate_limit_error",
+            "internal_server_error": "api_error",
+            "overloaded_error": "api_error",
+        }
 
-    async def adapt_response(self, response: dict[str, Any]) -> dict[str, Any]:
-        """Legacy dict interface - delegates to typed implementation."""
-        typed_response = self._dict_to_response_model(response)
-        typed_result = await self.adapt_response_typed(typed_response)
-        return typed_result.model_dump()
+        # Handle OpenAI ErrorResponse format
+        if isinstance(error, OpenAIErrorResponse):
+            openai_error = error.error
+            error_message = openai_error.message
+            openai_error_type = openai_error.type or "api_error"
 
-    async def adapt_error(self, error: dict[str, Any]) -> dict[str, Any]:
-        """Legacy dict interface - delegates to typed implementation."""
-        typed_error = self._dict_to_error_model(error)
-        typed_result = await self.adapt_error_typed(typed_error)
-        return typed_result.model_dump()
+            # Map to Anthropic error type
+            anthropic_error_type = error_type_mapping.get(
+                openai_error_type, "api_error"
+            )
+
+            # Create appropriate Anthropic error model
+            anthropic_error: ErrorType
+            if anthropic_error_type == "invalid_request_error":
+                anthropic_error = InvalidRequestError(message=error_message)
+            elif anthropic_error_type == "rate_limit_error":
+                anthropic_error = RateLimitError(message=error_message)
+            else:
+                anthropic_error = APIError(message=error_message)
+
+            return AnthropicErrorResponse(error=anthropic_error)
+
+        # Handle generic BaseModel errors or malformed errors
+        if hasattr(error, "error") and hasattr(error.error, "message"):
+            # Try to extract message from nested error structure
+            error_message = error.error.message
+            fallback_error: ErrorType = APIError(message=error_message)
+            return AnthropicErrorResponse(error=fallback_error)
+
+        # Fallback for unknown error formats
+        error_message = "Unknown error occurred"
+        if hasattr(error, "message"):
+            error_message = error.message
+        elif hasattr(error, "model_dump"):
+            # Try to extract any available message from model dump
+            error_dict = error.model_dump()
+            error_message = str(error_dict.get("message", error_dict))
+
+        generic_error: ErrorType = APIError(message=error_message)
+        return AnthropicErrorResponse(error=generic_error)

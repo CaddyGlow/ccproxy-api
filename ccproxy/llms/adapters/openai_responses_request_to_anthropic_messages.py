@@ -1,16 +1,15 @@
 from __future__ import annotations
 
 from collections.abc import AsyncGenerator, AsyncIterator
-from typing import Any, Union
+from typing import Any
 
-from pydantic import BaseModel, TypeAdapter
+from pydantic import BaseModel
 
 from ccproxy.llms.adapters.base import BaseAPIAdapter
 from ccproxy.llms.adapters.mapping import DEFAULT_MAX_TOKENS
 from ccproxy.llms.anthropic import models as anthropic_models
 from ccproxy.llms.anthropic.models import (
     CreateMessageRequest,
-    ErrorResponse,
     MessageResponse,
     MessageStreamEvent,
 )
@@ -18,14 +17,14 @@ from ccproxy.llms.openai import models as openai_models
 from ccproxy.llms.openai.models import ResponseRequest
 
 
-ResponseStreamEvent = Union[
-    openai_models.ResponseCreatedEvent,
-    openai_models.ResponseInProgressEvent,
-    openai_models.ResponseCompletedEvent,
-    openai_models.ResponseOutputTextDeltaEvent,
-    openai_models.ResponseFunctionCallArgumentsDoneEvent,
-    openai_models.ResponseRefusalDoneEvent,
-]
+ResponseStreamEvent = (
+    openai_models.ResponseCreatedEvent
+    | openai_models.ResponseInProgressEvent
+    | openai_models.ResponseCompletedEvent
+    | openai_models.ResponseOutputTextDeltaEvent
+    | openai_models.ResponseFunctionCallArgumentsDoneEvent
+    | openai_models.ResponseRefusalDoneEvent
+)
 
 
 class OpenAIResponsesRequestToAnthropicMessagesAdapter(
@@ -52,36 +51,6 @@ class OpenAIResponsesRequestToAnthropicMessagesAdapter(
 
     def __init__(self) -> None:
         super().__init__(name="openai_responses_request_to_anthropic_messages")
-
-    # Model conversion helpers
-    def _dict_to_request_model(self, request: dict[str, Any]) -> ResponseRequest:
-        """Convert dict to ResponseRequest."""
-        return ResponseRequest.model_validate(request)
-
-    def _dict_to_response_model(self, response: dict[str, Any]) -> MessageResponse:
-        """Convert dict to MessageResponse."""
-        return MessageResponse.model_validate(response)
-
-    def _dict_to_error_model(self, error: dict[str, Any]) -> BaseModel:
-        """Convert dict to ErrorResponse."""
-        return ErrorResponse.model_validate(error)
-
-    def _dict_stream_to_typed_stream(
-        self, stream: AsyncIterator[dict[str, Any]]
-    ) -> AsyncIterator[MessageStreamEvent]:
-        """Convert dict stream to MessageStreamEvent stream."""
-
-        event_adapter: TypeAdapter[MessageStreamEvent] = TypeAdapter(MessageStreamEvent)
-
-        async def typed_generator() -> AsyncIterator[MessageStreamEvent]:
-            async for chunk_dict in stream:
-                try:
-                    yield event_adapter.validate_python(chunk_dict)
-                except Exception:
-                    # Skip invalid chunks in stream
-                    continue
-
-        return typed_generator()
 
     # New strongly-typed methods
     async def adapt_request_typed(self, request: BaseModel) -> BaseModel:
@@ -480,171 +449,6 @@ class OpenAIResponsesRequestToAnthropicMessagesAdapter(
             payload_data["temperature"] = 1.0
 
         return CreateMessageRequest.model_validate(payload_data)
-
-    async def _adapt_request_dict_impl(self, request: dict[str, Any]) -> dict[str, Any]:
-        """Implementation moved from adapt_request - works with dicts."""
-        model = request.get("model")
-        stream = bool(request.get("stream") or False)
-        max_out = request.get("max_output_tokens")
-
-        messages: list[dict[str, Any]] = []
-        system_parts: list[str] = []
-        input_val = request.get("input")
-
-        if isinstance(input_val, str):
-            messages.append({"role": "user", "content": input_val})
-        elif isinstance(input_val, list):
-            for item in input_val:
-                if isinstance(item, dict) and item.get("type") == "message":
-                    role = item.get("role", "user")
-                    content_list = item.get("content") or []
-                    text_parts: list[str] = []
-                    # Note: This simplified logic only extracts text parts.
-                    # TODO: Handle other content types like images.
-                    for part in content_list:
-                        if isinstance(part, dict) and part.get("type") in (
-                            "input_text",
-                            "text",
-                        ):
-                            t = part.get("text")
-                            if isinstance(t, str):
-                                text_parts.append(t)
-                    content_text = " ".join(text_parts)
-
-                    if role == "system":
-                        system_parts.append(content_text)
-                    elif role in ("user", "assistant"):
-                        messages.append({"role": role, "content": content_text})
-
-        payload: dict[str, Any] = {"model": model, "messages": messages}
-        if max_out is None:
-            max_out = DEFAULT_MAX_TOKENS
-        payload["max_tokens"] = int(max_out)
-        if stream:
-            payload["stream"] = True
-
-        # Combine system messages
-        if system_parts:
-            payload["system"] = "\n".join(system_parts)
-
-        # Tools mapping (function tools)
-        tools_in = request.get("tools") or []
-        if isinstance(tools_in, list) and tools_in:
-            anth_tools: list[dict[str, Any]] = []
-            for t in tools_in:
-                if (
-                    isinstance(t, dict)
-                    and t.get("type") == "function"
-                    and isinstance(t.get("function"), dict)
-                ):
-                    fn = t["function"]
-                    anth_tools.append(
-                        {
-                            "type": "custom",
-                            "name": fn.get("name"),
-                            "description": fn.get("description"),
-                            "input_schema": fn.get("parameters") or {},
-                        }
-                    )
-            if anth_tools:
-                payload["tools"] = anth_tools
-
-        # tool_choice mapping (+ parallel control)
-        tool_choice = request.get("tool_choice")
-        parallel_tool_calls = request.get("parallel_tool_calls")
-        disable_parallel = None
-        if isinstance(parallel_tool_calls, bool):
-            disable_parallel = not parallel_tool_calls
-
-        if tool_choice is not None:
-            anth_choice: dict[str, Any] | None = None
-            if isinstance(tool_choice, str):
-                if tool_choice == "none":
-                    anth_choice = {"type": "none"}
-                elif tool_choice == "auto":
-                    anth_choice = {"type": "auto"}
-                elif tool_choice == "required":
-                    anth_choice = {"type": "any"}
-            elif isinstance(tool_choice, dict):
-                if tool_choice.get("type") == "function" and isinstance(
-                    tool_choice.get("function"), dict
-                ):
-                    anth_choice = {
-                        "type": "tool",
-                        "name": tool_choice["function"].get("name"),
-                    }
-            if anth_choice is not None:
-                if disable_parallel is not None and anth_choice["type"] in {
-                    "auto",
-                    "any",
-                    "tool",
-                }:
-                    anth_choice["disable_parallel_tool_use"] = disable_parallel
-                payload["tool_choice"] = anth_choice
-
-        # Structured outputs (Responses text.format) -> inject system guidance
-        text_cfg = request.get("text") or {}
-        if isinstance(text_cfg, dict) and isinstance(text_cfg.get("format"), dict):
-            fmt = text_cfg["format"]
-            ftype = fmt.get("type")
-            inject: str | None = None
-            if ftype == "json_object":
-                inject = "Respond ONLY with a valid JSON object. No prose. Do not wrap in markdown."
-            elif ftype == "json_schema":
-                schema = fmt.get("schema") or {}
-                try:
-                    import json
-
-                    schema_str = json.dumps(schema, separators=(",", ":"))
-                except Exception:
-                    schema_str = str(schema)
-                inject = (
-                    "Respond ONLY with JSON strictly conforming to this JSON Schema. "
-                    "No prose. No markdown. If unsure, use nulls for unknown fields.\n\n"
-                    "Schema:\n"
-                    f"{schema_str}"
-                )
-            if inject:
-                if payload.get("system"):
-                    payload["system"] = f"{payload['system']}\n\n{inject}"
-                else:
-                    payload["system"] = inject
-
-        # Instructions passthrough (map to Anthropic system)
-        instr = request.get("instructions")
-        if isinstance(instr, str) and instr:
-            if payload.get("system"):
-                payload["system"] = f"{payload['system']}\n\n{instr}"
-            else:
-                payload["system"] = instr
-
-        # Reasoning -> Anthropic thinking mapping
-        reasoning = request.get("reasoning") or {}
-        thinking_cfg = self._derive_thinking_config((model or ""), reasoning)
-        if thinking_cfg is not None:
-            payload["thinking"] = thinking_cfg
-            budget = thinking_cfg.get("budget_tokens", 0)
-            if isinstance(budget, int) and payload.get("max_tokens", 0) <= budget:
-                payload["max_tokens"] = budget + 64
-            payload["temperature"] = 1.0
-
-        return CreateMessageRequest.model_validate(payload).model_dump()
-
-    # Override to delegate to typed implementation
-    async def adapt_request(self, request: dict[str, Any]) -> dict[str, Any]:
-        """Legacy dict interface - delegates to typed implementation."""
-        typed_request = self._dict_to_request_model(request)
-        typed_result = await self.adapt_request_typed(typed_request)
-        return typed_result.model_dump()
-
-    async def adapt_response(self, response: dict[str, Any]) -> dict[str, Any]:
-        """Legacy dict interface - delegates to typed implementation."""
-        typed_response = self._dict_to_response_model(response)
-        typed_result = await self.adapt_response_typed(typed_response)
-        return typed_result.model_dump()
-
-    async def adapt_error(self, error: dict[str, Any]) -> dict[str, Any]:
-        return error
 
     def _derive_thinking_config(
         self,

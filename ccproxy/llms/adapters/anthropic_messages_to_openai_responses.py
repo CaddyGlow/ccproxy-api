@@ -1,23 +1,23 @@
 from __future__ import annotations
 
 from collections.abc import AsyncGenerator, AsyncIterator
-from typing import Any, Union
+from typing import Any
 
-from pydantic import BaseModel, TypeAdapter
+from pydantic import BaseModel
 
 from ccproxy.llms.adapters.base import BaseAPIAdapter
 from ccproxy.llms.anthropic import models as anthropic_models
 from ccproxy.llms.openai import models as openai_models
 
 
-ResponseStreamEvent = Union[
-    openai_models.ResponseCreatedEvent,
-    openai_models.ResponseInProgressEvent,
-    openai_models.ResponseCompletedEvent,
-    openai_models.ResponseOutputTextDeltaEvent,
-    openai_models.ResponseFunctionCallArgumentsDoneEvent,
-    openai_models.ResponseRefusalDoneEvent,
-]
+ResponseStreamEvent = (
+    openai_models.ResponseCreatedEvent
+    | openai_models.ResponseInProgressEvent
+    | openai_models.ResponseCompletedEvent
+    | openai_models.ResponseOutputTextDeltaEvent
+    | openai_models.ResponseFunctionCallArgumentsDoneEvent
+    | openai_models.ResponseRefusalDoneEvent
+)
 
 
 class AnthropicMessagesToOpenAIResponsesAdapter(
@@ -51,55 +51,7 @@ class AnthropicMessagesToOpenAIResponsesAdapter(
     def __init__(self) -> None:
         super().__init__(name="anthropic_messages_to_openai_responses")
 
-    # Model conversion helpers
-    def _dict_to_request_model(
-        self, request: dict[str, Any]
-    ) -> anthropic_models.CreateMessageRequest:
-        """Convert dict to CreateMessageRequest."""
-        # Preprocess tools to satisfy union discriminator if missing
-        req_dict = dict(request)
-        tools_in = req_dict.get("tools")
-        if isinstance(tools_in, list):
-            new_tools = []
-            for t in tools_in:
-                if isinstance(t, dict) and "type" not in t:
-                    t = {"type": "custom", **t}
-                new_tools.append(t)
-            req_dict["tools"] = new_tools
-        return anthropic_models.CreateMessageRequest.model_validate(req_dict)
-
-    def _dict_to_response_model(
-        self, response: dict[str, Any]
-    ) -> anthropic_models.MessageResponse:
-        """Convert dict to MessageResponse."""
-        return anthropic_models.MessageResponse.model_validate(response)
-
-    def _dict_to_error_model(self, error: dict[str, Any]) -> BaseModel:
-        """Convert dict to ErrorResponse."""
-        return anthropic_models.ErrorResponse.model_validate(error)
-
-    def _dict_stream_to_typed_stream(
-        self, stream: AsyncIterator[dict[str, Any]]
-    ) -> AsyncIterator[anthropic_models.MessageStreamEvent]:
-        """Convert dict stream to MessageStreamEvent stream."""
-
-        event_adapter: TypeAdapter[anthropic_models.MessageStreamEvent] = TypeAdapter(
-            anthropic_models.MessageStreamEvent
-        )
-
-        async def typed_generator() -> AsyncIterator[
-            anthropic_models.MessageStreamEvent
-        ]:
-            async for chunk_dict in stream:
-                try:
-                    yield event_adapter.validate_python(chunk_dict)
-                except Exception:
-                    # Skip invalid chunks in stream
-                    continue
-
-        return typed_generator()
-
-    # New strongly-typed methods
+    # Strongly-typed methods
     async def adapt_request_typed(self, request: BaseModel) -> BaseModel:
         """Convert Anthropic CreateMessageRequest to OpenAI ResponseRequest."""
         if not isinstance(request, anthropic_models.CreateMessageRequest):
@@ -434,130 +386,6 @@ class AnthropicMessagesToOpenAIResponsesAdapter(
         )
         return response_object
 
-    async def _adapt_request_dict_impl(self, request: dict[str, Any]) -> dict[str, Any]:
-        """Implementation moved from adapt_request - works with dicts."""
-        # Preprocess tools to satisfy union discriminator if missing
-        req_dict = dict(request)
-        tools_in = req_dict.get("tools")
-        if isinstance(tools_in, list):
-            new_tools = []
-            for t in tools_in:
-                if isinstance(t, dict) and "type" not in t:
-                    t = {"type": "custom", **t}
-                new_tools.append(t)
-            req_dict["tools"] = new_tools
-
-        # Validate as Anthropic CreateMessageRequest
-        anthropic_request = anthropic_models.CreateMessageRequest.model_validate(
-            req_dict
-        )
-
-        # Build OpenAI Responses request payload
-        payload: dict[str, Any] = {
-            "model": anthropic_request.model,
-        }
-
-        if anthropic_request.max_tokens is not None:
-            payload["max_output_tokens"] = int(anthropic_request.max_tokens)
-        if anthropic_request.stream:
-            payload["stream"] = True
-
-        # Map system to instructions if present
-        if anthropic_request.system:
-            if isinstance(anthropic_request.system, str):
-                payload["instructions"] = anthropic_request.system
-            else:
-                payload["instructions"] = "".join(
-                    block.text for block in anthropic_request.system
-                )
-
-        # Map last user message text to Responses input
-        last_user_text: str | None = None
-        for msg in reversed(anthropic_request.messages):
-            if msg.role == "user":
-                if isinstance(msg.content, str):
-                    last_user_text = msg.content
-                elif isinstance(msg.content, list):
-                    texts: list[str] = []
-                    for block in msg.content:
-                        # Support raw dicts and models
-                        if isinstance(block, dict):
-                            if block.get("type") == "text" and isinstance(
-                                block.get("text"), str
-                            ):
-                                texts.append(block.get("text") or "")
-                        else:
-                            # Type guard for TextBlock
-                            if (
-                                getattr(block, "type", None) == "text"
-                                and hasattr(block, "text")
-                                and isinstance(getattr(block, "text", None), str)
-                            ):
-                                texts.append(block.text or "")
-                    if texts:
-                        last_user_text = " ".join(texts)
-                break
-
-        if last_user_text:
-            payload["input"] = [
-                {
-                    "type": "message",
-                    "role": "user",
-                    "content": [
-                        {"type": "input_text", "text": last_user_text},
-                    ],
-                }
-            ]
-
-        # Tools mapping (custom tools -> function tools)
-        if anthropic_request.tools:
-            tools: list[dict[str, Any]] = []
-            for tool in anthropic_request.tools:
-                if isinstance(tool, anthropic_models.Tool):
-                    tools.append(
-                        {
-                            "type": "function",
-                            "function": {
-                                "name": tool.name,
-                                "description": tool.description,
-                                "parameters": tool.input_schema,
-                            },
-                        }
-                    )
-            if tools:
-                payload["tools"] = tools
-
-        # tool_choice mapping (+ parallel control)
-        tc = anthropic_request.tool_choice
-        if tc is not None:
-            tc_type = getattr(tc, "type", None)
-            if tc_type == "none":
-                payload["tool_choice"] = "none"
-            elif tc_type == "auto":
-                payload["tool_choice"] = "auto"
-            elif tc_type == "any":
-                payload["tool_choice"] = "required"
-            elif tc_type == "tool":
-                name = getattr(tc, "name", None)
-                if name:
-                    payload["tool_choice"] = {
-                        "type": "function",
-                        "function": {"name": name},
-                    }
-            disable_parallel = getattr(tc, "disable_parallel_tool_use", None)
-            if isinstance(disable_parallel, bool):
-                payload["parallel_tool_calls"] = not disable_parallel
-
-        # Validate
-        return openai_models.ResponseRequest.model_validate(payload).model_dump()
-
-    # Override to delegate to typed implementation
-    async def adapt_request(self, request: dict[str, Any]) -> dict[str, Any]:
-        """Legacy dict interface - delegates to typed implementation."""
-        typed_request = self._dict_to_request_model(request)
-        typed_result = await self.adapt_request_typed(typed_request)
-        return typed_result.model_dump()
-
     async def _adapt_response_dict_impl(
         self, response: dict[str, Any]
     ) -> dict[str, Any]:
@@ -635,13 +463,3 @@ class AnthropicMessagesToOpenAIResponsesAdapter(
             usage=resp_usage,
         )
         return response_object.model_dump()
-
-    # Override to delegate to typed implementation
-    async def adapt_response(self, response: dict[str, Any]) -> dict[str, Any]:
-        """Legacy dict interface - delegates to typed implementation."""
-        typed_response = self._dict_to_response_model(response)
-        typed_result = await self.adapt_response_typed(typed_response)
-        return typed_result.model_dump()
-
-    async def adapt_error(self, error: dict[str, Any]) -> dict[str, Any]:
-        return error

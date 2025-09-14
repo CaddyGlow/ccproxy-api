@@ -34,9 +34,6 @@ from ccproxy.llms.anthropic.models import (
     Usage as AnthropicUsage,
 )
 from ccproxy.llms.openai.models import (
-    ChatCompletionChunk as OpenAIChatChunk,
-)
-from ccproxy.llms.openai.models import (
     ChatCompletionRequest as OpenAIChatRequest,
 )
 from ccproxy.llms.openai.models import (
