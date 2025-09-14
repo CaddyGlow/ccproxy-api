@@ -62,6 +62,50 @@ class AnthropicMessagesToOpenAIChatAdapter(BaseAPIAdapter):
         for msg in anthropic_request.messages:
             role = msg.role
             content = msg.content
+
+            # Handle tool usage and results
+            if role == "assistant" and isinstance(content, list):
+                tool_calls = []
+                text_parts = []
+                for block in content:
+                    block_type = getattr(block, "type", None)
+                    if block_type == "tool_use":
+                        tool_calls.append(
+                            {
+                                "id": block.id,
+                                "type": "function",
+                                "function": {
+                                    "name": block.name,
+                                    "arguments": str(block.input),
+                                },
+                            }
+                        )
+                    elif block_type == "text":
+                        text_parts.append(block.text)
+                if tool_calls:
+                    assistant_msg: dict[str, Any] = {
+                        "role": "assistant",
+                        "tool_calls": tool_calls,
+                    }
+                    assistant_msg["content"] = " ".join(text_parts) if text_parts else None
+                    openai_messages.append(assistant_msg)
+                    continue
+            elif role == "user" and isinstance(content, list):
+                is_tool_result = any(
+                    getattr(b, "type", None) == "tool_result" for b in content
+                )
+                if is_tool_result:
+                    for block in content:
+                        if getattr(block, "type", None) == "tool_result":
+                            openai_messages.append(
+                                {
+                                    "role": "tool",
+                                    "tool_call_id": block.tool_use_id,
+                                    "content": str(block.content),
+                                }
+                            )
+                    continue
+
             if isinstance(content, list):
                 parts: list[dict[str, Any]] = []
                 text_accum: list[str] = []
@@ -89,8 +133,10 @@ class AnthropicMessagesToOpenAIChatAdapter(BaseAPIAdapter):
                     else:
                         # Pydantic models
                         btype = getattr(block, "type", None)
-                        if btype == "text" and isinstance(
-                            getattr(block, "text", None), str
+                        if (
+                            btype == "text"
+                            and hasattr(block, "text")
+                            and isinstance(getattr(block, "text", None), str)
                         ):
                             text_accum.append(block.text or "")
                         elif btype == "image":
@@ -225,10 +271,91 @@ class AnthropicMessagesToOpenAIChatAdapter(BaseAPIAdapter):
     def adapt_stream(
         self, stream: AsyncIterator[dict[str, Any]]
     ) -> AsyncGenerator[dict[str, Any], None]:
-        raise NotImplementedError
+        async def generator() -> AsyncGenerator[dict[str, Any], None]:
+            model_id = ""
+            finish_reason = "stop"
+            usage_prompt = 0
+            usage_completion = 0
+            # Emit chunks for text deltas; create final finish chunk on message_stop
+            async for evt in stream:
+                if not isinstance(evt, dict):
+                    continue
+                etype = evt.get("type")
+                if etype == "message_start":
+                    model_id = (evt.get("message") or {}).get("model", "")
+                elif etype == "content_block_delta":
+                    delta = evt.get("delta") or {}
+                    text = delta.get("text") if isinstance(delta, dict) else None
+                    if isinstance(text, str) and text:
+                        yield {
+                            "id": "chatcmpl-stream",
+                            "object": "chat.completion.chunk",
+                            "created": 0,
+                            "model": model_id,
+                            "choices": [
+                                {
+                                    "index": 0,
+                                    "delta": {"role": "assistant", "content": text},
+                                    "finish_reason": None,
+                                }
+                            ],
+                        }
+                elif etype == "message_delta":
+                    delta = evt.get("delta") or {}
+                    stop_reason = (
+                        delta.get("stop_reason") if isinstance(delta, dict) else None
+                    )
+                    if stop_reason:
+                        finish_reason = ANTHROPIC_TO_OPENAI_FINISH_REASON.get(
+                            stop_reason, "stop"
+                        )
+                    usage = evt.get("usage") or {}
+                    usage_prompt = int(usage.get("input_tokens") or 0)
+                    usage_completion = int(usage.get("output_tokens") or 0)
+                elif etype == "message_stop":
+                    final = {
+                        "id": "chatcmpl-stream",
+                        "object": "chat.completion.chunk",
+                        "created": 0,
+                        "model": model_id,
+                        "choices": [
+                            {
+                                "index": 0,
+                                "delta": {},
+                                "finish_reason": finish_reason,
+                            }
+                        ],
+                    }
+                    if usage_prompt or usage_completion:
+                        final["usage"] = {
+                            "prompt_tokens": usage_prompt,
+                            "completion_tokens": usage_completion,
+                            "total_tokens": usage_prompt + usage_completion,
+                        }
+                    yield final
+                    break
+
+        return generator()
 
     async def adapt_error(self, error: dict[str, Any]) -> dict[str, Any]:
-        return error
+        if error.get("type") == "error" and isinstance(error.get("error"), dict):
+            anthropic_error = error["error"]
+            return {
+                "error": {
+                    "message": anthropic_error.get("message", "Unknown error"),
+                    "type": anthropic_error.get("type", "api_error"),
+                    "param": None,
+                    "code": None,
+                }
+            }
+        return {
+            "error": {
+                "message": "Unknown or malformed Anthropic error",
+                "type": "api_error",
+                "param": None,
+                "code": None,
+            }
+        }
 
 
 # Backward-compatible alias for tests

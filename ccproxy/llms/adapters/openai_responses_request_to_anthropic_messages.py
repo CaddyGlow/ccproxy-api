@@ -4,8 +4,8 @@ from collections.abc import AsyncGenerator, AsyncIterator
 from typing import Any
 
 from ccproxy.llms.adapters.base import BaseAPIAdapter
-from ccproxy.llms.anthropic.models import CreateMessageRequest
 from ccproxy.llms.adapters.mapping import DEFAULT_MAX_TOKENS
+from ccproxy.llms.anthropic.models import CreateMessageRequest
 
 
 class OpenAIResponsesRequestToAnthropicMessagesAdapter(BaseAPIAdapter):
@@ -123,9 +123,7 @@ class OpenAIResponsesRequestToAnthropicMessagesAdapter(BaseAPIAdapter):
             ftype = fmt.get("type")
             inject: str | None = None
             if ftype == "json_object":
-                inject = (
-                    "Respond ONLY with a valid JSON object. No prose. Do not wrap in markdown."
-                )
+                inject = "Respond ONLY with a valid JSON object. No prose. Do not wrap in markdown."
             elif ftype == "json_schema":
                 schema = fmt.get("schema") or {}
                 try:
@@ -190,7 +188,10 @@ class OpenAIResponsesRequestToAnthropicMessagesAdapter(BaseAPIAdapter):
                 etype = evt.get("type")
                 if etype == "message_start":
                     msg = evt.get("message") or {}
-                    yield {"type": "response.created", "response": {"model": msg.get("model", "")}}
+                    yield {
+                        "type": "response.created",
+                        "response": {"model": msg.get("model", "")},
+                    }
                 elif etype == "content_block_start":
                     # If a tool_use block starts, emit final function_call arguments (no delta in Anthropic)
                     cb = evt.get("content_block") or {}
@@ -226,7 +227,9 @@ class OpenAIResponsesRequestToAnthropicMessagesAdapter(BaseAPIAdapter):
                         "response": {"usage": evt.get("usage") or {}},
                     }
                     delta = evt.get("delta") or {}
-                    stop_reason = delta.get("stop_reason") if isinstance(delta, dict) else None
+                    stop_reason = (
+                        delta.get("stop_reason") if isinstance(delta, dict) else None
+                    )
                     if stop_reason == "refusal":
                         yield {
                             "type": "response.refusal.done",

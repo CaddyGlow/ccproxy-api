@@ -140,6 +140,7 @@ class OpenAIResponsesToAnthropicAdapter(BaseAPIAdapter):
 
         payload = AnthropicMessageResponse(
             id=response.get("id") or "msg_1",
+            type="message",
             role="assistant",
             model=response.get("model") or "",
             content=content_blocks,  # type: ignore[arg-type]
@@ -153,12 +154,12 @@ class OpenAIResponsesToAnthropicAdapter(BaseAPIAdapter):
         self, stream: AsyncIterator[dict[str, Any]]
     ) -> AsyncGenerator[dict[str, Any], None]:
         async def generator() -> AsyncGenerator[dict[str, Any], None]:
-            # Basic text-only streaming mapping. Thinking content is skipped.
             message_started = False
             index = 0
             for_event_id = "msg_stream"
             func_args_buffer: list[str] = []
-            tool_block_emitted = False
+            reasoning_buffer: list[str] = []
+            text_block_started = False
 
             async for evt in stream:
                 etype = evt.get("type") if isinstance(evt, dict) else None
@@ -166,7 +167,6 @@ class OpenAIResponsesToAnthropicAdapter(BaseAPIAdapter):
                     etype in ("response.created", "response.in_progress")
                     and not message_started
                 ):
-                    # Emit message_start with empty content and zero usage
                     yield {
                         "type": "message_start",
                         "message": {
@@ -182,33 +182,59 @@ class OpenAIResponsesToAnthropicAdapter(BaseAPIAdapter):
                     }
                     message_started = True
                 elif etype == "response.output_text.delta":
-                    raw = evt.get("delta") or ""
-                    # Remove thinking tags and content
-                    text_no_thinking = THINKING_PATTERN.sub("", raw)
-                    if text_no_thinking:
-                        if index == 0:
+                    text = evt.get("delta") or ""
+                    if text:
+                        if not text_block_started:
                             yield {
                                 "type": "content_block_start",
-                                "index": 0,
+                                "index": index,
                                 "content_block": {"type": "text", "text": ""},
                             }
+                            text_block_started = True
                         yield {
                             "type": "content_block_delta",
-                            "index": 0,
-                            "delta": {"type": "text", "text": text_no_thinking},
+                            "index": index,
+                            "delta": {"type": "text", "text": text},
                         }
-                        index = 1
+                elif etype == "response.reasoning_summary_text.delta":
+                    delta = evt.get("delta") or ""
+                    if isinstance(delta, str):
+                        reasoning_buffer.append(delta)
+                elif etype == "response.reasoning_summary_text.done":
+                    if text_block_started:
+                        yield {"type": "content_block_stop", "index": index}
+                        text_block_started = False
+                        index += 1
+                    summary = "".join(reasoning_buffer)
+                    if summary:
+                        yield {
+                            "type": "content_block_start",
+                            "index": index,
+                            "content_block": {
+                                "type": "thinking",
+                                "thinking": summary,
+                                "signature": "",
+                            },
+                        }
+                        yield {"type": "content_block_stop", "index": index}
+                        index += 1
+                    reasoning_buffer.clear()
                 elif etype == "response.function_call_arguments.delta":
                     delta = evt.get("delta") or ""
                     if isinstance(delta, str):
                         func_args_buffer.append(delta)
                 elif etype == "response.function_call_arguments.done":
-                    # Emit a tool_use content block with parsed arguments
+                    if text_block_started:
+                        yield {"type": "content_block_stop", "index": index}
+                        text_block_started = False
+                        index += 1
                     try:
                         import json
 
                         args_str = evt.get("arguments") or "".join(func_args_buffer)
-                        args_obj = json.loads(args_str) if isinstance(args_str, str) else {}
+                        args_obj = (
+                            json.loads(args_str) if isinstance(args_str, str) else {}
+                        )
                     except Exception:
                         args_obj = {}
                     yield {
@@ -222,16 +248,15 @@ class OpenAIResponsesToAnthropicAdapter(BaseAPIAdapter):
                         },
                     }
                     yield {"type": "content_block_stop", "index": index}
-                    tool_block_emitted = True
-                    index = index + 1
+                    index += 1
+                    func_args_buffer.clear()
                 elif etype in (
                     "response.completed",
                     "response.incomplete",
                     "response.failed",
                 ):
-                    if index > 0:
-                        yield {"type": "content_block_stop", "index": 0}
-                    # Emit message_stop at end
+                    if text_block_started:
+                        yield {"type": "content_block_stop", "index": index}
                     yield {"type": "message_stop"}
                     break
 

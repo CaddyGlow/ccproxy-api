@@ -85,8 +85,11 @@ class AnthropicMessagesToOpenAIResponsesAdapter(BaseAPIAdapter):
                             ):
                                 texts.append(block.get("text") or "")
                         else:
-                            if getattr(block, "type", None) == "text" and isinstance(
-                                getattr(block, "text", None), str
+                            # Type guard for TextBlock
+                            if (
+                                getattr(block, "type", None) == "text"
+                                and hasattr(block, "text")
+                                and isinstance(getattr(block, "text", None), str)
                             ):
                                 texts.append(block.text or "")
                     if texts:
@@ -162,7 +165,9 @@ class AnthropicMessagesToOpenAIResponsesAdapter(BaseAPIAdapter):
                 thinking = getattr(block, "thinking", None) or ""
                 signature = getattr(block, "signature", None)
                 sig_attr = (
-                    f' signature="{signature}"' if isinstance(signature, str) and signature else ""
+                    f' signature="{signature}"'
+                    if isinstance(signature, str) and signature
+                    else ""
                 )
                 text_parts.append(f"<thinking{sig_attr}>{thinking}</thinking>")
             elif btype == "tool_use":
@@ -179,7 +184,9 @@ class AnthropicMessagesToOpenAIResponsesAdapter(BaseAPIAdapter):
         msg_contents: list[dict[str, Any]] = []
         if text_parts:
             msg_contents.append(
-                openai_models.OutputTextContent(type="output_text", text="".join(text_parts)).model_dump()
+                openai_models.OutputTextContent(
+                    type="output_text", text="".join(text_parts)
+                ).model_dump()
             )
         msg_contents.extend(other_contents)
 
@@ -188,9 +195,7 @@ class AnthropicMessagesToOpenAIResponsesAdapter(BaseAPIAdapter):
         input_tokens_details = openai_models.InputTokensDetails(
             cached_tokens=int(getattr(usage, "cache_read_input_tokens", 0) or 0)
         )
-        output_tokens_details = openai_models.OutputTokensDetails(
-            reasoning_tokens=0
-        )
+        output_tokens_details = openai_models.OutputTokensDetails(reasoning_tokens=0)
         resp_usage = openai_models.ResponseUsage(
             input_tokens=int(usage.input_tokens or 0),
             input_tokens_details=input_tokens_details,

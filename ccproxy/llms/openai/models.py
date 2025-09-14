@@ -13,7 +13,7 @@ The models are defined using modern Python 3.11 type hints and Pydantic V2 best 
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, RootModel
+from pydantic import BaseModel, Field, RootModel, field_validator
 
 
 # ==============================================================================
@@ -171,17 +171,30 @@ class Tool(BaseModel):
     function: FunctionDefinition
 
 
+class FunctionCall(BaseModel):
+    name: str
+    arguments: str
+
+
+class ToolCall(BaseModel):
+    id: str
+    type: Literal["function"]
+    function: FunctionCall
+
+
 class ChatMessage(BaseModel):
     """
     A message within a chat conversation.
     """
 
     role: Literal["system", "user", "assistant", "tool", "developer"]
-    content: str | list[dict[str, Any]]
+    content: str | list[dict[str, Any]] | None
     name: str | None = Field(
         None,
         description="The name of the author of this message. May contain a-z, A-Z, 0-9, and underscores, with a maximum length of 64 characters.",
     )
+    tool_calls: list[ToolCall] | None = None
+    tool_call_id: str | None = None  # For tool role messages
 
 
 class ChatCompletionRequest(BaseModel):
@@ -283,7 +296,7 @@ class StreamingChoice(BaseModel):
     index: int
     delta: DeltaMessage
     finish_reason: Literal["stop", "length", "tool_calls"] | None = None
-    logprobs: dict | None = None
+    logprobs: dict[str, Any] | None = None
 
 
 class ChatCompletionChunk(BaseModel):
@@ -322,12 +335,43 @@ class FunctionTool(BaseModel):
     function: ToolFunction
 
 
+# Valid include values for Responses API
+VALID_INCLUDE_VALUES = [
+    "web_search_call.action.sources",
+    "code_interpreter_call.outputs",
+    "computer_call_output.output.image_url",
+    "file_search_call.results",
+    "message.input_image.image_url",
+    "message.output_text.logprobs",
+    "reasoning.encrypted_content",
+]
+
+
 class ResponseRequest(BaseModel):
     model: str | None = None
     input: str | list[Any]
-    background: bool | None = None
-    conversation: str | dict[str, Any] | None = None
-    include: list[str] | None = None
+    background: bool | None = Field(
+        None, description="Whether to run the model response in the background"
+    )
+    conversation: str | dict[str, Any] | None = Field(
+        None, description="The conversation that this response belongs to"
+    )
+    include: list[str] | None = Field(
+        None,
+        description="Specify additional output data to include in the model response",
+    )
+
+    @field_validator("include")
+    @classmethod
+    def validate_include(cls, v: list[str] | None) -> list[str] | None:
+        if v is not None:
+            for item in v:
+                if item not in VALID_INCLUDE_VALUES:
+                    raise ValueError(
+                        f"Invalid include value: {item}. Valid values are: {VALID_INCLUDE_VALUES}"
+                    )
+        return v
+
     instructions: str | None = None
     max_output_tokens: int | None = None
     max_tool_calls: int | None = None
@@ -411,7 +455,7 @@ class ResponseObject(BaseModel):
     store: bool | None = None
     temperature: float | None = None
     text: dict[str, Any] | None = None
-    tool_choice: str | dict | None = None
+    tool_choice: str | dict[str, Any] | None = None
     tools: list[Any] | None = None
     top_p: float | None = None
     truncation: str | None = None

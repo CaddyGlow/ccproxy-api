@@ -4,8 +4,7 @@ from collections.abc import AsyncGenerator, AsyncIterator
 from typing import Any
 
 from ccproxy.llms.adapters.base import BaseAPIAdapter
-from ccproxy.llms.openai.models import ChatCompletionResponse
-from ccproxy.llms.openai.models import ChatCompletionChunk
+from ccproxy.llms.openai.models import ChatCompletionChunk, ChatCompletionResponse
 
 
 class OpenAIResponsesToOpenAIChatAdapter(BaseAPIAdapter):
@@ -90,14 +89,21 @@ class OpenAIResponsesToOpenAIChatAdapter(BaseAPIAdapter):
                             "choices": [
                                 {
                                     "index": 0,
-                                    "delta": {"role": "assistant", "content": delta_text},
+                                    "delta": {
+                                        "role": "assistant",
+                                        "content": delta_text,
+                                    },
                                     "finish_reason": None,
                                 }
                             ],
                         }
                         yield ChatCompletionChunk.model_validate(chunk).model_dump()
-                elif etype in ("response.completed", "response.incomplete", "response.failed"):
-                    usage_obj = ((evt.get("response") or {}).get("usage") or {})
+                elif etype in (
+                    "response.completed",
+                    "response.incomplete",
+                    "response.failed",
+                ):
+                    usage_obj = (evt.get("response") or {}).get("usage") or {}
                     # Final chunk with finish reason
                     final = {
                         "id": "chatcmpl-stream",
@@ -116,7 +122,9 @@ class OpenAIResponsesToOpenAIChatAdapter(BaseAPIAdapter):
                     if usage_obj:
                         final["usage"] = {
                             "prompt_tokens": int(usage_obj.get("input_tokens") or 0),
-                            "completion_tokens": int(usage_obj.get("output_tokens") or 0),
+                            "completion_tokens": int(
+                                usage_obj.get("output_tokens") or 0
+                            ),
                             "total_tokens": int(usage_obj.get("total_tokens") or 0),
                         }
                     yield ChatCompletionChunk.model_validate(final).model_dump()

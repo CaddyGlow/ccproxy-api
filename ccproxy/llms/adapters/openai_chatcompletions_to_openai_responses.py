@@ -73,7 +73,13 @@ class OpenAIChatToOpenAIResponsesAdapter(BaseAPIAdapter):
                 js = resp_fmt.get("json_schema") or {}
                 # Pass through name/schema/strict if provided
                 fmt = {"type": "json_schema"}
-                fmt.update({k: v for k, v in js.items() if k in {"name", "schema", "strict", "$defs", "description"}})
+                fmt.update(
+                    {
+                        k: v
+                        for k, v in js.items()
+                        if k in {"name", "schema", "strict", "$defs", "description"}
+                    }
+                )
                 payload["text"] = {"format": fmt}
 
         return ResponseRequest.model_validate(payload).model_dump()

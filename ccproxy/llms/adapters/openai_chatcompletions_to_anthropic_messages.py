@@ -5,9 +5,11 @@ from collections.abc import AsyncGenerator, AsyncIterator
 from typing import Any
 
 from ccproxy.llms.adapters.base import BaseAPIAdapter
-from ccproxy.llms.adapters.mapping import DEFAULT_MAX_TOKENS
+from ccproxy.llms.adapters.mapping import (
+    ANTHROPIC_TO_OPENAI_FINISH_REASON,
+    DEFAULT_MAX_TOKENS,
+)
 from ccproxy.llms.anthropic.models import CreateMessageRequest
-from ccproxy.llms.adapters.mapping import ANTHROPIC_TO_OPENAI_FINISH_REASON
 
 
 class OpenAIChatToAnthropicMessagesAdapter(BaseAPIAdapter):
@@ -293,7 +295,9 @@ class OpenAIChatToAnthropicMessagesAdapter(BaseAPIAdapter):
                         }
                 elif etype == "message_delta":
                     delta = evt.get("delta") or {}
-                    stop_reason = delta.get("stop_reason") if isinstance(delta, dict) else None
+                    stop_reason = (
+                        delta.get("stop_reason") if isinstance(delta, dict) else None
+                    )
                     if stop_reason:
                         finish_reason = ANTHROPIC_TO_OPENAI_FINISH_REASON.get(
                             stop_reason, "stop"
