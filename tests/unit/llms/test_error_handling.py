@@ -19,6 +19,9 @@ from ccproxy.llms.openai.models import (
     ChatCompletionRequest as OpenAIChatRequest,
 )
 from ccproxy.llms.openai.models import (
+    ChatMessage as OpenAIChatMessage,
+)
+from ccproxy.llms.openai.models import (
     ResponseRequest as OpenAIResponseRequest,
 )
 
@@ -31,7 +34,7 @@ class TestModelValidationErrors:
         with pytest.raises(ValidationError) as exc_info:
             OpenAIChatRequest(
                 model="gpt-4o",
-                messages=[{"role": "user", "content": "Hello"}],
+                messages=[OpenAIChatMessage(role="user", content="Hello")],
                 temperature=3.0,  # Invalid: should be <= 2.0
             )
 
@@ -97,19 +100,25 @@ class TestAdapterErrorHandling:
 
     @pytest.mark.asyncio
     async def test_adapter_handles_empty_request(self) -> None:
-        """Test that adapters handle empty requests gracefully."""
+        """Test that adapters raise ValidationError for empty/invalid requests."""
         from ccproxy.llms.adapters.openai_chatcompletions_to_anthropic_messages import (
             OpenAIChatToAnthropicMessagesAdapter,
         )
 
         adapter = OpenAIChatToAnthropicMessagesAdapter()
 
-        # Empty request should not crash but may have validation issues downstream
+        # Empty request should raise ValidationError for missing required fields
         empty_request: dict[str, Any] = {}
-        result = await adapter.adapt_request(empty_request)
 
-        # Should return a dict, even if not fully valid
-        assert isinstance(result, dict)
+        with pytest.raises(ValidationError) as exc_info:
+            await adapter.adapt_request(empty_request)
+
+        # Should have validation errors for missing required fields
+        errors = exc_info.value.errors()
+        assert len(errors) == 2  # model and messages are required
+        field_names = {error["loc"][0] for error in errors}
+        assert "model" in field_names
+        assert "messages" in field_names
 
     @pytest.mark.asyncio
     async def test_adapter_handles_malformed_content(self) -> None:
