@@ -58,9 +58,7 @@ async def test_openai_responses_request_to_anthropic_messages_adapt_response_del
         stop_sequence=None,
         usage=AnthropicUsage(input_tokens=1, output_tokens=2),
     )
-    out = await OpenAIResponsesRequestToAnthropicMessagesAdapter().adapt_response(
-        anth
-    )
+    out = await OpenAIResponsesRequestToAnthropicMessagesAdapter().adapt_response(anth)
     OpenAIResponseObject.model_validate(out)
 
 

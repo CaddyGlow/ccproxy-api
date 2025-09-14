@@ -390,9 +390,7 @@ async def test_openai_responses_request_to_anthropic_messages_text_format_inject
         },
     )
 
-    out = await OpenAIResponsesRequestToAnthropicMessagesAdapter().adapt_request(
-        req
-    )
+    out = await OpenAIResponsesRequestToAnthropicMessagesAdapter().adapt_request(req)
     anth = AnthropicCreateMessageRequest.model_validate(out)
     assert isinstance(anth.system, str)
     assert (
@@ -419,9 +417,7 @@ async def test_openai_responses_request_instructions_to_system_passthrough():
         instructions="You are helpful",
     )
 
-    out = await OpenAIResponsesRequestToAnthropicMessagesAdapter().adapt_request(
-        req
-    )
+    out = await OpenAIResponsesRequestToAnthropicMessagesAdapter().adapt_request(req)
     anth = AnthropicCreateMessageRequest.model_validate(out)
     assert anth.system == "You are helpful"
 
@@ -444,9 +440,7 @@ async def test_openai_responses_request_to_anthropic_messages_text_format_json_o
         text={"format": {"type": "json_object"}},
     )
 
-    out = await OpenAIResponsesRequestToAnthropicMessagesAdapter().adapt_request(
-        req
-    )
+    out = await OpenAIResponsesRequestToAnthropicMessagesAdapter().adapt_request(req)
     anth = AnthropicCreateMessageRequest.model_validate(out)
     assert isinstance(anth.system, str)
     assert "Respond ONLY with a valid JSON object" in anth.system
@@ -464,9 +458,7 @@ async def test_openai_responses_request_reasoning_to_anthropic_thinking():
         reasoning={"effort": "medium"},
         max_output_tokens=3000,
     )
-    out = await OpenAIResponsesRequestToAnthropicMessagesAdapter().adapt_request(
-        req
-    )
+    out = await OpenAIResponsesRequestToAnthropicMessagesAdapter().adapt_request(req)
     anth = AnthropicCreateMessageRequest.model_validate(out)
     assert anth.thinking is not None
     assert getattr(anth.thinking, "budget_tokens", 0) == 5000

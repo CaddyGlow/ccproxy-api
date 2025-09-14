@@ -70,6 +70,7 @@ ANTHROPIC_TO_OPENAI_ERROR_TYPE: Final[dict[str, str]] = {
 # Error conversion helper functions
 # ---------------------------------------------------------------------------
 
+
 def convert_openai_error_to_anthropic(error: BaseModel) -> BaseModel:
     """Convert OpenAI error to Anthropic error format."""
     from ccproxy.llms.anthropic.models import (
@@ -90,7 +91,9 @@ def convert_openai_error_to_anthropic(error: BaseModel) -> BaseModel:
         openai_error_type = openai_error.type or "api_error"
 
         # Map to Anthropic error type
-        anthropic_error_type = OPENAI_TO_ANTHROPIC_ERROR_TYPE.get(openai_error_type, "api_error")
+        anthropic_error_type = OPENAI_TO_ANTHROPIC_ERROR_TYPE.get(
+            openai_error_type, "api_error"
+        )
 
         # Create appropriate Anthropic error model
         anthropic_error: ErrorType
@@ -104,7 +107,7 @@ def convert_openai_error_to_anthropic(error: BaseModel) -> BaseModel:
         return AnthropicErrorResponse(error=anthropic_error)
 
     # Handle generic BaseModel errors or malformed errors
-    if hasattr(error, 'error') and hasattr(error.error, 'message'):
+    if hasattr(error, "error") and hasattr(error.error, "message"):
         # Try to extract message from nested error structure
         error_message = error.error.message
         fallback_error: ErrorType = APIError(message=error_message)
@@ -112,12 +115,12 @@ def convert_openai_error_to_anthropic(error: BaseModel) -> BaseModel:
 
     # Fallback for unknown error formats
     error_message = "Unknown error occurred"
-    if hasattr(error, 'message'):
+    if hasattr(error, "message"):
         error_message = error.message
-    elif hasattr(error, 'model_dump'):
+    elif hasattr(error, "model_dump"):
         # Try to extract any available message from model dump
         error_dict = error.model_dump()
-        error_message = str(error_dict.get('message', error_dict))
+        error_message = str(error_dict.get("message", error_dict))
 
     generic_error: ErrorType = APIError(message=error_message)
     return AnthropicErrorResponse(error=generic_error)
@@ -136,11 +139,13 @@ def convert_anthropic_error_to_openai(error: BaseModel) -> BaseModel:
 
         # Get error type, defaulting to "api_error"
         anthropic_error_type = "api_error"
-        if hasattr(anthropic_error, 'type'):
+        if hasattr(anthropic_error, "type"):
             anthropic_error_type = anthropic_error.type
 
         # Map to OpenAI error type
-        openai_error_type = ANTHROPIC_TO_OPENAI_ERROR_TYPE.get(anthropic_error_type, "api_error")
+        openai_error_type = ANTHROPIC_TO_OPENAI_ERROR_TYPE.get(
+            anthropic_error_type, "api_error"
+        )
 
         return OpenAIErrorResponse(
             error=ErrorDetail(
@@ -152,7 +157,7 @@ def convert_anthropic_error_to_openai(error: BaseModel) -> BaseModel:
         )
 
     # Handle generic BaseModel errors or malformed errors
-    if hasattr(error, 'error') and hasattr(error.error, 'message'):
+    if hasattr(error, "error") and hasattr(error.error, "message"):
         # Try to extract message from nested error structure
         error_message = error.error.message
         return OpenAIErrorResponse(
@@ -166,13 +171,13 @@ def convert_anthropic_error_to_openai(error: BaseModel) -> BaseModel:
 
     # Fallback for unknown error formats
     error_message = "Unknown error occurred"
-    if hasattr(error, 'message'):
+    if hasattr(error, "message"):
         error_message = error.message
-    elif hasattr(error, 'model_dump'):
+    elif hasattr(error, "model_dump"):
         # Try to extract any available message from model dump
         error_dict = error.model_dump()
         if isinstance(error_dict, dict):
-            error_message = error_dict.get('message', str(error_dict))
+            error_message = error_dict.get("message", str(error_dict))
 
     return OpenAIErrorResponse(
         error=ErrorDetail(
@@ -193,27 +198,27 @@ def normalize_openai_error(error: BaseModel) -> BaseModel:
         return error
 
     # Try to create a proper ErrorResponse from malformed input
-    if hasattr(error, 'error') and hasattr(error.error, 'message'):
+    if hasattr(error, "error") and hasattr(error.error, "message"):
         # Extract details from nested error structure
         nested_error = error.error
         return ErrorResponse(
             error=ErrorDetail(
                 message=nested_error.message,
-                code=getattr(nested_error, 'code', None),
-                param=getattr(nested_error, 'param', None),
-                type=getattr(nested_error, 'type', None),
+                code=getattr(nested_error, "code", None),
+                param=getattr(nested_error, "param", None),
+                type=getattr(nested_error, "type", None),
             )
         )
 
     # Fallback for unknown error formats - create generic ErrorResponse
     error_message = "Unknown error occurred"
-    if hasattr(error, 'message'):
+    if hasattr(error, "message"):
         error_message = error.message
-    elif hasattr(error, 'model_dump'):
+    elif hasattr(error, "model_dump"):
         # Try to extract any available message from model dump
         error_dict = error.model_dump()
         if isinstance(error_dict, dict):
-            error_message = error_dict.get('message', str(error_dict))
+            error_message = error_dict.get("message", str(error_dict))
 
     return ErrorResponse(
         error=ErrorDetail(

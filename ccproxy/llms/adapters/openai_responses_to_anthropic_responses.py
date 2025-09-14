@@ -57,9 +57,7 @@ class OpenAIResponsesToAnthropicAdapter(
         adapter = OpenAIResponsesRequestToAnthropicMessagesAdapter()
         return await adapter.adapt_request(request)
 
-    async def adapt_response(
-        self, response: BaseModel
-    ) -> AnthropicMessageResponse:
+    async def adapt_response(self, response: BaseModel) -> AnthropicMessageResponse:
         """Convert ResponseObject to AnthropicMessageResponse using typed models."""
         if not isinstance(response, openai_models.ResponseObject):
             raise ValueError(f"Expected ResponseObject, got {type(response)}")

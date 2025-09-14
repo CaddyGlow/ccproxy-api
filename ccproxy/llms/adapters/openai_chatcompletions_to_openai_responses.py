@@ -64,9 +64,7 @@ class OpenAIChatToOpenAIResponsesAdapter(
     async def adapt_error(self, error: BaseModel) -> BaseModel:
         return error  # Pass through
 
-    async def _convert_request(
-        self, request: ChatCompletionRequest
-    ) -> ResponseRequest:
+    async def _convert_request(self, request: ChatCompletionRequest) -> ResponseRequest:
         """Convert ChatCompletionRequest to ResponseRequest using typed models."""
         model = request.model
         max_out = request.max_completion_tokens or request.max_tokens
