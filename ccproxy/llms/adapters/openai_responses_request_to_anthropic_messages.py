@@ -101,11 +101,230 @@ class OpenAIResponsesRequestToAnthropicMessagesAdapter(BaseAPIAdapter):
         self, request: ResponseRequest
     ) -> CreateMessageRequest:
         """Convert OpenAI ResponseRequest to Anthropic CreateMessageRequest using typed models."""
-        # For now, delegate to the existing dict-based implementation
-        # TODO: Rewrite this to work directly with typed models for better performance
-        request_dict = request.model_dump()
-        result_dict = await self._adapt_request_dict_impl(request_dict)
-        return CreateMessageRequest.model_validate(result_dict)
+        model = request.model
+        stream = request.stream or False
+        max_out = request.max_output_tokens
+
+        messages: list[dict[str, Any]] = []
+        system_parts: list[str] = []
+        input_val = request.input
+
+        if isinstance(input_val, str):
+            messages.append({"role": "user", "content": input_val})
+        elif isinstance(input_val, list):
+            for item in input_val:
+                # Handle both dict and pydantic model items
+                if isinstance(item, dict):
+                    if item.get("type") == "message":
+                        role = item.get("role", "user")
+                        content_list = item.get("content", [])
+                        text_parts: list[str] = []
+                        for part in content_list:
+                            if isinstance(part, dict) and part.get("type") in (
+                                "input_text",
+                                "text",
+                            ):
+                                t = part.get("text")
+                                if isinstance(t, str):
+                                    text_parts.append(t)
+                        content_text = " ".join(text_parts)
+
+                        if role == "system":
+                            system_parts.append(content_text)
+                        elif role in ("user", "assistant"):
+                            messages.append({"role": role, "content": content_text})
+                elif hasattr(item, "type") and item.type == "message":
+                    role = item.role if hasattr(item, "role") else "user"
+                    content_list = item.content if hasattr(item, "content") else []
+                    text_parts_2: list[str] = []
+                    # Note: This simplified logic only extracts text parts.
+                    # TODO: Handle other content types like images.
+                    for part in content_list:
+                        if hasattr(part, "type") and part.type in (
+                            "input_text",
+                            "text",
+                        ):
+                            t = part.text if hasattr(part, "text") else None
+                            if isinstance(t, str):
+                                text_parts_2.append(t)
+                    content_text = " ".join(text_parts_2)
+
+                    if role == "system":
+                        system_parts.append(content_text)
+                    elif role in ("user", "assistant"):
+                        messages.append({"role": role, "content": content_text})
+
+        payload_data: dict[str, Any] = {"model": model, "messages": messages}
+        if max_out is None:
+            max_out = DEFAULT_MAX_TOKENS
+        payload_data["max_tokens"] = int(max_out)
+        if stream:
+            payload_data["stream"] = True
+
+        # Combine system messages
+        if system_parts:
+            payload_data["system"] = "\n".join(system_parts)
+
+        # Tools mapping (function tools)
+        tools_in = request.tools or []
+        if tools_in:
+            anth_tools: list[dict[str, Any]] = []
+            for t in tools_in:
+                # Handle both dict and pydantic model tools
+                if isinstance(t, dict):
+                    if t.get("type") == "function" and isinstance(
+                        t.get("function"), dict
+                    ):
+                        fn = t["function"]
+                        anth_tools.append(
+                            {
+                                "type": "custom",
+                                "name": fn.get("name"),
+                                "description": fn.get("description"),
+                                "input_schema": fn.get("parameters") or {},
+                            }
+                        )
+                elif (
+                    hasattr(t, "type")
+                    and t.type == "function"
+                    and hasattr(t, "function")
+                    and t.function is not None
+                ):
+                    fn = t.function
+                    anth_tools.append(
+                        {
+                            "type": "custom",
+                            "name": fn.name,
+                            "description": fn.description,
+                            "input_schema": fn.parameters.model_dump()
+                            if hasattr(fn.parameters, "model_dump")
+                            else (fn.parameters or {}),
+                        }
+                    )
+            if anth_tools:
+                payload_data["tools"] = anth_tools
+
+        # tool_choice mapping (+ parallel control)
+        tool_choice = request.tool_choice
+        parallel_tool_calls = request.parallel_tool_calls
+        disable_parallel = None
+        if isinstance(parallel_tool_calls, bool):
+            disable_parallel = not parallel_tool_calls
+
+        if tool_choice is not None:
+            anth_choice: dict[str, Any] | None = None
+            if isinstance(tool_choice, str):
+                if tool_choice == "none":
+                    anth_choice = {"type": "none"}
+                elif tool_choice == "auto":
+                    anth_choice = {"type": "auto"}
+                elif tool_choice == "required":
+                    anth_choice = {"type": "any"}
+            elif isinstance(tool_choice, dict):
+                # Handle dict input like {"type": "function", "function": {"name": "calculator"}}
+                if tool_choice.get("type") == "function" and isinstance(tool_choice.get("function"), dict):
+                    anth_choice = {
+                        "type": "tool",
+                        "name": tool_choice["function"].get("name"),
+                    }
+            elif hasattr(tool_choice, "type") and hasattr(tool_choice, "function"):
+                # Pydantic model case
+                if tool_choice.type == "function" and tool_choice.function is not None:
+                    anth_choice = {
+                        "type": "tool",
+                        "name": tool_choice.function.name,
+                    }
+            if anth_choice is not None:
+                if disable_parallel is not None and anth_choice["type"] in {
+                    "auto",
+                    "any",
+                    "tool",
+                }:
+                    anth_choice["disable_parallel_tool_use"] = disable_parallel
+                payload_data["tool_choice"] = anth_choice
+
+        # Structured outputs (Responses text.format) -> inject system guidance
+        text_cfg = request.text
+        inject: str | None = None
+
+        # Handle both dict and pydantic model inputs
+        if text_cfg is not None:
+            fmt = None
+            if isinstance(text_cfg, dict):
+                fmt = text_cfg.get("format")
+            elif hasattr(text_cfg, "format"):
+                fmt = text_cfg.format
+
+            if fmt is not None:
+                # Handle format as both dict and pydantic model
+                if isinstance(fmt, dict):
+                    ftype = fmt.get("type")
+                    if ftype == "json_object":
+                        inject = "Respond ONLY with a valid JSON object. No prose. Do not wrap in markdown."
+                    elif ftype == "json_schema":
+                        schema = fmt.get("schema", {})
+                        try:
+                            import json
+
+                            schema_str = json.dumps(schema, separators=(",", ":"))
+                        except Exception:
+                            schema_str = str(schema)
+                        inject = (
+                            "Respond ONLY with JSON strictly conforming to this JSON Schema. "
+                            "No prose. No markdown. If unsure, use nulls for unknown fields.\n\n"
+                            "Schema:\n"
+                            f"{schema_str}"
+                        )
+                elif hasattr(fmt, "type"):
+                    if fmt.type == "json_object":
+                        inject = "Respond ONLY with a valid JSON object. No prose. Do not wrap in markdown."
+                    elif fmt.type == "json_schema":
+                        schema = (
+                            getattr(fmt, "schema", {}) if hasattr(fmt, "schema") else {}
+                        )
+                        try:
+                            import json
+
+                            schema_str = json.dumps(
+                                schema.model_dump()
+                                if hasattr(schema, "model_dump")
+                                else schema,
+                                separators=(",", ":"),
+                            )
+                        except Exception:
+                            schema_str = str(schema)
+                        inject = (
+                            "Respond ONLY with JSON strictly conforming to this JSON Schema. "
+                            "No prose. No markdown. If unsure, use nulls for unknown fields.\n\n"
+                            "Schema:\n"
+                            f"{schema_str}"
+                        )
+
+        if inject:
+            if payload_data.get("system"):
+                payload_data["system"] = f"{payload_data['system']}\n\n{inject}"
+            else:
+                payload_data["system"] = inject
+
+        # Instructions passthrough (map to Anthropic system)
+        instr = request.instructions
+        if isinstance(instr, str) and instr:
+            if payload_data.get("system"):
+                payload_data["system"] = f"{payload_data['system']}\n\n{instr}"
+            else:
+                payload_data["system"] = instr
+
+        # Reasoning -> Anthropic thinking mapping
+        reasoning = request.reasoning
+        thinking_cfg = self._derive_thinking_config(model or "", reasoning)
+        if thinking_cfg is not None:
+            payload_data["thinking"] = thinking_cfg
+            budget = thinking_cfg.get("budget_tokens", 0)
+            if isinstance(budget, int) and payload_data.get("max_tokens", 0) <= budget:
+                payload_data["max_tokens"] = budget + 64
+            payload_data["temperature"] = 1.0
+
+        return CreateMessageRequest.model_validate(payload_data)
 
     async def _adapt_request_dict_impl(self, request: dict[str, Any]) -> dict[str, Any]:
         """Implementation moved from adapt_request - works with dicts."""
@@ -346,9 +565,18 @@ class OpenAIResponsesRequestToAnthropicMessagesAdapter(BaseAPIAdapter):
     def _derive_thinking_config(
         self,
         model: str,
-        reasoning: dict[str, Any],
+        reasoning: Any,
     ) -> dict[str, Any] | None:
-        effort = (reasoning.get("effort") or "").strip().lower()
+        if reasoning is None:
+            reasoning = {}
+
+        # Handle both dict and pydantic model inputs
+        if isinstance(reasoning, dict):
+            effort = reasoning.get("effort", "")
+        else:
+            effort = getattr(reasoning, "effort", None) if reasoning else None
+
+        effort = effort.strip().lower() if isinstance(effort, str) else ""
         effort_budgets = {"low": 1024, "medium": 5000, "high": 10000}
         budget: int | None = effort_budgets.get(effort)
         m = (model or "").lower()

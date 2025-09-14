@@ -206,11 +206,273 @@ class OpenAIChatToAnthropicMessagesAdapter(BaseAPIAdapter):
         self, request: ChatCompletionRequest
     ) -> CreateMessageRequest:
         """Convert OpenAI ChatCompletionRequest to Anthropic CreateMessageRequest using typed models."""
-        # For now, delegate to the existing dict-based implementation
-        # TODO: Rewrite this to work directly with typed models for better performance
-        request_dict = request.model_dump()
-        result_dict = await self._adapt_request_dict_impl(request_dict)
-        return CreateMessageRequest.model_validate(result_dict)
+        model = request.model.strip() if request.model else ""
+
+        # Determine max tokens
+        max_tokens = request.max_completion_tokens
+        if max_tokens is None:
+            max_tokens = request.max_tokens
+        if max_tokens is None:
+            max_tokens = DEFAULT_MAX_TOKENS
+
+        # Extract system message if present
+        system_value: str | None = None
+        out_messages: list[dict[str, Any]] = []
+
+        for msg in request.messages or []:
+            role = msg.role
+            content = msg.content
+            tool_calls = getattr(msg, "tool_calls", None)
+
+            if role == "system":
+                if isinstance(content, str):
+                    system_value = content
+                elif isinstance(content, list):
+                    texts = [
+                        part.text
+                        for part in content
+                        if hasattr(part, "type")
+                        and part.type == "text"
+                        and hasattr(part, "text")
+                    ]
+                    system_value = " ".join([t for t in texts if t]) or None
+            elif role == "assistant":
+                if tool_calls:
+                    blocks = []
+                    if content:  # Add text content if present
+                        blocks.append({"type": "text", "text": str(content)})
+                    for tc in tool_calls:
+                        func_info = tc.function
+                        tool_name = func_info.name if func_info else None
+                        tool_args = func_info.arguments if func_info else "{}"
+                        blocks.append(
+                            {
+                                "type": "tool_use",
+                                "id": tc.id,
+                                "name": str(tool_name) if tool_name is not None else "",
+                                "input": json.loads(str(tool_args)),
+                            }
+                        )
+                    out_messages.append({"role": "assistant", "content": blocks})
+                elif content is not None:
+                    out_messages.append({"role": "assistant", "content": content})
+
+            elif role == "tool":
+                tool_call_id = getattr(msg, "tool_call_id", None)
+                out_messages.append(
+                    {
+                        "role": "user",  # Anthropic uses 'user' role for tool results
+                        "content": [
+                            {
+                                "type": "tool_result",
+                                "tool_use_id": tool_call_id,
+                                "content": str(content),
+                            }
+                        ],
+                    }
+                )
+            elif role == "user":
+                if content is None:
+                    continue
+                if isinstance(content, list):
+                    user_blocks: list[dict[str, Any]] = []
+                    text_accum: list[str] = []
+                    for part in content:
+                        # Handle both dict and Pydantic object inputs
+                        if isinstance(part, dict):
+                            ptype = part.get("type")
+                            if ptype == "text":
+                                t = part.get("text")
+                                if isinstance(t, str):
+                                    text_accum.append(t)
+                            elif ptype == "image_url":
+                                image_info = part.get("image_url")
+                                if isinstance(image_info, dict):
+                                    url = image_info.get("url")
+                                    if isinstance(url, str) and url.startswith("data:"):
+                                        try:
+                                            header, b64data = url.split(",", 1)
+                                            mediatype = header.split(";")[0].split(":", 1)[1]
+                                            user_blocks.append(
+                                                {
+                                                    "type": "image",
+                                                    "source": {
+                                                        "type": "base64",
+                                                        "media_type": str(mediatype),
+                                                        "data": str(b64data),
+                                                    },
+                                                }
+                                            )
+                                        except Exception:
+                                            pass
+                        elif hasattr(part, "type"):
+                            # Pydantic object case
+                            ptype = part.type
+                            if ptype == "text" and hasattr(part, "text"):
+                                t = part.text
+                                if isinstance(t, str):
+                                    text_accum.append(t)
+                            elif ptype == "image_url" and hasattr(part, "image_url"):
+                                url = part.image_url.url if part.image_url else None
+                                if isinstance(url, str) and url.startswith("data:"):
+                                    try:
+                                        header, b64data = url.split(",", 1)
+                                        mediatype = header.split(";")[0].split(":", 1)[1]
+                                        user_blocks.append(
+                                            {
+                                                "type": "image",
+                                                "source": {
+                                                    "type": "base64",
+                                                    "media_type": str(mediatype),
+                                                    "data": str(b64data),
+                                                },
+                                            }
+                                        )
+                                    except Exception:
+                                        pass
+                    if user_blocks:
+                        # If we have images, always use list format
+                        if text_accum:
+                            user_blocks.insert(
+                                0, {"type": "text", "text": " ".join(text_accum)}
+                            )
+                        out_messages.append({"role": "user", "content": user_blocks})
+                    elif len(text_accum) > 1:
+                        # Multiple text parts - use list format
+                        text_blocks = [{"type": "text", "text": " ".join(text_accum)}]
+                        out_messages.append({"role": "user", "content": text_blocks})
+                    elif len(text_accum) == 1:
+                        # Single text part - use string format
+                        out_messages.append({"role": "user", "content": text_accum[0]})
+                    else:
+                        # No content - use empty string
+                        out_messages.append({"role": "user", "content": ""})
+                else:
+                    out_messages.append({"role": "user", "content": content})
+
+        payload_data: dict[str, Any] = {
+            "model": model,
+            "messages": out_messages,
+            "max_tokens": max_tokens,
+        }
+
+        # Inject system guidance for response_format JSON modes
+        resp_fmt = request.response_format
+        if resp_fmt is not None:
+            inject: str | None = None
+            if resp_fmt.type == "json_object":
+                inject = (
+                    "Respond ONLY with a valid JSON object. "
+                    "Do not include any additional text, markdown, or explanation."
+                )
+            elif resp_fmt.type == "json_schema" and hasattr(resp_fmt, "json_schema"):
+                schema = resp_fmt.json_schema
+                try:
+                    if schema is not None:
+                        schema_str = json.dumps(
+                            schema.model_dump()
+                            if hasattr(schema, "model_dump")
+                            else schema,
+                            ensure_ascii=False,
+                            separators=(",", ":"),
+                        )
+                    else:
+                        schema_str = "{}"
+                except Exception:
+                    schema_str = str(schema or {})
+                inject = (
+                    "Respond ONLY with a JSON object that strictly conforms to this JSON Schema:\n"
+                    f"{schema_str}"
+                )
+            if inject:
+                if system_value:
+                    system_value = f"{system_value}\n\n{inject}"
+                else:
+                    system_value = inject
+
+        if system_value is not None:
+            payload_data["system"] = system_value
+        if request.stream is not None:
+            payload_data["stream"] = request.stream
+
+        # Tools mapping (OpenAI function tools -> Anthropic custom tools)
+        tools_in = request.tools or []
+        if tools_in:
+            anth_tools: list[dict[str, Any]] = []
+            for t in tools_in:
+                if t.type == "function" and t.function is not None:
+                    fn = t.function
+                    anth_tools.append(
+                        {
+                            "type": "custom",
+                            "name": fn.name,
+                            "description": fn.description,
+                            "input_schema": fn.parameters.model_dump()
+                            if hasattr(fn.parameters, "model_dump")
+                            else (fn.parameters or {}),
+                        }
+                    )
+            if anth_tools:
+                payload_data["tools"] = anth_tools
+
+        # tool_choice mapping
+        tool_choice = request.tool_choice
+        parallel_tool_calls = request.parallel_tool_calls
+        disable_parallel = None
+        if isinstance(parallel_tool_calls, bool):
+            disable_parallel = not parallel_tool_calls
+
+        if tool_choice is not None:
+            anth_choice: dict[str, Any] | None = None
+            if isinstance(tool_choice, str):
+                if tool_choice == "none":
+                    anth_choice = {"type": "none"}
+                elif tool_choice == "auto":
+                    anth_choice = {"type": "auto"}
+                elif tool_choice == "required":
+                    anth_choice = {"type": "any"}
+            elif isinstance(tool_choice, dict):
+                # Handle dict input like {"type": "function", "function": {"name": "search"}}
+                if tool_choice.get("type") == "function" and isinstance(tool_choice.get("function"), dict):
+                    anth_choice = {
+                        "type": "tool",
+                        "name": tool_choice["function"].get("name"),
+                    }
+            elif hasattr(tool_choice, "type") and hasattr(tool_choice, "function"):
+                # e.g., ChatCompletionNamedToolChoice pydantic model
+                if tool_choice.type == "function" and tool_choice.function is not None:
+                    anth_choice = {
+                        "type": "tool",
+                        "name": tool_choice.function.name,
+                    }
+            if anth_choice is not None:
+                if disable_parallel is not None and anth_choice["type"] in {
+                    "auto",
+                    "any",
+                    "tool",
+                }:
+                    anth_choice["disable_parallel_tool_use"] = disable_parallel
+                payload_data["tool_choice"] = anth_choice
+
+        # Thinking configuration
+        thinking_cfg = self._derive_thinking_config(model, request)
+        if thinking_cfg is not None:
+            payload_data["thinking"] = thinking_cfg
+            # Ensure token budget fits under max_tokens
+            budget = thinking_cfg.get("budget_tokens", 0)
+            if isinstance(budget, int) and max_tokens <= budget:
+                payload_data["max_tokens"] = budget + 64
+            # Temperature constraint when thinking enabled
+            payload_data["temperature"] = 1.0
+
+        # Validate against Anthropic model to ensure shape
+        return CreateMessageRequest.model_validate(payload_data)
+
+    async def adapt_request(self, request: dict[str, Any]) -> dict[str, Any]:
+        """Convert OpenAI ChatCompletionRequest dict to Anthropic CreateMessageRequest dict."""
+        typed_request = self._dict_to_request_model(request)
+        typed_result = await self.adapt_request_typed(typed_request)
+        return typed_result.model_dump()
 
     async def _adapt_request_dict_impl(self, request: dict[str, Any]) -> dict[str, Any]:
         """Implementation moved from adapt_request - works with dicts."""
@@ -412,7 +674,7 @@ class OpenAIChatToAnthropicMessagesAdapter(BaseAPIAdapter):
                 payload["tool_choice"] = anth_choice
 
         # Thinking configuration
-        thinking_cfg = self._derive_thinking_config(model, request)
+        thinking_cfg = self._derive_thinking_config_dict(model, request)
         if thinking_cfg is not None:
             payload["thinking"] = thinking_cfg
             # Ensure token budget fits under max_tokens
@@ -426,7 +688,7 @@ class OpenAIChatToAnthropicMessagesAdapter(BaseAPIAdapter):
         return CreateMessageRequest.model_validate(payload).model_dump()
 
     def _derive_thinking_config(
-        self, model: str, request: dict[str, Any]
+        self, model: str, request: ChatCompletionRequest
     ) -> dict[str, Any] | None:
         """Derive Anthropic thinking config from OpenAI fields and model name.
 
@@ -437,6 +699,34 @@ class OpenAIChatToAnthropicMessagesAdapter(BaseAPIAdapter):
         - If thinking is enabled, return {"type":"enabled","budget_tokens":N}
         - Otherwise return None
         """
+        # Explicit reasoning_effort mapping
+        effort = getattr(request, "reasoning_effort", None)
+        effort = effort.strip().lower() if isinstance(effort, str) else ""
+        effort_budgets = {"low": 1000, "medium": 5000, "high": 10000}
+
+        budget: int | None = None
+        if effort in effort_budgets:
+            budget = effort_budgets[effort]
+
+        m = model.lower()
+        # Model defaults if budget not set by effort
+        if budget is None:
+            if m.startswith("o3"):
+                budget = 10000
+            elif m.startswith("o1-mini"):
+                budget = 3000
+            elif m.startswith("o1"):
+                budget = 5000
+
+        if budget is None:
+            return None
+
+        return {"type": "enabled", "budget_tokens": budget}
+
+    def _derive_thinking_config_dict(
+        self, model: str, request: dict[str, Any]
+    ) -> dict[str, Any] | None:
+        """Derive Anthropic thinking config from OpenAI fields and model name - dict version."""
         # Explicit reasoning_effort mapping
         effort = (request.get("reasoning_effort") or "").strip().lower()
         effort_budgets = {"low": 1000, "medium": 5000, "high": 10000}

@@ -107,21 +107,179 @@ class AnthropicMessagesToOpenAIResponsesAdapter(BaseAPIAdapter):
         self, request: anthropic_models.CreateMessageRequest
     ) -> openai_models.ResponseRequest:
         """Convert Anthropic CreateMessageRequest to OpenAI ResponseRequest using typed models."""
-        # For now, delegate to the existing dict-based implementation
-        # TODO: Rewrite this to work directly with typed models for better performance
-        request_dict = request.model_dump()
-        result_dict = await self._adapt_request_dict_impl(request_dict)
-        return openai_models.ResponseRequest.model_validate(result_dict)
+        # Build OpenAI Responses request payload
+        payload_data: dict[str, Any] = {
+            "model": request.model,
+        }
+
+        if request.max_tokens is not None:
+            payload_data["max_output_tokens"] = int(request.max_tokens)
+        if request.stream:
+            payload_data["stream"] = True
+
+        # Map system to instructions if present
+        if request.system:
+            if isinstance(request.system, str):
+                payload_data["instructions"] = request.system
+            else:
+                payload_data["instructions"] = "".join(
+                    block.text for block in request.system
+                )
+
+        # Map last user message text to Responses input
+        last_user_text: str | None = None
+        for msg in reversed(request.messages):
+            if msg.role == "user":
+                if isinstance(msg.content, str):
+                    last_user_text = msg.content
+                elif isinstance(msg.content, list):
+                    texts: list[str] = []
+                    for block in msg.content:
+                        # Support raw dicts and models
+                        if isinstance(block, dict):
+                            if block.get("type") == "text" and isinstance(
+                                block.get("text"), str
+                            ):
+                                texts.append(block.get("text") or "")
+                        else:
+                            # Type guard for TextBlock
+                            if (
+                                getattr(block, "type", None) == "text"
+                                and hasattr(block, "text")
+                                and isinstance(getattr(block, "text", None), str)
+                            ):
+                                texts.append(block.text or "")
+                    if texts:
+                        last_user_text = " ".join(texts)
+                break
+
+        if last_user_text:
+            payload_data["input"] = [
+                {
+                    "type": "message",
+                    "role": "user",
+                    "content": [
+                        {"type": "input_text", "text": last_user_text},
+                    ],
+                }
+            ]
+
+        # Tools mapping (custom tools -> function tools)
+        if request.tools:
+            tools: list[dict[str, Any]] = []
+            for tool in request.tools:
+                if isinstance(tool, anthropic_models.Tool):
+                    tools.append(
+                        {
+                            "type": "function",
+                            "function": {
+                                "name": tool.name,
+                                "description": tool.description,
+                                "parameters": tool.input_schema,
+                            },
+                        }
+                    )
+            if tools:
+                payload_data["tools"] = tools
+
+        # tool_choice mapping (+ parallel control)
+        tc = request.tool_choice
+        if tc is not None:
+            tc_type = getattr(tc, "type", None)
+            if tc_type == "none":
+                payload_data["tool_choice"] = "none"
+            elif tc_type == "auto":
+                payload_data["tool_choice"] = "auto"
+            elif tc_type == "any":
+                payload_data["tool_choice"] = "required"
+            elif tc_type == "tool":
+                name = getattr(tc, "name", None)
+                if name:
+                    payload_data["tool_choice"] = {
+                        "type": "function",
+                        "function": {"name": name},
+                    }
+            disable_parallel = getattr(tc, "disable_parallel_tool_use", None)
+            if isinstance(disable_parallel, bool):
+                payload_data["parallel_tool_calls"] = not disable_parallel
+
+        # Validate
+        return openai_models.ResponseRequest.model_validate(payload_data)
 
     async def _convert_response_typed(
         self, response: anthropic_models.MessageResponse
     ) -> openai_models.ResponseObject:
         """Convert Anthropic MessageResponse to OpenAI ResponseObject using typed models."""
-        # For now, delegate to the existing dict-based implementation
-        # TODO: Rewrite this to work directly with typed models for better performance
-        response_dict = response.model_dump()
-        result_dict = await self._adapt_response_dict_impl(response_dict)
-        return openai_models.ResponseObject.model_validate(result_dict)
+        # Aggregate thinking blocks (serialized) and text blocks into a single
+        # OutputTextContent item, and include tool_use blocks as-is
+        text_parts: list[str] = []
+        other_contents: list[dict[str, Any]] = []
+        for block in response.content:
+            btype = getattr(block, "type", None)
+            if btype == "text":
+                text_parts.append(getattr(block, "text", ""))
+            elif btype == "thinking":
+                thinking = getattr(block, "thinking", None) or ""
+                signature = getattr(block, "signature", None)
+                sig_attr = (
+                    f' signature="{signature}"'
+                    if isinstance(signature, str) and signature
+                    else ""
+                )
+                text_parts.append(f"<thinking{sig_attr}>{thinking}</thinking>")
+            elif btype == "tool_use":
+                other_contents.append(
+                    {
+                        "type": "tool_use",
+                        "id": getattr(block, "id", "tool_1"),
+                        "name": getattr(block, "name", "function"),
+                        # Prefer `input` -> `arguments` for Responses format
+                        "arguments": getattr(block, "input", {}) or {},
+                    }
+                )
+
+        msg_contents: list[dict[str, Any]] = []
+        if text_parts:
+            msg_contents.append(
+                openai_models.OutputTextContent(
+                    type="output_text", text="".join(text_parts)
+                ).model_dump()
+            )
+        msg_contents.extend(other_contents)
+
+        # Usage mapping
+        usage = response.usage
+        input_tokens_details = openai_models.InputTokensDetails(
+            cached_tokens=int(getattr(usage, "cache_read_input_tokens", 0) or 0)
+        )
+        output_tokens_details = openai_models.OutputTokensDetails(reasoning_tokens=0)
+        resp_usage = openai_models.ResponseUsage(
+            input_tokens=int(usage.input_tokens or 0),
+            input_tokens_details=input_tokens_details,
+            output_tokens=int(usage.output_tokens or 0),
+            output_tokens_details=output_tokens_details,
+            total_tokens=int((usage.input_tokens or 0) + (usage.output_tokens or 0)),
+        )
+
+        response_object = openai_models.ResponseObject(
+            id=response.id,
+            object="response",
+            created_at=0,
+            status="completed",
+            model=response.model,
+            output=[
+                openai_models.MessageOutput(
+                    type="message",
+                    id=response.id,
+                    status="completed",
+                    role="assistant",
+                    content=msg_contents,  # type: ignore[arg-type]
+                )
+            ],
+            parallel_tool_calls=False,
+            usage=resp_usage,
+        )
+        return response_object
 
     async def _adapt_request_dict_impl(self, request: dict[str, Any]) -> dict[str, Any]:
         """Implementation moved from adapt_request - works with dicts."""

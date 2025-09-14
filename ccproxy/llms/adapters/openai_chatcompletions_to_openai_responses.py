@@ -55,9 +55,7 @@ class OpenAIChatToOpenAIResponsesAdapter(BaseAPIAdapter):
     async def adapt_request_typed(self, request: BaseModel) -> BaseModel:
         if not isinstance(request, ChatCompletionRequest):
             raise ValueError(f"Expected ChatCompletionRequest, got {type(request)}")
-        request_dict = request.model_dump()
-        result_dict = await self._adapt_request_dict_impl(request_dict)
-        return ResponseRequest.model_validate(result_dict)
+        return await self._convert_request_typed(request)
 
     async def adapt_response_typed(self, response: BaseModel) -> BaseModel:
         # Delegate to Responses -> Chat adapter for converting results
@@ -81,25 +79,37 @@ class OpenAIChatToOpenAIResponsesAdapter(BaseAPIAdapter):
         return error  # Pass through
 
     async def _adapt_request_dict_impl(self, request: dict[str, Any]) -> dict[str, Any]:
-        """Implementation moved from adapt_request."""
-        model = request.get("model")
-        max_out = request.get("max_completion_tokens") or request.get("max_tokens")
+        """Implementation moved from adapt_request - kept for compatibility."""
+        typed_request = ChatCompletionRequest.model_validate(request)
+        typed_result = await self._convert_request_typed(typed_request)
+        return typed_result.model_dump()
+
+    async def _convert_request_typed(
+        self, request: ChatCompletionRequest
+    ) -> ResponseRequest:
+        """Convert ChatCompletionRequest to ResponseRequest using typed models."""
+        model = request.model
+        max_out = request.max_completion_tokens or request.max_tokens
 
         # Find the last user message
         user_text: str | None = None
-        for msg in reversed(request.get("messages", []) or []):
-            if msg.get("role") == "user":
-                content = msg.get("content")
+        for msg in reversed(request.messages or []):
+            if msg.role == "user":
+                content = msg.content
                 if isinstance(content, list):
                     texts = [
-                        part.get("text") for part in content if isinstance(part, dict)
+                        part.text
+                        for part in content
+                        if hasattr(part, "type")
+                        and part.type == "text"
+                        and hasattr(part, "text")
                     ]
                     user_text = " ".join([t for t in texts if t])
                 else:
                     user_text = content
                 break
 
-        input_msg = None
+        input_data = []
         if user_text:
             input_msg = {
                 "type": "message",
@@ -111,40 +121,47 @@ class OpenAIChatToOpenAIResponsesAdapter(BaseAPIAdapter):
                     }
                 ],
             }
+            input_data = [input_msg]
 
-        payload: dict[str, Any] = {
+        payload_data: dict[str, Any] = {
             "model": model,
         }
         if max_out is not None:
-            payload["max_output_tokens"] = int(max_out)
-        if input_msg:
-            payload["input"] = [input_msg]
+            payload_data["max_output_tokens"] = int(max_out)
+        if input_data:
+            payload_data["input"] = input_data
 
         # Structured outputs: map Chat response_format to Responses text.format
-        resp_fmt = request.get("response_format")
-        if isinstance(resp_fmt, dict):
-            rftype = resp_fmt.get("type")
-            if rftype == "text":
-                payload["text"] = {"format": {"type": "text"}}
-            elif rftype == "json_object":
-                payload["text"] = {"format": {"type": "json_object"}}
-            elif rftype == "json_schema":
-                js = resp_fmt.get("json_schema") or {}
+        resp_fmt = request.response_format
+        if resp_fmt is not None:
+            if resp_fmt.type == "text":
+                payload_data["text"] = {"format": {"type": "text"}}
+            elif resp_fmt.type == "json_object":
+                payload_data["text"] = {"format": {"type": "json_object"}}
+            elif resp_fmt.type == "json_schema" and hasattr(resp_fmt, "json_schema"):
+                js = resp_fmt.json_schema
                 # Pass through name/schema/strict if provided
                 fmt = {"type": "json_schema"}
-                fmt.update(
-                    {
-                        k: v
-                        for k, v in js.items()
-                        if k in {"name", "schema", "strict", "$defs", "description"}
-                    }
-                )
-                payload["text"] = {"format": fmt}
+                if js is not None:
+                    js_dict = js.model_dump() if hasattr(js, "model_dump") else js
+                    if js_dict is not None:
+                        fmt.update(
+                            {
+                                k: v
+                                for k, v in js_dict.items()
+                                if k
+                                in {"name", "schema", "strict", "$defs", "description"}
+                            }
+                        )
+                payload_data["text"] = {"format": fmt}
 
-        if "tools" in request:
-            payload["tools"] = request["tools"]
+        if request.tools:
+            payload_data["tools"] = [
+                tool.model_dump() if hasattr(tool, "model_dump") else tool
+                for tool in request.tools
+            ]
 
-        return ResponseRequest.model_validate(payload).model_dump()
+        return ResponseRequest.model_validate(payload_data)
 
     # Override to delegate to typed implementation
     async def adapt_request(self, request: dict[str, Any]) -> dict[str, Any]:
