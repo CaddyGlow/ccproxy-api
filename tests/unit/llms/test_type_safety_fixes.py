@@ -10,6 +10,12 @@ import pytest
 from pydantic import ValidationError
 
 from ccproxy.llms.anthropic.models import (
+    CreateMessageRequest,
+    ImageBlock,
+    ImageSource,
+    Message,
+)
+from ccproxy.llms.anthropic.models import (
     MessageResponse as AnthropicMessageResponse,
 )
 from ccproxy.llms.anthropic.models import (
@@ -163,24 +169,27 @@ class TestAdapterTypeSafety:
             AnthropicMessagesToOpenAIResponsesAdapter,
         )
 
-        # Create a simple Anthropic request with text content
-        anthropic_request = {
-            "model": "claude-sonnet",
-            "messages": [
-                {"role": "user", "content": [{"type": "text", "text": "Hello world"}]}
+        # Create a simple Anthropic request with text content using Pydantic models
+        anthropic_request = CreateMessageRequest(
+            model="claude-sonnet",
+            messages=[
+                Message(
+                    role="user",
+                    content=[AnthropicTextBlock(type="text", text="Hello world")],
+                )
             ],
-            "max_tokens": 100,
-        }
+            max_tokens=100,
+        )
 
         adapter = AnthropicMessagesToOpenAIResponsesAdapter()
 
         # This should not raise union-attr errors anymore
-        result = await adapter.adapt_request(anthropic_request)
+        result = await adapter.adapt_request_typed(anthropic_request)
 
         # Verify the conversion worked
-        assert "input" in result
-        assert isinstance(result["input"], list)
-        assert result["input"][0]["type"] == "message"
+        assert hasattr(result, "input")
+        assert isinstance(result.input, list)
+        assert result.input[0]["type"] == "message"
 
     @pytest.mark.asyncio
     async def test_adapter_handles_mixed_content_blocks_safely(self) -> None:
@@ -189,41 +198,41 @@ class TestAdapterTypeSafety:
             AnthropicMessagesToOpenAIChatAdapter,
         )
 
-        # Create request with mixed content types (text + image)
-        anthropic_request = {
-            "model": "claude-sonnet",
-            "messages": [
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": "What's in this image?"},
-                        {
-                            "type": "image",
-                            "source": {
-                                "type": "base64",
-                                "media_type": "image/png",
-                                "data": "iVBORw0KGgo...",
-                            },
-                        },
+        # Create request with mixed content types (text + image) using Pydantic models
+        anthropic_request = CreateMessageRequest(
+            model="claude-sonnet",
+            messages=[
+                Message(
+                    role="user",
+                    content=[
+                        AnthropicTextBlock(type="text", text="What's in this image?"),
+                        ImageBlock(
+                            type="image",
+                            source=ImageSource(
+                                type="base64",
+                                media_type="image/png",
+                                data="iVBORw0KGgo...",
+                            ),
+                        ),
                     ],
-                }
+                )
             ],
-            "max_tokens": 100,
-        }
+            max_tokens=100,
+        )
 
         adapter = AnthropicMessagesToOpenAIChatAdapter()
 
         # This should handle the mixed content types safely
-        result = await adapter.adapt_request(anthropic_request)
+        result = await adapter.adapt_request_typed(anthropic_request)
 
         # Verify conversion worked
-        assert "messages" in result
-        assert len(result["messages"]) == 1
-        user_message = result["messages"][0]
-        assert user_message["role"] == "user"
-        assert isinstance(user_message["content"], list)
+        assert hasattr(result, "messages")
+        assert len(result.messages) == 1
+        user_message = result.messages[0]
+        assert user_message.role == "user"
+        assert isinstance(user_message.content, list)
 
         # Should have both text and image content (accepting either image_url or image)
-        content_types = {item["type"] for item in user_message["content"]}
+        content_types = {item["type"] for item in user_message.content}
         assert "text" in content_types
         assert ("image_url" in content_types) or ("image" in content_types)

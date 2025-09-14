@@ -61,7 +61,7 @@ async def test_openai_chat_to_anthropic_messages_adapter_adapt_response_delegate
         stop_sequence=None,
         usage=AnthropicUsage(input_tokens=1, output_tokens=2),
     )
-    out = await OpenAIChatToAnthropicMessagesAdapter().adapt_response(anth.model_dump())
+    out = await OpenAIChatToAnthropicMessagesAdapter().adapt_response_typed(anth)
     chat = OpenAIChatResponse.model_validate(out)
     assert chat.choices[0].message.content == "Hello"
 
@@ -82,24 +82,24 @@ async def test_anthropic_to_openai_chat_stream_mapping_minimal() -> None:
         usage=AnthropicUsage(input_tokens=0, output_tokens=0),
     )
     events = [
-        AnthropicMessageStartEvent(type="message_start", message=msg).model_dump(),
+        AnthropicMessageStartEvent(type="message_start", message=msg),
         AnthropicContentBlockStartEvent(
             type="content_block_start",
             index=0,
             content_block=AnthropicTextBlock(type="text", text=""),
-        ).model_dump(),
+        ),
         AnthropicContentBlockDeltaEvent(
             type="content_block_delta",
             index=0,
             delta=AnthropicTextBlock(type="text", text="Hello"),
-        ).model_dump(),
-        AnthropicContentBlockStopEvent(type="content_block_stop", index=0).model_dump(),
+        ),
+        AnthropicContentBlockStopEvent(type="content_block_stop", index=0),
         AnthropicMessageDeltaEvent(
             type="message_delta",
             delta=AnthropicMessageDelta(stop_reason="end_turn"),
             usage=AnthropicUsage(input_tokens=1, output_tokens=2),
-        ).model_dump(),
-        AnthropicMessageStopEvent(type="message_stop").model_dump(),
+        ),
+        AnthropicMessageStopEvent(type="message_stop"),
     ]
 
     async def gen():
@@ -108,10 +108,22 @@ async def test_anthropic_to_openai_chat_stream_mapping_minimal() -> None:
 
     adapter = OpenAIChatToAnthropicMessagesAdapter()
     chunks = []
-    async for c in adapter.adapt_stream(gen()):
-        chunks.append(OpenAIChatChunk.model_validate(c))
-    assert chunks[0].choices[0].delta.content == "Hello"
-    assert chunks[-1].choices[0].finish_reason == "stop"
+    async for c in adapter.adapt_stream_typed(gen()):
+        chunks.append(c)  # c is already a ChatCompletionChunk, no need to validate
+
+    # Filter out chunks that have content
+    content_chunks = [chunk for chunk in chunks if chunk.choices[0].delta.content]
+    assert len(content_chunks) > 0, (
+        f"No content chunks found in {len(chunks)} total chunks"
+    )
+    assert content_chunks[0].choices[0].delta.content == "Hello"
+
+    # Find finish reason chunk
+    finish_chunks = [chunk for chunk in chunks if chunk.choices[0].finish_reason]
+    assert len(finish_chunks) > 0, (
+        f"No finish reason chunks found in {len(chunks)} total chunks"
+    )
+    assert finish_chunks[-1].choices[0].finish_reason == "stop"
 
 
 # Tests consolidated from test_llms_adapters_mapping.py
@@ -133,7 +145,7 @@ async def test_openai_chat_to_anthropic_request_basic() -> None:
     )
 
     adapter = OpenAIChatToAnthropicMessagesAdapter()
-    out = await adapter.adapt_request(req.model_dump())
+    out = await adapter.adapt_request_typed(req)
 
     # Validates as Anthropic create message request
     anth_req = AnthropicCreateMessageRequest.model_validate(out)
@@ -158,7 +170,7 @@ async def test_thinking_request_defaults_and_effort_mapping() -> None:
         messages=[{"role": "user", "content": "Hello"}],
     )
     adapter = OpenAIChatToAnthropicMessagesAdapter()
-    out1 = await adapter.adapt_request(req1.model_dump())
+    out1 = await adapter.adapt_request_typed(req1)
     anth_req1 = AnthropicCreateMessageRequest.model_validate(out1)
     assert anth_req1.thinking is not None
     assert anth_req1.thinking.type == "enabled"
@@ -173,7 +185,7 @@ async def test_thinking_request_defaults_and_effort_mapping() -> None:
         reasoning_effort="medium",
         max_completion_tokens=3000,
     )
-    out2 = await adapter.adapt_request(req2.model_dump())
+    out2 = await adapter.adapt_request_typed(req2)
     anth_req2 = AnthropicCreateMessageRequest.model_validate(out2)
     assert anth_req2.thinking is not None
     assert getattr(anth_req2.thinking, "budget_tokens", 0) == 5000
@@ -201,7 +213,7 @@ async def test_openai_chat_to_anthropic_images_data_url() -> None:
         ],
     )
     adapter = OpenAIChatToAnthropicMessagesAdapter()
-    out = await adapter.adapt_request(req.model_dump())
+    out = await adapter.adapt_request_typed(req)
     anth = AnthropicCreateMessageRequest.model_validate(out)
     assert isinstance(anth.messages[0].content, list)
     # Expect first text block then an image block with base64 source
@@ -237,7 +249,7 @@ async def test_openai_chat_tools_and_tool_choice_mapping() -> None:
     )
 
     adapter = OpenAIChatToAnthropicMessagesAdapter()
-    out = await adapter.adapt_request(req.model_dump())
+    out = await adapter.adapt_request_typed(req)
     anth = AnthropicCreateMessageRequest.model_validate(out)
 
     assert anth.tools is not None and len(anth.tools) == 1
@@ -265,7 +277,7 @@ async def test_response_format_json_object_injects_system() -> None:
         messages=[{"role": "user", "content": "hi"}],
         response_format={"type": "json_object"},
     )
-    out = await OpenAIChatToAnthropicMessagesAdapter().adapt_request(req.model_dump())
+    out = await OpenAIChatToAnthropicMessagesAdapter().adapt_request_typed(req)
     anth = AnthropicCreateMessageRequest.model_validate(out)
     assert isinstance(anth.system, str)
     assert "Respond ONLY with a valid JSON object" in anth.system
@@ -283,7 +295,7 @@ async def test_response_format_json_schema_injects_system_with_schema() -> None:
         messages=[{"role": "user", "content": "hi"}],
         response_format={"type": "json_schema", "json_schema": schema},
     )
-    out = await OpenAIChatToAnthropicMessagesAdapter().adapt_request(req.model_dump())
+    out = await OpenAIChatToAnthropicMessagesAdapter().adapt_request_typed(req)
     anth = AnthropicCreateMessageRequest.model_validate(out)
     assert isinstance(anth.system, str)
     assert "strictly conforms to this JSON Schema" in anth.system
@@ -311,7 +323,7 @@ async def test_reasoning_effort_variations() -> None:
         max_completion_tokens=2000,
     )
     try:
-        out_low = await adapter.adapt_request(req_low.model_dump())
+        out_low = await adapter.adapt_request_typed(req_low)
         anth_low = AnthropicCreateMessageRequest.model_validate(out_low)
         # This should pass if validation allows 1000, otherwise it's expected to fail
         assert anth_low.thinking is not None
@@ -328,7 +340,7 @@ async def test_reasoning_effort_variations() -> None:
         reasoning_effort="high",
         max_completion_tokens=1000,
     )
-    out_high = await adapter.adapt_request(req_high.model_dump())
+    out_high = await adapter.adapt_request_typed(req_high)
     anth_high = AnthropicCreateMessageRequest.model_validate(out_high)
     assert anth_high.thinking is not None
     assert getattr(anth_high.thinking, "budget_tokens", 0) == 10000
@@ -361,7 +373,7 @@ async def test_response_format_json_schema_strict_mode() -> None:
         messages=[{"role": "user", "content": "test"}],
         response_format={"type": "json_schema", "json_schema": schema_strict},
     )
-    out_strict = await adapter.adapt_request(req_strict.model_dump())
+    out_strict = await adapter.adapt_request_typed(req_strict)
     anth_strict = AnthropicCreateMessageRequest.model_validate(out_strict)
     assert "strict" in anth_strict.system.lower()
     assert "additionalProperties" in anth_strict.system
@@ -380,7 +392,7 @@ async def test_response_format_json_schema_strict_mode() -> None:
         messages=[{"role": "user", "content": "test"}],
         response_format={"type": "json_schema", "json_schema": schema_non_strict},
     )
-    out_non_strict = await adapter.adapt_request(req_non_strict.model_dump())
+    out_non_strict = await adapter.adapt_request_typed(req_non_strict)
     anth_non_strict = AnthropicCreateMessageRequest.model_validate(out_non_strict)
     assert '"data":' in anth_non_strict.system
     assert isinstance(anth_non_strict.system, str)
@@ -426,7 +438,7 @@ async def test_tool_choice_edge_cases() -> None:
         tools=base_tools,
         tool_choice="none",
     )
-    out_none = await adapter.adapt_request(req_none.model_dump())
+    out_none = await adapter.adapt_request_typed(req_none)
     anth_none = AnthropicCreateMessageRequest.model_validate(out_none)
     assert anth_none.tool_choice is not None
     assert anth_none.tool_choice.type == "none"
@@ -438,7 +450,7 @@ async def test_tool_choice_edge_cases() -> None:
         tools=base_tools,
         tool_choice="required",
     )
-    out_required = await adapter.adapt_request(req_required.model_dump())
+    out_required = await adapter.adapt_request_typed(req_required)
     anth_required = AnthropicCreateMessageRequest.model_validate(out_required)
     assert anth_required.tool_choice is not None
     assert anth_required.tool_choice.type == "any"
@@ -451,9 +463,7 @@ async def test_tool_choice_edge_cases() -> None:
         tool_choice={"type": "function", "function": {"name": "calculator"}},
         parallel_tool_calls=True,
     )
-    out_specific_parallel = await adapter.adapt_request(
-        req_specific_parallel.model_dump()
-    )
+    out_specific_parallel = await adapter.adapt_request_typed(req_specific_parallel)
     anth_specific_parallel = AnthropicCreateMessageRequest.model_validate(
         out_specific_parallel
     )
@@ -495,7 +505,7 @@ async def test_message_content_variations() -> None:
             },
         ],
     )
-    out_mixed = await adapter.adapt_request(req_mixed.model_dump())
+    out_mixed = await adapter.adapt_request_typed(req_mixed)
     anth_mixed = AnthropicCreateMessageRequest.model_validate(out_mixed)
 
     assert anth_mixed.system == "You are helpful"
@@ -533,7 +543,7 @@ async def test_message_content_variations() -> None:
             {"role": "user", "content": "Now calculate 3+3"},
         ],
     )
-    out_with_history = await adapter.adapt_request(req_with_history.model_dump())
+    out_with_history = await adapter.adapt_request_typed(req_with_history)
     anth_with_history = AnthropicCreateMessageRequest.model_validate(out_with_history)
 
     # Should have user -> assistant -> user -> user pattern with tool use/result blocks
@@ -564,7 +574,7 @@ async def test_system_message_combinations() -> None:
         ],
         response_format={"type": "json_object"},
     )
-    out_system_format = await adapter.adapt_request(req_system_format.model_dump())
+    out_system_format = await adapter.adapt_request_typed(req_system_format)
     anth_system_format = AnthropicCreateMessageRequest.model_validate(out_system_format)
 
     # System should contain both original system message and JSON format instruction
@@ -577,7 +587,7 @@ async def test_system_message_combinations() -> None:
         messages=[{"role": "user", "content": "test"}],
         response_format={"type": "json_object"},
     )
-    out_no_system = await adapter.adapt_request(req_no_system.model_dump())
+    out_no_system = await adapter.adapt_request_typed(req_no_system)
     anth_no_system = AnthropicCreateMessageRequest.model_validate(out_no_system)
 
     # System should only contain JSON format instruction

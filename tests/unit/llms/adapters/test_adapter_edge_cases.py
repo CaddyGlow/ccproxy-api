@@ -52,7 +52,7 @@ class TestMalformedContentBlocks:
                 }
             ],
         )
-        out_bad_image = await adapter.adapt_request(req_bad_image.model_dump())
+        out_bad_image = await adapter.adapt_request_typed(req_bad_image)
         anth_bad_image = AnthropicCreateMessageRequest.model_validate(out_bad_image)
         # Should still process the text part
         content = anth_bad_image.messages[0].content
@@ -138,7 +138,7 @@ class TestEmptyMessageLists:
             model="gpt-4o",
             messages=[],  # Empty messages
         )
-        out_empty = await adapter.adapt_request(req_empty.model_dump())
+        out_empty = await adapter.adapt_request_typed(req_empty)
         anth_empty = AnthropicCreateMessageRequest.model_validate(out_empty)
         assert anth_empty.model == "gpt-4o"
         assert len(anth_empty.messages) == 0
@@ -160,7 +160,7 @@ class TestEmptyMessageLists:
                 {"role": "assistant", "content": ""},
             ],
         )
-        out_none = await adapter.adapt_request(req_none_content.model_dump())
+        out_none = await adapter.adapt_request_typed(req_none_content)
         anth_none = AnthropicCreateMessageRequest.model_validate(out_none)
         # Should filter out messages with None content
         assert len(anth_none.messages) == 1
@@ -173,7 +173,7 @@ class TestEmptyMessageLists:
                 {"role": "user", "content": []},
             ],
         )
-        out_empty_array = await adapter.adapt_request(req_empty_array.model_dump())
+        out_empty_array = await adapter.adapt_request_typed(req_empty_array)
         anth_empty_array = AnthropicCreateMessageRequest.model_validate(out_empty_array)
         assert anth_empty_array.model == "gpt-4o"
 
@@ -191,7 +191,7 @@ class TestEmptyMessageLists:
             model="gpt-4o",
             input="",  # Empty string
         )
-        out_empty_string = await adapter.adapt_request(req_empty_string.model_dump())
+        out_empty_string = await adapter.adapt_request_typed(req_empty_string)
         anth_empty_string = AnthropicCreateMessageRequest.model_validate(
             out_empty_string
         )
@@ -222,7 +222,7 @@ class TestUnexpectedFieldValues:
             model="a" * 1000,  # Very long model name
             messages=[{"role": "user", "content": "test"}],
         )
-        out_long = await adapter.adapt_request(req_long_model.model_dump())
+        out_long = await adapter.adapt_request_typed(req_long_model)
         anth_long = AnthropicCreateMessageRequest.model_validate(out_long)
         assert anth_long.model == "a" * 1000
 
@@ -231,7 +231,7 @@ class TestUnexpectedFieldValues:
             model="model@#$%^&*()",
             messages=[{"role": "user", "content": "test"}],
         )
-        out_special = await adapter.adapt_request(req_special_model.model_dump())
+        out_special = await adapter.adapt_request_typed(req_special_model)
         anth_special = AnthropicCreateMessageRequest.model_validate(out_special)
         assert anth_special.model == "model@#$%^&*()"
 
@@ -250,7 +250,7 @@ class TestUnexpectedFieldValues:
             messages=[{"role": "user", "content": "test"}],
             max_completion_tokens=999999999,
         )
-        out_huge = await adapter.adapt_request(req_huge_tokens.model_dump())
+        out_huge = await adapter.adapt_request_typed(req_huge_tokens)
         anth_huge = AnthropicCreateMessageRequest.model_validate(out_huge)
         assert anth_huge.max_tokens == 999999999
 
@@ -260,7 +260,7 @@ class TestUnexpectedFieldValues:
             messages=[{"role": "user", "content": "test"}],
             max_completion_tokens=0,
         )
-        out_zero = await adapter.adapt_request(req_zero_tokens.model_dump())
+        out_zero = await adapter.adapt_request_typed(req_zero_tokens)
         anth_zero = AnthropicCreateMessageRequest.model_validate(out_zero)
         assert anth_zero.max_tokens == 0
 
@@ -328,7 +328,7 @@ class TestBoundaryConditions:
             model="gpt-4o",
             messages=[{"role": "user", "content": very_long_content}],
         )
-        out_long_msg = await adapter.adapt_request(req_long_msg.model_dump())
+        out_long_msg = await adapter.adapt_request_typed(req_long_msg)
         anth_long_msg = AnthropicCreateMessageRequest.model_validate(out_long_msg)
         assert anth_long_msg.messages[0].content == very_long_content
 
@@ -363,7 +363,7 @@ class TestBoundaryConditions:
             messages=[{"role": "user", "content": "Use tools"}],
             tools=many_tools,
         )
-        out_many_tools = await adapter.adapt_request(req_many_tools.model_dump())
+        out_many_tools = await adapter.adapt_request_typed(req_many_tools)
         anth_many_tools = AnthropicCreateMessageRequest.model_validate(out_many_tools)
         assert len(anth_many_tools.tools) == 100
 
@@ -395,7 +395,7 @@ class TestBoundaryConditions:
                 },
             },
         )
-        out_nested = await adapter.adapt_request(req_nested.model_dump())
+        out_nested = await adapter.adapt_request_typed(req_nested)
         anth_nested = AnthropicCreateMessageRequest.model_validate(out_nested)
         # Should handle deeply nested schema
         assert "nested" in anth_nested.system or anth_nested.system is not None
@@ -415,7 +415,7 @@ class TestBoundaryConditions:
             model="gpt-4o",
             messages=[{"role": "user", "content": unicode_content}],
         )
-        out_unicode = await adapter.adapt_request(req_unicode.model_dump())
+        out_unicode = await adapter.adapt_request_typed(req_unicode)
         anth_unicode = AnthropicCreateMessageRequest.model_validate(out_unicode)
         assert anth_unicode.messages[0].content == unicode_content
 
@@ -425,7 +425,7 @@ class TestBoundaryConditions:
             model="gpt-4o",
             messages=[{"role": "user", "content": control_content}],
         )
-        out_control = await adapter.adapt_request(req_control.model_dump())
+        out_control = await adapter.adapt_request_typed(req_control)
         anth_control = AnthropicCreateMessageRequest.model_validate(out_control)
         # Should handle control characters without crashing
         assert anth_control.model == "gpt-4o"
@@ -463,7 +463,7 @@ class TestCompatibilityEdgeCases:
             usage=AnthropicUsage(input_tokens=5, output_tokens=10),
         )
 
-        out_unsupported = await adapter.adapt_response(anthropic_resp.model_dump())
+        out_unsupported = await adapter.adapt_response_typed(anthropic_resp)
         openai_resp = OpenAIChatResponse.model_validate(out_unsupported)
 
         # Should handle the response even with unsupported content types
@@ -494,7 +494,7 @@ class TestCompatibilityEdgeCases:
             n=3,  # Multiple completions
         )
 
-        out_unsupported = await adapter.adapt_request(req_unsupported.model_dump())
+        out_unsupported = await adapter.adapt_request_typed(req_unsupported)
         anth_unsupported = AnthropicCreateMessageRequest.model_validate(out_unsupported)
 
         # Should adapt core functionality even if some parameters are ignored

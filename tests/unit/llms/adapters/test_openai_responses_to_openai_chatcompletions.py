@@ -10,7 +10,9 @@ from ccproxy.llms.openai.models import (
 
 
 @pytest.mark.asyncio
-async def test_openai_responses_to_openai_chat_adapter_adapt_request_delegates():
+async def test_openai_responses_to_openai_chat_adapter_adapt_request_delegates() -> (
+    None
+):
     from ccproxy.llms.adapters.openai_responses_to_openai_chatcompletions import (
         OpenAIResponsesToOpenAIChatAdapter,
     )
@@ -20,17 +22,15 @@ async def test_openai_responses_to_openai_chat_adapter_adapt_request_delegates()
         messages=[{"role": "user", "content": "hi"}],
         max_completion_tokens=128,
     )
-    out = await OpenAIResponsesToOpenAIChatAdapter().adapt_request(
-        chat_req.model_dump()
-    )
-    resp_req = OpenAIResponseRequest.model_validate(out)
+    out = await OpenAIResponsesToOpenAIChatAdapter().adapt_request_typed(chat_req)
+    resp_req = OpenAIResponseRequest.model_validate(out.model_dump())
     assert resp_req.model == "gpt-4o"
     assert resp_req.max_output_tokens == 128
     assert resp_req.input and resp_req.input[0]["type"] == "message"
 
 
 @pytest.mark.asyncio
-async def test_openai_responses_to_openai_chat_adapter_adapt_stream_minimal():
+async def test_openai_responses_to_openai_chat_adapter_adapt_stream_minimal() -> None:
     from ccproxy.llms.adapters.openai_responses_to_openai_chatcompletions import (
         OpenAIResponsesToOpenAIChatAdapter,
     )

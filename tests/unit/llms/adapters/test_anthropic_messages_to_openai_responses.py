@@ -70,7 +70,7 @@ async def test_anthropic_to_openai_responses_request_mapping():
     )
 
     adapter = AnthropicMessagesToOpenAIResponsesAdapter()
-    out = await adapter.adapt_request(anth_req.model_dump())
+    out = await adapter.adapt_request_typed(anth_req)
     req = OpenAIResponseRequest.model_validate(out)
 
     assert req.model == "claude-sonnet"
@@ -113,7 +113,7 @@ async def test_anthropic_to_openai_responses_response_mapping_thinking_and_tool_
     )
 
     adapter = AnthropicMessagesToOpenAIResponsesAdapter()
-    out = await adapter.adapt_response(anth_resp.model_dump())
+    out = await adapter.adapt_response_typed(anth_resp)
     resp = OpenAIResponseObject.model_validate(out)
 
     assert resp.id == "msg_abc"
@@ -157,36 +157,36 @@ async def test_anthropic_to_openai_responses_stream_mapping():
                 stop_sequence=None,
                 usage=anthropic_models.Usage(input_tokens=10, output_tokens=0),
             ),
-        ).model_dump()
+        )
         yield anthropic_models.ContentBlockDeltaEvent(
             type="content_block_delta",
             index=0,
             delta=anthropic_models.TextBlock(type="text", text="Hello"),
-        ).model_dump()
+        )
         yield anthropic_models.MessageDeltaEvent(
             type="message_delta",
             delta=anthropic_models.MessageDelta(stop_reason="refusal"),
             usage=anthropic_models.Usage(input_tokens=10, output_tokens=5),
-        ).model_dump()
-        yield anthropic_models.MessageStopEvent(type="message_stop").model_dump()
+        )
+        yield anthropic_models.MessageStopEvent(type="message_stop")
 
     adapter = AnthropicMessagesToOpenAIResponsesAdapter()
-    stream = adapter.adapt_stream(anthropic_stream())
+    stream = adapter.adapt_stream_typed(anthropic_stream())
     chunks = [chunk async for chunk in stream]
 
     assert len(chunks) == 6
 
-    assert chunks[0]["type"] == "response.created"
-    assert chunks[0]["response"]["model"] == "claude-3"
+    assert chunks[0].type == "response.created"
+    assert chunks[0].response.model == "claude-3"
 
-    assert chunks[1]["type"] == "response.output_text.delta"
-    assert "<thinking" in chunks[1]["delta"]
+    assert chunks[1].type == "response.output_text.delta"
+    assert "<thinking" in chunks[1].delta
 
-    assert chunks[2]["type"] == "response.output_text.delta"
-    assert chunks[2]["delta"] == "Hello"
+    assert chunks[2].type == "response.output_text.delta"
+    assert chunks[2].delta == "Hello"
 
-    assert chunks[3]["type"] == "response.in_progress"
+    assert chunks[3].type == "response.in_progress"
 
-    assert chunks[4]["type"] == "response.refusal.done"
+    assert chunks[4].type == "response.refusal.done"
 
-    assert chunks[5]["type"] == "response.completed"
+    assert chunks[5].type == "response.completed"

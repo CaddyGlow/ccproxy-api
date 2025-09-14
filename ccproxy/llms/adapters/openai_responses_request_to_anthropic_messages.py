@@ -110,136 +110,140 @@ class OpenAIResponsesRequestToAnthropicMessagesAdapter(
         """Convert Anthropic MessageStreamEvent stream to OpenAI Response stream events."""
         return self._convert_stream_typed(stream)
 
-    async def _convert_stream_typed(
+    def _convert_stream_typed(
         self, stream: AsyncIterator[MessageStreamEvent]
     ) -> AsyncGenerator[ResponseStreamEvent, None]:
         # This implementation is based on AnthropicMessagesToOpenAIResponsesAdapter
-        item_id = "msg_stream"
-        output_index = 0
-        content_index = 0
-        model_id = ""
-        sequence_counter = 0
 
-        async for evt in stream:
-            if not hasattr(evt, "type"):
-                continue
+        async def generator() -> AsyncGenerator[ResponseStreamEvent, None]:
+            item_id = "msg_stream"
+            output_index = 0
+            content_index = 0
+            model_id = ""
+            sequence_counter = 0
 
-            sequence_counter += 1
+            async for evt in stream:
+                if not hasattr(evt, "type"):
+                    continue
 
-            if evt.type == "message_start":
-                model_id = evt.message.model or ""
-                yield openai_models.ResponseCreatedEvent(
-                    type="response.created",
-                    sequence_number=sequence_counter,
-                    response=openai_models.ResponseObject(
-                        id=evt.message.id,
-                        object="response",
-                        created_at=0,
-                        status="in_progress",
-                        model=model_id,
-                        output=[],
-                        parallel_tool_calls=False,
-                    ),
-                )
+                sequence_counter += 1
 
-                for block in evt.message.content:
-                    if block.type == "thinking":
-                        sequence_counter += 1
-                        thinking = block.thinking or ""
-                        signature = block.signature
-                        sig_attr = f' signature="{signature}"' if signature else ""
-                        thinking_xml = f"<thinking{sig_attr}>{thinking}</thinking>"
+                if evt.type == "message_start":
+                    model_id = evt.message.model or ""
+                    yield openai_models.ResponseCreatedEvent(
+                        type="response.created",
+                        sequence_number=sequence_counter,
+                        response=openai_models.ResponseObject(
+                            id=evt.message.id,
+                            object="response",
+                            created_at=0,
+                            status="in_progress",
+                            model=model_id,
+                            output=[],
+                            parallel_tool_calls=False,
+                        ),
+                    )
+
+                    for block in evt.message.content:
+                        if block.type == "thinking":
+                            sequence_counter += 1
+                            thinking = block.thinking or ""
+                            signature = block.signature
+                            sig_attr = f' signature="{signature}"' if signature else ""
+                            thinking_xml = f"<thinking{sig_attr}>{thinking}</thinking>"
+                            yield openai_models.ResponseOutputTextDeltaEvent(
+                                type="response.output_text.delta",
+                                sequence_number=sequence_counter,
+                                item_id=item_id,
+                                output_index=output_index,
+                                content_index=content_index,
+                                delta=thinking_xml,
+                            )
+
+                elif evt.type == "content_block_start":
+                    if evt.content_block.type == "tool_use":
+                        tool_input = evt.content_block.input or {}
+                        try:
+                            import json
+
+                            args_str = json.dumps(tool_input, separators=(",", ":"))
+                        except Exception:
+                            args_str = str(tool_input)
+
+                        yield openai_models.ResponseFunctionCallArgumentsDoneEvent(
+                            type="response.function_call_arguments.done",
+                            sequence_number=sequence_counter,
+                            item_id=item_id,
+                            output_index=output_index,
+                            arguments=args_str,
+                        )
+
+                elif evt.type == "content_block_delta":
+                    text = evt.delta.text
+                    if text:
                         yield openai_models.ResponseOutputTextDeltaEvent(
                             type="response.output_text.delta",
                             sequence_number=sequence_counter,
                             item_id=item_id,
                             output_index=output_index,
                             content_index=content_index,
-                            delta=thinking_xml,
+                            delta=text,
                         )
 
-            elif evt.type == "content_block_start":
-                if evt.content_block.type == "tool_use":
-                    tool_input = evt.content_block.input or {}
-                    try:
-                        import json
-
-                        args_str = json.dumps(tool_input, separators=(",", ":"))
-                    except Exception:
-                        args_str = str(tool_input)
-
-                    yield openai_models.ResponseFunctionCallArgumentsDoneEvent(
-                        type="response.function_call_arguments.done",
+                elif evt.type == "message_delta":
+                    yield openai_models.ResponseInProgressEvent(
+                        type="response.in_progress",
                         sequence_number=sequence_counter,
-                        item_id=item_id,
-                        output_index=output_index,
-                        arguments=args_str,
-                    )
-
-            elif evt.type == "content_block_delta":
-                text = evt.delta.text
-                if text:
-                    yield openai_models.ResponseOutputTextDeltaEvent(
-                        type="response.output_text.delta",
-                        sequence_number=sequence_counter,
-                        item_id=item_id,
-                        output_index=output_index,
-                        content_index=content_index,
-                        delta=text,
-                    )
-
-            elif evt.type == "message_delta":
-                yield openai_models.ResponseInProgressEvent(
-                    type="response.in_progress",
-                    sequence_number=sequence_counter,
-                    response=openai_models.ResponseObject(
-                        id="",
-                        object="response",
-                        created_at=0,
-                        status="in_progress",
-                        model=model_id,
-                        output=[],
-                        parallel_tool_calls=False,
-                        usage=openai_models.ResponseUsage(
-                            input_tokens=evt.usage.input_tokens,
-                            output_tokens=evt.usage.output_tokens,
-                            total_tokens=evt.usage.input_tokens
-                            + evt.usage.output_tokens,
-                            input_tokens_details=openai_models.InputTokensDetails(
-                                cached_tokens=0
-                            ),
-                            output_tokens_details=openai_models.OutputTokensDetails(
-                                reasoning_tokens=0
+                        response=openai_models.ResponseObject(
+                            id="",
+                            object="response",
+                            created_at=0,
+                            status="in_progress",
+                            model=model_id,
+                            output=[],
+                            parallel_tool_calls=False,
+                            usage=openai_models.ResponseUsage(
+                                input_tokens=evt.usage.input_tokens,
+                                output_tokens=evt.usage.output_tokens,
+                                total_tokens=evt.usage.input_tokens
+                                + evt.usage.output_tokens,
+                                input_tokens_details=openai_models.InputTokensDetails(
+                                    cached_tokens=0
+                                ),
+                                output_tokens_details=openai_models.OutputTokensDetails(
+                                    reasoning_tokens=0
+                                ),
                             ),
                         ),
-                    ),
-                )
-                if evt.delta.stop_reason == "refusal":
-                    sequence_counter += 1
-                    yield openai_models.ResponseRefusalDoneEvent(
-                        type="response.refusal.done",
-                        sequence_number=sequence_counter,
-                        item_id=item_id,
-                        output_index=output_index,
-                        content_index=content_index,
-                        refusal="refused",
                     )
+                    if evt.delta.stop_reason == "refusal":
+                        sequence_counter += 1
+                        yield openai_models.ResponseRefusalDoneEvent(
+                            type="response.refusal.done",
+                            sequence_number=sequence_counter,
+                            item_id=item_id,
+                            output_index=output_index,
+                            content_index=content_index,
+                            refusal="refused",
+                        )
 
-            elif evt.type == "message_stop":
-                yield openai_models.ResponseCompletedEvent(
-                    type="response.completed",
-                    sequence_number=sequence_counter,
-                    response=openai_models.ResponseObject(
-                        id="",
-                        object="response",
-                        created_at=0,
-                        status="completed",
-                        model=model_id,
-                        output=[],
-                        parallel_tool_calls=False,
-                    ),
-                )
-                break
+                elif evt.type == "message_stop":
+                    yield openai_models.ResponseCompletedEvent(
+                        type="response.completed",
+                        sequence_number=sequence_counter,
+                        response=openai_models.ResponseObject(
+                            id="",
+                            object="response",
+                            created_at=0,
+                            status="completed",
+                            model=model_id,
+                            output=[],
+                            parallel_tool_calls=False,
+                        ),
+                    )
+                    break
+
+        return generator()
 
     async def adapt_error_typed(self, error: BaseModel) -> BaseModel:
         """Convert error response - pass through for now."""

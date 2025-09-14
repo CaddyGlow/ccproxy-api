@@ -53,9 +53,11 @@ async def test_openai_chat_to_openai_responses_adapter_adapt_response_delegates(
         ),
     )
 
-    out = await OpenAIChatToOpenAIResponsesAdapter().adapt_response(resp.model_dump())
-    # Adapter returns a Chat response, validate minimal fields by presence
-    assert isinstance(out, dict) and out.get("object") == "chat.completion"
+    out = await OpenAIChatToOpenAIResponsesAdapter().adapt_response_typed(resp)
+    # Adapter returns a ChatCompletionResponse Pydantic model, not a dict
+    from ccproxy.llms.openai.models import ChatCompletionResponse
+
+    assert isinstance(out, ChatCompletionResponse) and out.object == "chat.completion"
 
 
 @pytest.mark.asyncio
@@ -74,7 +76,7 @@ async def test_openai_chat_to_openai_response_basic_request() -> None:
         max_completion_tokens=256,
     )
     adapter = OpenAIChatToOpenAIResponsesAdapter()
-    out = await adapter.adapt_request(req.model_dump())
+    out = await adapter.adapt_request_typed(req)
     openai_resp_req = OpenAIResponseRequest.model_validate(out)
 
     assert openai_resp_req.model == "gpt-4o"
@@ -96,9 +98,7 @@ async def test_response_format_text_mapping() -> None:
         messages=[{"role": "user", "content": "hi"}],
         response_format={"type": "text"},
     )
-    out_text = await OpenAIChatToOpenAIResponsesAdapter().adapt_request(
-        req_text.model_dump()
-    )
+    out_text = await OpenAIChatToOpenAIResponsesAdapter().adapt_request_typed(req_text)
     resp_req_text = OpenAIResponseRequest.model_validate(out_text)
 
     assert resp_req_text.text is not None
@@ -117,9 +117,7 @@ async def test_response_format_json_object_mapping() -> None:
         messages=[{"role": "user", "content": "hi"}],
         response_format={"type": "json_object"},
     )
-    out_json = await OpenAIChatToOpenAIResponsesAdapter().adapt_request(
-        req_json.model_dump()
-    )
+    out_json = await OpenAIChatToOpenAIResponsesAdapter().adapt_request_typed(req_json)
     resp_req_json = OpenAIResponseRequest.model_validate(out_json)
 
     assert resp_req_json.text is not None
@@ -149,7 +147,7 @@ async def test_response_format_json_schema_mapping() -> None:
         messages=[{"role": "user", "content": "hi"}],
         response_format={"type": "json_schema", "json_schema": schema},
     )
-    out = await OpenAIChatToOpenAIResponsesAdapter().adapt_request(req.model_dump())
+    out = await OpenAIChatToOpenAIResponsesAdapter().adapt_request_typed(req)
     resp_req = OpenAIResponseRequest.model_validate(out)
 
     assert resp_req.text is not None
@@ -183,7 +181,7 @@ async def test_response_format_json_schema_variations() -> None:
         messages=[{"role": "user", "content": "test"}],
         response_format={"type": "json_schema", "json_schema": schema_non_strict},
     )
-    out_non_strict = await adapter.adapt_request(req_non_strict.model_dump())
+    out_non_strict = await adapter.adapt_request_typed(req_non_strict)
     resp_non_strict = OpenAIResponseRequest.model_validate(out_non_strict)
 
     assert resp_non_strict.text["format"]["strict"] is False
@@ -198,7 +196,7 @@ async def test_response_format_json_schema_variations() -> None:
         messages=[{"role": "user", "content": "test"}],
         response_format={"type": "json_schema", "json_schema": schema_minimal},
     )
-    out_minimal = await adapter.adapt_request(req_minimal.model_dump())
+    out_minimal = await adapter.adapt_request_typed(req_minimal)
     resp_minimal = OpenAIResponseRequest.model_validate(out_minimal)
 
     assert resp_minimal.text["format"]["type"] == "json_schema"
@@ -232,8 +230,8 @@ async def test_response_format_with_other_parameters() -> None:
         ],
         max_completion_tokens=500,
     )
-    out_with_tools = await OpenAIChatToOpenAIResponsesAdapter().adapt_request(
-        req_with_tools.model_dump()
+    out_with_tools = await OpenAIChatToOpenAIResponsesAdapter().adapt_request_typed(
+        req_with_tools
     )
     resp_with_tools = OpenAIResponseRequest.model_validate(out_with_tools)
 
@@ -255,8 +253,8 @@ async def test_no_response_format_no_text_field() -> None:
         messages=[{"role": "user", "content": "hi"}],
         # No response_format specified
     )
-    out_no_format = await OpenAIChatToOpenAIResponsesAdapter().adapt_request(
-        req_no_format.model_dump()
+    out_no_format = await OpenAIChatToOpenAIResponsesAdapter().adapt_request_typed(
+        req_no_format
     )
     resp_no_format = OpenAIResponseRequest.model_validate(out_no_format)
 
