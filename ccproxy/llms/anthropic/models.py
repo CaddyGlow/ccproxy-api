@@ -364,12 +364,12 @@ class CreateMessageRequest(BaseModel):
     stop_sequences: list[str] | None = None
     stream: bool = False
     system: str | list[TextBlock] | None = None
-    temperature: float | None = None
+    temperature: float | None = Field(None, ge=0.0, le=1.0)
     thinking: ThinkingConfig | None = None
     tools: list[AnyTool] | None = None
     tool_choice: ToolChoice | None = None
     top_k: int | None = None
-    top_p: float | None = None
+    top_p: float | None = Field(None, ge=0.0, le=1.0)
 
     model_config = ConfigDict(extra="forbid")
 

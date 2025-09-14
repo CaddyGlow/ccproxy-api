@@ -190,7 +190,7 @@ class ChatMessage(BaseModel):
     role: Literal["system", "user", "assistant", "tool", "developer"]
     content: str | list[dict[str, Any]] | None
     name: str | None = Field(
-        None,
+        default=None,
         description="The name of the author of this message. May contain a-z, A-Z, 0-9, and underscores, with a maximum length of 64 characters.",
     )
     tool_calls: list[ToolCall] | None = None
@@ -205,50 +205,41 @@ class ChatCompletionRequest(BaseModel):
     messages: list[ChatMessage]
     model: str
     audio: dict[str, Any] | None = None
-    frequency_penalty: float | None = Field(None, ge=-2.0, le=2.0)
-    logit_bias: dict[str, float] | None = Field(None)
-    logprobs: bool | None = Field(None)
-    top_logprobs: int | None = Field(None, ge=0, le=20)
-    max_tokens: int | None = Field(None, deprecated=True)
-    max_completion_tokens: int | None = None
-    n: int | None = Field(1)
-    parallel_tool_calls: bool | None = None
-    presence_penalty: float | None = Field(None, ge=-2.0, le=2.0)
-    reasoning_effort: str | None = None
-    response_format: ResponseFormat | None = Field(None)
-    seed: int | None = Field(None)
-    stop: str | list[str] | None = Field(None)
-    stream: bool | None = Field(None)
-    stream_options: dict[str, Any] | None = None
-    temperature: float | None = Field(None, ge=0.0, le=2.0)
-    top_p: float | None = Field(None, ge=0.0, le=1.0)
-    tools: list[Tool] | None = Field(None)
-    tool_choice: Literal["none", "auto", "required"] | dict[str, Any] | None = Field(
-        None
+    frequency_penalty: float | None = Field(default=None, ge=-2.0, le=2.0)
+    logit_bias: dict[str, float] | None = Field(default=None)
+    logprobs: bool | None = Field(default=None)
+    top_logprobs: int | None = Field(default=None, ge=0, le=20)
+    max_tokens: int | None = Field(default=None, deprecated=True)
+    max_completion_tokens: int | None = Field(default=None)
+    n: int | None = Field(default=1)
+    parallel_tool_calls: bool | None = Field(default=None)
+    presence_penalty: float | None = Field(default=None, ge=-2.0, le=2.0)
+    reasoning_effort: Literal["minimal", "low", "medium", "high"] | None = Field(
+        default=None
     )
-    user: str | None = Field(None)
-    modalities: list[str] | None = None
-    prediction: dict[str, Any] | None = None
-    prompt_cache_key: str | None = None
-    safety_identifier: str | None = None
-    service_tier: str | None = None
-    store: bool | None = None
-    verbosity: str | None = None
-    web_search_options: dict[str, Any] | None = None
+    response_format: ResponseFormat | None = Field(default=None)
+    seed: int | None = Field(default=None)
+    stop: str | list[str] | None = Field(default=None)
+    stream: bool | None = Field(default=None)
+    stream_options: dict[str, Any] | None = Field(default=None)
+    temperature: float | None = Field(default=None, ge=0.0, le=2.0)
+    top_p: float | None = Field(default=None, ge=0.0, le=1.0)
+    tools: list[Tool] | None = Field(default=None)
+    tool_choice: Literal["none", "auto", "required"] | dict[str, Any] | None = Field(
+        default=None
+    )
+    user: str | None = Field(default=None)
+    modalities: list[str] | None = Field(default=None)
+    prediction: dict[str, Any] | None = Field(default=None)
+    prompt_cache_key: str | None = Field(default=None)
+    safety_identifier: str | None = Field(default=None)
+    service_tier: str | None = Field(default=None)
+    store: bool | None = Field(default=None)
+    verbosity: str | None = Field(default=None)
+    web_search_options: dict[str, Any] | None = Field(default=None)
 
 
 # --- Response Models (Non-streaming) ---
-
-
-class FunctionCall(BaseModel):
-    name: str
-    arguments: str
-
-
-class ToolCall(BaseModel):
-    id: str
-    type: Literal["function"]
-    function: FunctionCall
 
 
 class ResponseMessage(BaseModel):
@@ -348,16 +339,16 @@ VALID_INCLUDE_VALUES = [
 
 
 class ResponseRequest(BaseModel):
-    model: str | None = None
+    model: str | None = Field(default=None)
     input: str | list[Any]
     background: bool | None = Field(
-        None, description="Whether to run the model response in the background"
+        default=None, description="Whether to run the model response in the background"
     )
     conversation: str | dict[str, Any] | None = Field(
-        None, description="The conversation that this response belongs to"
+        default=None, description="The conversation that this response belongs to"
     )
     include: list[str] | None = Field(
-        None,
+        default=None,
         description="Specify additional output data to include in the model response",
     )
 
@@ -372,28 +363,28 @@ class ResponseRequest(BaseModel):
                     )
         return v
 
-    instructions: str | None = None
-    max_output_tokens: int | None = None
-    max_tool_calls: int | None = None
-    metadata: dict[str, str] | None = None
-    parallel_tool_calls: bool | None = None
-    previous_response_id: str | None = None
-    prompt: dict[str, Any] | None = None
-    prompt_cache_key: str | None = None
-    reasoning: dict[str, Any] | None = None
-    safety_identifier: str | None = None
-    service_tier: str | None = None
-    store: bool | None = None
-    stream: bool | None = Field(None)
-    stream_options: StreamOptions | None = None
-    temperature: float | None = Field(None, ge=0.0, le=2.0)
-    text: dict[str, Any] | None = None
-    tools: list[Any] | None = None
-    tool_choice: str | dict[str, Any] | None = None
-    top_logprobs: int | None = None
-    top_p: float | None = Field(None, ge=0.0, le=1.0)
-    truncation: str | None = None
-    user: str | None = None
+    instructions: str | None = Field(default=None)
+    max_output_tokens: int | None = Field(default=None)
+    max_tool_calls: int | None = Field(default=None)
+    metadata: dict[str, str] | None = Field(default=None)
+    parallel_tool_calls: bool | None = Field(default=None)
+    previous_response_id: str | None = Field(default=None)
+    prompt: dict[str, Any] | None = Field(default=None)
+    prompt_cache_key: str | None = Field(default=None)
+    reasoning: dict[str, Any] | None = Field(default=None)
+    safety_identifier: str | None = Field(default=None)
+    service_tier: str | None = Field(default=None)
+    store: bool | None = Field(default=None)
+    stream: bool | None = Field(default=None)
+    stream_options: StreamOptions | None = Field(default=None)
+    temperature: float | None = Field(default=None, ge=0.0, le=2.0)
+    text: dict[str, Any] | None = Field(default=None)
+    tools: list[Any] | None = Field(default=None)
+    tool_choice: str | dict[str, Any] | None = Field(default=None)
+    top_logprobs: int | None = Field(default=None)
+    top_p: float | None = Field(default=None, ge=0.0, le=1.0)
+    truncation: str | None = Field(default=None)
+    user: str | None = Field(default=None)
 
 
 # --- Response Models (Non-streaming) ---

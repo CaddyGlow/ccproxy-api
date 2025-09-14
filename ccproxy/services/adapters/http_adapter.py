@@ -436,7 +436,7 @@ class BaseHTTPAdapter(BaseAdapter):
                     "format_chain_step_failed",
                     from_format=from_format,
                     to_format=to_format,
-                    step=i + 1,
+                    step=step_index,
                     error=str(e),
                 )
                 raise

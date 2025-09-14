@@ -1,16 +1,16 @@
 import pytest
 
 from ccproxy.llms.openai.models import (
-    ResponseObject as OpenAIResponseObject,
-)
-from ccproxy.llms.openai.models import (
-    ResponseUsage as OpenAIResponseUsage,
-)
-from ccproxy.llms.openai.models import (
     InputTokensDetails as OpenAIInputTokensDetails,
 )
 from ccproxy.llms.openai.models import (
     OutputTokensDetails as OpenAIOutputTokensDetails,
+)
+from ccproxy.llms.openai.models import (
+    ResponseObject as OpenAIResponseObject,
+)
+from ccproxy.llms.openai.models import (
+    ResponseUsage as OpenAIResponseUsage,
 )
 
 
@@ -48,4 +48,3 @@ async def test_openai_chat_to_openai_responses_adapter_adapt_response_delegates(
     out = await OpenAIChatToOpenAIResponsesAdapter().adapt_response(resp.model_dump())
     # Adapter returns a Chat response, validate minimal fields by presence
     assert isinstance(out, dict) and out.get("object") == "chat.completion"
-

@@ -1,7 +1,28 @@
 import pytest
 
 from ccproxy.llms.anthropic.models import (
+    ContentBlockDeltaEvent as AnthropicContentBlockDeltaEvent,
+)
+from ccproxy.llms.anthropic.models import (
+    ContentBlockStartEvent as AnthropicContentBlockStartEvent,
+)
+from ccproxy.llms.anthropic.models import (
+    ContentBlockStopEvent as AnthropicContentBlockStopEvent,
+)
+from ccproxy.llms.anthropic.models import (
+    MessageDelta as AnthropicMessageDelta,
+)
+from ccproxy.llms.anthropic.models import (
+    MessageDeltaEvent as AnthropicMessageDeltaEvent,
+)
+from ccproxy.llms.anthropic.models import (
     MessageResponse as AnthropicMessageResponse,
+)
+from ccproxy.llms.anthropic.models import (
+    MessageStartEvent as AnthropicMessageStartEvent,
+)
+from ccproxy.llms.anthropic.models import (
+    MessageStopEvent as AnthropicMessageStopEvent,
 )
 from ccproxy.llms.anthropic.models import (
     TextBlock as AnthropicTextBlock,
@@ -9,32 +30,11 @@ from ccproxy.llms.anthropic.models import (
 from ccproxy.llms.anthropic.models import (
     Usage as AnthropicUsage,
 )
-from ccproxy.llms.anthropic.models import (
-    MessageStartEvent as AnthropicMessageStartEvent,
-)
-from ccproxy.llms.anthropic.models import (
-    ContentBlockStartEvent as AnthropicContentBlockStartEvent,
-)
-from ccproxy.llms.anthropic.models import (
-    ContentBlockDeltaEvent as AnthropicContentBlockDeltaEvent,
-)
-from ccproxy.llms.anthropic.models import (
-    ContentBlockStopEvent as AnthropicContentBlockStopEvent,
-)
-from ccproxy.llms.anthropic.models import (
-    MessageDeltaEvent as AnthropicMessageDeltaEvent,
-)
-from ccproxy.llms.anthropic.models import (
-    MessageDelta as AnthropicMessageDelta,
-)
-from ccproxy.llms.anthropic.models import (
-    MessageStopEvent as AnthropicMessageStopEvent,
+from ccproxy.llms.openai.models import (
+    ChatCompletionChunk as OpenAIChatChunk,
 )
 from ccproxy.llms.openai.models import (
     ChatCompletionResponse as OpenAIChatResponse,
-)
-from ccproxy.llms.openai.models import (
-    ChatCompletionChunk as OpenAIChatChunk,
 )
 
 
@@ -43,6 +43,7 @@ async def test_openai_chat_to_anthropic_messages_adapter_adapt_response_delegate
     from ccproxy.llms.adapters.openai_chatcompletions_to_anthropic_messages import (
         OpenAIChatToAnthropicMessagesAdapter,
     )
+
     anth = AnthropicMessageResponse(
         id="msg_1",
         role="assistant",
@@ -74,10 +75,22 @@ async def test_anthropic_to_openai_chat_stream_mapping_minimal():
     )
     events = [
         AnthropicMessageStartEvent(type="message_start", message=msg).model_dump(),
-        AnthropicContentBlockStartEvent(type="content_block_start", index=0, content_block=AnthropicTextBlock(type="text", text="")).model_dump(),
-        AnthropicContentBlockDeltaEvent(type="content_block_delta", index=0, delta=AnthropicTextBlock(type="text", text="Hello")).model_dump(),
+        AnthropicContentBlockStartEvent(
+            type="content_block_start",
+            index=0,
+            content_block=AnthropicTextBlock(type="text", text=""),
+        ).model_dump(),
+        AnthropicContentBlockDeltaEvent(
+            type="content_block_delta",
+            index=0,
+            delta=AnthropicTextBlock(type="text", text="Hello"),
+        ).model_dump(),
         AnthropicContentBlockStopEvent(type="content_block_stop", index=0).model_dump(),
-        AnthropicMessageDeltaEvent(type="message_delta", delta=AnthropicMessageDelta(stop_reason="end_turn"), usage=AnthropicUsage(input_tokens=1, output_tokens=2)).model_dump(),
+        AnthropicMessageDeltaEvent(
+            type="message_delta",
+            delta=AnthropicMessageDelta(stop_reason="end_turn"),
+            usage=AnthropicUsage(input_tokens=1, output_tokens=2),
+        ).model_dump(),
         AnthropicMessageStopEvent(type="message_stop").model_dump(),
     ]
 
@@ -91,4 +104,3 @@ async def test_anthropic_to_openai_chat_stream_mapping_minimal():
         chunks.append(OpenAIChatChunk.model_validate(c))
     assert chunks[0].choices[0].delta.content == "Hello"
     assert chunks[-1].choices[0].finish_reason == "stop"
-

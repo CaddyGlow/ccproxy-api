@@ -3,6 +3,8 @@ from __future__ import annotations
 from collections.abc import AsyncGenerator, AsyncIterator
 from typing import Any
 
+from pydantic import BaseModel, TypeAdapter
+
 from ccproxy.llms.adapters.base import BaseAPIAdapter
 from ccproxy.llms.adapters.mapping import ANTHROPIC_TO_OPENAI_FINISH_REASON
 from ccproxy.llms.anthropic import models as anthropic_models
@@ -31,7 +33,96 @@ class AnthropicMessagesToOpenAIChatAdapter(BaseAPIAdapter):
     def __init__(self) -> None:
         super().__init__(name="anthropic_messages_to_openai_chat")
 
-    async def adapt_request(self, request: dict[str, Any]) -> dict[str, Any]:
+    # Model conversion helpers
+    def _dict_to_request_model(self, request: dict[str, Any]) -> BaseModel:
+        """Convert dict to CreateMessageRequest."""
+        # Preprocess tools to satisfy union discriminator if missing
+        req_dict = dict(request)
+        tools_in = req_dict.get("tools")
+        if isinstance(tools_in, list):
+            new_tools = []
+            for t in tools_in:
+                if isinstance(t, dict) and "type" not in t:
+                    t = {"type": "custom", **t}
+                new_tools.append(t)
+            req_dict["tools"] = new_tools
+        return anthropic_models.CreateMessageRequest.model_validate(req_dict)
+
+    def _dict_to_response_model(self, response: dict[str, Any]) -> BaseModel:
+        """Convert dict to MessageResponse."""
+        return anthropic_models.MessageResponse.model_validate(response)
+
+    def _dict_to_error_model(self, error: dict[str, Any]) -> BaseModel:
+        """Convert dict to ErrorResponse."""
+        return anthropic_models.ErrorResponse.model_validate(error)
+
+    def _dict_stream_to_typed_stream(
+        self, stream: AsyncIterator[dict[str, Any]]
+    ) -> AsyncIterator[BaseModel]:
+        """Convert dict stream to MessageStreamEvent stream."""
+
+        event_adapter: TypeAdapter[anthropic_models.MessageStreamEvent] = TypeAdapter(
+            anthropic_models.MessageStreamEvent
+        )
+
+        async def typed_generator() -> AsyncIterator[BaseModel]:
+            async for chunk_dict in stream:
+                try:
+                    yield event_adapter.validate_python(chunk_dict)
+                except Exception:
+                    # Skip invalid chunks in stream
+                    continue
+
+        return typed_generator()
+
+    # New strongly-typed methods
+    async def adapt_request_typed(self, request: BaseModel) -> BaseModel:
+        """Convert Anthropic CreateMessageRequest to OpenAI ChatCompletionRequest."""
+        if not isinstance(request, anthropic_models.CreateMessageRequest):
+            raise ValueError(f"Expected CreateMessageRequest, got {type(request)}")
+
+        return await self._convert_request_typed(request)
+
+    async def adapt_response_typed(self, response: BaseModel) -> BaseModel:
+        """Convert Anthropic MessageResponse to OpenAI ChatCompletionResponse."""
+        if not isinstance(response, anthropic_models.MessageResponse):
+            raise ValueError(f"Expected MessageResponse, got {type(response)}")
+
+        return await self._convert_response_typed(response)
+
+    def adapt_stream_typed(
+        self, stream: AsyncIterator[BaseModel]
+    ) -> AsyncGenerator[BaseModel, None]:
+        """Convert streams - not implemented yet."""
+        raise NotImplementedError("Stream adaptation not implemented for this adapter")
+
+    async def adapt_error_typed(self, error: BaseModel) -> BaseModel:
+        """Convert error response - pass through for now."""
+        return error
+
+    # Implementation methods
+    async def _convert_request_typed(
+        self, request: anthropic_models.CreateMessageRequest
+    ) -> openai_models.ChatCompletionRequest:
+        """Convert Anthropic CreateMessageRequest to OpenAI ChatCompletionRequest using typed models."""
+        # For now, delegate to the existing dict-based implementation
+        # TODO: Rewrite this to work directly with typed models for better performance
+        request_dict = request.model_dump()
+        result_dict = await self._adapt_request_dict_impl(request_dict)
+        return openai_models.ChatCompletionRequest.model_validate(result_dict)
+
+    async def _convert_response_typed(
+        self, response: anthropic_models.MessageResponse
+    ) -> openai_models.ChatCompletionResponse:
+        """Convert Anthropic MessageResponse to OpenAI ChatCompletionResponse using typed models."""
+        # For now, delegate to the existing dict-based implementation
+        # TODO: Rewrite this to work directly with typed models for better performance
+        response_dict = response.model_dump()
+        result_dict = await self._adapt_response_dict_impl(response_dict)
+        return openai_models.ChatCompletionResponse.model_validate(result_dict)
+
+    async def _adapt_request_dict_impl(self, request: dict[str, Any]) -> dict[str, Any]:
+        """Implementation moved from adapt_request - works with dicts."""
         # Preprocess tools to satisfy union discriminator if missing
         req_dict = dict(request)
         tools_in = req_dict.get("tools")
@@ -70,24 +161,34 @@ class AnthropicMessagesToOpenAIChatAdapter(BaseAPIAdapter):
                 for block in content:
                     block_type = getattr(block, "type", None)
                     if block_type == "tool_use":
-                        tool_calls.append(
-                            {
-                                "id": block.id,
-                                "type": "function",
-                                "function": {
-                                    "name": block.name,
-                                    "arguments": str(block.input),
-                                },
-                            }
-                        )
+                        # Type guard for ToolUseBlock
+                        if (
+                            hasattr(block, "id")
+                            and hasattr(block, "name")
+                            and hasattr(block, "input")
+                        ):
+                            tool_calls.append(
+                                {
+                                    "id": block.id,
+                                    "type": "function",
+                                    "function": {
+                                        "name": block.name,
+                                        "arguments": str(block.input),
+                                    },
+                                }
+                            )
                     elif block_type == "text":
-                        text_parts.append(block.text)
+                        # Type guard for TextBlock
+                        if hasattr(block, "text"):
+                            text_parts.append(block.text)
                 if tool_calls:
                     assistant_msg: dict[str, Any] = {
                         "role": "assistant",
                         "tool_calls": tool_calls,
                     }
-                    assistant_msg["content"] = " ".join(text_parts) if text_parts else None
+                    assistant_msg["content"] = (
+                        " ".join(text_parts) if text_parts else None
+                    )
                     openai_messages.append(assistant_msg)
                     continue
             elif role == "user" and isinstance(content, list):
@@ -97,13 +198,17 @@ class AnthropicMessagesToOpenAIChatAdapter(BaseAPIAdapter):
                 if is_tool_result:
                     for block in content:
                         if getattr(block, "type", None) == "tool_result":
-                            openai_messages.append(
-                                {
-                                    "role": "tool",
-                                    "tool_call_id": block.tool_use_id,
-                                    "content": str(block.content),
-                                }
-                            )
+                            # Type guard for ToolResultBlock
+                            if hasattr(block, "tool_use_id") and hasattr(
+                                block, "content"
+                            ):
+                                openai_messages.append(
+                                    {
+                                        "role": "tool",
+                                        "tool_call_id": block.tool_use_id,
+                                        "content": str(block.content),
+                                    }
+                                )
                     continue
 
             if isinstance(content, list):
@@ -215,7 +320,17 @@ class AnthropicMessagesToOpenAIChatAdapter(BaseAPIAdapter):
         req = openai_models.ChatCompletionRequest.model_validate(params)
         return req.model_dump()
 
-    async def adapt_response(self, response: dict[str, Any]) -> dict[str, Any]:
+    # Override to delegate to typed implementation
+    async def adapt_request(self, request: dict[str, Any]) -> dict[str, Any]:
+        """Legacy dict interface - delegates to typed implementation."""
+        typed_request = self._dict_to_request_model(request)
+        typed_result = await self.adapt_request_typed(typed_request)
+        return typed_result.model_dump()
+
+    async def _adapt_response_dict_impl(
+        self, response: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Implementation moved from adapt_response - works with dicts."""
         content_blocks = response.get("content") or []
         parts: list[str] = []
         for block in content_blocks:
@@ -267,6 +382,13 @@ class AnthropicMessagesToOpenAIChatAdapter(BaseAPIAdapter):
             },
         }
         return openai_models.ChatCompletionResponse.model_validate(payload).model_dump()
+
+    # Override to delegate to typed implementation
+    async def adapt_response(self, response: dict[str, Any]) -> dict[str, Any]:
+        """Legacy dict interface - delegates to typed implementation."""
+        typed_response = self._dict_to_response_model(response)
+        typed_result = await self.adapt_response_typed(typed_response)
+        return typed_result.model_dump()
 
     def adapt_stream(
         self, stream: AsyncIterator[dict[str, Any]]

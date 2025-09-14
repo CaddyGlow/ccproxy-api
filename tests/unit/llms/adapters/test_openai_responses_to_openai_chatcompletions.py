@@ -1,10 +1,10 @@
 import pytest
 
 from ccproxy.llms.openai.models import (
-    ChatCompletionRequest as OpenAIChatRequest,
+    ChatCompletionChunk as OpenAIChatChunk,
 )
 from ccproxy.llms.openai.models import (
-    ChatCompletionChunk as OpenAIChatChunk,
+    ChatCompletionRequest as OpenAIChatRequest,
 )
 from ccproxy.llms.openai.models import (
     ResponseRequest as OpenAIResponseRequest,
@@ -22,7 +22,9 @@ async def test_openai_responses_to_openai_chat_adapter_adapt_request_delegates()
         messages=[{"role": "user", "content": "hi"}],
         max_completion_tokens=128,
     )
-    out = await OpenAIResponsesToOpenAIChatAdapter().adapt_request(chat_req.model_dump())
+    out = await OpenAIResponsesToOpenAIChatAdapter().adapt_request(
+        chat_req.model_dump()
+    )
     resp_req = OpenAIResponseRequest.model_validate(out)
     assert resp_req.model == "gpt-4o"
     assert resp_req.max_output_tokens == 128
@@ -40,7 +42,9 @@ async def test_openai_responses_to_openai_chat_adapter_adapt_stream_minimal():
         yield {"type": "response.output_text.delta", "delta": "Hello"}
         yield {
             "type": "response.completed",
-            "response": {"usage": {"input_tokens": 1, "output_tokens": 2, "total_tokens": 3}},
+            "response": {
+                "usage": {"input_tokens": 1, "output_tokens": 2, "total_tokens": 3}
+            },
         }
 
     adapter = OpenAIResponsesToOpenAIChatAdapter()
@@ -50,4 +54,3 @@ async def test_openai_responses_to_openai_chat_adapter_adapt_stream_minimal():
 
     assert chunks[0].choices[0].delta.content == "Hello"
     assert chunks[-1].choices[0].finish_reason == "stop"
-

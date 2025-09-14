@@ -199,7 +199,9 @@ class TestAnthropicToOpenAIChatCompletionsAdapter:
         assert messages[2]["content"] == "72 and sunny"
 
     @pytest.mark.asyncio
-    async def test_adapt_stream(self, adapter: AnthropicToOpenAIChatCompletionsAdapter) -> None:
+    async def test_adapt_stream(
+        self, adapter: AnthropicToOpenAIChatCompletionsAdapter
+    ) -> None:
         # Arrange
         async def anthropic_stream():
             yield anthropic_models.MessageStartEvent(
@@ -238,7 +240,7 @@ class TestAnthropicToOpenAIChatCompletionsAdapter:
 
         # Assert
         assert len(chunks) == 3
-        
+
         # First chunk
         chunk1 = openai_models.ChatCompletionChunk.model_validate(chunks[0])
         assert chunk1.choices[0].delta.content == "Hello"
@@ -257,7 +259,9 @@ class TestAnthropicToOpenAIChatCompletionsAdapter:
         assert chunk3.usage.completion_tokens == 5
 
     @pytest.mark.asyncio
-    async def test_adapt_error(self, adapter: AnthropicToOpenAIChatCompletionsAdapter) -> None:
+    async def test_adapt_error(
+        self, adapter: AnthropicToOpenAIChatCompletionsAdapter
+    ) -> None:
         # Arrange
         anthropic_error = {
             "type": "error",

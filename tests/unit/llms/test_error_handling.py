@@ -1,0 +1,293 @@
+"""Tests for error handling in LLM modules.
+
+This module tests error handling scenarios that were previously missing
+from the test coverage.
+"""
+
+from typing import Any
+
+import pytest
+from pydantic import ValidationError
+
+from ccproxy.llms.anthropic.models import (
+    CreateMessageRequest as AnthropicCreateMessageRequest,
+)
+from ccproxy.llms.anthropic.models import (
+    Message as AnthropicMessage,
+)
+from ccproxy.llms.openai.models import (
+    ChatCompletionRequest as OpenAIChatRequest,
+)
+from ccproxy.llms.openai.models import (
+    ResponseRequest as OpenAIResponseRequest,
+)
+
+
+class TestModelValidationErrors:
+    """Test validation error handling in models."""
+
+    def test_openai_chat_request_invalid_temperature(self) -> None:
+        """Test that invalid temperature values raise ValidationError."""
+        with pytest.raises(ValidationError) as exc_info:
+            OpenAIChatRequest(
+                model="gpt-4o",
+                messages=[{"role": "user", "content": "Hello"}],
+                temperature=3.0,  # Invalid: should be <= 2.0
+            )
+
+        errors = exc_info.value.errors()
+        assert len(errors) == 1
+        assert errors[0]["type"] == "less_than_equal"
+        assert errors[0]["loc"] == ("temperature",)
+
+    def test_openai_chat_request_invalid_top_p(self) -> None:
+        """Test that invalid top_p values raise ValidationError."""
+        with pytest.raises(ValidationError) as exc_info:
+            OpenAIChatRequest(
+                model="gpt-4o",
+                messages=[{"role": "user", "content": "Hello"}],
+                top_p=1.5,  # Invalid: should be <= 1.0
+            )
+
+        errors = exc_info.value.errors()
+        assert len(errors) == 1
+        assert errors[0]["type"] == "less_than_equal"
+        assert errors[0]["loc"] == ("top_p",)
+
+    def test_openai_response_request_invalid_temperature(self) -> None:
+        """Test that invalid temperature values raise ValidationError in ResponseRequest."""
+        with pytest.raises(ValidationError) as exc_info:
+            OpenAIResponseRequest(
+                model="gpt-4o",
+                input="Hello",
+                temperature=-1.0,  # Invalid: should be >= 0.0
+            )
+
+        errors = exc_info.value.errors()
+        assert len(errors) == 1
+        assert errors[0]["type"] == "greater_than_equal"
+        assert errors[0]["loc"] == ("temperature",)
+
+    def test_anthropic_create_message_request_empty_messages(self) -> None:
+        """Test that empty messages list is actually allowed."""
+        # Empty messages list is actually valid in the current model
+        request = AnthropicCreateMessageRequest(
+            model="claude-sonnet",
+            messages=[],  # This is actually allowed
+            max_tokens=100,
+        )
+        assert request.messages == []
+
+    def test_anthropic_message_invalid_role(self) -> None:
+        """Test that invalid role values raise ValidationError."""
+        with pytest.raises(ValidationError) as exc_info:
+            AnthropicMessage(
+                role="invalid_role",  # type: ignore[arg-type]
+                content="Hello",
+            )
+
+        errors = exc_info.value.errors()
+        assert len(errors) == 1
+        assert errors[0]["type"] == "literal_error"
+        assert errors[0]["loc"] == ("role",)
+
+
+class TestAdapterErrorHandling:
+    """Test error handling in adapters."""
+
+    @pytest.mark.asyncio
+    async def test_adapter_handles_empty_request(self) -> None:
+        """Test that adapters handle empty requests gracefully."""
+        from ccproxy.llms.adapters.openai_chatcompletions_to_anthropic_messages import (
+            OpenAIChatToAnthropicMessagesAdapter,
+        )
+
+        adapter = OpenAIChatToAnthropicMessagesAdapter()
+
+        # Empty request should not crash but may have validation issues downstream
+        empty_request: dict[str, Any] = {}
+        result = await adapter.adapt_request(empty_request)
+
+        # Should return a dict, even if not fully valid
+        assert isinstance(result, dict)
+
+    @pytest.mark.asyncio
+    async def test_adapter_handles_malformed_content(self) -> None:
+        """Test that adapters handle malformed content gracefully."""
+        from ccproxy.llms.adapters.openai_chatcompletions_to_anthropic_messages import (
+            OpenAIChatToAnthropicMessagesAdapter,
+        )
+
+        adapter = OpenAIChatToAnthropicMessagesAdapter()
+
+        # Request with malformed content structure
+        malformed_request = {
+            "model": "gpt-4o",
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text"},  # Missing "text" field
+                        {"type": "image_url", "image_url": {"url": "not-a-data-url"}},
+                        {"invalid": "structure"},
+                    ],
+                }
+            ],
+        }
+
+        # Should not crash, but handle gracefully
+        result = await adapter.adapt_request(malformed_request)
+        assert isinstance(result, dict)
+        assert "model" in result
+
+    @pytest.mark.asyncio
+    async def test_adapter_validates_required_fields(self) -> None:
+        """Test that adapters validate required fields properly."""
+        from ccproxy.llms.adapters.anthropic_messages_to_openai_responses import (
+            AnthropicMessagesToOpenAIResponsesAdapter,
+        )
+
+        adapter = AnthropicMessagesToOpenAIResponsesAdapter()
+
+        # Request missing required fields should raise ValidationError
+        incomplete_request = {
+            "model": "claude-sonnet"
+            # Missing "messages" and "max_tokens"
+        }
+
+        # Should raise ValidationError for missing required fields
+        with pytest.raises(ValidationError) as exc_info:
+            await adapter.adapt_request(incomplete_request)
+
+        errors = exc_info.value.errors()
+        assert len(errors) == 2  # messages and max_tokens
+        field_names = {error["loc"][0] for error in errors}
+        assert "messages" in field_names
+        assert "max_tokens" in field_names
+
+    @pytest.mark.asyncio
+    async def test_adapter_validates_response_structure(self) -> None:
+        """Test that adapters validate response structures properly."""
+        from ccproxy.llms.adapters.anthropic_messages_to_openai_chatcompletions import (
+            AnthropicMessagesToOpenAIChatAdapter,
+        )
+
+        adapter = AnthropicMessagesToOpenAIChatAdapter()
+
+        # Invalid response structure missing required fields
+        invalid_response: dict[str, Any] = {
+            "id": "msg_123",
+            # Missing required fields like "role", "content", "model", etc.
+        }
+
+        # Should raise ValidationError for missing required fields
+        with pytest.raises(ValidationError):
+            await adapter.adapt_response(invalid_response)
+
+    @pytest.mark.asyncio
+    async def test_adapter_stream_processes_valid_events(self) -> None:
+        """Test that streaming adapters process valid events correctly."""
+        from ccproxy.llms.adapters.openai_chatcompletions_to_anthropic_messages import (
+            OpenAIChatToAnthropicMessagesAdapter,
+        )
+
+        adapter = OpenAIChatToAnthropicMessagesAdapter()
+
+        async def valid_event_stream() -> Any:
+            """Stream with valid events."""
+            # Valid message_start event
+            yield {
+                "type": "message_start",
+                "message": {
+                    "id": "msg_1",
+                    "type": "message",
+                    "role": "assistant",
+                    "model": "claude",
+                    "content": [],
+                    "stop_reason": None,
+                    "stop_sequence": None,
+                    "usage": {"input_tokens": 0, "output_tokens": 0},
+                },
+            }
+
+            # Valid content block delta event
+            yield {
+                "type": "content_block_delta",
+                "index": 0,
+                "delta": {"type": "text", "text": "Hello"},
+            }
+
+            # Valid message stop event
+            yield {"type": "message_stop"}
+
+        # Should process valid events
+        results = []
+        async for event in adapter.adapt_stream(valid_event_stream()):
+            results.append(event)
+
+        # Should have processed all events and produced OpenAI format
+        assert len(results) > 0
+        # First result should be OpenAI ChatCompletionChunk format
+        first_result = results[0]
+        assert "object" in first_result
+        assert first_result["object"] == "chat.completion.chunk"
+
+
+class TestEdgeCases:
+    """Test edge cases and boundary conditions."""
+
+    def test_openai_response_request_all_include_values(self) -> None:
+        """Test ResponseRequest with all valid include values."""
+        from ccproxy.llms.openai.models import VALID_INCLUDE_VALUES
+
+        request = OpenAIResponseRequest(
+            model="gpt-4o",
+            input="test input",
+            include=VALID_INCLUDE_VALUES.copy(),  # All valid values
+        )
+
+        assert request.include == VALID_INCLUDE_VALUES
+
+    def test_openai_response_request_large_input_list(self) -> None:
+        """Test ResponseRequest with large input list."""
+        large_input_list = [
+            {"type": "message", "role": "user", "content": f"Message {i}"}
+            for i in range(100)
+        ]
+
+        request = OpenAIResponseRequest(model="gpt-4o", input=large_input_list)
+
+        assert len(request.input) == 100
+        assert all(isinstance(item, dict) for item in request.input)
+
+    def test_openai_chat_request_max_tokens_boundary(self) -> None:
+        """Test ChatCompletionRequest with boundary values for max_tokens."""
+        # Test with 0 (edge case)
+        request = OpenAIChatRequest(
+            model="gpt-4o",
+            messages=[{"role": "user", "content": "Hello"}],
+            max_completion_tokens=0,
+        )
+        assert request.max_completion_tokens == 0
+
+        # Test with very large value
+        request = OpenAIChatRequest(
+            model="gpt-4o",
+            messages=[{"role": "user", "content": "Hello"}],
+            max_completion_tokens=2000000,
+        )
+        assert request.max_completion_tokens == 2000000
+
+    def test_anthropic_content_empty_string(self) -> None:
+        """Test Anthropic models with empty string content."""
+        message = AnthropicMessage(
+            role="user",
+            content="",  # Empty string
+        )
+        assert message.content == ""
+
+    def test_anthropic_content_very_long_string(self) -> None:
+        """Test Anthropic models with very long content."""
+        long_content = "Hello " * 10000  # 60k characters
+        message = AnthropicMessage(role="user", content=long_content)
+        assert len(message.content) == 60000

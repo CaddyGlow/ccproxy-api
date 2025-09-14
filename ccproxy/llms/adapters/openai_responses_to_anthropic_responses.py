@@ -4,6 +4,8 @@ import re
 from collections.abc import AsyncGenerator, AsyncIterator
 from typing import Any
 
+from pydantic import BaseModel
+
 from ccproxy.llms.adapters.base import BaseAPIAdapter
 from ccproxy.llms.anthropic.models import (
     MessageResponse as AnthropicMessageResponse,
@@ -48,6 +50,53 @@ class OpenAIResponsesToAnthropicAdapter(BaseAPIAdapter):
 
     def __init__(self) -> None:
         super().__init__(name="openai_responses_to_anthropic")
+
+    # Minimal implementations for abstract methods - delegate to dict-based logic
+    def _dict_to_request_model(self, request: dict[str, Any]) -> BaseModel:
+        return BaseModel(**request)  # Minimal implementation
+
+    def _dict_to_response_model(self, response: dict[str, Any]) -> BaseModel:
+        return BaseModel(**response)  # Minimal implementation
+
+    def _dict_to_error_model(self, error: dict[str, Any]) -> BaseModel:
+        return BaseModel(**error)  # Minimal implementation
+
+    def _dict_stream_to_typed_stream(
+        self, stream: AsyncIterator[dict[str, Any]]
+    ) -> AsyncIterator[BaseModel]:
+        async def generator() -> AsyncIterator[BaseModel]:
+            async for item in stream:
+                yield BaseModel(**item)
+
+        return generator()
+
+    async def adapt_request_typed(self, request: BaseModel) -> BaseModel:
+        request_dict = (
+            request.model_dump() if hasattr(request, "model_dump") else dict(request)
+        )
+        result_dict = await self.adapt_request(request_dict)
+        return BaseModel(**result_dict)
+
+    async def adapt_response_typed(self, response: BaseModel) -> BaseModel:
+        response_dict = (
+            response.model_dump() if hasattr(response, "model_dump") else dict(response)
+        )
+        result_dict = await self.adapt_response(response_dict)
+        return BaseModel(**result_dict)
+
+    def adapt_stream_typed(
+        self, stream: AsyncIterator[BaseModel]
+    ) -> AsyncGenerator[BaseModel, None]:
+        async def generator() -> AsyncGenerator[BaseModel, None]:
+            async for item in stream:
+                yield item  # Pass through for now
+
+        return generator()
+
+    async def adapt_error_typed(self, error: BaseModel) -> BaseModel:
+        error_dict = error.model_dump() if hasattr(error, "model_dump") else dict(error)
+        result_dict = await self.adapt_error(error_dict)
+        return BaseModel(**result_dict)
 
     async def adapt_request(self, request: dict[str, Any]) -> dict[str, Any]:
         # Delegate ResponseRequest -> Anthropic Messages request

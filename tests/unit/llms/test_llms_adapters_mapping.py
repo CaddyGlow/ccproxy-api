@@ -215,7 +215,16 @@ async def test_openai_chat_to_openai_responses_structured_outputs_json_schema():
         OpenAIChatToOpenAIResponsesAdapter,
     )
 
-    schema = {"name": "math_response", "schema": {"type": "object", "properties": {"a": {"type": "number"}}, "required": ["a"], "additionalProperties": False}, "strict": True}
+    schema = {
+        "name": "math_response",
+        "schema": {
+            "type": "object",
+            "properties": {"a": {"type": "number"}},
+            "required": ["a"],
+            "additionalProperties": False,
+        },
+        "strict": True,
+    }
     req = OpenAIChatRequest(
         model="gpt-4o",
         messages=[{"role": "user", "content": "hi"}],
@@ -223,7 +232,9 @@ async def test_openai_chat_to_openai_responses_structured_outputs_json_schema():
     )
     out = await OpenAIChatToOpenAIResponsesAdapter().adapt_request(req.model_dump())
     resp_req = OpenAIResponseRequest.model_validate(out)
-    assert resp_req.text and resp_req.text.get("format", {}).get("type") == "json_schema"
+    assert (
+        resp_req.text and resp_req.text.get("format", {}).get("type") == "json_schema"
+    )
     fmt = resp_req.text["format"]
     assert fmt.get("name") == "math_response"
     assert isinstance(fmt.get("schema"), dict)
@@ -386,7 +397,14 @@ async def test_openai_responses_request_to_anthropic_messages_text_format_inject
                 "content": [{"type": "input_text", "text": "Hello"}],
             }
         ],
-        text={"format": {"type": "json_schema", "name": "doc", "schema": schema, "strict": True}},
+        text={
+            "format": {
+                "type": "json_schema",
+                "name": "doc",
+                "schema": schema,
+                "strict": True,
+            }
+        },
     )
 
     out = await OpenAIResponsesRequestToAnthropicMessagesAdapter().adapt_request(
@@ -394,7 +412,9 @@ async def test_openai_responses_request_to_anthropic_messages_text_format_inject
     )
     anth = AnthropicCreateMessageRequest.model_validate(out)
     assert isinstance(anth.system, str)
-    assert "Respond ONLY with JSON strictly conforming to this JSON Schema" in anth.system
+    assert (
+        "Respond ONLY with JSON strictly conforming to this JSON Schema" in anth.system
+    )
     assert '"properties":' in anth.system
 
 
@@ -477,16 +497,34 @@ async def test_openai_responses_request_stream_maps_refusal_done_event():
         OpenAIResponsesRequestToAnthropicMessagesAdapter,
     )
     from ccproxy.llms.anthropic.models import (
-        MessageResponse as AnthMessage,
-        Usage as AnthUsage,
-        MessageStartEvent as AnthMsgStart,
-        ContentBlockStartEvent as AnthCBStart,
         ContentBlockDeltaEvent as AnthCBDelta,
+    )
+    from ccproxy.llms.anthropic.models import (
+        ContentBlockStartEvent as AnthCBStart,
+    )
+    from ccproxy.llms.anthropic.models import (
         ContentBlockStopEvent as AnthCBStop,
-        MessageDeltaEvent as AnthMsgDelta,
+    )
+    from ccproxy.llms.anthropic.models import (
         MessageDelta as AnthDelta,
+    )
+    from ccproxy.llms.anthropic.models import (
+        MessageDeltaEvent as AnthMsgDelta,
+    )
+    from ccproxy.llms.anthropic.models import (
+        MessageResponse as AnthMessage,
+    )
+    from ccproxy.llms.anthropic.models import (
+        MessageStartEvent as AnthMsgStart,
+    )
+    from ccproxy.llms.anthropic.models import (
         MessageStopEvent as AnthMsgStop,
+    )
+    from ccproxy.llms.anthropic.models import (
         TextBlock as AnthText,
+    )
+    from ccproxy.llms.anthropic.models import (
+        Usage as AnthUsage,
     )
 
     msg = AnthMessage(
@@ -500,10 +538,20 @@ async def test_openai_responses_request_stream_maps_refusal_done_event():
     )
     events = [
         AnthMsgStart(type="message_start", message=msg).model_dump(),
-        AnthCBStart(type="content_block_start", index=0, content_block=AnthText(type="text", text="")).model_dump(),
-        AnthCBDelta(type="content_block_delta", index=0, delta=AnthText(type="text", text="Hi")).model_dump(),
+        AnthCBStart(
+            type="content_block_start",
+            index=0,
+            content_block=AnthText(type="text", text=""),
+        ).model_dump(),
+        AnthCBDelta(
+            type="content_block_delta", index=0, delta=AnthText(type="text", text="Hi")
+        ).model_dump(),
         AnthCBStop(type="content_block_stop", index=0).model_dump(),
-        AnthMsgDelta(type="message_delta", delta=AnthDelta(stop_reason="refusal"), usage=AnthUsage(input_tokens=1, output_tokens=0)).model_dump(),
+        AnthMsgDelta(
+            type="message_delta",
+            delta=AnthDelta(stop_reason="refusal"),
+            usage=AnthUsage(input_tokens=1, output_tokens=0),
+        ).model_dump(),
         AnthMsgStop(type="message_stop").model_dump(),
     ]
 

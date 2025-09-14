@@ -16,25 +16,22 @@ from ccproxy.llms.anthropic.models import (
     Tool as AnthropicTool,
 )
 from ccproxy.llms.anthropic.models import (
-    ToolUseBlock as AnthropicToolUseBlock,
-)
-from ccproxy.llms.anthropic.models import (
     ToolChoiceAuto as AnthropicToolChoiceAuto,
 )
 from ccproxy.llms.anthropic.models import (
-    ToolChoiceTool as AnthropicToolChoiceTool,
+    ToolUseBlock as AnthropicToolUseBlock,
 )
 from ccproxy.llms.anthropic.models import (
     Usage as AnthropicUsage,
 )
 from ccproxy.llms.openai.models import (
-    ResponseRequest as OpenAIResponseRequest,
+    OutputTextContent as OpenAIOutputTextContent,
 )
 from ccproxy.llms.openai.models import (
     ResponseObject as OpenAIResponseObject,
 )
 from ccproxy.llms.openai.models import (
-    OutputTextContent as OpenAIOutputTextContent,
+    ResponseRequest as OpenAIResponseRequest,
 )
 
 
@@ -49,15 +46,27 @@ async def test_anthropic_to_openai_responses_request_mapping():
         model="claude-sonnet",
         system="You are helpful",
         messages=[
-            {"role": "user", "content": [
-                {"type": "text", "text": "Hello"},
-                {"type": "text", "text": "there"},
-            ]}
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": "Hello"},
+                    {"type": "text", "text": "there"},
+                ],
+            }
         ],
         max_tokens=256,
         stream=True,
-        tools=[AnthropicTool(type="custom", name="search", description="web", input_schema={"type": "object"})],
-        tool_choice=AnthropicToolChoiceAuto(type="auto", disable_parallel_tool_use=True),
+        tools=[
+            AnthropicTool(
+                type="custom",
+                name="search",
+                description="web",
+                input_schema={"type": "object"},
+            )
+        ],
+        tool_choice=AnthropicToolChoiceAuto(
+            type="auto", disable_parallel_tool_use=True
+        ),
     )
 
     adapter = AnthropicMessagesToOpenAIResponsesAdapter()
@@ -94,7 +103,9 @@ async def test_anthropic_to_openai_responses_response_mapping_thinking_and_tool_
         content=[
             AnthropicThinkingBlock(type="thinking", thinking="inner", signature="sig1"),
             AnthropicTextBlock(type="text", text=" final."),
-            AnthropicToolUseBlock(type="tool_use", id="t1", name="fetch", input={"q": 1}),
+            AnthropicToolUseBlock(
+                type="tool_use", id="t1", name="fetch", input={"q": 1}
+            ),
         ],
         stop_reason="end_turn",
         stop_sequence=None,
