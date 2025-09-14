@@ -19,56 +19,58 @@ class InvalidRequestError(ErrorDetail):
     """Error for an invalid request."""
 
     type: Literal["invalid_request_error"] = Field(
-        "invalid_request_error", alias="type"
+        default="invalid_request_error", alias="type"
     )
 
 
 class AuthenticationError(ErrorDetail):
     """Error for authentication issues."""
 
-    type: Literal["authentication_error"] = Field("authentication_error", alias="type")
+    type: Literal["authentication_error"] = Field(
+        default="authentication_error", alias="type"
+    )
 
 
 class BillingError(ErrorDetail):
     """Error for billing issues."""
 
-    type: Literal["billing_error"] = Field("billing_error", alias="type")
+    type: Literal["billing_error"] = Field(default="billing_error", alias="type")
 
 
 class PermissionError(ErrorDetail):
     """Error for permission issues."""
 
-    type: Literal["permission_error"] = Field("permission_error", alias="type")
+    type: Literal["permission_error"] = Field(default="permission_error", alias="type")
 
 
 class NotFoundError(ErrorDetail):
     """Error for a resource not being found."""
 
-    type: Literal["not_found_error"] = Field("not_found_error", alias="type")
+    type: Literal["not_found_error"] = Field(default="not_found_error", alias="type")
 
 
 class RateLimitError(ErrorDetail):
     """Error for rate limiting."""
 
-    type: Literal["rate_limit_error"] = Field("rate_limit_error", alias="type")
+    type: Literal["rate_limit_error"] = Field(default="rate_limit_error", alias="type")
 
 
 class GatewayTimeoutError(ErrorDetail):
     """Error for a gateway timeout."""
 
-    type: Literal["timeout_error"] = Field("timeout_error", alias="type")
+    type: Literal["timeout_error"] = Field(default="timeout_error", alias="type")
 
 
 class APIError(ErrorDetail):
     """A generic API error."""
 
-    type: Literal["api_error"] = Field("api_error", alias="type")
+    type: Literal["api_error"] = Field(default="api_error", alias="type")
 
 
 class OverloadedError(ErrorDetail):
     """Error for when the server is overloaded."""
 
-    type: Literal["overloaded_error"] = Field("overloaded_error", alias="type")
+    type: Literal["overloaded_error"] = Field(default="overloaded_error", alias="type")
 
 
 ErrorType = Annotated[
@@ -88,7 +90,7 @@ ErrorType = Annotated[
 class ErrorResponse(BaseModel):
     """The structure of an error response."""
 
-    type: Literal["error"] = Field("error", alias="type")
+    type: Literal["error"] = Field(default="error", alias="type")
     error: ErrorType
 
 
@@ -101,7 +103,7 @@ class ModelInfo(BaseModel):
     """Information about an available model."""
 
     id: str
-    type: Literal["model"] = Field("model", alias="type")
+    type: Literal["model"] = Field(default="model", alias="type")
     created_at: datetime
     display_name: str
 
@@ -131,14 +133,14 @@ class ContentBlockBase(BaseModel):
 class TextBlock(ContentBlockBase):
     """A block of text content."""
 
-    type: Literal["text"] = Field("text", alias="type")
+    type: Literal["text"] = Field(default="text", alias="type")
     text: str
 
 
 class ImageSource(BaseModel):
     """Source of an image."""
 
-    type: Literal["base64"] = Field("base64", alias="type")
+    type: Literal["base64"] = Field(default="base64", alias="type")
     media_type: Literal["image/jpeg", "image/png", "image/gif", "image/webp"]
     data: str
 
@@ -146,14 +148,14 @@ class ImageSource(BaseModel):
 class ImageBlock(ContentBlockBase):
     """A block of image content."""
 
-    type: Literal["image"] = Field("image", alias="type")
+    type: Literal["image"] = Field(default="image", alias="type")
     source: ImageSource
 
 
 class ToolUseBlock(ContentBlockBase):
     """Block for a tool use."""
 
-    type: Literal["tool_use"] = Field("tool_use", alias="type")
+    type: Literal["tool_use"] = Field(default="tool_use", alias="type")
     id: str
     name: str
     input: dict[str, Any]
@@ -162,7 +164,7 @@ class ToolUseBlock(ContentBlockBase):
 class ToolResultBlock(ContentBlockBase):
     """Block for the result of a tool use."""
 
-    type: Literal["tool_result"] = Field("tool_result", alias="type")
+    type: Literal["tool_result"] = Field(default="tool_result", alias="type")
     tool_use_id: str
     content: str | list[TextBlock | ImageBlock]
     is_error: bool = False
@@ -171,7 +173,7 @@ class ToolResultBlock(ContentBlockBase):
 class ThinkingBlock(ContentBlockBase):
     """Block representing the model's thinking process."""
 
-    type: Literal["thinking"] = Field("thinking", alias="type")
+    type: Literal["thinking"] = Field(default="thinking", alias="type")
     thinking: str
     signature: str
 
@@ -179,7 +181,9 @@ class ThinkingBlock(ContentBlockBase):
 class RedactedThinkingBlock(ContentBlockBase):
     """A block specifying internal, redacted thinking by the model."""
 
-    type: Literal["redacted_thinking"] = Field("redacted_thinking", alias="type")
+    type: Literal["redacted_thinking"] = Field(
+        default="redacted_thinking", alias="type"
+    )
     data: str
 
 
@@ -230,7 +234,7 @@ class Tool(BaseModel):
     """Definition of a custom tool the model can use."""
 
     # Discriminator field for union matching
-    type: Literal["custom"] = Field("custom", alias="type")
+    type: Literal["custom"] = Field(default="custom", alias="type")
     name: str = Field(
         ..., min_length=1, max_length=128, pattern=r"^[a-zA-Z0-9_-]{1,128}$"
     )
@@ -241,7 +245,9 @@ class Tool(BaseModel):
 class WebSearchTool(BaseModel):
     """Definition for the built-in web search tool."""
 
-    type: Literal["web_search_20250305"] = Field("web_search_20250305", alias="type")
+    type: Literal["web_search_20250305"] = Field(
+        default="web_search_20250305", alias="type"
+    )
     name: Literal["web_search"] = "web_search"
 
 
@@ -269,14 +275,14 @@ class ThinkingConfigBase(BaseModel):
 class ThinkingConfigEnabled(ThinkingConfigBase):
     """Configuration for enabled thinking."""
 
-    type: Literal["enabled"] = Field("enabled", alias="type")
+    type: Literal["enabled"] = Field(default="enabled", alias="type")
     budget_tokens: int = Field(..., ge=1024)
 
 
 class ThinkingConfigDisabled(ThinkingConfigBase):
     """Configuration for disabled thinking."""
 
-    type: Literal["disabled"] = Field("disabled", alias="type")
+    type: Literal["disabled"] = Field(default="disabled", alias="type")
 
 
 ThinkingConfig = Annotated[
@@ -293,21 +299,21 @@ class ToolChoiceBase(BaseModel):
 class ToolChoiceAuto(ToolChoiceBase):
     """The model will automatically decide whether to use tools."""
 
-    type: Literal["auto"] = Field("auto", alias="type")
+    type: Literal["auto"] = Field(default="auto", alias="type")
     disable_parallel_tool_use: bool = False
 
 
 class ToolChoiceAny(ToolChoiceBase):
     """The model will use any available tools."""
 
-    type: Literal["any"] = Field("any", alias="type")
+    type: Literal["any"] = Field(default="any", alias="type")
     disable_parallel_tool_use: bool = False
 
 
 class ToolChoiceTool(ToolChoiceBase):
     """The model will use the specified tool."""
 
-    type: Literal["tool"] = Field("tool", alias="type")
+    type: Literal["tool"] = Field(default="tool", alias="type")
     name: str
     disable_parallel_tool_use: bool = False
 
@@ -315,7 +321,7 @@ class ToolChoiceTool(ToolChoiceBase):
 class ToolChoiceNone(ToolChoiceBase):
     """The model will not use any tools."""
 
-    type: Literal["none"] = Field("none", alias="type")
+    type: Literal["none"] = Field(default="none", alias="type")
 
 
 ToolChoice = Annotated[
@@ -335,7 +341,7 @@ class RequestMCPServerURLDefinition(BaseModel):
     """URL definition for an MCP server."""
 
     name: str
-    type: Literal["url"] = Field("url", alias="type")
+    type: Literal["url"] = Field(default="url", alias="type")
     url: str
     authorization_token: str | None = None
     tool_configuration: RequestMCPServerToolConfiguration | None = None
@@ -364,12 +370,12 @@ class CreateMessageRequest(BaseModel):
     stop_sequences: list[str] | None = None
     stream: bool = False
     system: str | list[TextBlock] | None = None
-    temperature: float | None = Field(None, ge=0.0, le=1.0)
+    temperature: float | None = Field(default=None, ge=0.0, le=1.0)
     thinking: ThinkingConfig | None = None
     tools: list[AnyTool] | None = None
     tool_choice: ToolChoice | None = None
     top_k: int | None = None
-    top_p: float | None = Field(None, ge=0.0, le=1.0)
+    top_p: float | None = Field(default=None, ge=0.0, le=1.0)
 
     model_config = ConfigDict(extra="forbid")
 
@@ -392,7 +398,7 @@ class MessageResponse(BaseModel):
     """Response model for a created message."""
 
     id: str
-    type: Literal["message"] = Field("message", alias="type")
+    type: Literal["message"] = Field(default="message", alias="type")
     role: Literal["assistant"]
     content: list[ResponseContentBlock]
     model: str
@@ -426,35 +432,39 @@ class CountMessageTokensResponse(BaseModel):
 class PingEvent(BaseModel):
     """A keep-alive event."""
 
-    type: Literal["ping"] = Field("ping", alias="type")
+    type: Literal["ping"] = Field(default="ping", alias="type")
 
 
 class ErrorEvent(BaseModel):
     """An error event in the stream."""
 
-    type: Literal["error"] = Field("error", alias="type")
+    type: Literal["error"] = Field(default="error", alias="type")
     error: ErrorDetail
 
 
 class MessageStartEvent(BaseModel):
     """Event sent when a message stream starts."""
 
-    type: Literal["message_start"] = Field("message_start", alias="type")
+    type: Literal["message_start"] = Field(default="message_start", alias="type")
     message: MessageResponse
 
 
 class ContentBlockStartEvent(BaseModel):
     """Event when a content block starts."""
 
-    type: Literal["content_block_start"] = Field("content_block_start", alias="type")
+    type: Literal["content_block_start"] = Field(
+        default="content_block_start", alias="type"
+    )
     index: int
-    content_block: TextBlock | ToolUseBlock
+    content_block: ResponseContentBlock
 
 
 class ContentBlockDeltaEvent(BaseModel):
     """Event for a delta in a content block."""
 
-    type: Literal["content_block_delta"] = Field("content_block_delta", alias="type")
+    type: Literal["content_block_delta"] = Field(
+        default="content_block_delta", alias="type"
+    )
     index: int
     delta: TextBlock
 
@@ -462,7 +472,9 @@ class ContentBlockDeltaEvent(BaseModel):
 class ContentBlockStopEvent(BaseModel):
     """Event when a content block stops."""
 
-    type: Literal["content_block_stop"] = Field("content_block_stop", alias="type")
+    type: Literal["content_block_stop"] = Field(
+        default="content_block_stop", alias="type"
+    )
     index: int
 
 
@@ -486,7 +498,7 @@ class MessageDelta(BaseModel):
 class MessageDeltaEvent(BaseModel):
     """Event for a delta in the message metadata."""
 
-    type: Literal["message_delta"] = Field("message_delta", alias="type")
+    type: Literal["message_delta"] = Field(default="message_delta", alias="type")
     delta: MessageDelta
     usage: Usage
 
@@ -494,7 +506,7 @@ class MessageDeltaEvent(BaseModel):
 class MessageStopEvent(BaseModel):
     """Event sent when a message stream stops."""
 
-    type: Literal["message_stop"] = Field("message_stop", alias="type")
+    type: Literal["message_stop"] = Field(default="message_stop", alias="type")
 
 
 MessageStreamEvent = Annotated[

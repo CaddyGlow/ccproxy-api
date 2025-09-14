@@ -14,7 +14,13 @@ from ccproxy.llms.openai.models import (
 )
 
 
-class OpenAIChatToOpenAIResponsesAdapter(BaseAPIAdapter):
+class OpenAIChatToOpenAIResponsesAdapter(
+    BaseAPIAdapter[
+        ChatCompletionRequest,
+        ResponseObject,
+        BaseModel,
+    ]
+):
     """OpenAI Chat → OpenAI Responses request adapter (minimal).
 
     Implemented
@@ -32,10 +38,10 @@ class OpenAIChatToOpenAIResponsesAdapter(BaseAPIAdapter):
         super().__init__(name="openai_chat_to_openai_responses")
 
     # Model conversion helpers - simple for OpenAI to OpenAI
-    def _dict_to_request_model(self, request: dict[str, Any]) -> BaseModel:
+    def _dict_to_request_model(self, request: dict[str, Any]) -> ChatCompletionRequest:
         return ChatCompletionRequest.model_validate(request)
 
-    def _dict_to_response_model(self, response: dict[str, Any]) -> BaseModel:
+    def _dict_to_response_model(self, response: dict[str, Any]) -> ResponseObject:
         return ResponseObject.model_validate(response)
 
     def _dict_to_error_model(self, error: dict[str, Any]) -> BaseModel:
@@ -69,11 +75,12 @@ class OpenAIChatToOpenAIResponsesAdapter(BaseAPIAdapter):
     def adapt_stream_typed(
         self, stream: AsyncIterator[BaseModel]
     ) -> AsyncGenerator[BaseModel, None]:
-        async def generator() -> AsyncGenerator[BaseModel, None]:
-            async for item in stream:
-                yield item
+        # Delegate streaming conversion as well
+        from ccproxy.llms.adapters.openai_responses_to_openai_chatcompletions import (
+            OpenAIResponsesToOpenAIChatAdapter,
+        )
 
-        return generator()
+        return OpenAIResponsesToOpenAIChatAdapter().adapt_stream_typed(stream)
 
     async def adapt_error_typed(self, error: BaseModel) -> BaseModel:
         return error  # Pass through
@@ -175,16 +182,6 @@ class OpenAIChatToOpenAIResponsesAdapter(BaseAPIAdapter):
         typed_response = self._dict_to_response_model(response)
         typed_result = await self.adapt_response_typed(typed_response)
         return typed_result.model_dump()
-
-    def adapt_stream(
-        self, stream: AsyncIterator[dict[str, Any]]
-    ) -> AsyncGenerator[dict[str, Any], None]:
-        # Delegate streaming conversion as well
-        from ccproxy.llms.adapters.openai_responses_to_openai_chatcompletions import (
-            OpenAIResponsesToOpenAIChatAdapter,
-        )
-
-        return OpenAIResponsesToOpenAIChatAdapter().adapt_stream(stream)
 
     async def adapt_error(self, error: dict[str, Any]) -> dict[str, Any]:
         return error

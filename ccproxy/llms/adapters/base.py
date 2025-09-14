@@ -2,11 +2,16 @@
 
 from abc import ABC, abstractmethod
 from collections.abc import AsyncGenerator, AsyncIterator
-from typing import Any
+from typing import Any, Generic, TypeVar
 
 from pydantic import BaseModel
 
 from ccproxy.core.interfaces import StreamingConfigurable
+
+
+RequestType = TypeVar("RequestType", bound=BaseModel)
+ResponseType = TypeVar("ResponseType", bound=BaseModel)
+StreamEventType = TypeVar("StreamEventType", bound=BaseModel)
 
 
 class APIAdapter(ABC):
@@ -81,7 +86,11 @@ class APIAdapter(ABC):
         pass
 
 
-class BaseAPIAdapter(APIAdapter, StreamingConfigurable):
+class BaseAPIAdapter(
+    APIAdapter,
+    StreamingConfigurable,
+    Generic[RequestType, ResponseType, StreamEventType],
+):
     """Base implementation with common functionality.
 
     Provides dual interface support:
@@ -140,18 +149,18 @@ class BaseAPIAdapter(APIAdapter, StreamingConfigurable):
 
     # New strongly-typed interface - subclasses implement these
     @abstractmethod
-    async def adapt_request_typed(self, request: BaseModel) -> BaseModel:
+    async def adapt_request_typed(self, request: RequestType) -> BaseModel:
         """Convert a request using strongly-typed Pydantic models."""
         pass
 
     @abstractmethod
-    async def adapt_response_typed(self, response: BaseModel) -> BaseModel:
+    async def adapt_response_typed(self, response: ResponseType) -> BaseModel:
         """Convert a response using strongly-typed Pydantic models."""
         pass
 
     @abstractmethod
     def adapt_stream_typed(
-        self, stream: AsyncIterator[BaseModel]
+        self, stream: AsyncIterator[StreamEventType]
     ) -> AsyncGenerator[BaseModel, None]:
         """Convert a streaming response using strongly-typed Pydantic models."""
         # This should be implemented as an async generator
@@ -165,12 +174,12 @@ class BaseAPIAdapter(APIAdapter, StreamingConfigurable):
 
     # Helper methods for model conversion - subclasses implement these
     @abstractmethod
-    def _dict_to_request_model(self, request: dict[str, Any]) -> BaseModel:
+    def _dict_to_request_model(self, request: dict[str, Any]) -> RequestType:
         """Convert dict to appropriate request model."""
         pass
 
     @abstractmethod
-    def _dict_to_response_model(self, response: dict[str, Any]) -> BaseModel:
+    def _dict_to_response_model(self, response: dict[str, Any]) -> ResponseType:
         """Convert dict to appropriate response model."""
         pass
 
@@ -182,7 +191,7 @@ class BaseAPIAdapter(APIAdapter, StreamingConfigurable):
     @abstractmethod
     def _dict_stream_to_typed_stream(
         self, stream: AsyncIterator[dict[str, Any]]
-    ) -> AsyncIterator[BaseModel]:
+    ) -> AsyncIterator[StreamEventType]:
         """Convert dict stream to typed stream."""
         pass
 

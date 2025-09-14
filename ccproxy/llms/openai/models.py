@@ -55,7 +55,7 @@ class Model(BaseModel):
         ..., description="The Unix timestamp of when the model was created."
     )
     object: Literal["model"] = Field(
-        ..., description="The object type, always 'model'."
+        default="model", description="The object type, always 'model'."
     )
     owned_by: str = Field(..., description="The organization that owns the model.")
 
@@ -65,7 +65,9 @@ class ModelList(BaseModel):
     A list of available models.
     """
 
-    object: Literal["list"] = Field(..., description="The object type, always 'list'.")
+    object: Literal["list"] = Field(
+        default="list", description="The object type, always 'list'."
+    )
     data: list[Model] = Field(..., description="A list of model objects.")
 
 
@@ -101,7 +103,7 @@ class EmbeddingData(BaseModel):
     """
 
     object: Literal["embedding"] = Field(
-        ..., description="The object type, always 'embedding'."
+        default="embedding", description="The object type, always 'embedding'."
     )
     embedding: list[float] = Field(..., description="The embedding vector.")
     index: int = Field(..., description="The index of the embedding in the list.")
@@ -121,7 +123,9 @@ class EmbeddingResponse(BaseModel):
     Response object for an embedding request.
     """
 
-    object: Literal["list"] = Field(..., description="The object type, always 'list'.")
+    object: Literal["list"] = Field(
+        default="list", description="The object type, always 'list'."
+    )
     data: list[EmbeddingData] = Field(..., description="List of embedding objects.")
     model: str = Field(..., description="The model used for the embedding.")
     usage: EmbeddingUsage = Field(..., description="Token usage for the request.")
@@ -166,7 +170,8 @@ class Tool(BaseModel):
     """
 
     type: Literal["function"] = Field(
-        ..., description="The type of the tool, currently only 'function' is supported."
+        default="function",
+        description="The type of the tool, currently only 'function' is supported.",
     )
     function: FunctionDefinition
 
@@ -178,7 +183,7 @@ class FunctionCall(BaseModel):
 
 class ToolCall(BaseModel):
     id: str
-    type: Literal["function"]
+    type: Literal["function"] = Field(default="function")
     function: FunctionCall
 
 
@@ -245,7 +250,7 @@ class ChatCompletionRequest(BaseModel):
 class ResponseMessage(BaseModel):
     content: str | None = None
     tool_calls: list[ToolCall] | None = None
-    role: Literal["assistant"]
+    role: Literal["assistant"] = Field(default="assistant")
     refusal: str | None = None
     annotations: list[Any] | None = None
 
@@ -269,7 +274,7 @@ class ChatCompletionResponse(BaseModel):
     created: int
     model: str
     system_fingerprint: str | None = None
-    object: Literal["chat.completion"]
+    object: Literal["chat.completion"] = Field(default="chat.completion")
     usage: CompletionUsage
     service_tier: str | None = None
 
@@ -292,13 +297,14 @@ class StreamingChoice(BaseModel):
 
 class ChatCompletionChunk(BaseModel):
     id: str
-    object: Literal["chat.completion.chunk"]
+    object: Literal["chat.completion.chunk"] = Field(default="chat.completion.chunk")
     created: int
     model: str
     system_fingerprint: str | None = None
     choices: list[StreamingChoice]
     usage: CompletionUsage | None = Field(
-        None, description="Usage stats, present only in the final chunk if requested."
+        default=None,
+        description="Usage stats, present only in the final chunk if requested.",
     )
 
 
@@ -310,7 +316,7 @@ class ChatCompletionChunk(BaseModel):
 # --- Request Models ---
 class StreamOptions(BaseModel):
     include_usage: bool | None = Field(
-        None,
+        default=None,
         description="If set, an additional chunk will be streamed before the final completion chunk with usage statistics.",
     )
 
@@ -322,7 +328,7 @@ class ToolFunction(BaseModel):
 
 
 class FunctionTool(BaseModel):
-    type: Literal["function"]
+    type: Literal["function"] = Field(default="function")
     function: ToolFunction
 
 
@@ -429,7 +435,7 @@ class Reasoning(BaseModel):
 
 class ResponseObject(BaseModel):
     id: str
-    object: Literal["response"]
+    object: Literal["response"] = Field(default="response")
     created_at: int
     status: str
     model: str

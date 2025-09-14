@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import AsyncGenerator, AsyncIterator
-from typing import Any
+from typing import Any, Literal, cast
 
 from pydantic import BaseModel, TypeAdapter
 
@@ -11,7 +11,16 @@ from ccproxy.llms.anthropic import models as anthropic_models
 from ccproxy.llms.openai import models as openai_models
 
 
-class AnthropicMessagesToOpenAIChatAdapter(BaseAPIAdapter):
+FinishReason = Literal["stop", "length", "tool_calls"]
+
+
+class AnthropicMessagesToOpenAIChatAdapter(
+    BaseAPIAdapter[
+        anthropic_models.CreateMessageRequest,
+        anthropic_models.MessageResponse,
+        anthropic_models.MessageStreamEvent,
+    ]
+):
     """Anthropic Messages ↔ OpenAI Chat adapter (response and request subset).
 
     Implemented
@@ -34,7 +43,9 @@ class AnthropicMessagesToOpenAIChatAdapter(BaseAPIAdapter):
         super().__init__(name="anthropic_messages_to_openai_chat")
 
     # Model conversion helpers
-    def _dict_to_request_model(self, request: dict[str, Any]) -> BaseModel:
+    def _dict_to_request_model(
+        self, request: dict[str, Any]
+    ) -> anthropic_models.CreateMessageRequest:
         """Convert dict to CreateMessageRequest."""
         # Preprocess tools to satisfy union discriminator if missing
         req_dict = dict(request)
@@ -48,7 +59,9 @@ class AnthropicMessagesToOpenAIChatAdapter(BaseAPIAdapter):
             req_dict["tools"] = new_tools
         return anthropic_models.CreateMessageRequest.model_validate(req_dict)
 
-    def _dict_to_response_model(self, response: dict[str, Any]) -> BaseModel:
+    def _dict_to_response_model(
+        self, response: dict[str, Any]
+    ) -> anthropic_models.MessageResponse:
         """Convert dict to MessageResponse."""
         return anthropic_models.MessageResponse.model_validate(response)
 
@@ -58,14 +71,16 @@ class AnthropicMessagesToOpenAIChatAdapter(BaseAPIAdapter):
 
     def _dict_stream_to_typed_stream(
         self, stream: AsyncIterator[dict[str, Any]]
-    ) -> AsyncIterator[BaseModel]:
+    ) -> AsyncIterator[anthropic_models.MessageStreamEvent]:
         """Convert dict stream to MessageStreamEvent stream."""
 
         event_adapter: TypeAdapter[anthropic_models.MessageStreamEvent] = TypeAdapter(
             anthropic_models.MessageStreamEvent
         )
 
-        async def typed_generator() -> AsyncIterator[BaseModel]:
+        async def typed_generator() -> AsyncIterator[
+            anthropic_models.MessageStreamEvent
+        ]:
             async for chunk_dict in stream:
                 try:
                     yield event_adapter.validate_python(chunk_dict)
@@ -91,10 +106,76 @@ class AnthropicMessagesToOpenAIChatAdapter(BaseAPIAdapter):
         return await self._convert_response_typed(response)
 
     def adapt_stream_typed(
-        self, stream: AsyncIterator[BaseModel]
-    ) -> AsyncGenerator[BaseModel, None]:
-        """Convert streams - not implemented yet."""
-        raise NotImplementedError("Stream adaptation not implemented for this adapter")
+        self, stream: AsyncIterator[anthropic_models.MessageStreamEvent]
+    ) -> AsyncGenerator[openai_models.ChatCompletionChunk, None]:
+        """Convert Anthropic MessageStreamEvent stream to OpenAI ChatCompletionChunk stream."""
+        return self._convert_stream_typed(stream)
+
+    async def _convert_stream_typed(
+        self, stream: AsyncIterator[anthropic_models.MessageStreamEvent]
+    ) -> AsyncGenerator[openai_models.ChatCompletionChunk, None]:
+        model_id = ""
+        finish_reason: FinishReason = "stop"
+        usage_prompt = 0
+        usage_completion = 0
+
+        async for evt in stream:
+            if not hasattr(evt, "type"):
+                continue
+
+            if evt.type == "message_start":
+                model_id = evt.message.model or ""
+            elif evt.type == "content_block_delta":
+                text = evt.delta.text
+                if text:
+                    yield openai_models.ChatCompletionChunk(
+                        id="chatcmpl-stream",
+                        object="chat.completion.chunk",
+                        created=0,
+                        model=model_id,
+                        choices=[
+                            openai_models.StreamingChoice(
+                                index=0,
+                                delta=openai_models.DeltaMessage(
+                                    role="assistant", content=text
+                                ),
+                                finish_reason=None,
+                            )
+                        ],
+                    )
+            elif evt.type == "message_delta":
+                if evt.delta.stop_reason:
+                    finish_reason = cast(
+                        FinishReason,
+                        ANTHROPIC_TO_OPENAI_FINISH_REASON.get(
+                            evt.delta.stop_reason, "stop"
+                        ),
+                    )
+                usage_prompt = evt.usage.input_tokens
+                usage_completion = evt.usage.output_tokens
+            elif evt.type == "message_stop":
+                usage = None
+                if usage_prompt or usage_completion:
+                    usage = openai_models.CompletionUsage(
+                        prompt_tokens=usage_prompt,
+                        completion_tokens=usage_completion,
+                        total_tokens=usage_prompt + usage_completion,
+                    )
+                yield openai_models.ChatCompletionChunk(
+                    id="chatcmpl-stream",
+                    object="chat.completion.chunk",
+                    created=0,
+                    model=model_id,
+                    choices=[
+                        openai_models.StreamingChoice(
+                            index=0,
+                            delta=openai_models.DeltaMessage(),
+                            finish_reason=finish_reason,
+                        )
+                    ],
+                    usage=usage,
+                )
+                break
 
     async def adapt_error_typed(self, error: BaseModel) -> BaseModel:
         """Convert error response - pass through for now."""
@@ -607,75 +688,6 @@ class AnthropicMessagesToOpenAIChatAdapter(BaseAPIAdapter):
         typed_response = self._dict_to_response_model(response)
         typed_result = await self.adapt_response_typed(typed_response)
         return typed_result.model_dump()
-
-    def adapt_stream(
-        self, stream: AsyncIterator[dict[str, Any]]
-    ) -> AsyncGenerator[dict[str, Any], None]:
-        async def generator() -> AsyncGenerator[dict[str, Any], None]:
-            model_id = ""
-            finish_reason = "stop"
-            usage_prompt = 0
-            usage_completion = 0
-            # Emit chunks for text deltas; create final finish chunk on message_stop
-            async for evt in stream:
-                if not isinstance(evt, dict):
-                    continue
-                etype = evt.get("type")
-                if etype == "message_start":
-                    model_id = (evt.get("message") or {}).get("model", "")
-                elif etype == "content_block_delta":
-                    delta = evt.get("delta") or {}
-                    text = delta.get("text") if isinstance(delta, dict) else None
-                    if isinstance(text, str) and text:
-                        yield {
-                            "id": "chatcmpl-stream",
-                            "object": "chat.completion.chunk",
-                            "created": 0,
-                            "model": model_id,
-                            "choices": [
-                                {
-                                    "index": 0,
-                                    "delta": {"role": "assistant", "content": text},
-                                    "finish_reason": None,
-                                }
-                            ],
-                        }
-                elif etype == "message_delta":
-                    delta = evt.get("delta") or {}
-                    stop_reason = (
-                        delta.get("stop_reason") if isinstance(delta, dict) else None
-                    )
-                    if stop_reason:
-                        finish_reason = ANTHROPIC_TO_OPENAI_FINISH_REASON.get(
-                            stop_reason, "stop"
-                        )
-                    usage = evt.get("usage") or {}
-                    usage_prompt = int(usage.get("input_tokens") or 0)
-                    usage_completion = int(usage.get("output_tokens") or 0)
-                elif etype == "message_stop":
-                    final = {
-                        "id": "chatcmpl-stream",
-                        "object": "chat.completion.chunk",
-                        "created": 0,
-                        "model": model_id,
-                        "choices": [
-                            {
-                                "index": 0,
-                                "delta": {},
-                                "finish_reason": finish_reason,
-                            }
-                        ],
-                    }
-                    if usage_prompt or usage_completion:
-                        final["usage"] = {
-                            "prompt_tokens": usage_prompt,
-                            "completion_tokens": usage_completion,
-                            "total_tokens": usage_prompt + usage_completion,
-                        }
-                    yield final
-                    break
-
-        return generator()
 
     async def adapt_error(self, error: dict[str, Any]) -> dict[str, Any]:
         if error.get("type") == "error" and isinstance(error.get("error"), dict):

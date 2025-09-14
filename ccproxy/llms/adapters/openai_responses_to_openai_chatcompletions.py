@@ -3,13 +3,24 @@ from __future__ import annotations
 from collections.abc import AsyncGenerator, AsyncIterator
 from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, TypeAdapter
 
 from ccproxy.llms.adapters.base import BaseAPIAdapter
-from ccproxy.llms.openai.models import ChatCompletionChunk, ChatCompletionResponse
+from ccproxy.llms.openai import models as openai_models
+from ccproxy.llms.openai.models import (
+    ChatCompletionChunk,
+    ChatCompletionResponse,
+    ResponseObject,
+)
 
 
-class OpenAIResponsesToOpenAIChatAdapter(BaseAPIAdapter):
+class OpenAIResponsesToOpenAIChatAdapter(
+    BaseAPIAdapter[
+        BaseModel,
+        ResponseObject,
+        openai_models.AnyStreamEvent,
+    ]
+):
     """OpenAI Responses → OpenAI Chat (result) adapter.
 
     Implemented
@@ -28,18 +39,23 @@ class OpenAIResponsesToOpenAIChatAdapter(BaseAPIAdapter):
     def _dict_to_request_model(self, request: dict[str, Any]) -> BaseModel:
         return BaseModel(**request)  # Minimal implementation
 
-    def _dict_to_response_model(self, response: dict[str, Any]) -> BaseModel:
-        return BaseModel(**response)  # Minimal implementation
+    def _dict_to_response_model(self, response: dict[str, Any]) -> ResponseObject:
+        return ResponseObject.model_validate(response)
 
     def _dict_to_error_model(self, error: dict[str, Any]) -> BaseModel:
         return BaseModel(**error)  # Minimal implementation
 
     def _dict_stream_to_typed_stream(
         self, stream: AsyncIterator[dict[str, Any]]
-    ) -> AsyncIterator[BaseModel]:
-        async def generator() -> AsyncIterator[BaseModel]:
+    ) -> AsyncIterator[openai_models.AnyStreamEvent]:
+        event_adapter = TypeAdapter(openai_models.AnyStreamEvent)
+
+        async def generator() -> AsyncIterator[openai_models.AnyStreamEvent]:
             async for item in stream:
-                yield BaseModel(**item)
+                try:
+                    yield event_adapter.validate_python(item)
+                except Exception:
+                    continue
 
         return generator()
 
@@ -60,11 +76,67 @@ class OpenAIResponsesToOpenAIChatAdapter(BaseAPIAdapter):
     def adapt_stream_typed(
         self, stream: AsyncIterator[BaseModel]
     ) -> AsyncGenerator[BaseModel, None]:
-        async def generator() -> AsyncGenerator[BaseModel, None]:
-            async for item in stream:
-                yield item  # Pass through for now
+        """Convert OpenAI Response stream to OpenAI ChatCompletionChunk stream."""
+        return self._convert_stream_typed(stream)
 
-        return generator()
+    async def _convert_stream_typed(
+        self, stream: AsyncIterator[BaseModel]
+    ) -> AsyncGenerator[BaseModel, None]:
+        model_id = ""
+        async for evt_wrapper in stream:
+            if not hasattr(evt_wrapper, "root"):
+                continue
+            evt = evt_wrapper.root
+            if not hasattr(evt, "type"):
+                continue
+
+            if evt.type == "response.created":
+                model_id = evt.response.model or ""
+            elif evt.type == "response.output_text.delta":
+                delta_text = evt.delta or ""
+                if delta_text:
+                    yield ChatCompletionChunk(
+                        id="chatcmpl-stream",
+                        object="chat.completion.chunk",
+                        created=0,
+                        model=model_id,
+                        choices=[
+                            openai_models.StreamingChoice(
+                                index=0,
+                                delta=openai_models.DeltaMessage(
+                                    role="assistant", content=delta_text
+                                ),
+                                finish_reason=None,
+                            )
+                        ],
+                    )
+            elif evt.type in (
+                "response.completed",
+                "response.incomplete",
+                "response.failed",
+            ):
+                usage = None
+                if evt.response and evt.response.usage:
+                    usage = openai_models.CompletionUsage(
+                        prompt_tokens=evt.response.usage.input_tokens,
+                        completion_tokens=evt.response.usage.output_tokens,
+                        total_tokens=evt.response.usage.total_tokens,
+                    )
+                yield ChatCompletionChunk(
+                    id="chatcmpl-stream",
+                    object="chat.completion.chunk",
+                    created=0,
+                    model=model_id,
+                    choices=[
+                        openai_models.StreamingChoice(
+                            index=0,
+                            delta=openai_models.DeltaMessage(),
+                            finish_reason="stop",
+                        )
+                    ],
+                    usage=usage,
+                )
+                break
 
     async def adapt_error_typed(self, error: BaseModel) -> BaseModel:
         error_dict = error.model_dump() if hasattr(error, "model_dump") else dict(error)
@@ -115,71 +187,6 @@ class OpenAIResponsesToOpenAIChatAdapter(BaseAPIAdapter):
             },
         }
         return ChatCompletionResponse.model_validate(payload).model_dump()
-
-    def adapt_stream(
-        self, stream: AsyncIterator[dict[str, Any]]
-    ) -> AsyncGenerator[dict[str, Any], None]:
-        async def generator() -> AsyncGenerator[dict[str, Any], None]:
-            model_id = ""
-            async for evt in stream:
-                if not isinstance(evt, dict):
-                    continue
-                etype = evt.get("type")
-                if etype == "response.created":
-                    model_id = (evt.get("response") or {}).get("model", "")
-                elif etype == "response.output_text.delta":
-                    delta_text = evt.get("delta") or ""
-                    if delta_text:
-                        chunk = {
-                            "id": "chatcmpl-stream",
-                            "object": "chat.completion.chunk",
-                            "created": 0,
-                            "model": model_id,
-                            "choices": [
-                                {
-                                    "index": 0,
-                                    "delta": {
-                                        "role": "assistant",
-                                        "content": delta_text,
-                                    },
-                                    "finish_reason": None,
-                                }
-                            ],
-                        }
-                        yield ChatCompletionChunk.model_validate(chunk).model_dump()
-                elif etype in (
-                    "response.completed",
-                    "response.incomplete",
-                    "response.failed",
-                ):
-                    usage_obj = (evt.get("response") or {}).get("usage") or {}
-                    # Final chunk with finish reason
-                    final = {
-                        "id": "chatcmpl-stream",
-                        "object": "chat.completion.chunk",
-                        "created": 0,
-                        "model": model_id,
-                        "choices": [
-                            {
-                                "index": 0,
-                                "delta": {},
-                                "finish_reason": "stop",
-                            }
-                        ],
-                    }
-                    # Optionally include usage if present
-                    if usage_obj:
-                        final["usage"] = {
-                            "prompt_tokens": int(usage_obj.get("input_tokens") or 0),
-                            "completion_tokens": int(
-                                usage_obj.get("output_tokens") or 0
-                            ),
-                            "total_tokens": int(usage_obj.get("total_tokens") or 0),
-                        }
-                    yield ChatCompletionChunk.model_validate(final).model_dump()
-                    break
-
-        return generator()
 
     async def adapt_error(self, error: dict[str, Any]) -> dict[str, Any]:
         return error

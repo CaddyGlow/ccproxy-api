@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import AsyncGenerator, AsyncIterator
-from typing import Any
+from typing import Any, Union
 
 from pydantic import BaseModel, TypeAdapter
 
@@ -10,7 +10,23 @@ from ccproxy.llms.anthropic import models as anthropic_models
 from ccproxy.llms.openai import models as openai_models
 
 
-class AnthropicMessagesToOpenAIResponsesAdapter(BaseAPIAdapter):
+ResponseStreamEvent = Union[
+    openai_models.ResponseCreatedEvent,
+    openai_models.ResponseInProgressEvent,
+    openai_models.ResponseCompletedEvent,
+    openai_models.ResponseOutputTextDeltaEvent,
+    openai_models.ResponseFunctionCallArgumentsDoneEvent,
+    openai_models.ResponseRefusalDoneEvent,
+]
+
+
+class AnthropicMessagesToOpenAIResponsesAdapter(
+    BaseAPIAdapter[
+        anthropic_models.CreateMessageRequest,
+        anthropic_models.MessageResponse,
+        anthropic_models.MessageStreamEvent,
+    ]
+):
     """Anthropic Messages ↔ OpenAI Responses adapter (request + response subset).
 
     Implemented
@@ -36,7 +52,9 @@ class AnthropicMessagesToOpenAIResponsesAdapter(BaseAPIAdapter):
         super().__init__(name="anthropic_messages_to_openai_responses")
 
     # Model conversion helpers
-    def _dict_to_request_model(self, request: dict[str, Any]) -> BaseModel:
+    def _dict_to_request_model(
+        self, request: dict[str, Any]
+    ) -> anthropic_models.CreateMessageRequest:
         """Convert dict to CreateMessageRequest."""
         # Preprocess tools to satisfy union discriminator if missing
         req_dict = dict(request)
@@ -50,7 +68,9 @@ class AnthropicMessagesToOpenAIResponsesAdapter(BaseAPIAdapter):
             req_dict["tools"] = new_tools
         return anthropic_models.CreateMessageRequest.model_validate(req_dict)
 
-    def _dict_to_response_model(self, response: dict[str, Any]) -> BaseModel:
+    def _dict_to_response_model(
+        self, response: dict[str, Any]
+    ) -> anthropic_models.MessageResponse:
         """Convert dict to MessageResponse."""
         return anthropic_models.MessageResponse.model_validate(response)
 
@@ -60,14 +80,16 @@ class AnthropicMessagesToOpenAIResponsesAdapter(BaseAPIAdapter):
 
     def _dict_stream_to_typed_stream(
         self, stream: AsyncIterator[dict[str, Any]]
-    ) -> AsyncIterator[BaseModel]:
+    ) -> AsyncIterator[anthropic_models.MessageStreamEvent]:
         """Convert dict stream to MessageStreamEvent stream."""
 
         event_adapter: TypeAdapter[anthropic_models.MessageStreamEvent] = TypeAdapter(
             anthropic_models.MessageStreamEvent
         )
 
-        async def typed_generator() -> AsyncIterator[BaseModel]:
+        async def typed_generator() -> AsyncIterator[
+            anthropic_models.MessageStreamEvent
+        ]:
             async for chunk_dict in stream:
                 try:
                     yield event_adapter.validate_python(chunk_dict)
@@ -93,10 +115,141 @@ class AnthropicMessagesToOpenAIResponsesAdapter(BaseAPIAdapter):
         return await self._convert_response_typed(response)
 
     def adapt_stream_typed(
-        self, stream: AsyncIterator[BaseModel]
-    ) -> AsyncGenerator[BaseModel, None]:
-        """Convert streams - not implemented yet."""
-        raise NotImplementedError("Stream adaptation not implemented for this adapter")
+        self, stream: AsyncIterator[anthropic_models.MessageStreamEvent]
+    ) -> AsyncGenerator[ResponseStreamEvent, None]:
+        """Convert Anthropic MessageStreamEvent stream to OpenAI Response stream events."""
+        return self._convert_stream_typed(stream)
+
+    async def _convert_stream_typed(
+        self, stream: AsyncIterator[anthropic_models.MessageStreamEvent]
+    ) -> AsyncGenerator[ResponseStreamEvent, None]:
+        item_id = "msg_stream"
+        output_index = 0
+        content_index = 0
+        model_id = ""
+        sequence_counter = 0
+
+        async for evt in stream:
+            if not hasattr(evt, "type"):
+                continue
+
+            sequence_counter += 1
+
+            if evt.type == "message_start":
+                model_id = evt.message.model or ""
+                yield openai_models.ResponseCreatedEvent(
+                    type="response.created",
+                    sequence_number=sequence_counter,
+                    response=openai_models.ResponseObject(
+                        id=evt.message.id,
+                        object="response",
+                        created_at=0,
+                        status="in_progress",
+                        model=model_id,
+                        output=[],
+                        parallel_tool_calls=False,
+                    ),
+                )
+
+                # Handle pre-filled content like thinking blocks
+                for block in evt.message.content:
+                    if block.type == "thinking":
+                        sequence_counter += 1
+                        thinking = block.thinking or ""
+                        signature = block.signature
+                        sig_attr = f' signature="{signature}"' if signature else ""
+                        thinking_xml = f"<thinking{sig_attr}>{thinking}</thinking>"
+                        yield openai_models.ResponseOutputTextDeltaEvent(
+                            type="response.output_text.delta",
+                            sequence_number=sequence_counter,
+                            item_id=item_id,
+                            output_index=output_index,
+                            content_index=content_index,
+                            delta=thinking_xml,
+                        )
+
+            elif evt.type == "content_block_start":
+                if evt.content_block.type == "tool_use":
+                    tool_input = evt.content_block.input or {}
+                    try:
+                        import json
+
+                        args_str = json.dumps(tool_input, separators=(",", ":"))
+                    except Exception:
+                        args_str = str(tool_input)
+
+                    yield openai_models.ResponseFunctionCallArgumentsDoneEvent(
+                        type="response.function_call_arguments.done",
+                        sequence_number=sequence_counter,
+                        item_id=item_id,
+                        output_index=output_index,
+                        arguments=args_str,
+                    )
+
+            elif evt.type == "content_block_delta":
+                text = evt.delta.text
+                if text:
+                    yield openai_models.ResponseOutputTextDeltaEvent(
+                        type="response.output_text.delta",
+                        sequence_number=sequence_counter,
+                        item_id=item_id,
+                        output_index=output_index,
+                        content_index=content_index,
+                        delta=text,
+                    )
+
+            elif evt.type == "message_delta":
+                yield openai_models.ResponseInProgressEvent(
+                    type="response.in_progress",
+                    sequence_number=sequence_counter,
+                    response=openai_models.ResponseObject(
+                        id="",
+                        object="response",
+                        created_at=0,
+                        status="in_progress",
+                        model=model_id,
+                        output=[],
+                        parallel_tool_calls=False,
+                        usage=openai_models.ResponseUsage(
+                            input_tokens=evt.usage.input_tokens,
+                            output_tokens=evt.usage.output_tokens,
+                            total_tokens=evt.usage.input_tokens
+                            + evt.usage.output_tokens,
+                            input_tokens_details=openai_models.InputTokensDetails(
+                                cached_tokens=0
+                            ),
+                            output_tokens_details=openai_models.OutputTokensDetails(
+                                reasoning_tokens=0
+                            ),
+                        ),
+                    ),
+                )
+                if evt.delta.stop_reason == "refusal":
+                    sequence_counter += 1
+                    yield openai_models.ResponseRefusalDoneEvent(
+                        type="response.refusal.done",
+                        sequence_number=sequence_counter,
+                        item_id=item_id,
+                        output_index=output_index,
+                        content_index=content_index,
+                        refusal="refused",
+                    )
+
+            elif evt.type == "message_stop":
+                yield openai_models.ResponseCompletedEvent(
+                    type="response.completed",
+                    sequence_number=sequence_counter,
+                    response=openai_models.ResponseObject(
+                        id="",
+                        object="response",
+                        created_at=0,
+                        status="completed",
+                        model=model_id,
+                        output=[],
+                        parallel_tool_calls=False,
+                    ),
+                )
+                break
 
     async def adapt_error_typed(self, error: BaseModel) -> BaseModel:
         """Convert error response - pass through for now."""
@@ -489,106 +642,6 @@ class AnthropicMessagesToOpenAIResponsesAdapter(BaseAPIAdapter):
         typed_response = self._dict_to_response_model(response)
         typed_result = await self.adapt_response_typed(typed_response)
         return typed_result.model_dump()
-
-    def adapt_stream(
-        self, stream: AsyncIterator[dict[str, Any]]
-    ) -> AsyncGenerator[dict[str, Any], None]:
-        async def generator() -> AsyncGenerator[dict[str, Any], None]:
-            item_id = "msg_stream"
-            output_index = 0
-            content_index = 0
-            model_id = ""
-
-            async for evt in stream:
-                if not isinstance(evt, dict):
-                    continue
-
-                etype = evt.get("type")
-                if etype == "message_start":
-                    msg = evt.get("message") or {}
-                    model_id = msg.get("model", "")
-                    yield {
-                        "type": "response.created",
-                        "response": {"model": model_id},
-                    }
-
-                    # Handle pre-filled content like thinking blocks
-                    content_blocks = msg.get("content") or []
-                    for block in content_blocks:
-                        if not isinstance(block, dict):
-                            continue
-                        btype = block.get("type")
-                        if btype == "thinking":
-                            thinking = block.get("thinking", "")
-                            signature = block.get("signature")
-                            sig_attr = (
-                                f' signature="{signature}"'
-                                if isinstance(signature, str) and signature
-                                else ""
-                            )
-                            thinking_xml = f"<thinking{sig_attr}>{thinking}</thinking>"
-                            yield {
-                                "type": "response.output_text.delta",
-                                "item_id": item_id,
-                                "output_index": output_index,
-                                "content_index": content_index,
-                                "delta": thinking_xml,
-                            }
-
-                elif etype == "content_block_start":
-                    cb = evt.get("content_block") or {}
-                    if isinstance(cb, dict) and cb.get("type") == "tool_use":
-                        tool_input = cb.get("input") or {}
-                        try:
-                            import json
-
-                            args_str = json.dumps(tool_input, separators=(",", ":"))
-                        except Exception:
-                            args_str = str(tool_input)
-
-                        yield {
-                            "type": "response.function_call_arguments.done",
-                            "item_id": item_id,
-                            "output_index": output_index,
-                            "arguments": args_str,
-                        }
-
-                elif etype == "content_block_delta":
-                    delta = evt.get("delta") or {}
-                    text = delta.get("text") if isinstance(delta, dict) else None
-                    if isinstance(text, str) and text:
-                        yield {
-                            "type": "response.output_text.delta",
-                            "item_id": item_id,
-                            "output_index": output_index,
-                            "content_index": content_index,
-                            "delta": text,
-                        }
-
-                elif etype == "message_delta":
-                    usage = evt.get("usage") or {}
-                    yield {
-                        "type": "response.in_progress",
-                        "response": {"usage": usage},
-                    }
-                    delta = evt.get("delta") or {}
-                    stop_reason = (
-                        delta.get("stop_reason") if isinstance(delta, dict) else None
-                    )
-                    if stop_reason == "refusal":
-                        yield {
-                            "type": "response.refusal.done",
-                            "item_id": item_id,
-                            "output_index": output_index,
-                            "content_index": content_index,
-                            "refusal": "refused",
-                        }
-
-                elif etype == "message_stop":
-                    yield {"type": "response.completed", "response": {"usage": {}}}
-                    break
-
-        return generator()
 
     async def adapt_error(self, error: dict[str, Any]) -> dict[str, Any]:
         return error
