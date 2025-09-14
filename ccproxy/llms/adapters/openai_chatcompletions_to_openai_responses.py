@@ -80,7 +80,7 @@ class OpenAIChatToOpenAIResponsesAdapter(
             OpenAIResponsesToOpenAIChatAdapter,
         )
 
-        return OpenAIResponsesToOpenAIChatAdapter().adapt_stream_typed(stream)
+        return OpenAIResponsesToOpenAIChatAdapter().adapt_stream_typed(stream)  # type: ignore[arg-type]
 
     async def adapt_error_typed(self, error: BaseModel) -> BaseModel:
         return error  # Pass through

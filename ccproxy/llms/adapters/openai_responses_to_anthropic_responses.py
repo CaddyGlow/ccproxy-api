@@ -4,24 +4,12 @@ import re
 from collections.abc import AsyncGenerator, AsyncIterator
 from typing import Any
 
-from pydantic import BaseModel, TypeAdapter
+from pydantic import BaseModel, Field, TypeAdapter
 
 from ccproxy.llms.adapters.base import BaseAPIAdapter
 from ccproxy.llms.anthropic import models as anthropic_models
 from ccproxy.llms.anthropic.models import (
     MessageResponse as AnthropicMessageResponse,
-)
-from ccproxy.llms.anthropic.models import (
-    TextBlock as AnthropicTextBlock,
-)
-from ccproxy.llms.anthropic.models import (
-    ThinkingBlock as AnthropicThinkingBlock,
-)
-from ccproxy.llms.anthropic.models import (
-    ToolUseBlock as AnthropicToolUseBlock,
-)
-from ccproxy.llms.anthropic.models import (
-    Usage as AnthropicUsage,
 )
 from ccproxy.llms.openai import models as openai_models
 
@@ -42,7 +30,7 @@ class OpenAIResponsesToAnthropicAdapter(
 
     Implemented
     - Non-streaming:
-      - Parses <thinking signature=\"…\">…</thinking> into Anthropic `ThinkingBlock`
+      - Parses <thinking signature="…">…</thinking> into Anthropic `ThinkingBlock`
       - Emits remaining text as `TextBlock`
       - Maps basic `tool_use` items in content to `ToolUseBlock`
       - Maps usage fields (input/output tokens)
@@ -61,13 +49,30 @@ class OpenAIResponsesToAnthropicAdapter(
 
     # Minimal implementations for abstract methods - delegate to dict-based logic
     def _dict_to_request_model(self, request: dict[str, Any]) -> BaseModel:
-        return BaseModel(**request)  # Minimal implementation
+        # This adapter delegates request handling to another adapter,
+        # so we create a simple BaseModel subclass from the dict
+        class DynamicRequestModel(BaseModel):
+            pass
 
-    def _dict_to_response_model(self, response: dict[str, Any]) -> BaseModel:
-        return BaseModel(**response)  # Minimal implementation
+        # Add fields dynamically
+        for k, v in request.items():
+            setattr(DynamicRequestModel, k, v)
+        return DynamicRequestModel()
+
+    def _dict_to_response_model(
+        self, response: dict[str, Any]
+    ) -> openai_models.ResponseObject:
+        return openai_models.ResponseObject.model_validate(response)
 
     def _dict_to_error_model(self, error: dict[str, Any]) -> BaseModel:
-        return BaseModel(**error)  # Minimal implementation
+        # Create a simple BaseModel subclass from the error dict
+        class DynamicErrorModel(BaseModel):
+            pass
+
+        # Add fields dynamically
+        for k, v in error.items():
+            setattr(DynamicErrorModel, k, v)
+        return DynamicErrorModel()
 
     def _dict_stream_to_typed_stream(
         self,
@@ -85,18 +90,211 @@ class OpenAIResponsesToAnthropicAdapter(
         return generator()
 
     async def adapt_request_typed(self, request: BaseModel) -> BaseModel:
-        request_dict = (
-            request.model_dump() if hasattr(request, "model_dump") else dict(request)
+        """Convert request using typed models - delegate to ResponsesRequest to Anthropic adapter."""
+        from ccproxy.llms.adapters.openai_responses_request_to_anthropic_messages import (
+            OpenAIResponsesRequestToAnthropicMessagesAdapter,
         )
-        result_dict = await self.adapt_request(request_dict)
-        return BaseModel(**result_dict)
 
-    async def adapt_response_typed(self, response: BaseModel) -> BaseModel:
-        response_dict = (
-            response.model_dump() if hasattr(response, "model_dump") else dict(response)
+        # Use the dedicated adapter for the transformation
+        adapter = OpenAIResponsesRequestToAnthropicMessagesAdapter()
+        return await adapter.adapt_request_typed(request)
+
+    async def adapt_response_typed(
+        self, response: BaseModel
+    ) -> AnthropicMessageResponse:
+        """Convert ResponseObject to AnthropicMessageResponse using typed models."""
+        if not isinstance(response, openai_models.ResponseObject):
+            raise ValueError(f"Expected ResponseObject, got {type(response)}")
+
+        return await self._convert_response_typed(response)
+
+    async def _convert_response_typed(
+        self, response: openai_models.ResponseObject
+    ) -> AnthropicMessageResponse:
+        """Convert ResponseObject to AnthropicMessageResponse using typed models."""
+        from ccproxy.llms.anthropic.models import (
+            TextBlock as AnthropicTextBlock,
+            ThinkingBlock as AnthropicThinkingBlock,
+            ToolUseBlock as AnthropicToolUseBlock,
+            Usage as AnthropicUsage,
         )
-        result_dict = await self.adapt_response(response_dict)
-        return BaseModel(**result_dict)
+
+        content_blocks: list[
+            AnthropicTextBlock | AnthropicThinkingBlock | AnthropicToolUseBlock
+        ] = []
+
+        # Gather reasoning summaries (map to Anthropic ThinkingBlock)
+        for item in response.output or []:
+            # Handle both object attributes and dictionary keys
+            item_type = None
+            if hasattr(item, "type"):
+                item_type = getattr(item, "type", None)
+            elif isinstance(item, dict):
+                item_type = item.get("type")
+
+            if item_type == "reasoning":
+                summary_parts: list[Any] = []
+                if hasattr(item, "summary"):
+                    summary_parts = getattr(item, "summary", []) or []
+                elif isinstance(item, dict):
+                    summary_parts = item.get("summary", []) or []
+
+                texts: list[str] = []
+                for p in summary_parts:
+                    p_type = None
+                    if hasattr(p, "type"):
+                        p_type = getattr(p, "type", None)
+                    elif isinstance(p, dict):
+                        p_type = p.get("type")
+
+                    if p_type == "summary_text":
+                        text = None
+                        if hasattr(p, "text"):
+                            text = p.text
+                        elif isinstance(p, dict):
+                            text = p.get("text")
+                        if text and isinstance(text, str):
+                            texts.append(text)
+
+                if texts:
+                    content_blocks.append(
+                        AnthropicThinkingBlock(
+                            type="thinking",
+                            thinking=" ".join(texts),
+                            signature="",
+                        )
+                    )
+
+        # Take first message output and process content
+        for item in response.output or []:
+            # Handle both object attributes and dictionary keys
+            item_type = None
+            if hasattr(item, "type"):
+                item_type = getattr(item, "type", None)
+            elif isinstance(item, dict):
+                item_type = item.get("type")
+
+            if item_type == "message":
+                content_list: list[Any] = []
+                if hasattr(item, "content"):
+                    content_list = getattr(item, "content", []) or []
+                elif isinstance(item, dict):
+                    content_list = item.get("content", []) or []
+                for part in content_list:
+                    # Handle typed OutputTextContent objects
+                    if (
+                        hasattr(part, "type")
+                        and getattr(part, "type", None) == "output_text"
+                    ):
+                        text = getattr(part, "text", "") or ""
+                        # Extract thinking blocks using regex
+                        last_idx = 0
+                        for m in THINKING_PATTERN.finditer(text):
+                            # Add text before thinking
+                            if m.start() > last_idx:
+                                prefix = text[last_idx : m.start()]
+                                if prefix.strip():
+                                    content_blocks.append(
+                                        AnthropicTextBlock(type="text", text=prefix)
+                                    )
+                            # Add thinking block
+                            signature = m.group(1) or ""
+                            thinking_text = m.group(2) or ""
+                            content_blocks.append(
+                                AnthropicThinkingBlock(
+                                    type="thinking",
+                                    thinking=thinking_text,
+                                    signature=signature,
+                                )
+                            )
+                            last_idx = m.end()
+                        # Add remainder after last match
+                        tail = text[last_idx:]
+                        if tail.strip():
+                            content_blocks.append(
+                                AnthropicTextBlock(type="text", text=tail)
+                            )
+                    # Handle dict-based content (tool_use falls into this category)
+                    elif isinstance(part, dict):
+                        part_type = part.get("type")
+                        if part_type == "output_text":
+                            text = part.get("text", "") or ""
+                            # Extract thinking blocks using regex (same logic as above)
+                            last_idx = 0
+                            for m in THINKING_PATTERN.finditer(text):
+                                # Add text before thinking
+                                if m.start() > last_idx:
+                                    prefix = text[last_idx : m.start()]
+                                    if prefix.strip():
+                                        content_blocks.append(
+                                            AnthropicTextBlock(type="text", text=prefix)
+                                        )
+                                # Add thinking block
+                                signature = m.group(1) or ""
+                                thinking_text = m.group(2) or ""
+                                content_blocks.append(
+                                    AnthropicThinkingBlock(
+                                        type="thinking",
+                                        thinking=thinking_text,
+                                        signature=signature,
+                                    )
+                                )
+                                last_idx = m.end()
+                            # Add remainder after last match
+                            tail = text[last_idx:]
+                            if tail.strip():
+                                content_blocks.append(
+                                    AnthropicTextBlock(type="text", text=tail)
+                                )
+                        elif part_type == "tool_use":
+                            # Handle dict-based tool_use
+                            tool_id = part.get("id", "tool_1") or "tool_1"
+                            name = part.get("name", "function") or "function"
+                            input_obj = (
+                                part.get("arguments", part.get("input", {})) or {}
+                            )
+                            content_blocks.append(
+                                AnthropicToolUseBlock(
+                                    type="tool_use",
+                                    id=tool_id,
+                                    name=name,
+                                    input=input_obj,
+                                )
+                            )
+                    # Handle typed tool_use objects (fallback, unlikely to be used)
+                    elif (
+                        hasattr(part, "type")
+                        and getattr(part, "type", None) == "tool_use"
+                    ):
+                        # Best-effort mapping if present in content
+                        tool_id = getattr(part, "id", "tool_1") or "tool_1"
+                        name = getattr(part, "name", "function") or "function"
+                        input_obj = (
+                            getattr(part, "arguments", getattr(part, "input", {})) or {}
+                        )
+                        content_blocks.append(
+                            AnthropicToolUseBlock(
+                                type="tool_use", id=tool_id, name=name, input=input_obj
+                            )
+                        )
+                break
+
+        # Create usage object
+        anthropic_usage = AnthropicUsage(
+            input_tokens=response.usage.input_tokens or 0 if response.usage else 0,
+            output_tokens=response.usage.output_tokens or 0 if response.usage else 0,
+        )
+
+        return AnthropicMessageResponse(
+            id=response.id or "msg_1",
+            type="message",
+            role="assistant",
+            model=response.model or "",
+            content=content_blocks,  # type: ignore[arg-type]
+            stop_reason="end_turn",
+            stop_sequence=None,
+            usage=anthropic_usage,
+        )
 
     def adapt_stream_typed(
         self,
@@ -259,110 +457,23 @@ class OpenAIResponsesToAnthropicAdapter(
                 break
 
     async def adapt_error_typed(self, error: BaseModel) -> BaseModel:
-        error_dict = error.model_dump() if hasattr(error, "model_dump") else dict(error)
-        result_dict = await self.adapt_error(error_dict)
-        return BaseModel(**result_dict)
+        """Convert error using typed models - passthrough for now."""
+        return error
 
     async def adapt_request(self, request: dict[str, Any]) -> dict[str, Any]:
-        # Delegate ResponseRequest -> Anthropic Messages request
-        from ccproxy.llms.adapters.openai_responses_request_to_anthropic_messages import (
-            OpenAIResponsesRequestToAnthropicMessagesAdapter,
-        )
-
-        return await OpenAIResponsesRequestToAnthropicMessagesAdapter().adapt_request(
-            request
-        )
+        """Legacy dict interface - delegates to typed implementation."""
+        typed_request = self._dict_to_request_model(request)
+        typed_result = await self.adapt_request_typed(typed_request)
+        return typed_result.model_dump()
 
     async def adapt_response(self, response: dict[str, Any]) -> dict[str, Any]:
-        # response is expected to be an OpenAI ResponseObject dict
-        output = response.get("output") or []
-        content_blocks: list[dict[str, Any]] = []
-
-        # Gather reasoning summaries (map to Anthropic ThinkingBlock)
-        for item in output:
-            if not isinstance(item, dict):
-                continue
-            if item.get("type") == "reasoning":
-                summary_parts = item.get("summary") or []
-                texts: list[str] = []
-                for p in summary_parts:
-                    if isinstance(p, dict) and p.get("type") == "summary_text":
-                        t = p.get("text")
-                        if isinstance(t, str):
-                            texts.append(t)
-                if texts:
-                    content_blocks.append(
-                        AnthropicThinkingBlock(
-                            type="thinking",
-                            thinking=" ".join(texts),
-                            signature="",
-                        ).model_dump()
-                    )
-
-        # Take first message output
-        for item in output:
-            if not isinstance(item, dict) or item.get("type") != "message":
-                continue
-            for part in item.get("content") or []:
-                if isinstance(part, dict) and part.get("type") == "output_text":
-                    text = part.get("text") or ""
-                    # Extract thinking blocks
-                    last_idx = 0
-                    for m in THINKING_PATTERN.finditer(text):
-                        # text before thinking
-                        if m.start() > last_idx:
-                            prefix = text[last_idx : m.start()]
-                            if prefix.strip():
-                                content_blocks.append(
-                                    AnthropicTextBlock(
-                                        type="text", text=prefix
-                                    ).model_dump()
-                                )
-                        signature = m.group(1) or ""
-                        thinking_text = m.group(2) or ""
-                        content_blocks.append(
-                            AnthropicThinkingBlock(
-                                type="thinking",
-                                thinking=thinking_text,
-                                signature=signature,
-                            ).model_dump()
-                        )
-                        last_idx = m.end()
-                    # Remainder after last match
-                    tail = text[last_idx:]
-                    if tail.strip():
-                        content_blocks.append(
-                            AnthropicTextBlock(type="text", text=tail).model_dump()
-                        )
-                elif isinstance(part, dict) and part.get("type") == "tool_use":
-                    # Best-effort mapping if present in content
-                    tool_id = part.get("id") or "tool_1"
-                    name = part.get("name") or "function"
-                    input_obj = part.get("arguments") or part.get("input") or {}
-                    content_blocks.append(
-                        AnthropicToolUseBlock(
-                            type="tool_use", id=tool_id, name=name, input=input_obj
-                        ).model_dump()
-                    )
-            break
-
-        usage = response.get("usage") or {}
-        anthropic_usage = AnthropicUsage(
-            input_tokens=int(usage.get("input_tokens") or 0),
-            output_tokens=int(usage.get("output_tokens") or 0),
-        )
-
-        payload = AnthropicMessageResponse(
-            id=response.get("id") or "msg_1",
-            type="message",
-            role="assistant",
-            model=response.get("model") or "",
-            content=content_blocks,  # type: ignore[arg-type]
-            stop_reason="end_turn",
-            stop_sequence=None,
-            usage=anthropic_usage,
-        )
-        return payload.model_dump()
+        """Legacy dict interface - delegates to typed implementation."""
+        typed_response = self._dict_to_response_model(response)
+        typed_result = await self.adapt_response_typed(typed_response)
+        return typed_result.model_dump()
 
     async def adapt_error(self, error: dict[str, Any]) -> dict[str, Any]:
-        return error
+        """Legacy dict interface - delegates to typed implementation."""
+        typed_error = self._dict_to_error_model(error)
+        typed_result = await self.adapt_error_typed(typed_error)
+        return typed_result.model_dump()

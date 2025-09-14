@@ -9,6 +9,7 @@ from ccproxy.llms.adapters.base import BaseAPIAdapter
 from ccproxy.llms.openai import models as openai_models
 from ccproxy.llms.openai.models import (
     ChatCompletionChunk,
+    ChatCompletionRequest,
     ChatCompletionResponse,
     ResponseObject,
 )
@@ -16,7 +17,7 @@ from ccproxy.llms.openai.models import (
 
 class OpenAIResponsesToOpenAIChatAdapter(
     BaseAPIAdapter[
-        BaseModel,
+        ChatCompletionRequest,
         ResponseObject,
         openai_models.AnyStreamEvent,
     ]
@@ -36,14 +37,14 @@ class OpenAIResponsesToOpenAIChatAdapter(
         super().__init__(name="openai_responses_to_openai_chat")
 
     # Minimal implementations for abstract methods - delegate to dict-based logic
-    def _dict_to_request_model(self, request: dict[str, Any]) -> BaseModel:
-        return BaseModel(**request)  # Minimal implementation
+    def _dict_to_request_model(self, request: dict[str, Any]) -> openai_models.ChatCompletionRequest:
+        return openai_models.ChatCompletionRequest.model_validate(request)
 
     def _dict_to_response_model(self, response: dict[str, Any]) -> ResponseObject:
         return ResponseObject.model_validate(response)
 
     def _dict_to_error_model(self, error: dict[str, Any]) -> BaseModel:
-        return BaseModel(**error)  # Minimal implementation
+        return BaseModel.model_validate(error)
 
     def _dict_stream_to_typed_stream(
         self, stream: AsyncIterator[dict[str, Any]]
@@ -60,33 +61,83 @@ class OpenAIResponsesToOpenAIChatAdapter(
         return generator()
 
     async def adapt_request_typed(self, request: BaseModel) -> BaseModel:
-        request_dict = (
-            request.model_dump() if hasattr(request, "model_dump") else dict(request)
+        """Convert request using typed models - delegate to OpenAI Chat to Responses adapter."""
+        from ccproxy.llms.adapters.openai_chatcompletions_to_openai_responses import (
+            OpenAIChatToOpenAIResponsesAdapter,
         )
-        result_dict = await self.adapt_request(request_dict)
-        return BaseModel(**result_dict)
 
-    async def adapt_response_typed(self, response: BaseModel) -> BaseModel:
-        response_dict = (
-            response.model_dump() if hasattr(response, "model_dump") else dict(response)
+        # Use the dedicated adapter for the reverse transformation
+        adapter = OpenAIChatToOpenAIResponsesAdapter()
+        return await adapter.adapt_request_typed(request)
+
+    async def adapt_response_typed(self, response: BaseModel) -> ChatCompletionResponse:
+        """Convert ResponseObject to ChatCompletionResponse using typed models."""
+        if not isinstance(response, ResponseObject):
+            raise ValueError(f"Expected ResponseObject, got {type(response)}")
+
+        return await self._convert_response_typed(response)
+
+    async def _convert_response_typed(
+        self, response: ResponseObject
+    ) -> ChatCompletionResponse:
+        """Convert ResponseObject to ChatCompletionResponse using typed models."""
+        # Find first message output and aggregate output_text parts
+        text = ""
+        for item in response.output or []:
+            if hasattr(item, "type") and item.type == "message":
+                parts: list[str] = []
+                for part in getattr(item, "content", []):
+                    if hasattr(part, "type") and part.type == "output_text":
+                        if hasattr(part, "text") and isinstance(part.text, str):
+                            parts.append(part.text)
+                text = "".join(parts)
+                break
+
+        # Create usage object
+        usage = None
+        if response.usage:
+            usage = openai_models.CompletionUsage(
+                prompt_tokens=response.usage.input_tokens or 0,
+                completion_tokens=response.usage.output_tokens or 0,
+                total_tokens=response.usage.total_tokens or 0,
+            )
+
+        # Create the response
+        return ChatCompletionResponse(
+            id=response.id or "chatcmpl-resp",
+            choices=[
+                openai_models.Choice(
+                    index=0,
+                    message=openai_models.ResponseMessage(
+                        role="assistant", content=text
+                    ),
+                    finish_reason="stop",
+                )
+            ],
+            created=0,
+            model=response.model or "",
+            object="chat.completion",
+            usage=usage
+            or openai_models.CompletionUsage(
+                prompt_tokens=0, completion_tokens=0, total_tokens=0
+            ),
         )
-        result_dict = await self.adapt_response(response_dict)
-        return ChatCompletionResponse.model_validate(result_dict)
 
     def adapt_stream_typed(
-        self, stream: AsyncIterator[BaseModel]
-    ) -> AsyncGenerator[BaseModel, None]:
+        self, stream: AsyncIterator[openai_models.AnyStreamEvent]
+    ) -> AsyncGenerator[ChatCompletionChunk, None]:
         """Convert OpenAI Response stream to OpenAI ChatCompletionChunk stream."""
         return self._convert_stream_typed(stream)
 
     async def _convert_stream_typed(
-        self, stream: AsyncIterator[BaseModel]
-    ) -> AsyncGenerator[BaseModel, None]:
+        self, stream: AsyncIterator[openai_models.AnyStreamEvent]
+    ) -> AsyncGenerator[ChatCompletionChunk, None]:
         model_id = ""
-        async for evt_wrapper in stream:
-            if not hasattr(evt_wrapper, "root"):
-                continue
-            evt = evt_wrapper.root
+        async for event_wrapper in stream:
+            if hasattr(event_wrapper, "root"):
+                evt = event_wrapper.root
+            else:
+                evt = event_wrapper  # type: ignore
             if not hasattr(evt, "type"):
                 continue
 
@@ -116,11 +167,11 @@ class OpenAIResponsesToOpenAIChatAdapter(
                 "response.failed",
             ):
                 usage = None
-                if evt.response and evt.response.usage:
+                if evt.response and evt.response.usage:  # type: ignore
                     usage = openai_models.CompletionUsage(
-                        prompt_tokens=evt.response.usage.input_tokens,
-                        completion_tokens=evt.response.usage.output_tokens,
-                        total_tokens=evt.response.usage.total_tokens,
+                        prompt_tokens=evt.response.usage.input_tokens,  # type: ignore
+                        completion_tokens=evt.response.usage.output_tokens,  # type: ignore
+                        total_tokens=evt.response.usage.total_tokens,  # type: ignore
                     )
                 yield ChatCompletionChunk(
                     id="chatcmpl-stream",
@@ -139,54 +190,23 @@ class OpenAIResponsesToOpenAIChatAdapter(
                 break
 
     async def adapt_error_typed(self, error: BaseModel) -> BaseModel:
-        error_dict = error.model_dump() if hasattr(error, "model_dump") else dict(error)
-        result_dict = await self.adapt_error(error_dict)
-        return BaseModel(**result_dict)
+        """Convert error using typed models - passthrough for now."""
+        return error
 
     async def adapt_request(self, request: dict[str, Any]) -> dict[str, Any]:
-        # Delegate Chat -> Responses request mapping to the dedicated adapter
-        from ccproxy.llms.adapters.openai_chatcompletions_to_openai_responses import (
-            OpenAIChatToOpenAIResponsesAdapter,
-        )
-
-        return await OpenAIChatToOpenAIResponsesAdapter().adapt_request(request)
+        """Legacy dict interface - delegates to typed implementation."""
+        typed_request = self._dict_to_request_model(request)
+        typed_result = await self.adapt_request_typed(typed_request)
+        return typed_result.model_dump()
 
     async def adapt_response(self, response: dict[str, Any]) -> dict[str, Any]:
-        # Find first message output and aggregate output_text parts
-        output = response.get("output") or []
-        text = ""
-        for item in output:
-            if isinstance(item, dict) and item.get("type") == "message":
-                content_list = item.get("content") or []
-                parts: list[str] = []
-                for part in content_list:
-                    if isinstance(part, dict) and part.get("type") == "output_text":
-                        t = part.get("text")
-                        if isinstance(t, str):
-                            parts.append(t)
-                text = "".join(parts)
-                break
-
-        usage = response.get("usage") or {}
-        payload = {
-            "id": response.get("id"),
-            "choices": [
-                {
-                    "index": 0,
-                    "message": {"role": "assistant", "content": text},
-                    "finish_reason": "stop",
-                }
-            ],
-            "created": 0,
-            "model": response.get("model"),
-            "object": "chat.completion",
-            "usage": {
-                "prompt_tokens": int(usage.get("input_tokens") or 0),
-                "completion_tokens": int(usage.get("output_tokens") or 0),
-                "total_tokens": int(usage.get("total_tokens") or 0),
-            },
-        }
-        return ChatCompletionResponse.model_validate(payload).model_dump()
+        """Legacy dict interface - delegates to typed implementation."""
+        typed_response = self._dict_to_response_model(response)
+        typed_result = await self.adapt_response_typed(typed_response)
+        return typed_result.model_dump()
 
     async def adapt_error(self, error: dict[str, Any]) -> dict[str, Any]:
-        return error
+        """Legacy dict interface - delegates to typed implementation."""
+        typed_error = self._dict_to_error_model(error)
+        typed_result = await self.adapt_error_typed(typed_error)
+        return typed_result.model_dump()

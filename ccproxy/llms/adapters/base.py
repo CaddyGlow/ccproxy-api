@@ -14,13 +14,17 @@ ResponseType = TypeVar("ResponseType", bound=BaseModel)
 StreamEventType = TypeVar("StreamEventType", bound=BaseModel)
 
 
-class APIAdapter(ABC):
+class APIAdapter(ABC, Generic[RequestType, ResponseType, StreamEventType]):
     """Abstract base class for API format adapters.
 
     Combines all transformation interfaces to provide a complete adapter
     for converting between different API formats.
+
+    Provides both dict-based legacy interface and strongly-typed interface
+    for better migration path and type safety.
     """
 
+    # Legacy dict-based interface (for backward compatibility)
     @abstractmethod
     async def adapt_request(self, request: dict[str, Any]) -> dict[str, Any]:
         """Convert a request from one API format to another.
@@ -85,11 +89,87 @@ class APIAdapter(ABC):
         """
         pass
 
+    # Strongly-typed interface (for new code and migration)
+    @abstractmethod
+    async def adapt_request_typed(self, request: RequestType) -> BaseModel:
+        """Convert a request using strongly-typed Pydantic models.
+
+        This is the preferred interface for new code as it provides
+        better type safety and validation.
+
+        Args:
+            request: The typed request model to convert
+
+        Returns:
+            The converted typed request model
+
+        Raises:
+            ValueError: If the request format is invalid or unsupported
+        """
+        pass
+
+    @abstractmethod
+    async def adapt_response_typed(self, response: ResponseType) -> BaseModel:
+        """Convert a response using strongly-typed Pydantic models.
+
+        This is the preferred interface for new code as it provides
+        better type safety and validation.
+
+        Args:
+            response: The typed response model to convert
+
+        Returns:
+            The converted typed response model
+
+        Raises:
+            ValueError: If the response format is invalid or unsupported
+        """
+        pass
+
+    @abstractmethod
+    def adapt_stream_typed(
+        self, stream: AsyncIterator[StreamEventType]
+    ) -> AsyncGenerator[BaseModel, None]:
+        """Convert a streaming response using strongly-typed Pydantic models.
+
+        This is the preferred interface for new code as it provides
+        better type safety and validation.
+
+        Args:
+            stream: The typed streaming response data to convert
+
+        Yields:
+            The converted typed streaming response chunks
+
+        Raises:
+            ValueError: If the stream format is invalid or unsupported
+        """
+        # This should be implemented as an async generator
+        # Subclasses must override this method
+        ...
+
+    @abstractmethod
+    async def adapt_error_typed(self, error: BaseModel) -> BaseModel:
+        """Convert an error response using strongly-typed Pydantic models.
+
+        This is the preferred interface for new code as it provides
+        better type safety and validation.
+
+        Args:
+            error: The typed error response model to convert
+
+        Returns:
+            The converted typed error response model
+
+        Raises:
+            ValueError: If the error format is invalid or unsupported
+        """
+        pass
+
 
 class BaseAPIAdapter(
-    APIAdapter,
+    APIAdapter[RequestType, ResponseType, StreamEventType],
     StreamingConfigurable,
-    Generic[RequestType, ResponseType, StreamEventType],
 ):
     """Base implementation with common functionality.
 
@@ -148,6 +228,7 @@ class BaseAPIAdapter(
         return typed_result.model_dump()
 
     # New strongly-typed interface - subclasses implement these
+    # Note: These are now part of the public APIAdapter protocol
     @abstractmethod
     async def adapt_request_typed(self, request: RequestType) -> BaseModel:
         """Convert a request using strongly-typed Pydantic models."""
