@@ -216,12 +216,13 @@ class OpenAIResponsesRequestToAnthropicMessagesAdapter(
 
     async def adapt_error(self, error: BaseModel) -> BaseModel:
         """Convert error response - pass through for now."""
+        from ccproxy.llms.adapters.mapping import convert_openai_error_to_anthropic
+
+        return convert_openai_error_to_anthropic(error)
         return error
 
     # Implementation methods
-    async def _convert_request(
-        self, request: ResponseRequest
-    ) -> CreateMessageRequest:
+    async def _convert_request(self, request: ResponseRequest) -> CreateMessageRequest:
         """Convert OpenAI ResponseRequest to Anthropic CreateMessageRequest using typed models."""
         model = request.model
         stream = request.stream or False

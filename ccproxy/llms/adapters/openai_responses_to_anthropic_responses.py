@@ -422,65 +422,6 @@ class OpenAIResponsesToAnthropicAdapter(
 
     async def adapt_error(self, error: BaseModel) -> BaseModel:
         """Convert OpenAI error to Anthropic error format using typed models."""
-        from ccproxy.llms.anthropic.models import (
-            APIError,
-            ErrorType,
-            InvalidRequestError,
-            RateLimitError,
-        )
-        from ccproxy.llms.anthropic.models import (
-            ErrorResponse as AnthropicErrorResponse,
-        )
-        from ccproxy.llms.openai.models import ErrorResponse as OpenAIErrorResponse
+        from ccproxy.llms.adapters.mapping import convert_openai_error_to_anthropic
 
-        # Error type mapping from OpenAI to Anthropic
-        error_type_mapping = {
-            "invalid_request_error": "invalid_request_error",
-            "authentication_error": "invalid_request_error",
-            "permission_error": "invalid_request_error",
-            "not_found_error": "invalid_request_error",
-            "rate_limit_error": "rate_limit_error",
-            "internal_server_error": "api_error",
-            "overloaded_error": "api_error",
-        }
-
-        # Handle OpenAI ErrorResponse format
-        if isinstance(error, OpenAIErrorResponse):
-            openai_error = error.error
-            error_message = openai_error.message
-            openai_error_type = openai_error.type or "api_error"
-
-            # Map to Anthropic error type
-            anthropic_error_type = error_type_mapping.get(
-                openai_error_type, "api_error"
-            )
-
-            # Create appropriate Anthropic error model
-            anthropic_error: ErrorType
-            if anthropic_error_type == "invalid_request_error":
-                anthropic_error = InvalidRequestError(message=error_message)
-            elif anthropic_error_type == "rate_limit_error":
-                anthropic_error = RateLimitError(message=error_message)
-            else:
-                anthropic_error = APIError(message=error_message)
-
-            return AnthropicErrorResponse(error=anthropic_error)
-
-        # Handle generic BaseModel errors or malformed errors
-        if hasattr(error, "error") and hasattr(error.error, "message"):
-            # Try to extract message from nested error structure
-            error_message = error.error.message
-            fallback_error: ErrorType = APIError(message=error_message)
-            return AnthropicErrorResponse(error=fallback_error)
-
-        # Fallback for unknown error formats
-        error_message = "Unknown error occurred"
-        if hasattr(error, "message"):
-            error_message = error.message
-        elif hasattr(error, "model_dump"):
-            # Try to extract any available message from model dump
-            error_dict = error.model_dump()
-            error_message = str(error_dict.get("message", error_dict))
-
-        generic_error: ErrorType = APIError(message=error_message)
-        return AnthropicErrorResponse(error=generic_error)
+        return convert_openai_error_to_anthropic(error)

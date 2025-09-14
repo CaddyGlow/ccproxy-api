@@ -165,41 +165,7 @@ class OpenAIResponsesToOpenAIChatAdapter(
                 break
 
     async def adapt_error(self, error: BaseModel) -> BaseModel:
-        """Convert error using typed models - passthrough since both formats are OpenAI."""
-        from ccproxy.llms.openai.models import ErrorDetail, ErrorResponse
+        """Convert error using typed models - normalize OpenAI error format."""
+        from ccproxy.llms.adapters.mapping import normalize_openai_error
 
-        # If it's already a proper OpenAI ErrorResponse, return as-is
-        if isinstance(error, ErrorResponse):
-            return error
-
-        # Try to create a proper ErrorResponse from malformed input
-        if hasattr(error, "error") and hasattr(error.error, "message"):
-            # Extract details from nested error structure
-            nested_error = error.error
-            return ErrorResponse(
-                error=ErrorDetail(
-                    message=nested_error.message,
-                    code=getattr(nested_error, "code", None),
-                    param=getattr(nested_error, "param", None),
-                    type=getattr(nested_error, "type", None),
-                )
-            )
-
-        # Fallback for unknown error formats - create generic ErrorResponse
-        error_message = "Unknown error occurred"
-        if hasattr(error, "message"):
-            error_message = error.message
-        elif hasattr(error, "model_dump"):
-            # Try to extract any available message from model dump
-            error_dict = error.model_dump()
-            if isinstance(error_dict, dict):
-                error_message = error_dict.get("message", str(error_dict))
-
-        return ErrorResponse(
-            error=ErrorDetail(
-                message=error_message,
-                code=None,
-                param=None,
-                type="api_error",
-            )
-        )
+        return normalize_openai_error(error)

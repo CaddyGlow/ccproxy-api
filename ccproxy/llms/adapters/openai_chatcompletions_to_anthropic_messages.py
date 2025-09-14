@@ -160,7 +160,9 @@ class OpenAIChatToAnthropicMessagesAdapter(
 
     async def adapt_error(self, error: BaseModel) -> BaseModel:
         """Convert error response - pass through for now."""
-        return error
+        from ccproxy.llms.adapters.mapping import convert_openai_error_to_anthropic
+
+        return convert_openai_error_to_anthropic(error)
 
     async def _convert_request(
         self, request: ChatCompletionRequest
