@@ -114,26 +114,33 @@ class OpenAIResponsesRequestToAnthropicMessagesAdapter(BaseAPIAdapter):
         max_out = request.get("max_output_tokens")
 
         messages: list[dict[str, Any]] = []
+        system_parts: list[str] = []
         input_val = request.get("input")
+
         if isinstance(input_val, str):
             messages.append({"role": "user", "content": input_val})
-        elif isinstance(input_val, list) and input_val:
-            # Expect [{type:"message", role:"user", content:[{type:"input_text", text:"..."}, ...]}]
-            first = input_val[0]
-            if isinstance(first, dict) and first.get("type") == "message":
-                role = first.get("role", "user")
-                content_list = first.get("content") or []
-                text_parts: list[str] = []
-                for part in content_list:
-                    if isinstance(part, dict) and part.get("type") in (
-                        "input_text",
-                        "text",
-                    ):
-                        t = part.get("text")
-                        if isinstance(t, str):
-                            text_parts.append(t)
-                content_text = " ".join(text_parts)
-                messages.append({"role": role, "content": content_text})
+        elif isinstance(input_val, list):
+            for item in input_val:
+                if isinstance(item, dict) and item.get("type") == "message":
+                    role = item.get("role", "user")
+                    content_list = item.get("content") or []
+                    text_parts: list[str] = []
+                    # Note: This simplified logic only extracts text parts.
+                    # TODO: Handle other content types like images.
+                    for part in content_list:
+                        if isinstance(part, dict) and part.get("type") in (
+                            "input_text",
+                            "text",
+                        ):
+                            t = part.get("text")
+                            if isinstance(t, str):
+                                text_parts.append(t)
+                    content_text = " ".join(text_parts)
+
+                    if role == "system":
+                        system_parts.append(content_text)
+                    elif role in ("user", "assistant"):
+                        messages.append({"role": role, "content": content_text})
 
         payload: dict[str, Any] = {"model": model, "messages": messages}
         if max_out is None:
@@ -141,6 +148,10 @@ class OpenAIResponsesRequestToAnthropicMessagesAdapter(BaseAPIAdapter):
         payload["max_tokens"] = int(max_out)
         if stream:
             payload["stream"] = True
+
+        # Combine system messages
+        if system_parts:
+            payload["system"] = "\n".join(system_parts)
 
         # Tools mapping (function tools)
         tools_in = request.get("tools") or []
@@ -259,7 +270,8 @@ class OpenAIResponsesRequestToAnthropicMessagesAdapter(BaseAPIAdapter):
         return typed_result.model_dump()
 
     def adapt_stream(
-        self, stream: AsyncIterator[dict[str, Any]]
+        self,
+        stream: AsyncIterator[dict[str, Any]],
     ) -> AsyncGenerator[dict[str, Any], None]:
         async def generator() -> AsyncGenerator[dict[str, Any], None]:
             # Map Anthropic SSE → OpenAI Responses stream events (text/refusal/tool args)
@@ -332,10 +344,12 @@ class OpenAIResponsesRequestToAnthropicMessagesAdapter(BaseAPIAdapter):
         return error
 
     def _derive_thinking_config(
-        self, model: str, reasoning: dict[str, Any]
+        self,
+        model: str,
+        reasoning: dict[str, Any],
     ) -> dict[str, Any] | None:
         effort = (reasoning.get("effort") or "").strip().lower()
-        effort_budgets = {"low": 1000, "medium": 5000, "high": 10000}
+        effort_budgets = {"low": 1024, "medium": 5000, "high": 10000}
         budget: int | None = effort_budgets.get(effort)
         m = (model or "").lower()
         if budget is None:

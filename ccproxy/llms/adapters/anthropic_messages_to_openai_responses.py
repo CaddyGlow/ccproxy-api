@@ -335,7 +335,102 @@ class AnthropicMessagesToOpenAIResponsesAdapter(BaseAPIAdapter):
     def adapt_stream(
         self, stream: AsyncIterator[dict[str, Any]]
     ) -> AsyncGenerator[dict[str, Any], None]:
-        raise NotImplementedError
+        async def generator() -> AsyncGenerator[dict[str, Any], None]:
+            item_id = "msg_stream"
+            output_index = 0
+            content_index = 0
+            model_id = ""
+
+            async for evt in stream:
+                if not isinstance(evt, dict):
+                    continue
+
+                etype = evt.get("type")
+                if etype == "message_start":
+                    msg = evt.get("message") or {}
+                    model_id = msg.get("model", "")
+                    yield {
+                        "type": "response.created",
+                        "response": {"model": model_id},
+                    }
+
+                    # Handle pre-filled content like thinking blocks
+                    content_blocks = msg.get("content") or []
+                    for block in content_blocks:
+                        if not isinstance(block, dict):
+                            continue
+                        btype = block.get("type")
+                        if btype == "thinking":
+                            thinking = block.get("thinking", "")
+                            signature = block.get("signature")
+                            sig_attr = (
+                                f' signature="{signature}"'
+                                if isinstance(signature, str) and signature
+                                else ""
+                            )
+                            thinking_xml = f"<thinking{sig_attr}>{thinking}</thinking>"
+                            yield {
+                                "type": "response.output_text.delta",
+                                "item_id": item_id,
+                                "output_index": output_index,
+                                "content_index": content_index,
+                                "delta": thinking_xml,
+                            }
+
+                elif etype == "content_block_start":
+                    cb = evt.get("content_block") or {}
+                    if isinstance(cb, dict) and cb.get("type") == "tool_use":
+                        tool_input = cb.get("input") or {}
+                        try:
+                            import json
+
+                            args_str = json.dumps(tool_input, separators=(",", ":"))
+                        except Exception:
+                            args_str = str(tool_input)
+
+                        yield {
+                            "type": "response.function_call_arguments.done",
+                            "item_id": item_id,
+                            "output_index": output_index,
+                            "arguments": args_str,
+                        }
+
+                elif etype == "content_block_delta":
+                    delta = evt.get("delta") or {}
+                    text = delta.get("text") if isinstance(delta, dict) else None
+                    if isinstance(text, str) and text:
+                        yield {
+                            "type": "response.output_text.delta",
+                            "item_id": item_id,
+                            "output_index": output_index,
+                            "content_index": content_index,
+                            "delta": text,
+                        }
+
+                elif etype == "message_delta":
+                    usage = evt.get("usage") or {}
+                    yield {
+                        "type": "response.in_progress",
+                        "response": {"usage": usage},
+                    }
+                    delta = evt.get("delta") or {}
+                    stop_reason = (
+                        delta.get("stop_reason") if isinstance(delta, dict) else None
+                    )
+                    if stop_reason == "refusal":
+                        yield {
+                            "type": "response.refusal.done",
+                            "item_id": item_id,
+                            "output_index": output_index,
+                            "content_index": content_index,
+                            "refusal": "refused",
+                        }
+
+                elif etype == "message_stop":
+                    yield {"type": "response.completed", "response": {"usage": {}}}
+                    break
+
+        return generator()
 
     async def adapt_error(self, error: dict[str, Any]) -> dict[str, Any]:
         return error

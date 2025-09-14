@@ -131,3 +131,62 @@ async def test_anthropic_to_openai_responses_response_mapping_thinking_and_tool_
     assert contents[1]["name"] == "fetch" and contents[1]["id"] == "t1"
     # Usage mapping
     assert resp.usage and resp.usage.total_tokens == 5
+
+
+@pytest.mark.asyncio
+async def test_anthropic_to_openai_responses_stream_mapping():
+    from ccproxy.llms.adapters.anthropic_messages_to_openai_responses import (
+        AnthropicMessagesToOpenAIResponsesAdapter,
+    )
+    from ccproxy.llms.anthropic import models as anthropic_models
+
+    async def anthropic_stream():
+        yield anthropic_models.MessageStartEvent(
+            type="message_start",
+            message=anthropic_models.MessageResponse(
+                id="msg_1",
+                type="message",
+                role="assistant",
+                model="claude-3",
+                content=[
+                    anthropic_models.ThinkingBlock(
+                        type="thinking", thinking="I am thinking.", signature="sig1"
+                    )
+                ],
+                stop_reason=None,
+                stop_sequence=None,
+                usage=anthropic_models.Usage(input_tokens=10, output_tokens=0),
+            ),
+        ).model_dump()
+        yield anthropic_models.ContentBlockDeltaEvent(
+            type="content_block_delta",
+            index=0,
+            delta=anthropic_models.TextBlock(type="text", text="Hello"),
+        ).model_dump()
+        yield anthropic_models.MessageDeltaEvent(
+            type="message_delta",
+            delta=anthropic_models.MessageDelta(stop_reason="refusal"),
+            usage=anthropic_models.Usage(input_tokens=10, output_tokens=5),
+        ).model_dump()
+        yield anthropic_models.MessageStopEvent(type="message_stop").model_dump()
+
+    adapter = AnthropicMessagesToOpenAIResponsesAdapter()
+    stream = adapter.adapt_stream(anthropic_stream())
+    chunks = [chunk async for chunk in stream]
+
+    assert len(chunks) == 6
+
+    assert chunks[0]["type"] == "response.created"
+    assert chunks[0]["response"]["model"] == "claude-3"
+
+    assert chunks[1]["type"] == "response.output_text.delta"
+    assert "<thinking" in chunks[1]["delta"]
+
+    assert chunks[2]["type"] == "response.output_text.delta"
+    assert chunks[2]["delta"] == "Hello"
+
+    assert chunks[3]["type"] == "response.in_progress"
+
+    assert chunks[4]["type"] == "response.refusal.done"
+
+    assert chunks[5]["type"] == "response.completed"

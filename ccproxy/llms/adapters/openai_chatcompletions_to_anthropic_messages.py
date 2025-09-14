@@ -217,7 +217,9 @@ class OpenAIChatToAnthropicMessagesAdapter(BaseAPIAdapter):
         model = (request.get("model") or "").strip()
 
         # Determine max tokens
-        max_tokens = request.get("max_completion_tokens") or request.get("max_tokens")
+        max_tokens = request.get("max_completion_tokens")
+        if max_tokens is None:
+            max_tokens = request.get("max_tokens")
         if max_tokens is None:
             max_tokens = DEFAULT_MAX_TOKENS
 
@@ -227,23 +229,57 @@ class OpenAIChatToAnthropicMessagesAdapter(BaseAPIAdapter):
         for msg in request.get("messages", []) or []:
             role = msg.get("role")
             content = msg.get("content")
+            tool_calls = msg.get("tool_calls")
+
             if role == "system":
-                # Only support simple string content here
                 if isinstance(content, str):
                     system_value = content
-                else:
-                    # Best effort: join text parts if array
-                    if isinstance(content, list):
-                        texts = [
-                            part.get("text")
-                            for part in content
-                            if isinstance(part, dict)
-                        ]
-                        system_value = " ".join([t for t in texts if t]) or None
-            elif role in ("user", "assistant"):
-                # Support multimodal: array content with text and (data URL) images
+                elif isinstance(content, list):
+                    texts = [
+                        part.get("text")
+                        for part in content
+                        if isinstance(part, dict) and part.get("type") == "text"
+                    ]
+                    system_value = " ".join([t for t in texts if t]) or None
+            elif role == "assistant":
+                if tool_calls:
+                    blocks = []
+                    if content:  # Add text content if present
+                        blocks.append({"type": "text", "text": str(content)})
+                    for tc in tool_calls:
+                        func_info = tc.get("function") or {}
+                        tool_name = func_info.get("name")
+                        tool_args = func_info.get("arguments", "{}")
+                        blocks.append(
+                            {
+                                "type": "tool_use",
+                                "id": tc.get("id"),
+                                "name": str(tool_name) if tool_name is not None else "",
+                                "input": json.loads(str(tool_args)),
+                            }
+                        )
+                    out_messages.append({"role": "assistant", "content": blocks})
+                elif content is not None:
+                    out_messages.append({"role": "assistant", "content": content})
+
+            elif role == "tool":
+                out_messages.append(
+                    {
+                        "role": "user",  # Anthropic uses 'user' role for tool results
+                        "content": [
+                            {
+                                "type": "tool_result",
+                                "tool_use_id": msg.get("tool_call_id"),
+                                "content": str(content),
+                            }
+                        ],
+                    }
+                )
+            elif role == "user":
+                if content is None:
+                    continue
                 if isinstance(content, list):
-                    blocks: list[dict[str, Any]] = []
+                    user_blocks: list[dict[str, Any]] = []
                     text_accum: list[str] = []
                     for part in content:
                         if not isinstance(part, dict):
@@ -256,36 +292,32 @@ class OpenAIChatToAnthropicMessagesAdapter(BaseAPIAdapter):
                         elif ptype == "image_url":
                             url = (part.get("image_url") or {}).get("url")
                             if isinstance(url, str) and url.startswith("data:"):
-                                # data:[<mediatype>][;base64],<data>
                                 try:
                                     header, b64data = url.split(",", 1)
                                     mediatype = header.split(";")[0].split(":", 1)[1]
-                                    blocks.append(
+                                    user_blocks.append(
                                         {
                                             "type": "image",
                                             "source": {
                                                 "type": "base64",
-                                                "media_type": mediatype,
-                                                "data": b64data,
+                                                "media_type": str(mediatype),
+                                                "data": str(b64data),
                                             },
                                         }
                                     )
                                 except Exception:
-                                    # Skip if malformed
                                     pass
-                    # If we collected any structured blocks or multiple text segments, use list form
-                    if blocks or len(text_accum) > 1:
+                    if user_blocks or len(text_accum) > 1:
                         if text_accum:
-                            blocks.insert(
+                            user_blocks.insert(
                                 0, {"type": "text", "text": " ".join(text_accum)}
                             )
-                        out_messages.append({"role": role, "content": blocks})
+                        out_messages.append({"role": "user", "content": user_blocks})
                     else:
-                        # Fallback to simple string
                         content_str = text_accum[0] if text_accum else ""
-                        out_messages.append({"role": role, "content": content_str})
+                        out_messages.append({"role": "user", "content": content_str})
                 else:
-                    out_messages.append({"role": role, "content": content})
+                    out_messages.append({"role": "user", "content": content})
 
         payload: dict[str, Any] = {
             "model": model,

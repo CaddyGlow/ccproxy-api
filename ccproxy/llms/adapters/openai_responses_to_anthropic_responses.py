@@ -206,7 +206,8 @@ class OpenAIResponsesToAnthropicAdapter(BaseAPIAdapter):
             message_started = False
             index = 0
             for_event_id = "msg_stream"
-            func_args_buffer: list[str] = []
+            func_args_buffer: dict[int, list[str]] = {}
+            tool_info: dict[int, dict[str, str]] = {}
             reasoning_buffer: list[str] = []
             text_block_started = False
 
@@ -269,36 +270,62 @@ class OpenAIResponsesToAnthropicAdapter(BaseAPIAdapter):
                         index += 1
                     reasoning_buffer.clear()
                 elif etype == "response.function_call_arguments.delta":
+                    output_index = evt.get("output_index", 0)
+                    if output_index not in func_args_buffer:
+                        func_args_buffer[output_index] = []
+                        tool_info[output_index] = {
+                            "id": evt.get("call_id", f"call_{output_index}"),
+                            "name": evt.get("name", "function"),
+                        }
                     delta = evt.get("delta") or ""
                     if isinstance(delta, str):
-                        func_args_buffer.append(delta)
+                        func_args_buffer[output_index].append(delta)
                 elif etype == "response.function_call_arguments.done":
                     if text_block_started:
                         yield {"type": "content_block_stop", "index": index}
                         text_block_started = False
                         index += 1
+                    output_index = evt.get("output_index", 0)
                     try:
                         import json
 
-                        args_str = evt.get("arguments") or "".join(func_args_buffer)
+                        args_str = evt.get("arguments") or "".join(
+                            func_args_buffer.get(output_index, [])
+                        )
                         args_obj = (
                             json.loads(args_str) if isinstance(args_str, str) else {}
                         )
                     except Exception:
                         args_obj = {}
+
+                    info = tool_info.get(
+                        output_index,
+                        {
+                            "id": f"call_{output_index}",
+                            "name": "function",
+                        },
+                    )
+
                     yield {
                         "type": "content_block_start",
                         "index": index,
                         "content_block": {
                             "type": "tool_use",
-                            "id": "call_1",
-                            "name": "function",
+                            "id": info["id"],
+                            "name": info["name"],
                             "input": args_obj,
                         },
                     }
                     yield {"type": "content_block_stop", "index": index}
                     index += 1
-                    func_args_buffer.clear()
+                    if output_index in func_args_buffer:
+                        del func_args_buffer[output_index]
+                    if output_index in tool_info:
+                        del tool_info[output_index]
+
+                elif etype == "error":
+                    yield evt
+
                 elif etype in (
                     "response.completed",
                     "response.incomplete",

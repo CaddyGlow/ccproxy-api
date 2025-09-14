@@ -429,7 +429,7 @@ async def test_tool_choice_edge_cases() -> None:
     out_none = await adapter.adapt_request(req_none.model_dump())
     anth_none = AnthropicCreateMessageRequest.model_validate(out_none)
     assert anth_none.tool_choice is not None
-    assert anth_none.tool_choice.type == "any"  # Maps to any for Anthropic
+    assert anth_none.tool_choice.type == "none"
 
     # Test tool_choice="required"
     req_required = OpenAIChatRequest(
@@ -501,10 +501,13 @@ async def test_message_content_variations() -> None:
     assert anth_mixed.system == "You are helpful"
     assert len(anth_mixed.messages) == 1
     assert isinstance(anth_mixed.messages[0].content, list)
-    assert len(anth_mixed.messages[0].content) == 3  # text + image + text
+    assert len(anth_mixed.messages[0].content) == 2  # text parts are merged
     assert anth_mixed.messages[0].content[0].type == "text"
+    assert (
+        anth_mixed.messages[0].content[0].text
+        == "What's in this image? Please describe it."
+    )
     assert anth_mixed.messages[0].content[1].type == "image"
-    assert anth_mixed.messages[0].content[2].type == "text"
 
     # Test assistant message with tool call history
     req_with_history = OpenAIChatRequest(
@@ -533,7 +536,7 @@ async def test_message_content_variations() -> None:
     out_with_history = await adapter.adapt_request(req_with_history.model_dump())
     anth_with_history = AnthropicCreateMessageRequest.model_validate(out_with_history)
 
-    # Should have user -> assistant -> user pattern with tool use/result blocks
+    # Should have user -> assistant -> user -> user pattern with tool use/result blocks
     assert len(anth_with_history.messages) == 4
     assert anth_with_history.messages[0].role == "user"
     assert anth_with_history.messages[1].role == "assistant"
@@ -578,4 +581,7 @@ async def test_system_message_combinations() -> None:
     anth_no_system = AnthropicCreateMessageRequest.model_validate(out_no_system)
 
     # System should only contain JSON format instruction
-    assert anth_no_system.system == "Respond ONLY with a valid JSON object."
+    assert (
+        anth_no_system.system == "Respond ONLY with a valid JSON object. "
+        "Do not include any additional text, markdown, or explanation."
+    )

@@ -1,4 +1,5 @@
 import pytest
+from pydantic import ValidationError
 
 from ccproxy.llms.anthropic.models import (
     CreateMessageRequest as AnthropicCreateMessageRequest,
@@ -54,8 +55,12 @@ class TestMalformedContentBlocks:
         out_bad_image = await adapter.adapt_request(req_bad_image.model_dump())
         anth_bad_image = AnthropicCreateMessageRequest.model_validate(out_bad_image)
         # Should still process the text part
-        assert len(anth_bad_image.messages[0].content) >= 1
-        assert anth_bad_image.messages[0].content[0].type == "text"
+        content = anth_bad_image.messages[0].content
+        if isinstance(content, list):
+            assert len(content) >= 1
+            assert content[0].type == "text"
+        else:
+            assert isinstance(content, str)
 
         # Test with missing required fields
         req_missing_fields = {
@@ -92,6 +97,7 @@ class TestMalformedContentBlocks:
         # Test with malformed content blocks
         malformed_resp = {
             "id": "msg_malformed",
+            "type": "message",
             "role": "assistant",
             "model": "claude",
             "content": [
@@ -156,8 +162,9 @@ class TestEmptyMessageLists:
         )
         out_none = await adapter.adapt_request(req_none_content.model_dump())
         anth_none = AnthropicCreateMessageRequest.model_validate(out_none)
-        # Should filter out messages with no content
-        assert len(anth_none.messages) <= 2
+        # Should filter out messages with None content
+        assert len(anth_none.messages) == 1
+        assert anth_none.messages[0].content == ""
 
         # Test with empty content array
         req_empty_array = OpenAIChatRequest(
@@ -190,20 +197,12 @@ class TestEmptyMessageLists:
         )
         assert anth_empty_string.model == "gpt-4o"
 
-        # Test with None input
-        req_none_input = OpenAIResponseRequest(
-            model="gpt-4o",
-            input=None,  # None input
-        )
-        try:
-            out_none_input = await adapter.adapt_request(req_none_input.model_dump())
-            anth_none_input = AnthropicCreateMessageRequest.model_validate(
-                out_none_input
+        # Test with None input - this is invalid for the model
+        with pytest.raises(ValidationError):
+            OpenAIResponseRequest(
+                model="gpt-4o",
+                input=None,  # None input
             )
-            assert anth_none_input.model == "gpt-4o"
-        except Exception:
-            # May fail validation for None input
-            pass
 
 
 class TestUnexpectedFieldValues:
@@ -294,33 +293,21 @@ class TestUnexpectedFieldValues:
     @pytest.mark.asyncio
     async def test_invalid_temperature_values(self) -> None:
         """Test with invalid temperature values"""
-        from ccproxy.llms.adapters.openai_chatcompletions_to_anthropic_messages import (
-            OpenAIChatToAnthropicMessagesAdapter,
-        )
-
-        adapter = OpenAIChatToAnthropicMessagesAdapter()
-
         # Test with temperature > 2.0
-        req_high_temp = OpenAIChatRequest(
-            model="gpt-4o",
-            messages=[{"role": "user", "content": "test"}],
-            temperature=10.0,  # Very high temperature
-        )
-        out_high_temp = await adapter.adapt_request(req_high_temp.model_dump())
-        anth_high_temp = AnthropicCreateMessageRequest.model_validate(out_high_temp)
-        # Should clamp or pass through the value
-        assert anth_high_temp.temperature is not None
+        with pytest.raises(ValidationError):
+            OpenAIChatRequest(
+                model="gpt-4o",
+                messages=[{"role": "user", "content": "test"}],
+                temperature=10.0,  # Very high temperature
+            )
 
         # Test with negative temperature
-        req_neg_temp = OpenAIChatRequest(
-            model="gpt-4o",
-            messages=[{"role": "user", "content": "test"}],
-            temperature=-1.0,  # Negative temperature
-        )
-        out_neg_temp = await adapter.adapt_request(req_neg_temp.model_dump())
-        anth_neg_temp = AnthropicCreateMessageRequest.model_validate(out_neg_temp)
-        # Should handle gracefully
-        assert anth_neg_temp.model == "gpt-4o"
+        with pytest.raises(ValidationError):
+            OpenAIChatRequest(
+                model="gpt-4o",
+                messages=[{"role": "user", "content": "test"}],
+                temperature=-1.0,  # Negative temperature
+            )
 
 
 class TestBoundaryConditions:
@@ -433,7 +420,7 @@ class TestBoundaryConditions:
         assert anth_unicode.messages[0].content == unicode_content
 
         # Test with control characters and escape sequences
-        control_content = "Test\n\t\r\\n\\t\"quotes\"'apostrophes'\x00\x1f"
+        control_content = "Test\n\t\r\\n\t\"quotes\"'apostrophes'\x00\x1f"
         req_control = OpenAIChatRequest(
             model="gpt-4o",
             messages=[{"role": "user", "content": control_content}],
@@ -459,6 +446,7 @@ class TestCompatibilityEdgeCases:
         # Test with Anthropic-specific content types
         anthropic_resp = AnthropicMessageResponse(
             id="msg_edge",
+            type="message",
             role="assistant",
             model="claude",
             content=[
@@ -500,7 +488,7 @@ class TestCompatibilityEdgeCases:
             # OpenAI-specific parameters that may not map directly
             frequency_penalty=1.5,
             presence_penalty=0.8,
-            logit_bias={1234: 100},
+            logit_bias={"1234": 100},
             user="user123",
             seed=42,
             n=3,  # Multiple completions

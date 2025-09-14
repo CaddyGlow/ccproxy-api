@@ -124,7 +124,9 @@ class OpenAIChatToOpenAIResponsesAdapter(BaseAPIAdapter):
         resp_fmt = request.get("response_format")
         if isinstance(resp_fmt, dict):
             rftype = resp_fmt.get("type")
-            if rftype == "json_object":
+            if rftype == "text":
+                payload["text"] = {"format": {"type": "text"}}
+            elif rftype == "json_object":
                 payload["text"] = {"format": {"type": "json_object"}}
             elif rftype == "json_schema":
                 js = resp_fmt.get("json_schema") or {}
@@ -138,6 +140,9 @@ class OpenAIChatToOpenAIResponsesAdapter(BaseAPIAdapter):
                     }
                 )
                 payload["text"] = {"format": fmt}
+
+        if "tools" in request:
+            payload["tools"] = request["tools"]
 
         return ResponseRequest.model_validate(payload).model_dump()
 
