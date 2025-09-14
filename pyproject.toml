@@ -326,12 +326,12 @@ addopts = [
   "--tb=short",
   "-v",
   "--import-mode=importlib",
-  "--cov=ccproxy",
-  "--cov=tests",
-  "--cov-report=term-missing",
-  "--cov-report=html:htmlcov",
-  "--cov-report=xml",
-  "--cov-branch",
+  # "--cov=ccproxy",
+  # "--cov=tests",
+  # "--cov-report=term-missing",
+  # "--cov-report=html:htmlcov",
+  # "--cov-report=xml",
+  # "--cov-branch",
   # "--cov-fail-under=80",
 ]
 testpaths = ["tests"]

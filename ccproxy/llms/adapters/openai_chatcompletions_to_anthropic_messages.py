@@ -7,6 +7,7 @@ from typing import Any
 from ccproxy.llms.adapters.base import BaseAPIAdapter
 from ccproxy.llms.adapters.mapping import DEFAULT_MAX_TOKENS
 from ccproxy.llms.anthropic.models import CreateMessageRequest
+from ccproxy.llms.adapters.mapping import ANTHROPIC_TO_OPENAI_FINISH_REASON
 
 
 class OpenAIChatToAnthropicMessagesAdapter(BaseAPIAdapter):
@@ -251,12 +252,79 @@ class OpenAIChatToAnthropicMessagesAdapter(BaseAPIAdapter):
         return {"type": "enabled", "budget_tokens": budget}
 
     async def adapt_response(self, response: dict[str, Any]) -> dict[str, Any]:
-        raise NotImplementedError
+        # Delegate Anthropic -> OpenAI Chat response to the dedicated adapter
+        from ccproxy.llms.adapters.anthropic_messages_to_openai_chatcompletions import (
+            AnthropicMessagesToOpenAIChatAdapter,
+        )
+
+        return await AnthropicMessagesToOpenAIChatAdapter().adapt_response(response)
 
     def adapt_stream(
         self, stream: AsyncIterator[dict[str, Any]]
     ) -> AsyncGenerator[dict[str, Any], None]:
-        raise NotImplementedError
+        async def generator() -> AsyncGenerator[dict[str, Any], None]:
+            model_id = ""
+            finish_reason = "stop"
+            usage_prompt = 0
+            usage_completion = 0
+            # Emit chunks for text deltas; create final finish chunk on message_stop
+            async for evt in stream:
+                if not isinstance(evt, dict):
+                    continue
+                etype = evt.get("type")
+                if etype == "message_start":
+                    model_id = (evt.get("message") or {}).get("model", "")
+                elif etype == "content_block_delta":
+                    delta = evt.get("delta") or {}
+                    text = delta.get("text") if isinstance(delta, dict) else None
+                    if isinstance(text, str) and text:
+                        yield {
+                            "id": "chatcmpl-stream",
+                            "object": "chat.completion.chunk",
+                            "created": 0,
+                            "model": model_id,
+                            "choices": [
+                                {
+                                    "index": 0,
+                                    "delta": {"role": "assistant", "content": text},
+                                    "finish_reason": None,
+                                }
+                            ],
+                        }
+                elif etype == "message_delta":
+                    delta = evt.get("delta") or {}
+                    stop_reason = delta.get("stop_reason") if isinstance(delta, dict) else None
+                    if stop_reason:
+                        finish_reason = ANTHROPIC_TO_OPENAI_FINISH_REASON.get(
+                            stop_reason, "stop"
+                        )
+                    usage = evt.get("usage") or {}
+                    usage_prompt = int(usage.get("input_tokens") or 0)
+                    usage_completion = int(usage.get("output_tokens") or 0)
+                elif etype == "message_stop":
+                    final = {
+                        "id": "chatcmpl-stream",
+                        "object": "chat.completion.chunk",
+                        "created": 0,
+                        "model": model_id,
+                        "choices": [
+                            {
+                                "index": 0,
+                                "delta": {},
+                                "finish_reason": finish_reason,
+                            }
+                        ],
+                    }
+                    if usage_prompt or usage_completion:
+                        final["usage"] = {
+                            "prompt_tokens": usage_prompt,
+                            "completion_tokens": usage_completion,
+                            "total_tokens": usage_prompt + usage_completion,
+                        }
+                    yield final
+                    break
+
+        return generator()
 
     async def adapt_error(self, error: dict[str, Any]) -> dict[str, Any]:
         return error

@@ -63,15 +63,38 @@ class OpenAIChatToOpenAIResponsesAdapter(BaseAPIAdapter):
         if input_msg:
             payload["input"] = [input_msg]
 
+        # Structured outputs: map Chat response_format to Responses text.format
+        resp_fmt = request.get("response_format")
+        if isinstance(resp_fmt, dict):
+            rftype = resp_fmt.get("type")
+            if rftype == "json_object":
+                payload["text"] = {"format": {"type": "json_object"}}
+            elif rftype == "json_schema":
+                js = resp_fmt.get("json_schema") or {}
+                # Pass through name/schema/strict if provided
+                fmt = {"type": "json_schema"}
+                fmt.update({k: v for k, v in js.items() if k in {"name", "schema", "strict", "$defs", "description"}})
+                payload["text"] = {"format": fmt}
+
         return ResponseRequest.model_validate(payload).model_dump()
 
     async def adapt_response(self, response: dict[str, Any]) -> dict[str, Any]:
-        raise NotImplementedError
+        # Delegate to Responses -> Chat adapter for converting results
+        from ccproxy.llms.adapters.openai_responses_to_openai_chatcompletions import (
+            OpenAIResponsesToOpenAIChatAdapter,
+        )
+
+        return await OpenAIResponsesToOpenAIChatAdapter().adapt_response(response)
 
     def adapt_stream(
         self, stream: AsyncIterator[dict[str, Any]]
     ) -> AsyncGenerator[dict[str, Any], None]:
-        raise NotImplementedError
+        # Delegate streaming conversion as well
+        from ccproxy.llms.adapters.openai_responses_to_openai_chatcompletions import (
+            OpenAIResponsesToOpenAIChatAdapter,
+        )
+
+        return OpenAIResponsesToOpenAIChatAdapter().adapt_stream(stream)
 
     async def adapt_error(self, error: dict[str, Any]) -> dict[str, Any]:
         return error

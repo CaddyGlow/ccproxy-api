@@ -5,6 +5,7 @@ from typing import Any
 
 from ccproxy.llms.adapters.base import BaseAPIAdapter
 from ccproxy.llms.openai.models import ChatCompletionResponse
+from ccproxy.llms.openai.models import ChatCompletionChunk
 
 
 class OpenAIResponsesToOpenAIChatAdapter(BaseAPIAdapter):
@@ -23,7 +24,12 @@ class OpenAIResponsesToOpenAIChatAdapter(BaseAPIAdapter):
         super().__init__(name="openai_responses_to_openai_chat")
 
     async def adapt_request(self, request: dict[str, Any]) -> dict[str, Any]:
-        raise NotImplementedError
+        # Delegate Chat -> Responses request mapping to the dedicated adapter
+        from ccproxy.llms.adapters.openai_chatcompletions_to_openai_responses import (
+            OpenAIChatToOpenAIResponsesAdapter,
+        )
+
+        return await OpenAIChatToOpenAIResponsesAdapter().adapt_request(request)
 
     async def adapt_response(self, response: dict[str, Any]) -> dict[str, Any]:
         # Find first message output and aggregate output_text parts
@@ -65,7 +71,58 @@ class OpenAIResponsesToOpenAIChatAdapter(BaseAPIAdapter):
     def adapt_stream(
         self, stream: AsyncIterator[dict[str, Any]]
     ) -> AsyncGenerator[dict[str, Any], None]:
-        raise NotImplementedError
+        async def generator() -> AsyncGenerator[dict[str, Any], None]:
+            model_id = ""
+            async for evt in stream:
+                if not isinstance(evt, dict):
+                    continue
+                etype = evt.get("type")
+                if etype == "response.created":
+                    model_id = (evt.get("response") or {}).get("model", "")
+                elif etype == "response.output_text.delta":
+                    delta_text = evt.get("delta") or ""
+                    if delta_text:
+                        chunk = {
+                            "id": "chatcmpl-stream",
+                            "object": "chat.completion.chunk",
+                            "created": 0,
+                            "model": model_id,
+                            "choices": [
+                                {
+                                    "index": 0,
+                                    "delta": {"role": "assistant", "content": delta_text},
+                                    "finish_reason": None,
+                                }
+                            ],
+                        }
+                        yield ChatCompletionChunk.model_validate(chunk).model_dump()
+                elif etype in ("response.completed", "response.incomplete", "response.failed"):
+                    usage_obj = ((evt.get("response") or {}).get("usage") or {})
+                    # Final chunk with finish reason
+                    final = {
+                        "id": "chatcmpl-stream",
+                        "object": "chat.completion.chunk",
+                        "created": 0,
+                        "model": model_id,
+                        "choices": [
+                            {
+                                "index": 0,
+                                "delta": {},
+                                "finish_reason": "stop",
+                            }
+                        ],
+                    }
+                    # Optionally include usage if present
+                    if usage_obj:
+                        final["usage"] = {
+                            "prompt_tokens": int(usage_obj.get("input_tokens") or 0),
+                            "completion_tokens": int(usage_obj.get("output_tokens") or 0),
+                            "total_tokens": int(usage_obj.get("total_tokens") or 0),
+                        }
+                    yield ChatCompletionChunk.model_validate(final).model_dump()
+                    break
+
+        return generator()
 
     async def adapt_error(self, error: dict[str, Any]) -> dict[str, Any]:
         return error

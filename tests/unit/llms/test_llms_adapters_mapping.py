@@ -210,6 +210,27 @@ async def test_openai_chat_to_openai_response_request():
 
 
 @pytest.mark.asyncio
+async def test_openai_chat_to_openai_responses_structured_outputs_json_schema():
+    from ccproxy.llms.adapters.openai_chatcompletions_to_openai_responses import (
+        OpenAIChatToOpenAIResponsesAdapter,
+    )
+
+    schema = {"name": "math_response", "schema": {"type": "object", "properties": {"a": {"type": "number"}}, "required": ["a"], "additionalProperties": False}, "strict": True}
+    req = OpenAIChatRequest(
+        model="gpt-4o",
+        messages=[{"role": "user", "content": "hi"}],
+        response_format={"type": "json_schema", "json_schema": schema},
+    )
+    out = await OpenAIChatToOpenAIResponsesAdapter().adapt_request(req.model_dump())
+    resp_req = OpenAIResponseRequest.model_validate(out)
+    assert resp_req.text and resp_req.text.get("format", {}).get("type") == "json_schema"
+    fmt = resp_req.text["format"]
+    assert fmt.get("name") == "math_response"
+    assert isinstance(fmt.get("schema"), dict)
+    assert fmt.get("strict") is True
+
+
+@pytest.mark.asyncio
 async def test_openai_response_to_openai_chat_response():
     from ccproxy.llms.adapters.openai_responses_to_openai_chatcompletions import (
         OpenAIResponsesToOpenAIChatAdapter,
@@ -247,6 +268,54 @@ async def test_openai_response_to_openai_chat_response():
     assert chat.model == "gpt-4o"
     assert chat.choices[0].message.content == "Hello!"
     assert chat.usage.total_tokens == 16
+
+
+@pytest.mark.asyncio
+async def test_openai_responses_to_anthropic_maps_reasoning_to_thinking():
+    from ccproxy.llms.adapters.openai_responses_to_anthropic_responses import (
+        OpenAIResponsesToAnthropicAdapter,
+    )
+
+    # Response with a reasoning item (summary) and a message output
+    resp = {
+        "id": "res_r1",
+        "object": "response",
+        "created_at": 0,
+        "model": "gpt-5",
+        "output": [
+            {
+                "type": "reasoning",
+                "id": "rs1",
+                "summary": [{"type": "summary_text", "text": "inner chain"}],
+            },
+            {
+                "type": "message",
+                "id": "m1",
+                "status": "completed",
+                "role": "assistant",
+                "content": [
+                    {"type": "output_text", "text": " Final answer."},
+                ],
+            },
+        ],
+        "status": "completed",
+        "parallel_tool_calls": False,
+        "usage": {
+            "input_tokens": 1,
+            "input_tokens_details": {"cached_tokens": 0},
+            "output_tokens": 2,
+            "output_tokens_details": {"reasoning_tokens": 0},
+            "total_tokens": 3,
+        },
+    }
+
+    adapter = OpenAIResponsesToAnthropicAdapter()
+    out = await adapter.adapt_response(resp)
+    # Validate as Anthropic message response; expect first block is thinking with summary text
+    anth = AnthropicMessageResponse.model_validate(out)
+    assert anth.content and anth.content[0].type == "thinking"
+    assert "inner chain" in getattr(anth.content[0], "thinking", "")
+    assert anth.content[1].type == "text"
 
 
 @pytest.mark.asyncio
@@ -294,6 +363,160 @@ async def test_openai_responses_request_to_anthropic_messages():
     assert anth.messages[0].content == "Hello"
     assert anth.tools and anth.tools[0].name == "search"
     assert anth.tool_choice and anth.tool_choice.type == "auto"
+
+
+@pytest.mark.asyncio
+async def test_openai_responses_request_to_anthropic_messages_text_format_injection():
+    from ccproxy.llms.adapters.openai_responses_request_to_anthropic_messages import (
+        OpenAIResponsesRequestToAnthropicMessagesAdapter,
+    )
+
+    schema = {
+        "type": "object",
+        "properties": {"title": {"type": "string"}},
+        "required": ["title"],
+        "additionalProperties": False,
+    }
+    req = OpenAIResponseRequest(
+        model="gpt-4o",
+        input=[
+            {
+                "type": "message",
+                "role": "user",
+                "content": [{"type": "input_text", "text": "Hello"}],
+            }
+        ],
+        text={"format": {"type": "json_schema", "name": "doc", "schema": schema, "strict": True}},
+    )
+
+    out = await OpenAIResponsesRequestToAnthropicMessagesAdapter().adapt_request(
+        req.model_dump()
+    )
+    anth = AnthropicCreateMessageRequest.model_validate(out)
+    assert isinstance(anth.system, str)
+    assert "Respond ONLY with JSON strictly conforming to this JSON Schema" in anth.system
+    assert '"properties":' in anth.system
+
+
+@pytest.mark.asyncio
+async def test_openai_responses_request_instructions_to_system_passthrough():
+    from ccproxy.llms.adapters.openai_responses_request_to_anthropic_messages import (
+        OpenAIResponsesRequestToAnthropicMessagesAdapter,
+    )
+
+    req = OpenAIResponseRequest(
+        model="gpt-4o",
+        input=[
+            {
+                "type": "message",
+                "role": "user",
+                "content": [{"type": "input_text", "text": "Hello"}],
+            }
+        ],
+        instructions="You are helpful",
+    )
+
+    out = await OpenAIResponsesRequestToAnthropicMessagesAdapter().adapt_request(
+        req.model_dump()
+    )
+    anth = AnthropicCreateMessageRequest.model_validate(out)
+    assert anth.system == "You are helpful"
+
+
+@pytest.mark.asyncio
+async def test_openai_responses_request_to_anthropic_messages_text_format_json_object():
+    from ccproxy.llms.adapters.openai_responses_request_to_anthropic_messages import (
+        OpenAIResponsesRequestToAnthropicMessagesAdapter,
+    )
+
+    req = OpenAIResponseRequest(
+        model="gpt-4o",
+        input=[
+            {
+                "type": "message",
+                "role": "user",
+                "content": [{"type": "input_text", "text": "Hello"}],
+            }
+        ],
+        text={"format": {"type": "json_object"}},
+    )
+
+    out = await OpenAIResponsesRequestToAnthropicMessagesAdapter().adapt_request(
+        req.model_dump()
+    )
+    anth = AnthropicCreateMessageRequest.model_validate(out)
+    assert isinstance(anth.system, str)
+    assert "Respond ONLY with a valid JSON object" in anth.system
+
+
+@pytest.mark.asyncio
+async def test_openai_responses_request_reasoning_to_anthropic_thinking():
+    from ccproxy.llms.adapters.openai_responses_request_to_anthropic_messages import (
+        OpenAIResponsesRequestToAnthropicMessagesAdapter,
+    )
+
+    req = OpenAIResponseRequest(
+        model="gpt-4o",
+        input="Hello",
+        reasoning={"effort": "medium"},
+        max_output_tokens=3000,
+    )
+    out = await OpenAIResponsesRequestToAnthropicMessagesAdapter().adapt_request(
+        req.model_dump()
+    )
+    anth = AnthropicCreateMessageRequest.model_validate(out)
+    assert anth.thinking is not None
+    assert getattr(anth.thinking, "budget_tokens", 0) == 5000
+    assert anth.max_tokens > 5000
+    assert anth.temperature == 1.0
+
+
+@pytest.mark.asyncio
+async def test_openai_responses_request_stream_maps_refusal_done_event():
+    from ccproxy.llms.adapters.openai_responses_request_to_anthropic_messages import (
+        OpenAIResponsesRequestToAnthropicMessagesAdapter,
+    )
+    from ccproxy.llms.anthropic.models import (
+        MessageResponse as AnthMessage,
+        Usage as AnthUsage,
+        MessageStartEvent as AnthMsgStart,
+        ContentBlockStartEvent as AnthCBStart,
+        ContentBlockDeltaEvent as AnthCBDelta,
+        ContentBlockStopEvent as AnthCBStop,
+        MessageDeltaEvent as AnthMsgDelta,
+        MessageDelta as AnthDelta,
+        MessageStopEvent as AnthMsgStop,
+        TextBlock as AnthText,
+    )
+
+    msg = AnthMessage(
+        id="ms",
+        role="assistant",
+        model="claude",
+        content=[],
+        stop_reason=None,
+        stop_sequence=None,
+        usage=AnthUsage(input_tokens=0, output_tokens=0),
+    )
+    events = [
+        AnthMsgStart(type="message_start", message=msg).model_dump(),
+        AnthCBStart(type="content_block_start", index=0, content_block=AnthText(type="text", text="")).model_dump(),
+        AnthCBDelta(type="content_block_delta", index=0, delta=AnthText(type="text", text="Hi")).model_dump(),
+        AnthCBStop(type="content_block_stop", index=0).model_dump(),
+        AnthMsgDelta(type="message_delta", delta=AnthDelta(stop_reason="refusal"), usage=AnthUsage(input_tokens=1, output_tokens=0)).model_dump(),
+        AnthMsgStop(type="message_stop").model_dump(),
+    ]
+
+    async def gen():
+        for e in events:
+            yield e
+
+    adapter = OpenAIResponsesRequestToAnthropicMessagesAdapter()
+    out_events = []
+    async for ev in adapter.adapt_stream(gen()):
+        out_events.append(ev)
+
+    assert any(e.get("type") == "response.refusal.done" for e in out_events)
 
 
 @pytest.mark.asyncio

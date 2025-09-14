@@ -50,12 +50,40 @@ class OpenAIResponsesToAnthropicAdapter(BaseAPIAdapter):
         super().__init__(name="openai_responses_to_anthropic")
 
     async def adapt_request(self, request: dict[str, Any]) -> dict[str, Any]:
-        raise NotImplementedError
+        # Delegate ResponseRequest -> Anthropic Messages request
+        from ccproxy.llms.adapters.openai_responses_request_to_anthropic_messages import (
+            OpenAIResponsesRequestToAnthropicMessagesAdapter,
+        )
+
+        return await OpenAIResponsesRequestToAnthropicMessagesAdapter().adapt_request(
+            request
+        )
 
     async def adapt_response(self, response: dict[str, Any]) -> dict[str, Any]:
         # response is expected to be an OpenAI ResponseObject dict
         output = response.get("output") or []
         content_blocks: list[dict[str, Any]] = []
+
+        # Gather reasoning summaries (map to Anthropic ThinkingBlock)
+        for item in output:
+            if not isinstance(item, dict):
+                continue
+            if item.get("type") == "reasoning":
+                summary_parts = item.get("summary") or []
+                texts: list[str] = []
+                for p in summary_parts:
+                    if isinstance(p, dict) and p.get("type") == "summary_text":
+                        t = p.get("text")
+                        if isinstance(t, str):
+                            texts.append(t)
+                if texts:
+                    content_blocks.append(
+                        AnthropicThinkingBlock(
+                            type="thinking",
+                            thinking=" ".join(texts),
+                            signature="",
+                        ).model_dump()
+                    )
 
         # Take first message output
         for item in output:
@@ -129,6 +157,8 @@ class OpenAIResponsesToAnthropicAdapter(BaseAPIAdapter):
             message_started = False
             index = 0
             for_event_id = "msg_stream"
+            func_args_buffer: list[str] = []
+            tool_block_emitted = False
 
             async for evt in stream:
                 etype = evt.get("type") if isinstance(evt, dict) else None
@@ -168,6 +198,32 @@ class OpenAIResponsesToAnthropicAdapter(BaseAPIAdapter):
                             "delta": {"type": "text", "text": text_no_thinking},
                         }
                         index = 1
+                elif etype == "response.function_call_arguments.delta":
+                    delta = evt.get("delta") or ""
+                    if isinstance(delta, str):
+                        func_args_buffer.append(delta)
+                elif etype == "response.function_call_arguments.done":
+                    # Emit a tool_use content block with parsed arguments
+                    try:
+                        import json
+
+                        args_str = evt.get("arguments") or "".join(func_args_buffer)
+                        args_obj = json.loads(args_str) if isinstance(args_str, str) else {}
+                    except Exception:
+                        args_obj = {}
+                    yield {
+                        "type": "content_block_start",
+                        "index": index,
+                        "content_block": {
+                            "type": "tool_use",
+                            "id": "call_1",
+                            "name": "function",
+                            "input": args_obj,
+                        },
+                    }
+                    yield {"type": "content_block_stop", "index": index}
+                    tool_block_emitted = True
+                    index = index + 1
                 elif etype in (
                     "response.completed",
                     "response.incomplete",
