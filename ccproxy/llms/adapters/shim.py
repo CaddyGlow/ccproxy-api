@@ -3,15 +3,19 @@
 from __future__ import annotations
 
 from collections.abc import AsyncGenerator, AsyncIterator
-from typing import Any
+from typing import Any, TYPE_CHECKING
 
 from pydantic import BaseModel, ValidationError
 
-from ccproxy.adapters.base import APIAdapter as LegacyAPIAdapter
-from ccproxy.llms.adapters.base import BaseAPIAdapter
+from ccproxy.adapters.base import APIAdapter as LegacyAPIAdapter, BaseAPIAdapter as LegacyBaseAPIAdapter
+
+if TYPE_CHECKING:
+    from ccproxy.llms.adapters.base import BaseAPIAdapter
+else:
+    from ccproxy.llms.adapters.base import BaseAPIAdapter
 
 
-class AdapterShim(LegacyAPIAdapter):
+class AdapterShim(LegacyBaseAPIAdapter):
     """Shim that wraps typed adapters to provide legacy dict-based interface.
 
     This allows the new strongly-typed adapters from ccproxy.llms.adapters
@@ -23,7 +27,7 @@ class AdapterShim(LegacyAPIAdapter):
     - All error handling is preserved with meaningful messages
     """
 
-    def __init__(self, typed_adapter: BaseAPIAdapter):
+    def __init__(self, typed_adapter: BaseAPIAdapter[Any, Any, Any]):
         """Initialize shim with a typed adapter.
 
         Args:
@@ -70,7 +74,7 @@ class AdapterShim(LegacyAPIAdapter):
         self, stream: AsyncIterator[dict[str, Any]]
     ) -> AsyncGenerator[dict[str, Any], None]:
         """Convert streaming response using shim."""
-        async def typed_stream():
+        async def typed_stream() -> AsyncGenerator[BaseModel, None]:
             """Convert dict stream to typed stream."""
             async for chunk in stream:
                 try:
