@@ -2,11 +2,14 @@ from __future__ import annotations
 
 import re
 from collections.abc import AsyncGenerator, AsyncIterator
-from typing import Any
+from typing import Any, cast
 
 from pydantic import BaseModel
 
 from ccproxy.llms.adapters.base import BaseAPIAdapter
+from ccproxy.llms.adapters.mapping import (
+    convert_openai_response_usage_to_anthropic_usage,
+)
 from ccproxy.llms.anthropic import models as anthropic_models
 from ccproxy.llms.anthropic.models import (
     MessageResponse as AnthropicMessageResponse,
@@ -76,9 +79,6 @@ class OpenAIResponsesToAnthropicAdapter(
         )
         from ccproxy.llms.anthropic.models import (
             ToolUseBlock as AnthropicToolUseBlock,
-        )
-        from ccproxy.llms.anthropic.models import (
-            Usage as AnthropicUsage,
         )
 
         content_blocks: list[
@@ -241,10 +241,12 @@ class OpenAIResponsesToAnthropicAdapter(
                         )
                 break
 
-        # Create usage object
-        anthropic_usage = AnthropicUsage(
-            input_tokens=response.usage.input_tokens or 0 if response.usage else 0,
-            output_tokens=response.usage.output_tokens or 0 if response.usage else 0,
+        # Create usage object with cache support
+        anthropic_usage = cast(
+            anthropic_models.Usage,
+            convert_openai_response_usage_to_anthropic_usage(response.usage)
+            if response.usage
+            else anthropic_models.Usage(input_tokens=0, output_tokens=0),
         )
 
         return AnthropicMessageResponse(

@@ -3,4 +3,5 @@
 from .base import APIAdapter, BaseAPIAdapter
 from .shim import AdapterShim
 
+
 __all__ = ["APIAdapter", "BaseAPIAdapter", "AdapterShim"]

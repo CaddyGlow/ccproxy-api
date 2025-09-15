@@ -1,5 +1,6 @@
 """File formatter for command replay output."""
 
+import stat
 import time
 import uuid
 from datetime import datetime
@@ -7,7 +8,6 @@ from pathlib import Path
 from typing import Any
 
 import aiofiles
-import structlog
 
 from ccproxy.core.logging import get_plugin_logger
 from ccproxy.utils.command_line import generate_curl_shell_script
@@ -64,7 +64,9 @@ class CommandFileFormatter:
         """
         if request_id:
             # Clean up request ID for filesystem safety
-            safe_id = "".join(c if c.isalnum() or c in "-_" else "_" for c in request_id)
+            safe_id = "".join(
+                c if c.isalnum() or c in "-_" else "_" for c in request_id
+            )
             return safe_id[:50]  # Limit length
         else:
             return str(uuid.uuid4())[:8]
@@ -156,6 +158,14 @@ class CommandFileFormatter:
                 if combined_file:
                     written_files.append(combined_file)
 
+            # Generate executable shell script if we have raw request data
+            if method and url:
+                shell_script_file = await self._write_shell_script_file(
+                    base_id, request_id, method, url, headers, body, is_json, provider
+                )
+                if shell_script_file:
+                    written_files.append(shell_script_file)
+
             # Make files executable
             await self._make_files_executable(written_files)
 
@@ -207,7 +217,9 @@ class CommandFileFormatter:
                 await f.write(f"# Request ID: {request_id}\n")
                 await f.write(f"# Generated: {datetime.now().isoformat()}\n")
                 await f.write("#\n")
-                await f.write(f"# Run this file directly: ./{base_id}_{command_type}.sh\n")
+                await f.write(
+                    f"# Run this file directly: ./{base_id}_{command_type}.sh\n"
+                )
                 await f.write("\n")
                 await f.write(command)
                 await f.write("\n")
@@ -276,7 +288,7 @@ class CommandFileFormatter:
                     await f.write("# CURL Command\n")
                     await f.write("# " + "=" * 50 + "\n")
                     # Comment out the command so it doesn't run accidentally
-                    for line in curl_command.split('\n'):
+                    for line in curl_command.split("\n"):
                         if line.strip():
                             await f.write(f"# {line}\n")
                         else:
@@ -288,7 +300,7 @@ class CommandFileFormatter:
                     await f.write("# XH Command\n")
                     await f.write("# " + "=" * 50 + "\n")
                     # Comment out the command so it doesn't run accidentally
-                    for line in xh_command.split('\n'):
+                    for line in xh_command.split("\n"):
                         if line.strip():
                             await f.write(f"# {line}\n")
                         else:
@@ -324,7 +336,6 @@ class CommandFileFormatter:
         Args:
             file_paths: List of file paths to make executable
         """
-        import stat
 
         for file_path_str in file_paths:
             try:
@@ -344,6 +355,77 @@ class CommandFileFormatter:
                     file_path=file_path_str,
                     error=str(e),
                 )
+
+    async def _write_shell_script_file(
+        self,
+        base_id: str,
+        request_id: str,
+        method: str,
+        url: str,
+        headers: dict[str, str] | None,
+        body: Any,
+        is_json: bool,
+        provider: str | None = None,
+    ) -> str | None:
+        """Write an executable shell script file.
+
+        Args:
+            base_id: Base filename identifier
+            request_id: Request ID for logging
+            method: HTTP method
+            url: Request URL
+            headers: HTTP headers
+            body: Request body
+            is_json: Whether body is JSON
+            provider: Provider name
+
+        Returns:
+            File path if successful, None if failed
+        """
+        file_path = self.log_dir / f"{base_id}_script.sh"
+
+        # Log file creation
+        if str(file_path) not in self._created_files:
+            self._created_files.add(str(file_path))
+            logger.debug(
+                "command_replay_file_created",
+                request_id=request_id,
+                command_type="shell_script",
+                file_path=str(file_path),
+                mode="executable",
+            )
+
+        try:
+            # Generate shell-safe script content
+            script_content = generate_curl_shell_script(
+                method=method,
+                url=url,
+                headers=headers,
+                body=body,
+                is_json=is_json,
+            )
+
+            async with aiofiles.open(file_path, "w", encoding="utf-8") as f:
+                await f.write("#!/bin/bash\n")
+                await f.write("# Executable Shell Script for Request Replay\n")
+                await f.write(f"# Request ID: {request_id}\n")
+                if provider:
+                    await f.write(f"# Provider: {provider}\n")
+                await f.write(f"# Generated: {datetime.now().isoformat()}\n")
+                await f.write(f"# Usage: bash {file_path.name} or ./{file_path.name}\n")
+                await f.write("\n")
+                await f.write(script_content)
+
+            return str(file_path)
+
+        except Exception as e:
+            logger.error(
+                "command_replay_shell_script_write_error",
+                request_id=request_id,
+                file_path=str(file_path),
+                error=str(e),
+            )
+            return None
 
     def cleanup(self) -> None:
         """Clean up resources (if any)."""

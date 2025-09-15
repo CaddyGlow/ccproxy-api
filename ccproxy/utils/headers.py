@@ -168,6 +168,7 @@ EXCLUDED_REQUEST_HEADERS = {
     "access-control-max-age",
     "access-control-expose-headers",
     # Auth headers (will be replaced)
+    # we cleanup by precaution
     "authorization",
     "x-api-key",
     # Content length (will be recalculated)

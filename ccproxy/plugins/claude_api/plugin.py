@@ -318,21 +318,21 @@ class ClaudeAPIFactory(BaseProviderPluginFactory):
             from_format="openai",
             to_format="anthropic",
             adapter_factory=lambda: __import__(
-                "ccproxy.adapters.openai.adapter",
-                fromlist=["OpenAIAdapter"],
-            ).OpenAIToAnthropicAdapter(),
+                "ccproxy.llms.adapters.openai_chatcompletions_to_anthropic_messages",
+                fromlist=["OpenAIChatToAnthropicMessagesAdapter"],
+            ).OpenAIChatToAnthropicMessagesAdapter(),
             priority=100,  # Lower priority than SDK plugin
-            description="OpenAI to Anthropic",
+            description="OpenAI ChatCompletions to Anthropic Messages (typed)",
         ),
         FormatAdapterSpec(
-            from_format="response_api",
-            to_format="anthropic",
+            from_format="anthropic",
+            to_format="openai",
             adapter_factory=lambda: __import__(
-                "ccproxy.adapters.anthropic.response_adapter",
-                fromlist=["AnthropicResponseAPIAdapter"],
-            ).AnthropicResponseAPIAdapter(),
-            priority=50,  # Medium priority
-            description="Response API to Anthropic format conversion for Claude API",
+                "ccproxy.llms.adapters.anthropic_messages_to_openai_chatcompletions",
+                fromlist=["AnthropicMessagesToOpenAIChatAdapter"],
+            ).AnthropicMessagesToOpenAIChatAdapter(),
+            priority=100,  # Lower priority than SDK plugin
+            description="Anthropic Messages to OpenAI ChatCompletions (typed)",
         ),
     ]
 

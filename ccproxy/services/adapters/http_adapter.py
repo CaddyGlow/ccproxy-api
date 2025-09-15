@@ -1,4 +1,5 @@
 import contextlib
+import json
 from abc import abstractmethod
 from typing import Any, cast
 
@@ -139,10 +140,8 @@ class BaseHTTPAdapter(BaseAdapter):
                     },
                 )
             try:
-                import json as _json
-
                 preview_len = len(body or b"")
-                parsed = _json.loads(body.decode()) if body else {}
+                parsed = json.loads(body.decode()) if body else {}
                 logger.trace(
                     "format_chain_request_converted",
                     from_format=ctx.format_chain[0],
@@ -284,10 +283,8 @@ class BaseHTTPAdapter(BaseAdapter):
                     body, ctx.format_chain, ctx, mode="request"
                 )
                 try:
-                    import json as _json
-
                     preview_len = len(body or b"")
-                    parsed = _json.loads(body.decode()) if body else {}
+                    parsed = json.loads(body.decode()) if body else {}
                     logger.trace(
                         "format_chain_stream_request_converted",
                         from_format=ctx.format_chain[0],
@@ -443,21 +440,6 @@ class BaseHTTPAdapter(BaseAdapter):
 
         # Convert back to bytes
         return json.dumps(current_data).encode()
-
-    # async def _execute_reverse_format_chain(
-    #     self, response: Response | StreamingResponse, format_chain: list[str], ctx: Any
-    # ) -> Response | StreamingResponse:
-    #     """Execute reverse format conversion chain on responses."""
-    #
-    #     if not self.format_registry:
-    #         logger.debug("reverse_format_chain_skipped", reason="no_registry")
-    #         return response
-    #
-    #     # Handle streaming vs non-streaming responses
-    #     if isinstance(response, StreamingResponse):
-    #         return await self._convert_streaming_response(response, format_chain, ctx)
-    #     else:
-    #         return await self._convert_regular_response(response, format_chain, ctx)
 
     async def _convert_streaming_response(
         self, response: StreamingResponse, format_chain: list[str], ctx: Any

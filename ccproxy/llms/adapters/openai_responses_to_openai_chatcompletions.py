@@ -5,6 +5,7 @@ from collections.abc import AsyncGenerator, AsyncIterator
 from pydantic import BaseModel
 
 from ccproxy.llms.adapters.base import BaseAPIAdapter
+from ccproxy.llms.adapters.mapping import safe_extract_usage_tokens
 from ccproxy.llms.openai import models as openai_models
 from ccproxy.llms.openai.models import (
     ChatCompletionChunk,
@@ -68,13 +69,14 @@ class OpenAIResponsesToOpenAIChatAdapter(
                 text = "".join(parts)
                 break
 
-        # Create usage object
+        # Create usage object with better token extraction
         usage = None
         if response.usage:
+            input_tokens, output_tokens, _ = safe_extract_usage_tokens(response.usage)
             usage = openai_models.CompletionUsage(
-                prompt_tokens=response.usage.input_tokens or 0,
-                completion_tokens=response.usage.output_tokens or 0,
-                total_tokens=response.usage.total_tokens or 0,
+                prompt_tokens=input_tokens,
+                completion_tokens=output_tokens,
+                total_tokens=input_tokens + output_tokens,
             )
 
         # Create the response
@@ -143,10 +145,13 @@ class OpenAIResponsesToOpenAIChatAdapter(
             ):
                 usage = None
                 if evt.response and evt.response.usage:  # type: ignore
+                    input_tokens, output_tokens, _ = safe_extract_usage_tokens(
+                        evt.response.usage
+                    )  # type: ignore
                     usage = openai_models.CompletionUsage(
-                        prompt_tokens=evt.response.usage.input_tokens,  # type: ignore
-                        completion_tokens=evt.response.usage.output_tokens,  # type: ignore
-                        total_tokens=evt.response.usage.total_tokens,  # type: ignore
+                        prompt_tokens=input_tokens,
+                        completion_tokens=output_tokens,
+                        total_tokens=input_tokens + output_tokens,
                     )
                 yield ChatCompletionChunk(
                     id="chatcmpl-stream",

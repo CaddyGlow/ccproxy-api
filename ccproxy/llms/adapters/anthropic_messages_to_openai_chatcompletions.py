@@ -6,7 +6,10 @@ from typing import Any, Literal, cast
 from pydantic import BaseModel
 
 from ccproxy.llms.adapters.base import BaseAPIAdapter
-from ccproxy.llms.adapters.mapping import ANTHROPIC_TO_OPENAI_FINISH_REASON
+from ccproxy.llms.adapters.mapping import (
+    ANTHROPIC_TO_OPENAI_FINISH_REASON,
+    convert_anthropic_usage_to_openai_completion_usage,
+)
 from ccproxy.llms.anthropic import models as anthropic_models
 from ccproxy.llms.openai import models as openai_models
 
@@ -68,8 +71,7 @@ class AnthropicMessagesToOpenAIChatAdapter(
     ) -> AsyncGenerator[openai_models.ChatCompletionChunk, None]:
         model_id = ""
         finish_reason: FinishReason = "stop"
-        usage_prompt = 0
-        usage_completion = 0
+        final_usage: BaseModel | None = None
 
         async for evt in stream:
             if not hasattr(evt, "type"):
@@ -103,15 +105,13 @@ class AnthropicMessagesToOpenAIChatAdapter(
                             evt.delta.stop_reason, "stop"
                         ),
                     )
-                usage_prompt = evt.usage.input_tokens
-                usage_completion = evt.usage.output_tokens
+                final_usage = evt.usage
             elif evt.type == "message_stop":
                 usage = None
-                if usage_prompt or usage_completion:
-                    usage = openai_models.CompletionUsage(
-                        prompt_tokens=usage_prompt,
-                        completion_tokens=usage_completion,
-                        total_tokens=usage_prompt + usage_completion,
+                if final_usage is not None:
+                    usage = cast(
+                        openai_models.CompletionUsage,
+                        convert_anthropic_usage_to_openai_completion_usage(final_usage),
                     )
                 yield openai_models.ChatCompletionChunk(
                     id="chatcmpl-stream",
@@ -350,9 +350,7 @@ class AnthropicMessagesToOpenAIChatAdapter(
             stop_reason or "end_turn", "stop"
         )
 
-        usage = response.usage
-        prompt_tokens = int(usage.input_tokens or 0)
-        completion_tokens = int(usage.output_tokens or 0)
+        usage_model = convert_anthropic_usage_to_openai_completion_usage(response.usage)
 
         payload = {
             "id": response.id,
@@ -366,11 +364,7 @@ class AnthropicMessagesToOpenAIChatAdapter(
             "created": 0,
             "model": response.model,
             "object": "chat.completion",
-            "usage": {
-                "prompt_tokens": prompt_tokens,
-                "completion_tokens": completion_tokens,
-                "total_tokens": prompt_tokens + completion_tokens,
-            },
+            "usage": usage_model.model_dump(),
         }
         return openai_models.ChatCompletionResponse.model_validate(payload)
 

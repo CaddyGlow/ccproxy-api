@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 from collections.abc import AsyncGenerator, AsyncIterator
-from typing import Any
+from typing import Any, cast
 
 from pydantic import BaseModel
 
 from ccproxy.llms.adapters.base import BaseAPIAdapter
+from ccproxy.llms.adapters.mapping import (
+    convert_anthropic_usage_to_openai_response_usage,
+)
 from ccproxy.llms.anthropic import models as anthropic_models
 from ccproxy.llms.openai import models as openai_models
 
@@ -162,17 +165,9 @@ class AnthropicMessagesToOpenAIResponsesAdapter(
                         model=model_id,
                         output=[],
                         parallel_tool_calls=False,
-                        usage=openai_models.ResponseUsage(
-                            input_tokens=evt.usage.input_tokens,
-                            output_tokens=evt.usage.output_tokens,
-                            total_tokens=evt.usage.input_tokens
-                            + evt.usage.output_tokens,
-                            input_tokens_details=openai_models.InputTokensDetails(
-                                cached_tokens=0
-                            ),
-                            output_tokens_details=openai_models.OutputTokensDetails(
-                                reasoning_tokens=0
-                            ),
+                        usage=cast(
+                            openai_models.ResponseUsage,
+                            convert_anthropic_usage_to_openai_response_usage(evt.usage),
                         ),
                     ),
                 )
@@ -355,17 +350,9 @@ class AnthropicMessagesToOpenAIResponsesAdapter(
         msg_contents.extend(other_contents)
 
         # Usage mapping
-        usage = response.usage
-        input_tokens_details = openai_models.InputTokensDetails(
-            cached_tokens=int(getattr(usage, "cache_read_input_tokens", 0) or 0)
-        )
-        output_tokens_details = openai_models.OutputTokensDetails(reasoning_tokens=0)
-        resp_usage = openai_models.ResponseUsage(
-            input_tokens=int(usage.input_tokens or 0),
-            input_tokens_details=input_tokens_details,
-            output_tokens=int(usage.output_tokens or 0),
-            output_tokens_details=output_tokens_details,
-            total_tokens=int((usage.input_tokens or 0) + (usage.output_tokens or 0)),
+        resp_usage = cast(
+            openai_models.ResponseUsage,
+            convert_anthropic_usage_to_openai_response_usage(response.usage),
         )
 
         response_object = openai_models.ResponseObject(
@@ -433,17 +420,9 @@ class AnthropicMessagesToOpenAIResponsesAdapter(
         msg_contents.extend(other_contents)
 
         # Usage mapping
-        usage = anth.usage
-        input_tokens_details = openai_models.InputTokensDetails(
-            cached_tokens=int(getattr(usage, "cache_read_input_tokens", 0) or 0)
-        )
-        output_tokens_details = openai_models.OutputTokensDetails(reasoning_tokens=0)
-        resp_usage = openai_models.ResponseUsage(
-            input_tokens=int(usage.input_tokens or 0),
-            input_tokens_details=input_tokens_details,
-            output_tokens=int(usage.output_tokens or 0),
-            output_tokens_details=output_tokens_details,
-            total_tokens=int((usage.input_tokens or 0) + (usage.output_tokens or 0)),
+        resp_usage = cast(
+            openai_models.ResponseUsage,
+            convert_anthropic_usage_to_openai_response_usage(anth.usage),
         )
 
         response_object = openai_models.ResponseObject(

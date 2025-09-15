@@ -138,36 +138,35 @@ class CopilotPluginFactory(BaseProviderPluginFactory, AuthProviderPluginFactory)
 
     format_adapters = [
         # Normalize provider's raw OpenAI-like stream to canonical OpenAI
-        # Use an alias format name to pass registry validation
         FormatAdapterSpec(
             from_format="openai_raw",
             to_format="openai",
             adapter_factory=lambda: __import__(
-                "ccproxy.adapters.openai.adapters.chat_completions_adapter",
-                fromlist=["ChatCompletionsAdapter"],
-            ).ChatCompletionsAdapter(),
+                "ccproxy.llms.adapters.openai_responses_to_openai_chatcompletions",
+                fromlist=["OpenAIResponsesToOpenAIChatAdapter"],
+            ).OpenAIResponsesToOpenAIChatAdapter(),
             priority=90,
-            description="Normalize Copilot OpenAI streaming to canonical OpenAI",
+            description="Normalize Copilot OpenAI streaming to canonical OpenAI (typed)",
         ),
         FormatAdapterSpec(
             from_format="anthropic",
             to_format="openai",
             adapter_factory=lambda: __import__(
-                "ccproxy.adapters.openai.anthropic_to_openai_adapter",
-                fromlist=["OpenAIToAnthropicAdapter"],
-            ).OpenAIToAnthropicAdapter(),
+                "ccproxy.llms.adapters.anthropic_messages_to_openai_chatcompletions",
+                fromlist=["AnthropicMessagesToOpenAIChatAdapter"],
+            ).AnthropicMessagesToOpenAIChatAdapter(),
             priority=100,
-            description="Anthropic to OpenAI",
+            description="Anthropic Messages to OpenAI ChatCompletions (typed)",
         ),
         FormatAdapterSpec(
             from_format="response_api",
             to_format="anthropic",
             adapter_factory=lambda: __import__(
-                "ccproxy.adapters.anthropic.response_adapter",
-                fromlist=["AnthropicResponseAPIAdapter"],
-            ).AnthropicResponseAPIAdapter(),
+                "ccproxy.llms.adapters.openai_responses_request_to_anthropic_messages",
+                fromlist=["OpenAIResponsesRequestToAnthropicMessagesAdapter"],
+            ).OpenAIResponsesRequestToAnthropicMessagesAdapter(),
             priority=50,  # Medium priority
-            description="Response API to Anthropic format conversion for Claude API",
+            description="OpenAI Responses/Request to Anthropic Messages (typed)",
         ),
     ]
 

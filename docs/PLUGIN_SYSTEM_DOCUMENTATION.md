@@ -727,6 +727,195 @@ async def _setup_format_registry(self) -> None:
     registry.register("openai", "anthropic", MyFormatAdapter(), "my_plugin")
 ```
 
+### Adapter Compatibility System
+
+CCProxy includes a compatibility shim system that enables seamless integration between legacy dict-based adapters and modern strongly-typed adapters. This system ensures backward compatibility while allowing gradual migration to the new typed interface.
+
+#### AdapterShim Overview
+
+The `AdapterShim` class provides a compatibility layer that wraps strongly-typed adapters from `ccproxy.llms.adapters` to work with existing code that expects `dict[str, Any]` interfaces.
+
+**Key Features:**
+- **Automatic Type Conversion**: Seamlessly converts between dict and BaseModel formats
+- **Error Preservation**: Maintains meaningful error messages and stack traces
+- **Streaming Support**: Handles async generators with proper type conversion
+- **Direct Access**: Provides access to underlying typed adapter when needed
+
+#### Architecture
+
+```
+┌─────────────────────────────────────────────────────┐
+│                Legacy Code                          │
+│           (dict[str, Any] interface)                │
+├─────────────────────────────────────────────────────┤
+│                AdapterShim                          │
+│    (Automatic dict ↔ BaseModel conversion)         │
+├─────────────────────────────────────────────────────┤
+│             Typed Adapters                          │
+│        (BaseModel interface with types)             │
+└─────────────────────────────────────────────────────┘
+```
+
+The shim sits between legacy code expecting dict-based interfaces and modern typed adapters, performing automatic bidirectional conversion:
+
+- **Incoming**: `dict[str, Any]` → `BaseModel` (via generic model creation)
+- **Outgoing**: `BaseModel` → `dict[str, Any]` (via `model_dump()`)
+
+#### Usage Examples
+
+##### Manual Shim Creation
+
+```python
+from ccproxy.llms.adapters.shim import AdapterShim
+from ccproxy.llms.adapters.anthropic_messages_to_openai_responses import (
+    AnthropicMessagesToOpenAIResponsesAdapter
+)
+
+# Create typed adapter
+typed_adapter = AnthropicMessagesToOpenAIResponsesAdapter()
+
+# Wrap with shim for legacy compatibility
+legacy_adapter = AdapterShim(typed_adapter)
+
+# Now use with legacy dict-based code
+request_dict = {"model": "claude-3-sonnet", "messages": [...]}
+response_dict = await legacy_adapter.adapt_request(request_dict)
+```
+
+##### Registry Integration
+
+The shim system integrates automatically with the plugin registry:
+
+```python
+class MyProviderPlugin(BaseProviderPluginFactory):
+    def create_format_adapters(self, context: PluginContext) -> list[APIAdapter]:
+        """Create format adapters with automatic shim wrapping."""
+        typed_adapter = MyTypedAdapter()
+
+        # Registry automatically wraps with shim if needed
+        return [typed_adapter]  # Will be shimmed automatically
+
+    def create_legacy_adapter(self, context: PluginContext) -> APIAdapter:
+        """Explicit shim creation for legacy systems."""
+        typed_adapter = MyTypedAdapter()
+        return AdapterShim(typed_adapter)
+```
+
+##### Streaming Support
+
+The shim properly handles streaming responses:
+
+```python
+# Legacy streaming code works unchanged
+async def process_stream(adapter: APIAdapter, stream_data):
+    # stream_data is AsyncIterator[dict[str, Any]]
+    adapted_stream = adapter.adapt_stream(stream_data)
+
+    # adapted_stream is AsyncGenerator[dict[str, Any], None]
+    async for chunk_dict in adapted_stream:
+        # chunk_dict is automatically converted from BaseModel
+        process_chunk(chunk_dict)
+```
+
+#### Error Handling
+
+The shim provides comprehensive error handling with meaningful messages:
+
+```python
+try:
+    result = await shimmed_adapter.adapt_request(invalid_request)
+except ValueError as e:
+    # Error messages include adapter name and conversion context
+    # e.g., "Invalid request format for anthropic_to_openai: validation error..."
+    logger.error("Adapter failed", error=str(e))
+```
+
+**Error Categories:**
+- **ValidationError**: Invalid input format during dict→BaseModel conversion
+- **ValueError**: Adaptation failure in underlying typed adapter
+- **TypeError**: Type conversion issues during BaseModel→dict conversion
+
+#### Direct Adapter Access
+
+Access the underlying typed adapter when needed:
+
+```python
+shim = AdapterShim(typed_adapter)
+
+# Direct typed operations (bypasses shim conversion)
+typed_request = MyRequestModel(model="claude-3-sonnet")
+typed_response = await shim.wrapped_adapter.adapt_request(typed_request)
+
+# Legacy operations (uses shim conversion)
+dict_response = await shim.adapt_request({"model": "claude-3-sonnet"})
+```
+
+#### Migration Patterns
+
+##### Gradual Migration
+
+```python
+class MyAdapter:
+    def __init__(self, use_typed: bool = False):
+        if use_typed:
+            # Direct typed adapter
+            self._adapter = MyTypedAdapter()
+        else:
+            # Shimmed adapter for legacy compatibility
+            self._adapter = AdapterShim(MyTypedAdapter())
+
+    async def adapt_request(self, request):
+        return await self._adapter.adapt_request(request)
+```
+
+##### Feature Flag Migration
+
+```python
+async def create_adapter(settings: Settings) -> APIAdapter:
+    """Create adapter with feature flag control."""
+    typed_adapter = MyTypedAdapter()
+
+    if settings.features.use_typed_adapters:
+        return typed_adapter  # Direct typed usage
+    else:
+        return AdapterShim(typed_adapter)  # Legacy compatibility
+```
+
+#### Best Practices
+
+1. **Use for Migration**: Employ shims during gradual migration from dict to typed interfaces
+2. **Avoid Long-term**: Shims add overhead; migrate to typed adapters when possible
+3. **Error Handling**: Always handle `ValueError` exceptions from shim operations
+4. **Direct Access**: Use `wrapped_adapter` property for performance-critical typed operations
+5. **Testing**: Test both shimmed and direct adapter usage patterns
+
+#### Performance Considerations
+
+- **Conversion Overhead**: Dict↔BaseModel conversion adds processing time
+- **Memory Usage**: Temporary model objects created during conversion
+- **Streaming**: Minimal overhead for streaming due to lazy evaluation
+- **Caching**: Consider caching converted models for repeated operations
+
+#### Troubleshooting
+
+##### Shim Not Converting Properly
+
+1. Check input dict structure matches expected BaseModel fields
+2. Verify BaseModel allows extra fields (Config.extra = "allow")
+3. Review conversion error messages for validation details
+
+##### Performance Issues
+
+1. Profile conversion overhead in performance-critical paths
+2. Consider using direct typed adapter for high-frequency operations
+3. Implement caching for repeated conversions
+
+##### Type Safety Issues
+
+1. Use TypedDict hints for better type checking with shimmed adapters
+2. Consider migrating critical code paths to direct typed usage
+3. Add runtime validation for complex type conversions
+
 ### Hook System
 
 CCProxy uses a comprehensive event-driven hook system for request/response lifecycle management.

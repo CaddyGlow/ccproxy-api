@@ -69,3 +69,6 @@ enabled = true
 
 [plugins.docker]
 enabled = false
+
+[plugins.command_replay]
+enabled = true

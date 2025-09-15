@@ -16,6 +16,10 @@ from fastapi import APIRouter, FastAPI
 from pydantic import BaseModel
 from starlette.middleware.base import BaseHTTPMiddleware
 
+# Import adapter types for format adapter specifications
+from ccproxy.adapters.base import APIAdapter
+from ccproxy.llms.adapters.base import BaseAPIAdapter
+
 
 if TYPE_CHECKING:
     from ccproxy.auth.oauth.registry import OAuthRegistry
@@ -47,7 +51,9 @@ class FormatAdapterSpec:
 
     from_format: str
     to_format: str
-    adapter_factory: Callable[[], "BaseAdapter"]  # Returns APIAdapter instance
+    adapter_factory: Callable[
+        [], APIAdapter | BaseAPIAdapter
+    ]  # Returns format adapter instance
     priority: int = 100  # Lower = higher priority for conflict resolution
     description: str = ""
 

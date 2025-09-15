@@ -202,7 +202,9 @@ class CommandReplayHook(Hook):
                     try:
                         current_context = RequestContext.get_current()
                         if current_context:
-                            timestamp_prefix = current_context.get_log_timestamp_prefix()
+                            timestamp_prefix = (
+                                current_context.get_log_timestamp_prefix()
+                            )
                     except Exception:
                         pass
 
@@ -212,6 +214,11 @@ class CommandReplayHook(Hook):
                         xh_command=xh_cmd,
                         provider=provider,
                         timestamp_prefix=timestamp_prefix,
+                        method=method,
+                        url=url,
+                        headers=headers,
+                        body=body,
+                        is_json=is_json,
                     )
 
                     if written_files:

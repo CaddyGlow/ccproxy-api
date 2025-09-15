@@ -3,7 +3,6 @@
 import json
 import shlex
 from typing import Any
-from urllib.parse import quote
 
 
 def generate_curl_command(
@@ -42,51 +41,9 @@ def generate_curl_command(
             parts.extend(["-H", f"{key}: {value}"])
 
     # Add body
-    if body is not None:
-        if is_json or isinstance(body, dict):
-            # JSON body - ensure proper shell safety
-            if isinstance(body, dict):
-                json_str = json.dumps(body, separators=(',', ':'), ensure_ascii=False)
-            else:
-                # Handle string body that might need cleaning
-                body_str = str(body)
-
-                # Remove bytes prefix like b'...' or b"..." if present
-                if (body_str.startswith("b'") and body_str.endswith("'")) or \
-                   (body_str.startswith('b"') and body_str.endswith('"')):
-                    body_str = body_str[2:-1]
-
-                # Handle escaped quotes in the string
-                body_str = body_str.replace('\\"', '"').replace("\\'", "'")
-
-                # Try to parse as JSON to ensure it's valid and properly formatted
-                try:
-                    parsed = json.loads(body_str)
-                    json_str = json.dumps(parsed, separators=(',', ':'), ensure_ascii=False)
-                except (json.JSONDecodeError, ValueError):
-                    # If not valid JSON, try to fix common issues
-                    try:
-                        # Try with additional unescaping
-                        fixed_str = body_str.replace('\\\\', '\\')
-                        parsed = json.loads(fixed_str)
-                        json_str = json.dumps(parsed, separators=(',', ':'), ensure_ascii=False)
-                    except (json.JSONDecodeError, ValueError):
-                        # If still not valid JSON, use as-is but clean up
-                        json_str = body_str
-
-            parts.extend(["-d", json_str])
-            # Add content-type if not already present
-            if not headers or not any(k.lower() == "content-type" for k in headers):
-                parts.extend(["-H", "Content-Type: application/json"])
-        else:
-            # Raw body - clean up bytes prefix if present
-            body_str = str(body)
-            if body_str.startswith("b'") and body_str.endswith("'") or body_str.startswith('b"') and body_str.endswith('"'):
-                body_str = body_str[2:-1]
-
-            # Handle escaped quotes
-            body_str = body_str.replace('\\"', '"').replace("\\'", "'")
-            parts.extend(["-d", body_str])
+    if isinstance(body, bytes):
+        body_str = body.decode()
+        parts.extend(["-d", body_str])
 
     # Add URL (always last)
     parts.append(url)
@@ -145,49 +102,9 @@ def generate_xh_command(
             parts.append(f"{key}:{value}")
 
     # Add body
-    if body is not None:
-        if is_json or isinstance(body, dict):
-            # JSON body - xh handles this naturally
-            if isinstance(body, dict):
-                # For dict, we can pass key=value pairs or use raw JSON
-                json_str = json.dumps(body)
-                parts.extend(["--raw", json_str])
-            else:
-                # Handle string body that might have bytes prefix or need cleaning
-                body_str = str(body)
-
-                # Remove bytes prefix like b'...' or b"..." if present
-                if body_str.startswith("b'") and body_str.endswith("'") or body_str.startswith('b"') and body_str.endswith('"'):
-                    body_str = body_str[2:-1]
-
-                # Handle escaped quotes in the string
-                body_str = body_str.replace('\\"', '"').replace("\\'", "'")
-
-                # Try to parse as JSON to ensure it's valid and properly formatted
-                try:
-                    parsed = json.loads(body_str)
-                    json_str = json.dumps(parsed)
-                    parts.extend(["--raw", json_str])
-                except (json.JSONDecodeError, ValueError):
-                    # If not valid JSON, try to fix common issues
-                    try:
-                        # Try with additional unescaping
-                        fixed_str = body_str.replace('\\\\', '\\')
-                        parsed = json.loads(fixed_str)
-                        json_str = json.dumps(parsed)
-                        parts.extend(["--raw", json_str])
-                    except (json.JSONDecodeError, ValueError):
-                        # If still not valid JSON, use as-is but clean up
-                        parts.extend(["--raw", body_str])
-        else:
-            # Raw body - clean up bytes prefix if present
-            body_str = str(body)
-            if body_str.startswith("b'") and body_str.endswith("'") or body_str.startswith('b"') and body_str.endswith('"'):
-                body_str = body_str[2:-1]
-
-            # Handle escaped quotes
-            body_str = body_str.replace('\\"', '"').replace("\\'", "'")
-            parts.extend(["--raw", body_str])
+    if isinstance(body, bytes):
+        body_str = body.decode()
+        parts.extend(["-d", body_str])
 
     if pretty:
         # Format for readability with line continuations
@@ -240,19 +157,24 @@ def generate_curl_shell_script(
     json_data = None
     if body is not None and (is_json or isinstance(body, dict)):
         if isinstance(body, dict):
-            json_data = json.dumps(body, indent=2, separators=(',', ': '), ensure_ascii=False)
+            json_data = json.dumps(
+                body, indent=2, separators=(",", ": "), ensure_ascii=False
+            )
         else:
             # Clean up string body
             body_str = str(body)
-            if (body_str.startswith("b'") and body_str.endswith("'")) or \
-               (body_str.startswith('b"') and body_str.endswith('"')):
+            if (body_str.startswith("b'") and body_str.endswith("'")) or (
+                body_str.startswith('b"') and body_str.endswith('"')
+            ):
                 body_str = body_str[2:-1]
 
             body_str = body_str.replace('\\"', '"').replace("\\'", "'")
 
             try:
                 parsed = json.loads(body_str)
-                json_data = json.dumps(parsed, indent=2, separators=(',', ': '), ensure_ascii=False)
+                json_data = json.dumps(
+                    parsed, indent=2, separators=(",", ": "), ensure_ascii=False
+                )
             except (json.JSONDecodeError, ValueError):
                 json_data = body_str
 
@@ -270,11 +192,11 @@ def generate_curl_shell_script(
     # Handle JSON body with heredoc
     if json_data:
         script_lines.append("# JSON payload")
-        script_lines.append('JSON_DATA=$(cat <<\'EOF\'')
+        script_lines.append("JSON_DATA=$(cat <<'EOF'")
         script_lines.append(json_data)
-        script_lines.append('EOF')
-        script_lines.append(')')
-        script_lines.append('')
+        script_lines.append("EOF")
+        script_lines.append(")")
+        script_lines.append("")
 
         curl_parts.extend(["-d", '"$JSON_DATA"'])
 

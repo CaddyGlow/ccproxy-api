@@ -5,6 +5,7 @@ fdcat() {
 }
 PATH_LOG="/tmp/ccproxy"
 PATH_REQ="${PATH_LOG}/tracer/"
+COMMAND_REQ="${PATH_LOG}/command_replay"
 
 # Parse arguments
 N=-1 # Default to last request
@@ -55,6 +56,9 @@ fi
 printf "\n\033[1;34m=== Log ===\033[0m\n"
 rg -I -t log "${LAST_UUID}" ${PATH_LOG} | jq .
 printf "\n\033[1;34m=== Raw ===\033[0m\n"
-bat --paging never "${PATH_REQ}"*"${LAST_UUID}"*.http
+bat --paging never "${PATH_REQ}/"*"${LAST_UUID}"*.http
 printf "\n\033[1;34m=== Requests ===\033[0m\n"
-bat --paging never "${PATH_REQ}"*"${LAST_UUID}"*.json
+bat --paging never "${PATH_REQ}/"*"${LAST_UUID}"*.json
+printf "\n\033[1;34m=== Command ===\033[0m\n"
+fd ${LAST_UUID} "${COMMAND_REQ}" | xargs -I{} -- echo {}
+# bat --paging never "${COMMAND_REQ}/"*"${LAST_UUID}"*.txt

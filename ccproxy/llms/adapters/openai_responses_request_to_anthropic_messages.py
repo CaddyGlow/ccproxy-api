@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 from collections.abc import AsyncGenerator, AsyncIterator
-from typing import Any
+from typing import Any, cast
 
 from pydantic import BaseModel
 
 from ccproxy.llms.adapters.base import BaseAPIAdapter
-from ccproxy.llms.adapters.mapping import DEFAULT_MAX_TOKENS
+from ccproxy.llms.adapters.mapping import (
+    DEFAULT_MAX_TOKENS,
+    convert_anthropic_usage_to_openai_response_usage,
+)
 from ccproxy.llms.anthropic import models as anthropic_models
 from ccproxy.llms.anthropic.models import (
     CreateMessageRequest,
@@ -171,16 +174,10 @@ class OpenAIResponsesRequestToAnthropicMessagesAdapter(
                             model=model_id,
                             output=[],
                             parallel_tool_calls=False,
-                            usage=openai_models.ResponseUsage(
-                                input_tokens=evt.usage.input_tokens,
-                                output_tokens=evt.usage.output_tokens,
-                                total_tokens=evt.usage.input_tokens
-                                + evt.usage.output_tokens,
-                                input_tokens_details=openai_models.InputTokensDetails(
-                                    cached_tokens=0
-                                ),
-                                output_tokens_details=openai_models.OutputTokensDetails(
-                                    reasoning_tokens=0
+                            usage=cast(
+                                openai_models.ResponseUsage,
+                                convert_anthropic_usage_to_openai_response_usage(
+                                    evt.usage
                                 ),
                             ),
                         ),

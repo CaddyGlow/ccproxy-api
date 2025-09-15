@@ -231,6 +231,176 @@ def normalize_openai_error(error: BaseModel) -> BaseModel:
 
 
 # ---------------------------------------------------------------------------
+# Usage token mapping utilities
+# ---------------------------------------------------------------------------
+
+
+def convert_anthropic_usage_to_openai_completion_usage(
+    usage: BaseModel,
+) -> BaseModel:
+    """Convert Anthropic Usage to OpenAI CompletionUsage format.
+
+    Args:
+        usage: Anthropic Usage model with input_tokens, output_tokens, etc.
+
+    Returns:
+        OpenAI CompletionUsage model with prompt_tokens, completion_tokens, total_tokens
+    """
+    from ccproxy.llms.openai.models import CompletionUsage
+
+    input_tokens = int(getattr(usage, "input_tokens", 0) or 0)
+    output_tokens = int(getattr(usage, "output_tokens", 0) or 0)
+
+    return CompletionUsage(
+        prompt_tokens=input_tokens,
+        completion_tokens=output_tokens,
+        total_tokens=input_tokens + output_tokens,
+    )
+
+
+def convert_anthropic_usage_to_openai_response_usage(
+    usage: BaseModel,
+) -> BaseModel:
+    """Convert Anthropic Usage to OpenAI ResponseUsage format with cache support.
+
+    Args:
+        usage: Anthropic Usage model with input_tokens, output_tokens, cache fields
+
+    Returns:
+        OpenAI ResponseUsage model with detailed token breakdown including cache
+    """
+    from ccproxy.llms.openai.models import (
+        InputTokensDetails,
+        OutputTokensDetails,
+        ResponseUsage,
+    )
+
+    input_tokens = int(getattr(usage, "input_tokens", 0) or 0)
+    output_tokens = int(getattr(usage, "output_tokens", 0) or 0)
+
+    # Handle cache tokens - prioritize cache_read_input_tokens if available
+    cached_tokens = int(getattr(usage, "cache_read_input_tokens", 0) or 0)
+
+    # Also consider cache_creation_input_tokens if present (for comprehensive tracking)
+    cache_creation_tokens = int(getattr(usage, "cache_creation_input_tokens", 0) or 0)
+    if cache_creation_tokens > 0 and cached_tokens == 0:
+        # If we have creation but not read tokens, use creation for tracking
+        cached_tokens = cache_creation_tokens
+
+    input_tokens_details = InputTokensDetails(cached_tokens=cached_tokens)
+
+    # Note: Anthropic doesn't provide reasoning tokens, so we default to 0
+    output_tokens_details = OutputTokensDetails(reasoning_tokens=0)
+
+    return ResponseUsage(
+        input_tokens=input_tokens,
+        input_tokens_details=input_tokens_details,
+        output_tokens=output_tokens,
+        output_tokens_details=output_tokens_details,
+        total_tokens=input_tokens + output_tokens,
+    )
+
+
+def convert_openai_completion_usage_to_anthropic_usage(
+    usage: BaseModel,
+) -> BaseModel:
+    """Convert OpenAI CompletionUsage to Anthropic Usage format.
+
+    Args:
+        usage: OpenAI CompletionUsage model with prompt_tokens, completion_tokens
+
+    Returns:
+        Anthropic Usage model with input_tokens, output_tokens
+    """
+    from ccproxy.llms.anthropic.models import Usage
+
+    prompt_tokens = int(getattr(usage, "prompt_tokens", 0) or 0)
+    completion_tokens = int(getattr(usage, "completion_tokens", 0) or 0)
+
+    return Usage(
+        input_tokens=prompt_tokens,
+        output_tokens=completion_tokens,
+    )
+
+
+def convert_openai_response_usage_to_anthropic_usage(
+    usage: BaseModel,
+) -> BaseModel:
+    """Convert OpenAI ResponseUsage to Anthropic Usage format with cache support.
+
+    Args:
+        usage: OpenAI ResponseUsage model with detailed token breakdown
+
+    Returns:
+        Anthropic Usage model with input_tokens, output_tokens, cache fields
+    """
+    from ccproxy.llms.anthropic.models import Usage
+
+    input_tokens = int(getattr(usage, "input_tokens", 0) or 0)
+    output_tokens = int(getattr(usage, "output_tokens", 0) or 0)
+
+    # Extract cache tokens from input_tokens_details if available
+    cache_read_tokens = 0
+    input_details = getattr(usage, "input_tokens_details", None)
+    if input_details:
+        cache_read_tokens = int(getattr(input_details, "cached_tokens", 0) or 0)
+
+    # Create Anthropic usage with cache support
+    anthropic_usage = Usage(
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+    )
+
+    # Set cache_read_input_tokens if we have cached tokens
+    if cache_read_tokens > 0:
+        anthropic_usage.cache_read_input_tokens = cache_read_tokens
+
+    return anthropic_usage
+
+
+def safe_extract_usage_tokens(usage: BaseModel | None) -> tuple[int, int, int]:
+    """Safely extract basic token counts from any usage model.
+
+    Args:
+        usage: Any usage model (Anthropic, OpenAI, etc.) or None
+
+    Returns:
+        Tuple of (input_tokens, output_tokens, cached_tokens)
+    """
+    if usage is None:
+        return 0, 0, 0
+
+    # Extract input tokens (various field names)
+    input_tokens = 0
+    for field in ["input_tokens", "prompt_tokens"]:
+        if hasattr(usage, field):
+            input_tokens = int(getattr(usage, field, 0) or 0)
+            break
+
+    # Extract output tokens (various field names)
+    output_tokens = 0
+    for field in ["output_tokens", "completion_tokens"]:
+        if hasattr(usage, field):
+            output_tokens = int(getattr(usage, field, 0) or 0)
+            break
+
+    # Extract cached tokens (from multiple possible sources)
+    cached_tokens = 0
+
+    # Try Anthropic format first
+    if hasattr(usage, "cache_read_input_tokens"):
+        cached_tokens = int(getattr(usage, "cache_read_input_tokens", 0) or 0)
+
+    # Try OpenAI ResponseUsage format
+    if cached_tokens == 0 and hasattr(usage, "input_tokens_details"):
+        input_details = usage.input_tokens_details
+        if input_details and hasattr(input_details, "cached_tokens"):
+            cached_tokens = int(getattr(input_details, "cached_tokens", 0) or 0)
+
+    return input_tokens, output_tokens, cached_tokens
+
+
+# ---------------------------------------------------------------------------
 # Minimal defaults used by adapters
 # ---------------------------------------------------------------------------
 
@@ -245,5 +415,10 @@ __all__ = [
     "convert_openai_error_to_anthropic",
     "convert_anthropic_error_to_openai",
     "normalize_openai_error",
+    "convert_anthropic_usage_to_openai_completion_usage",
+    "convert_anthropic_usage_to_openai_response_usage",
+    "convert_openai_completion_usage_to_anthropic_usage",
+    "convert_openai_response_usage_to_anthropic_usage",
+    "safe_extract_usage_tokens",
     "DEFAULT_MAX_TOKENS",
 ]

@@ -235,13 +235,24 @@ class CodexAdapter(BaseHTTPAdapter):
         # Parse body (format conversion is now handled by format chain)
         body_data = json.loads(body.decode()) if body else {}
 
-        # Inject instructions if not present
-        if "instructions" not in body_data or body_data.get("instructions") is None:
-            body_data["instructions"] = self._get_instructions()
+        # Inject instructions mandatory for being allow to
+        # to used the Codex API endpoint
+        instructions = self._get_instructions()
+
+        # if instructions is alreay set we will prepend the mandatory one
+        # TODO: verify that it's workin
+        if "instructions" in body_data:
+            instructions = instructions + "\n" + body_data["instructions"]
+
+        body_data["instructions"] = instructions
 
         # Codex backend requires stream=true, always override
         body_data["stream"] = True
         body_data["store"] = False
+
+        # Codex does not support max_output_tokens, remove if present
+        if "max_output_tokens" in body_data:
+            body_data.pop("max_output_tokens")
 
         # Remove any prefixed metadata fields that shouldn't be sent to the API
         body_data = self._remove_metadata_fields(body_data)
@@ -430,7 +441,7 @@ class CodexAdapter(BaseHTTPAdapter):
             cached_data = self.detection_service.get_cached_data()
             if cached_data and cached_data.instructions:
                 return cached_data.instructions.instructions_field
-        return "You are a coding agent..."
+        raise ValueError("No instructions available from detection service")
 
     def adapt_error(self, error_body: dict[str, Any]) -> dict[str, Any]:
         """Convert Codex error format to appropriate API error format.

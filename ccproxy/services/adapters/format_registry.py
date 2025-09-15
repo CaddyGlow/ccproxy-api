@@ -6,6 +6,8 @@ from typing import TYPE_CHECKING, Literal
 import structlog
 
 from ccproxy.adapters.base import APIAdapter
+from ccproxy.llms.adapters.base import BaseAPIAdapter
+from ccproxy.llms.adapters.shim import AdapterShim
 
 
 if TYPE_CHECKING:
@@ -42,6 +44,18 @@ class FormatAdapterRegistry:
             raise ValueError("Format names cannot be empty")
         if not adapter:
             raise ValueError("Adapter cannot be None")
+
+        # Auto-wrap typed adapters with compatibility shim
+        if isinstance(adapter, BaseAPIAdapter):
+            logger.debug(
+                "wrapping_typed_adapter_with_shim",
+                adapter_type=type(adapter).__name__,
+                from_format=from_format,
+                to_format=to_format,
+                plugin=plugin_name,
+                category="format",
+            )
+            adapter = AdapterShim(adapter)
 
         key = (from_format, to_format)
 
@@ -203,7 +217,19 @@ class FormatAdapterRegistry:
                     # Handle async factories if needed
                     if hasattr(adapter, "__await__"):
                         adapter = await adapter
-                    self._adapters[format_pair] = adapter  # type: ignore[assignment]
+
+                    # Auto-wrap typed adapters with compatibility shim
+                    if isinstance(adapter, BaseAPIAdapter):
+                        logger.debug(
+                            "wrapping_typed_adapter_with_shim_during_finalization",
+                            adapter_type=type(adapter).__name__,
+                            from_format=spec.from_format,
+                            to_format=spec.to_format,
+                            category="format",
+                        )
+                        adapter = AdapterShim(adapter)
+
+                    self._adapters[format_pair] = adapter
                 except Exception as e:
                     logger.error(
                         "format_adapter_instantiation_failed",
