@@ -139,16 +139,6 @@ class CopilotPluginFactory(BaseProviderPluginFactory, AuthProviderPluginFactory)
     format_adapters = [
         # Normalize provider's raw OpenAI-like stream to canonical OpenAI
         FormatAdapterSpec(
-            from_format="openai_raw",
-            to_format="openai",
-            adapter_factory=lambda: __import__(
-                "ccproxy.llms.adapters.openai_responses_to_openai_chatcompletions",
-                fromlist=["OpenAIResponsesToOpenAIChatAdapter"],
-            ).OpenAIResponsesToOpenAIChatAdapter(),
-            priority=90,
-            description="Normalize Copilot OpenAI streaming to canonical OpenAI (typed)",
-        ),
-        FormatAdapterSpec(
             from_format="anthropic",
             to_format="openai",
             adapter_factory=lambda: __import__(

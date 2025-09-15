@@ -18,7 +18,7 @@ from ccproxy.services.cli_detection import CLIDetectionService
 from ccproxy.utils.caching import async_ttl_cache
 from ccproxy.utils.headers import extract_request_headers
 
-from .models import ClaudeCacheData, ClaudeCodeHeaders, SystemPromptData
+from .models import ClaudeCacheData
 
 
 logger = get_plugin_logger()
@@ -31,8 +31,25 @@ if TYPE_CHECKING:
 class ClaudeAPIDetectionService:
     """Claude API plugin detection service for automatically detecting Claude CLI headers."""
 
+    # Headers to ignore at injection time (lowercase). Cache keeps keys (possibly empty) to preserve order.
+    ignores_header: list[str] = [
+        # Common excludes
+        "host",
+        "content-length",
+        "authorization",
+        "x-api-key",
+    ]
+
+    redact_headers: list[str] = [
+        "x-api-key",
+        "authorization",
+    ]
+
     def __init__(
-        self, settings: Settings, cli_service: CLIDetectionService | None = None
+        self,
+        settings: Settings,
+        cli_service: CLIDetectionService | None = None,
+        redact_sensitive_cache: bool = True,
     ) -> None:
         """Initialize Claude detection service.
 
@@ -47,6 +64,7 @@ class ClaudeAPIDetectionService:
         self._cached_data: ClaudeCacheData | None = None
         self._cli_service = cli_service or CLIDetectionService(settings)
         self._cli_info: ClaudeCliInfo | None = None
+        self._redact_sensitive_cache = redact_sensitive_cache
 
     async def initialize_detection(self) -> ClaudeCacheData:
         """Initialize Claude detection at startup."""
@@ -55,8 +73,19 @@ class ClaudeAPIDetectionService:
             current_version = await self._get_claude_version()
 
             # Try to load from cache first
-            detected_data = self._load_from_cache(current_version)
-            cached = detected_data is not None
+            cached = False
+            try:
+                detected_data = self._load_from_cache(current_version)
+                cached = detected_data is not None
+
+            except Exception as e:
+                logger.warning(
+                    "invalid_cache_file",
+                    error=str(e),
+                    category="plugin",
+                    exc_info=e,
+                )
+
             if not cached:
                 # No cache or version changed - detect fresh
                 detected_data = await self._detect_claude_headers(current_version)
@@ -166,12 +195,25 @@ class ClaudeAPIDetectionService:
 
         async def capture_handler(request: Request) -> Response:
             """Capture the Claude CLI request."""
-            # Preserve order and canonical casing when capturing headers
+            # Capture request details
             headers = extract_request_headers(request)
-
-            captured_data["headers_ordered"] = list(headers.items())
             captured_data["headers"] = headers
-            captured_data["body"] = await request.body()
+            captured_data["method"] = request.method
+            captured_data["url"] = str(request.url)
+            captured_data["path"] = request.url.path
+            captured_data["query_params"] = (
+                dict(request.query_params) if request.query_params else {}
+            )
+
+            raw_body = await request.body()
+            captured_data["body"] = raw_body
+            # Try to parse to JSON for body_json
+            try:
+                captured_data["body_json"] = (
+                    json.loads(raw_body.decode("utf-8")) if raw_body else None
+                )
+            except Exception:
+                captured_data["body_json"] = None
             # Return a mock response to satisfy Claude CLI
             return Response(
                 content='{"type": "message", "content": [{"type": "text", "text": "Test response"}]}',
@@ -233,15 +275,26 @@ class ClaudeAPIDetectionService:
             if not captured_data:
                 raise RuntimeError("Failed to capture Claude CLI request")
 
-            # Extract headers and system prompt
-            headers = self._extract_headers(captured_data["headers"])
-            system_prompt = self._extract_system_prompt(captured_data["body"])
+            # Sanitize headers/body for cache
+            headers_dict = (
+                self._sanitize_headers_for_cache(captured_data["headers"])
+                if self._redact_sensitive_cache
+                else captured_data["headers"]
+            )
+            body_json = (
+                self._sanitize_body_json_for_cache(captured_data.get("body_json"))
+                if self._redact_sensitive_cache
+                else captured_data.get("body_json")
+            )
 
             return ClaudeCacheData(
                 claude_version=version,
-                headers=headers,
-                system_prompt=system_prompt,
-                raw_headers_ordered=captured_data.get("headers_ordered", []),
+                headers=headers_dict,
+                body_json=body_json,
+                method=captured_data.get("method"),
+                url=captured_data.get("url"),
+                path=captured_data.get("path"),
+                query_params=captured_data.get("query_params"),
             )
 
         except Exception as e:
@@ -258,12 +311,9 @@ class ClaudeAPIDetectionService:
         if not cache_file.exists():
             return None
 
-        try:
-            with cache_file.open("r") as f:
-                data = json.load(f)
-                return ClaudeCacheData.model_validate(data)
-        except Exception:
-            return None
+        with cache_file.open("r") as f:
+            data = json.load(f)
+            return ClaudeCacheData.model_validate(data)
 
     def _save_to_cache(self, data: ClaudeCacheData) -> None:
         """Save detection data to cache."""
@@ -286,38 +336,15 @@ class ClaudeAPIDetectionService:
                 category="plugin",
             )
 
-    def _extract_headers(self, headers: dict[str, str]) -> ClaudeCodeHeaders:
-        """Extract Claude CLI headers from captured request."""
-        try:
-            return ClaudeCodeHeaders.model_validate(headers)
-        except Exception as e:
-            logger.error("header_extraction_failed", error=str(e), category="plugin")
-            raise ValueError(f"Failed to extract required headers: {e}") from e
-
-    def _extract_system_prompt(self, body: bytes) -> SystemPromptData:
-        """Extract system prompt from captured request body."""
-        try:
-            data = json.loads(body.decode("utf-8"))
-            system_content = data.get("system")
-
-            if system_content is None:
-                raise ValueError("No system field found in request body")
-
-            return SystemPromptData(system_field=system_content)
-
-        except Exception as e:
-            logger.error(
-                "system_prompt_extraction_failed", error=str(e), category="plugin"
-            )
-            raise ValueError(f"Failed to extract system prompt: {e}") from e
-
     def _get_fallback_data(self) -> ClaudeCacheData:
         """Get fallback data when detection fails."""
         logger.warning("using_fallback_claude_data", category="plugin")
 
         # Load fallback data from package data file
         package_data_file = (
-            Path(__file__).parent / "data" / "claude_headers_fallback.json"
+            Path(__file__).resolve().parents[2]
+            / "data"
+            / "claude_headers_fallback.json"
         )
         with package_data_file.open("r") as f:
             fallback_data_dict = json.load(f)
@@ -331,3 +358,44 @@ class ClaudeAPIDetectionService:
         # Clear CLI info cache
         self._cli_info = None
         logger.debug("detection_cache_cleared", category="plugin")
+
+    # --- Helpers ---
+    def _sanitize_headers_for_cache(self, headers: dict[str, str]) -> dict[str, str]:
+        """Redact sensitive headers for cache while preserving keys and order."""
+        # Build ordered dict copy
+        sanitized: dict[str, str] = {}
+        for k, v in headers.items():
+            lk = k.lower()
+            if lk in {"authorization", "host"}:
+                sanitized[lk] = ""
+            else:
+                sanitized[lk] = v
+        return sanitized
+
+    def _sanitize_body_json_for_cache(
+        self, body: dict[str, Any] | None
+    ) -> dict[str, Any] | None:
+        if body is None:
+            return None
+        # For Claude, no specific fields to redact currently; return as-is
+        return body
+
+    def get_system_prompt(self, mode: str = "minimal") -> dict[str, Any]:
+        """Return a system prompt dict for injection based on cached body_json.
+
+        mode: "none", "minimal", or "full"
+        """
+        data = self.get_cached_data()
+        if not data or not data.body_json:
+            return {}
+        system_value = data.body_json.get("system")
+        if system_value is None:
+            return {}
+        if mode == "none":
+            return {}
+        if mode == "minimal" and isinstance(system_value, list):
+            if len(system_value) > 0:
+                return {"system": [system_value[0]]}
+            return {}
+        # full or non-list
+        return {"system": system_value}

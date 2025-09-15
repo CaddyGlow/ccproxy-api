@@ -19,7 +19,7 @@ from ccproxy.services.cli_detection import CLIDetectionService
 from ccproxy.utils.caching import async_ttl_cache
 from ccproxy.utils.headers import extract_request_headers
 
-from .models import CodexCacheData, CodexHeaders, CodexInstructionsData
+from .models import CodexCacheData
 
 
 logger = get_plugin_logger()
@@ -33,11 +33,31 @@ if TYPE_CHECKING:
 class CodexDetectionService:
     """Service for automatically detecting Codex CLI headers at startup."""
 
+    # Headers whose values are redacted in cache (lowercase)
+    REDACTED_HEADERS = [
+        "authorization",
+        "session_id",
+        "conversation_id",
+        "chatgpt-account-id",
+        "host",
+    ]
+    # Headers to ignore at injection time (lowercase). Cache retains keys with empty values to preserve order.
+    ignores_header: list[str] = [
+        "host",
+        "content-length",
+        "authorization",
+        "x-api-key",
+        "session_id",
+        "conversation_id",
+        "chatgpt-account-id",
+    ]
+
     def __init__(
         self,
         settings: Settings,
         cli_service: CLIDetectionService | None = None,
         codex_settings: CodexSettings | None = None,
+        redact_sensitive_cache: bool = True,
     ) -> None:
         """Initialize Codex detection service.
 
@@ -55,6 +75,7 @@ class CodexDetectionService:
         self._cached_data: CodexCacheData | None = None
         self._cli_service = cli_service or CLIDetectionService(settings)
         self._cli_info: CodexCliInfo | None = None
+        self._redact_sensitive_cache = redact_sensitive_cache
 
     async def initialize_detection(self) -> CodexCacheData:
         """Initialize Codex detection at startup."""
@@ -62,9 +83,20 @@ class CodexDetectionService:
             # Get current Codex version
             current_version = await self._get_codex_version()
 
+            detected_data = None
             # Try to load from cache first
-            detected_data = self._load_from_cache(current_version)
-            cached = detected_data is not None
+            cached = False
+            try:
+                detected_data = self._load_from_cache(current_version)
+                cached = detected_data is not None
+            except Exception as e:
+                logger.warning(
+                    "invalid_cache_file",
+                    error=str(e),
+                    category="plugin",
+                    exc_info=e,
+                )
+
             if not cached:
                 # No cache or version changed - detect fresh
                 detected_data = await self._detect_codex_headers(current_version)
@@ -185,44 +217,29 @@ class CodexDetectionService:
 
         async def capture_handler(request: Request) -> Response:
             """Capture the Codex CLI request."""
-            # Preserve order and original casing when capturing headers
+            # Capture headers and request metadata
             headers_dict = extract_request_headers(request)
-            captured_data["headers_ordered"] = list(headers_dict.items())
             captured_data["headers"] = headers_dict
+            captured_data["method"] = request.method
+            captured_data["url"] = str(request.url)
+            captured_data["path"] = request.url.path
+            captured_data["query_params"] = (
+                dict(request.query_params) if request.query_params else {}
+            )
 
             # Capture raw body
             raw_body = await request.body()
             captured_data["body"] = raw_body
 
-            # Build complete JSON request structure
-            full_request: dict[str, Any] = {
-                "method": request.method,
-                "url": str(request.url),
-                "path": request.url.path,
-                "query_params": dict(request.query_params)
-                if request.query_params
-                else {},
-                "headers_ordered": list(headers_dict.items()),
-                "headers": headers_dict,
-            }
-
-            # Parse body as JSON if possible, otherwise store as string
+            # Parse body as JSON if possible
             try:
                 if raw_body:
-                    body_json = json.loads(raw_body.decode("utf-8"))
-                    full_request["body_json"] = body_json
-                    full_request["body_raw"] = raw_body.decode("utf-8")
+                    captured_data["body_json"] = json.loads(raw_body.decode("utf-8"))
                 else:
-                    full_request["body_json"] = None
-                    full_request["body_raw"] = ""
+                    captured_data["body_json"] = None
             except (json.JSONDecodeError, UnicodeDecodeError) as e:
                 logger.debug("body_parsing_failed", error=str(e), category="plugin")
-                full_request["body_json"] = None
-                full_request["body_raw"] = raw_body.hex() if raw_body else ""
-                full_request["body_parse_error"] = str(e)
-
-            # Store complete request structure
-            captured_data["full_request_json"] = full_request
+                captured_data["body_json"] = None
 
             logger.debug(
                 "request_captured",
@@ -351,16 +368,26 @@ class CodexDetectionService:
                 )
                 raise RuntimeError("Failed to capture Codex CLI request")
 
-            # Extract headers and instructions
-            headers = self._extract_headers(captured_data["headers"])
-            instructions = self._extract_instructions(captured_data["body"])
+            # Sanitize headers/body for cache
+            headers_dict = (
+                self._sanitize_headers_for_cache(captured_data.get("headers", {}))
+                if self._redact_sensitive_cache
+                else captured_data.get("headers", {})
+            )
+            body_json = (
+                self._sanitize_body_json_for_cache(captured_data.get("body_json"))
+                if self._redact_sensitive_cache
+                else captured_data.get("body_json")
+            )
 
             return CodexCacheData(
                 codex_version=version,
-                headers=headers,
-                instructions=instructions,
-                raw_headers_ordered=captured_data.get("headers_ordered", []),
-                full_request_json=captured_data.get("full_request_json"),
+                headers=headers_dict,
+                body_json=body_json,
+                method=captured_data.get("method"),
+                url=captured_data.get("url"),
+                path=captured_data.get("path"),
+                query_params=captured_data.get("query_params"),
             )
 
         except Exception as e:
@@ -377,12 +404,9 @@ class CodexDetectionService:
         if not cache_file.exists():
             return None
 
-        try:
-            with cache_file.open("r") as f:
-                data = json.load(f)
-                return CodexCacheData.model_validate(data)
-        except Exception:
-            return None
+        with cache_file.open("r") as f:
+            data = json.load(f)
+            return CodexCacheData.model_validate(data)
 
     def _save_to_cache(self, data: CodexCacheData) -> None:
         """Save detection data to cache."""
@@ -405,38 +429,13 @@ class CodexDetectionService:
                 category="plugin",
             )
 
-    def _extract_headers(self, headers: dict[str, str]) -> CodexHeaders:
-        """Extract Codex CLI headers from captured request."""
-        try:
-            return CodexHeaders.model_validate(headers)
-        except Exception as e:
-            logger.error("header_extraction_failed", error=str(e), category="plugin")
-            raise ValueError(f"Failed to extract required headers: {e}") from e
-
-    def _extract_instructions(self, body: bytes) -> CodexInstructionsData:
-        """Extract instructions from captured request body."""
-        try:
-            data = json.loads(body.decode("utf-8"))
-            instructions_content = data.get("instructions")
-
-            if instructions_content is None:
-                raise ValueError("No instructions field found in request body")
-
-            return CodexInstructionsData(instructions_field=instructions_content)
-
-        except Exception as e:
-            logger.error(
-                "instructions_extraction_failed", error=str(e), category="plugin"
-            )
-            raise ValueError(f"Failed to extract instructions: {e}") from e
-
     def _get_fallback_data(self) -> CodexCacheData:
         """Get fallback data when detection fails."""
         logger.warning("using_fallback_codex_data", category="plugin")
 
         # Load fallback data from package data file
         package_data_file = (
-            Path(__file__).parent / "data" / "codex_headers_fallback.json"
+            Path(__file__).resolve().parents[2] / "data" / "codex_headers_fallback.json"
         )
         with package_data_file.open("r") as f:
             fallback_data_dict = json.load(f)
@@ -449,3 +448,49 @@ class CodexDetectionService:
             self._get_codex_version.cache_clear()
         self._cli_info = None
         logger.debug("detection_cache_cleared", category="plugin")
+
+    # --- Helpers ---
+    def _sanitize_headers_for_cache(self, headers: dict[str, str]) -> dict[str, str]:
+        """Redact sensitive headers for cache while preserving keys and order."""
+        sanitized: dict[str, str] = {}
+        for k, v in headers.items():
+            lk = k.lower()
+            if lk in self.REDACTED_HEADERS:
+                sanitized[lk] = (
+                    "" if len(str(v)) < 8 else str(v)[:8] + "..."
+                )
+            else:
+                sanitized[lk] = v
+        return sanitized
+
+    def _sanitize_body_json_for_cache(
+        self, body: dict[str, Any] | None
+    ) -> dict[str, Any] | None:
+        if body is None:
+            return None
+
+        def redact(obj: Any) -> Any:
+            if isinstance(obj, dict):
+                out: dict[str, Any] = {}
+                for k, v in obj.items():
+                    if k == "conversation_id":
+                        out[k] = ""
+                    else:
+                        out[k] = redact(v)
+                return out
+            elif isinstance(obj, list):
+                return [redact(x) for x in obj]
+            else:
+                return obj
+
+        return redact(body)
+
+    def get_system_prompt(self) -> dict[str, Any]:
+        """Return an instructions dict for injection based on cached body_json."""
+        data = self.get_cached_data()
+        if not data or not data.body_json:
+            return {}
+        instructions = data.body_json.get("instructions")
+        if not isinstance(instructions, str) or not instructions:
+            return {}
+        return {"instructions": instructions}

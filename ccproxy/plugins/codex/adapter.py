@@ -237,6 +237,7 @@ class CodexAdapter(BaseHTTPAdapter):
 
         # Inject instructions mandatory for being allow to
         # to used the Codex API endpoint
+        # Fetch detected instructions from detection service
         instructions = self._get_instructions()
 
         # if instructions is alreay set we will prepend the mandatory one
@@ -259,24 +260,42 @@ class CodexAdapter(BaseHTTPAdapter):
 
         # Filter and add headers
         filtered_headers = filter_request_headers(headers, preserve_auth=False)
+        # fmt: off
         base_headers = {
             "authorization": f"Bearer {auth_data.access_token}",
-            "session_id": str(uuid.uuid4()),
             "content-type": "application/json",
+
+            "session_id": filtered_headers["session_id"]
+            if "sessions_id" in filtered_headers
+            else str(uuid.uuid4()),
+
+            "conversation_id": filtered_headers["conversation_id"]
+            if "conversation_id" in filtered_headers
+            else str(uuid.uuid4()),
         }
+
         # Add chatgpt-account-id only if available
         if chatgpt_account_id is not None:
             base_headers["chatgpt-account-id"] = chatgpt_account_id
 
         filtered_headers.update(base_headers)
 
-        # Add CLI headers
+        # Add CLI headers (skip empty redacted values, ignored keys, and redacted headers)
         if self.detection_service:
             cached_data = self.detection_service.get_cached_data()
             if cached_data and cached_data.headers:
-                cli_headers = cached_data.headers.to_headers_dict()
+                cli_headers: dict[str, str] = cached_data.headers
+                ignores = set(
+                    getattr(self.detection_service, "ignores_header", []) or []
+                )
+                redacted = set(getattr(self.detection_service, "REDACTED_HEADERS", []))
                 for key, value in cli_headers.items():
-                    filtered_headers[key.lower()] = value
+                    lk = key.lower()
+                    if lk in ignores or lk in redacted:
+                        continue
+                    if value is None or value == "":
+                        continue
+                    filtered_headers[lk] = value
 
         return json.dumps(body_data).encode(), filtered_headers
 
@@ -438,9 +457,11 @@ class CodexAdapter(BaseHTTPAdapter):
 
     def _get_instructions(self) -> str:
         if self.detection_service:
-            cached_data = self.detection_service.get_cached_data()
-            if cached_data and cached_data.instructions:
-                return cached_data.instructions.instructions_field
+            injection = (
+                self.detection_service.get_system_prompt()
+            )  # returns {"instructions": str} or {}
+            if injection and isinstance(injection.get("instructions"), str):
+                return injection["instructions"]
         raise ValueError("No instructions available from detection service")
 
     def adapt_error(self, error_body: dict[str, Any]) -> dict[str, Any]:

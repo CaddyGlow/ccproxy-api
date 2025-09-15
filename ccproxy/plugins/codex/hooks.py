@@ -111,7 +111,7 @@ class CodexStreamingMetricsHook(Hook):
                 self._extract_and_accumulate(chunk_data, request_id)
 
         except (json.JSONDecodeError, KeyError) as e:
-            logger.debug(
+            logger.error(
                 "chunk_metrics_parse_failed",
                 plugin="codex",
                 error=str(e),

@@ -53,10 +53,10 @@ class CommandReplayConfig(BaseModel):
 
     # Console output control
     log_to_console: bool = Field(
-        default=True, description="Log commands to console via logger"
+        default=False, description="Log commands to console via logger"
     )
     log_level: str = Field(
-        default="INFO",
+        default="TRACE",
         description="Log level for command output (DEBUG, INFO, WARNING)",
     )
 

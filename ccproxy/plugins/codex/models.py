@@ -95,26 +95,27 @@ class CodexCacheData(BaseModel):
     """Cached Codex CLI detection data with version tracking."""
 
     codex_version: Annotated[str, Field(description="Codex CLI version")]
-    headers: Annotated[CodexHeaders, Field(description="Extracted headers")]
-    instructions: Annotated[
-        CodexInstructionsData, Field(description="Extracted instructions")
+    headers: Annotated[
+        dict[str, str],
+        Field(description="Captured headers (lowercase keys) in insertion order"),
     ]
-    # Preserve canonical-cased, ordered header pairs as captured
-    raw_headers_ordered: Annotated[
-        list[tuple[str, str]] | list[list[str]],
-        Field(
-            description="Ordered list of header pairs as captured (canonical casing)",
-            default_factory=list,
-        ),
-    ]
-    # Complete request JSON structure with preserved order
-    full_request_json: Annotated[
+    body_json: Annotated[
         dict[str, Any] | None,
-        Field(
-            description="Complete JSON representation of captured request including method, path, headers, and body",
-            default=None,
-        ),
-    ]
+        Field(description="Captured request body as JSON if parseable", default=None),
+    ] = None
+    method: Annotated[
+        str | None, Field(description="Captured HTTP method", default=None)
+    ] = None
+    url: Annotated[
+        str | None, Field(description="Captured full URL", default=None)
+    ] = None
+    path: Annotated[
+        str | None, Field(description="Captured request path", default=None)
+    ] = None
+    query_params: Annotated[
+        dict[str, str] | None,
+        Field(description="Captured query parameters", default=None),
+    ] = None
     cached_at: Annotated[
         datetime,
         Field(
@@ -124,17 +125,6 @@ class CodexCacheData(BaseModel):
     ] = None  # type: ignore # Pydantic handles this via default_factory
 
     model_config = ConfigDict(extra="forbid")
-
-    def headers_ordered_pairs(self) -> list[tuple[str, str]]:
-        """Return preserved, canonical-cased header pairs in original order."""
-        return [(str(k), str(v)) for k, v in self.raw_headers_ordered]
-
-    def headers_ordered_dict(self) -> dict[str, str]:
-        """Return headers as an ordered dict (last occurrence wins)."""
-        out: dict[str, str] = {}
-        for k, v in self.headers_ordered_pairs():
-            out[k] = v
-        return out
 
 
 class CodexMessage(BaseModel):

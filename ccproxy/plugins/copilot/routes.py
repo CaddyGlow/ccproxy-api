@@ -76,7 +76,6 @@ def _get_request_body(request: Request) -> Any:
     "/chat/completions",
     response_model=OpenAIChatCompletionResponse,
 )
-@format_chain(["openai_raw", "openai"])  # Normalize Copilot -> OpenAI
 async def create_openai_chat_completion(
     request: Request,
     adapter: CopilotAdapterDep,

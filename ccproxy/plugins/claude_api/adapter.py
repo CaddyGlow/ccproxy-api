@@ -47,16 +47,13 @@ class ClaudeAPIAdapter(BaseHTTPAdapter):
         # Parse body
         body_data = json.loads(body.decode()) if body else {}
 
-        # Inject system prompt based on config mode
-        if (
-            self.detection_service
-            and self.config.system_prompt_injection_mode != "none"
-        ):
-            cached_data = self.detection_service.get_cached_data()
-            if cached_data and cached_data.system_prompt:
-                inject_mode = self.config.system_prompt_injection_mode
+        # Inject system prompt based on config mode using detection service helper
+        if self.detection_service and self.config.system_prompt_injection_mode != "none":
+            inject_mode = self.config.system_prompt_injection_mode
+            injection = self.detection_service.get_system_prompt(mode=inject_mode)
+            if injection and "system" in injection:
                 body_data = self._inject_system_prompt(
-                    body_data, cached_data.system_prompt, mode=inject_mode
+                    body_data, injection.get("system"), mode=inject_mode
                 )
 
         # Limit cache_control blocks to comply with Anthropic's limit
@@ -74,9 +71,10 @@ class ClaudeAPIAdapter(BaseHTTPAdapter):
         if self.detection_service:
             cached_data = self.detection_service.get_cached_data()
             if cached_data and cached_data.headers:
-                cli_headers = cached_data.headers.to_headers_dict()
+                cli_headers: dict[str, str] = cached_data.headers
                 # Do not allow CLI to override sensitive auth headers
                 blocked_overrides = {"authorization", "x-api-key"}
+                ignores = set(getattr(self.detection_service, "ignores_header", []) or [])
                 for key, value in cli_headers.items():
                     lk = key.lower()
                     if lk in blocked_overrides:
@@ -85,6 +83,11 @@ class ClaudeAPIAdapter(BaseHTTPAdapter):
                             header=lk,
                             reason="preserve_oauth_auth_header",
                         )
+                        continue
+                    if lk in ignores:
+                        continue
+                    if value is None or value == "":
+                        # Skip empty redacted values
                         continue
                     filtered_headers[lk] = value
 

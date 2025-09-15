@@ -82,6 +82,7 @@ class AnthropicMessagesToOpenAIResponsesAdapter(
         output_index = 0
         content_index = 0
         model_id = ""
+        response_id = ""
         sequence_counter = 0
 
         async for evt in stream:
@@ -92,11 +93,12 @@ class AnthropicMessagesToOpenAIResponsesAdapter(
 
             if evt.type == "message_start":
                 model_id = evt.message.model or ""
+                response_id = evt.message.id or ""
                 yield openai_models.ResponseCreatedEvent(
                     type="response.created",
                     sequence_number=sequence_counter,
                     response=openai_models.ResponseObject(
-                        id=evt.message.id,
+                        id=response_id,
                         object="response",
                         created_at=0,
                         status="in_progress",
@@ -158,7 +160,7 @@ class AnthropicMessagesToOpenAIResponsesAdapter(
                     type="response.in_progress",
                     sequence_number=sequence_counter,
                     response=openai_models.ResponseObject(
-                        id="",
+                        id=response_id,
                         object="response",
                         created_at=0,
                         status="in_progress",
@@ -187,7 +189,7 @@ class AnthropicMessagesToOpenAIResponsesAdapter(
                     type="response.completed",
                     sequence_number=sequence_counter,
                     response=openai_models.ResponseObject(
-                        id="",
+                        id=response_id,
                         object="response",
                         created_at=0,
                         status="completed",
@@ -255,6 +257,7 @@ class AnthropicMessagesToOpenAIResponsesAdapter(
                         last_user_text = " ".join(texts)
                 break
 
+        # Always provide an input field matching ResponseRequest schema
         if last_user_text:
             payload_data["input"] = [
                 {
@@ -265,6 +268,9 @@ class AnthropicMessagesToOpenAIResponsesAdapter(
                     ],
                 }
             ]
+        else:
+            # Provide an empty input list if no user text detected to satisfy schema
+            payload_data["input"] = []
 
         # Tools mapping (custom tools -> function tools)
         if request.tools:
@@ -364,7 +370,7 @@ class AnthropicMessagesToOpenAIResponsesAdapter(
             output=[
                 openai_models.MessageOutput(
                     type="message",
-                    id=response.id,
+                    id=f"{response.id}_msg_0",
                     status="completed",
                     role="assistant",
                     content=msg_contents,  # type: ignore[arg-type]
@@ -434,7 +440,7 @@ class AnthropicMessagesToOpenAIResponsesAdapter(
             output=[
                 openai_models.MessageOutput(
                     type="message",
-                    id=anth.id,
+                    id=f"{anth.id}_msg_0",
                     status="completed",
                     role="assistant",
                     content=msg_contents,  # type: ignore[arg-type]

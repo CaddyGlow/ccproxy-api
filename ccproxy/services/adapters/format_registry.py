@@ -218,7 +218,7 @@ class FormatAdapterRegistry:
                     if hasattr(adapter, "__await__"):
                         adapter = await adapter
 
-                    # Auto-wrap typed adapters with compatibility shim
+                    # Wrap typed adapters with shim to accept dict IO
                     if isinstance(adapter, BaseAPIAdapter):
                         logger.debug(
                             "wrapping_typed_adapter_with_shim_during_finalization",

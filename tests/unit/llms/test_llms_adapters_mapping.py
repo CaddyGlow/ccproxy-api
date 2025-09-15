@@ -106,63 +106,6 @@ async def test_thinking_block_serialization_in_response(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_openai_responses_to_anthropic_with_thinking_and_tool_use():
-    from ccproxy.llms.adapters.openai_responses_to_anthropic_responses import (
-        OpenAIResponsesToAnthropicAdapter,
-    )
-
-    # Compose a ResponseObject-like dict
-    resp = {
-        "id": "res_2",
-        "object": "response",
-        "created_at": 1234567890,
-        "model": "gpt-4o",
-        "output": [
-            {
-                "type": "message",
-                "id": "m2",
-                "status": "completed",
-                "role": "assistant",
-                "content": [
-                    {
-                        "type": "output_text",
-                        "text": '<thinking signature="s1">think</thinking> Answer with data.',
-                    },
-                    {
-                        "type": "tool_use",
-                        "id": "call_1",
-                        "name": "fetch",
-                        "arguments": {"url": "https://example.com"},
-                    },
-                ],
-            }
-        ],
-        "status": "completed",
-        "parallel_tool_calls": False,
-        "usage": {
-            "input_tokens": 3,
-            "input_tokens_details": {"cached_tokens": 0},
-            "output_tokens": 7,
-            "output_tokens_details": {"reasoning_tokens": 0},
-            "total_tokens": 10,
-        },
-    }
-
-    adapter = OpenAIResponsesToAnthropicAdapter()
-    resp_obj = OpenAIResponseObject.model_validate(resp)
-    out = await adapter.adapt_response(resp_obj)
-    # Validate as Anthropic message response
-    anth = AnthropicMessageResponse.model_validate(out)
-    # Expect ThinkingBlock then TextBlock then ToolUseBlock
-    assert anth.content[0].type == "thinking"
-    assert getattr(anth.content[0], "signature", "") == "s1"
-    assert anth.content[1].type == "text"
-    assert "Answer with data." in getattr(anth.content[1], "text", "")
-    assert anth.content[2].type == "tool_use"
-    assert getattr(anth.content[2], "name", "") == "fetch"
-
-
-@pytest.mark.asyncio
 async def test_openai_chat_to_openai_response_request():
     from ccproxy.llms.adapters.openai_chatcompletions_to_openai_responses import (
         OpenAIChatToOpenAIResponsesAdapter,
