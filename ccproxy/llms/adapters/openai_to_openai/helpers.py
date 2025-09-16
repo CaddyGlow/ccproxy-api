@@ -72,7 +72,7 @@ def convert_openai_completion_usage_to_openai_response_usage(
         output_tokens_details=output_tokens_details,
         total_tokens=prompt_tokens + completion_tokens,
     )
-import ccproxy.llms.openai.models as openai_models
+from ccproxy.llms.openai import models as openai_models
 
 
 async def convert__openai_response_to_openaichat__request(

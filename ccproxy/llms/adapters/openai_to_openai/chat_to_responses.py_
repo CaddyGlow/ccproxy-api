@@ -9,7 +9,7 @@ from ccproxy.llms.adapters.openai_to_openai.helpers import (
     convert_openai_completion_usage_to_openai_response_usage,
     convert_openai_response_usage_to_openai_completion_usage,
 )
-import ccproxy.llms.openai.models as openai_models
+from ccproxy.llms.openai import models as openai_models
 from ccproxy.llms.adapters.base import BaseAPIAdapter
 from ccproxy.llms.openai.models import (
     ChatCompletionChunk,

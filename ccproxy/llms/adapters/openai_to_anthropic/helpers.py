@@ -3,8 +3,8 @@ import re
 from collections.abc import AsyncGenerator, AsyncIterator
 from typing import Any
 
-import ccproxy.llms.anthropic.models as anthropic_models
-import ccproxy.llms.openai.models as openai_models
+from ccproxy.llms.anthropic import models as anthropic_models
+from ccproxy.llms.openai import models as openai_models
 from ccproxy.core.constants import DEFAULT_MAX_TOKENS
 # Note: function convert_openai_response_usage_to_anthropic_usage is used later
 # and remains imported from shared constants if needed elsewhere.
@@ -329,110 +329,10 @@ async def convert__openai_chat_to_anthropic_message__request(
     return anthropic_models.CreateMessageRequest.model_validate(payload_data)
 
 
-def convert__openai_response_to_openai_chat__response(
-    response: openai_models.ResponseObject,
-) -> openai_models.ChatCompletionResponse:
-    """Convert an OpenAI ResponseObject to a ChatCompletionResponse."""
-    text_content = ""
-    for item in response.output or []:
-        if hasattr(item, "type") and item.type == "message":
-            parts: list[str] = []
-            for part in getattr(item, "content", []):
-                if hasattr(part, "type") and part.type == "output_text":
-                    if hasattr(part, "text") and isinstance(part.text, str):
-                        parts.append(part.text)
-                elif isinstance(part, dict) and part.get("type") == "output_text":
-                    text = part.get("text")
-                    if isinstance(text, str):
-                        parts.append(text)
-            text_content = "".join(parts)
-            break
-
-    usage = None
-    if response.usage:
-        usage = convert_openai_response_usage_to_openai_completion_usage(response.usage)
-
-    return openai_models.ChatCompletionResponse(
-        id=response.id or "chatcmpl-resp",
-        choices=[
-            openai_models.Choice(
-                index=0,
-                message=openai_models.ResponseMessage(
-                    role="assistant", content=text_content
-                ),
-                finish_reason="stop",
-            )
-        ],
-        created=0,
-        model=response.model or "",
-        object="chat.completion",
-        usage=usage
-        or openai_models.CompletionUsage(
-            prompt_tokens=0, completion_tokens=0, total_tokens=0
-        ),
-    )
-
-
-def convert__openai_response_to_openai_chat__stream(
-    stream: AsyncIterator[openai_models.AnyStreamEvent],
-) -> AsyncGenerator[openai_models.ChatCompletionChunk, None]:
-    """Convert Response API stream events to ChatCompletionChunk events."""
-
-    async def generator() -> AsyncGenerator[openai_models.ChatCompletionChunk, None]:
-        model_id = ""
-        async for event_wrapper in stream:
-            evt = getattr(event_wrapper, "root", event_wrapper)
-            if not hasattr(evt, "type"):
-                continue
-
-            if evt.type == "response.created":
-                model_id = getattr(evt.response, "model", "")
-            elif evt.type == "response.output_text.delta":
-                delta = getattr(evt, "delta", None) or ""
-                if delta:
-                    yield openai_models.ChatCompletionChunk(
-                        id="chatcmpl-stream",
-                        object="chat.completion.chunk",
-                        created=0,
-                        model=model_id,
-                        choices=[
-                            openai_models.StreamingChoice(
-                                index=0,
-                                delta=openai_models.DeltaMessage(
-                                    role="assistant", content=delta
-                                ),
-                                finish_reason=None,
-                            )
-                        ],
-                    )
-            elif evt.type in {
-                "response.completed",
-                "response.incomplete",
-                "response.failed",
-            }:
-                usage = None
-                response_obj = getattr(evt, "response", None)
-                if response_obj and getattr(response_obj, "usage", None):
-                    usage = convert_openai_response_usage_to_openai_completion_usage(
-                        response_obj.usage
-                    )
-                yield openai_models.ChatCompletionChunk(
-                    id="chatcmpl-stream",
-                    object="chat.completion.chunk",
-                    created=0,
-                    model=model_id,
-                    choices=[
-                        openai_models.StreamingChoice(
-                            index=0,
-                            delta=openai_models.DeltaMessage(),
-                            finish_reason="stop",
-                        )
-                    ],
-                    usage=usage,
-                )
-                break
-
-    return generator()
+"""
+OpenAI Response→Chat converters are consolidated under openai_to_openai.helpers.
+This module focuses on OpenAI→Anthropic conversions only.
+"""
 
 
 def convert__openai_response_to_anthropic_message__request(

@@ -159,7 +159,7 @@ class FunctionDefinition(BaseModel):
         None, description="A description of what the function does."
     )
     parameters: dict[str, Any] = Field(
-        ...,
+        default={},
         description="The parameters the functions accepts, described as a JSON Schema object.",
     )
 
@@ -289,7 +289,7 @@ class ChatCompletionResponse(BaseModel):
     model: str
     system_fingerprint: str | None = None
     object: Literal["chat.completion"] = Field(default="chat.completion")
-    usage: CompletionUsage
+    usage: CompletionUsage | None = Field(default=None)
     service_tier: str | None = None
 
 
@@ -356,6 +356,17 @@ VALID_INCLUDE_VALUES = [
     "message.output_text.logprobs",
     "reasoning.encrypted_content",
 ]
+
+
+class InputTextContent(BaseModel):
+    type: Literal["input_text"]
+    text: str
+    annotations: list[Any] = Field(default_factory=list)
+
+
+class InputMessage(BaseModel):
+    role: Literal["system", "user", "assistant", "tool", "developer"]
+    content: str | list[dict[str, Any] | InputTextContent] | None
 
 
 class ResponseRequest(BaseModel):

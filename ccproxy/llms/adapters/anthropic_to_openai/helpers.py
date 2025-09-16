@@ -1,7 +1,7 @@
 from typing import Any, AsyncGenerator, AsyncIterator, cast, Literal
 from ccproxy.llms.adapters.shared.constants import ANTHROPIC_TO_OPENAI_FINISH_REASON
-import ccproxy.llms.anthropic.models as anthropic_models
-import ccproxy.llms.openai.models as openai_models
+from ccproxy.llms.anthropic import models as anthropic_models
+from ccproxy.llms.openai import models as openai_models
 
 # Local usage converters (inlined from shared.usage)
 from ccproxy.llms.openai.models import (
@@ -63,8 +63,8 @@ def convert_anthropic_usage_to_openai_response_usage(
         output_tokens_details=output_tokens_details,
         total_tokens=input_tokens + output_tokens,
     )
-import ccproxy.llms.openai.models as openai_models
-import ccproxy.llms.anthropic.models as anthropic_models
+from ccproxy.llms.openai import models as openai_models
+from ccproxy.llms.anthropic import models as anthropic_models
 
 FinishReason = Literal["stop", "length", "tool_calls"]
 
