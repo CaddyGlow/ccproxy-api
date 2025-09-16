@@ -6,7 +6,9 @@ from typing import Any, cast
 from pydantic import BaseModel
 
 from ccproxy.llms.adapters.base import BaseAPIAdapter
-from ccproxy.llms.adapters.shared import convert_anthropic_error_to_openai
+from ccproxy.llms.adapters.anthropic_to_openai.helpers import (
+    convert_anthropic_error_to_openai,
+)
 from ccproxy.llms.adapters.anthropic_to_openai.helpers import (
     convert_anthropic_usage_to_openai_response_usage,
 )

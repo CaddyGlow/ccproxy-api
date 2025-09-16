@@ -1,19 +1,19 @@
 from __future__ import annotations
 
-import json
 from collections.abc import AsyncGenerator, AsyncIterator
-from typing import Any, Literal, cast
+from typing import Literal, cast
 
 from pydantic import BaseModel
 
-from ccproxy.llms.adapters.base import BaseAPIAdapter
-from ccproxy.llms.adapters.shared import (
-    ANTHROPIC_TO_OPENAI_FINISH_REASON,
-    DEFAULT_MAX_TOKENS,
-    convert_openai_error_to_anthropic,
-)
 from ccproxy.llms.adapters.anthropic_to_openai.messages_to_chat import (
     convert_anthropic_message_to_chat_response,
+)
+from ccproxy.llms.adapters.base import BaseAPIAdapter
+from ccproxy.llms.adapters.openai_to_anthropic.helpers import (
+    convert__openai_to_anthropic__error,
+)
+from ccproxy.llms.adapters.shared import (
+    ANTHROPIC_TO_OPENAI_FINISH_REASON,
 )
 from ccproxy.llms.anthropic.models import (
     CreateMessageRequest,
@@ -159,4 +159,4 @@ class OpenAIChatToAnthropicMessagesAdapter(
 
     async def adapt_error(self, error: BaseModel) -> BaseModel:
         """Convert OpenAI error payloads to the Anthropic envelope."""
-        return convert_openai_error_to_anthropic(error)
+        return convert__openai_to_anthropic__error(error)

@@ -7,8 +7,8 @@ import ordering.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Iterable, Tuple, Type
 
 from pydantic import BaseModel
 
@@ -22,15 +22,15 @@ class AdapterRegistration:
     name: str
     from_format: str
     to_format: str
-    adapter_cls: Type[BaseAPIAdapter]
-    request_model: Type[BaseModel]
-    response_model: Type[BaseModel]
-    stream_model: Type[BaseModel]
+    adapter_cls: type[BaseAPIAdapter]
+    request_model: type[BaseModel]
+    response_model: type[BaseModel]
+    stream_model: type[BaseModel]
     description: str
     priority: int = 100
 
     @property
-    def key(self) -> Tuple[str, str]:
+    def key(self) -> tuple[str, str]:
         return self.from_format, self.to_format
 
 
@@ -152,7 +152,7 @@ def iter_adapter_registrations() -> Iterable[AdapterRegistration]:
     return iter(_REGISTERED_ADAPTERS)
 
 
-def get_registered_adapter_map() -> dict[tuple[str, str], Type[BaseAPIAdapter]]:
+def get_registered_adapter_map() -> dict[tuple[str, str], type[BaseAPIAdapter]]:
     """Return mapping of format pair to adapter class for quick lookup."""
     return {reg.key: reg.adapter_cls for reg in _REGISTERED_ADAPTERS}
 

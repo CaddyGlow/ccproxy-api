@@ -8,6 +8,7 @@ from .registry import (
 )
 from .shim import AdapterShim
 
+
 __all__ = [
     "APIAdapter",
     "AdapterRegistration",

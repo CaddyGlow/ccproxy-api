@@ -29,7 +29,9 @@ def convert_openai_response_usage_to_openai_completion_usage(
     if output_details:
         reasoning_tokens = int(getattr(output_details, "reasoning_tokens", 0) or 0)
 
-    prompt_tokens_details = PromptTokensDetails(cached_tokens=cached_tokens, audio_tokens=0)
+    prompt_tokens_details = PromptTokensDetails(
+        cached_tokens=cached_tokens, audio_tokens=0
+    )
     completion_tokens_details = CompletionTokensDetails(
         reasoning_tokens=reasoning_tokens,
         audio_tokens=0,
@@ -72,6 +74,8 @@ def convert_openai_completion_usage_to_openai_response_usage(
         output_tokens_details=output_tokens_details,
         total_tokens=prompt_tokens + completion_tokens,
     )
+
+
 from ccproxy.llms.openai import models as openai_models
 
 

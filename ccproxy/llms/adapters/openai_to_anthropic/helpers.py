@@ -3,11 +3,62 @@ import re
 from collections.abc import AsyncGenerator, AsyncIterator
 from typing import Any
 
-from ccproxy.llms.anthropic import models as anthropic_models
-from ccproxy.llms.openai import models as openai_models
-from ccproxy.core.constants import DEFAULT_MAX_TOKENS
 # Note: function convert_openai_response_usage_to_anthropic_usage is used later
 # and remains imported from shared constants if needed elsewhere.
+# Error helpers migrated from ccproxy.llms.adapters.shared.errors
+from pydantic import BaseModel
+
+from ccproxy.core.constants import DEFAULT_MAX_TOKENS
+from ccproxy.llms.adapters.shared.constants import OPENAI_TO_ANTHROPIC_ERROR_TYPE
+from ccproxy.llms.anthropic import models as anthropic_models
+from ccproxy.llms.openai import models as openai_models
+
+
+def convert__openai_to_anthropic__error(error: BaseModel) -> BaseModel:
+    """Convert an OpenAI error payload to the Anthropic envelope."""
+    from ccproxy.llms.anthropic.models import (
+        APIError,
+        ErrorType,
+        InvalidRequestError,
+        RateLimitError,
+    )
+    from ccproxy.llms.anthropic.models import (
+        ErrorResponse as AnthropicErrorResponse,
+    )
+    from ccproxy.llms.openai.models import ErrorResponse as OpenAIErrorResponse
+
+    if isinstance(error, OpenAIErrorResponse):
+        openai_error = error.error
+        error_message = openai_error.message
+        openai_error_type = openai_error.type or "api_error"
+        anthropic_error_type = OPENAI_TO_ANTHROPIC_ERROR_TYPE.get(
+            openai_error_type, "api_error"
+        )
+
+        anthropic_error: ErrorType
+        if anthropic_error_type == "invalid_request_error":
+            anthropic_error = InvalidRequestError(message=error_message)
+        elif anthropic_error_type == "rate_limit_error":
+            anthropic_error = RateLimitError(message=error_message)
+        else:
+            anthropic_error = APIError(message=error_message)
+
+        return AnthropicErrorResponse(error=anthropic_error)
+
+    if hasattr(error, "error") and hasattr(error.error, "message"):
+        error_message = error.error.message
+        fallback_error: ErrorType = APIError(message=error_message)
+        return AnthropicErrorResponse(error=fallback_error)
+
+    error_message = "Unknown error occurred"
+    if hasattr(error, "message"):
+        error_message = error.message
+    elif hasattr(error, "model_dump"):
+        error_dict = error.model_dump()
+        error_message = str(error_dict.get("message", error_dict))
+
+    generic_error: ErrorType = APIError(message=error_message)
+    return AnthropicErrorResponse(error=generic_error)
 
 
 THINKING_PATTERN = re.compile(
@@ -18,8 +69,6 @@ THINKING_PATTERN = re.compile(
 # Local usage converters needed in this module
 from ccproxy.llms.openai.models import (
     CompletionUsage,
-    InputTokensDetails,
-    OutputTokensDetails,
     PromptTokensDetails,
     ResponseUsage,
 )
@@ -41,7 +90,9 @@ def convert_openai_response_usage_to_openai_completion_usage(
     if output_details:
         reasoning_tokens = int(getattr(output_details, "reasoning_tokens", 0) or 0)
 
-    prompt_tokens_details = PromptTokensDetails(cached_tokens=cached_tokens, audio_tokens=0)
+    prompt_tokens_details = PromptTokensDetails(
+        cached_tokens=cached_tokens, audio_tokens=0
+    )
     completion_tokens_details = openai_models.CompletionTokensDetails(
         reasoning_tokens=reasoning_tokens,
         audio_tokens=0,

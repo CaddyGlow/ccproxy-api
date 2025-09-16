@@ -767,7 +767,7 @@ The shim sits between legacy code expecting dict-based interfaces and modern typ
 
 ```python
 from ccproxy.llms.adapters.shim import AdapterShim
-from ccproxy.llms.adapters.anthropic_messages_to_openai_responses import (
+from ccproxy.llms.adapters.anthropic_to_openai.messages_to_responses import (
     AnthropicMessagesToOpenAIResponsesAdapter
 )
 

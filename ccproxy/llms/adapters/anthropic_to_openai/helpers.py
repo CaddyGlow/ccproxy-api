@@ -1,70 +1,15 @@
-from typing import Any, AsyncGenerator, AsyncIterator, cast, Literal
-from ccproxy.llms.adapters.shared.constants import ANTHROPIC_TO_OPENAI_FINISH_REASON
-from ccproxy.llms.anthropic import models as anthropic_models
-from ccproxy.llms.openai import models as openai_models
+from collections.abc import AsyncGenerator, AsyncIterator
+from typing import Any, Literal, cast
 
-# Local usage converters (inlined from shared.usage)
-from ccproxy.llms.openai.models import (
-    CompletionTokensDetails,
-    CompletionUsage,
-    InputTokensDetails,
-    OutputTokensDetails,
-    PromptTokensDetails,
-    ResponseUsage,
+from pydantic import BaseModel
+
+from ccproxy.llms.adapters.shared.constants import (
+    ANTHROPIC_TO_OPENAI_ERROR_TYPE,
+    ANTHROPIC_TO_OPENAI_FINISH_REASON,
 )
-
-
-def convert_anthropic_usage_to_openai_completion_usage(
-    usage: anthropic_models.Usage,
-) -> CompletionUsage:
-    input_tokens = int(getattr(usage, "input_tokens", 0) or 0)
-    output_tokens = int(getattr(usage, "output_tokens", 0) or 0)
-
-    cached_tokens = int(getattr(usage, "cache_read_input_tokens", 0) or 0)
-    cache_creation_tokens = int(getattr(usage, "cache_creation_input_tokens", 0) or 0)
-    if cache_creation_tokens > 0 and cached_tokens == 0:
-        cached_tokens = cache_creation_tokens
-
-    prompt_tokens_details = PromptTokensDetails(cached_tokens=cached_tokens, audio_tokens=0)
-    completion_tokens_details = CompletionTokensDetails(
-        reasoning_tokens=0,
-        audio_tokens=0,
-        accepted_prediction_tokens=0,
-        rejected_prediction_tokens=0,
-    )
-
-    return CompletionUsage(
-        prompt_tokens=input_tokens,
-        completion_tokens=output_tokens,
-        total_tokens=input_tokens + output_tokens,
-        prompt_tokens_details=prompt_tokens_details,
-        completion_tokens_details=completion_tokens_details,
-    )
-
-
-def convert_anthropic_usage_to_openai_response_usage(
-    usage: anthropic_models.Usage,
-) -> ResponseUsage:
-    input_tokens = int(getattr(usage, "input_tokens", 0) or 0)
-    output_tokens = int(getattr(usage, "output_tokens", 0) or 0)
-
-    cached_tokens = int(getattr(usage, "cache_read_input_tokens", 0) or 0)
-    cache_creation_tokens = int(getattr(usage, "cache_creation_input_tokens", 0) or 0)
-    if cache_creation_tokens > 0 and cached_tokens == 0:
-        cached_tokens = cache_creation_tokens
-
-    input_tokens_details = InputTokensDetails(cached_tokens=cached_tokens)
-    output_tokens_details = OutputTokensDetails(reasoning_tokens=0)
-
-    return ResponseUsage(
-        input_tokens=input_tokens,
-        input_tokens_details=input_tokens_details,
-        output_tokens=output_tokens,
-        output_tokens_details=output_tokens_details,
-        total_tokens=input_tokens + output_tokens,
-    )
-from ccproxy.llms.openai import models as openai_models
 from ccproxy.llms.anthropic import models as anthropic_models
+from ccproxy.llms.openai import models as openai_models
+
 
 FinishReason = Literal["stop", "length", "tool_calls"]
 
@@ -76,6 +21,117 @@ ResponseStreamEvent = (
     | openai_models.ResponseFunctionCallArgumentsDoneEvent
     | openai_models.ResponseRefusalDoneEvent
 )
+
+
+def convert_anthropic_usage_to_openai_completion_usage(
+    usage: anthropic_models.Usage,
+) -> openai_models.CompletionUsage:
+    input_tokens = int(getattr(usage, "input_tokens", 0) or 0)
+    output_tokens = int(getattr(usage, "output_tokens", 0) or 0)
+
+    cached_tokens = int(getattr(usage, "cache_read_input_tokens", 0) or 0)
+    cache_creation_tokens = int(getattr(usage, "cache_creation_input_tokens", 0) or 0)
+    if cache_creation_tokens > 0 and cached_tokens == 0:
+        cached_tokens = cache_creation_tokens
+
+    prompt_tokens_details = openai_models.PromptTokensDetails(
+        cached_tokens=cached_tokens, audio_tokens=0
+    )
+    completion_tokens_details = openai_models.CompletionTokensDetails(
+        reasoning_tokens=0,
+        audio_tokens=0,
+        accepted_prediction_tokens=0,
+        rejected_prediction_tokens=0,
+    )
+
+    return openai_models.CompletionUsage(
+        prompt_tokens=input_tokens,
+        completion_tokens=output_tokens,
+        total_tokens=input_tokens + output_tokens,
+        prompt_tokens_details=prompt_tokens_details,
+        completion_tokens_details=completion_tokens_details,
+    )
+
+
+def convert_anthropic_usage_to_openai_response_usage(
+    usage: anthropic_models.Usage,
+) -> openai_models.ResponseUsage:
+    input_tokens = int(getattr(usage, "input_tokens", 0) or 0)
+    output_tokens = int(getattr(usage, "output_tokens", 0) or 0)
+
+    cached_tokens = int(getattr(usage, "cache_read_input_tokens", 0) or 0)
+    cache_creation_tokens = int(getattr(usage, "cache_creation_input_tokens", 0) or 0)
+    if cache_creation_tokens > 0 and cached_tokens == 0:
+        cached_tokens = cache_creation_tokens
+
+    input_tokens_details = openai_models.InputTokensDetails(cached_tokens=cached_tokens)
+    output_tokens_details = openai_models.OutputTokensDetails(reasoning_tokens=0)
+
+    return openai_models.ResponseUsage(
+        input_tokens=input_tokens,
+        input_tokens_details=input_tokens_details,
+        output_tokens=output_tokens,
+        output_tokens_details=output_tokens_details,
+        total_tokens=input_tokens + output_tokens,
+    )
+
+
+# Error helpers migrated from ccproxy.llms.adapters.shared.errors
+
+
+def convert__anthropic_to_openai__error(error: BaseModel) -> BaseModel:
+    """Convert an Anthropic error payload to the OpenAI envelope."""
+    from ccproxy.llms.anthropic.models import ErrorResponse as AnthropicErrorResponse
+    from ccproxy.llms.openai.models import ErrorDetail
+    from ccproxy.llms.openai.models import ErrorResponse as OpenAIErrorResponse
+
+    if isinstance(error, AnthropicErrorResponse):
+        anthropic_error = error.error
+        error_message = anthropic_error.message
+        anthropic_error_type = "api_error"
+        if hasattr(anthropic_error, "type"):
+            anthropic_error_type = anthropic_error.type
+
+        openai_error_type = ANTHROPIC_TO_OPENAI_ERROR_TYPE.get(
+            anthropic_error_type, "api_error"
+        )
+
+        return OpenAIErrorResponse(
+            error=ErrorDetail(
+                message=error_message,
+                type=openai_error_type,
+                code=None,
+                param=None,
+            )
+        )
+
+    if hasattr(error, "error") and hasattr(error.error, "message"):
+        error_message = error.error.message
+        return OpenAIErrorResponse(
+            error=ErrorDetail(
+                message=error_message,
+                type="api_error",
+                code=None,
+                param=None,
+            )
+        )
+
+    error_message = "Unknown error occurred"
+    if hasattr(error, "message"):
+        error_message = error.message
+    elif hasattr(error, "model_dump"):
+        error_dict = error.model_dump()
+        if isinstance(error_dict, dict):
+            error_message = error_dict.get("message", str(error_dict))
+
+    return OpenAIErrorResponse(
+        error=ErrorDetail(
+            message=error_message,
+            type="api_error",
+            code=None,
+            param=None,
+        )
+    )
 
 
 async def convert__anthropic_message_to_openai_response__stream(
@@ -681,12 +737,3 @@ def convert__anthropic_message_to_openai_chat__response(
         "usage": usage_model.model_dump(),
     }
     return openai_models.ChatCompletionResponse.model_validate(payload)
-
-
-# Backward-compatible alias for tests (defined in package __init__); avoid at module import time
-try:  # pragma: no cover
-    from . import AnthropicMessagesToOpenAIChatAdapter as _AdapterAlias
-    AnthropicToOpenAIChatCompletionsAdapter = _AdapterAlias
-except Exception:  # pragma: no cover
-    # Will be available when package init resolves; tests import helpers directly
-    pass

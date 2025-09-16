@@ -7,16 +7,20 @@ and error conversion utilities that remain shared.
 
 from __future__ import annotations
 
+from ccproxy.llms.adapters.anthropic_to_openai.helpers import (
+    convert__anthropic_to_openai__error,
+)
+from ccproxy.llms.adapters.openai_to_anthropic.helpers import (
+    convert__openai_to_anthropic__error,
+)
 from ccproxy.llms.adapters.shared import (
     ANTHROPIC_TO_OPENAI_ERROR_TYPE,
     ANTHROPIC_TO_OPENAI_FINISH_REASON,
     DEFAULT_MAX_TOKENS,
     OPENAI_TO_ANTHROPIC_ERROR_TYPE,
     OPENAI_TO_ANTHROPIC_STOP_REASON,
-    convert_anthropic_error_to_openai,
-    convert_openai_error_to_anthropic,
-    normalize_openai_error,
 )
+
 
 __all__ = [
     "ANTHROPIC_TO_OPENAI_ERROR_TYPE",
@@ -24,7 +28,6 @@ __all__ = [
     "DEFAULT_MAX_TOKENS",
     "OPENAI_TO_ANTHROPIC_ERROR_TYPE",
     "OPENAI_TO_ANTHROPIC_STOP_REASON",
-    "convert_anthropic_error_to_openai",
-    "convert_openai_error_to_anthropic",
-    "normalize_openai_error",
+    "convert__anthropic_to_openai__error",
+    "convert__openai_to_anthropic__error",
 ]
