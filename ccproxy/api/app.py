@@ -152,6 +152,8 @@ async def initialize_plugins_startup(app: FastAPI, settings: Settings) -> None:
             self.request_tracer = container.get_request_tracer()
             self.streaming_handler = container.get_streaming_handler()
             self.metrics = None
+            self.format_registry = container.get_format_registry()
+            self.formatter_registry = container.get_formatter_registry()
 
         def get_plugin_config(self, plugin_name: str) -> Any:
             if hasattr(self.settings, "plugins") and self.settings.plugins:
@@ -166,7 +168,11 @@ async def initialize_plugins_startup(app: FastAPI, settings: Settings) -> None:
 
         def get_format_registry(self) -> Any:
             """Get format adapter registry service instance."""
-            return self._container.get_format_registry()
+            return self.format_registry
+
+        def get_formatter_registry(self) -> Any:
+            """Get formatter registry service instance."""
+            return self.formatter_registry
 
     core_services = CoreServicesAdapter(service_container)
 

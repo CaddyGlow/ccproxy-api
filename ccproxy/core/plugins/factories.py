@@ -247,21 +247,26 @@ class BaseProviderPluginFactory(ProviderPluginFactory):
                 config = self.manifest.config_class()
 
             # Create HTTP adapter with explicit dependencies including format services
-            return cast(
-                BaseAdapter,
-                self.adapter_class(
-                    config=config,
-                    auth_manager=auth_manager,
-                    detection_service=detection_service,
-                    http_pool_manager=http_pool_manager,
-                    request_tracer=request_tracer or NullRequestTracer(),
-                    metrics=metrics or NullMetricsCollector(),
-                    streaming_handler=streaming_handler or NullStreamingHandler(),
-                    hook_manager=hook_manager,
-                    format_registry=adapter_dependencies["format_registry"],
-                    context=context,
-                ),
-            )
+            init_params = inspect.signature(self.adapter_class.__init__).parameters
+            adapter_kwargs: dict[str, Any] = {
+                "config": config,
+                "auth_manager": auth_manager,
+                "detection_service": detection_service,
+                "http_pool_manager": http_pool_manager,
+                "request_tracer": request_tracer or NullRequestTracer(),
+                "metrics": metrics or NullMetricsCollector(),
+                "streaming_handler": streaming_handler or NullStreamingHandler(),
+                "hook_manager": hook_manager,
+                "format_registry": adapter_dependencies["format_registry"],
+                "context": context,
+            }
+
+            if "formatter_registry" in init_params:
+                adapter_kwargs["formatter_registry"] = adapter_dependencies[
+                    "formatter_registry"
+                ]
+
+            return cast(BaseAdapter, self.adapter_class(**adapter_kwargs))
         else:
             # Non-HTTP adapters (like ClaudeSDK) have different dependencies
             # Build kwargs based on adapter class constructor signature
@@ -289,6 +294,7 @@ class BaseProviderPluginFactory(ProviderPluginFactory):
                 "streaming_handler": streaming_handler,
                 "hook_manager": hook_manager,
                 "format_registry": adapter_dependencies["format_registry"],
+                "formatter_registry": adapter_dependencies["formatter_registry"],
                 "context": context,
             }
 

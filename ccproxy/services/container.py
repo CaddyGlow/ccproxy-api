@@ -15,6 +15,7 @@ from ccproxy.config.settings import Settings
 from ccproxy.core.plugins.hooks.registry import HookRegistry
 from ccproxy.core.plugins.hooks.thread_manager import BackgroundHookThreadManager
 from ccproxy.http.pool import HTTPPoolManager
+from ccproxy.llms.adapters.formatter_registry import FormatterRegistry
 from ccproxy.scheduler.registry import TaskRegistry
 from ccproxy.services.adapters.format_registry import FormatAdapterRegistry
 from ccproxy.services.cache import ResponseCache
@@ -130,6 +131,10 @@ class ServiceContainer:
         """Get format adapter registry service instance."""
         return self.get_service(FormatAdapterRegistry)
 
+    def get_formatter_registry(self) -> FormatterRegistry:
+        """Get formatter registry service instance."""
+        return self.get_service(FormatterRegistry)
+
     def get_oauth_registry(self) -> Any:
         """Get OAuth provider registry instance."""
         # Import lazily to avoid circular imports through auth package
@@ -160,6 +165,7 @@ class ServiceContainer:
             "config": self.get_proxy_config(),
             "cli_detection_service": self.get_cli_detection_service(),
             "format_registry": self.get_format_registry(),
+            "formatter_registry": self.get_formatter_registry(),
         }
 
     async def close(self) -> None:

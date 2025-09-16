@@ -314,6 +314,7 @@ class PluginContext:
         self.storage: Any = None
 
         self.format_registry: Any = None
+        self.formatter_registry: Any = None
 
         # Testing/utilities
         self.proxy_service: Any = None

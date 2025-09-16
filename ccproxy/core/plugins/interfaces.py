@@ -4,6 +4,7 @@ This module contains all abstract base classes and protocols to avoid
 circular dependencies between factory and runtime modules.
 """
 
+import contextlib
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Any, TypeVar
 
@@ -145,6 +146,14 @@ class BasePluginFactory(PluginFactory):
                     plugin_config
                 )
                 context.config = validated_config
+
+        if hasattr(core_services, "get_format_registry"):
+            with contextlib.suppress(Exception):
+                context.format_registry = core_services.get_format_registry()
+
+        if hasattr(core_services, "get_formatter_registry"):
+            with contextlib.suppress(Exception):
+                context.formatter_registry = core_services.get_formatter_registry()
 
         return context
 

@@ -10,6 +10,7 @@ from ccproxy.config.settings import Settings
 if TYPE_CHECKING:
     from ccproxy.core.plugins import PluginRegistry
     from ccproxy.http.pool import HTTPPoolManager
+    from ccproxy.llms.adapters.formatter_registry import FormatterRegistry
     from ccproxy.scheduler.core import Scheduler
     from ccproxy.services.adapters.format_registry import FormatAdapterRegistry
 
@@ -25,6 +26,7 @@ class CoreServices:
         scheduler: "Scheduler | None" = None,
         plugin_registry: "PluginRegistry | None" = None,
         format_registry: "FormatAdapterRegistry | None" = None,
+        formatter_registry: "FormatterRegistry | None" = None,
     ):
         """Initialize core services.
 
@@ -42,6 +44,7 @@ class CoreServices:
         self.scheduler = scheduler
         self.plugin_registry = plugin_registry
         self.format_registry = format_registry
+        self.formatter_registry = formatter_registry
 
     def is_plugin_logging_enabled(self, plugin_name: str) -> bool:
         """Check if logging is enabled for a specific plugin.
@@ -131,3 +134,10 @@ class CoreServices:
         if self.format_registry is None:
             raise RuntimeError("Format adapter registry is not available")
         return self.format_registry
+
+    def get_formatter_registry(self) -> "FormatterRegistry":
+        """Get formatter registry service instance."""
+
+        if self.formatter_registry is None:
+            raise RuntimeError("Formatter registry is not available")
+        return self.formatter_registry

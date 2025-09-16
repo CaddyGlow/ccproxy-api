@@ -228,6 +228,8 @@ async def _lazy_register_oauth_provider(
             # Pass through current tracer/streaming handler if needed
             self.request_tracer = container.get_request_tracer()
             self.streaming_handler = container.get_streaming_handler()
+            self.format_registry = container.get_format_registry()
+            self.formatter_registry = container.get_formatter_registry()
             # Add http_pool_manager for plugin context (minimal implementation for CLI)
             self.http_pool_manager = self._create_minimal_pool_manager()
             # Create context dictionary for plugin runtime access
@@ -256,6 +258,8 @@ async def _lazy_register_oauth_provider(
                 "request_tracer",
                 "streaming_handler",
                 "http_pool_manager",
+                "format_registry",
+                "formatter_registry",
             ]:
                 # Allow setting of internal attributes normally
                 super().__setattr__(name, value)
@@ -296,17 +300,10 @@ async def _lazy_register_oauth_provider(
             return {}
 
         def get_format_registry(self) -> Any:
-            # For CLI context, we may not need full format registry functionality
-            # Create a minimal registry if needed, or return None
-            try:
-                from ccproxy.services.adapters.format_registry import (
-                    FormatAdapterRegistry,
-                )
+            return self.format_registry
 
-                return FormatAdapterRegistry()
-            except ImportError:
-                # Fallback for minimal CLI operations
-                return None
+        def get_formatter_registry(self) -> Any:
+            return self.formatter_registry
 
     core_services = CoreServicesAdapter()
 
