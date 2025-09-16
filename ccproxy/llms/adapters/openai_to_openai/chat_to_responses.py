@@ -7,9 +7,16 @@ from pydantic import BaseModel
 
 from ccproxy.llms.adapters.base import BaseAPIAdapter
 from ccproxy.llms.openai.models import (
+    ChatCompletionChunk,
     ChatCompletionRequest,
     ResponseObject,
     ResponseRequest,
+)
+from ccproxy.llms.adapters.openai_to_openai.response_api_to_chat import (
+    response_stream_to_chat_chunks,
+)
+from ccproxy.llms.adapters.openai_to_openai.responses_to_chat import (
+    convert_openai_response_to_chat,
 )
 
 
@@ -43,23 +50,15 @@ class OpenAIChatToOpenAIResponsesAdapter(
         return await self._convert_request(request)
 
     async def adapt_response(self, response: BaseModel) -> BaseModel:
-        # Delegate to Responses -> Chat adapter for converting results
-        from ccproxy.llms.adapters.openai_responses_to_openai_chatcompletions import (
-            OpenAIResponsesToOpenAIChatAdapter,
-        )
+        if not isinstance(response, ResponseObject):
+            raise ValueError(f"Expected ResponseObject, got {type(response)}")
 
-        reverse_adapter = OpenAIResponsesToOpenAIChatAdapter()
-        return await reverse_adapter.adapt_response(response)
+        return convert_openai_response_to_chat(response)
 
     def adapt_stream(
-        self, stream: AsyncIterator[BaseModel]
-    ) -> AsyncGenerator[BaseModel, None]:
-        # Delegate streaming conversion as well
-        from ccproxy.llms.adapters.openai_responses_to_openai_chatcompletions import (
-            OpenAIResponsesToOpenAIChatAdapter,
-        )
-
-        return OpenAIResponsesToOpenAIChatAdapter().adapt_stream(stream)  # type: ignore[arg-type]
+        self, stream: AsyncIterator[openai_models.AnyStreamEvent]
+    ) -> AsyncGenerator[ChatCompletionChunk, None]:
+        return response_stream_to_chat_chunks(stream)
 
     async def adapt_error(self, error: BaseModel) -> BaseModel:
         return error  # Pass through

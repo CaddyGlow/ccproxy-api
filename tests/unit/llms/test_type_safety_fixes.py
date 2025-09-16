@@ -165,7 +165,7 @@ class TestAdapterTypeSafety:
         # This test verifies that our type guard fixes work properly
         # by testing the adapter logic that was causing union-attr errors
 
-        from ccproxy.llms.adapters.anthropic_messages_to_openai_responses import (
+        from ccproxy.llms.adapters.anthropic_to_openai.messages_to_responses import (
             AnthropicMessagesToOpenAIResponsesAdapter,
         )
 
@@ -194,7 +194,7 @@ class TestAdapterTypeSafety:
     @pytest.mark.asyncio
     async def test_adapter_handles_mixed_content_blocks_safely(self) -> None:
         """Test that adapters handle mixed content block types without union errors."""
-        from ccproxy.llms.adapters.anthropic_messages_to_openai_chatcompletions import (
+        from ccproxy.llms.adapters.anthropic_to_openai.messages_to_chat import (
             AnthropicMessagesToOpenAIChatAdapter,
         )
 

@@ -340,7 +340,7 @@ class CodexFactory(BaseProviderPluginFactory):
             from_format="openai",
             to_format="response_api",
             adapter_factory=lambda: __import__(
-                "ccproxy.llms.adapters.openai_chatcompletions_to_openai_responses",
+                "ccproxy.llms.adapters.openai_to_openai.chat_to_responses",
                 fromlist=["OpenAIChatToOpenAIResponsesAdapter"],
             ).OpenAIChatToOpenAIResponsesAdapter(),
             priority=50,  # Medium priority
@@ -350,7 +350,7 @@ class CodexFactory(BaseProviderPluginFactory):
             from_format="anthropic",
             to_format="response_api",
             adapter_factory=lambda: __import__(
-                "ccproxy.llms.adapters.anthropic_messages_to_openai_responses",
+                "ccproxy.llms.adapters.anthropic_to_openai.messages_to_responses",
                 fromlist=["AnthropicMessagesToOpenAIResponsesAdapter"],
             ).AnthropicMessagesToOpenAIResponsesAdapter(),
             priority=50,  # Medium priority

@@ -142,7 +142,7 @@ class CopilotPluginFactory(BaseProviderPluginFactory, AuthProviderPluginFactory)
             from_format="anthropic",
             to_format="openai",
             adapter_factory=lambda: __import__(
-                "ccproxy.llms.adapters.anthropic_messages_to_openai_chatcompletions",
+                "ccproxy.llms.adapters.anthropic_to_openai.messages_to_chat",
                 fromlist=["AnthropicMessagesToOpenAIChatAdapter"],
             ).AnthropicMessagesToOpenAIChatAdapter(),
             priority=100,
@@ -152,7 +152,7 @@ class CopilotPluginFactory(BaseProviderPluginFactory, AuthProviderPluginFactory)
             from_format="response_api",
             to_format="anthropic",
             adapter_factory=lambda: __import__(
-                "ccproxy.llms.adapters.openai_responses_request_to_anthropic_messages",
+                "ccproxy.llms.adapters.openai_to_anthropic.responses_request_to_messages",
                 fromlist=["OpenAIResponsesRequestToAnthropicMessagesAdapter"],
             ).OpenAIResponsesRequestToAnthropicMessagesAdapter(),
             priority=50,  # Medium priority
@@ -163,7 +163,7 @@ class CopilotPluginFactory(BaseProviderPluginFactory, AuthProviderPluginFactory)
             from_format="response_api",
             to_format="openai",
             adapter_factory=lambda: __import__(
-                "ccproxy.llms.adapters.response_api_to_openai_chatcompletions",
+                "ccproxy.llms.adapters.openai_to_openai.response_api_to_chat",
                 fromlist=["ResponseAPIToOpenAIChatAdapter"],
             ).ResponseAPIToOpenAIChatAdapter(),
             priority=90,  # Very high priority for direct conversion

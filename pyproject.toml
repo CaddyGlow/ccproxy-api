@@ -322,7 +322,7 @@ addopts = [
   "-ra",
   "--strict-markers",
   "--strict-config",
-  "--disable-warnings",
+  # "--disable-warnings",
   "--tb=short",
   "-v",
   "--import-mode=importlib",

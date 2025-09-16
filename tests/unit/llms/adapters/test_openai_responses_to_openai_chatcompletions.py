@@ -13,7 +13,7 @@ from ccproxy.llms.openai.models import (
 async def test_openai_responses_to_openai_chat_adapter_adapt_request_delegates() -> (
     None
 ):
-    from ccproxy.llms.adapters.openai_responses_to_openai_chatcompletions import (
+    from ccproxy.llms.adapters.openai_to_openai.responses_to_chat import (
         OpenAIResponsesToOpenAIChatAdapter,
     )
 
@@ -31,7 +31,7 @@ async def test_openai_responses_to_openai_chat_adapter_adapt_request_delegates()
 
 @pytest.mark.asyncio
 async def test_openai_responses_to_openai_chat_adapter_adapt_stream_minimal() -> None:
-    from ccproxy.llms.adapters.openai_responses_to_openai_chatcompletions import (
+    from ccproxy.llms.adapters.openai_to_openai.responses_to_chat import (
         OpenAIResponsesToOpenAIChatAdapter,
     )
 

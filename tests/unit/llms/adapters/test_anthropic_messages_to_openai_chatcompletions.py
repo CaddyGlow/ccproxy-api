@@ -1,6 +1,6 @@
 import pytest
 
-from ccproxy.llms.adapters.anthropic_messages_to_openai_chatcompletions import (
+from ccproxy.llms.adapters.anthropic_to_openai.messages_to_chat import (
     AnthropicToOpenAIChatCompletionsAdapter,
 )
 from ccproxy.llms.anthropic import models as anthropic_models

@@ -199,6 +199,13 @@ class AdapterShim(LegacyBaseAPIAdapter):
 
             # Strict mode: require declared model types for request/response/stream
             if context != "error":
+                if context == "stream_chunk":
+                    try:
+                        from ccproxy.llms.openai.models import AnyStreamEvent
+
+                        return AnyStreamEvent.model_validate(data)
+                    except Exception:
+                        pass
                 raise ValueError(
                     f"Strict shim: {context} model type not declared by {type(self._typed_adapter).__name__}. "
                     "Ensure the adapter specifies concrete generic type parameters."

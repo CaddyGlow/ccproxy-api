@@ -7,8 +7,9 @@ from typing import Any, Literal, cast
 from pydantic import BaseModel
 
 from ccproxy.llms.adapters.base import BaseAPIAdapter
-from ccproxy.llms.adapters.mapping import (
+from ccproxy.llms.adapters.shared import (
     ANTHROPIC_TO_OPENAI_FINISH_REASON,
+    convert_anthropic_error_to_openai,
     convert_anthropic_usage_to_openai_completion_usage,
 )
 from ccproxy.llms.anthropic import models as anthropic_models
@@ -131,10 +132,14 @@ class AnthropicMessagesToOpenAIChatAdapter(
                 break
 
     async def adapt_error(self, error: BaseModel) -> BaseModel:
-        """Convert Anthropic error to OpenAI error format."""
-        from ccproxy.llms.adapters.mapping import convert_anthropic_error_to_openai
-
+        """Convert Anthropic error payloads to the OpenAI envelope."""
         return convert_anthropic_error_to_openai(error)
+
+    async def _convert_response(
+        self, response: anthropic_models.MessageResponse
+    ) -> openai_models.ChatCompletionResponse:
+        """Convert Anthropic MessageResponse to OpenAI ChatCompletionResponse using typed models."""
+        return convert_anthropic_message_to_chat_response(response)
 
     # Implementation methods
     async def _convert_request(
@@ -321,55 +326,56 @@ class AnthropicMessagesToOpenAIChatAdapter(
         # Validate against OpenAI model
         return openai_models.ChatCompletionRequest.model_validate(params)
 
-    async def _convert_response(
-        self, response: anthropic_models.MessageResponse
-    ) -> openai_models.ChatCompletionResponse:
-        """Convert Anthropic MessageResponse to OpenAI ChatCompletionResponse using typed models."""
-        content_blocks = response.content
-        parts: list[str] = []
-        for block in content_blocks:
-            btype = getattr(block, "type", None)
-            if btype == "text":
-                text = getattr(block, "text", None)
-                if isinstance(text, str):
-                    parts.append(text)
-            elif btype == "thinking":
-                thinking = getattr(block, "thinking", None)
-                signature = getattr(block, "signature", None)
-                if isinstance(thinking, str):
-                    sig_attr = (
-                        f' signature="{signature}"'
-                        if isinstance(signature, str) and signature
-                        else ""
-                    )
-                    parts.append(f"<thinking{sig_attr}>{thinking}</thinking>")
 
-        content_text = "".join(parts)
 
-        stop_reason = response.stop_reason
-        finish_reason = ANTHROPIC_TO_OPENAI_FINISH_REASON.get(
-            stop_reason or "end_turn", "stop"
-        )
+def convert_anthropic_message_to_chat_response(
+    response: anthropic_models.MessageResponse,
+) -> openai_models.ChatCompletionResponse:
+    """Convert Anthropic MessageResponse to an OpenAI ChatCompletionResponse."""
+    content_blocks = response.content
+    parts: list[str] = []
+    for block in content_blocks:
+        btype = getattr(block, "type", None)
+        if btype == "text":
+            text = getattr(block, "text", None)
+            if isinstance(text, str):
+                parts.append(text)
+        elif btype == "thinking":
+            thinking = getattr(block, "thinking", None)
+            signature = getattr(block, "signature", None)
+            if isinstance(thinking, str):
+                sig_attr = (
+                    f' signature="{signature}"'
+                    if isinstance(signature, str) and signature
+                    else ""
+                )
+                parts.append(f"<thinking{sig_attr}>{thinking}</thinking>")
 
-        usage_model = convert_anthropic_usage_to_openai_completion_usage(response.usage)
+    content_text = "".join(parts)
 
-        payload = {
-            "id": response.id,
-            "choices": [
-                {
-                    "index": 0,
-                    "message": {"role": "assistant", "content": content_text},
-                    "finish_reason": finish_reason,
-                }
-            ],
-            "created": int(time.time()),
-            "model": response.model,
-            "object": "chat.completion",
-            "usage": usage_model.model_dump(),
-        }
-        return openai_models.ChatCompletionResponse.model_validate(payload)
+    stop_reason = response.stop_reason
+    finish_reason = ANTHROPIC_TO_OPENAI_FINISH_REASON.get(
+        stop_reason or "end_turn", "stop"
+    )
+
+    usage_model = convert_anthropic_usage_to_openai_completion_usage(response.usage)
+
+    payload = {
+        "id": response.id,
+        "choices": [
+            {
+                "index": 0,
+                "message": {"role": "assistant", "content": content_text},
+                "finish_reason": finish_reason,
+            }
+        ],
+        "created": int(time.time()),
+        "model": response.model,
+        "object": "chat.completion",
+        "usage": usage_model.model_dump(),
+    }
+    return openai_models.ChatCompletionResponse.model_validate(payload)
 
 
 # Backward-compatible alias for tests
-class AnthropicToOpenAIChatCompletionsAdapter(AnthropicMessagesToOpenAIChatAdapter):
-    pass
+AnthropicToOpenAIChatCompletionsAdapter = AnthropicMessagesToOpenAIChatAdapter

@@ -6,7 +6,8 @@ from typing import Any, cast
 from pydantic import BaseModel
 
 from ccproxy.llms.adapters.base import BaseAPIAdapter
-from ccproxy.llms.adapters.mapping import (
+from ccproxy.llms.adapters.shared import (
+    convert_anthropic_error_to_openai,
     convert_anthropic_usage_to_openai_response_usage,
 )
 from ccproxy.llms.anthropic import models as anthropic_models
@@ -201,9 +202,7 @@ class AnthropicMessagesToOpenAIResponsesAdapter(
                 break
 
     async def adapt_error(self, error: BaseModel) -> BaseModel:
-        """Convert Anthropic error to OpenAI error format."""
-        from ccproxy.llms.adapters.mapping import convert_anthropic_error_to_openai
-
+        """Convert Anthropic error payloads to the OpenAI envelope."""
         return convert_anthropic_error_to_openai(error)
 
     # Implementation methods
@@ -318,135 +317,77 @@ class AnthropicMessagesToOpenAIResponsesAdapter(
         self, response: anthropic_models.MessageResponse
     ) -> openai_models.ResponseObject:
         """Convert Anthropic MessageResponse to OpenAI ResponseObject using typed models."""
-        # Aggregate thinking blocks (serialized) and text blocks into a single
-        # OutputTextContent item, and include tool_use blocks as-is
-        text_parts: list[str] = []
-        other_contents: list[dict[str, Any]] = []
-        for block in response.content:
-            btype = getattr(block, "type", None)
-            if btype == "text":
-                text_parts.append(getattr(block, "text", ""))
-            elif btype == "thinking":
-                thinking = getattr(block, "thinking", None) or ""
-                signature = getattr(block, "signature", None)
-                sig_attr = (
-                    f' signature="{signature}"'
-                    if isinstance(signature, str) and signature
-                    else ""
-                )
-                text_parts.append(f"<thinking{sig_attr}>{thinking}</thinking>")
-            elif btype == "tool_use":
-                other_contents.append(
-                    {
-                        "type": "tool_use",
-                        "id": getattr(block, "id", "tool_1"),
-                        "name": getattr(block, "name", "function"),
-                        # Prefer `input` -> `arguments` for Responses format
-                        "arguments": getattr(block, "input", {}) or {},
-                    }
-                )
-
-        msg_contents: list[dict[str, Any]] = []
-        if text_parts:
-            msg_contents.append(
-                openai_models.OutputTextContent(
-                    type="output_text", text="".join(text_parts)
-                ).model_dump()
-            )
-        msg_contents.extend(other_contents)
-
-        # Usage mapping
-        resp_usage = cast(
-            openai_models.ResponseUsage,
-            convert_anthropic_usage_to_openai_response_usage(response.usage),
-        )
-
-        response_object = openai_models.ResponseObject(
-            id=response.id,
-            object="response",
-            created_at=0,
-            status="completed",
-            model=response.model,
-            output=[
-                openai_models.MessageOutput(
-                    type="message",
-                    id=f"{response.id}_msg_0",
-                    status="completed",
-                    role="assistant",
-                    content=msg_contents,  # type: ignore[arg-type]
-                )
-            ],
-            parallel_tool_calls=False,
-            usage=resp_usage,
-        )
-        return response_object
+        return convert_anthropic_message_to_response_object(response)
 
     async def _adapt_response_dict_impl(
         self, response: dict[str, Any]
     ) -> dict[str, Any]:
         """Implementation moved from adapt_response - works with dicts."""
-        # Validate incoming as Anthropic MessageResponse (or minimally shaped dict)
-        anth = anthropic_models.MessageResponse.model_validate(response)
+        anthropic_response = anthropic_models.MessageResponse.model_validate(response)
+        return convert_anthropic_message_to_response_object(anthropic_response).model_dump()
 
-        # Aggregate thinking blocks (serialized) and text blocks into a single
-        # OutputTextContent item, and include tool_use blocks as-is
-        text_parts: list[str] = []
-        other_contents: list[dict[str, Any]] = []
-        for block in anth.content:
-            btype = getattr(block, "type", None)
-            if btype == "text":
-                text_parts.append(getattr(block, "text", ""))
-            elif btype == "thinking":
-                thinking = getattr(block, "thinking", None) or ""
-                signature = getattr(block, "signature", None)
-                sig_attr = (
-                    f' signature="{signature}"'
-                    if isinstance(signature, str) and signature
-                    else ""
-                )
-                text_parts.append(f"<thinking{sig_attr}>{thinking}</thinking>")
-            elif btype == "tool_use":
-                other_contents.append(
-                    {
-                        "type": "tool_use",
-                        "id": getattr(block, "id", "tool_1"),
-                        "name": getattr(block, "name", "function"),
-                        # Prefer `input` -> `arguments` for Responses format
-                        "arguments": getattr(block, "input", {}) or {},
-                    }
-                )
 
-        msg_contents: list[dict[str, Any]] = []
-        if text_parts:
-            msg_contents.append(
-                openai_models.OutputTextContent(
-                    type="output_text", text="".join(text_parts)
-                ).model_dump()
+def convert_anthropic_message_to_response_object(
+    response: anthropic_models.MessageResponse,
+) -> openai_models.ResponseObject:
+    """Convert Anthropic MessageResponse to an OpenAI ResponseObject."""
+    text_parts: list[str] = []
+    tool_contents: list[dict[str, Any]] = []
+    for block in response.content:
+        block_type = getattr(block, "type", None)
+        if block_type == "text":
+            text_parts.append(getattr(block, "text", ""))
+        elif block_type == "thinking":
+            thinking = getattr(block, "thinking", None) or ""
+            signature = getattr(block, "signature", None)
+            sig_attr = (
+                f' signature="{signature}"'
+                if isinstance(signature, str) and signature
+                else ""
             )
-        msg_contents.extend(other_contents)
+            text_parts.append(f"<thinking{sig_attr}>{thinking}</thinking>")
+        elif block_type == "tool_use":
+            tool_contents.append(
+                {
+                    "type": "tool_use",
+                    "id": getattr(block, "id", "tool_1"),
+                    "name": getattr(block, "name", "function"),
+                    "arguments": getattr(block, "input", {}) or {},
+                }
+            )
 
-        # Usage mapping
-        resp_usage = cast(
+    message_content: list[dict[str, Any]] = []
+    if text_parts:
+        message_content.append(
+            openai_models.OutputTextContent(
+                type="output_text",
+                text="".join(text_parts),
+            ).model_dump()
+        )
+    message_content.extend(tool_contents)
+
+    usage_model = None
+    if response.usage is not None:
+        usage_model = cast(
             openai_models.ResponseUsage,
-            convert_anthropic_usage_to_openai_response_usage(anth.usage),
+            convert_anthropic_usage_to_openai_response_usage(response.usage),
         )
 
-        response_object = openai_models.ResponseObject(
-            id=anth.id,
-            object="response",
-            created_at=0,
-            status="completed",
-            model=anth.model,
-            output=[
-                openai_models.MessageOutput(
-                    type="message",
-                    id=f"{anth.id}_msg_0",
-                    status="completed",
-                    role="assistant",
-                    content=msg_contents,  # type: ignore[arg-type]
-                )
-            ],
-            parallel_tool_calls=False,
-            usage=resp_usage,
-        )
-        return response_object.model_dump()
+    return openai_models.ResponseObject(
+        id=response.id,
+        object="response",
+        created_at=0,
+        status="completed",
+        model=response.model,
+        output=[
+            openai_models.MessageOutput(
+                type="message",
+                id=f"{response.id}_msg_0",
+                status="completed",
+                role="assistant",
+                content=message_content,  # type: ignore[arg-type]
+            )
+        ],
+        parallel_tool_calls=False,
+        usage=usage_model,
+    )

@@ -24,7 +24,7 @@ from ccproxy.llms.openai.models import (
 async def test_openai_chat_to_openai_responses_adapter_adapt_response_delegates() -> (
     None
 ):
-    from ccproxy.llms.adapters.openai_chatcompletions_to_openai_responses import (
+    from ccproxy.llms.adapters.openai_to_openai.chat_to_responses import (
         OpenAIChatToOpenAIResponsesAdapter,
     )
 
@@ -63,7 +63,7 @@ async def test_openai_chat_to_openai_responses_adapter_adapt_response_delegates(
 @pytest.mark.asyncio
 async def test_openai_chat_to_openai_response_basic_request() -> None:
     """Test basic request mapping from ChatCompletion to Response format"""
-    from ccproxy.llms.adapters.openai_chatcompletions_to_openai_responses import (
+    from ccproxy.llms.adapters.openai_to_openai.chat_to_responses import (
         OpenAIChatToOpenAIResponsesAdapter,
     )
 
@@ -88,7 +88,7 @@ async def test_openai_chat_to_openai_response_basic_request() -> None:
 @pytest.mark.asyncio
 async def test_response_format_text_mapping() -> None:
     """Test response_format text type mapping to text.format field"""
-    from ccproxy.llms.adapters.openai_chatcompletions_to_openai_responses import (
+    from ccproxy.llms.adapters.openai_to_openai.chat_to_responses import (
         OpenAIChatToOpenAIResponsesAdapter,
     )
 
@@ -108,7 +108,7 @@ async def test_response_format_text_mapping() -> None:
 @pytest.mark.asyncio
 async def test_response_format_json_object_mapping() -> None:
     """Test response_format json_object mapping to text.format field"""
-    from ccproxy.llms.adapters.openai_chatcompletions_to_openai_responses import (
+    from ccproxy.llms.adapters.openai_to_openai.chat_to_responses import (
         OpenAIChatToOpenAIResponsesAdapter,
     )
 
@@ -127,7 +127,7 @@ async def test_response_format_json_object_mapping() -> None:
 @pytest.mark.asyncio
 async def test_response_format_json_schema_mapping() -> None:
     """Test comprehensive json_schema response_format mapping to text.format field"""
-    from ccproxy.llms.adapters.openai_chatcompletions_to_openai_responses import (
+    from ccproxy.llms.adapters.openai_to_openai.chat_to_responses import (
         OpenAIChatToOpenAIResponsesAdapter,
     )
 
@@ -161,7 +161,7 @@ async def test_response_format_json_schema_mapping() -> None:
 @pytest.mark.asyncio
 async def test_response_format_json_schema_variations() -> None:
     """Test different json_schema variations and their mapping"""
-    from ccproxy.llms.adapters.openai_chatcompletions_to_openai_responses import (
+    from ccproxy.llms.adapters.openai_to_openai.chat_to_responses import (
         OpenAIChatToOpenAIResponsesAdapter,
     )
 
@@ -206,7 +206,7 @@ async def test_response_format_json_schema_variations() -> None:
 @pytest.mark.asyncio
 async def test_response_format_with_other_parameters() -> None:
     """Test response_format mapping alongside other parameters"""
-    from ccproxy.llms.adapters.openai_chatcompletions_to_openai_responses import (
+    from ccproxy.llms.adapters.openai_to_openai.chat_to_responses import (
         OpenAIChatToOpenAIResponsesAdapter,
     )
 
@@ -244,7 +244,7 @@ async def test_response_format_with_other_parameters() -> None:
 @pytest.mark.asyncio
 async def test_no_response_format_no_text_field() -> None:
     """Test that no response_format results in no text field"""
-    from ccproxy.llms.adapters.openai_chatcompletions_to_openai_responses import (
+    from ccproxy.llms.adapters.openai_to_openai.chat_to_responses import (
         OpenAIChatToOpenAIResponsesAdapter,
     )
 

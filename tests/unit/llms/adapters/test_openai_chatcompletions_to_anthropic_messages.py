@@ -45,7 +45,7 @@ from ccproxy.llms.openai.models import (
 async def test_openai_chat_to_anthropic_messages_adapter_adapt_response_delegates() -> (
     None
 ):
-    from ccproxy.llms.adapters.openai_chatcompletions_to_anthropic_messages import (
+    from ccproxy.llms.adapters.openai_to_anthropic.chat_to_messages import (
         OpenAIChatToAnthropicMessagesAdapter,
     )
 
@@ -65,7 +65,7 @@ async def test_openai_chat_to_anthropic_messages_adapter_adapt_response_delegate
 
 @pytest.mark.asyncio
 async def test_anthropic_to_openai_chat_stream_mapping_minimal() -> None:
-    from ccproxy.llms.adapters.openai_chatcompletions_to_anthropic_messages import (
+    from ccproxy.llms.adapters.openai_to_anthropic.chat_to_messages import (
         OpenAIChatToAnthropicMessagesAdapter,
     )
 
@@ -128,7 +128,7 @@ async def test_anthropic_to_openai_chat_stream_mapping_minimal() -> None:
 
 @pytest.mark.asyncio
 async def test_openai_chat_to_anthropic_request_basic() -> None:
-    from ccproxy.llms.adapters.openai_chatcompletions_to_anthropic_messages import (
+    from ccproxy.llms.adapters.openai_to_anthropic.chat_to_messages import (
         OpenAIChatToAnthropicMessagesAdapter,
     )
 
@@ -157,7 +157,7 @@ async def test_openai_chat_to_anthropic_request_basic() -> None:
 
 @pytest.mark.asyncio
 async def test_thinking_request_defaults_and_effort_mapping() -> None:
-    from ccproxy.llms.adapters.openai_chatcompletions_to_anthropic_messages import (
+    from ccproxy.llms.adapters.openai_to_anthropic.chat_to_messages import (
         OpenAIChatToAnthropicMessagesAdapter,
     )
 
@@ -192,7 +192,7 @@ async def test_thinking_request_defaults_and_effort_mapping() -> None:
 
 @pytest.mark.asyncio
 async def test_openai_chat_to_anthropic_images_data_url() -> None:
-    from ccproxy.llms.adapters.openai_chatcompletions_to_anthropic_messages import (
+    from ccproxy.llms.adapters.openai_to_anthropic.chat_to_messages import (
         OpenAIChatToAnthropicMessagesAdapter,
     )
 
@@ -221,7 +221,7 @@ async def test_openai_chat_to_anthropic_images_data_url() -> None:
 
 @pytest.mark.asyncio
 async def test_openai_chat_tools_and_tool_choice_mapping() -> None:
-    from ccproxy.llms.adapters.openai_chatcompletions_to_anthropic_messages import (
+    from ccproxy.llms.adapters.openai_to_anthropic.chat_to_messages import (
         OpenAIChatToAnthropicMessagesAdapter,
     )
 
@@ -265,7 +265,7 @@ async def test_openai_chat_tools_and_tool_choice_mapping() -> None:
 
 @pytest.mark.asyncio
 async def test_response_format_json_object_injects_system() -> None:
-    from ccproxy.llms.adapters.openai_chatcompletions_to_anthropic_messages import (
+    from ccproxy.llms.adapters.openai_to_anthropic.chat_to_messages import (
         OpenAIChatToAnthropicMessagesAdapter,
     )
 
@@ -282,7 +282,7 @@ async def test_response_format_json_object_injects_system() -> None:
 
 @pytest.mark.asyncio
 async def test_response_format_json_schema_injects_system_with_schema() -> None:
-    from ccproxy.llms.adapters.openai_chatcompletions_to_anthropic_messages import (
+    from ccproxy.llms.adapters.openai_to_anthropic.chat_to_messages import (
         OpenAIChatToAnthropicMessagesAdapter,
     )
 
@@ -305,7 +305,7 @@ async def test_response_format_json_schema_injects_system_with_schema() -> None:
 @pytest.mark.asyncio
 async def test_reasoning_effort_variations() -> None:
     """Test all reasoning effort levels and their budget mappings"""
-    from ccproxy.llms.adapters.openai_chatcompletions_to_anthropic_messages import (
+    from ccproxy.llms.adapters.openai_to_anthropic.chat_to_messages import (
         OpenAIChatToAnthropicMessagesAdapter,
     )
 
@@ -348,7 +348,7 @@ async def test_reasoning_effort_variations() -> None:
 @pytest.mark.asyncio
 async def test_response_format_json_schema_strict_mode() -> None:
     """Test response_format with strict mode variations"""
-    from ccproxy.llms.adapters.openai_chatcompletions_to_anthropic_messages import (
+    from ccproxy.llms.adapters.openai_to_anthropic.chat_to_messages import (
         OpenAIChatToAnthropicMessagesAdapter,
     )
 
@@ -398,7 +398,7 @@ async def test_response_format_json_schema_strict_mode() -> None:
 @pytest.mark.asyncio
 async def test_tool_choice_edge_cases() -> None:
     """Test various tool_choice configurations"""
-    from ccproxy.llms.adapters.openai_chatcompletions_to_anthropic_messages import (
+    from ccproxy.llms.adapters.openai_to_anthropic.chat_to_messages import (
         OpenAIChatToAnthropicMessagesAdapter,
     )
 
@@ -476,7 +476,7 @@ async def test_tool_choice_edge_cases() -> None:
 @pytest.mark.asyncio
 async def test_message_content_variations() -> None:
     """Test different message content structures"""
-    from ccproxy.llms.adapters.openai_chatcompletions_to_anthropic_messages import (
+    from ccproxy.llms.adapters.openai_to_anthropic.chat_to_messages import (
         OpenAIChatToAnthropicMessagesAdapter,
     )
 
@@ -556,7 +556,7 @@ async def test_message_content_variations() -> None:
 @pytest.mark.asyncio
 async def test_system_message_combinations() -> None:
     """Test various system message scenarios"""
-    from ccproxy.llms.adapters.openai_chatcompletions_to_anthropic_messages import (
+    from ccproxy.llms.adapters.openai_to_anthropic.chat_to_messages import (
         OpenAIChatToAnthropicMessagesAdapter,
     )
 

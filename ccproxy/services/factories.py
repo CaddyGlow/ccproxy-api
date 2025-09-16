@@ -210,8 +210,8 @@ class ConcreteServiceFactory:
         from ccproxy.adapters.openai.anthropic_to_openai_adapter import (
             OpenAIToAnthropicAdapter,
         )
-        from ccproxy.adapters.openai.response_api_to_openai_adapter import (
-            ResponseAPIToOpenAIAdapter,
+        from ccproxy.llms.adapters.openai_to_openai.response_api_to_chat import (
+            ResponseAPIToOpenAIChatAdapter,
         )
 
         # Core adapters that are always available
@@ -230,7 +230,7 @@ class ConcreteServiceFactory:
             ("openai", "anthropic"): OpenAIAdapter(openai_thinking_xml=thinking_xml),
             ("anthropic", "openai"): OpenAIToAnthropicAdapter(),
             # Response API → OpenAI for clients expecting OpenAI shape
-            ("response_api", "openai"): ResponseAPIToOpenAIAdapter(),
+            ("response_api", "openai"): ResponseAPIToOpenAIChatAdapter(),
         }
 
         for format_pair, adapter in core_adapters.items():

@@ -7,18 +7,20 @@ from typing import Any
 from pydantic import BaseModel
 
 from ccproxy.llms.adapters.base import BaseAPIAdapter
+from ccproxy.llms.adapters.shared import safe_extract_usage_tokens
 from ccproxy.llms.openai import models as openai_models
 from ccproxy.llms.openai.models import (
+    AnyStreamEvent,
     ChatCompletionChunk,
     ChatCompletionRequest,
     ChatCompletionResponse,
+    InputTokensDetails,
+    MessageOutput,
+    OutputTextContent,
+    OutputTokensDetails,
     ResponseObject,
     ResponseRequest,
     ResponseUsage,
-    InputTokensDetails,
-    OutputTokensDetails,
-    OutputTextContent,
-    MessageOutput,
 )
 
 
@@ -26,7 +28,7 @@ class ResponseAPIToOpenAIChatAdapter(
     BaseAPIAdapter[
         openai_models.ResponseRequest,
         openai_models.ChatCompletionResponse,
-        openai_models.ChatCompletionChunk,
+        openai_models.AnyStreamEvent,
     ]
 ):
     """Convert Response API payloads to OpenAI Chat Completions."""
@@ -47,10 +49,10 @@ class ResponseAPIToOpenAIChatAdapter(
         return await self._convert_response(response)
 
     def adapt_stream(
-        self, stream: AsyncIterator[ChatCompletionChunk]
+        self, stream: AsyncIterator[AnyStreamEvent]
     ) -> AsyncGenerator[ChatCompletionChunk, None]:
-        # Streaming conversion is not yet implemented; preserve previous passthrough
-        return stream  # type: ignore[return-value]
+        """Convert Response API stream events to OpenAI ChatCompletion chunks."""
+        return response_stream_to_chat_chunks(stream)
 
     async def adapt_error(self, error: BaseModel) -> BaseModel:
         # Chat Completions and Response API currently share the same error envelope
@@ -80,7 +82,7 @@ class ResponseAPIToOpenAIChatAdapter(
                         if part_type in {"input_text", "text"} and hasattr(
                             part, "text"
                         ):
-                            text_value = getattr(part, "text")
+                            text_value = part.text
                             if isinstance(text_value, str):
                                 text_parts.append(text_value)
 
@@ -167,3 +169,70 @@ class ResponseAPIToOpenAIChatAdapter(
             parallel_tool_calls=False,
             usage=usage,
         )
+
+
+
+def response_stream_to_chat_chunks(
+    stream: AsyncIterator[AnyStreamEvent],
+) -> AsyncGenerator[ChatCompletionChunk, None]:
+    """Convert Response API stream events to ChatCompletionChunk events."""
+
+    async def generator() -> AsyncGenerator[ChatCompletionChunk, None]:
+        model_id = ""
+        async for event_wrapper in stream:
+            if hasattr(event_wrapper, "root"):
+                evt = event_wrapper.root
+            else:
+                evt = event_wrapper  # type: ignore[arg-type]
+            if not hasattr(evt, "type"):
+                continue
+
+            if evt.type == "response.created":
+                model_id = getattr(evt.response, "model", "")
+            elif evt.type == "response.output_text.delta":
+                delta = getattr(evt, "delta", None) or ""
+                if delta:
+                    yield ChatCompletionChunk(
+                        id="chatcmpl-stream",
+                        object="chat.completion.chunk",
+                        created=0,
+                        model=model_id,
+                        choices=[
+                            openai_models.StreamingChoice(
+                                index=0,
+                                delta=openai_models.DeltaMessage(
+                                    role="assistant", content=delta
+                                ),
+                                finish_reason=None,
+                            )
+                        ],
+                    )
+            elif evt.type in {"response.completed", "response.incomplete", "response.failed"}:
+                usage = None
+                response_obj = getattr(evt, "response", None)
+                if response_obj and getattr(response_obj, "usage", None):
+                    input_tokens, output_tokens, _ = safe_extract_usage_tokens(
+                        response_obj.usage
+                    )
+                    usage = openai_models.CompletionUsage(
+                        prompt_tokens=input_tokens,
+                        completion_tokens=output_tokens,
+                        total_tokens=input_tokens + output_tokens,
+                    )
+                yield ChatCompletionChunk(
+                    id="chatcmpl-stream",
+                    object="chat.completion.chunk",
+                    created=0,
+                    model=model_id,
+                    choices=[
+                        openai_models.StreamingChoice(
+                            index=0,
+                            delta=openai_models.DeltaMessage(),
+                            finish_reason="stop",
+                        )
+                    ],
+                    usage=usage,
+                )
+                break
+
+    return generator()

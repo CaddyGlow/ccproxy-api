@@ -45,7 +45,7 @@ from ccproxy.llms.openai.models import (
 async def test_openai_responses_request_to_anthropic_messages_adapt_response_delegates() -> (
     None
 ):
-    from ccproxy.llms.adapters.openai_responses_request_to_anthropic_messages import (
+    from ccproxy.llms.adapters.openai_to_anthropic.responses_api_to_messages import (
         OpenAIResponsesRequestToAnthropicMessagesAdapter,
     )
 
@@ -66,7 +66,7 @@ async def test_openai_responses_request_to_anthropic_messages_adapt_response_del
 async def test_openai_responses_request_to_anthropic_messages_adapt_stream_minimal() -> (
     None
 ):
-    from ccproxy.llms.adapters.openai_responses_request_to_anthropic_messages import (
+    from ccproxy.llms.adapters.openai_to_anthropic.responses_api_to_messages import (
         OpenAIResponsesRequestToAnthropicMessagesAdapter,
     )
 
@@ -138,7 +138,7 @@ async def test_openai_responses_request_to_anthropic_messages_adapt_stream_minim
 @pytest.mark.asyncio
 async def test_openai_responses_request_basic_mapping() -> None:
     """Test basic request mapping from OpenAI Response format to Anthropic Messages"""
-    from ccproxy.llms.adapters.openai_responses_request_to_anthropic_messages import (
+    from ccproxy.llms.adapters.openai_to_anthropic.responses_api_to_messages import (
         OpenAIResponsesRequestToAnthropicMessagesAdapter,
     )
 
@@ -186,7 +186,7 @@ async def test_openai_responses_request_basic_mapping() -> None:
 @pytest.mark.asyncio
 async def test_complex_input_parameter_handling() -> None:
     """Test various input parameter structures"""
-    from ccproxy.llms.adapters.openai_responses_request_to_anthropic_messages import (
+    from ccproxy.llms.adapters.openai_to_anthropic.responses_api_to_messages import (
         OpenAIResponsesRequestToAnthropicMessagesAdapter,
     )
 
@@ -236,7 +236,7 @@ async def test_complex_input_parameter_handling() -> None:
 @pytest.mark.asyncio
 async def test_tools_array_processing() -> None:
     """Test comprehensive tools array processing"""
-    from ccproxy.llms.adapters.openai_responses_request_to_anthropic_messages import (
+    from ccproxy.llms.adapters.openai_to_anthropic.responses_api_to_messages import (
         OpenAIResponsesRequestToAnthropicMessagesAdapter,
     )
 
@@ -301,7 +301,7 @@ async def test_tools_array_processing() -> None:
 @pytest.mark.asyncio
 async def test_instructions_field_mapping() -> None:
     """Test instructions field mapping to system parameter"""
-    from ccproxy.llms.adapters.openai_responses_request_to_anthropic_messages import (
+    from ccproxy.llms.adapters.openai_to_anthropic.responses_api_to_messages import (
         OpenAIResponsesRequestToAnthropicMessagesAdapter,
     )
 
@@ -334,7 +334,7 @@ async def test_instructions_field_mapping() -> None:
 @pytest.mark.asyncio
 async def test_text_format_injection_comprehensive() -> None:
     """Test comprehensive text format injection scenarios"""
-    from ccproxy.llms.adapters.openai_responses_request_to_anthropic_messages import (
+    from ccproxy.llms.adapters.openai_to_anthropic.responses_api_to_messages import (
         OpenAIResponsesRequestToAnthropicMessagesAdapter,
     )
 
@@ -386,7 +386,7 @@ async def test_text_format_injection_comprehensive() -> None:
 @pytest.mark.asyncio
 async def test_reasoning_parameter_integration() -> None:
     """Test reasoning parameter mapping to thinking"""
-    from ccproxy.llms.adapters.openai_responses_request_to_anthropic_messages import (
+    from ccproxy.llms.adapters.openai_to_anthropic.responses_api_to_messages import (
         OpenAIResponsesRequestToAnthropicMessagesAdapter,
     )
 
@@ -422,7 +422,7 @@ async def test_reasoning_parameter_integration() -> None:
 @pytest.mark.asyncio
 async def test_complex_nested_request_structures() -> None:
     """Test complex nested request structures with multiple features"""
-    from ccproxy.llms.adapters.openai_responses_request_to_anthropic_messages import (
+    from ccproxy.llms.adapters.openai_to_anthropic.responses_api_to_messages import (
         OpenAIResponsesRequestToAnthropicMessagesAdapter,
     )
 
@@ -517,7 +517,7 @@ async def test_complex_nested_request_structures() -> None:
 @pytest.mark.asyncio
 async def test_edge_case_input_variations() -> None:
     """Test edge cases in input parameter handling"""
-    from ccproxy.llms.adapters.openai_responses_request_to_anthropic_messages import (
+    from ccproxy.llms.adapters.openai_to_anthropic.responses_api_to_messages import (
         OpenAIResponsesRequestToAnthropicMessagesAdapter,
     )
 

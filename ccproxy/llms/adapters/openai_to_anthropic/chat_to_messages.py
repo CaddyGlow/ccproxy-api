@@ -7,9 +7,13 @@ from typing import Any, Literal, cast
 from pydantic import BaseModel
 
 from ccproxy.llms.adapters.base import BaseAPIAdapter
-from ccproxy.llms.adapters.mapping import (
+from ccproxy.llms.adapters.shared import (
     ANTHROPIC_TO_OPENAI_FINISH_REASON,
     DEFAULT_MAX_TOKENS,
+    convert_openai_error_to_anthropic,
+)
+from ccproxy.llms.adapters.anthropic_to_openai.messages_to_chat import (
+    convert_anthropic_message_to_chat_response,
 )
 from ccproxy.llms.anthropic.models import (
     CreateMessageRequest,
@@ -73,13 +77,7 @@ class OpenAIChatToAnthropicMessagesAdapter(
         if not isinstance(response, MessageResponse):
             raise ValueError(f"Expected MessageResponse, got {type(response)}")
 
-        # Delegate to the reverse adapter
-        from ccproxy.llms.adapters.anthropic_messages_to_openai_chatcompletions import (
-            AnthropicMessagesToOpenAIChatAdapter,
-        )
-
-        reverse_adapter = AnthropicMessagesToOpenAIChatAdapter()
-        return await reverse_adapter.adapt_response(response)
+        return convert_anthropic_message_to_chat_response(response)
 
     def adapt_stream(
         self, stream: AsyncIterator[MessageStreamEvent]
@@ -159,9 +157,7 @@ class OpenAIChatToAnthropicMessagesAdapter(
         return generator()
 
     async def adapt_error(self, error: BaseModel) -> BaseModel:
-        """Convert error response - pass through for now."""
-        from ccproxy.llms.adapters.mapping import convert_openai_error_to_anthropic
-
+        """Convert OpenAI error payloads to the Anthropic envelope."""
         return convert_openai_error_to_anthropic(error)
 
     async def _convert_request(

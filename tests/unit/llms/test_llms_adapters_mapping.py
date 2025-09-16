@@ -46,7 +46,7 @@ from ccproxy.llms.openai.models import (
 
 @pytest.mark.asyncio
 async def test_anthropic_response_to_openai_chat_response():
-    from ccproxy.llms.adapters.anthropic_messages_to_openai_chatcompletions import (
+    from ccproxy.llms.adapters.anthropic_to_openai.messages_to_chat import (
         AnthropicMessagesToOpenAIChatAdapter,
     )
 
@@ -78,7 +78,7 @@ async def test_anthropic_response_to_openai_chat_response():
 async def test_thinking_block_serialization_in_response(monkeypatch):
     monkeypatch.setenv("LLM__OPENAI_THINKING_XML", "true")
 
-    from ccproxy.llms.adapters.anthropic_messages_to_openai_chatcompletions import (
+    from ccproxy.llms.adapters.anthropic_to_openai.messages_to_chat import (
         AnthropicMessagesToOpenAIChatAdapter,
     )
 
@@ -107,7 +107,7 @@ async def test_thinking_block_serialization_in_response(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_openai_chat_to_openai_response_request():
-    from ccproxy.llms.adapters.openai_chatcompletions_to_openai_responses import (
+    from ccproxy.llms.adapters.openai_to_openai.chat_to_responses import (
         OpenAIChatToOpenAIResponsesAdapter,
     )
 
@@ -130,7 +130,7 @@ async def test_openai_chat_to_openai_response_request():
 
 @pytest.mark.asyncio
 async def test_openai_chat_to_openai_responses_structured_outputs_json_schema():
-    from ccproxy.llms.adapters.openai_chatcompletions_to_openai_responses import (
+    from ccproxy.llms.adapters.openai_to_openai.chat_to_responses import (
         OpenAIChatToOpenAIResponsesAdapter,
     )
 
@@ -162,7 +162,7 @@ async def test_openai_chat_to_openai_responses_structured_outputs_json_schema():
 
 @pytest.mark.asyncio
 async def test_openai_response_to_openai_chat_response():
-    from ccproxy.llms.adapters.openai_responses_to_openai_chatcompletions import (
+    from ccproxy.llms.adapters.openai_to_openai.responses_to_chat import (
         OpenAIResponsesToOpenAIChatAdapter,
     )
 
@@ -202,7 +202,7 @@ async def test_openai_response_to_openai_chat_response():
 
 @pytest.mark.asyncio
 async def test_openai_responses_to_anthropic_maps_reasoning_to_thinking():
-    from ccproxy.llms.adapters.openai_responses_to_anthropic_responses import (
+    from ccproxy.llms.adapters.openai_to_anthropic.responses_api_to_messages import (
         OpenAIResponsesToAnthropicAdapter,
     )
 
@@ -257,7 +257,7 @@ async def test_openai_responses_to_anthropic_maps_reasoning_to_thinking():
 
 @pytest.mark.asyncio
 async def test_openai_responses_request_to_anthropic_messages():
-    from ccproxy.llms.adapters.openai_responses_request_to_anthropic_messages import (
+    from ccproxy.llms.adapters.openai_to_anthropic.responses_api_to_messages import (
         OpenAIResponsesRequestToAnthropicMessagesAdapter,
     )
 
@@ -304,7 +304,7 @@ async def test_openai_responses_request_to_anthropic_messages():
 
 @pytest.mark.asyncio
 async def test_openai_responses_request_to_anthropic_messages_text_format_injection():
-    from ccproxy.llms.adapters.openai_responses_request_to_anthropic_messages import (
+    from ccproxy.llms.adapters.openai_to_anthropic.responses_api_to_messages import (
         OpenAIResponsesRequestToAnthropicMessagesAdapter,
     )
 
@@ -344,7 +344,7 @@ async def test_openai_responses_request_to_anthropic_messages_text_format_inject
 
 @pytest.mark.asyncio
 async def test_openai_responses_request_instructions_to_system_passthrough():
-    from ccproxy.llms.adapters.openai_responses_request_to_anthropic_messages import (
+    from ccproxy.llms.adapters.openai_to_anthropic.responses_api_to_messages import (
         OpenAIResponsesRequestToAnthropicMessagesAdapter,
     )
 
@@ -367,7 +367,7 @@ async def test_openai_responses_request_instructions_to_system_passthrough():
 
 @pytest.mark.asyncio
 async def test_openai_responses_request_to_anthropic_messages_text_format_json_object():
-    from ccproxy.llms.adapters.openai_responses_request_to_anthropic_messages import (
+    from ccproxy.llms.adapters.openai_to_anthropic.responses_api_to_messages import (
         OpenAIResponsesRequestToAnthropicMessagesAdapter,
     )
 
@@ -391,7 +391,7 @@ async def test_openai_responses_request_to_anthropic_messages_text_format_json_o
 
 @pytest.mark.asyncio
 async def test_openai_responses_request_reasoning_to_anthropic_thinking():
-    from ccproxy.llms.adapters.openai_responses_request_to_anthropic_messages import (
+    from ccproxy.llms.adapters.openai_to_anthropic.responses_api_to_messages import (
         OpenAIResponsesRequestToAnthropicMessagesAdapter,
     )
 
@@ -411,7 +411,7 @@ async def test_openai_responses_request_reasoning_to_anthropic_thinking():
 
 @pytest.mark.asyncio
 async def test_openai_responses_request_stream_maps_refusal_done_event():
-    from ccproxy.llms.adapters.openai_responses_request_to_anthropic_messages import (
+    from ccproxy.llms.adapters.openai_to_anthropic.responses_api_to_messages import (
         OpenAIResponsesRequestToAnthropicMessagesAdapter,
     )
     from ccproxy.llms.anthropic.models import (

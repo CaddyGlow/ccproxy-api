@@ -37,7 +37,7 @@ from ccproxy.llms.openai.models import (
 
 @pytest.mark.asyncio
 async def test_anthropic_to_openai_responses_request_mapping():
-    from ccproxy.llms.adapters.anthropic_messages_to_openai_responses import (
+    from ccproxy.llms.adapters.anthropic_to_openai.messages_to_responses import (
         AnthropicMessagesToOpenAIResponsesAdapter,
     )
 
@@ -92,7 +92,7 @@ async def test_anthropic_to_openai_responses_request_mapping():
 
 @pytest.mark.asyncio
 async def test_anthropic_to_openai_responses_response_mapping_thinking_and_tool_use():
-    from ccproxy.llms.adapters.anthropic_messages_to_openai_responses import (
+    from ccproxy.llms.adapters.anthropic_to_openai.messages_to_responses import (
         AnthropicMessagesToOpenAIResponsesAdapter,
     )
 
@@ -135,7 +135,7 @@ async def test_anthropic_to_openai_responses_response_mapping_thinking_and_tool_
 
 @pytest.mark.asyncio
 async def test_anthropic_to_openai_responses_stream_mapping():
-    from ccproxy.llms.adapters.anthropic_messages_to_openai_responses import (
+    from ccproxy.llms.adapters.anthropic_to_openai.messages_to_responses import (
         AnthropicMessagesToOpenAIResponsesAdapter,
     )
     from ccproxy.llms.anthropic import models as anthropic_models

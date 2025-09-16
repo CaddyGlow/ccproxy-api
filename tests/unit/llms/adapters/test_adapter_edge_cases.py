@@ -30,7 +30,7 @@ class TestMalformedContentBlocks:
     @pytest.mark.asyncio
     async def test_openai_chat_malformed_content(self) -> None:
         """Test OpenAI Chat adapter with malformed content structures"""
-        from ccproxy.llms.adapters.openai_chatcompletions_to_anthropic_messages import (
+        from ccproxy.llms.adapters.openai_to_anthropic.chat_to_messages import (
             OpenAIChatToAnthropicMessagesAdapter,
         )
 
@@ -88,7 +88,7 @@ class TestMalformedContentBlocks:
     @pytest.mark.asyncio
     async def test_anthropic_malformed_response_content(self) -> None:
         """Test Anthropic response adapter with malformed content blocks"""
-        from ccproxy.llms.adapters.anthropic_messages_to_openai_chatcompletions import (
+        from ccproxy.llms.adapters.anthropic_to_openai.messages_to_chat import (
             AnthropicMessagesToOpenAIChatAdapter,
         )
 
@@ -127,7 +127,7 @@ class TestEmptyMessageLists:
     @pytest.mark.asyncio
     async def test_empty_messages_list(self) -> None:
         """Test adapters with empty messages array"""
-        from ccproxy.llms.adapters.openai_chatcompletions_to_anthropic_messages import (
+        from ccproxy.llms.adapters.openai_to_anthropic.chat_to_messages import (
             OpenAIChatToAnthropicMessagesAdapter,
         )
 
@@ -146,7 +146,7 @@ class TestEmptyMessageLists:
     @pytest.mark.asyncio
     async def test_messages_with_empty_content(self) -> None:
         """Test messages with empty or None content"""
-        from ccproxy.llms.adapters.openai_chatcompletions_to_anthropic_messages import (
+        from ccproxy.llms.adapters.openai_to_anthropic.chat_to_messages import (
             OpenAIChatToAnthropicMessagesAdapter,
         )
 
@@ -180,7 +180,7 @@ class TestEmptyMessageLists:
     @pytest.mark.asyncio
     async def test_openai_responses_empty_input(self) -> None:
         """Test OpenAI Responses adapter with empty input"""
-        from ccproxy.llms.adapters.openai_responses_request_to_anthropic_messages import (
+        from ccproxy.llms.adapters.openai_to_anthropic.responses_api_to_messages import (
             OpenAIResponsesRequestToAnthropicMessagesAdapter,
         )
 
@@ -211,7 +211,7 @@ class TestUnexpectedFieldValues:
     @pytest.mark.asyncio
     async def test_invalid_model_names(self) -> None:
         """Test with invalid or unusual model names"""
-        from ccproxy.llms.adapters.openai_chatcompletions_to_anthropic_messages import (
+        from ccproxy.llms.adapters.openai_to_anthropic.chat_to_messages import (
             OpenAIChatToAnthropicMessagesAdapter,
         )
 
@@ -238,7 +238,7 @@ class TestUnexpectedFieldValues:
     @pytest.mark.asyncio
     async def test_extreme_token_values(self) -> None:
         """Test with extreme token limit values"""
-        from ccproxy.llms.adapters.openai_chatcompletions_to_anthropic_messages import (
+        from ccproxy.llms.adapters.openai_to_anthropic.chat_to_messages import (
             OpenAIChatToAnthropicMessagesAdapter,
         )
 
@@ -267,7 +267,7 @@ class TestUnexpectedFieldValues:
     @pytest.mark.asyncio
     async def test_invalid_role_values(self) -> None:
         """Test with invalid or unexpected role values"""
-        from ccproxy.llms.adapters.openai_chatcompletions_to_anthropic_messages import (
+        from ccproxy.llms.adapters.openai_to_anthropic.chat_to_messages import (
             OpenAIChatToAnthropicMessagesAdapter,
         )
 
@@ -316,7 +316,7 @@ class TestBoundaryConditions:
     @pytest.mark.asyncio
     async def test_maximum_message_length(self) -> None:
         """Test with extremely long messages"""
-        from ccproxy.llms.adapters.openai_chatcompletions_to_anthropic_messages import (
+        from ccproxy.llms.adapters.openai_to_anthropic.chat_to_messages import (
             OpenAIChatToAnthropicMessagesAdapter,
         )
 
@@ -335,7 +335,7 @@ class TestBoundaryConditions:
     @pytest.mark.asyncio
     async def test_maximum_tools_array(self) -> None:
         """Test with large number of tools"""
-        from ccproxy.llms.adapters.openai_chatcompletions_to_anthropic_messages import (
+        from ccproxy.llms.adapters.openai_to_anthropic.chat_to_messages import (
             OpenAIChatToAnthropicMessagesAdapter,
         )
 
@@ -370,7 +370,7 @@ class TestBoundaryConditions:
     @pytest.mark.asyncio
     async def test_deeply_nested_json_schema(self) -> None:
         """Test with deeply nested JSON schemas"""
-        from ccproxy.llms.adapters.openai_chatcompletions_to_anthropic_messages import (
+        from ccproxy.llms.adapters.openai_to_anthropic.chat_to_messages import (
             OpenAIChatToAnthropicMessagesAdapter,
         )
 
@@ -403,7 +403,7 @@ class TestBoundaryConditions:
     @pytest.mark.asyncio
     async def test_unicode_and_special_characters(self) -> None:
         """Test handling of Unicode and special characters"""
-        from ccproxy.llms.adapters.openai_chatcompletions_to_anthropic_messages import (
+        from ccproxy.llms.adapters.openai_to_anthropic.chat_to_messages import (
             OpenAIChatToAnthropicMessagesAdapter,
         )
 
@@ -437,7 +437,7 @@ class TestCompatibilityEdgeCases:
     @pytest.mark.asyncio
     async def test_anthropic_to_openai_unsupported_features(self) -> None:
         """Test Anthropic features that don't map cleanly to OpenAI"""
-        from ccproxy.llms.adapters.anthropic_messages_to_openai_chatcompletions import (
+        from ccproxy.llms.adapters.anthropic_to_openai.messages_to_chat import (
             AnthropicMessagesToOpenAIChatAdapter,
         )
 
@@ -475,7 +475,7 @@ class TestCompatibilityEdgeCases:
     @pytest.mark.asyncio
     async def test_openai_to_anthropic_unsupported_parameters(self) -> None:
         """Test OpenAI parameters that don't map to Anthropic"""
-        from ccproxy.llms.adapters.openai_chatcompletions_to_anthropic_messages import (
+        from ccproxy.llms.adapters.openai_to_anthropic.chat_to_messages import (
             OpenAIChatToAnthropicMessagesAdapter,
         )
 

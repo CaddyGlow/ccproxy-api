@@ -2,10 +2,10 @@ from collections.abc import AsyncIterator
 
 import pytest
 
-from ccproxy.llms.adapters.openai_chatcompletions_to_openai_responses import (
+from ccproxy.llms.adapters.openai_to_openai.chat_to_responses import (
     OpenAIChatToOpenAIResponsesAdapter,
 )
-from ccproxy.llms.adapters.openai_responses_to_openai_chatcompletions import (
+from ccproxy.llms.adapters.openai_to_openai.responses_to_chat import (
     OpenAIResponsesToOpenAIChatAdapter,
 )
 from ccproxy.llms.adapters.shim import AdapterShim

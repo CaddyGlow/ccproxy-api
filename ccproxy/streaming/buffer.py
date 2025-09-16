@@ -5,6 +5,7 @@ internally to a streaming request, buffered, and then returned as a non-streamin
 """
 
 import json
+import time
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
@@ -431,6 +432,7 @@ class StreamingBufferService:
             try:
                 parsed_data = handler_config.sse_parser(full_content)
                 if parsed_data is not None:
+                    parsed_data = self._normalize_response_payload(parsed_data)
                     logger.debug(
                         "sse_parser_success",
                         parsed_keys=list(parsed_data.keys())
@@ -457,7 +459,7 @@ class StreamingBufferService:
         try:
             parsed_json = json.loads(full_content.strip())
             if isinstance(parsed_json, dict):
-                return parsed_json
+                return self._normalize_response_payload(parsed_json)
             else:
                 # If it's not a dict, wrap it
                 return {"data": parsed_json}
@@ -468,6 +470,7 @@ class StreamingBufferService:
         try:
             parsed_data = self._extract_from_generic_sse(full_content)
             if parsed_data is not None:
+                parsed_data = self._normalize_response_payload(parsed_data)
                 logger.debug(
                     "generic_sse_parsing_success",
                     request_id=getattr(request_context, "request_id", None),
@@ -524,7 +527,12 @@ class StreamingBufferService:
                 except json.JSONDecodeError:
                     continue
 
-        return last_json_data
+        if isinstance(last_json_data, dict) and "response" in last_json_data:
+            response_payload = last_json_data["response"]
+            if isinstance(response_payload, dict):
+                return self._normalize_response_payload(response_payload)
+
+        return self._normalize_response_payload(last_json_data)
 
     def _extract_usage_from_chunks(self, chunks: list[bytes]) -> dict[str, int] | None:
         """Extract token usage from SSE chunks and normalize to Response API shape.
@@ -594,6 +602,133 @@ class StreamingBufferService:
             "total_tokens": total_tokens
             or ((input_tokens or 0) + (output_tokens or 0)),
         }
+
+    def _normalize_response_payload(self, data: Any) -> Any:
+        """Normalize Response API style payloads for downstream adapters.
+
+        Ensures the structure conforms to `ResponseObject` expectations by
+        filtering/transforming output items and filling required usage fields.
+        """
+        if not isinstance(data, dict):
+            return data
+
+        target = data
+        if "response" in data and isinstance(data["response"], dict):
+            target = data["response"]
+
+        outputs = target.get("output")
+        normalized_outputs: list[dict[str, Any]] = []
+        if isinstance(outputs, list):
+            for item in outputs:
+                if not isinstance(item, dict):
+                    continue
+
+                item_type = item.get("type")
+                if item_type == "message":
+                    normalized_outputs.append(self._normalize_message_output(item))
+                elif item_type == "reasoning":
+                    summary = item.get("summary") or []
+                    texts: list[str] = []
+                    for part in summary:
+                        if isinstance(part, dict):
+                            text = part.get("text") or ""
+                            if text:
+                                texts.append(text)
+                    if texts:
+                        normalized_outputs.append(
+                            {
+                                "type": "message",
+                                "id": item.get("id", "msg_reasoning"),
+                                "status": item.get("status", "completed"),
+                                "role": "assistant",
+                                "content": [
+                                    {
+                                        "type": "output_text",
+                                        "text": " ".join(texts),
+                                    }
+                                ],
+                            }
+                        )
+
+        if normalized_outputs:
+            target["output"] = normalized_outputs
+        elif isinstance(outputs, list) and outputs:
+            # Fallback: ensure at least one assistant message exists
+            target["output"] = [
+                {
+                    "type": "message",
+                    "id": target.get("id", "msg_unnormalized"),
+                    "status": "completed",
+                    "role": "assistant",
+                    "content": [
+                        {
+                            "type": "output_text",
+                            "text": "",
+                        }
+                    ],
+                }
+            ]
+
+        # Ensure required top-level fields exist
+        target.setdefault("object", "response")
+        target.setdefault("status", "completed")
+        target.setdefault("parallel_tool_calls", False)
+        target.setdefault("created_at", int(time.time()))
+        target.setdefault("id", data.get("id", target.get("id", "resp-buffered")))
+        target.setdefault("model", data.get("model", target.get("model", "")))
+
+        usage = target.get("usage")
+        if isinstance(usage, dict):
+            if "input_tokens" not in usage:
+                usage["input_tokens"] = int(usage.get("prompt_tokens", 0) or 0)
+            if "output_tokens" not in usage:
+                usage["output_tokens"] = int(usage.get("completion_tokens", 0) or 0)
+            usage.setdefault(
+                "total_tokens",
+                usage.get("input_tokens", 0) + usage.get("output_tokens", 0),
+            )
+            usage.setdefault("input_tokens_details", {"cached_tokens": 0})
+            usage.setdefault("output_tokens_details", {"reasoning_tokens": 0})
+        else:
+            target.setdefault(
+                "usage",
+                {
+                    "input_tokens": 0,
+                    "input_tokens_details": {"cached_tokens": 0},
+                    "output_tokens": 0,
+                    "output_tokens_details": {"reasoning_tokens": 0},
+                    "total_tokens": 0,
+                },
+            )
+
+        return target
+
+    def _normalize_message_output(self, item: dict[str, Any]) -> dict[str, Any]:
+        """Normalize a message output item to Response API expectations."""
+        normalized = dict(item)
+        normalized["type"] = "message"
+        normalized.setdefault("status", "completed")
+        normalized.setdefault("role", "assistant")
+
+        content = normalized.get("content")
+        if isinstance(content, list):
+            fixed_content = []
+            for part in content:
+                if isinstance(part, dict) and part.get("type") == "output_text":
+                    text = part.get("text") or ""
+                    fixed_content.append({"type": "output_text", "text": text})
+                elif isinstance(part, str):
+                    fixed_content.append({"type": "output_text", "text": part})
+            normalized["content"] = fixed_content or [
+                {"type": "output_text", "text": ""}
+            ]
+        elif isinstance(content, str):
+            normalized["content"] = [{"type": "output_text", "text": content}]
+        else:
+            normalized["content"] = [{"type": "output_text", "text": ""}]
+
+        normalized.setdefault("id", item.get("id", "msg_assistant"))
+        return normalized
 
     async def _build_non_streaming_response(
         self,
