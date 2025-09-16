@@ -5,7 +5,7 @@ from typing import Any
 
 from pydantic import BaseModel
 
-from ccproxy.llms.adapters.shared.usage import (
+from ccproxy.llms.adapters.openai_to_openai.helpers import (
     convert_openai_completion_usage_to_openai_response_usage,
     convert_openai_response_usage_to_openai_completion_usage,
 )

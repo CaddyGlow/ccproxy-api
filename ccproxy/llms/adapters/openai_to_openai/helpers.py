@@ -1,8 +1,78 @@
-from ccproxy.llms.adapters.shared.usage import (
-    convert_openai_completion_usage_to_openai_response_usage,
+import time
+from collections.abc import AsyncGenerator, AsyncIterator
+from typing import Any
+
+# Local usage converters (inlined from shared.usage)
+from ccproxy.llms.openai.models import (
+    CompletionTokensDetails,
+    CompletionUsage,
+    InputTokensDetails,
+    OutputTokensDetails,
+    PromptTokensDetails,
+    ResponseUsage,
 )
+
+
+def convert_openai_response_usage_to_openai_completion_usage(
+    usage: ResponseUsage,
+) -> CompletionUsage:
+    input_tokens = int(getattr(usage, "input_tokens", 0) or 0)
+    output_tokens = int(getattr(usage, "output_tokens", 0) or 0)
+
+    cached_tokens = 0
+    input_details = getattr(usage, "input_tokens_details", None)
+    if input_details:
+        cached_tokens = int(getattr(input_details, "cached_tokens", 0) or 0)
+
+    reasoning_tokens = 0
+    output_details = getattr(usage, "output_tokens_details", None)
+    if output_details:
+        reasoning_tokens = int(getattr(output_details, "reasoning_tokens", 0) or 0)
+
+    prompt_tokens_details = PromptTokensDetails(cached_tokens=cached_tokens, audio_tokens=0)
+    completion_tokens_details = CompletionTokensDetails(
+        reasoning_tokens=reasoning_tokens,
+        audio_tokens=0,
+        accepted_prediction_tokens=0,
+        rejected_prediction_tokens=0,
+    )
+
+    return CompletionUsage(
+        prompt_tokens=input_tokens,
+        completion_tokens=output_tokens,
+        total_tokens=input_tokens + output_tokens,
+        prompt_tokens_details=prompt_tokens_details,
+        completion_tokens_details=completion_tokens_details,
+    )
+
+
+def convert_openai_completion_usage_to_openai_response_usage(
+    usage: CompletionUsage,
+) -> ResponseUsage:
+    prompt_tokens = int(getattr(usage, "prompt_tokens", 0) or 0)
+    completion_tokens = int(getattr(usage, "completion_tokens", 0) or 0)
+
+    cached_tokens = 0
+    prompt_details = getattr(usage, "prompt_tokens_details", None)
+    if prompt_details:
+        cached_tokens = int(getattr(prompt_details, "cached_tokens", 0) or 0)
+
+    reasoning_tokens = 0
+    completion_details = getattr(usage, "completion_tokens_details", None)
+    if completion_details:
+        reasoning_tokens = int(getattr(completion_details, "reasoning_tokens", 0) or 0)
+
+    input_tokens_details = InputTokensDetails(cached_tokens=cached_tokens)
+    output_tokens_details = OutputTokensDetails(reasoning_tokens=reasoning_tokens)
+
+    return ResponseUsage(
+        input_tokens=prompt_tokens,
+        input_tokens_details=input_tokens_details,
+        output_tokens=completion_tokens,
+        output_tokens_details=output_tokens_details,
+        total_tokens=prompt_tokens + completion_tokens,
+    )
 import ccproxy.llms.openai.models as openai_models
-# import ccproxy.llms.anthropic.models as anthropic_models
 
 
 async def convert__openai_response_to_openaichat__request(
@@ -77,12 +147,12 @@ async def convert__openai_response_to_openaichat__request(
     if request.parallel_tool_calls is not None:
         payload["parallel_tool_calls"] = request.parallel_tool_calls
 
-    return ChatCompletionRequest.model_validate(payload)
+    return openai_models.ChatCompletionRequest.model_validate(payload)
 
 
 async def convert__openai_chat_to_openai_response__response(
-    chat_response: ChatCompletionResponse,
-) -> ResponseObject:
+    chat_response: openai_models.ChatCompletionResponse,
+) -> openai_models.ResponseObject:
     content_text = ""
     if chat_response.choices:
         first_choice = chat_response.choices[0]
@@ -101,7 +171,9 @@ async def convert__openai_chat_to_openai_response__response(
 
     usage: openai_models.ResponseUsage | None = None
     if chat_response.usage:
-        usage = convert_openai_completion_usage_to_openai_response_usage(chat_response)
+        usage = convert_openai_completion_usage_to_openai_response_usage(
+            chat_response.usage
+        )
 
     return openai_models.ResponseObject(
         id=chat_response.id or "resp-unknown",
@@ -160,18 +232,15 @@ def convert__openai_response_to_openai_chat__response(
     )
 
 
-def response_stream_to_chat_chunks(
-    stream: AsyncIterator[AnyStreamEvent],
-) -> AsyncGenerator[ChatCompletionChunk, None]:
+def convert__openai_response_to_openai_chat__stream(
+    stream: AsyncIterator[openai_models.AnyStreamEvent],
+) -> AsyncGenerator[openai_models.ChatCompletionChunk, None]:
     """Convert Response API stream events to ChatCompletionChunk events."""
 
-    async def generator() -> AsyncGenerator[ChatCompletionChunk, None]:
+    async def generator() -> AsyncGenerator[openai_models.ChatCompletionChunk, None]:
         model_id = ""
         async for event_wrapper in stream:
-            if hasattr(event_wrapper, "root"):
-                evt = event_wrapper.root
-            else:
-                evt = event_wrapper  # type: ignore[arg-type]
+            evt = getattr(event_wrapper, "root", event_wrapper)
             if not hasattr(evt, "type"):
                 continue
 
@@ -180,7 +249,7 @@ def response_stream_to_chat_chunks(
             elif evt.type == "response.output_text.delta":
                 delta = getattr(evt, "delta", None) or ""
                 if delta:
-                    yield ChatCompletionChunk(
+                    yield openai_models.ChatCompletionChunk(
                         id="chatcmpl-stream",
                         object="chat.completion.chunk",
                         created=0,
@@ -203,15 +272,10 @@ def response_stream_to_chat_chunks(
                 usage = None
                 response_obj = getattr(evt, "response", None)
                 if response_obj and getattr(response_obj, "usage", None):
-                    input_tokens, output_tokens, _ = safe_extract_usage_tokens(
+                    usage = convert_openai_response_usage_to_openai_completion_usage(
                         response_obj.usage
                     )
-                    usage = openai_models.CompletionUsage(
-                        prompt_tokens=input_tokens,
-                        completion_tokens=output_tokens,
-                        total_tokens=input_tokens + output_tokens,
-                    )
-                yield ChatCompletionChunk(
+                yield openai_models.ChatCompletionChunk(
                     id="chatcmpl-stream",
                     object="chat.completion.chunk",
                     created=0,
@@ -225,13 +289,117 @@ def response_stream_to_chat_chunks(
                     ],
                     usage=usage,
                 )
-            break
+
+    return generator()
+
+
+def convert__openai_chat_to_openai_response__stream(
+    stream: AsyncIterator[openai_models.ChatCompletionChunk],
+) -> AsyncGenerator[
+    openai_models.ResponseCreatedEvent
+    | openai_models.ResponseInProgressEvent
+    | openai_models.ResponseCompletedEvent
+    | openai_models.ResponseOutputTextDeltaEvent,
+    None,
+]:
+    """Convert OpenAI ChatCompletionChunk stream to Responses API events.
+
+    Emits a minimal sequence: response.created (first chunk with model),
+    response.output_text.delta for each delta content, optional
+    response.in_progress with usage if present mid-stream, and a final
+    response.completed when stream ends.
+    """
+
+    async def generator():
+        created_sent = False
+        response_id = "chat-to-resp"
+        item_id = "msg_stream"
+        output_index = 0
+        content_index = 0
+        last_model = ""
+        sequence_counter = 0
+
+        async for chunk in stream:
+            model = getattr(chunk, "model", None) or last_model
+            last_model = model
+
+            if not created_sent:
+                created_sent = True
+                sequence_counter += 1
+                yield openai_models.ResponseCreatedEvent(
+                    type="response.created",
+                    sequence_number=sequence_counter,
+                    response=openai_models.ResponseObject(
+                        id=response_id,
+                        object="response",
+                        created_at=0,
+                        status="in_progress",
+                        model=model,
+                        output=[],
+                        parallel_tool_calls=False,
+                    ),
+                )
+
+            # Emit deltas for assistant content
+            if chunk.choices:
+                first = chunk.choices[0]
+                delta = getattr(first, "delta", None)
+                text = getattr(delta, "content", None) if delta else None
+                if isinstance(text, str) and text:
+                    sequence_counter += 1
+                    yield openai_models.ResponseOutputTextDeltaEvent(
+                        type="response.output_text.delta",
+                        sequence_number=sequence_counter,
+                        item_id=item_id,
+                        output_index=output_index,
+                        content_index=content_index,
+                        delta=text,
+                    )
+                    content_index += 1
+
+            # If usage arrives in a non-final chunk, surface as in_progress
+            if chunk.usage and (
+                not chunk.choices or chunk.choices[0].finish_reason is None
+            ):
+                sequence_counter += 1
+                yield openai_models.ResponseInProgressEvent(
+                    type="response.in_progress",
+                    sequence_number=sequence_counter,
+                    response=openai_models.ResponseObject(
+                        id=response_id,
+                        object="response",
+                        created_at=0,
+                        status="in_progress",
+                        model=model,
+                        output=[],
+                        parallel_tool_calls=False,
+                        usage=convert_openai_completion_usage_to_openai_response_usage(
+                            chunk.usage
+                        ),
+                    ),
+                )
+
+        # Final completion event
+        sequence_counter += 1
+        yield openai_models.ResponseCompletedEvent(
+            type="response.completed",
+            sequence_number=sequence_counter,
+            response=openai_models.ResponseObject(
+                id=response_id,
+                object="response",
+                created_at=0,
+                status="completed",
+                model=last_model,
+                output=[],
+                parallel_tool_calls=False,
+            ),
+        )
 
     return generator()
 
 
 async def convert__openai_chat_to_openai_response__request(
-    self, request: openai_models.ChatCompletionRequest
+    request: openai_models.ChatCompletionRequest,
 ) -> openai_models.ResponseRequest:
     """Convert ChatCompletionRequest to ResponseRequest using typed models."""
     model = request.model

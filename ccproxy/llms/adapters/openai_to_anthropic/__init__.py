@@ -1,7 +1,7 @@
 """Adapters that convert OpenAI payloads to Anthropic-compatible formats."""
 
 from .chat_to_messages import OpenAIChatToAnthropicMessagesAdapter
-from .responses_api_to_messages import (
+from .responses_to_messages import (
     OpenAIResponsesRequestToAnthropicMessagesAdapter,
     OpenAIResponsesToAnthropicAdapter,
 )
