@@ -127,7 +127,7 @@ class ResponseAPIToOpenAIAdapter(APIAdapter):
             return openai_resp
         except Exception as e:
             logger.error(
-                "response_to_openai_response_conversion_failed",
+                "response_to_openai_responses_conversion_failed",
                 error=str(e),
                 exc_info=e,
             )

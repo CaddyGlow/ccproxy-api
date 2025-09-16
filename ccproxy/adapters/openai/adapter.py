@@ -25,7 +25,7 @@ from .models import (
     OpenAIResponseMessage,
     OpenAIUsage,
     format_openai_tool_call,
-    generate_openai_response_id,
+    generate_openai_responses_id,
     generate_openai_system_fingerprint,
 )
 from .response_adapter import ResponseAdapter
@@ -364,7 +364,7 @@ class OpenAIAdapter(APIAdapter, StreamingConfigurable):
             original_model = response.get("model", "gpt-4")
 
             # Generate response ID
-            request_id = generate_openai_response_id()
+            request_id = generate_openai_responses_id()
 
             # Convert content and extract tool calls
             content, tool_calls = self._convert_content_blocks(response)

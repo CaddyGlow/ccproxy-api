@@ -2,7 +2,7 @@ import pytest
 
 from ccproxy.llms.adapters.openai_to_anthropic.helpers import (
     convert__openai_chat_to_anthropic_message__request,
-    convert__openai_response_to_anthropic_message__request,
+    convert__openai_responses_to_anthropic_message__request,
 )
 from ccproxy.llms.anthropic import models as anthropic_models
 from ccproxy.llms.openai import models as openai_models
@@ -67,7 +67,7 @@ async def test_openai_chat_tools_and_choice_mapping() -> None:
 
 
 @pytest.mark.asyncio
-async def test_openai_response_request_to_anthropic_messages_basic() -> None:
+async def test_openai_responses_request_to_anthropic_messages_basic() -> None:
     resp_req = openai_models.ResponseRequest(
         model="gpt-4o",
         instructions="sys",
@@ -81,7 +81,7 @@ async def test_openai_response_request_to_anthropic_messages_basic() -> None:
         max_output_tokens=64,
     )
 
-    out = convert__openai_response_to_anthropic_message__request(resp_req)
+    out = convert__openai_responses_to_anthropic_message__request(resp_req)
     anth_req = anthropic_models.CreateMessageRequest.model_validate(out)
 
     assert anth_req.model

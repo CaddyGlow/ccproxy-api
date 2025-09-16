@@ -9,7 +9,7 @@ from typing import Any
 import httpx
 
 
-def assert_openai_response_format(data: dict[str, Any]) -> None:
+def assert_openai_responses_format(data: dict[str, Any]) -> None:
     """Assert that response follows OpenAI API format."""
     required_fields = ["id", "object", "created", "model", "choices", "usage"]
     for field in required_fields:

@@ -50,7 +50,7 @@ class ResponseUsage(OpenAIBaseModel):
     output_tokens_details: dict[str, Any] | None = None
 
 
-def generate_openai_response_id() -> str:
+def generate_openai_responses_id() -> str:
     """Generate an OpenAI-compatible response ID."""
     return f"chatcmpl-{uuid.uuid4().hex[:29]}"
 
@@ -84,7 +84,7 @@ __all__ = [
     "OpenAIFunctionCall",
     "OpenAIToolCall",
     "ResponseUsage",
-    "generate_openai_response_id",
+    "generate_openai_responses_id",
     "generate_openai_system_fingerprint",
     "format_openai_tool_call",
 ]

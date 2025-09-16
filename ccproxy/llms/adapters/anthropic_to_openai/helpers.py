@@ -24,7 +24,7 @@ ResponseStreamEvent = (
 )
 
 
-def convert_anthropic_usage_to_openai_completion_usage(
+def convert__anthropic_usage_to_openai_completion__usage(
     usage: anthropic_models.Usage,
 ) -> openai_models.CompletionUsage:
     input_tokens = int(getattr(usage, "input_tokens", 0) or 0)
@@ -54,7 +54,7 @@ def convert_anthropic_usage_to_openai_completion_usage(
     )
 
 
-def convert_anthropic_usage_to_openai_response_usage(
+def convert__anthropic_usage_to_openai_responses__usage(
     usage: anthropic_models.Usage,
 ) -> openai_models.ResponseUsage:
     input_tokens = int(getattr(usage, "input_tokens", 0) or 0)
@@ -135,7 +135,7 @@ def convert__anthropic_to_openai__error(error: BaseModel) -> BaseModel:
     )
 
 
-async def convert__anthropic_message_to_openai_response__stream(
+async def convert__anthropic_message_to_openai_responses__stream(
     stream: AsyncIterator[anthropic_models.MessageStreamEvent],
 ) -> AsyncGenerator[ResponseStreamEvent, None]:
     item_id = "msg_stream"
@@ -232,7 +232,7 @@ async def convert__anthropic_message_to_openai_response__stream(
                     parallel_tool_calls=False,
                     usage=cast(
                         openai_models.ResponseUsage,
-                        convert_anthropic_usage_to_openai_response_usage(evt.usage),
+                        convert__anthropic_usage_to_openai_responses__usage(evt.usage),
                     ),
                 ),
             )
@@ -264,7 +264,7 @@ async def convert__anthropic_message_to_openai_response__stream(
             )
 
 
-def convert__anthropic_message_to_openai_response__request(
+def convert__anthropic_message_to_openai_responses__request(
     request: anthropic_models.CreateMessageRequest,
 ) -> openai_models.ResponseRequest:
     """Convert Anthropic CreateMessageRequest to OpenAI ResponseRequest using typed models."""
@@ -444,7 +444,7 @@ async def convert__anthropic_message_to_openai_chat__stream(
     return generator()
 
 
-def convert__anthropic_message_to_openai_response__response(
+def convert__anthropic_message_to_openai_responses__response(
     response: anthropic_models.MessageResponse,
 ) -> openai_models.ResponseObject:
     """Convert Anthropic MessageResponse to an OpenAI ResponseObject."""
@@ -487,7 +487,7 @@ def convert__anthropic_message_to_openai_response__response(
     if response.usage is not None:
         usage_model = cast(
             openai_models.ResponseUsage,
-            convert_anthropic_usage_to_openai_response_usage(response.usage),
+            convert__anthropic_usage_to_openai_responses__usage(response.usage),
         )
 
     return openai_models.ResponseObject(
@@ -721,7 +721,7 @@ def convert__anthropic_message_to_openai_chat__response(
         stop_reason or "end_turn", "stop"
     )
 
-    usage_model = convert_anthropic_usage_to_openai_completion_usage(response.usage)
+    usage_model = convert__anthropic_usage_to_openai_completion__usage(response.usage)
 
     payload = {
         "id": response.id,

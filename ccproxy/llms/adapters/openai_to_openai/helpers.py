@@ -5,7 +5,7 @@ from typing import Any
 from ccproxy.llms.openai import models as openai_models
 
 
-def convert_openai_response_usage_to_openai_completion_usage(
+def convert__openai_responses_usage_to_openai_completion__usage(
     usage: openai_models.ResponseUsage,
 ) -> openai_models.CompletionUsage:
     input_tokens = int(getattr(usage, "input_tokens", 0) or 0)
@@ -40,7 +40,7 @@ def convert_openai_response_usage_to_openai_completion_usage(
     )
 
 
-def convert_openai_completion_usage_to_openai_response_usage(
+def convert__openai_completion_usage_to_openai_responses__usage(
     usage: openai_models.CompletionUsage,
 ) -> openai_models.ResponseUsage:
     prompt_tokens = int(getattr(usage, "prompt_tokens", 0) or 0)
@@ -57,7 +57,9 @@ def convert_openai_completion_usage_to_openai_response_usage(
         reasoning_tokens = int(getattr(completion_details, "reasoning_tokens", 0) or 0)
 
     input_tokens_details = openai_models.InputTokensDetails(cached_tokens=cached_tokens)
-    output_tokens_details = openai_models.OutputTokensDetails(reasoning_tokens=reasoning_tokens)
+    output_tokens_details = openai_models.OutputTokensDetails(
+        reasoning_tokens=reasoning_tokens
+    )
 
     return openai_models.ResponseUsage(
         input_tokens=prompt_tokens,
@@ -68,7 +70,7 @@ def convert_openai_completion_usage_to_openai_response_usage(
     )
 
 
-async def convert__openai_response_to_openaichat__request(
+async def convert__openai_responses_to_openaichat__request(
     request: openai_models.ResponseRequest,
 ) -> openai_models.ChatCompletionRequest:
     system_message: str | None = request.instructions
@@ -143,7 +145,7 @@ async def convert__openai_response_to_openaichat__request(
     return openai_models.ChatCompletionRequest.model_validate(payload)
 
 
-async def convert__openai_chat_to_openai_response__response(
+async def convert__openai_chat_to_openai_responses__response(
     chat_response: openai_models.ChatCompletionResponse,
 ) -> openai_models.ResponseObject:
     content_text = ""
@@ -164,7 +166,7 @@ async def convert__openai_chat_to_openai_response__response(
 
     usage: openai_models.ResponseUsage | None = None
     if chat_response.usage:
-        usage = convert_openai_completion_usage_to_openai_response_usage(
+        usage = convert__openai_completion_usage_to_openai_responses__usage(
             chat_response.usage
         )
 
@@ -180,7 +182,7 @@ async def convert__openai_chat_to_openai_response__response(
     )
 
 
-def convert__openai_response_to_openai_chat__response(
+def convert__openai_responses_to_openai_chat__response(
     response: openai_models.ResponseObject,
 ) -> openai_models.ChatCompletionResponse:
     """Convert an OpenAI ResponseObject to a ChatCompletionResponse."""
@@ -202,7 +204,9 @@ def convert__openai_response_to_openai_chat__response(
 
     usage = None
     if response.usage:
-        usage = convert_openai_response_usage_to_openai_completion_usage(response.usage)
+        usage = convert__openai_responses_usage_to_openai_completion__usage(
+            response.usage
+        )
 
     return openai_models.ChatCompletionResponse(
         id=response.id or "chatcmpl-resp",
@@ -225,7 +229,7 @@ def convert__openai_response_to_openai_chat__response(
     )
 
 
-def convert__openai_response_to_openai_chat__stream(
+def convert__openai_responses_to_openai_chat__stream(
     stream: AsyncIterator[openai_models.AnyStreamEvent],
 ) -> AsyncGenerator[openai_models.ChatCompletionChunk, None]:
     """Convert Response API stream events to ChatCompletionChunk events."""
@@ -265,7 +269,7 @@ def convert__openai_response_to_openai_chat__stream(
                 usage = None
                 response_obj = getattr(evt, "response", None)
                 if response_obj and getattr(response_obj, "usage", None):
-                    usage = convert_openai_response_usage_to_openai_completion_usage(
+                    usage = convert__openai_responses_usage_to_openai_completion__usage(
                         response_obj.usage
                     )
                 yield openai_models.ChatCompletionChunk(
@@ -286,7 +290,7 @@ def convert__openai_response_to_openai_chat__stream(
     return generator()
 
 
-def convert__openai_chat_to_openai_response__stream(
+def convert__openai_chat_to_openai_responses__stream(
     stream: AsyncIterator[openai_models.ChatCompletionChunk],
 ) -> AsyncGenerator[
     openai_models.ResponseCreatedEvent
@@ -366,7 +370,7 @@ def convert__openai_chat_to_openai_response__stream(
                         model=model,
                         output=[],
                         parallel_tool_calls=False,
-                        usage=convert_openai_completion_usage_to_openai_response_usage(
+                        usage=convert__openai_completion_usage_to_openai_responses__usage(
                             chunk.usage
                         ),
                     ),
@@ -391,7 +395,7 @@ def convert__openai_chat_to_openai_response__stream(
     return generator()
 
 
-async def convert__openai_chat_to_openai_response__request(
+async def convert__openai_chat_to_openai_responses__request(
     request: openai_models.ChatCompletionRequest,
 ) -> openai_models.ResponseRequest:
     """Convert ChatCompletionRequest to ResponseRequest using typed models."""

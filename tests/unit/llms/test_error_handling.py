@@ -56,7 +56,7 @@ class TestModelValidationErrors:
         assert any(e.get("loc") == ("top_p",) for e in errors)
         assert any(e.get("type", "").endswith("equal") for e in errors)
 
-    def test_openai_response_request_invalid_temperature(self) -> None:
+    def test_openai_responses_request_invalid_temperature(self) -> None:
         """Test that invalid temperature values raise ValidationError in ResponseRequest."""
         with pytest.raises(ValidationError) as exc_info:
             OpenAIResponseRequest(
@@ -229,7 +229,7 @@ class TestAdapterErrorHandling:
 class TestEdgeCases:
     """Test edge cases and boundary conditions."""
 
-    def test_openai_response_request_all_include_values(self) -> None:
+    def test_openai_responses_request_all_include_values(self) -> None:
         """Test ResponseRequest with all valid include values."""
         from ccproxy.llms.openai.models import VALID_INCLUDE_VALUES
 
@@ -241,7 +241,7 @@ class TestEdgeCases:
 
         assert request.include == VALID_INCLUDE_VALUES
 
-    def test_openai_response_request_large_input_list(self) -> None:
+    def test_openai_responses_request_large_input_list(self) -> None:
         """Test ResponseRequest with large input list."""
         large_input_list = [
             {"type": "message", "role": "user", "content": f"Message {i}"}

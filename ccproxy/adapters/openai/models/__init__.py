@@ -35,7 +35,7 @@ from .common import (
     OpenAIUsage,
     ResponseUsage,
     format_openai_tool_call,
-    generate_openai_response_id,
+    generate_openai_responses_id,
     generate_openai_system_fingerprint,
 )
 from .responses import (
@@ -109,7 +109,7 @@ __all__ = [
     "OpenAIFunctionCall",
     "OpenAIToolCall",
     "ResponseUsage",
-    "generate_openai_response_id",
+    "generate_openai_responses_id",
     "generate_openai_system_fingerprint",
     "format_openai_tool_call",
 ]

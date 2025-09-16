@@ -23,7 +23,9 @@ def convert__openai_to_anthropic__error(error: BaseModel) -> BaseModel:
 
         anthropic_error: anthropic_models.ErrorType
         if anthropic_error_type == "invalid_request_error":
-            anthropic_error = anthropic_models.InvalidRequestError(message=error_message)
+            anthropic_error = anthropic_models.InvalidRequestError(
+                message=error_message
+            )
         elif anthropic_error_type == "rate_limit_error":
             anthropic_error = anthropic_models.RateLimitError(message=error_message)
         else:
@@ -33,7 +35,9 @@ def convert__openai_to_anthropic__error(error: BaseModel) -> BaseModel:
 
     if hasattr(error, "error") and hasattr(error.error, "message"):
         error_message = error.error.message
-        fallback_error: anthropic_models.ErrorType = anthropic_models.APIError(message=error_message)
+        fallback_error: anthropic_models.ErrorType = anthropic_models.APIError(
+            message=error_message
+        )
         return anthropic_models.ErrorResponse(error=fallback_error)
 
     error_message = "Unknown error occurred"
@@ -43,7 +47,9 @@ def convert__openai_to_anthropic__error(error: BaseModel) -> BaseModel:
         error_dict = error.model_dump()
         error_message = str(error_dict.get("message", error_dict))
 
-    generic_error: anthropic_models.ErrorType = anthropic_models.APIError(message=error_message)
+    generic_error: anthropic_models.ErrorType = anthropic_models.APIError(
+        message=error_message
+    )
     return anthropic_models.ErrorResponse(error=generic_error)
 
 
@@ -53,8 +59,7 @@ THINKING_PATTERN = re.compile(
 )
 
 
-
-def convert_openai_response_usage_to_openai_completion_usage(
+def convert__openai_responses_usage_to_openai_completion__usage(
     usage: openai_models.ResponseUsage,
 ) -> openai_models.CompletionUsage:
     input_tokens = int(getattr(usage, "input_tokens", 0) or 0)
@@ -89,7 +94,7 @@ def convert_openai_response_usage_to_openai_completion_usage(
     )
 
 
-def convert_openai_response_usage_to_anthropic_usage(
+def convert__openai_responses_usage_to_anthropic__usage(
     usage: openai_models.ResponseUsage,
 ) -> anthropic_models.Usage:
     input_tokens = int(getattr(usage, "input_tokens", 0) or 0)
@@ -387,7 +392,7 @@ This module focuses on OpenAI→Anthropic conversions only.
 """
 
 
-def convert__openai_response_to_anthropic_message__request(
+def convert__openai_responses_to_anthropic_message__request(
     request: openai_models.ResponseRequest,
 ) -> anthropic_models.CreateMessageRequest:
     model = request.model
@@ -645,7 +650,7 @@ def derive_thinking_config(
     return {"type": "enabled", "budget_tokens": budget}
 
 
-def convert__openai_response_to_anthropic_message__response(
+def convert__openai_responses_to_anthropic_message__response(
     response: openai_models.ResponseObject,
 ) -> anthropic_models.MessageResponse:
     from ccproxy.llms.anthropic.models import (
@@ -763,7 +768,7 @@ def convert__openai_response_to_anthropic_message__response(
                     )
 
     usage = (
-        convert_openai_response_usage_to_anthropic_usage(response.usage)
+        convert__openai_responses_usage_to_anthropic__usage(response.usage)
         if response.usage
         else anthropic_models.Usage(input_tokens=0, output_tokens=0)
     )
@@ -923,7 +928,7 @@ def convert__openai_responses_to_anthropic_messages__stream(
                 yield anthropic_models.MessageDeltaEvent(
                     type="message_delta",
                     delta=anthropic_models.MessageDelta(stop_reason="end_turn"),
-                    usage=convert_openai_response_usage_to_anthropic_usage(usage)
+                    usage=convert__openai_responses_usage_to_anthropic__usage(usage)
                     if usage
                     else anthropic_models.Usage(input_tokens=0, output_tokens=0),
                 )

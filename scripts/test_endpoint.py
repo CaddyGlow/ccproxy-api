@@ -370,7 +370,7 @@ class TestEndpoint:
             payload = response
             # Special handling for ResponseMessage: extract assistant message
             if model_class is ResponseMessage:
-                payload = self._extract_openai_response_message(response)
+                payload = self._extract_openai_responses_message(response)
             model_class.model_validate(payload)
             print(colored_success(f"✓ {model_class.__name__} validation passed"))
             logger.info(f"{model_class.__name__} validation passed")
@@ -380,7 +380,7 @@ class TestEndpoint:
             logger.error(f"{model_class.__name__} validation failed", error=str(e))
             return False
 
-    def _extract_openai_response_message(
+    def _extract_openai_responses_message(
         self, response: dict[str, Any]
     ) -> dict[str, Any]:
         """Coerce various response shapes into an OpenAIResponseMessage dict.

@@ -106,7 +106,7 @@ async def test_thinking_block_serialization_in_response(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_openai_chat_to_openai_response_request():
+async def test_openai_chat_to_openai_responses_request():
     from ccproxy.llms.adapters.openai_to_openai.chat_to_responses import (
         OpenAIChatToOpenAIResponsesAdapter,
     )
@@ -161,7 +161,7 @@ async def test_openai_chat_to_openai_responses_structured_outputs_json_schema():
 
 
 @pytest.mark.asyncio
-async def test_openai_response_to_openai_chat_response():
+async def test_openai_responses_to_openai_chat_response():
     from ccproxy.llms.adapters.openai_to_openai.responses_to_chat import (
         OpenAIResponsesToOpenAIChatAdapter,
     )

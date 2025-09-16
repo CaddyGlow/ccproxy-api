@@ -15,7 +15,7 @@ from typing import Any, Literal
 from ccproxy.core.logging import get_logger
 
 from .models import (
-    generate_openai_response_id,
+    generate_openai_responses_id,
 )
 
 
@@ -347,7 +347,7 @@ class OpenAIStreamProcessor:
             enable_tool_calls: Whether to process tool calls
             output_format: Output format - "sse" for Server-Sent Events strings, "dict" for dict objects
         """
-        self.message_id = message_id or generate_openai_response_id()
+        self.message_id = message_id or generate_openai_responses_id()
         self.model = model
         self.created = created or int(time.time())
         self.enable_usage = enable_usage

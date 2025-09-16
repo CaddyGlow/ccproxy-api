@@ -4,7 +4,7 @@ import pytest
 import pytest_asyncio
 from tests.helpers.assertions import (
     assert_codex_response_format,
-    assert_openai_response_format,
+    assert_openai_responses_format,
 )
 from tests.helpers.test_data import (
     STANDARD_CODEX_REQUEST,
@@ -56,7 +56,7 @@ async def test_openai_chat_completions_conversion(
     )
     assert resp.status_code == 200
     data: dict[str, Any] = resp.json()
-    assert_openai_response_format(data)
+    assert_openai_responses_format(data)
 
 
 @pytest.mark.asyncio

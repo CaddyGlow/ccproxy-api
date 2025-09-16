@@ -20,7 +20,7 @@ from ccproxy.adapters.openai.models import (
     OpenAIToolCall,
     OpenAIUsage,
     format_openai_tool_call,
-    generate_openai_response_id,
+    generate_openai_responses_id,
     generate_openai_system_fingerprint,
 )
 
@@ -57,7 +57,7 @@ __all__ = [
     "OpenAIToolCall",
     "OpenAIUsage",
     "format_openai_tool_call",
-    "generate_openai_response_id",
+    "generate_openai_responses_id",
     "generate_openai_system_fingerprint",
     # Streaming
     "OpenAISSEFormatter",

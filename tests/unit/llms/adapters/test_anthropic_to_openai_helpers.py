@@ -2,8 +2,8 @@ import pytest
 
 from ccproxy.llms.adapters.anthropic_to_openai.helpers import (
     convert__anthropic_message_to_openai_chat__response,
-    convert__anthropic_message_to_openai_response__stream,
-    convert__anthropic_message_to_openai_response__request,
+    convert__anthropic_message_to_openai_responses__request,
+    convert__anthropic_message_to_openai_responses__stream,
 )
 from ccproxy.llms.anthropic import models as anthropic_models
 from ccproxy.llms.openai import models as openai_models
@@ -11,7 +11,6 @@ from ccproxy.llms.openai import models as openai_models
 
 @pytest.mark.asyncio
 async def test_convert__anthropic_message_to_openai_chat__response_basic() -> None:
-
     resp = anthropic_models.MessageResponse(
         id="msg_1",
         type="message",
@@ -32,11 +31,7 @@ async def test_convert__anthropic_message_to_openai_chat__response_basic() -> No
 
 
 @pytest.mark.asyncio
-async def test_convert__anthropic_message_to_openai_response__stream_minimal() -> None:
-    from ccproxy.llms.adapters.anthropic_to_openai.helpers import (
-        convert__anthropic_message_to_openai_response__stream,
-    )
-
+async def test_convert__anthropic_message_to_openai_responses__stream_minimal() -> None:
     async def gen():
         yield anthropic_models.MessageStartEvent(
             type="message_start",
@@ -64,7 +59,7 @@ async def test_convert__anthropic_message_to_openai_response__stream_minimal() -
         yield anthropic_models.MessageStopEvent(type="message_stop")
 
     chunks = []
-    async for evt in convert__anthropic_message_to_openai_response__stream(gen()):
+    async for evt in convert__anthropic_message_to_openai_responses__stream(gen()):
         chunks.append(evt)
 
     # Expect sequence: response.created, text delta, in_progress, completed
@@ -75,11 +70,7 @@ async def test_convert__anthropic_message_to_openai_response__stream_minimal() -
 
 
 @pytest.mark.asyncio
-async def test_convert__anthropic_message_to_openai_response__request_basic() -> None:
-    from ccproxy.llms.adapters.anthropic_to_openai.helpers import (
-        convert__anthropic_message_to_openai_response__request,
-    )
-
+async def test_convert__anthropic_message_to_openai_responses__request_basic() -> None:
     req = anthropic_models.CreateMessageRequest(
         model="claude-3",
         system="sys",
@@ -88,7 +79,7 @@ async def test_convert__anthropic_message_to_openai_response__request_basic() ->
         stream=True,
     )
 
-    out = convert__anthropic_message_to_openai_response__request(req)
+    out = convert__anthropic_message_to_openai_responses__request(req)
     resp_req = openai_models.ResponseRequest.model_validate(out)
     assert resp_req.model == "claude-3"
     assert resp_req.max_output_tokens == 256
