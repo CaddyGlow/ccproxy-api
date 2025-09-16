@@ -1,14 +1,16 @@
 import pytest
 
+from ccproxy.llms.adapters.anthropic_to_openai.helpers import (
+    convert__anthropic_message_to_openai_chat__response,
+    convert__anthropic_message_to_openai_response__stream,
+    convert__anthropic_message_to_openai_response__request,
+)
 from ccproxy.llms.anthropic import models as anthropic_models
 from ccproxy.llms.openai import models as openai_models
 
 
 @pytest.mark.asyncio
 async def test_convert__anthropic_message_to_openai_chat__response_basic() -> None:
-    from ccproxy.llms.adapters.anthropic_to_openai.messages_to_chat import (
-        convert_anthropic_message_to_chat_response,
-    )
 
     resp = anthropic_models.MessageResponse(
         id="msg_1",
@@ -21,7 +23,7 @@ async def test_convert__anthropic_message_to_openai_chat__response_basic() -> No
         usage=anthropic_models.Usage(input_tokens=1, output_tokens=2),
     )
 
-    out = convert_anthropic_message_to_chat_response(resp)
+    out = convert__anthropic_message_to_openai_chat__response(resp)
     assert isinstance(out, openai_models.ChatCompletionResponse)
     assert out.object == "chat.completion"
     assert out.choices and out.choices[0].message.content == "Hello"

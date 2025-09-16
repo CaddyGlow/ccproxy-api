@@ -3,9 +3,6 @@ import re
 from collections.abc import AsyncGenerator, AsyncIterator
 from typing import Any
 
-# Note: function convert_openai_response_usage_to_anthropic_usage is used later
-# and remains imported from shared constants if needed elsewhere.
-# Error helpers migrated from ccproxy.llms.adapters.shared.errors
 from pydantic import BaseModel
 
 from ccproxy.core.constants import DEFAULT_MAX_TOKENS
@@ -16,18 +13,7 @@ from ccproxy.llms.openai import models as openai_models
 
 def convert__openai_to_anthropic__error(error: BaseModel) -> BaseModel:
     """Convert an OpenAI error payload to the Anthropic envelope."""
-    from ccproxy.llms.anthropic.models import (
-        APIError,
-        ErrorType,
-        InvalidRequestError,
-        RateLimitError,
-    )
-    from ccproxy.llms.anthropic.models import (
-        ErrorResponse as AnthropicErrorResponse,
-    )
-    from ccproxy.llms.openai.models import ErrorResponse as OpenAIErrorResponse
-
-    if isinstance(error, OpenAIErrorResponse):
+    if isinstance(error, openai_models.ErrorResponse):
         openai_error = error.error
         error_message = openai_error.message
         openai_error_type = openai_error.type or "api_error"
@@ -35,20 +21,20 @@ def convert__openai_to_anthropic__error(error: BaseModel) -> BaseModel:
             openai_error_type, "api_error"
         )
 
-        anthropic_error: ErrorType
+        anthropic_error: anthropic_models.ErrorType
         if anthropic_error_type == "invalid_request_error":
-            anthropic_error = InvalidRequestError(message=error_message)
+            anthropic_error = anthropic_models.InvalidRequestError(message=error_message)
         elif anthropic_error_type == "rate_limit_error":
-            anthropic_error = RateLimitError(message=error_message)
+            anthropic_error = anthropic_models.RateLimitError(message=error_message)
         else:
-            anthropic_error = APIError(message=error_message)
+            anthropic_error = anthropic_models.APIError(message=error_message)
 
-        return AnthropicErrorResponse(error=anthropic_error)
+        return anthropic_models.ErrorResponse(error=anthropic_error)
 
     if hasattr(error, "error") and hasattr(error.error, "message"):
         error_message = error.error.message
-        fallback_error: ErrorType = APIError(message=error_message)
-        return AnthropicErrorResponse(error=fallback_error)
+        fallback_error: anthropic_models.ErrorType = anthropic_models.APIError(message=error_message)
+        return anthropic_models.ErrorResponse(error=fallback_error)
 
     error_message = "Unknown error occurred"
     if hasattr(error, "message"):
@@ -57,8 +43,8 @@ def convert__openai_to_anthropic__error(error: BaseModel) -> BaseModel:
         error_dict = error.model_dump()
         error_message = str(error_dict.get("message", error_dict))
 
-    generic_error: ErrorType = APIError(message=error_message)
-    return AnthropicErrorResponse(error=generic_error)
+    generic_error: anthropic_models.ErrorType = anthropic_models.APIError(message=error_message)
+    return anthropic_models.ErrorResponse(error=generic_error)
 
 
 THINKING_PATTERN = re.compile(
@@ -66,17 +52,11 @@ THINKING_PATTERN = re.compile(
     re.DOTALL,
 )
 
-# Local usage converters needed in this module
-from ccproxy.llms.openai.models import (
-    CompletionUsage,
-    PromptTokensDetails,
-    ResponseUsage,
-)
 
 
 def convert_openai_response_usage_to_openai_completion_usage(
-    usage: ResponseUsage,
-) -> CompletionUsage:
+    usage: openai_models.ResponseUsage,
+) -> openai_models.CompletionUsage:
     input_tokens = int(getattr(usage, "input_tokens", 0) or 0)
     output_tokens = int(getattr(usage, "output_tokens", 0) or 0)
 
@@ -90,7 +70,7 @@ def convert_openai_response_usage_to_openai_completion_usage(
     if output_details:
         reasoning_tokens = int(getattr(output_details, "reasoning_tokens", 0) or 0)
 
-    prompt_tokens_details = PromptTokensDetails(
+    prompt_tokens_details = openai_models.PromptTokensDetails(
         cached_tokens=cached_tokens, audio_tokens=0
     )
     completion_tokens_details = openai_models.CompletionTokensDetails(
@@ -100,12 +80,33 @@ def convert_openai_response_usage_to_openai_completion_usage(
         rejected_prediction_tokens=0,
     )
 
-    return CompletionUsage(
+    return openai_models.CompletionUsage(
         prompt_tokens=input_tokens,
         completion_tokens=output_tokens,
         total_tokens=input_tokens + output_tokens,
         prompt_tokens_details=prompt_tokens_details,
         completion_tokens_details=completion_tokens_details,
+    )
+
+
+def convert_openai_response_usage_to_anthropic_usage(
+    usage: openai_models.ResponseUsage,
+) -> anthropic_models.Usage:
+    input_tokens = int(getattr(usage, "input_tokens", 0) or 0)
+    output_tokens = int(getattr(usage, "output_tokens", 0) or 0)
+
+    # Extract cache information if available
+    cache_read_tokens = 0
+    cache_creation_tokens = 0
+    input_details = getattr(usage, "input_tokens_details", None)
+    if input_details:
+        cache_read_tokens = int(getattr(input_details, "cached_tokens", 0) or 0)
+
+    return anthropic_models.Usage(
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        cache_read_input_tokens=cache_read_tokens,
+        cache_creation_input_tokens=cache_creation_tokens,
     )
 
 

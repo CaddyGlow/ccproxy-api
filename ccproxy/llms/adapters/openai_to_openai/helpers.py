@@ -2,20 +2,12 @@ import time
 from collections.abc import AsyncGenerator, AsyncIterator
 from typing import Any
 
-# Local usage converters (inlined from shared.usage)
-from ccproxy.llms.openai.models import (
-    CompletionTokensDetails,
-    CompletionUsage,
-    InputTokensDetails,
-    OutputTokensDetails,
-    PromptTokensDetails,
-    ResponseUsage,
-)
+from ccproxy.llms.openai import models as openai_models
 
 
 def convert_openai_response_usage_to_openai_completion_usage(
-    usage: ResponseUsage,
-) -> CompletionUsage:
+    usage: openai_models.ResponseUsage,
+) -> openai_models.CompletionUsage:
     input_tokens = int(getattr(usage, "input_tokens", 0) or 0)
     output_tokens = int(getattr(usage, "output_tokens", 0) or 0)
 
@@ -29,17 +21,17 @@ def convert_openai_response_usage_to_openai_completion_usage(
     if output_details:
         reasoning_tokens = int(getattr(output_details, "reasoning_tokens", 0) or 0)
 
-    prompt_tokens_details = PromptTokensDetails(
+    prompt_tokens_details = openai_models.PromptTokensDetails(
         cached_tokens=cached_tokens, audio_tokens=0
     )
-    completion_tokens_details = CompletionTokensDetails(
+    completion_tokens_details = openai_models.CompletionTokensDetails(
         reasoning_tokens=reasoning_tokens,
         audio_tokens=0,
         accepted_prediction_tokens=0,
         rejected_prediction_tokens=0,
     )
 
-    return CompletionUsage(
+    return openai_models.CompletionUsage(
         prompt_tokens=input_tokens,
         completion_tokens=output_tokens,
         total_tokens=input_tokens + output_tokens,
@@ -49,8 +41,8 @@ def convert_openai_response_usage_to_openai_completion_usage(
 
 
 def convert_openai_completion_usage_to_openai_response_usage(
-    usage: CompletionUsage,
-) -> ResponseUsage:
+    usage: openai_models.CompletionUsage,
+) -> openai_models.ResponseUsage:
     prompt_tokens = int(getattr(usage, "prompt_tokens", 0) or 0)
     completion_tokens = int(getattr(usage, "completion_tokens", 0) or 0)
 
@@ -64,19 +56,16 @@ def convert_openai_completion_usage_to_openai_response_usage(
     if completion_details:
         reasoning_tokens = int(getattr(completion_details, "reasoning_tokens", 0) or 0)
 
-    input_tokens_details = InputTokensDetails(cached_tokens=cached_tokens)
-    output_tokens_details = OutputTokensDetails(reasoning_tokens=reasoning_tokens)
+    input_tokens_details = openai_models.InputTokensDetails(cached_tokens=cached_tokens)
+    output_tokens_details = openai_models.OutputTokensDetails(reasoning_tokens=reasoning_tokens)
 
-    return ResponseUsage(
+    return openai_models.ResponseUsage(
         input_tokens=prompt_tokens,
         input_tokens_details=input_tokens_details,
         output_tokens=completion_tokens,
         output_tokens_details=output_tokens_details,
         total_tokens=prompt_tokens + completion_tokens,
     )
-
-
-from ccproxy.llms.openai import models as openai_models
 
 
 async def convert__openai_response_to_openaichat__request(
