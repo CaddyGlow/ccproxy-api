@@ -201,8 +201,6 @@ class AdapterShim(LegacyBaseAPIAdapter):
             if context != "error":
                 if context == "stream_chunk":
                     try:
-                        from ccproxy.llms.openai.models import AnyStreamEvent
-
                         return AnyStreamEvent.model_validate(data)
                     except Exception:
                         pass
