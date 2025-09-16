@@ -163,11 +163,11 @@ class CopilotPluginFactory(BaseProviderPluginFactory, AuthProviderPluginFactory)
             from_format="response_api",
             to_format="openai",
             adapter_factory=lambda: __import__(
-                "ccproxy.llms.adapters.response_api_openai_bidirectional",
-                fromlist=["ResponseAPIOpenAIBidirectionalAdapter"],
-            ).ResponseAPIOpenAIBidirectionalAdapter(),
+                "ccproxy.llms.adapters.response_api_to_openai_chatcompletions",
+                fromlist=["ResponseAPIToOpenAIChatAdapter"],
+            ).ResponseAPIToOpenAIChatAdapter(),
             priority=90,  # Very high priority for direct conversion
-            description="Response API ↔ OpenAI ChatCompletions bidirectional (typed)",
+            description="Response API to OpenAI ChatCompletions (typed)",
         ),
     ]
 
