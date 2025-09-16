@@ -14,25 +14,15 @@ import structlog
 
 # Import typed models from ccproxy/llms/
 from ccproxy.llms.anthropic.models import (
-    MessageResponse as AnthropicMessageResponse,
-)
-from ccproxy.llms.anthropic.models import (
-    MessageStartEvent as AnthropicMessageStartEvent,
+    MessageResponse,
+    MessageStartEvent,
 )
 from ccproxy.llms.openai.models import (
-    BaseStreamEvent as OpenAIBaseStreamEvent,
-)
-from ccproxy.llms.openai.models import (
-    ChatCompletionChunk as OpenAIChatCompletionChunk,
-)
-from ccproxy.llms.openai.models import (
-    ChatCompletionResponse as OpenAIChatCompletionResponse,
-)
-from ccproxy.llms.openai.models import (
-    ResponseMessage as OpenAIResponseMessage,
-)
-from ccproxy.llms.openai.models import (
-    ResponseObject as OpenAIResponseObject,
+    BaseStreamEvent,
+    ChatCompletionChunk,
+    ChatCompletionResponse,
+    ResponseMessage,
+    ResponseObject,
 )
 
 
@@ -118,15 +108,15 @@ REQUEST_DATA = {
         "messages": MESSAGE_PAYLOADS["openai"],
         "max_tokens": 100,
         "stream": True,
-        "model_class": OpenAIChatCompletionResponse,
-        "chunk_model_class": OpenAIChatCompletionChunk,  # For SSE chunk validation
+        "model_class": ChatCompletionResponse,
+        "chunk_model_class": ChatCompletionChunk,  # For SSE chunk validation
     },
     "openai_non_stream": {
         "model": "{model}",
         "messages": MESSAGE_PAYLOADS["openai"],
         "max_tokens": 100,
         "stream": False,
-        "model_class": OpenAIChatCompletionResponse,
+        "model_class": ChatCompletionResponse,
     },
     "response_api_stream": {
         "model": "{model}",
@@ -134,31 +124,31 @@ REQUEST_DATA = {
         "max_completion_tokens": 1000,
         "input": MESSAGE_PAYLOADS["response_api"],
         # For Responses API streaming, chunks are SSE events with event+data
-        "model_class": OpenAIBaseStreamEvent,
-        "chunk_model_class": OpenAIBaseStreamEvent,
+        "model_class": BaseStreamEvent,
+        "chunk_model_class": BaseStreamEvent,
     },
     "response_api_non_stream": {
         "model": "{model}",
         "stream": False,
         "max_completion_tokens": 1000,
         "input": MESSAGE_PAYLOADS["response_api"],
-        # Validate the assistant message payload using OpenAIResponseObject
-        "model_class": OpenAIResponseObject,
+        # Validate the assistant message payload using ResponseObject
+        "model_class": ResponseObject,
     },
     "anthropic_stream": {
         "model": "{model}",
         "max_tokens": 1000,
         "stream": True,
         "messages": MESSAGE_PAYLOADS["anthropic"],
-        "model_class": AnthropicMessageResponse,
-        "chunk_model_class": AnthropicMessageStartEvent,
+        "model_class": MessageResponse,
+        "chunk_model_class": MessageStartEvent,
     },
     "anthropic_non_stream": {
         "model": "{model}",
         "max_tokens": 1000,
         "stream": False,
         "messages": MESSAGE_PAYLOADS["anthropic"],
-        "model_class": AnthropicMessageResponse,
+        "model_class": MessageResponse,
     },
 }
 
@@ -166,7 +156,7 @@ REQUEST_DATA = {
 # Endpoint configurations (no response_type, type is in REQUEST_DATA)
 ENDPOINT_TESTS = [
     EndpointTest(
-        name="copilot_chat_completions",
+        name="copilot_chat_completions_stream",
         endpoint="/copilot/v1/chat/completions",
         stream=True,
         request="openai_stream",
@@ -182,7 +172,7 @@ ENDPOINT_TESTS = [
         description="Copilot chat completions non-streaming",
     ),
     EndpointTest(
-        name="copilot_responses",
+        name="copilot_responsess_stream",
         endpoint="/copilot/v1/responses",
         stream=True,
         request="response_api_stream",
@@ -190,7 +180,7 @@ ENDPOINT_TESTS = [
         description="Copilot responses streaming",
     ),
     EndpointTest(
-        name="copilot_responses",
+        name="copilot_responses_stream",
         endpoint="/copilot/v1/responses",
         stream=False,
         request="response_api_non_stream",
@@ -198,7 +188,7 @@ ENDPOINT_TESTS = [
         description="Copilot responses non-streaming",
     ),
     EndpointTest(
-        name="anthropic_api_openai",
+        name="anthropic_api_openai_stream",
         endpoint="/api/v1/chat/completions",
         stream=True,
         request="openai_stream",
@@ -214,7 +204,7 @@ ENDPOINT_TESTS = [
         description="Claude API OpenAI format non-streaming",
     ),
     EndpointTest(
-        name="anthropic_api_responses",
+        name="anthropic_api_responses_stream",
         endpoint="/api/v1/responses",
         stream=True,
         request="response_api_stream",
@@ -230,7 +220,7 @@ ENDPOINT_TESTS = [
         description="Claude API Response format non-streaming",
     ),
     EndpointTest(
-        name="codex_chat_completions",
+        name="codex_chat_completions_stream",
         endpoint="/api/codex/v1/chat/completions",
         stream=True,
         request="openai_stream",
@@ -378,8 +368,8 @@ class TestEndpoint:
         """Validate response using the provided model_class."""
         try:
             payload = response
-            # Special handling for OpenAIResponseMessage: extract assistant message
-            if model_class is OpenAIResponseMessage:
+            # Special handling for ResponseMessage: extract assistant message
+            if model_class is ResponseMessage:
                 payload = self._extract_openai_response_message(response)
             model_class.model_validate(payload)
             print(colored_success(f"✓ {model_class.__name__} validation passed"))
@@ -496,12 +486,12 @@ class TestEndpoint:
                         data = json.loads(event[6:])  # Remove "data: " prefix
                         if chunk_model_class:
                             # If validating Responses API SSE events, wrap with event name
-                            if chunk_model_class is OpenAIBaseStreamEvent:
+                            if chunk_model_class is BaseStreamEvent:
                                 wrapped = {"event": last_event_name, "data": data}
                                 self.validate_stream_chunk(wrapped, chunk_model_class)
                             else:
                                 # Skip Copilot prelude chunks lacking required fields
-                                if chunk_model_class is OpenAIChatCompletionChunk and (
+                                if chunk_model_class is ChatCompletionChunk and (
                                     not isinstance(data, dict)
                                     or not data.get("model")
                                     or not data.get("choices")
@@ -529,27 +519,52 @@ class TestEndpoint:
             if "error" not in response and model_class:
                 self.validate_response(response, model_class, is_streaming=False)
 
-    async def run_all_tests(self):
-        """Run all endpoint tests."""
+    async def run_all_tests(self, selected_indices: list[int] | None = None):
+        """Run endpoint tests, optionally filtered by selected indices."""
         print(colored_header("CCProxy Endpoint Tests"))
         print(colored_info(f"Testing endpoints at {self.base_url}"))
-        logger.info("Starting all endpoint tests", base_url=self.base_url)
+        logger.info("Starting endpoint tests", base_url=self.base_url)
 
-        print(colored_info(f"Running {len(ENDPOINT_TESTS)} configured tests"))
-        logger.info(
-            "Starting all endpoint tests",
-            base_url=self.base_url,
-            test_count=len(ENDPOINT_TESTS),
-        )
+        # Filter tests if selection provided
+        tests_to_run = ENDPOINT_TESTS
+        if selected_indices is not None:
+            tests_to_run = [
+                ENDPOINT_TESTS[i]
+                for i in selected_indices
+                if 0 <= i < len(ENDPOINT_TESTS)
+            ]
+            print(
+                colored_info(
+                    f"Running {len(tests_to_run)} selected tests (out of {len(ENDPOINT_TESTS)} total)"
+                )
+            )
+            logger.info(
+                "Running selected tests",
+                selected_count=len(tests_to_run),
+                total_count=len(ENDPOINT_TESTS),
+                selected_indices=selected_indices,
+            )
+        else:
+            print(colored_info(f"Running all {len(ENDPOINT_TESTS)} configured tests"))
+            logger.info(
+                "Running all tests",
+                test_count=len(ENDPOINT_TESTS),
+            )
 
-        # Run all configured tests
-        for test in ENDPOINT_TESTS:
+        # Run selected tests
+        for i, test in enumerate(tests_to_run, 1):
+            if selected_indices is not None:
+                # Show original test number when running subset
+                original_index = ENDPOINT_TESTS.index(test) + 1
+                print(
+                    colored_info(
+                        f"[Test {i}/{len(tests_to_run)}] #{original_index}: {test.description}"
+                    )
+                )
             await self.run_endpoint_test(test)
 
-        print(
-            colored_success(f"\n🎉 All {len(ENDPOINT_TESTS)} endpoint tests completed!")
-        )
-        logger.info("All endpoint tests completed")
+        print(colored_success(f"\n🎉 {len(tests_to_run)} endpoint tests completed!"))
+        logger.info("Endpoint tests completed", completed_count=len(tests_to_run))
 
 
 def setup_logging(level: str = "warn") -> None:
@@ -593,15 +608,80 @@ def setup_logging(level: str = "warn") -> None:
     )
 
 
+def parse_test_selection(selection: str, total_tests: int) -> list[int]:
+    """Parse test selection string into list of test indices (0-based).
+
+    Supports:
+    - Single numbers: "1" -> [0]
+    - Comma-separated: "1,3,5" -> [0,2,4]
+    - Ranges: "1..3" -> [0,1,2]
+    - Open ranges: "4.." -> [3,4,5,...]
+    - Prefix ranges: "..3" -> [0,1,2]
+    - Mixed: "1,3..5,7" -> [0,2,3,4,6]
+    """
+    indices = set()
+
+    for part in selection.split(","):
+        part = part.strip()
+
+        if ".." in part:
+            # Range syntax
+            if part.startswith(".."):
+                # ..3 means 1 to 3
+                end = int(part[2:])
+                indices.update(range(0, end))
+            elif part.endswith(".."):
+                # 4.. means 4 to end
+                start = int(part[:-2]) - 1  # Convert to 0-based
+                indices.update(range(start, total_tests))
+            else:
+                # 1..3 means 1 to 3
+                start_str, end_str = part.split("..", 1)
+                start = int(start_str) - 1  # Convert to 0-based
+                end = int(end_str)
+                indices.update(range(start, end))
+        else:
+            # Single number
+            index = int(part) - 1  # Convert to 0-based
+            if 0 <= index < total_tests:
+                indices.add(index)
+
+    return sorted(indices)
+
+
+def list_available_tests() -> str:
+    """Generate a formatted list of available tests for help text."""
+    lines = ["Available tests:"]
+    for i, test in enumerate(ENDPOINT_TESTS, 1):
+        lines.append(f"  {i:2d}. {test.description}")
+    return "\n".join(lines)
+
+
 def main():
     """Main entry point."""
     parser = argparse.ArgumentParser(
-        description="Test CCProxy endpoints with response validation"
+        description="Test CCProxy endpoints with response validation",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=f"""
+{list_available_tests()}
+
+Test selection examples:
+  --tests 1          # Run test 1 only
+  --tests 1,3,5      # Run tests 1, 3, and 5
+  --tests 1..3       # Run tests 1 through 3
+  --tests 4..        # Run tests 4 through end
+  --tests ..3        # Run tests 1 through 3
+  --tests 1,4..6,8   # Run test 1, tests 4-6, and test 8
+""",
     )
     parser.add_argument(
         "--base",
         default="http://127.0.0.1:8000",
         help="Base URL for the API server (default: http://127.0.0.1:8000)",
+    )
+    parser.add_argument(
+        "--tests",
+        help="Select specific tests to run (e.g., 1,2,3 or 1..3 or 4.. or ..3)",
     )
     parser.add_argument(
         "-v",
@@ -636,9 +716,23 @@ def main():
 
     setup_logging(log_level)
 
+    # Parse test selection if provided
+    selected_indices = None
+    if args.tests:
+        try:
+            selected_indices = parse_test_selection(args.tests, len(ENDPOINT_TESTS))
+            if not selected_indices:
+                logger.error("No valid tests selected")
+                sys.exit(1)
+        except ValueError as e:
+            logger.error(
+                "Invalid test selection format", selection=args.tests, error=str(e)
+            )
+            sys.exit(1)
+
     async def run_tests():
         async with TestEndpoint(base_url=args.base) as tester:
-            await tester.run_all_tests()
+            await tester.run_all_tests(selected_indices)
 
     try:
         asyncio.run(run_tests())

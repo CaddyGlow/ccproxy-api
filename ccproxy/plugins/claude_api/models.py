@@ -140,9 +140,9 @@ class ClaudeCacheData(BaseModel):
     method: Annotated[
         str | None, Field(description="Captured HTTP method", default=None)
     ] = None
-    url: Annotated[
-        str | None, Field(description="Captured full URL", default=None)
-    ] = None
+    url: Annotated[str | None, Field(description="Captured full URL", default=None)] = (
+        None
+    )
     path: Annotated[
         str | None, Field(description="Captured request path", default=None)
     ] = None

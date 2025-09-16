@@ -99,6 +99,7 @@ def generate_xh_command(
     # Add headers
     if headers:
         for key, value in headers.items():
+            # Quote the entire header to handle special characters and spaces
             parts.append(f"{key}:{value}")
 
     # Add body
@@ -116,7 +117,7 @@ def generate_xh_command(
                 cmd_parts.append(f" {part}")
             elif i == 2:  # URL
                 cmd_parts.append(f" \\\n  {shlex.quote(part)}")
-            elif part == "--raw":
+            elif part in ("--raw", "-d"):  # flags
                 cmd_parts.append(f" \\\n  {part}")
             elif ":" in part and not part.startswith("http"):  # header
                 cmd_parts.append(f" \\\n  {shlex.quote(part)}")

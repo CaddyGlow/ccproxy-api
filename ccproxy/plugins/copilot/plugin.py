@@ -158,6 +158,17 @@ class CopilotPluginFactory(BaseProviderPluginFactory, AuthProviderPluginFactory)
             priority=50,  # Medium priority
             description="OpenAI Responses/Request to Anthropic Messages (typed)",
         ),
+        # Add Response API ↔ OpenAI adapter for /v1/responses endpoint
+        FormatAdapterSpec(
+            from_format="response_api",
+            to_format="openai",
+            adapter_factory=lambda: __import__(
+                "ccproxy.llms.adapters.response_api_openai_bidirectional",
+                fromlist=["ResponseAPIOpenAIBidirectionalAdapter"],
+            ).ResponseAPIOpenAIBidirectionalAdapter(),
+            priority=90,  # Very high priority for direct conversion
+            description="Response API ↔ OpenAI ChatCompletions bidirectional (typed)",
+        ),
     ]
 
     def create_context(self, core_services: Any) -> PluginContext:

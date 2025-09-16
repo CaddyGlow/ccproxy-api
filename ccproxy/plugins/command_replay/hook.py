@@ -53,6 +53,8 @@ class CommandReplayHook(Hook):
             generate_curl=self.config.generate_curl,
             generate_xh=self.config.generate_xh,
             include_patterns=self.config.include_url_patterns,
+            only_provider_requests=self.config.only_provider_requests,
+            include_client_requests=self.config.include_client_requests,
             write_to_files=self.config.write_to_files,
             log_dir=self.config.log_dir,
         )
@@ -91,16 +93,18 @@ class CommandReplayHook(Hook):
         await self._generate_commands(context, is_provider_request=True)
 
     async def _handle_http_request(self, context: HookContext) -> None:
-        """Handle HTTP_REQUEST event - only if it's a provider request."""
-        # Only process if configured to handle all requests or if explicitly marked as provider
-        if self.config.only_provider_requests:
-            # Check if this is a provider request
-            url = context.data.get("url", "")
-            is_provider = self._is_provider_request(url)
-            if not is_provider:
-                return
+        """Handle HTTP_REQUEST event - for both provider and client requests."""
+        url = context.data.get("url", "")
+        is_provider = self._is_provider_request(url)
 
-        await self._generate_commands(context, is_provider_request=False)
+        # Apply filtering based on configuration
+        if self.config.only_provider_requests and not is_provider:
+            return
+
+        if not self.config.include_client_requests and not is_provider:
+            return
+
+        await self._generate_commands(context, is_provider_request=is_provider)
 
     async def _generate_commands(
         self, context: HookContext, is_provider_request: bool = False
@@ -129,12 +133,13 @@ class CommandReplayHook(Hook):
         provider = context.provider or self._extract_provider_from_url(url)
 
         # Check if we should generate commands for this URL
-        if not self.config.should_generate_for_url(url):
+        if not self.config.should_generate_for_url(url, is_provider_request):
             logger.debug(
                 "command_replay_skipped_url_filter",
                 request_id=request_id,
                 url=url,
                 provider=provider,
+                is_provider_request=is_provider_request,
             )
             return
 

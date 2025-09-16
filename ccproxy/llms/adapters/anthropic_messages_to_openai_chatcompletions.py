@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from collections.abc import AsyncGenerator, AsyncIterator
 from typing import Any, Literal, cast
 
@@ -85,7 +86,7 @@ class AnthropicMessagesToOpenAIChatAdapter(
                     yield openai_models.ChatCompletionChunk(
                         id="chatcmpl-stream",
                         object="chat.completion.chunk",
-                        created=0,
+                        created=int(time.time()),
                         model=model_id,
                         choices=[
                             openai_models.StreamingChoice(
@@ -116,7 +117,7 @@ class AnthropicMessagesToOpenAIChatAdapter(
                 yield openai_models.ChatCompletionChunk(
                     id="chatcmpl-stream",
                     object="chat.completion.chunk",
-                    created=0,
+                    created=int(time.time()),
                     model=model_id,
                     choices=[
                         openai_models.StreamingChoice(
@@ -361,7 +362,7 @@ class AnthropicMessagesToOpenAIChatAdapter(
                     "finish_reason": finish_reason,
                 }
             ],
-            "created": 0,
+            "created": int(time.time()),
             "model": response.model,
             "object": "chat.completion",
             "usage": usage_model.model_dump(),

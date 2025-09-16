@@ -456,9 +456,7 @@ class CodexDetectionService:
         for k, v in headers.items():
             lk = k.lower()
             if lk in self.REDACTED_HEADERS:
-                sanitized[lk] = (
-                    "" if len(str(v)) < 8 else str(v)[:8] + "..."
-                )
+                sanitized[lk] = "" if len(str(v)) < 8 else str(v)[:8] + "..."
             else:
                 sanitized[lk] = v
         return sanitized

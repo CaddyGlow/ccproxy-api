@@ -62,17 +62,24 @@ class CommandReplayConfig(BaseModel):
 
     # Request type filtering
     only_provider_requests: bool = Field(
-        default=True,
+        default=False,
         description="Only generate commands for provider requests (not client requests)",
+    )
+    include_client_requests: bool = Field(
+        default=True,
+        description="Generate commands for client requests to non-provider URLs",
     )
 
     model_config = ConfigDict()
 
-    def should_generate_for_url(self, url: str) -> bool:
+    def should_generate_for_url(
+        self, url: str, is_provider_request: bool = None
+    ) -> bool:
         """Check if commands should be generated for the given URL.
 
         Args:
             url: The request URL to check
+            is_provider_request: Whether this is a provider request (None = auto-detect)
 
         Returns:
             True if commands should be generated for this URL
@@ -82,9 +89,45 @@ class CommandReplayConfig(BaseModel):
             if any(pattern in url for pattern in self.exclude_url_patterns):
                 return False
 
-        # Check include patterns
-        if self.include_url_patterns:
-            return any(pattern in url for pattern in self.include_url_patterns)
+        # Auto-detect if this is a provider request if not specified
+        if is_provider_request is None:
+            provider_domains = [
+                "api.anthropic.com",
+                "claude.ai",
+                "api.openai.com",
+                "chatgpt.com",
+            ]
+            is_provider_request = any(
+                domain in url.lower() for domain in provider_domains
+            )
+
+        # Apply request type filtering
+        if self.only_provider_requests and not is_provider_request:
+            return False
+
+        if not self.include_client_requests and not is_provider_request:
+            return False
+
+        # For provider requests, check include patterns
+        if is_provider_request:
+            if self.include_url_patterns:
+                return any(pattern in url for pattern in self.include_url_patterns)
+        else:
+            # For client requests, be more permissive
+            # Only filter if there are specific include patterns that don't match
+            if self.include_url_patterns:
+                # If include patterns are all provider domains, allow client requests
+                provider_only = all(
+                    any(
+                        provider in pattern.lower()
+                        for provider in ["anthropic", "openai", "claude", "chatgpt"]
+                    )
+                    for pattern in self.include_url_patterns
+                )
+                if provider_only:
+                    return True
+                # Otherwise apply normal include pattern matching
+                return any(pattern in url for pattern in self.include_url_patterns)
 
         # Default: generate for all URLs if no patterns specified
         return True

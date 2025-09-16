@@ -195,10 +195,12 @@ class BaseHTTPAdapter(BaseAdapter):
 
         # Step 7: Format the response
         if isinstance(response, StreamingResponse):
+            logger.debug("process_provider_response_streaming")
             return await self._convert_streaming_response(
                 response, ctx.format_chain, ctx
             )
         elif isinstance(response, Response):
+            logger.debug("process_provider_response")
             if ctx.format_chain and len(ctx.format_chain) > 1:
                 if provider_response.status_code >= 400:
                     # Error response; use error format chain if specified
