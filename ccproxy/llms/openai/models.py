@@ -262,10 +262,24 @@ class Choice(BaseModel):
     logprobs: dict[str, Any] | None = None
 
 
+class PromptTokensDetails(BaseModel):
+    cached_tokens: int = 0
+    audio_tokens: int = 0
+
+
+class CompletionTokensDetails(BaseModel):
+    reasoning_tokens: int = 0
+    audio_tokens: int = 0
+    accepted_prediction_tokens: int = 0
+    rejected_prediction_tokens: int = 0
+
+
 class CompletionUsage(BaseModel):
     completion_tokens: int
     prompt_tokens: int
     total_tokens: int
+    prompt_tokens_details: PromptTokensDetails | None = None
+    completion_tokens_details: CompletionTokensDetails | None = None
 
 
 class ChatCompletionResponse(BaseModel):

@@ -1,18 +1,13 @@
-from __future__ import annotations
-
-from collections.abc import AsyncGenerator, AsyncIterator
-from typing import Any, cast
-
-from pydantic import BaseModel
-
-from ccproxy.llms.adapters.base import BaseAPIAdapter
-from ccproxy.llms.adapters.shared import (
-    convert_anthropic_error_to_openai,
+from typing import Any, AsyncGenerator, AsyncIterator, cast, Literal
+from ccproxy.llms.adapters.shared.constants import ANTHROPIC_TO_OPENAI_FINISH_REASON
+from ccproxy.llms.adapters.shared.usage import (
+    convert_anthropic_usage_to_openai_completion_usage,
     convert_anthropic_usage_to_openai_response_usage,
 )
-from ccproxy.llms.anthropic import models as anthropic_models
-from ccproxy.llms.openai import models as openai_models
+import ccproxy.llms.openai.models as openai_models
+import ccproxy.llms.anthropic.models as anthropic_models
 
+FinishReason = Literal["stop", "length", "tool_calls"]
 
 ResponseStreamEvent = (
     openai_models.ResponseCreatedEvent
@@ -24,81 +19,7 @@ ResponseStreamEvent = (
 )
 
 
-class AnthropicMessagesToOpenAIResponsesAdapter(
-    BaseAPIAdapter[
-        anthropic_models.CreateMessageRequest,
-        anthropic_models.MessageResponse,
-        anthropic_models.MessageStreamEvent,
-    ]
-):
-    """Anthropic Messages ↔ OpenAI Responses adapter (request + response subset).
-
-    Implemented
-    - adapt_request: Anthropic → OpenAI Responses request
-      - Maps `model`, `stream`, `max_tokens` → `max_output_tokens`
-      - Maps last user message text into a single Responses `input` message
-      - Maps custom tools → function tools
-      - Maps tool_choice (auto/any/tool/none) and `parallel_tool_calls`
-      - Maps `system` into `instructions` when present
-    - adapt_response: Anthropic → OpenAI Responses response
-      - Serializes `thinking` blocks into a single OutputTextContent using
-        <thinking signature="…">…</thinking> XML followed by visible text
-      - Maps ToolUseBlock into content dicts with type "tool_use"
-      - Maps usage fields into OpenAI ResponseUsage
-
-    TODO
-    - Expand request mapping to include multiple turns and multimodal content
-    - Include richer content types beyond text and tool use
-    - Consider mapping stop reasons to status/incomplete details
-    """
-
-    def __init__(self) -> None:
-        super().__init__(name="anthropic_messages_to_openai_responses")
-
-    # Strongly-typed methods
-    async def adapt_request(self, request: BaseModel) -> BaseModel:
-        """Convert Anthropic CreateMessageRequest to OpenAI ResponseRequest."""
-        if not isinstance(request, anthropic_models.CreateMessageRequest):
-            raise ValueError(f"Expected CreateMessageRequest, got {type(request)}")
-
-        return await self._convert_request(request)
-
-    async def adapt_response(self, response: BaseModel) -> BaseModel:
-        """Convert Anthropic MessageResponse to OpenAI ResponseObject."""
-        if not isinstance(response, anthropic_models.MessageResponse):
-            raise ValueError(f"Expected MessageResponse, got {type(response)}")
-
-        return await self._convert_response(response)
-
-    def adapt_stream(
-        self, stream: AsyncIterator[anthropic_models.MessageStreamEvent]
-    ) -> AsyncGenerator[ResponseStreamEvent, None]:
-        """Convert Anthropic MessageStreamEvent stream to OpenAI Response stream events."""
-        return self._convert_stream(stream)
-
-    async def adapt_error(self, error: BaseModel) -> BaseModel:
-        """Convert Anthropic error payloads to the OpenAI envelope."""
-        return convert_anthropic_error_to_openai(error)
-
-    # Implementation methods
-
-    async def _convert_response(
-        self, response: anthropic_models.MessageResponse
-    ) -> openai_models.ResponseObject:
-        """Convert Anthropic MessageResponse to OpenAI ResponseObject using typed models."""
-        return convert_anthropic_message_to_response_object(response)
-
-    async def _adapt_response_dict_impl(
-        self, response: dict[str, Any]
-    ) -> dict[str, Any]:
-        """Implementation moved from adapt_response - works with dicts."""
-        anthropic_response = anthropic_models.MessageResponse.model_validate(response)
-        return convert_anthropic_message_to_response_object(
-            anthropic_response
-        ).model_dump()
-
-
-async def convert__anthropic_messsage_to_openai_response__stream(
+async def convert__anthropic_message_to_openai_response__stream(
     stream: AsyncIterator[anthropic_models.MessageStreamEvent],
 ) -> AsyncGenerator[ResponseStreamEvent, None]:
     item_id = "msg_stream"
@@ -224,7 +145,7 @@ async def convert__anthropic_messsage_to_openai_response__stream(
             break
 
 
-def convert__anthropic_messsage_to_openai_response__request(
+def convert__anthropic_message_to_openai_response__request(
     request: anthropic_models.CreateMessageRequest,
 ) -> openai_models.ResponseRequest:
     """Convert Anthropic CreateMessageRequest to OpenAI ResponseRequest using typed models."""
@@ -333,11 +254,11 @@ def convert__anthropic_messsage_to_openai_response__request(
 
 
 async def convert__anthropic_message_to_openai_chat__stream(
-    stream: AsyncIterator[MessageStreamEvent],
-) -> AsyncGenerator[ChatCompletionChunk, None]:
+    stream: AsyncIterator[anthropic_models.MessageStreamEvent],
+) -> AsyncGenerator[openai_models.ChatCompletionChunk, None]:
     """Convert Anthropic stream to OpenAI stream using typed models."""
 
-    async def generator() -> AsyncGenerator[ChatCompletionChunk, None]:
+    async def generator() -> AsyncGenerator[openai_models.ChatCompletionChunk, None]:
         model_id = ""
         finish_reason: FinishReason = "stop"
         usage_prompt = 0
@@ -352,7 +273,7 @@ async def convert__anthropic_message_to_openai_chat__stream(
             elif evt.type == "content_block_delta":
                 text = evt.delta.text
                 if text:
-                    yield ChatCompletionChunk(
+                    yield openai_models.ChatCompletionChunk(
                         id="chatcmpl-stream",
                         object="chat.completion.chunk",
                         created=0,
@@ -385,7 +306,7 @@ async def convert__anthropic_message_to_openai_chat__stream(
                         completion_tokens=usage_completion,
                         total_tokens=usage_prompt + usage_completion,
                     )
-                yield ChatCompletionChunk(
+                yield openai_models.ChatCompletionChunk(
                     id="chatcmpl-stream",
                     object="chat.completion.chunk",
                     created=0,
@@ -404,7 +325,7 @@ async def convert__anthropic_message_to_openai_chat__stream(
     return generator()
 
 
-def convert__anthropic_message_to_openai_response_object(
+def convert__anthropic_message_to_openai_response__response(
     response: anthropic_models.MessageResponse,
 ) -> openai_models.ResponseObject:
     """Convert Anthropic MessageResponse to an OpenAI ResponseObject."""
@@ -468,3 +389,237 @@ def convert__anthropic_message_to_openai_response_object(
         parallel_tool_calls=False,
         usage=usage_model,
     )
+
+
+def convert__anthropic_message_to_openai_chat__request(
+    request: anthropic_models.CreateMessageRequest,
+) -> openai_models.ChatCompletionRequest:
+    """Convert Anthropic CreateMessageRequest to OpenAI ChatCompletionRequest using typed models."""
+    openai_messages: list[dict[str, Any]] = []
+    # System prompt
+    if request.system:
+        if isinstance(request.system, str):
+            sys_content = request.system
+        else:
+            sys_content = "".join(block.text for block in request.system)
+        if sys_content:
+            openai_messages.append({"role": "system", "content": sys_content})
+
+    # User/assistant messages with text + data-url images
+    for msg in request.messages:
+        role = msg.role
+        content = msg.content
+
+        # Handle tool usage and results
+        if role == "assistant" and isinstance(content, list):
+            tool_calls = []
+            text_parts = []
+            for block in content:
+                block_type = getattr(block, "type", None)
+                if block_type == "tool_use":
+                    # Type guard for ToolUseBlock
+                    if (
+                        hasattr(block, "id")
+                        and hasattr(block, "name")
+                        and hasattr(block, "input")
+                    ):
+                        tool_calls.append(
+                            {
+                                "id": block.id,
+                                "type": "function",
+                                "function": {
+                                    "name": block.name,
+                                    "arguments": str(block.input),
+                                },
+                            }
+                        )
+                elif block_type == "text":
+                    # Type guard for TextBlock
+                    if hasattr(block, "text"):
+                        text_parts.append(block.text)
+            if tool_calls:
+                assistant_msg: dict[str, Any] = {
+                    "role": "assistant",
+                    "tool_calls": tool_calls,
+                }
+                assistant_msg["content"] = " ".join(text_parts) if text_parts else None
+                openai_messages.append(assistant_msg)
+                continue
+        elif role == "user" and isinstance(content, list):
+            is_tool_result = any(
+                getattr(b, "type", None) == "tool_result" for b in content
+            )
+            if is_tool_result:
+                for block in content:
+                    if getattr(block, "type", None) == "tool_result":
+                        # Type guard for ToolResultBlock
+                        if hasattr(block, "tool_use_id") and hasattr(block, "content"):
+                            openai_messages.append(
+                                {
+                                    "role": "tool",
+                                    "tool_call_id": block.tool_use_id,
+                                    "content": str(block.content),
+                                }
+                            )
+                continue
+
+        if isinstance(content, list):
+            parts: list[dict[str, Any]] = []
+            text_accum: list[str] = []
+            for block in content:
+                # Support both raw dicts and Anthropic model instances
+                if isinstance(block, dict):
+                    btype = block.get("type")
+                    if btype == "text" and isinstance(block.get("text"), str):
+                        text_accum.append(block.get("text") or "")
+                    elif btype == "image":
+                        source = block.get("source") or {}
+                        if (
+                            isinstance(source, dict)
+                            and source.get("type") == "base64"
+                            and isinstance(source.get("media_type"), str)
+                            and isinstance(source.get("data"), str)
+                        ):
+                            url = f"data:{source['media_type']};base64,{source['data']}"
+                            parts.append(
+                                {
+                                    "type": "image_url",
+                                    "image_url": {"url": url},
+                                }
+                            )
+                else:
+                    # Pydantic models
+                    btype = getattr(block, "type", None)
+                    if (
+                        btype == "text"
+                        and hasattr(block, "text")
+                        and isinstance(getattr(block, "text", None), str)
+                    ):
+                        text_accum.append(block.text or "")
+                    elif btype == "image":
+                        source = getattr(block, "source", None)
+                        if (
+                            source is not None
+                            and getattr(source, "type", None) == "base64"
+                            and isinstance(getattr(source, "media_type", None), str)
+                            and isinstance(getattr(source, "data", None), str)
+                        ):
+                            url = f"data:{source.media_type};base64,{source.data}"
+                            parts.append(
+                                {
+                                    "type": "image_url",
+                                    "image_url": {"url": url},
+                                }
+                            )
+            if parts or len(text_accum) > 1:
+                if text_accum:
+                    parts.insert(0, {"type": "text", "text": " ".join(text_accum)})
+                openai_messages.append({"role": role, "content": parts})
+            else:
+                openai_messages.append(
+                    {"role": role, "content": (text_accum[0] if text_accum else "")}
+                )
+        else:
+            openai_messages.append({"role": role, "content": content})
+
+    # Tools mapping (custom tools -> function tools)
+    tools: list[dict[str, Any]] = []
+    if request.tools:
+        for tool in request.tools:
+            if isinstance(tool, anthropic_models.Tool):
+                tools.append(
+                    {
+                        "type": "function",
+                        "function": {
+                            "name": tool.name,
+                            "description": tool.description,
+                            "parameters": tool.input_schema,
+                        },
+                    }
+                )
+
+    params: dict[str, Any] = {
+        "model": request.model,
+        "messages": openai_messages,
+        "max_completion_tokens": request.max_tokens,
+    }
+    if tools:
+        params["tools"] = tools
+
+    # tool_choice mapping
+    tc = request.tool_choice
+    if tc is not None:
+        tc_type = getattr(tc, "type", None)
+        if tc_type == "none":
+            params["tool_choice"] = "none"
+        elif tc_type == "auto":
+            params["tool_choice"] = "auto"
+        elif tc_type == "any":
+            params["tool_choice"] = "required"
+        elif tc_type == "tool":
+            name = getattr(tc, "name", None)
+            if name:
+                params["tool_choice"] = {
+                    "type": "function",
+                    "function": {"name": name},
+                }
+        # parallel_tool_calls from disable_parallel_tool_use
+        disable_parallel = getattr(tc, "disable_parallel_tool_use", None)
+        if isinstance(disable_parallel, bool):
+            params["parallel_tool_calls"] = not disable_parallel
+
+    # Validate against OpenAI model
+    return openai_models.ChatCompletionRequest.model_validate(params)
+
+
+def convert__anthropic_message_to_openai_chat__response(
+    response: anthropic_models.MessageResponse,
+) -> openai_models.ChatCompletionResponse:
+    """Convert Anthropic MessageResponse to an OpenAI ChatCompletionResponse."""
+    content_blocks = response.content
+    parts: list[str] = []
+    for block in content_blocks:
+        btype = getattr(block, "type", None)
+        if btype == "text":
+            text = getattr(block, "text", None)
+            if isinstance(text, str):
+                parts.append(text)
+        elif btype == "thinking":
+            thinking = getattr(block, "thinking", None)
+            signature = getattr(block, "signature", None)
+            if isinstance(thinking, str):
+                sig_attr = (
+                    f' signature="{signature}"'
+                    if isinstance(signature, str) and signature
+                    else ""
+                )
+                parts.append(f"<thinking{sig_attr}>{thinking}</thinking>")
+
+    content_text = "".join(parts)
+
+    stop_reason = response.stop_reason
+    finish_reason = ANTHROPIC_TO_OPENAI_FINISH_REASON.get(
+        stop_reason or "end_turn", "stop"
+    )
+
+    usage_model = convert_anthropic_usage_to_openai_completion_usage(response.usage)
+
+    payload = {
+        "id": response.id,
+        "choices": [
+            {
+                "index": 0,
+                "message": {"role": "assistant", "content": content_text},
+                "finish_reason": finish_reason,
+            }
+        ],
+        "created": int(time.time()),
+        "model": response.model,
+        "object": "chat.completion",
+        "usage": usage_model.model_dump(),
+    }
+    return openai_models.ChatCompletionResponse.model_validate(payload)
+
+
+# Backward-compatible alias for tests
+AnthropicToOpenAIChatCompletionsAdapter = AnthropicMessagesToOpenAIChatAdapter

@@ -5,18 +5,18 @@ from typing import Any
 
 from pydantic import BaseModel
 
+from ccproxy.llms.adapters.shared.usage import (
+    convert_openai_completion_usage_to_openai_response_usage,
+    convert_openai_response_usage_to_openai_completion_usage,
+)
+import ccproxy.llms.openai.models as openai_models
 from ccproxy.llms.adapters.base import BaseAPIAdapter
 from ccproxy.llms.openai.models import (
     ChatCompletionChunk,
     ChatCompletionRequest,
+    ChatCompletionResponse,
     ResponseObject,
     ResponseRequest,
-)
-from ccproxy.llms.adapters.openai_to_openai.response_api_to_chat import (
-    response_stream_to_chat_chunks,
-)
-from ccproxy.llms.adapters.openai_to_openai.responses_to_chat import (
-    convert_openai_response_to_chat,
 )
 
 
@@ -44,21 +44,21 @@ class OpenAIChatToOpenAIResponsesAdapter(
         super().__init__(name="openai_chat_to_openai_responses")
 
     # Typed methods - delegate to dict implementation for now
-    async def adapt_request(self, request: BaseModel) -> BaseModel:
+    async def adapt_request(self, request: ChatCompletionRequest) -> ResponseObject:
         if not isinstance(request, ChatCompletionRequest):
             raise ValueError(f"Expected ChatCompletionRequest, got {type(request)}")
         return await self._convert_request(request)
 
-    async def adapt_response(self, response: BaseModel) -> BaseModel:
+    async def adapt_response(self, response: ChatCompletionResponse) -> ResponseObject:
         if not isinstance(response, ResponseObject):
             raise ValueError(f"Expected ResponseObject, got {type(response)}")
 
         return convert_openai_response_to_chat(response)
 
     def adapt_stream(
-        self, stream: AsyncIterator[openai_models.AnyStreamEvent]
-    ) -> AsyncGenerator[ChatCompletionChunk, None]:
-        return response_stream_to_chat_chunks(stream)
+        self, stream: AsyncIterator[openai_models.ChatCompletionChunk]
+    ) -> AsyncGenerator[openai_models.AnyStreamEvent, None]:
+        raise NotImplementedError("Streaming not implemented for this adapter")
 
     async def adapt_error(self, error: BaseModel) -> BaseModel:
         return error  # Pass through
@@ -139,3 +139,48 @@ class OpenAIChatToOpenAIResponsesAdapter(
             ]
 
         return ResponseRequest.model_validate(payload_data)
+
+
+def convert_openai_response_to_chat(
+    response: openai_models.ResponseObject,
+) -> openai_models.ChatCompletionResponse:
+    """Convert an OpenAI ResponseObject to a ChatCompletionResponse."""
+    # Find first message output and aggregate output_text parts
+    text_content = ""
+    for item in response.output or []:
+        if hasattr(item, "type") and item.type == "message":
+            parts: list[str] = []
+            for part in getattr(item, "content", []):
+                if hasattr(part, "type") and part.type == "output_text":
+                    if hasattr(part, "text") and isinstance(part.text, str):
+                        parts.append(part.text)
+                elif isinstance(part, dict) and part.get("type") == "output_text":
+                    text = part.get("text")
+                    if isinstance(text, str):
+                        parts.append(text)
+            text_content = "".join(parts)
+            break
+
+    usage = None
+    if response.usage:
+        usage = convert_openai_response_usage_to_openai_completion_usage(response.usage)
+
+    return openai_models.ChatCompletionResponse(
+        id=response.id or "chatcmpl-resp",
+        choices=[
+            openai_models.Choice(
+                index=0,
+                message=openai_models.ResponseMessage(
+                    role="assistant", content=text_content
+                ),
+                finish_reason="stop",
+            )
+        ],
+        created=0,
+        model=response.model or "",
+        object="chat.completion",
+        usage=usage
+        or openai_models.CompletionUsage(
+            prompt_tokens=0, completion_tokens=0, total_tokens=0
+        ),
+    )

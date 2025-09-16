@@ -7,7 +7,9 @@ from typing import Any
 from pydantic import BaseModel
 
 from ccproxy.llms.adapters.base import BaseAPIAdapter
-from ccproxy.llms.adapters.shared import safe_extract_usage_tokens
+from ccproxy.llms.adapters.shared.usage import (
+    convert_openai_completion_usage_to_openai_response_usage,
+)
 from ccproxy.llms.openai import models as openai_models
 from ccproxy.llms.openai.models import (
     AnyStreamEvent,
@@ -151,12 +153,8 @@ class ResponseAPIToOpenAIChatAdapter(
 
         usage: ResponseUsage | None = None
         if chat_response.usage:
-            usage = ResponseUsage(
-                input_tokens=chat_response.usage.prompt_tokens or 0,
-                input_tokens_details=InputTokensDetails(cached_tokens=0),
-                output_tokens=chat_response.usage.completion_tokens or 0,
-                output_tokens_details=OutputTokensDetails(reasoning_tokens=0),
-                total_tokens=chat_response.usage.total_tokens or 0,
+            usage = convert_openai_completion_usage_to_openai_response_usage(
+                chat_response
             )
 
         return ResponseObject(
@@ -170,6 +168,50 @@ class ResponseAPIToOpenAIChatAdapter(
             usage=usage,
         )
 
+
+def convert_openai_response_to_chat(
+    response: openai_models.ResponseObject,
+) -> openai_models.ChatCompletionResponse:
+    """Convert an OpenAI ResponseObject to a ChatCompletionResponse."""
+    # Find first message output and aggregate output_text parts
+    text_content = ""
+    for item in response.output or []:
+        if hasattr(item, "type") and item.type == "message":
+            parts: list[str] = []
+            for part in getattr(item, "content", []):
+                if hasattr(part, "type") and part.type == "output_text":
+                    if hasattr(part, "text") and isinstance(part.text, str):
+                        parts.append(part.text)
+                elif isinstance(part, dict) and part.get("type") == "output_text":
+                    text = part.get("text")
+                    if isinstance(text, str):
+                        parts.append(text)
+            text_content = "".join(parts)
+            break
+
+    usage = None
+    if response.usage:
+        usage = convert_openai_response_usage_to_openai_completion_usage(response.usage)
+
+    return openai_models.ChatCompletionResponse(
+        id=response.id or "chatcmpl-resp",
+        choices=[
+            openai_models.Choice(
+                index=0,
+                message=openai_models.ResponseMessage(
+                    role="assistant", content=text_content
+                ),
+                finish_reason="stop",
+            )
+        ],
+        created=0,
+        model=response.model or "",
+        object="chat.completion",
+        usage=usage
+        or openai_models.CompletionUsage(
+            prompt_tokens=0, completion_tokens=0, total_tokens=0
+        ),
+    )
 
 
 def response_stream_to_chat_chunks(
@@ -207,7 +249,11 @@ def response_stream_to_chat_chunks(
                             )
                         ],
                     )
-            elif evt.type in {"response.completed", "response.incomplete", "response.failed"}:
+            elif evt.type in {
+                "response.completed",
+                "response.incomplete",
+                "response.failed",
+            }:
                 usage = None
                 response_obj = getattr(evt, "response", None)
                 if response_obj and getattr(response_obj, "usage", None):
@@ -233,6 +279,6 @@ def response_stream_to_chat_chunks(
                     ],
                     usage=usage,
                 )
-                break
+            break
 
     return generator()
